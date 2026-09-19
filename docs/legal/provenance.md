@@ -36,3 +36,9 @@ records upstream osu! commit `98fb49876c0242fcf649e0250d6f6b3458769a9e`.
 against SDL's public GPU API and the generated `ppy.SDL3-CS` 2026.722.0 bindings.
 No SDL or binding source is copied into the repository; the NuGet package supplies
 the dynamically loaded platform-native SDL library.
+
+The shader sources under `src/Waddamburo.Platform.Sdl/Shaders/` are original
+Waddamburo code. Their checked-in SPIR-V and DXIL files are generated from those
+sources by the unmodified Slang 2026.18 command-line compiler and, for Windows
+DXIL, Microsoft DirectX Shader Compiler 1.9.2602.24 pinned in
+`eng/build-shaders.*`; neither compiler is vendored or shipped at runtime.

@@ -1,15 +1,19 @@
 # SDL and SDL_GPU lifecycle
 
 `Waddamburo.Platform.Sdl.SdlApplication` owns SDL video initialization, one window,
-one SDL_GPU device, the window/device claim, event polling, command submission, and
-shutdown. All of those operations must remain on the thread that created the
-application.
+one SDL_GPU device, the window/device claim, and event polling. Its internal
+`RenderDevice` owns shaders, pipelines, samplers, textures, uploads, command
+submission, and presentation. All operations stay on the thread that created the
+application, and shutdown waits for idle before releasing GPU resources.
 
-The initial rendering path acquires the swapchain texture, starts an empty render
-pass with a clear load operation, presents the submitted command buffer, and handles
-a temporarily unavailable swapchain image without inventing a render target. It
-does not require shaders. Shutdown waits for the GPU to become idle, releases the
-window claim, then destroys the device, window, and SDL subsystems in that order.
+The first 2D path consumes an immutable `RenderFrame`. A frame contains a clear
+color and ordered textured quads; public texture IDs keep SDL pointers out of frame
+state. Quad destinations and UV rectangles are normalized, both nearest and linear
+sampling are available, color multiply/add is explicit, source RGBA is treated as
+straight alpha, and the fragment shader emits premultiplied alpha for one/source-
+alpha blending. The sample app uploads a synthetic checkerboard through this same
+path. A temporarily unavailable swapchain image is valid and is not replaced with
+an invented render target.
 
 Run it interactively with:
 
@@ -22,6 +26,12 @@ a diagnostic option, not a gameplay timing mechanism. The successful Linux x64
 baseline uses SDL's Vulkan GPU backend.
 
 The platform adapter references `ppy.SDL3-CS` at the centrally pinned version. Its
-NuGet package provides the platform-native SDL shared library; no system SDL install
-or runtime shader compiler is used by this clear-only path. Shader packaging becomes
-required when the textured quad pipeline is introduced.
+NuGet package provides the platform-native SDL shared library. Shader bytecode is
+embedded in the platform assembly; no compiler is loaded or executed at runtime.
+
+Run `eng/build-shaders.sh` on Linux to reproduce the checked-in SPIR-V. Run
+`eng/build-shaders.ps1` on Windows to reproduce SPIR-V and generate DXIL. Both
+scripts download version-pinned official archives into ignored `out/` paths and
+reject checksum mismatches. Vulkan uses a vertex uniform buffer at set 1/binding 0
+and one combined image sampler at set 2/binding 0. D3D12 uses `b0, space1` plus
+`t0/s0, space2`, matching SDL_GPU's documented resource order.

@@ -1,12 +1,8 @@
 using SDL;
+using Waddamburo.Platform.Sdl.Rendering;
 using static SDL.SDL3;
 
 namespace Waddamburo.Platform.Sdl;
-
-public readonly record struct SdlClearColor(float Red, float Green, float Blue, float Alpha)
-{
-    public static SdlClearColor WaddamburoBlue { get; } = new(0.035f, 0.075f, 0.14f, 1f);
-}
 
 /// <summary>Owns SDL video, one window, and one SDL_GPU device on the creating thread.</summary>
 public sealed unsafe class SdlApplication : IDisposable
@@ -14,6 +10,7 @@ public sealed unsafe class SdlApplication : IDisposable
     private readonly int _ownerThreadId;
     private SDL_Window* _window;
     private SDL_GPUDevice* _device;
+    private RenderDevice? _renderer;
     private bool _windowClaimed;
     private bool _sdlInitialized;
     private bool _disposed;
@@ -49,6 +46,7 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!SDL_ClaimWindowForGPUDevice(_device, _window))
                 throw sdlFailure("claim the window for the GPU device");
             _windowClaimed = true;
+            _renderer = new RenderDevice(_device, _window);
             GpuDriver = SDL_GetGPUDeviceDriver(_device) ?? "unknown";
         }
         catch
@@ -60,14 +58,21 @@ public sealed unsafe class SdlApplication : IDisposable
 
     public string GpuDriver { get; } = string.Empty;
 
-    public int Run(int? frameLimit = null, SdlClearColor? clearColor = null)
+    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
+        return _renderer!.UploadRgba8(width, height, pixels);
+    }
+
+    public int Run(RenderFrame frame, int? frameLimit = null)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(frame);
         if (frameLimit < 0)
             throw new ArgumentOutOfRangeException(nameof(frameLimit));
 
-        var color = clearColor ?? SdlClearColor.WaddamburoBlue;
         var renderedFrames = 0;
         var running = true;
         while (running && (frameLimit is null || renderedFrames < frameLimit))
@@ -84,7 +89,7 @@ public sealed unsafe class SdlApplication : IDisposable
 
             if (!running)
                 break;
-            renderClearFrame(color);
+            _renderer!.Present(frame);
             renderedFrames++;
         }
         return renderedFrames;
@@ -99,54 +104,12 @@ public sealed unsafe class SdlApplication : IDisposable
         _disposed = true;
     }
 
-    private void renderClearFrame(SdlClearColor color)
-    {
-        var commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
-        if (commandBuffer is null)
-            throw sdlFailure("acquire a GPU command buffer");
-
-        SDL_GPUTexture* swapchainTexture = null;
-        uint width = 0;
-        uint height = 0;
-        if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, _window, &swapchainTexture, &width, &height))
-        {
-            SDL_CancelGPUCommandBuffer(commandBuffer);
-            throw sdlFailure("acquire the swapchain texture");
-        }
-
-        if (swapchainTexture is not null)
-        {
-            var target = new SDL_GPUColorTargetInfo
-            {
-                texture = swapchainTexture,
-                clear_color = new SDL_FColor
-                {
-                    r = color.Red,
-                    g = color.Green,
-                    b = color.Blue,
-                    a = color.Alpha,
-                },
-                load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
-                store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_STORE,
-            };
-            var renderPass = SDL_BeginGPURenderPass(commandBuffer, &target, 1, null);
-            if (renderPass is null)
-            {
-                SDL_CancelGPUCommandBuffer(commandBuffer);
-                throw sdlFailure("begin the GPU render pass");
-            }
-            SDL_EndGPURenderPass(renderPass);
-        }
-
-        if (!SDL_SubmitGPUCommandBuffer(commandBuffer))
-            throw sdlFailure("submit the GPU command buffer");
-    }
-
     private void disposeNativeResources()
     {
         if (_device is not null)
         {
-            SDL_WaitForGPUIdle(_device);
+            _renderer?.Dispose();
+            _renderer = null;
             if (_windowClaimed && _window is not null)
                 SDL_ReleaseWindowFromGPUDevice(_device, _window);
             SDL_DestroyGPUDevice(_device);

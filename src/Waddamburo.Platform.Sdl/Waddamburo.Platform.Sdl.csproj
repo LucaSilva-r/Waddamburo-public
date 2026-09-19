@@ -12,6 +12,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Shaders/Compiled/*.*"
+                      LogicalName="Waddamburo.Shaders.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
   </ItemGroup>
