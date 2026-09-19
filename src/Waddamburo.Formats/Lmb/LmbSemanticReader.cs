@@ -11,7 +11,10 @@ public static class LmbSemanticReader
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    public static ParseResult<LmbMovieDefinition> Read(LmbFile file, ParserLimits? limits = null)
+    public static ParseResult<LmbMovieDefinition> Read(
+        LmbFile file,
+        ParserLimits? limits = null,
+        LmbSemanticValidationContext? validationContext = null)
     {
         ArgumentNullException.ThrowIfNull(file);
         var parserLimits = limits ?? ParserLimits.Default;
@@ -214,6 +217,7 @@ public static class LmbSemanticReader
             shapes.Select(shape => shape.Build()).ToImmutableArray(),
             sprites.Select(sprite => sprite.Build()).ToImmutableArray(),
             uninterpreted.ToImmutable());
+        LmbReferenceValidator.Validate(definition, validationContext, diagnostics);
         return new ParseResult<LmbMovieDefinition>(definition, diagnostics.ToImmutable());
     }
 

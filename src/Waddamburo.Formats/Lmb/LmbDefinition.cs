@@ -23,20 +23,35 @@ public static class LmbTags
     public const uint FrameKey = 0xF105;
 }
 
-public sealed record LmbString(int Index, string Value, long Offset);
+public sealed record LmbString(int Index, string Value, long Offset)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Confirmed;
+}
 
-public sealed record LmbAction(int Index, ImmutableArray<byte> Bytecode, long Offset);
+public sealed record LmbAction(int Index, ImmutableArray<byte> Bytecode, long Offset)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Confirmed;
+}
 
 public sealed record LmbColorTransform(short Red, short Green, short Blue, short Alpha)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public sealed record LmbMatrix(float M11, float M12, float M21, float M22, float X, float Y);
+public sealed record LmbMatrix(float M11, float M12, float M21, float M22, float X, float Y)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
+}
 
-public sealed record LmbTranslation(float X, float Y);
+public sealed record LmbTranslation(float X, float Y)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
+}
 
-public sealed record LmbBounds(float Left, float Top, float Right, float Bottom);
+public sealed record LmbBounds(float Left, float Top, float Right, float Bottom)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
+}
 
 public sealed record LmbTextureBounds(float Left, float Top, float Right, float Bottom)
 {
@@ -60,7 +75,10 @@ public sealed record LmbShapeDefinition(
     uint DeclaredGeometryCount,
     ImmutableArray<uint> UninterpretedHeaderWords,
     ImmutableArray<LmbShapeGeometry> Geometry,
-    LmbRecord RawRecord);
+    LmbRecord RawRecord)
+{
+    public EvidenceStatus HeaderEvidence { get; init; } = EvidenceStatus.Candidate;
+}
 
 public abstract record LmbTimelineCommand(LmbRecord RawRecord, EvidenceStatus Evidence);
 
@@ -144,3 +162,15 @@ public sealed record LmbMovieDefinition(
     ImmutableArray<LmbShapeDefinition> Shapes,
     ImmutableArray<LmbSpriteDefinition> Sprites,
     ImmutableArray<LmbRecord> UninterpretedRecords);
+
+public sealed record LmbSemanticValidationContext
+{
+    public LmbSemanticValidationContext(int? textureCount = null)
+    {
+        if (textureCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(textureCount));
+        TextureCount = textureCount;
+    }
+
+    public int? TextureCount { get; }
+}

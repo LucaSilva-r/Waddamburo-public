@@ -33,11 +33,12 @@ public sealed class LmbSemanticReaderTests
             words(LmbTags.ShapeGeometry, geometry),
             words(LmbTags.DefineSprite, 7, 0x11, 0x22, 1, 2, 1, 0x33),
             words(LmbTags.FrameLabel, 0, 0, 0x99),
-            words(LmbTags.PlaceObject, 42, 6, 0xDEAD, 0, 0x00010002, 0x00030000, 0x00040000, 0x80000005, 0, uint.MaxValue, 0xA, 0xB),
+            words(LmbTags.ShowFrame, 0, 3),
+            words(LmbTags.PlaceObject, 42, 6, 0xDEAD, 0, 0x00010002, 0x00030000, 0x00010000, 0x80000000, 0, uint.MaxValue, 0xA, 0xB),
             words(LmbTags.RemoveObject, 42, 0x00020000),
             words(LmbTags.DoAction, 0, 0x55),
-            words(LmbTags.ShowFrame, 0, 4),
-            words(LmbTags.FrameKey, 1, 2),
+            words(LmbTags.ShowFrame, 1, 0),
+            words(LmbTags.FrameKey, 1, 0),
             words(0xDEADBEEF, 1, 2));
 
         var result = LmbSemanticReader.Read(file);
@@ -66,6 +67,7 @@ public sealed class LmbSemanticReaderTests
         Assert.Collection(
             sprite.Timeline,
             command => Assert.IsType<LmbFrameLabelCommand>(command),
+            command => Assert.IsType<LmbShowFrameCommand>(command),
             command =>
             {
                 var place = Assert.IsType<LmbPlaceObjectCommand>(command);
@@ -74,7 +76,7 @@ public sealed class LmbSemanticReaderTests
                 Assert.Equal(2, place.BlendMode);
                 Assert.Equal(3, place.Depth);
                 Assert.Equal(0x8000, place.PositionKind);
-                Assert.Equal(5, place.PositionIndex);
+                Assert.Equal(0, place.PositionIndex);
                 Assert.Equal(EvidenceStatus.CorpusValidatedInference, place.Evidence);
                 Assert.Equal(PlaceUnknownWords, place.UninterpretedWords);
             },
@@ -119,6 +121,67 @@ public sealed class LmbSemanticReaderTests
         var exception = Assert.Throws<FormatLimitException>(() =>
             LmbSemanticReader.Read(action, new ParserLimits(maxActionBytes: 2)));
         Assert.Equal(nameof(ParserLimits.MaxActionBytes), exception.LimitName);
+    }
+
+    [Fact]
+    public void ReportsInvalidSemanticReferencesWithoutDiscardingTypedCommands()
+    {
+        var geometry = new uint[18];
+        geometry[16] = 4;
+        var file = createLmb(
+            record(LmbTags.StringPool, stringPool("name")),
+            words(LmbTags.ColorTransformPool, 1, 0, 0),
+            words(LmbTags.MatrixPool, 1, 0, 0, 0, 0, 0, 0),
+            words(LmbTags.TranslationPool, 1, 0, 0),
+            record(LmbTags.ActionPool, actionPool([0x00])),
+            words(LmbTags.DefineShape, 42, 0, 0, 2),
+            words(LmbTags.ShapeGeometry, geometry),
+            words(LmbTags.DefineSprite, 7, 0, 0, 2, 1, 2, 0),
+            words(LmbTags.ShowFrame, 4, 3),
+            words(LmbTags.FrameLabel, 3, 2, 0),
+            words(LmbTags.PlaceObject, 99, 0, 0, 3, 0x00010000, 0, 0x00020000, 0x80000004, 5, uint.MaxValue, 0, 0),
+            words(LmbTags.DoAction, 2, 0),
+            words(LmbTags.FrameKey, 3, 0),
+            words(LmbTags.DefineSprite, 42, 0, 0, 0, 1, 0, 0));
+
+        var result = LmbSemanticReader.Read(
+            file,
+            validationContext: new LmbSemanticValidationContext(textureCount: 1));
+        var codes = result.Diagnostics.Select(diagnostic => diagnostic.Code).ToArray();
+
+        Assert.Contains("LMB_GEOMETRY_COUNT_MISMATCH", codes);
+        Assert.Contains("LMB_TEXTURE_INDEX_OUT_OF_RANGE", codes);
+        Assert.Contains("LMB_DUPLICATE_CHARACTER_ID", codes);
+        Assert.Contains("LMB_LABEL_COUNT_MISMATCH", codes);
+        Assert.Contains("LMB_STRING_INDEX_OUT_OF_RANGE", codes);
+        Assert.Contains("LMB_CHARACTER_ID_NOT_FOUND", codes);
+        Assert.Contains("LMB_FRAME_OUT_OF_RANGE", codes);
+        Assert.Contains("LMB_POSITION_INDEX_OUT_OF_RANGE", codes);
+        Assert.Contains("LMB_COLOR_INDEX_OUT_OF_RANGE", codes);
+        Assert.Contains("LMB_ACTION_INDEX_OUT_OF_RANGE", codes);
+        Assert.All(
+            result.Diagnostics.Where(diagnostic => diagnostic.Code.EndsWith("OUT_OF_RANGE", StringComparison.Ordinal)),
+            diagnostic => Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity));
+        Assert.Equal(5, result.Value.Sprites[0].Timeline.Length);
+        Assert.Same(file.Records[8], result.Value.Sprites[0].Timeline[0].RawRecord);
+    }
+
+    [Fact]
+    public void AcceptsPlacementSentinelsAndRetainsUnknownPositionKindsAsDiagnostics()
+    {
+        var file = createLmb(
+            record(LmbTags.StringPool, stringPool("name")),
+            words(LmbTags.DefineSprite, 1, 0, 0, 0, 1, 0, 0),
+            words(LmbTags.ShowFrame, 0, 2),
+            words(LmbTags.PlaceObject, uint.MaxValue, 0, 0, 0, 0x00020000, 0, 0, 0xFFFF0000, uint.MaxValue, uint.MaxValue, 0, 0),
+            words(LmbTags.PlaceObject, 0, 0, 0, 0, 0x00020000, 0, 0, 0x12340000, uint.MaxValue, uint.MaxValue, 0, 0));
+
+        var result = LmbSemanticReader.Read(file);
+
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("LMB_UNKNOWN_POSITION_KIND", diagnostic.Code);
+        Assert.Equal(EvidenceStatus.Unknown, diagnostic.Evidence);
+        Assert.Equal(3, result.Value.Sprites[0].Timeline.Length);
     }
 
     private static LmbFile createLmb(params (uint Tag, byte[] Payload)[] records)
