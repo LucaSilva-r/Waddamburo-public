@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "waddamburo.formats": {
+        "type": "Project"
+      },
+      "waddamburo.game": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[1.0.0, )",
+          "Waddamburo.Lumen": "[1.0.0, )"
+        }
+      },
+      "waddamburo.lumen": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[1.0.0, )"
+        }
+      },
+      "waddamburo.platform.sdl": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[1.0.0, )",
+          "Waddamburo.Lumen": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

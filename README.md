@@ -10,9 +10,11 @@ entitled to use from their own local installation.
 
 ## Status
 
-The public implementation is starting from a clean repository. It does not yet
-contain a runnable game. New product code will be implemented here without copying
-the private proof of concept or importing executable-derived source.
+The public implementation started from a clean repository. Its .NET 10 solution,
+project boundaries, central build policy, dependency pins, lock files, and
+architecture tests are in place; game functionality is not implemented yet. New
+product code is written here without copying the private proof of concept or
+importing executable-derived source.
 
 The initial targets are Linux x64 and Windows x64 on .NET 10. The intended product
 is a local game plus reusable libraries for asset formats, animation, rendering,
@@ -30,6 +32,14 @@ audio, input, catalogues, and persistence.
 See the [evidence policy](docs/legal/evidence-policy.md),
 [provenance policy](docs/legal/provenance.md), and
 [release-content policy](docs/legal/release-content-policy.md).
+
+Build and test the current scaffold with:
+
+```sh
+dotnet restore Waddamburo.slnx --locked-mode
+dotnet build Waddamburo.slnx --no-restore
+dotnet test Waddamburo.slnx --no-build --no-restore
+```
 
 ## Legal
 

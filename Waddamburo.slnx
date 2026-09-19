@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Waddamburo.App/Waddamburo.App.csproj" />
+    <Project Path="src/Waddamburo.Formats/Waddamburo.Formats.csproj" />
+    <Project Path="src/Waddamburo.Game/Waddamburo.Game.csproj" />
+    <Project Path="src/Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
+    <Project Path="src/Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+    <Project Path="src/Waddamburo.Tool/Waddamburo.Tool.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Waddamburo.Architecture.Tests/Waddamburo.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>

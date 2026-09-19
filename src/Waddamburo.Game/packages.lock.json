@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "waddamburo.formats": {
+        "type": "Project"
+      },
+      "waddamburo.lumen": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}
