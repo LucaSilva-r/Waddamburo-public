@@ -10,5 +10,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Waddamburo.Architecture.Tests/Waddamburo.Architecture.Tests.csproj" />
+    <Project Path="tests/Waddamburo.Formats.Tests/Waddamburo.Formats.Tests.csproj" />
   </Folder>
 </Solution>
