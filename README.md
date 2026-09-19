@@ -51,6 +51,8 @@ The first format implementation, the Green-profile DDP archive index, is describ
 in [docs/development/ddp-archives.md](docs/development/ddp-archives.md).
 NTP3 texture-pack validation and reference BC decoding are described in
 [docs/development/nut-textures.md](docs/development/nut-textures.md).
+The lossless LMB container boundary is documented in
+[docs/development/lmb-records.md](docs/development/lmb-records.md).
 
 ## Legal
 
