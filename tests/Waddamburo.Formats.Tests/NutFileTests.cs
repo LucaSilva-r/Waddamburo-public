@@ -140,6 +140,20 @@ public sealed class NutFileTests
             NutFile.Parse(twoTextures, new ParserLimits(maxAllocationBytes: 8)));
     }
 
+    [Theory]
+    [InlineData(NutPixelFormat.Argb)]
+    [InlineData(NutPixelFormat.ArgbAlternate)]
+    public void RawArgbFormatsDecodeToRgba(NutPixelFormat format)
+    {
+        var data = createNut(1,
+            [new TextureFixture(format, 1, 1, 1, new byte[] { 128, 10, 20, 30 }, 1, 0)]);
+        var texture = Assert.Single(NutFile.Parse(data).Textures);
+
+        var rgba = NutTextureDecoder.DecodeRgba8(texture);
+
+        Assert.Equal(new byte[] { 10, 20, 30, 128 }, rgba);
+    }
+
     private static byte[] createNut(byte version, TextureFixture[]? textures = null)
     {
         textures ??= [];

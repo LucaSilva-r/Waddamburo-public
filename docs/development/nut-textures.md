@@ -29,4 +29,9 @@ transparent mode, both BC3 alpha modes, and allocation limits. Rendering backend
 should normally consume the original compressed `NutTexture.Data` directly when
 their GPU format supports it; the CPU path exists for tests and diagnostics.
 
+`NutTextureDecoder.DecodeRgba8` is the common base-mip upload fallback. It routes
+BC1/BC3 through the reference decoder and converts raw formats 14/17 from stored
+A,R,G,B order to R,G,B,A. It enforces the same allocation ceilings, so platform
+adapters do not need format-specific byte-order logic.
+
 Public tests use synthetic headers, payloads, and fixed colour vectors only.

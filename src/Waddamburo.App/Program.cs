@@ -4,6 +4,15 @@ using Waddamburo.Platform.Sdl.Rendering;
 try
 {
     var frameLimit = parseFrameLimit(args);
+    var archivePath = parseOption(args, "--archive=");
+    var movieName = parseOption(args, "--movie=");
+    if (archivePath is not null || movieName is not null)
+    {
+        if (archivePath is null || movieName is null)
+            throw new ArgumentException("--archive and --movie must be supplied together.");
+        MovieViewer.Run(archivePath, movieName, frameLimit);
+        return 0;
+    }
     using var application = new SdlApplication("Waddamburo", 1280, 720, debugGpu: false);
     Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
     var checkerboard = createCheckerboard();
@@ -54,4 +63,13 @@ static int? parseFrameLimit(string[] arguments)
     return int.TryParse(option.AsSpan(prefix.Length), out var value) && value >= 0
         ? value
         : throw new ArgumentException("--frames must be a non-negative integer.");
+}
+
+static string? parseOption(string[] arguments, string prefix)
+{
+    var option = arguments.SingleOrDefault(argument => argument.StartsWith(prefix, StringComparison.Ordinal));
+    if (option is null)
+        return null;
+    var value = option[prefix.Length..];
+    return value.Length > 0 ? value : throw new ArgumentException($"{prefix} requires a value.");
 }

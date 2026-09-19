@@ -13,10 +13,10 @@ entitled to use from their own local installation.
 The public implementation started from a clean repository. Its .NET 10 solution,
 project boundaries, central build policy, dependency pins, lock files, native build
 presets, checksum-pinned minimal FFmpeg build, versioned media C ABI, architecture
-tests, bounded asset parsers, semantic LMB definitions, and an SDL_GPU clear-window
-path are in place; the decoder backend and game functionality are not implemented
-yet. New product code is written here without copying the private proof of concept
-or importing executable-derived source.
+tests, bounded asset parsers, semantic LMB definitions, a small display-list runtime,
+and an SDL_GPU textured-quad path are in place; the decoder backend and game
+functionality are not implemented yet. New product code is written here without
+copying the private proof of concept or importing executable-derived source.
 
 The initial targets are Linux x64 and Windows x64 on .NET 10. The intended product
 is a local game plus reusable libraries for asset formats, animation, rendering,
@@ -50,8 +50,21 @@ Run the current SDL_GPU visual smoke test until the window is closed:
 dotnet run --project src/Waddamburo.App
 ```
 
-For a bounded automated smoke test, pass `--frames=N`. The current app only clears
-and presents the swapchain; textured rendering and game flow are not implemented.
+For a bounded automated smoke test, pass `--frames=N`. With no asset options the app
+renders a synthetic nearest-sampled checkerboard.
+
+The asset-backed vertical slice can open frame zero of a user-supplied DDP movie
+without copying that archive into the repository:
+
+```sh
+dotnet run --project src/Waddamburo.App -- \
+  --archive=/path/to/archive.ddp --movie=movie_name
+```
+
+This validates DDP/LMB/NUT structures, decodes and uploads textures, builds the
+initial Lumen display list, and presents its immutable render snapshot. Deferred
+AVM actions, key-frame interpolation, special blend modes, and native fill surfaces
+are diagnosed explicitly; this is not yet a full compatibility viewer.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).
@@ -63,6 +76,8 @@ NTP3 texture-pack validation and reference BC decoding are described in
 [docs/development/nut-textures.md](docs/development/nut-textures.md).
 The lossless LMB container boundary is documented in
 [docs/development/lmb-records.md](docs/development/lmb-records.md).
+The initial display-list runtime is documented in
+[docs/development/lumen-runtime.md](docs/development/lumen-runtime.md).
 The current SDL and SDL_GPU lifecycle is documented in
 [docs/development/sdl-gpu.md](docs/development/sdl-gpu.md).
 

@@ -24,3 +24,9 @@ blend modes are retained but not guessed. The player emits stable, deduplicated
 diagnostics for those deferred paths. Synthetic tests cover root resolution,
 place/move/remove/loop behavior, nested matrix order, color conversion, immutable
 snapshots, and explicit action diagnostics.
+
+`Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
+the vertical slice. It receives a validated DDP movie view, requires the observed
+one-texture-per-NTP3-entry profile, decodes bounded RGBA base mips, reads semantic
+LMB data with the matching local texture count, and creates a player. Filesystem
+selection stays in the app; native upload stays in the SDL adapter.
