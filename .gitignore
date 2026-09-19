@@ -1,6 +1,7 @@
 # .NET build output and local tooling
 bin/
 obj/
+out/
 .vs/
 .idea/
 *.user

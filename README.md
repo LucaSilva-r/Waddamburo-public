@@ -11,10 +11,11 @@ entitled to use from their own local installation.
 ## Status
 
 The public implementation started from a clean repository. Its .NET 10 solution,
-project boundaries, central build policy, dependency pins, lock files, and
-architecture tests are in place; game functionality is not implemented yet. New
-product code is written here without copying the private proof of concept or
-importing executable-derived source.
+project boundaries, central build policy, dependency pins, lock files, native build
+presets, versioned media C ABI, and architecture tests are in place; the FFmpeg
+backend and game functionality are not implemented yet. New product code is written
+here without copying the private proof of concept or importing executable-derived
+source.
 
 The initial targets are Linux x64 and Windows x64 on .NET 10. The intended product
 is a local game plus reusable libraries for asset formats, animation, rendering,
@@ -40,6 +41,9 @@ dotnet restore Waddamburo.slnx --locked-mode
 dotnet build Waddamburo.slnx --no-restore
 dotnet test Waddamburo.slnx --no-build --no-restore
 ```
+
+Native build policy and preset commands are documented in
+[docs/development/native-builds.md](docs/development/native-builds.md).
 
 ## Legal
 
