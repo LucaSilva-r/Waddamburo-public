@@ -4,6 +4,41 @@ Native dependencies and Waddamburo's native wrappers use checked-in CMake preset
 The build configuration is always an explicit preset; environment variables must
 not alter compiled product behavior.
 
+## Developer bootstrap
+
+The supported bootstrap commands validate the host architecture and required
+tools, restore locked managed dependencies, build with CI warning policy, run the
+managed and native tests, and use the same `bin/`, `obj/`, and `out/build/` layout
+as CI:
+
+```sh
+# Linux x64
+./eng/bootstrap.sh --configuration Debug
+```
+
+```powershell
+# Windows x64, from a Visual Studio x64 developer PowerShell
+./eng/bootstrap.ps1 -Configuration Debug
+```
+
+Use `Release` for release-policy validation or `Sanitize` for the native sanitizer
+configuration (the managed build remains `Debug`). Pass `--with-ffmpeg` on Linux
+or `-WithFFmpeg` on Windows to also build and audit the checksum-pinned minimal
+FFmpeg libraries. That opt-in build downloads source into `out/downloads/` and can
+take substantially longer than the default bootstrap.
+
+The required tools are:
+
+| Host | Required tools |
+| --- | --- |
+| Linux x64 | .NET 10 SDK, CMake 3.25 or newer, Ninja, and a C17/C++20 GCC or Clang toolchain |
+| Windows x64 | .NET 10 SDK, CMake 3.25 or newer, Ninja, and Visual Studio 2022 C/C++ build tools in an x64 developer shell |
+| FFmpeg opt-in | `make`; Windows additionally requires MSYS2 `bash` |
+
+The scripts fail immediately for unsupported hosts or missing tools. They do not
+install SDKs, mutate user-level configuration, or consult product behavior flags
+from the environment.
+
 Run presets from the `native` directory:
 
 ```sh

@@ -34,13 +34,14 @@ See the [evidence policy](docs/legal/evidence-policy.md),
 [provenance policy](docs/legal/provenance.md), and
 [release-content policy](docs/legal/release-content-policy.md).
 
-Build and test the current scaffold with:
+Build and test the current scaffold with the developer bootstrap:
 
 ```sh
-dotnet restore Waddamburo.slnx --locked-mode
-dotnet build Waddamburo.slnx --no-restore
-dotnet test Waddamburo.slnx --no-build --no-restore
+./eng/bootstrap.sh --configuration Debug
 ```
+
+On Windows x64, run `./eng/bootstrap.ps1 -Configuration Debug` from a Visual
+Studio x64 developer PowerShell.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).

@@ -34,12 +34,20 @@ The reader:
 - copies set, beatmap, metadata, and named-file values into Waddamburo records
   before disposing the Realm context.
 
-Synthetic tests create an official-schema fixture, remove Realm coordination
-artifacts, and compare every directory entry and SHA-256 before and after reading.
-They also prove that a missing database is not created and that an older schema is
-rejected without migration or filesystem changes. In the restricted development
-sandbox, VSTest cannot open its localhost control socket, so the same test methods
-were also executed directly through a temporary runner.
+Synthetic tests are intended to create an official-schema fixture, remove Realm
+coordination artifacts, and compare every directory entry and SHA-256 before and
+after reading. They also cover missing-database behavior and rejection of an older
+schema without migration.
+
+## Current blocker
+
+The managed prototype is not yet accepted. On Linux x64 with .NET runtime 10.0.5,
+Realm 20.1.0 terminates the VSTest host during both matching-schema and older-schema
+synthetic cases, before test assertions run. The missing-database test and all
+non-Realm managed tests remain healthy. Until this is resolved, the provider must
+not be composed into the application or treated as a safe read-only implementation.
+BLD-009 is active again; investigation may replace this prototype with the planned
+narrow native bridge.
 
 Schema incompatibility is an expected provider-level error. A future scan must
 report it for the osu!lazer source without affecting other song providers.
