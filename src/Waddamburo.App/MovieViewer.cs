@@ -7,7 +7,7 @@ using Waddamburo.Platform.Sdl.Rendering;
 
 internal static class MovieViewer
 {
-    public static int Run(string archivePath, string movieName, int? frameLimit)
+    public static int Run(string archivePath, string movieName, int? frameLimit, string? screenshotPath)
     {
         var archiveLength = new FileInfo(archivePath).Length;
         if (archiveLength > ParserLimits.Default.MaxFileBytes)
@@ -35,7 +35,7 @@ internal static class MovieViewer
                 texture.Rgba8.AsSpan()))
             .ToArray();
         var player = content.CreatePlayer();
-        var frame = LumenRenderFrameAdapter.Compose(
+        var frame = LumenRenderFrameAdapter.ComposeContentFit(
             player.CreateRenderSnapshot(),
             RenderColor.WaddamburoBlue,
             index => index < textureIds.Length
@@ -43,6 +43,9 @@ internal static class MovieViewer
                 : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
         foreach (var diagnostic in player.Diagnostics)
             Console.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
-        return application.Run(frame, frameLimit);
+        return application.Run(
+            frame,
+            frameLimit,
+            screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
     }
 }

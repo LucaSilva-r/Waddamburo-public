@@ -21,6 +21,10 @@ normalizes those coordinates and resolves texture indices to opaque GPU IDs. Thi
 keeps mutable display state and SDL resources on opposite sides of one small,
 testable conversion boundary.
 
+The standalone asset viewer frames small movies around their visible quad bounds
+with a five-percent margin while preserving the logical stage aspect ratio. Stage
+composition continues to use the unmodified 0..1280 by 0..720 view.
+
 Run it interactively with:
 
 ```sh
@@ -30,6 +34,11 @@ dotnet run --project src/Waddamburo.App
 Use `--frames=N` to render a bounded number of frames for local smoke tests. This is
 a diagnostic option, not a gameplay timing mechanism. The successful Linux x64
 baseline uses SDL's Vulkan GPU backend.
+
+`--screenshot=PATH` downloads the final bounded swapchain image and writes a
+top-down RGBA capture as PNG or BMP. Without `--frames`, capture renders one frame.
+The readback waits on a GPU fence by design and is restricted to this explicit
+diagnostic path; normal presentation performs no GPU readback.
 
 The platform adapter references `ppy.SDL3-CS` at the centrally pinned version. Its
 NuGet package provides the platform-native SDL shared library. Shader bytecode is

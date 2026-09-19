@@ -30,3 +30,12 @@ the vertical slice. It receives a validated DDP movie view, requires the observe
 one-texture-per-NTP3-entry profile, decodes bounded RGBA base mips, reads semantic
 LMB data with the matching local texture count, and creates a player. Filesystem
 selection stays in the app; native upload stays in the SDL adapter.
+
+`LumenScenePlayer` composes independent child players into one logical stage. Scene
+layers retain file order, apply a top-level scale/translation, and map each child's
+local texture indices into a disjoint scene texture namespace. Advancing a scene
+ticks each child exactly once. The app's scene reader resolves only relative archive
+paths beneath the selected asset root and caps a scene at 256 layers.
+
+This is static host-side composition. Script-created clips and `MovieClipLoader`
+remain deferred until the bounded resolver and AVM scheduling contracts exist.

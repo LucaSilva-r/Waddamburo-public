@@ -4,13 +4,31 @@ using Waddamburo.Platform.Sdl.Rendering;
 try
 {
     var frameLimit = parseFrameLimit(args);
+    var screenshotPath = parseOption(args, "--screenshot=");
+    if (screenshotPath is not null)
+    {
+        frameLimit ??= 1;
+        if (frameLimit == 0)
+            throw new ArgumentException("--screenshot requires at least one rendered frame.");
+    }
     var archivePath = parseOption(args, "--archive=");
     var movieName = parseOption(args, "--movie=");
+    var scenePath = parseOption(args, "--scene=");
+    var assetRoot = parseOption(args, "--asset-root=");
+    if (scenePath is not null || assetRoot is not null)
+    {
+        if (scenePath is null || assetRoot is null)
+            throw new ArgumentException("--scene and --asset-root must be supplied together.");
+        if (archivePath is not null || movieName is not null)
+            throw new ArgumentException("Scene options cannot be combined with --archive or --movie.");
+        SceneViewer.Run(scenePath, assetRoot, frameLimit, screenshotPath);
+        return 0;
+    }
     if (archivePath is not null || movieName is not null)
     {
         if (archivePath is null || movieName is null)
             throw new ArgumentException("--archive and --movie must be supplied together.");
-        MovieViewer.Run(archivePath, movieName, frameLimit);
+        MovieViewer.Run(archivePath, movieName, frameLimit, screenshotPath);
         return 0;
     }
     using var application = new SdlApplication("Waddamburo", 1280, 720, debugGpu: false);
@@ -26,7 +44,10 @@ try
             RenderColor.White,
             RenderColor.Transparent,
             RenderSampling.Nearest)]);
-    application.Run(frame, frameLimit);
+    application.Run(
+        frame,
+        frameLimit,
+        screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
     return 0;
 }
 

@@ -53,18 +53,45 @@ dotnet run --project src/Waddamburo.App
 For a bounded automated smoke test, pass `--frames=N`. With no asset options the app
 renders a synthetic nearest-sampled checkerboard.
 
+Capture the final bounded frame directly from the SDL_GPU swapchain with
+`--screenshot=/path/to/frame.png` (or `.bmp`). If `--frames` is omitted, a screenshot
+run renders one frame and exits.
+
 The asset-backed vertical slice can open frame zero of a user-supplied DDP movie
 without copying that archive into the repository:
 
 ```sh
 dotnet run --project src/Waddamburo.App -- \
-  --archive=/path/to/archive.ddp --movie=movie_name
+  --archive=/path/to/archive.ddp --movie=movie_name \
+  --screenshot=/tmp/movie.png
 ```
 
 This validates DDP/LMB/NUT structures, decodes and uploads textures, builds the
 initial Lumen display list, and presents its immutable render snapshot. Deferred
 AVM actions, key-frame interpolation, special blend modes, and native fill surfaces
 are diagnosed explicitly; this is not yet a full compatibility viewer.
+
+Compose several independently loaded Lumen movies on the 1280x720 stage with a
+scene description and a user-owned asset root:
+
+```sh
+dotnet run --project src/Waddamburo.App -- \
+  --scene=/path/to/scene.txt \
+  --asset-root=/path/to/lumendata/packed \
+  --screenshot=/tmp/scene.png
+```
+
+Scene lines are ordered bottom to top and use the bounded format below. Archive
+paths must be relative to `--asset-root`; blank lines and `#` comments are allowed.
+
+```text
+archive/packeddata.ddp movie/movie.lm
+archive/packeddata.ddp movie/movie.lm x y
+archive/packeddata.ddp movie/movie.lm x y scale
+```
+
+Each child has an independent display-list player and texture namespace. This
+static composition slice does not yet implement script-driven `MovieClipLoader`.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).

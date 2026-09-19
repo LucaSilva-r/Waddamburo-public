@@ -125,7 +125,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         }
     }
 
-    public void Present(RenderFrame frame)
+    public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
@@ -144,6 +144,13 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw sdlFailure("acquire the swapchain texture");
         }
 
+        SDL_GPUTransferBuffer* captureBuffer = null;
+        var swapchainFormat = SDL_GetGPUSwapchainTextureFormat(_device, _window);
+        if (swapchainTexture is null && capture)
+        {
+            SDL_CancelGPUCommandBuffer(commandBuffer);
+            throw new InvalidOperationException("The swapchain has no image available for screenshot capture.");
+        }
         if (swapchainTexture is not null)
         {
             var clear = frame.ClearColor;
@@ -165,10 +172,89 @@ internal sealed unsafe class RenderDevice : IDisposable
             foreach (var quad in frame.Quads)
                 drawQuad(commandBuffer, renderPass, quad);
             SDL_EndGPURenderPass(renderPass);
+
+            if (capture)
+            {
+                var captureSize = checked((ulong)width * height * 4);
+                if (captureSize > uint.MaxValue)
+                {
+                    SDL_CancelGPUCommandBuffer(commandBuffer);
+                    throw new InvalidOperationException("The swapchain image is too large to capture.");
+                }
+                var transferInfo = new SDL_GPUTransferBufferCreateInfo
+                {
+                    usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+                    size = (uint)captureSize,
+                };
+                captureBuffer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
+                if (captureBuffer is null)
+                {
+                    SDL_CancelGPUCommandBuffer(commandBuffer);
+                    throw sdlFailure("create a screenshot download buffer");
+                }
+
+                var copyPass = SDL_BeginGPUCopyPass(commandBuffer);
+                if (copyPass is null)
+                {
+                    SDL_CancelGPUCommandBuffer(commandBuffer);
+                    SDL_ReleaseGPUTransferBuffer(_device, captureBuffer);
+                    throw sdlFailure("begin a screenshot download pass");
+                }
+                var source = new SDL_GPUTextureRegion
+                {
+                    texture = swapchainTexture,
+                    w = width,
+                    h = height,
+                    d = 1,
+                };
+                var destination = new SDL_GPUTextureTransferInfo
+                {
+                    transfer_buffer = captureBuffer,
+                    pixels_per_row = width,
+                    rows_per_layer = height,
+                };
+                SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
+                SDL_EndGPUCopyPass(copyPass);
+            }
         }
 
-        if (!SDL_SubmitGPUCommandBuffer(commandBuffer))
-            throw sdlFailure("submit the GPU command buffer");
+        if (captureBuffer is null)
+        {
+            if (!SDL_SubmitGPUCommandBuffer(commandBuffer))
+                throw sdlFailure("submit the GPU command buffer");
+            return null;
+        }
+
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commandBuffer);
+        if (fence is null)
+        {
+            SDL_ReleaseGPUTransferBuffer(_device, captureBuffer);
+            throw sdlFailure("submit the screenshot command buffer");
+        }
+        try
+        {
+            if (!SDL_WaitForGPUFences(_device, true, &fence, 1))
+                throw sdlFailure("wait for the screenshot download");
+            var mapped = SDL_MapGPUTransferBuffer(_device, captureBuffer, false);
+            if (mapped == 0)
+                throw sdlFailure("map the screenshot download buffer");
+            try
+            {
+                var pixels = new byte[checked((int)((ulong)width * height * 4))];
+                new ReadOnlySpan<byte>((void*)mapped, pixels.Length).CopyTo(pixels);
+                normalizeCaptureChannels(pixels, swapchainFormat);
+                return new RenderCapture(width, height, [.. pixels]);
+            }
+            finally
+            {
+                SDL_UnmapGPUTransferBuffer(_device, captureBuffer);
+            }
+        }
+        finally
+        {
+            SDL_ReleaseGPUFence(_device, fence);
+            SDL_ReleaseGPUTransferBuffer(_device, captureBuffer);
+        }
     }
 
     public void Dispose()
@@ -336,6 +422,22 @@ internal sealed unsafe class RenderDevice : IDisposable
     }
 
     private static Float4 convert(RenderVertex vertex) => new(vertex.X, vertex.Y, vertex.U, vertex.V);
+
+    private static void normalizeCaptureChannels(Span<byte> pixels, SDL_GPUTextureFormat format)
+    {
+        if (format is SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+            or SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB)
+        {
+            return;
+        }
+        if (format is not (SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM
+            or SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB))
+        {
+            throw new PlatformNotSupportedException($"Screenshot capture does not support swapchain format {format}.");
+        }
+        for (var offset = 0; offset < pixels.Length; offset += 4)
+            (pixels[offset], pixels[offset + 2]) = (pixels[offset + 2], pixels[offset]);
+    }
 
     private static void validateVertex(RenderVertex vertex, string name)
     {

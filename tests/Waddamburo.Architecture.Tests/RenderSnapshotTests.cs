@@ -29,6 +29,46 @@ public sealed class RenderSnapshotTests
     }
 
     [Fact]
+    public void ContentFitCentersSmallMovieWithoutChangingStageAspect()
+    {
+        var snapshot = new LumenRenderSnapshot(
+            1280,
+            720,
+            [new LumenRenderQuad(
+                0,
+                new LumenRenderVertex(-64, -64, 0, 0),
+                new LumenRenderVertex(64, -64, 1, 0),
+                new LumenRenderVertex(64, 64, 1, 1),
+                new LumenRenderVertex(-64, 64, 0, 1),
+                LumenRenderColor.White,
+                LumenRenderColor.Transparent)]);
+
+        var frame = LumenRenderFrameAdapter.ComposeContentFit(
+            snapshot,
+            RenderColor.WaddamburoBlue,
+            _ => new RenderTextureId(1));
+
+        var quad = Assert.Single(frame.Quads);
+        Assert.Equal(0.2328125f, quad.TopLeft.X, 5);
+        Assert.Equal(0.025f, quad.TopLeft.Y, 5);
+        Assert.Equal(0.7671875f, quad.BottomRight.X, 5);
+        Assert.Equal(0.975f, quad.BottomRight.Y, 5);
+    }
+
+    [Fact]
+    public void ContentFitFallsBackToStageForEmptySnapshot()
+    {
+        var snapshot = new LumenRenderSnapshot(1280, 720, []);
+
+        var frame = LumenRenderFrameAdapter.ComposeContentFit(
+            snapshot,
+            RenderColor.WaddamburoBlue,
+            _ => throw new InvalidOperationException());
+
+        Assert.Empty(frame.Quads);
+    }
+
+    [Fact]
     public void SnapshotCopiesItsCommandSequence()
     {
         var source = new List<LumenRenderQuad> { quad(1, default) };

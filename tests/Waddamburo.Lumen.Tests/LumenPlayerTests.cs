@@ -46,6 +46,31 @@ public sealed class LumenPlayerTests
         Assert.Equal(sequential, composed);
     }
 
+    [Fact]
+    public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
+    {
+        var first = new LumenPlayer(createMovie(), 1280, 720);
+        var second = new LumenPlayer(createMovie(), 1280, 720);
+        var scene = new LumenScenePlayer(
+            1280,
+            720,
+            [
+                new LumenSceneLayer(first, LumenMatrix.Identity, 0, 5),
+                new LumenSceneLayer(second, new LumenMatrix(2, 0, 0, 2, 200, 100), 5, 5),
+            ]);
+
+        var snapshot = scene.CreateRenderSnapshot();
+
+        Assert.Equal([4u, 9u], snapshot.Quads.Select(quad => quad.TextureIndex));
+        Assert.Equal(new LumenRenderVertex(10, 20, 0, 0), snapshot.Quads[0].TopLeft);
+        Assert.Equal(new LumenRenderVertex(220, 140, 0, 0), snapshot.Quads[1].TopLeft);
+        Assert.Equal(new LumenRenderVertex(420, 240, 1, 1), snapshot.Quads[1].BottomRight);
+
+        scene.Advance();
+        Assert.Equal(1, first.CurrentFrame);
+        Assert.Equal(1, second.CurrentFrame);
+    }
+
     private static LmbMovieDefinition createMovie()
     {
         var geometry = new uint[]

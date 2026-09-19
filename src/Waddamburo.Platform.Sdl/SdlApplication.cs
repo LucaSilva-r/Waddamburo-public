@@ -65,13 +65,18 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.UploadRgba8(width, height, pixels);
     }
 
-    public int Run(RenderFrame frame, int? frameLimit = null)
+    public int Run(
+        RenderFrame frame,
+        int? frameLimit = null,
+        Action<RenderCapture>? captureFinalFrame = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
         if (frameLimit < 0)
             throw new ArgumentOutOfRangeException(nameof(frameLimit));
+        if (captureFinalFrame is not null && frameLimit is null)
+            throw new ArgumentException("A final-frame capture requires a bounded frame count.", nameof(frameLimit));
 
         var renderedFrames = 0;
         var running = true;
@@ -89,7 +94,10 @@ public sealed unsafe class SdlApplication : IDisposable
 
             if (!running)
                 break;
-            _renderer!.Present(frame);
+            var shouldCapture = captureFinalFrame is not null && renderedFrames + 1 == frameLimit;
+            var capture = _renderer!.Present(frame, shouldCapture);
+            if (capture is not null)
+                captureFinalFrame!(capture);
             renderedFrames++;
         }
         return renderedFrames;
