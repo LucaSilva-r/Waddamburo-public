@@ -1,7 +1,9 @@
 cbuffer QuadUniforms : register(b0, space1)
 {
-    float4 destination;
-    float4 uvRectangle;
+    float4 topLeft;
+    float4 topRight;
+    float4 bottomRight;
+    float4 bottomLeft;
     float4 multiplyColor;
     float4 addColor;
 };
@@ -16,16 +18,14 @@ struct VertexOutput
 
 VertexOutput main(uint vertexId : SV_VertexID)
 {
-    static const float2 corners[6] = {
-        float2(0.0, 0.0), float2(1.0, 0.0), float2(1.0, 1.0),
-        float2(0.0, 0.0), float2(1.0, 1.0), float2(0.0, 1.0)
-    };
+    static const uint cornerIndices[6] = { 0, 1, 2, 0, 2, 3 };
+    float4 corners[4] = { topLeft, topRight, bottomRight, bottomLeft };
 
-    float2 corner = corners[vertexId];
-    float2 stagePosition = destination.xy + corner * destination.zw;
+    float4 vertex = corners[cornerIndices[vertexId]];
+    float2 stagePosition = vertex.xy;
     VertexOutput output;
     output.position = float4(stagePosition.x * 2.0 - 1.0, 1.0 - stagePosition.y * 2.0, 0.0, 1.0);
-    output.textureCoordinate = uvRectangle.xy + corner * uvRectangle.zw;
+    output.textureCoordinate = vertex.zw;
     output.colorMultiply = multiplyColor;
     output.colorAdd = addColor;
     return output;

@@ -1155,6 +1155,23 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "waddamburo.formats": {
+        "type": "Project"
+      },
+      "waddamburo.lumen": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[1.0.0, )"
+        }
+      },
+      "waddamburo.platform.sdl": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[1.0.0, )",
+          "Waddamburo.Lumen": "[1.0.0, )",
+          "ppy.SDL3-CS": "[2026.722.0, )"
+        }
+      },
       "waddamburo.providers.osulazer": {
         "type": "Project",
         "dependencies": {

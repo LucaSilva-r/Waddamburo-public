@@ -184,14 +184,14 @@ internal sealed unsafe class RenderDevice : IDisposable
     {
         var textureAddress = _textures[quad.Texture.Value];
 
-        var destination = quad.Destination;
-        var uv = quad.UvRectangle;
         var multiply = quad.MultiplyColor;
         var add = quad.AddColor;
         var uniforms = new QuadUniforms
         {
-            Destination = new Float4(destination.X, destination.Y, destination.Width, destination.Height),
-            UvRectangle = new Float4(uv.X, uv.Y, uv.Width, uv.Height),
+            TopLeft = convert(quad.TopLeft),
+            TopRight = convert(quad.TopRight),
+            BottomRight = convert(quad.BottomRight),
+            BottomLeft = convert(quad.BottomLeft),
             MultiplyColor = new Float4(multiply.Red, multiply.Green, multiply.Blue, multiply.Alpha),
             AddColor = new Float4(add.Red, add.Green, add.Blue, add.Alpha),
         };
@@ -326,17 +326,21 @@ internal sealed unsafe class RenderDevice : IDisposable
                 throw new ArgumentException($"Render frame references unknown texture {quad.Texture.Value}.", nameof(frame));
             if (!Enum.IsDefined(quad.Sampling))
                 throw new ArgumentException("Render frame contains an unknown sampling mode.", nameof(frame));
-            validateRectangle(quad.Destination, nameof(quad.Destination));
-            validateRectangle(quad.UvRectangle, nameof(quad.UvRectangle));
+            validateVertex(quad.TopLeft, nameof(quad.TopLeft));
+            validateVertex(quad.TopRight, nameof(quad.TopRight));
+            validateVertex(quad.BottomRight, nameof(quad.BottomRight));
+            validateVertex(quad.BottomLeft, nameof(quad.BottomLeft));
             validateColor(quad.MultiplyColor, nameof(quad.MultiplyColor));
             validateColor(quad.AddColor, nameof(quad.AddColor));
         }
     }
 
-    private static void validateRectangle(RenderRectangle rectangle, string name)
+    private static Float4 convert(RenderVertex vertex) => new(vertex.X, vertex.Y, vertex.U, vertex.V);
+
+    private static void validateVertex(RenderVertex vertex, string name)
     {
-        if (!float.IsFinite(rectangle.X) || !float.IsFinite(rectangle.Y)
-            || !float.IsFinite(rectangle.Width) || !float.IsFinite(rectangle.Height))
+        if (!float.IsFinite(vertex.X) || !float.IsFinite(vertex.Y)
+            || !float.IsFinite(vertex.U) || !float.IsFinite(vertex.V))
         {
             throw new ArgumentException($"{name} must contain finite values.");
         }
@@ -382,8 +386,10 @@ internal sealed unsafe class RenderDevice : IDisposable
     [StructLayout(LayoutKind.Sequential)]
     private struct QuadUniforms
     {
-        public Float4 Destination;
-        public Float4 UvRectangle;
+        public Float4 TopLeft;
+        public Float4 TopRight;
+        public Float4 BottomRight;
+        public Float4 BottomLeft;
         public Float4 MultiplyColor;
         public Float4 AddColor;
     }

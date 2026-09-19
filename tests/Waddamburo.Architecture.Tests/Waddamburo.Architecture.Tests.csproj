@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
     <ProjectReference Include="../../src/Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />
   </ItemGroup>
 

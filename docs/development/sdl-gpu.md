@@ -7,13 +7,19 @@ submission, and presentation. All operations stay on the thread that created the
 application, and shutdown waits for idle before releasing GPU resources.
 
 The first 2D path consumes an immutable `RenderFrame`. A frame contains a clear
-color and ordered textured quads; public texture IDs keep SDL pointers out of frame
-state. Quad destinations and UV rectangles are normalized, both nearest and linear
+color and ordered four-corner textured quads; public texture IDs keep SDL pointers
+out of frame state. Positions and UVs are normalized, both nearest and linear
 sampling are available, color multiply/add is explicit, source RGBA is treated as
 straight alpha, and the fragment shader emits premultiplied alpha for one/source-
 alpha blending. The sample app uploads a synthetic checkerboard through this same
 path. A temporarily unavailable swapchain image is valid and is not replaced with
 an invented render target.
+
+Lumen owns its renderer-independent `LumenRenderSnapshot`: logical stage size,
+ordered quad vertices, texture indices, colors, and sampling intent. The SDL adapter
+normalizes those coordinates and resolves texture indices to opaque GPU IDs. This
+keeps mutable display state and SDL resources on opposite sides of one small,
+testable conversion boundary.
 
 Run it interactively with:
 

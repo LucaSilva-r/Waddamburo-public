@@ -18,6 +18,8 @@ public readonly record struct RenderRectangle(float X, float Y, float Width, flo
 
 public readonly record struct RenderTextureId(uint Value);
 
+public readonly record struct RenderVertex(float X, float Y, float U, float V);
+
 public enum RenderSampling
 {
     Nearest,
@@ -26,11 +28,31 @@ public enum RenderSampling
 
 public readonly record struct RenderQuad(
     RenderTextureId Texture,
-    RenderRectangle Destination,
-    RenderRectangle UvRectangle,
+    RenderVertex TopLeft,
+    RenderVertex TopRight,
+    RenderVertex BottomRight,
+    RenderVertex BottomLeft,
     RenderColor MultiplyColor,
     RenderColor AddColor,
-    RenderSampling Sampling = RenderSampling.Linear);
+    RenderSampling Sampling = RenderSampling.Linear)
+{
+    public static RenderQuad FromRectangles(
+        RenderTextureId texture,
+        RenderRectangle destination,
+        RenderRectangle uvRectangle,
+        RenderColor multiplyColor,
+        RenderColor addColor,
+        RenderSampling sampling = RenderSampling.Linear) =>
+        new(
+            texture,
+            new RenderVertex(destination.X, destination.Y, uvRectangle.X, uvRectangle.Y),
+            new RenderVertex(destination.X + destination.Width, destination.Y, uvRectangle.X + uvRectangle.Width, uvRectangle.Y),
+            new RenderVertex(destination.X + destination.Width, destination.Y + destination.Height, uvRectangle.X + uvRectangle.Width, uvRectangle.Y + uvRectangle.Height),
+            new RenderVertex(destination.X, destination.Y + destination.Height, uvRectangle.X, uvRectangle.Y + uvRectangle.Height),
+            multiplyColor,
+            addColor,
+            sampling);
+}
 
 /// <summary>Immutable commands for one presentation frame. Coordinates are normalized to the window.</summary>
 public sealed class RenderFrame
