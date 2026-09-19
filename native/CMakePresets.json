@@ -62,6 +62,16 @@
       }
     },
     {
+      "name": "linux-ffmpeg",
+      "displayName": "Linux x64 pinned FFmpeg dependency",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_BUILD_FFMPEG": true
+      }
+    },
+    {
       "name": "windows-debug",
       "displayName": "Windows x64 Debug",
       "inherits": "windows-base",
@@ -84,15 +94,35 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Sanitize"
       }
+    },
+    {
+      "name": "windows-ffmpeg",
+      "displayName": "Windows x64 pinned FFmpeg dependency",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_BUILD_FFMPEG": true
+      }
     }
   ],
   "buildPresets": [
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "linux-release", "configurePreset": "linux-release" },
     { "name": "linux-sanitize", "configurePreset": "linux-sanitize" },
+    {
+      "name": "linux-ffmpeg",
+      "configurePreset": "linux-ffmpeg",
+      "targets": ["waddamburo_ffmpeg_audit"]
+    },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
-    { "name": "windows-sanitize", "configurePreset": "windows-sanitize" }
+    { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },
+    {
+      "name": "windows-ffmpeg",
+      "configurePreset": "windows-ffmpeg",
+      "targets": ["waddamburo_ffmpeg_audit"]
+    }
   ],
   "testPresets": [
     {

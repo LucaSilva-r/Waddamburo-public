@@ -38,3 +38,5 @@ build output belongs in source control.
 The first project-authored native target is the versioned
 [media C ABI](../../native/media/README.md). Its decoder entry points deliberately
 report that the backend is unavailable until the pinned FFmpeg build is connected.
+The separate [FFmpeg dependency procedure](ffmpeg.md) downloads and builds only
+the reviewed codec/demuxer allowlist.

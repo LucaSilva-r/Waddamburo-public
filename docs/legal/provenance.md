@@ -21,3 +21,8 @@ Before adding adapted or vendored code, update this document in the same change 
 
 Third-party packages and tools must also be recorded in the root
 `THIRD_PARTY_NOTICES.md`.
+
+The dependency recipe in `native/ffmpeg/` is original Waddamburo build
+configuration written against FFmpeg's public configure interface. It downloads
+the unmodified official FFmpeg 8.1.2 archive by version and SHA-256; no FFmpeg or
+private proof-of-concept source is vendored in this repository.

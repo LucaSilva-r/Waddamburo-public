@@ -12,10 +12,10 @@ entitled to use from their own local installation.
 
 The public implementation started from a clean repository. Its .NET 10 solution,
 project boundaries, central build policy, dependency pins, lock files, native build
-presets, versioned media C ABI, and architecture tests are in place; the FFmpeg
-backend and game functionality are not implemented yet. New product code is written
-here without copying the private proof of concept or importing executable-derived
-source.
+presets, a checksum-pinned minimal FFmpeg build, versioned media C ABI, and
+architecture tests are in place; the decoder backend and game functionality are not
+implemented yet. New product code is written here without copying the private proof
+of concept or importing executable-derived source.
 
 The initial targets are Linux x64 and Windows x64 on .NET 10. The intended product
 is a local game plus reusable libraries for asset formats, animation, rendering,

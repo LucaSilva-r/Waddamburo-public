@@ -28,8 +28,8 @@ callback returns nonzero when work should stop. `decoder_cancel` provides the sa
 signal from another thread after a handle has been created.
 
 The current library intentionally returns `BACKEND_UNAVAILABLE` from valid create
-calls. BLD-006/007 will connect the pinned dynamic FFmpeg build without changing
-this ABI.
+calls. PLT-022 will connect the pinned dynamic FFmpeg build without changing this
+ABI.
 
 The .NET mapping is manually audited in
 `src/Waddamburo.Platform.Sdl/Media/NativeMediaMethods.cs`. It maps fixed-width C
