@@ -29,6 +29,7 @@ public static class LmbSemanticReader
         var shapes = new List<ShapeBuilder>();
         var sprites = new List<SpriteBuilder>();
         var uninterpreted = ImmutableArray.CreateBuilder<LmbRecord>();
+        LmbMovieProperties? properties = null;
         ShapeBuilder? currentShape = null;
         SpriteBuilder? currentSprite = null;
 
@@ -39,6 +40,19 @@ public static class LmbSemanticReader
 
             switch (record.Tag)
             {
+                case LmbTags.MovieProperties:
+                    if (properties is not null)
+                    {
+                        diagnostics.Add(new ParseDiagnostic(
+                            DiagnosticSeverity.Warning,
+                            "LMB_DUPLICATE_PROPERTIES",
+                            record.HeaderOffset,
+                            record.Index,
+                            EvidenceStatus.Candidate,
+                            "Movie properties appear more than once; the last record is retained."));
+                    }
+                    properties = new LmbMovieProperties(readWords(record, 0), record);
+                    break;
                 case LmbTags.StringPool:
                     reportDuplicatePool(record, diagnostics);
                     readStrings(record, parserLimits, strings);
@@ -207,6 +221,7 @@ public static class LmbSemanticReader
 
         var definition = new LmbMovieDefinition(
             file,
+            properties,
             strings.ToImmutable(),
             colors.ToImmutable(),
             matrices.ToImmutable(),

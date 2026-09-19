@@ -44,6 +44,8 @@ internal static class LmbReferenceValidator
         foreach (var sprite in movie.Sprites)
             addCharacterId(characterIds, sprite.CharacterId, sprite.RawRecord, diagnostics);
 
+        validateProperties(movie, diagnostics);
+
         foreach (var sprite in movie.Sprites)
         {
             validateSpriteCounts(sprite, diagnostics);
@@ -70,6 +72,36 @@ internal static class LmbReferenceValidator
                         break;
                 }
             }
+        }
+    }
+
+    private static void validateProperties(
+        LmbMovieDefinition movie,
+        ImmutableArray<ParseDiagnostic>.Builder diagnostics)
+    {
+        if (movie.Properties is not { } properties)
+            return;
+
+        if (properties.RootCharacterId is uint rootId && !movie.Sprites.Any(sprite => sprite.CharacterId == rootId))
+        {
+            add(
+                diagnostics,
+                DiagnosticSeverity.Warning,
+                "LMB_ROOT_SPRITE_NOT_FOUND",
+                properties.RawRecord,
+                properties.Evidence,
+                $"Candidate root character {rootId} is not a defined sprite.");
+        }
+
+        if (properties.FrameRate is float frameRate && (!float.IsFinite(frameRate) || frameRate <= 0))
+        {
+            add(
+                diagnostics,
+                DiagnosticSeverity.Warning,
+                "LMB_INVALID_FRAME_RATE",
+                properties.RawRecord,
+                properties.Evidence,
+                $"Candidate frame rate {frameRate} is not finite and positive.");
         }
     }
 

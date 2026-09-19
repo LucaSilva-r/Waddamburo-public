@@ -22,6 +22,7 @@ public sealed class LmbSemanticReaderTests
         geometry[17] = 0x44;
 
         var file = createLmb(
+            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, single(60)),
             record(LmbTags.StringPool, stringPool("cat", "")),
             words(LmbTags.ColorTransformPool, 1, 0x0100FF00, 0x0080FFFF),
             words(LmbTags.MatrixPool, 1, single(1), single(2), single(3), single(4), single(5), single(6)),
@@ -45,6 +46,8 @@ public sealed class LmbSemanticReaderTests
         var movie = result.Value;
 
         Assert.Empty(result.Diagnostics);
+        Assert.Equal(7U, movie.Properties!.RootCharacterId);
+        Assert.Equal(60f, movie.Properties.FrameRate);
         Assert.Equal(CatAndEmpty, movie.Strings.Select(value => value.Value));
         Assert.Equal(new LmbColorTransform(256, -256, 128, -1), Assert.Single(movie.ColorTransforms));
         Assert.Equal(6, Assert.Single(movie.Matrices).Y);

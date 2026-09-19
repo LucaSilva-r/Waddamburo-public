@@ -19,6 +19,7 @@ public static class LmbTags
     public const uint BoundsPool = 0xF004;
     public const uint ActionPool = 0xF005;
     public const uint TextureBoundsPool = 0xF007;
+    public const uint MovieProperties = 0xF00C;
     public const uint TranslationPool = 0xF103;
     public const uint FrameKey = 0xF105;
 }
@@ -56,6 +57,15 @@ public sealed record LmbBounds(float Left, float Top, float Right, float Bottom)
 public sealed record LmbTextureBounds(float Left, float Top, float Right, float Bottom)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.CorpusValidatedInference;
+}
+
+public sealed record LmbMovieProperties(ImmutableArray<uint> Words, LmbRecord RawRecord)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
+
+    public uint? RootCharacterId => Words.Length > 3 ? Words[3] : null;
+
+    public float? FrameRate => Words.Length > 7 ? BitConverter.UInt32BitsToSingle(Words[7]) : null;
 }
 
 public sealed record LmbVertex(float X, float Y, float U, float V);
@@ -152,6 +162,7 @@ public sealed record LmbSpriteDefinition(
 
 public sealed record LmbMovieDefinition(
     LmbFile RawFile,
+    LmbMovieProperties? Properties,
     ImmutableArray<LmbString> Strings,
     ImmutableArray<LmbColorTransform> ColorTransforms,
     ImmutableArray<LmbMatrix> Matrices,

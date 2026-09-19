@@ -24,3 +24,8 @@ lookup rejects both missing and repeated tags rather than silently choosing one.
 Payload views reference caller-owned memory. The caller must keep that memory alive
 and unchanged. Semantic decoding, reference validation, and typed timeline commands
 are separate layers so a semantic failure cannot erase raw evidence.
+
+The semantic layer retains the complete `F00C` movie-properties word array. Green
+asset observation identifies word 3 as a candidate root sprite ID and word 7 as a
+candidate IEEE-754 frame rate; both remain evidence-labelled and are validated
+without discarding the raw record.
