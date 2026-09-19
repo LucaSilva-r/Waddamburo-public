@@ -26,3 +26,8 @@ The dependency recipe in `native/ffmpeg/` is original Waddamburo build
 configuration written against FFmpeg's public configure interface. It downloads
 the unmodified official FFmpeg 8.1.2 archive by version and SHA-256; no FFmpeg or
 private proof-of-concept source is vendored in this repository.
+
+`src/Waddamburo.Providers.OsuLazer/` is original integration code written against
+the public `ppy.osu.Game` 2026.916.0 and Realm 20.1.0 APIs. It consumes official
+model types through NuGet and does not copy or adapt osu! source files. The package
+records upstream osu! commit `98fb49876c0242fcf649e0250d6f6b3458769a9e`.

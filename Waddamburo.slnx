@@ -5,6 +5,7 @@
     <Project Path="src/Waddamburo.Game/Waddamburo.Game.csproj" />
     <Project Path="src/Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
     <Project Path="src/Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+    <Project Path="src/Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />
     <Project Path="src/Waddamburo.Tool/Waddamburo.Tool.csproj" />
   </Folder>
   <Folder Name="/tests/">

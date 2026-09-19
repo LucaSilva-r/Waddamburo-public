@@ -7,6 +7,7 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="ppy.osu.Game" Version="2026.916.0" />
     <PackageVersion Include="ppy.SDL3-CS" Version="2026.722.0" />
     <PackageVersion Include="SkiaSharp" Version="4.152.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
