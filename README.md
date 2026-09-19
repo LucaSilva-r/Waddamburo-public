@@ -49,6 +49,8 @@ Binary parser limits and failure behavior are documented in
 [docs/development/parser-safety.md](docs/development/parser-safety.md).
 The first format implementation, the Green-profile DDP archive index, is described
 in [docs/development/ddp-archives.md](docs/development/ddp-archives.md).
+NTP3 texture-pack validation and reference BC decoding are described in
+[docs/development/nut-textures.md](docs/development/nut-textures.md).
 
 ## Legal
 
