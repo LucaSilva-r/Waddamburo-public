@@ -13,9 +13,10 @@ entitled to use from their own local installation.
 The public implementation started from a clean repository. Its .NET 10 solution,
 project boundaries, central build policy, dependency pins, lock files, native build
 presets, checksum-pinned minimal FFmpeg build, versioned media C ABI, architecture
-tests, and bounded binary-parser foundation are in place; the decoder backend and
-game functionality are not implemented yet. New product code is written here
-without copying the private proof of concept or importing executable-derived source.
+tests, bounded asset parsers, semantic LMB definitions, and an SDL_GPU clear-window
+path are in place; the decoder backend and game functionality are not implemented
+yet. New product code is written here without copying the private proof of concept
+or importing executable-derived source.
 
 The initial targets are Linux x64 and Windows x64 on .NET 10. The intended product
 is a local game plus reusable libraries for asset formats, animation, rendering,
@@ -43,6 +44,15 @@ Build and test the current scaffold with the developer bootstrap:
 On Windows x64, run `./eng/bootstrap.ps1 -Configuration Debug` from a Visual
 Studio x64 developer PowerShell.
 
+Run the current SDL_GPU visual smoke test until the window is closed:
+
+```sh
+dotnet run --project src/Waddamburo.App
+```
+
+For a bounded automated smoke test, pass `--frames=N`. The current app only clears
+and presents the swapchain; textured rendering and game flow are not implemented.
+
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).
 Binary parser limits and failure behavior are documented in
@@ -53,6 +63,8 @@ NTP3 texture-pack validation and reference BC decoding are described in
 [docs/development/nut-textures.md](docs/development/nut-textures.md).
 The lossless LMB container boundary is documented in
 [docs/development/lmb-records.md](docs/development/lmb-records.md).
+The current SDL and SDL_GPU lifecycle is documented in
+[docs/development/sdl-gpu.md](docs/development/sdl-gpu.md).
 
 ## Legal
 

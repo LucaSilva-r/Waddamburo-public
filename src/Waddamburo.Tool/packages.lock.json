@@ -22,8 +22,15 @@
         "type": "Project",
         "dependencies": {
           "Waddamburo.Formats": "[1.0.0, )",
-          "Waddamburo.Lumen": "[1.0.0, )"
+          "Waddamburo.Lumen": "[1.0.0, )",
+          "ppy.SDL3-CS": "[2026.722.0, )"
         }
+      },
+      "ppy.SDL3-CS": {
+        "type": "CentralTransitive",
+        "requested": "[2026.722.0, )",
+        "resolved": "2026.722.0",
+        "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
       }
     }
   }

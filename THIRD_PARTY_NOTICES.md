@@ -1,13 +1,15 @@
 # Third-party notices
 
-No third-party product runtime is linked into the application yet. The test project
-and isolated osu!lazer provider prototype currently restore:
+The SDL platform adapter and application now restore the SDL3-CS runtime package.
+The test project and isolated osu!lazer provider prototype also restore:
 
 | Component | Version | License | Use |
 | --- | --- | --- | --- |
 | xUnit.net and Visual Studio runner | 2.9.3 / 3.1.4 | Apache-2.0 | Unit and architecture tests only |
 | Microsoft.NET.Test.Sdk | 18.10.1 | MIT | Test discovery and execution only |
 | coverlet.collector | 6.0.4 | MIT | Optional test coverage collection only |
+| ppy.SDL3-CS | 2026.722.0; <https://www.nuget.org/packages/ppy.SDL3-CS/2026.722.0>; upstream commit `7f836c9f21dad8ee68e70432e5b7d38ceae47eaa`; copyright 2024 ppy Pty Ltd | MIT | Generated C# bindings loaded by the SDL platform adapter |
+| SDL | bundled native revision `SDL-3.5.0-a8591d9`; <https://github.com/libsdl-org/SDL/tree/a8591d9>; copyright 1997-2026 Sam Lantinga | Zlib | Platform-native shared library bundled by SDL3-CS and loaded dynamically; distributions must retain SDL's copyright and Zlib license text |
 | ppy.osu.Game | 2026.916.0; <https://www.nuget.org/packages/ppy.osu.Game/2026.916.0>; upstream commit `98fb49876c0242fcf649e0250d6f6b3458769a9e` | MIT | Official osu!lazer Realm model assembly used by the isolated provider prototype |
 | ppy.osu.Framework | 2026.914.0; transitive from `ppy.osu.Game` | MIT | Framework types required by the official game model assembly |
 | Realm .NET | 20.1.0; <https://www.nuget.org/packages/Realm/20.1.0> | Apache-2.0; bundled Realm Core/native notices must be retained | Read-only managed database API and dynamically loaded platform-native wrapper |
@@ -31,12 +33,12 @@ changes to those files. The installed upstream `LICENSE.md` records their exact
 terms and must accompany release notices.
 
 `Directory.Packages.props` also reserves reviewed version pins for future product
-dependencies—SDL3-CS 2026.722.0, SkiaSharp 4.152.0, and Microsoft.Data.Sqlite
-10.0.12—but no project references them yet. Their full native/transitive notices
-must be added when the references are introduced.
+dependencies—SkiaSharp 4.152.0 and Microsoft.Data.Sqlite 10.0.12—but no project
+references them yet. Their full native/transitive notices must be added when the
+references are introduced.
 
-Candidate runtime dependencies include SDL3, SDL3-CS, SkiaSharp, SQLite,
-tja2fumen, and offline shader tools. A component must not be
+Candidate runtime dependencies include SkiaSharp, SQLite, tja2fumen, and offline
+shader tools. A component must not be
 linked or packaged until this file records:
 
 - its exact version and source URL;
