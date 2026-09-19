@@ -1,0 +1,40 @@
+# .NET build output and local tooling
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+
+# Local inputs and generated observations
+local-assets/
+generated/
+captures/
+screenshots/
+traces/
+crashdumps/
+
+# Original game formats and commercial fonts
+*.ddp
+*.lm
+*.nut
+*.nub
+*.nud
+*.nsh
+*.tja
+*.ttf
+*.otf
+*.bmp
+*.wav
+
+# Local manifests, logs, credentials, and environment files
+*.local.json
+*.local.log
+.env
+.env.*
+!.env.example
+
+# Synthetic fixtures are reviewed exceptions
+!tests/fixtures/synthetic/**
+AGENTS.md
+CLAUDE.md
