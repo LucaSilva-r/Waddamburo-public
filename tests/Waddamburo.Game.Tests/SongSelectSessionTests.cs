@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Game.Lumen;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Rendering;
 
@@ -6,6 +7,48 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class SongSelectSessionTests
 {
+    [Fact]
+    public void CoursePresentationMapsUraToTheAuthoredHiddenOniSlot()
+    {
+        var key = new SongKey(SongSourceKind.Tja, "course-projection");
+        var descriptor = new SongDescriptor(
+            key,
+            new SongTitle("Projection"),
+            null,
+            [
+                new SongChartDescriptor(
+                    new ChartKey(key, "normal"),
+                    "Normal",
+                    new CatalogAssetKey(new CatalogProviderId("synthetic"), "normal"),
+                    TaikoCourse.Normal,
+                    4),
+                new SongChartDescriptor(
+                    new ChartKey(key, "ura"),
+                    "Ura",
+                    new CatalogAssetKey(new CatalogProviderId("synthetic"), "ura"),
+                    TaikoCourse.Ura,
+                    9),
+            ]);
+        var song = new SongSelectSong(
+            descriptor,
+            SongCourseBits.Normal | SongCourseBits.Ura,
+            [null, 4, null, null, 9]);
+
+        var presentation = SongSelectCoursePresentation.FromSong(song);
+
+        Assert.Equal(
+            AuthoredSongCourseBits.Easy
+            | AuthoredSongCourseBits.Hard
+            | AuthoredSongCourseBits.Oni
+            | AuthoredSongCourseBits.HiddenEasy
+            | AuthoredSongCourseBits.HiddenNormal
+            | AuthoredSongCourseBits.HiddenHard,
+            presentation.InvalidCourses);
+        Assert.Equal(4, presentation.NormalStars);
+        Assert.Equal(9, presentation.HiddenOniStars);
+        Assert.Equal(0, presentation.OniStars);
+    }
+
     [Fact]
     public async Task CatalogViewPublishesCourseBitsLevelsAndAuthoredCategoryLabel()
     {
@@ -18,6 +61,7 @@ public sealed class SongSelectSessionTests
         Assert.Equal("Anime", category.Name);
         Assert.Equal("アニメ", category.AuthoredLabel);
         Assert.Equal(SongCategoryPresentation.AlwaysVisible, category.Presentation);
+        Assert.Equal(0x9e4309U, category.BoardStyle.CompactOutlineRgb);
         var song = Assert.Single(category.Songs);
         Assert.Equal(SongCourseBits.Easy | SongCourseBits.Oni, song.AvailableCourses);
         Assert.Equal(2, song.Level(TaikoCourse.Easy));
@@ -93,7 +137,10 @@ public sealed class SongSelectSessionTests
     {
         public SongSelectSong? LastSong { get; private set; }
 
-        public LumenNativeSurfaceKey GetSongTitle(SongSelectSong song, SongBoardTextureKind kind)
+        public LumenNativeSurfaceKey GetSongTitle(
+            SongSelectSong song,
+            SongBoardTextureStyle style,
+            SongBoardTextureKind kind)
         {
             LastSong = song;
             return new LumenNativeSurfaceKey($"title:{kind}:{song.Descriptor.Key.StableId}");

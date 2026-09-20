@@ -72,6 +72,17 @@ public sealed unsafe class SdlApplication : IDisposable
 
     public string GpuDriver { get; } = string.Empty;
 
+    public (int Width, int Height) GetPixelSize()
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        int width;
+        int height;
+        if (!SDL_GetWindowSizeInPixels(_window, &width, &height))
+            throw sdlFailure("query the window pixel size");
+        return (width, height);
+    }
+
     public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
     {
         ensureOwnerThread();

@@ -50,8 +50,9 @@ without partial writes.
 
 Authored function returns propagate through nested calls rather than collapsing to
 `undefined`. Primitive strings expose `length`, `charAt`, and `toString`.
-`new Array(length)` creates a bounded indexed array with the requested length,
-while array member writes override their initialized indices. These small built-ins are
+`new Array(length)` creates a bounded indexed array with the requested length;
+numeric writes extend it and assigning `length` resizes it within runtime limits.
+These small built-ins are
 implemented in the AVM boundary rather than in a game host.
 
 `Advance(LumenInputSnapshot)` installs an immutable set of Flash key codes for one
@@ -155,7 +156,11 @@ Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
 transaction as variable and member writes. A clone copies the source display state,
 script variables, prototype/class binding, and child hierarchy into its authored
 dynamic depth; replacement and removal become visible only when the action commits.
-Synthetic fixtures exercise clone-followed-by-remove without relying on game assets.
+Timeline placements occupy Flash's negative internal depth band while script-created
+clips occupy their signed ActionScript depths, so equal numeric values cannot replace
+one another. `getDepth`, `getNextHighestDepth`, and `swapDepths` operate on that
+separation. Synthetic fixtures exercise clone-followed-by-remove and a timeline/dynamic
+depth collision without relying on game assets.
 
 The callback inspection surface also exposes immutable callback names and authored
 parameter names. The standalone app uses that metadata for an interactive debug
@@ -215,5 +220,7 @@ ticks each child exactly once. The SDL host calls that transaction from its fixe
 presentation frame. The app's scene reader resolves only relative archive
 paths beneath the selected asset root and caps a scene at 256 layers.
 
-This is static host-side composition. Script-created clips and `MovieClipLoader`
-remain deferred until the bounded resolver and AVM scheduling contracts exist.
+Scene composition is static at the host layer. Within a movie, bounded exported
+symbols can be created by `attachMovie` and AVM clone/remove operations; external
+movie loading through `MovieClipLoader` remains deferred until the resolver and
+resource-lifetime contracts exist.

@@ -4,6 +4,60 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
 
+[Flags]
+public enum AuthoredSongCourseBits
+{
+    None = 0,
+    Easy = 1 << 0,
+    Normal = 1 << 1,
+    Hard = 1 << 2,
+    Oni = 1 << 3,
+    HiddenEasy = 1 << 4,
+    HiddenNormal = 1 << 5,
+    HiddenHard = 1 << 6,
+    HiddenOni = 1 << 7,
+    All = Easy | Normal | Hard | Oni | HiddenEasy | HiddenNormal | HiddenHard | HiddenOni,
+}
+
+public readonly record struct SongSelectCoursePresentation(
+    AuthoredSongCourseBits InvalidCourses,
+    int EasyStars,
+    int NormalStars,
+    int HardStars,
+    int OniStars,
+    int HiddenEasyStars,
+    int HiddenNormalStars,
+    int HiddenHardStars,
+    int HiddenOniStars)
+{
+    public static SongSelectCoursePresentation FromSong(SongSelectSong song)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        var valid = AuthoredSongCourseBits.None;
+        if (song.HasCourse(TaikoCourse.Easy))
+            valid |= AuthoredSongCourseBits.Easy;
+        if (song.HasCourse(TaikoCourse.Normal))
+            valid |= AuthoredSongCourseBits.Normal;
+        if (song.HasCourse(TaikoCourse.Hard))
+            valid |= AuthoredSongCourseBits.Hard;
+        if (song.HasCourse(TaikoCourse.Oni))
+            valid |= AuthoredSongCourseBits.Oni;
+        if (song.HasCourse(TaikoCourse.Ura))
+            valid |= AuthoredSongCourseBits.HiddenOni;
+
+        return new SongSelectCoursePresentation(
+            AuthoredSongCourseBits.All & ~valid,
+            song.Level(TaikoCourse.Easy) ?? 0,
+            song.Level(TaikoCourse.Normal) ?? 0,
+            song.Level(TaikoCourse.Hard) ?? 0,
+            song.Level(TaikoCourse.Oni) ?? 0,
+            0,
+            0,
+            0,
+            song.Level(TaikoCourse.Ura) ?? 0);
+    }
+}
+
 /// <summary>Translates the authored Song Select protocol into one catalog-pinned session.</summary>
 public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 {
@@ -78,13 +132,20 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         invoke("SetPlayerBits", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
         if (!_session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song))
             return LumenHostValue.Undefined;
-        invoke("SetInvalidCourse", LumenHostValue.FromNumber((int)(SongCourseBits.All & ~song.AvailableCourses)));
+        var courses = SongSelectCoursePresentation.FromSong(song);
+        invoke("SetInvalidCourse", LumenHostValue.FromNumber((int)courses.InvalidCourses));
         invoke(
             "SetStar",
-            number(song.Level(TaikoCourse.Easy)),
-            number(song.Level(TaikoCourse.Normal)),
-            number(song.Level(TaikoCourse.Hard)),
-            number(song.Level(TaikoCourse.Oni)));
+            LumenHostValue.FromNumber(courses.EasyStars),
+            LumenHostValue.FromNumber(courses.NormalStars),
+            LumenHostValue.FromNumber(courses.HardStars),
+            LumenHostValue.FromNumber(courses.OniStars));
+        invoke(
+            "SetStarHidden",
+            LumenHostValue.FromNumber(courses.HiddenEasyStars),
+            LumenHostValue.FromNumber(courses.HiddenNormalStars),
+            LumenHostValue.FromNumber(courses.HiddenHardStars),
+            LumenHostValue.FromNumber(courses.HiddenOniStars));
         return LumenHostValue.Undefined;
     }
 
@@ -138,5 +199,4 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return (int)value;
     }
 
-    private static LumenHostValue number(int? value) => LumenHostValue.FromNumber(value ?? 0);
 }

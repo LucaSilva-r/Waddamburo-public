@@ -40,6 +40,7 @@ public sealed record SongSelectCategory(
     string Name,
     string AuthoredLabel,
     SongCategoryPresentation Presentation,
+    SongBoardTextureStyle BoardStyle,
     ImmutableArray<SongSelectSong> Songs);
 
 /// <summary>Source-neutral, revision-pinned data consumed by the authored Song Select host.</summary>
@@ -54,6 +55,7 @@ public sealed class SongSelectCatalogView
             category.Name,
             authoredLabel(category.Name),
             SongCategoryPresentation.AlwaysVisible,
+            boardStyle(category.Name),
             [.. category.Songs.Select(key => createSong(snapshot.Songs[key]))]))];
     }
 
@@ -100,4 +102,17 @@ public sealed class SongSelectCatalogView
         "Namco Original" => "ナムコオリジナル",
         _ => "イベント",
     };
+
+    private static SongBoardTextureStyle boardStyle(string category) => new(category switch
+    {
+        "Pop" or "J-POP" => 0x015059U,
+        "Children and Folk" or "Kids" => 0xbb015dU,
+        "Variety" => 0x374702U,
+        "Anime" => 0x9e4309U,
+        "Classical" => 0x734f02U,
+        "Game Music" => 0x4b1a70U,
+        "Namco Original" => 0xa22302U,
+        "Vocaloid" => 0x596585U,
+        _ => 0x141428U,
+    });
 }

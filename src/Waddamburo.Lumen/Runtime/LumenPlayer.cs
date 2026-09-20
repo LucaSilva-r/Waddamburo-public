@@ -14,6 +14,7 @@ public sealed class LumenPlayer
 {
     private const float TranslationCutThreshold = 200f;
     private const float ColorCutThreshold = 0.3f;
+    private const long TimelineDepthBase = -16384;
 
     private readonly LmbMovieDefinition _movie;
     private readonly LumenRuntimeLimits _limits;
@@ -31,6 +32,7 @@ public sealed class LumenPlayer
     private LumenInputSnapshot _inputSnapshot = LumenInputSnapshot.Empty;
     private long _nextActionSequence;
     private int _callDepth;
+    private Avm1ExecutionContext? _activeContext;
 
     public LumenPlayer(
         LmbMovieDefinition movie,
@@ -118,11 +120,15 @@ public sealed class LumenPlayer
         if (!_callbacks.TryGetValue(name, out var callback))
             return false;
         var converted = arguments.Select(fromHostValue).ToArray();
-        return invokeFunction(
+        var invoked = invokeFunction(
             callback.Instance,
             callback.Function,
             callback.ThisValue,
-            converted).Found;
+            converted,
+            _activeContext).Found;
+        if (invoked)
+            drainActions();
+        return invoked;
     }
 
     public void Advance()
@@ -385,7 +391,7 @@ public sealed class LumenPlayer
                     applyPlacement(instance, place, queueActions);
                     break;
                 case LmbRemoveObjectCommand remove:
-                    var depth = remove.Depth;
+                    var depth = TimelineDepthBase + remove.Depth;
                     if (instance.Children.TryGetValue(depth, out var removed))
                     {
                         instance.Children.Remove(depth);
@@ -522,21 +528,31 @@ public sealed class LumenPlayer
     {
         var startingFrame = instance.Frame;
         var startingPlaying = instance.Playing;
-        var context = createExecutionContext(instance);
-        var status = Avm1Interpreter.TryExecute(
-            code,
-            _movie.Strings,
-            instance.Playing,
-            _limits,
-            context,
-            out var playing);
-        if (status == Avm1ExecutionStatus.Success)
+        var parentContext = _activeContext;
+        var context = createExecutionContext(instance, parentContext);
+        var previousContext = _activeContext;
+        _activeContext = context;
+        try
         {
-            if (instance.Frame == startingFrame && instance.Playing == startingPlaying)
-                instance.Playing = playing;
-            context.Commit();
+            var status = Avm1Interpreter.TryExecute(
+                code,
+                _movie.Strings,
+                instance.Playing,
+                _limits,
+                context,
+                out var playing);
+            if (status == Avm1ExecutionStatus.Success)
+            {
+                if (instance.Frame == startingFrame && instance.Playing == startingPlaying)
+                    instance.Playing = playing;
+                context.Commit();
+            }
+            return status;
         }
-        return status;
+        finally
+        {
+            _activeContext = previousContext;
+        }
     }
 
     private Avm1ExecutionContext createExecutionContext(
@@ -646,10 +662,26 @@ public sealed class LumenPlayer
                 }
                 if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
                 {
-                    var nextDepth = depthTarget.Children.Count == 0
-                        ? 0U
-                        : checked(depthTarget.Children.Keys.Max() + 1U);
+                    var nextDepth = depthTarget.Children.Keys
+                        .Where(static depth => depth >= 0)
+                        .DefaultIfEmpty(-1)
+                        .Max() + 1;
                     return new Avm1Lookup(true, (double)nextDepth);
+                }
+                if (target is DisplayInstance depthInstance && name == "getDepth")
+                    return new Avm1Lookup(true, (double)depthInstance.Depth);
+                if (target is DisplayInstance swapInstance
+                    && name == "swapDepths"
+                    && arguments.Count > 0)
+                {
+                    var destination = arguments[0] is DisplayInstance other
+                        ? other.Depth
+                        : tryAvmDepth(arguments[0], out var numericDepth)
+                            ? numericDepth
+                            : long.MinValue;
+                    if (destination != long.MinValue)
+                        swapDepth(swapInstance, destination);
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
                 }
                 if (target is DisplayInstance attachTarget
                     && name == "attachMovie"
@@ -677,6 +709,7 @@ public sealed class LumenPlayer
                         attachTarget)
                     {
                         Name = instanceName,
+                        Depth = attachDepth,
                     };
                     if (arguments.Count >= 4 && arguments[3] is Avm1Object initialValues)
                     {
@@ -727,13 +760,18 @@ public sealed class LumenPlayer
                     context!.OnCommit(() => registerClass(exportName, registeredClass));
                     return new Avm1Lookup(true, true);
                 }
+                var receiver = target is Avm1SuperValue super ? super.ThisValue : target;
                 var candidate = name.Length == 0
-                    ? new Avm1Lookup(target is Avm1FunctionValue, target)
+                    ? target is Avm1SuperValue superTarget
+                        ? superTarget.Level?.GetProperty("__constructor__") ?? default
+                        : new Avm1Lookup(target is Avm1FunctionValue, target)
                     : context!.GetMember(target, name);
                 if (candidate.Found && candidate.Value is Avm1FunctionValue function)
-                    return invokeFunction(instance, function, target, arguments, context);
+                    return invokeFunction(instance, function, receiver, arguments, context);
                 if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
                     return invokeHost(instance, nativeFunction, arguments);
+                if (target is Avm1SuperValue && name.Length == 0)
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
                 reportOnce(
                     "LUM_AVM_METHOD_UNRESOLVED",
                     instance.CharacterId,
@@ -791,10 +829,11 @@ public sealed class LumenPlayer
                     || depth < 0)
                     return default;
                 var clone = cloneInstance(sourceInstance, parent, name);
+                clone.Depth = depth;
                 context!.SetTransientMember(parent, name, clone);
                 context!.OnCommit(() =>
                 {
-                    var targetDepth = checked((uint)depth);
+                    var targetDepth = (long)depth;
                     if (parent.Children.TryGetValue(targetDepth, out var replaced))
                         replaced.Removed = true;
                     parent.Children[targetDepth] = clone;
@@ -827,6 +866,7 @@ public sealed class LumenPlayer
         var clone = new DisplayInstance(source.CharacterId, parent.HierarchyDepth + 1, parent)
         {
             Name = name,
+            Depth = source.Depth,
             PlacementId = source.PlacementId,
             FirstFrame = source.FirstFrame,
             Frame = source.Frame,
@@ -846,6 +886,23 @@ public sealed class LumenPlayer
         foreach (var (depth, child) in source.Children)
             clone.Children.Add(depth, cloneInstance(child, clone, child.Name));
         return clone;
+    }
+
+    private static void swapDepth(DisplayInstance instance, long destination)
+    {
+        if (instance.Parent is not { } parent)
+            return;
+        var source = instance.Depth;
+        if (source == destination)
+            return;
+        parent.Children.Remove(source);
+        if (parent.Children.Remove(destination, out var displaced))
+        {
+            displaced.Depth = source;
+            parent.Children[source] = displaced;
+        }
+        instance.Depth = destination;
+        parent.Children[destination] = instance;
     }
 
     private Avm1Lookup invokeHost(
@@ -911,16 +968,28 @@ public sealed class LumenPlayer
             var startingFrame = timelineTarget.Frame;
             var startingPlaying = timelineTarget.Playing;
             var context = createExecutionContext(timelineTarget, parentContext);
-            var status = Avm1Interpreter.TryExecuteFunction(
-                function,
-                _movie.Strings,
-                thisValue,
-                arguments,
-                timelineTarget.Playing,
-                _limits,
-                context,
-                out var playing,
-                out var returnValue);
+            var previousContext = _activeContext;
+            _activeContext = context;
+            Avm1ExecutionStatus status;
+            bool playing;
+            object? returnValue;
+            try
+            {
+                status = Avm1Interpreter.TryExecuteFunction(
+                    function,
+                    _movie.Strings,
+                    thisValue,
+                    arguments,
+                    timelineTarget.Playing,
+                    _limits,
+                    context,
+                    out playing,
+                    out returnValue);
+            }
+            finally
+            {
+                _activeContext = previousContext;
+            }
             if (status != Avm1ExecutionStatus.Success)
             {
                 var unsupported = status == Avm1ExecutionStatus.Unsupported
@@ -1016,6 +1085,11 @@ public sealed class LumenPlayer
 
     private static Avm1Lookup readMember(object? target, string name)
     {
+        if (target is Avm1SuperValue super
+            && super.Level?.Prototype is Avm1Object parentPrototype)
+        {
+            return parentPrototype.GetProperty(name);
+        }
         if (target is DisplayInstance instance)
         {
             var child = instance.Children.Values.FirstOrDefault(candidate => candidate.Name == name && !candidate.Removed);
@@ -1038,6 +1112,7 @@ public sealed class LumenPlayer
                 "_rotation" => new Avm1Lookup(true, decompose(instance.Transform).Rotation * 180d / Math.PI),
                 "_alpha" => new Avm1Lookup(true, instance.Color.Multiply.Alpha * 100d),
                 "_currentframe" => new Avm1Lookup(true, (double)instance.Frame + 1),
+                "__proto__" => new Avm1Lookup(instance.ScriptPrototype is not null, instance.ScriptPrototype),
                 _ => default,
             };
         }
@@ -1052,7 +1127,9 @@ public sealed class LumenPlayer
         if (target is string text && name == "length")
             return new Avm1Lookup(true, (double)text.Length);
         if (target is Avm1Object avmObject)
-            return avmObject.GetProperty(name);
+            return name == "__proto__"
+                ? new Avm1Lookup(avmObject.Prototype is not null, avmObject.Prototype)
+                : avmObject.GetProperty(name);
         if (target is Dictionary<string, object?> dictionary && dictionary.TryGetValue(name, out var member))
             return new Avm1Lookup(true, member);
         return default;
@@ -1065,7 +1142,7 @@ public sealed class LumenPlayer
         return instance;
     }
 
-    private static void writeMember(object? target, string name, object? value)
+    private void writeMember(object? target, string name, object? value)
     {
         if (target is DisplayInstance instance)
         {
@@ -1130,12 +1207,22 @@ public sealed class LumenPlayer
                     return;
             }
         }
+        if (target is Avm1ArrayObject array
+            && array.TrySetIndexedProperty(name, value, _limits.MaxStackValues))
+        {
+            array.Properties.Remove(name);
+            return;
+        }
         if (target is Avm1Object avmObject)
         {
             if (name == "__proto__" && value is Avm1Object prototype)
                 avmObject.Prototype = prototype;
             else
+            {
                 avmObject.Properties[name] = value;
+                if (value is Avm1FunctionValue function)
+                    function.OwnerPrototype = avmObject;
+            }
             return;
         }
         if (target is Dictionary<string, object?> dictionary)
@@ -1256,15 +1343,15 @@ public sealed class LumenPlayer
         _ => double.NaN,
     };
 
-    private static bool tryAvmDepth(object? value, out uint depth)
+    private static bool tryAvmDepth(object? value, out long depth)
     {
         var number = toNumber(value);
         if (double.IsFinite(number)
-            && number >= 0
-            && number <= uint.MaxValue
+            && number >= int.MinValue
+            && number <= int.MaxValue
             && number == Math.Truncate(number))
         {
-            depth = (uint)number;
+            depth = (long)number;
             return true;
         }
         depth = 0;
@@ -1286,6 +1373,7 @@ public sealed class LumenPlayer
         null => "null",
         Avm1Undefined => "undefined",
         DisplayInstance => "a movie clip",
+        Avm1SuperValue => "a super object",
         Avm1FunctionValue => "a function",
         Avm1ArrayObject => "an array",
         Avm1Object => "an object",
@@ -1301,18 +1389,19 @@ public sealed class LumenPlayer
         LmbPlaceObjectCommand placement,
         bool queueActions)
     {
-        parent.Children.TryGetValue(placement.Depth, out var instance);
+        var depth = TimelineDepthBase + placement.Depth;
+        parent.Children.TryGetValue(depth, out var instance);
         switch (placement.Mode)
         {
             case 1:
                 if (parent.ReusableTimelineChildren is { } reusable
-                    && reusable.TryGetValue(placement.Depth, out var reusableInstance)
+                    && reusable.TryGetValue(depth, out var reusableInstance)
                     && reusableInstance.CharacterId == placement.CharacterId
                     && reusableInstance.PlacementId == placement.PlacementId)
                 {
-                    reusable.Remove(placement.Depth);
+                    reusable.Remove(depth);
                     reusableInstance.Removed = false;
-                    parent.Children[placement.Depth] = reusableInstance;
+                    parent.Children[depth] = reusableInstance;
                     applyPlacementFields(reusableInstance, placement, isNew: false);
                     break;
                 }
@@ -1320,11 +1409,12 @@ public sealed class LumenPlayer
                     instance.Removed = true;
                 instance = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1, parent)
                 {
+                    Depth = depth,
                     PlacementId = placement.PlacementId,
                     FirstFrame = placement.FirstFrame,
                     FromTimeline = true,
                 };
-                parent.Children[placement.Depth] = instance;
+                parent.Children[depth] = instance;
                 applyPlacementFields(instance, placement, isNew: true);
                 if (_sprites.TryGetValue(instance.CharacterId, out var childTimeline))
                 {
@@ -1345,6 +1435,7 @@ public sealed class LumenPlayer
                     instance.Removed = true;
                     var replacement = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1, parent)
                     {
+                        Depth = depth,
                         Name = instance.Name,
                         PlacementId = placement.PlacementId,
                         FirstFrame = placement.FirstFrame,
@@ -1353,7 +1444,7 @@ public sealed class LumenPlayer
                         Color = instance.Color,
                         BlendMode = instance.BlendMode,
                     };
-                    parent.Children[placement.Depth] = instance = replacement;
+                    parent.Children[depth] = instance = replacement;
                     applyPlacementFields(instance, placement, isNew: false);
                     if (_sprites.ContainsKey(instance.CharacterId))
                         enterFrame(instance, 0, queueActions);
@@ -1536,7 +1627,7 @@ public sealed class LumenPlayer
     {
         if (instance.Removed)
             return;
-        foreach (var child in instance.Children.Values)
+        foreach (var child in instance.Children.Values.Reverse())
             collectInstancesPostOrder(child, destination);
         destination.Add(instance);
     }
@@ -1647,6 +1738,8 @@ public sealed class LumenPlayer
 
         public DisplayInstance? Parent { get; } = parent;
 
+        public long Depth { get; set; }
+
         public string Name { get; set; } = "";
 
         public uint PlacementId { get; set; } = uint.MaxValue;
@@ -1675,9 +1768,9 @@ public sealed class LumenPlayer
 
         public LumenRenderColor? PreviousMultiply { get; set; }
 
-        public SortedDictionary<uint, DisplayInstance> Children { get; } = [];
+        public SortedDictionary<long, DisplayInstance> Children { get; } = [];
 
-        public Dictionary<uint, DisplayInstance>? ReusableTimelineChildren { get; set; }
+        public Dictionary<long, DisplayInstance>? ReusableTimelineChildren { get; set; }
 
         public Dictionary<string, object?> Variables { get; } = new(StringComparer.Ordinal);
 

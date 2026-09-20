@@ -9,9 +9,23 @@ public enum SongBoardTextureKind
     Expanded,
 }
 
+public readonly record struct SongBoardTextureStyle
+{
+    public SongBoardTextureStyle(uint compactOutlineRgb)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(compactOutlineRgb, 0x00ff_ffffU);
+        CompactOutlineRgb = compactOutlineRgb;
+    }
+
+    public uint CompactOutlineRgb { get; }
+}
+
 public interface ISongBoardTextureService
 {
-    LumenNativeSurfaceKey GetSongTitle(SongSelectSong song, SongBoardTextureKind kind);
+    LumenNativeSurfaceKey GetSongTitle(
+        SongSelectSong song,
+        SongBoardTextureStyle style,
+        SongBoardTextureKind kind);
 }
 
 public sealed record SongPreviewRequest(
@@ -76,7 +90,7 @@ public sealed class SongSelectSession
             throw new ArgumentOutOfRangeException(
                 nameof(song),
                 $"Song Select referenced category {category}, song {song} outside the pinned catalog.");
-        return _textures.GetSongTitle(selected, kind);
+        return _textures.GetSongTitle(selected, Catalog.Categories[category].BoardStyle, kind);
     }
 
     public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse)

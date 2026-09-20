@@ -16,6 +16,7 @@ The test project and isolated osu!lazer provider prototype also restore:
 | ppy.osu.Framework | 2026.914.0; transitive from `ppy.osu.Game` | MIT | Framework types required by the official game model assembly |
 | Realm .NET | 20.1.0; <https://www.nuget.org/packages/Realm/20.1.0> | Apache-2.0; bundled Realm Core/native notices must be retained | Read-only managed database API and dynamically loaded platform-native wrapper |
 | MongoDB.Bson | 2.21.0; transitive from `Realm` | Apache-2.0 | Realm value support |
+| TaikoRecomp / TaikoZucchini title-layout profiles | TaikoRecomp `src/taiko_title_render.c` at `1dc686003e705194b0187c0cb19e84276504645d`; TaikoZucchini `core/title_render.c` at `f3273008d24682f42e089bcf407508390abbc7d7`; copyright 2026 Luca Silva | MIT | Typography constants and Unicode-layout sets adapted into the independently written optional FreeType title rasterizer; no upstream source file or font is packaged. The root `LICENSE` contains the applicable MIT notice. |
 
 `src/Waddamburo.Providers.OsuLazer/packages.lock.json` records the exact full
 transitive graph of the official game package. BLD-011 must collect and stage the

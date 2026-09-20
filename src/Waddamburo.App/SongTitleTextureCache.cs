@@ -22,17 +22,20 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             throw new FileNotFoundException("The configured Song Select font does not exist.", _fontPath);
     }
 
-    public LumenNativeSurfaceKey GetSongTitle(SongSelectSong song, SongBoardTextureKind kind)
+    public LumenNativeSurfaceKey GetSongTitle(
+        SongSelectSong song,
+        SongBoardTextureStyle style,
+        SongBoardTextureKind kind)
     {
         ArgumentNullException.ThrowIfNull(song);
-        var key = new LumenNativeSurfaceKey($"song-title:{song.Descriptor.Key}:{kind}");
-        var dimensions = kind switch
-        {
-            SongBoardTextureKind.Compact => (Width: 56U, Height: 400U),
-            SongBoardTextureKind.Expanded => (Width: 96U, Height: 400U),
-            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-        };
-        var request = new TitleRequest(song.Descriptor.Title.Primary, dimensions.Width, dimensions.Height);
+        var outlineRgb = kind == SongBoardTextureKind.Compact ? style.CompactOutlineRgb : 0U;
+        var key = new LumenNativeSurfaceKey(
+            $"song-title:{song.Descriptor.Key}:{kind}:{outlineRgb:x6}");
+        var request = new TitleRequest(
+            song.Descriptor.Title.Primary,
+            song.Descriptor.Subtitle,
+            kind,
+            outlineRgb);
         if (_requests.TryGetValue(key, out var existing) && existing != request)
             throw new InvalidOperationException($"Native surface key '{key}' was assigned conflicting content.");
         _requests[key] = request;
@@ -41,18 +44,39 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
 
     public RenderTextureId Resolve(LumenNativeSurfaceKey key)
     {
-        if (_resident.TryGetValue(key, out var cached))
+        if (!_requests.TryGetValue(key, out var request))
+            throw new KeyNotFoundException($"No title content is registered for native surface '{key}'.");
+
+        var pixelSize = _application.GetPixelSize();
+        var rasterScale = (uint)Math.Clamp((pixelSize.Height + 719) / 720, 1, 4);
+        if (_resident.TryGetValue(key, out var stale) && stale.RasterScale != rasterScale)
+        {
+            _leastRecentlyUsed.Remove(stale.Node);
+            _resident.Remove(key);
+            _application.ReleaseTexture(stale.Texture);
+        }
+        else if (_resident.TryGetValue(key, out var cached))
         {
             touch(key, cached.Node);
             return cached.Texture;
         }
-        if (!_requests.TryGetValue(key, out var request))
-            throw new KeyNotFoundException($"No title content is registered for native surface '{key}'.");
 
-        var surface = NativeVerticalTextRasterizer.Render(_fontPath, request.Text, request.Width, request.Height);
+        var profile = request.Kind switch
+        {
+            SongBoardTextureKind.Compact => SongTitleTextProfile.Compact,
+            SongBoardTextureKind.Expanded => SongTitleTextProfile.Expanded,
+            _ => throw new ArgumentOutOfRangeException(nameof(key)),
+        };
+        var surface = NativeVerticalTextRasterizer.RenderSongTitle(
+            _fontPath,
+            request.Text,
+            request.Subtitle,
+            profile,
+            request.OutlineRgb,
+            rasterScale);
         var texture = _application.UploadRgba8(surface.Width, surface.Height, surface.Pixels);
         var node = _leastRecentlyUsed.AddFirst(key);
-        _resident.Add(key, new ResidentTexture(texture, node));
+        _resident.Add(key, new ResidentTexture(texture, rasterScale, node));
         evictIfNeeded();
         return texture;
     }
@@ -83,6 +107,13 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         }
     }
 
-    private sealed record TitleRequest(string Text, uint Width, uint Height);
-    private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<LumenNativeSurfaceKey> Node);
+    private sealed record TitleRequest(
+        string Text,
+        string? Subtitle,
+        SongBoardTextureKind Kind,
+        uint OutlineRgb);
+    private sealed record ResidentTexture(
+        RenderTextureId Texture,
+        uint RasterScale,
+        LinkedListNode<LumenNativeSurfaceKey> Node);
 }

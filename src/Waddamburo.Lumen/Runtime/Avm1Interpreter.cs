@@ -65,7 +65,12 @@ internal static class Avm1Interpreter
             return Avm1ExecutionStatus.RegisterLimit;
         }
         if ((definition.Flags & 0x0010) != 0
-            && !trySeedRegister(registers, ref nextRegister, function.GetProperty("__super__").Value))
+            && !trySeedRegister(
+                registers,
+                ref nextRegister,
+                new Avm1SuperValue(
+                    thisValue,
+                    function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object)))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
@@ -383,13 +388,14 @@ internal static class Avm1Interpreter
                 case 0x69: // Extends
                     if (!tryPop(stack, out var superClass) || !tryPop(stack, out var subClass))
                         return Avm1ExecutionStatus.StackUnderflow;
-                    context.SetMember(subClass, "__super__", superClass);
-                    var subPrototype = context.GetMember(subClass, "prototype");
                     var superPrototype = context.GetMember(superClass, "prototype");
-                    if (subPrototype.Found && subPrototype.Value is Avm1Object prototype
-                        && superPrototype.Found && superPrototype.Value is Avm1Object parentPrototype)
+                    if (subClass is Avm1Object
+                        && superPrototype.Found
+                        && superPrototype.Value is Avm1Object parentPrototype)
                     {
-                        context.SetMember(prototype, "__proto__", parentPrototype);
+                        var prototype = new Avm1Object { Prototype = parentPrototype };
+                        prototype.Properties["__constructor__"] = superClass;
+                        context.SetMember(subClass, "prototype", prototype);
                     }
                     break;
                 case 0x8E: // DefineFunction2

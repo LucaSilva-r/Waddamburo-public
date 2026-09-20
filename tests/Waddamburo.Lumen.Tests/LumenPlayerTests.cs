@@ -951,6 +951,38 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ArrayIndexWritesExtendLengthLikeAvm1Arrays()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x07, 0x00,
+                0x05, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x42,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x09, 0x00,
+                0x04, 0x00,
+                0x07, 0x03, 0x00, 0x00, 0x00,
+                0x05, 0x01,
+            0x4F,
+            0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+            0x96, 0x05, 0x00, 0x04, 0x00, 0x09, 0x19, 0x00,
+            0x4E,
+            0x96, 0x05, 0x00, 0x07, 0x04, 0x00, 0x00, 0x00,
+            0x49,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void ArrayPushAppendsValuesAndUpdatesLengthTransactionally()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [
@@ -1203,6 +1235,29 @@ public sealed class LumenPlayerTests
 
         var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
         Assert.Equal(new LumenRenderVertex(30, 40, 0, 0), quad.TopLeft);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void ScriptDepthsDoNotReplaceTimelineDepthsWithTheSameNumericValue()
+    {
+        var player = new LumenPlayer(createMovie(
+            placementNameStringIndex: 31,
+            actionBytecode: [
+                0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+                0x1C,
+                0x96, 0x08, 0x00,
+                    0x09, 0x27, 0x00,
+                    0x07, 0x03, 0x00, 0x00, 0x00,
+                0x24,
+                0x00,
+            ]), 1280, 720);
+
+        player.Advance();
+
+        var quads = player.CreateRenderSnapshot().Quads;
+        Assert.Equal(2, quads.Length);
+        Assert.All(quads, quad => Assert.Equal(new LumenRenderVertex(30, 40, 0, 0), quad.TopLeft));
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
     }
 
