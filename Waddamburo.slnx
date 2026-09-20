@@ -7,6 +7,7 @@
     <Project Path="src/Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
     <Project Path="src/Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
     <Project Path="src/Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />
+    <Project Path="src/Waddamburo.Providers.Tja/Waddamburo.Providers.Tja.csproj" />
     <Project Path="src/Waddamburo.Tool/Waddamburo.Tool.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -15,5 +16,6 @@
     <Project Path="tests/Waddamburo.Formats.Tests/Waddamburo.Formats.Tests.csproj" />
     <Project Path="tests/Waddamburo.Game.Tests/Waddamburo.Game.Tests.csproj" />
     <Project Path="tests/Waddamburo.Lumen.Tests/Waddamburo.Lumen.Tests.csproj" />
+    <Project Path="tests/Waddamburo.Providers.Tja.Tests/Waddamburo.Providers.Tja.Tests.csproj" />
   </Folder>
 </Solution>

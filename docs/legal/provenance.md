@@ -32,6 +32,16 @@ the public `ppy.osu.Game` 2026.916.0 and Realm 20.1.0 APIs. It consumes official
 model types through NuGet and does not copy or adapt osu! source files. The package
 records upstream osu! commit `98fb49876c0242fcf649e0250d6f6b3458769a9e`.
 
+`src/Waddamburo.Providers.Tja/` is an original managed catalog implementation.
+Its format behavior was checked against TaikoRecomp revision
+`1dc686003e705194b0187c0cb19e84276504645d`, principally
+`docs/custom_songs.md`, `tools/custom_songs.py`, and the MIT-licensed
+`tools/vendor/tja2fumen` documentation and parser. No TaikoRecomp or tja2fumen
+source is copied, translated, linked, or packaged. The implementation independently
+expresses metadata/course normalization, encoding fallback, relative-audio, and
+source-identity behavior behind Waddamburo's catalog contracts; synthetic public
+tests were authored specifically for this repository.
+
 `src/Waddamburo.Platform.Sdl/SdlApplication.cs` is original integration code written
 against SDL's public GPU API and the generated `ppy.SDL3-CS` 2026.722.0 bindings.
 No SDL or binding source is copied into the repository; the NuGet package supplies

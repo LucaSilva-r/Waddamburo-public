@@ -23,8 +23,9 @@ instances of one source kind are allowed, but provider IDs and every stable key
 must be unique.
 
 Asset references are `CatalogAssetKey` values owned by a provider. They are not
-guest paths and are never sent to Lumen. A later chart/audio loading service will
-resolve them after a selection has been fixed to a catalog revision.
+guest paths and are never sent to Lumen. Providers that can open their native
+content implement `ICatalogAssetResolver`; callers route a key only to its owning
+provider after fixing a selection to a catalog revision.
 
 ## Global publication
 
@@ -44,9 +45,16 @@ diagnostic in the snapshot; contributions from healthy providers remain usable.
 The osu!lazer adapter converts the existing read-only Realm snapshot into this
 contract. It currently publishes native taiko beatmap sets, charts, audio asset
 identities, and a source category without exposing Realm or filesystem details.
-Stock, Nijiiro, and custom TJA adapters remain to be implemented against the same
-interface. Source-specific parsing and asset resolution stay in their provider
-assemblies rather than entering Song Select or the Lumen runtime.
+
+The custom TJA adapter recursively discovers bounded `.tja` files, reads
+UTF-8/UTF-16/Shift-JIS metadata, publishes supported courses and folder/genre
+categories, and resolves relative chart/audio assets beneath its configured root.
+Its details and current limits are described in
+[custom-tja.md](custom-tja.md).
+
+Stock and Nijiiro adapters remain to be implemented against the same interface.
+Source-specific parsing and asset resolution stay in their provider assemblies
+rather than entering Song Select or the Lumen runtime.
 
 Public tests use synthetic contributions and snapshots. User libraries, database
 files, commercial assets, paths, hashes, and captured game output are not test

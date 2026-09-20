@@ -70,7 +70,8 @@ public sealed record SongDescriptor
         string? artist,
         IEnumerable<SongChartDescriptor> charts,
         CatalogAssetKey? audioAsset = null,
-        TimeSpan? previewStart = null)
+        TimeSpan? previewStart = null,
+        string? subtitle = null)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(title);
@@ -91,6 +92,7 @@ public sealed record SongDescriptor
         Charts = materialized;
         AudioAsset = audioAsset;
         PreviewStart = previewStart;
+        Subtitle = string.IsNullOrWhiteSpace(subtitle) ? null : subtitle;
     }
 
     public SongKey Key { get; }
@@ -104,6 +106,8 @@ public sealed record SongDescriptor
     public CatalogAssetKey? AudioAsset { get; }
 
     public TimeSpan? PreviewStart { get; }
+
+    public string? Subtitle { get; }
 }
 
 public sealed record SongCategoryDescriptor

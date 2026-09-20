@@ -98,6 +98,27 @@ public sealed class GlobalSongCatalogTests
                 [new SongKey(SongSourceKind.Stock, "missing")])]));
     }
 
+    [Fact]
+    public void ContributionRejectsAssetsOwnedByAnotherProvider()
+    {
+        var provider = new CatalogProviderId("stock");
+        var foreign = new CatalogProviderId("foreign");
+        var key = new SongKey(SongSourceKind.Stock, "one");
+
+        Assert.Throws<ArgumentException>(() => new SongCatalogContribution(
+            provider,
+            SongSourceKind.Stock,
+            [new SongDescriptor(
+                key,
+                new SongTitle("One"),
+                null,
+                [new SongChartDescriptor(
+                    new ChartKey(key, "oni"),
+                    "Oni",
+                    new CatalogAssetKey(foreign, "chart"))])],
+            []));
+    }
+
     private static DelegateProvider provider(string id, SongSourceKind source, string songId)
     {
         var providerId = new CatalogProviderId(id);

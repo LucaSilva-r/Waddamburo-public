@@ -13,6 +13,14 @@ public interface ISongCatalogProvider
         CancellationToken cancellationToken);
 }
 
+/// <summary>Resolves opaque assets owned by one catalog provider.</summary>
+public interface ICatalogAssetResolver
+{
+    CatalogProviderId Id { get; }
+
+    ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default);
+}
+
 public sealed record CatalogScanProgress(
     CatalogProviderId Provider,
     string Stage,
@@ -38,6 +46,9 @@ public sealed class SongCatalogContribution
             throw new ArgumentException("Every song must use the provider's source kind.", nameof(songs));
         if (materializedSongs.Select(static song => song.Key).Distinct().Count() != materializedSongs.Length)
             throw new ArgumentException("A provider contribution cannot contain duplicate song keys.", nameof(songs));
+        if (materializedSongs.Any(song => song.AudioAsset is { } audio && audio.Provider != provider)
+            || materializedSongs.SelectMany(static song => song.Charts).Any(chart => chart.ChartAsset.Provider != provider))
+            throw new ArgumentException("Every asset must be owned by the contributing provider.", nameof(songs));
         if (materializedCategories.Any(category => category is null || category.Key.Source != source))
             throw new ArgumentException("Every category must use the provider's source kind.", nameof(categories));
         if (materializedCategories.Select(static category => category.Key).Distinct().Count() != materializedCategories.Length)
