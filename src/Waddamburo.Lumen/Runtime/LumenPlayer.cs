@@ -197,7 +197,10 @@ public sealed class LumenPlayer
             foreach (var action in timeline.Frames[0].OfType<LmbDoActionCommand>())
             {
                 if (action.ActionIndex < (uint)_movie.Actions.Length)
-                    _ = executeAction(package, _movie.Actions[checked((int)action.ActionIndex)].Code);
+                    _ = executeAction(
+                        package,
+                        _movie.Actions[checked((int)action.ActionIndex)].Code,
+                        captureTimelineTarget: false);
             }
         }
     }
@@ -524,12 +527,18 @@ public sealed class LumenPlayer
 
     private Avm1ExecutionStatus executeAction(
         DisplayInstance instance,
-        Avm1CodeBlock code)
+        Avm1CodeBlock code,
+        bool captureTimelineTarget = true)
     {
         var startingFrame = instance.Frame;
         var startingPlaying = instance.Playing;
         var parentContext = _activeContext;
-        var context = createExecutionContext(instance, parentContext);
+        var context = createExecutionContext(
+            instance,
+            parentContext,
+            lexicalScope: null,
+            instance,
+            captureTimelineTarget ? instance : null);
         var previousContext = _activeContext;
         _activeContext = context;
         try
@@ -557,34 +566,32 @@ public sealed class LumenPlayer
 
     private Avm1ExecutionContext createExecutionContext(
         DisplayInstance instance,
-        Avm1ExecutionContext? parentContext = null)
+        Avm1ExecutionContext? parentContext,
+        Avm1LexicalScope? lexicalScope,
+        object? thisValue,
+        object? timelineTarget)
     {
         Avm1ExecutionContext? context = null;
         context = new Avm1ExecutionContext(
             name =>
             {
-                if (parentContext is not null)
-                    return parentContext.GetVariable(name);
                 if (name == "this")
-                    return new Avm1Lookup(true, instance);
+                    return new Avm1Lookup(true, thisValue);
                 if (name == "_root" || name == "_level0")
                     return new Avm1Lookup(true, _root);
                 if (name == "_parent")
                     return new Avm1Lookup(instance.Parent is not null, instance.Parent);
                 if (name == "_global")
                     return new Avm1Lookup(true, _globals);
+                var lexical = context!.GetLexicalVariable(name);
+                if (lexical.Found)
+                    return lexical;
                 var instanceMember = context!.GetMember(instance, name);
                 return instanceMember.Found
                     ? instanceMember
                     : context.GetMember(_globals, name);
             },
-            (name, value) =>
-            {
-                if (parentContext is null)
-                    instance.Variables[name] = value;
-                else
-                    parentContext.SetVariable(name, value);
-            },
+            (name, value) => instance.Variables[name] = value,
             (target, name) => parentContext?.GetMember(target, name) ?? readMember(target, name),
             (target, name, value) =>
             {
@@ -662,10 +669,7 @@ public sealed class LumenPlayer
                 }
                 if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
                 {
-                    var nextDepth = depthTarget.Children.Keys
-                        .Where(static depth => depth >= 0)
-                        .DefaultIfEmpty(-1)
-                        .Max() + 1;
+                    var nextDepth = context!.GetNextHighestDepth(depthTarget, depthTarget.Children.Keys);
                     return new Avm1Lookup(true, (double)nextDepth);
                 }
                 if (target is DisplayInstance depthInstance && name == "getDepth")
@@ -682,6 +686,27 @@ public sealed class LumenPlayer
                     if (destination != long.MinValue)
                         swapDepth(swapInstance, destination);
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
+                }
+                if (target is DisplayInstance removeInstance && name == "removeMovieClip")
+                {
+                    scheduleRemoval(context!, removeInstance);
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
+                }
+                if (target is DisplayInstance emptyParent
+                    && name == "createEmptyMovieClip"
+                    && arguments.Count >= 2
+                    && arguments[0] is string emptyName
+                    && tryAvmDepth(arguments[1], out var emptyDepth))
+                {
+                    var empty = new DisplayInstance(uint.MaxValue, emptyParent.HierarchyDepth + 1, emptyParent)
+                    {
+                        Name = emptyName,
+                        Depth = emptyDepth,
+                    };
+                    context!.SetTransientMember(emptyParent, emptyName, empty);
+                    context.SetTransientChild(emptyParent, emptyDepth, empty);
+                    context.OnCommit(() => placeScriptChild(emptyParent, empty));
+                    return new Avm1Lookup(true, empty);
                 }
                 if (target is DisplayInstance attachTarget
                     && name == "attachMovie"
@@ -720,12 +745,8 @@ public sealed class LumenPlayer
                     if (_classes.TryGetValue(linkageName, out var attachedClass))
                         constructInstance(attached, attachedClass);
                     context!.SetTransientMember(attachTarget, instanceName, attached);
-                    context.OnCommit(() =>
-                    {
-                        if (attachTarget.Children.TryGetValue(attachDepth, out var replaced))
-                            replaced.Removed = true;
-                        attachTarget.Children[attachDepth] = attached;
-                    });
+                    context.SetTransientChild(attachTarget, attachDepth, attached);
+                    context.OnCommit(() => placeScriptChild(attachTarget, attached));
                     return new Avm1Lookup(true, attached);
                 }
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
@@ -831,6 +852,7 @@ public sealed class LumenPlayer
                 var clone = cloneInstance(sourceInstance, parent, name);
                 clone.Depth = depth;
                 context!.SetTransientMember(parent, name, clone);
+                context.SetTransientChild(parent, depth, clone);
                 context!.OnCommit(() =>
                 {
                     var targetDepth = (long)depth;
@@ -843,19 +865,40 @@ public sealed class LumenPlayer
             target =>
             {
                 if (target is not DisplayInstance targetInstance
-                    || targetInstance.Parent is not DisplayInstance parent)
+                    || targetInstance.Parent is null)
                     return;
-                context!.OnCommit(() =>
-                {
-                    var child = parent.Children.FirstOrDefault(pair => ReferenceEquals(pair.Value, targetInstance));
-                    if (child.Value is null)
-                        return;
-                    parent.Children.Remove(child.Key);
-                    targetInstance.Removed = true;
-                });
+                scheduleRemoval(context!, targetInstance);
             },
+            lexicalScope,
+            timelineTarget,
+            parentContext,
             parentContext is null ? null : parentContext.OnCommit);
         return context;
+    }
+
+    private static void placeScriptChild(DisplayInstance parent, DisplayInstance child)
+    {
+        if (parent.Children.TryGetValue(child.Depth, out var replaced))
+            replaced.Removed = true;
+        parent.Children[child.Depth] = child;
+    }
+
+    private static void scheduleRemoval(Avm1ExecutionContext context, DisplayInstance instance)
+    {
+        if (instance.Parent is not { } parent)
+            return;
+        context.SetTransientChild(parent, instance.Depth, null);
+        if (instance.Name is { Length: > 0 } name)
+            context.SetTransientMember(parent, name, Avm1Undefined.Instance);
+        context.OnCommit(() =>
+        {
+            if (parent.Children.TryGetValue(instance.Depth, out var current)
+                && ReferenceEquals(current, instance))
+            {
+                parent.Children.Remove(instance.Depth);
+            }
+            instance.Removed = true;
+        });
     }
 
     private static DisplayInstance cloneInstance(
@@ -953,6 +996,8 @@ public sealed class LumenPlayer
         IReadOnlyList<object?> arguments,
         Avm1ExecutionContext? parentContext = null)
     {
+        if (function.DefinitionTarget is DisplayInstance definitionTarget)
+            timelineTarget = definitionTarget;
         if (_callDepth >= _limits.MaxCallDepth)
         {
             reportOnce(
@@ -967,7 +1012,12 @@ public sealed class LumenPlayer
         {
             var startingFrame = timelineTarget.Frame;
             var startingPlaying = timelineTarget.Playing;
-            var context = createExecutionContext(timelineTarget, parentContext);
+            var context = createExecutionContext(
+                timelineTarget,
+                parentContext,
+                new Avm1LexicalScope(function.CapturedScope),
+                thisValue,
+                timelineTarget);
             var previousContext = _activeContext;
             _activeContext = context;
             Avm1ExecutionStatus status;

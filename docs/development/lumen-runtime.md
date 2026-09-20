@@ -162,6 +162,19 @@ one another. `getDepth`, `getNextHighestDepth`, and `swapDepths` operate on that
 separation. Synthetic fixtures exercise clone-followed-by-remove and a timeline/dynamic
 depth collision without relying on game assets.
 
+Script-created clips are also visible through a transaction-local display overlay.
+Consequently, repeated `getNextHighestDepth` and `attachMovie` or
+`createEmptyMovieClip` calls in one action reserve distinct depths while failed
+actions still discard their display mutations. `removeMovieClip` masks a pending
+child immediately and commits the removal with the surrounding action.
+
+AVM1 functions retain their defining lexical scope and timeline target. Calls use
+an activation scope for parameters and implicit Function/Function2 locals, including
+the authored preload and suppression flags. Array index assignment grows an array
+only when the index lies beyond its current end; overwriting lower indexes preserves
+higher slots. Synthetic regressions cover exported closure callbacks, dynamic clip
+creation/removal, and reverse-order writes to populated arrays.
+
 The callback inspection surface also exposes immutable callback names and authored
 parameter names. The standalone app uses that metadata for an interactive debug
 console and pairs keyboard `1`–`9` with the first nine root labels. Terminal

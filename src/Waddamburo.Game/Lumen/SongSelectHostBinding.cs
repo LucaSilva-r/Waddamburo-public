@@ -63,7 +63,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 {
     private static readonly string[] NotificationMethods =
     [
-        "SetMotion", "RequestSE", "RequestSystemSE", "NotifyOpenFolder", "NotifyCloseFolder",
+        "SetMotion", "RequestSE", "RequestSystemSE",
     ];
 
     private readonly SongSelectSession _session;
@@ -91,6 +91,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
             lumen.RegisterMethod("RequestSongBoardTexture_Long", call => publishBoard(call, SongBoardTextureKind.Expanded));
             lumen.RegisterMethod("NotifyStopBGM", notifyPreview);
+            lumen.RegisterMethod("NotifyOpenFolder", _ => clearSelectionSurfaces());
+            lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             lumen.RegisterMethod("NotifyGenreFolder", _ => LumenHostValue.Undefined);
             foreach (var name in NotificationMethods)
@@ -170,7 +172,26 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue notifyPreview(LumenHostCall call)
     {
-        _session.Preview(integer(call, 0), integer(call, 1));
+        var category = integer(call, 0);
+        var song = integer(call, 1);
+        if (_session.Preview(category, song) is null)
+            clearSelectionSurfaces();
+        return LumenHostValue.Undefined;
+    }
+
+    private LumenHostValue clearSelectionSurfaces()
+    {
+        requirePlayer().RemoveNativeFill("song_name_center");
+        requirePlayer().RemoveNativeFill("song_name_detail");
+        return LumenHostValue.Undefined;
+    }
+
+    private LumenHostValue clearFolderSurfaces()
+    {
+        clearSelectionSurfaces();
+        for (var slot = 0; slot <= 12; slot++)
+            requirePlayer().RemoveNativeFill($"song_name{slot}");
+        _session.StopPreview();
         return LumenHostValue.Undefined;
     }
 

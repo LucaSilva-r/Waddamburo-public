@@ -154,15 +154,18 @@ dotnet run --project src/Waddamburo.App -- \
   --asset-root=/path/to/lumendata/packed \
   --tja-root=/path/to/TJA \
   --font=/path/to/user-owned-font.ttf \
-  --press=F@30,F@240,F@380,K@750 --ticks=1000 \
+  --press=F@30,F@240,F@380,K@700,D@850,F@1000,K@1200 \
+  --ticks=1500 \
   --window-size=1280x720 \
   --screenshot=/tmp/entry-to-song-select.png
 ```
 
 This initializes Entry through its exported callbacks, receives its authored scene
 request, resolves that request in the app-owned scene catalog, loads a fresh Song
-Select movie and host, scans the read-only TJA provider, and renders requested song
-titles with the user-supplied font. Build the optional native text adapter first;
+Select movie and host, scans the read-only TJA provider, opens a category, scrolls
+away from and back to its return card, closes it, and scrolls the rebuilt category
+carousel. It also renders requested song titles with the user-supplied font. Build
+the optional native text adapter first;
 the font, TJA files, audio, Lumen archives, and framebuffer output are never copied
 into the repository. The relative archive/movie IDs and numeric request mapping are
 composition data; neither the AVM runtime nor generic scene loader contains

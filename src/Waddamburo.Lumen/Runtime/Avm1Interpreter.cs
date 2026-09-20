@@ -51,52 +51,58 @@ internal static class Avm1Interpreter
         }
         var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
         var nextRegister = 1;
-        if ((definition.Flags & 0x0001) != 0 && !trySeedRegister(registers, ref nextRegister, thisValue))
+        var argumentArray = new Avm1ArrayObject(arguments);
+        var superValue = new Avm1SuperValue(
+            thisValue,
+            function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object);
+        if (function.IsFunction2 && (definition.Flags & 0x0001) != 0
+            && !trySeedRegister(registers, ref nextRegister, thisValue))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        if ((definition.Flags & 0x0004) != 0
-            && !trySeedRegister(registers, ref nextRegister, new Avm1ArrayObject(arguments)))
+        if (function.IsFunction2 && (definition.Flags & 0x0004) != 0
+            && !trySeedRegister(registers, ref nextRegister, argumentArray))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        if ((definition.Flags & 0x0010) != 0
-            && !trySeedRegister(
-                registers,
-                ref nextRegister,
-                new Avm1SuperValue(
-                    thisValue,
-                    function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object)))
+        if (function.IsFunction2 && (definition.Flags & 0x0010) != 0
+            && !trySeedRegister(registers, ref nextRegister, superValue))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        if ((definition.Flags & 0x0040) != 0
+        if (function.IsFunction2 && (definition.Flags & 0x0040) != 0
             && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_root").Value))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        if ((definition.Flags & 0x0080) != 0
+        if (function.IsFunction2 && (definition.Flags & 0x0080) != 0
             && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_parent").Value))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        if ((definition.Flags & 0x0100) != 0
+        if (function.IsFunction2 && (definition.Flags & 0x0100) != 0
             && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_global").Value))
         {
             resultingPlaying = initialPlaying;
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
+        if (!function.IsFunction2 || (definition.Flags & 0x0002) == 0)
+            context.DefineLocal("this", thisValue);
+        if (!function.IsFunction2 || (definition.Flags & 0x0008) == 0)
+            context.DefineLocal("arguments", argumentArray);
+        if (function.IsFunction2 && (definition.Flags & 0x0020) == 0)
+            context.DefineLocal("super", superValue);
         for (var index = 0; index < definition.Parameters.Length; index++)
         {
             var parameter = definition.Parameters[index];
@@ -112,7 +118,7 @@ internal static class Avm1Interpreter
                 registers[register] = value;
             }
             else
-                context.SetVariable(getString(strings, parameter.NameStringIndex), value);
+                context.DefineLocal(getString(strings, parameter.NameStringIndex), value);
         }
         return tryExecute(
             function.Body,
@@ -251,7 +257,7 @@ internal static class Avm1Interpreter
                 case 0x3C: // DefineLocal
                     if (!tryPop(stack, out var localValue) || !tryPop(stack, out var localName))
                         return Avm1ExecutionStatus.StackUnderflow;
-                    context.SetVariable(toAvmString(localName), localValue);
+                    context.DefineLocal(toAvmString(localName), localValue);
                     break;
                 case 0x40: // NewObject
                     if (!tryPop(stack, out var constructorName)
@@ -267,7 +273,7 @@ internal static class Avm1Interpreter
                 case 0x41: // DefineLocal2
                     if (!tryPop(stack, out localName))
                         return Avm1ExecutionStatus.StackUnderflow;
-                    context.SetVariable(toAvmString(localName), Avm1Undefined.Instance);
+                    context.DefineLocal(toAvmString(localName), Avm1Undefined.Instance);
                     break;
                 case 0x42: // InitArray
                     if (!tryPopArguments(stack, out var arrayValues))
@@ -401,7 +407,14 @@ internal static class Avm1Interpreter
                 case 0x8E: // DefineFunction2
                 case 0x9B: // DefineFunction
                     var definition = (Avm1FunctionOperand)instruction.Operand!;
-                    var function = new Avm1FunctionValue(definition, instruction.Body!);
+                    var function = new Avm1FunctionValue(
+                        definition,
+                        instruction.Body!,
+                        instruction.Opcode == 0x8E)
+                    {
+                        CapturedScope = context.LexicalScope,
+                        DefinitionTarget = context.TimelineTarget,
+                    };
                     var definedName = getString(strings, definition.NameStringIndex);
                     if (definedName.Length == 0)
                     {

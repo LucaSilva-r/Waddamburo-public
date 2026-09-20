@@ -11,6 +11,29 @@ internal sealed class Avm1Undefined
     }
 }
 
+internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
+{
+    private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
+
+    public Avm1LexicalScope? Parent { get; } = parent;
+
+    public bool ContainsOwn(string name) => _values.ContainsKey(name);
+
+    public bool TryGetOwn(string name, out object? value) => _values.TryGetValue(name, out value);
+
+    public bool TryGet(string name, out object? value)
+    {
+        if (_values.TryGetValue(name, out value))
+            return true;
+        if (Parent is not null)
+            return Parent.TryGet(name, out value);
+        value = null;
+        return false;
+    }
+
+    public void Define(string name, object? value) => _values[name] = value;
+}
+
 internal class Avm1Object
 {
     public Dictionary<string, object?> Properties { get; } = new(StringComparer.Ordinal);
@@ -62,7 +85,8 @@ internal sealed class Avm1ArrayObject(IReadOnlyList<object?> values) : Avm1Objec
         }
         if (index >= maximumLength)
             return false;
-        resize(index + 1);
+        if (index >= _values.Count)
+            resize(index + 1);
         _values[index] = value;
         return true;
     }
@@ -79,10 +103,11 @@ internal sealed class Avm1ArrayObject(IReadOnlyList<object?> values) : Avm1Objec
 
 internal sealed class Avm1FunctionValue : Avm1Object
 {
-    public Avm1FunctionValue(Avm1FunctionOperand definition, Avm1CodeBlock body)
+    public Avm1FunctionValue(Avm1FunctionOperand definition, Avm1CodeBlock body, bool isFunction2)
     {
         Definition = definition;
         Body = body;
+        IsFunction2 = isFunction2;
         var prototype = new Avm1Object();
         prototype.Properties["constructor"] = this;
         Properties["prototype"] = prototype;
@@ -92,7 +117,13 @@ internal sealed class Avm1FunctionValue : Avm1Object
 
     public Avm1CodeBlock Body { get; }
 
+    public bool IsFunction2 { get; }
+
     public Avm1Object? OwnerPrototype { get; set; }
+
+    public Avm1LexicalScope? CapturedScope { get; set; }
+
+    public object? DefinitionTarget { get; set; }
 }
 
 internal sealed class Avm1NativeFunction(string name, LumenHostCallback callback) : Avm1Object
