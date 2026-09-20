@@ -7,7 +7,12 @@ using Waddamburo.Platform.Sdl.Rendering;
 
 internal static class MovieViewer
 {
-    public static int Run(string archivePath, string movieName, int? frameLimit, string? screenshotPath)
+    public static int Run(
+        string archivePath,
+        string movieName,
+        int? frameLimit,
+        int? tickLimit,
+        string? screenshotPath)
     {
         var archiveLength = new FileInfo(archivePath).Length;
         if (archiveLength > ParserLimits.Default.MaxFileBytes)
@@ -35,17 +40,22 @@ internal static class MovieViewer
                 texture.Rgba8.AsSpan()))
             .ToArray();
         var player = content.CreatePlayer();
-        var frame = LumenRenderFrameAdapter.ComposeContentFit(
-            player.CreateRenderSnapshot(),
-            RenderColor.WaddamburoBlue,
-            index => index < textureIds.Length
-                ? textureIds[index]
-                : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
+        RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.ComposeContentFit(
+                player.CreateRenderSnapshot((float)interpolationFraction),
+                RenderColor.WaddamburoBlue,
+                index => index < textureIds.Length
+                    ? textureIds[index]
+                    : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
+        var result = application.Run(
+            createFrame,
+            player.Advance,
+            frameLimit,
+            tickLimit,
+            screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
         foreach (var diagnostic in player.Diagnostics)
             Console.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
-        return application.Run(
-            frame,
-            frameLimit,
-            screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
+        if (result.DroppedTicks > 0)
+            Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
+        return result.RenderedFrames;
     }
 }

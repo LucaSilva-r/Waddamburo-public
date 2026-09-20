@@ -1,5 +1,6 @@
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.Platform.Sdl.Timing;
 
 namespace Waddamburo.Architecture.Tests;
 
@@ -66,6 +67,49 @@ public sealed class RenderSnapshotTests
             _ => throw new InvalidOperationException());
 
         Assert.Empty(frame.Quads);
+    }
+
+    [Fact]
+    public void FixedStepAccumulatorCarriesPartialTicks()
+    {
+        var clock = new FixedStepAccumulator();
+        var ticks = 0;
+
+        var first = clock.AddElapsed(TimeSpan.FromMilliseconds(10), () => ticks++);
+        var second = clock.AddElapsed(TimeSpan.FromMilliseconds(10), () => ticks++);
+
+        Assert.Equal(0, first.ExecutedTicks);
+        Assert.Equal(1, second.ExecutedTicks);
+        Assert.Equal(1, ticks);
+        Assert.Equal(0.2, clock.InterpolationFraction, 10);
+    }
+
+    [Fact]
+    public void FixedStepAccumulatorCapsCatchUpAndReportsDroppedTicks()
+    {
+        var clock = new FixedStepAccumulator(ticksPerSecond: 60, maximumCatchUpTicks: 5);
+        var ticks = 0;
+
+        var update = clock.AddElapsed(TimeSpan.FromSeconds(1), () => ticks++);
+
+        Assert.Equal(new FixedStepUpdate(5, 55), update);
+        Assert.Equal(5, ticks);
+        Assert.Equal(0, clock.InterpolationFraction, 10);
+    }
+
+    [Fact]
+    public void FixedStepAccumulatorStopsAtExactRequestedTickWithoutDroppingRemainder()
+    {
+        var clock = new FixedStepAccumulator();
+        var ticks = 0;
+
+        var update = clock.AddElapsed(
+            TimeSpan.FromSeconds(1),
+            () => ticks++,
+            remainingTickLimit: 3);
+
+        Assert.Equal(new FixedStepUpdate(3, 0), update);
+        Assert.Equal(3, ticks);
     }
 
     [Fact]

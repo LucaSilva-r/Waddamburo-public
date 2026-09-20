@@ -4,10 +4,12 @@ using Waddamburo.Platform.Sdl.Rendering;
 try
 {
     var frameLimit = parseFrameLimit(args);
+    var tickLimit = parseLimit(args, "--ticks=");
     var screenshotPath = parseOption(args, "--screenshot=");
     if (screenshotPath is not null)
     {
-        frameLimit ??= 1;
+        if (frameLimit is null && tickLimit is null)
+            frameLimit = 1;
         if (frameLimit == 0)
             throw new ArgumentException("--screenshot requires at least one rendered frame.");
     }
@@ -21,14 +23,14 @@ try
             throw new ArgumentException("--scene and --asset-root must be supplied together.");
         if (archivePath is not null || movieName is not null)
             throw new ArgumentException("Scene options cannot be combined with --archive or --movie.");
-        SceneViewer.Run(scenePath, assetRoot, frameLimit, screenshotPath);
+        SceneViewer.Run(scenePath, assetRoot, frameLimit, tickLimit, screenshotPath);
         return 0;
     }
     if (archivePath is not null || movieName is not null)
     {
         if (archivePath is null || movieName is null)
             throw new ArgumentException("--archive and --movie must be supplied together.");
-        MovieViewer.Run(archivePath, movieName, frameLimit, screenshotPath);
+        MovieViewer.Run(archivePath, movieName, frameLimit, tickLimit, screenshotPath);
         return 0;
     }
     using var application = new SdlApplication("Waddamburo", 1280, 720, debugGpu: false);
@@ -44,10 +46,13 @@ try
             RenderColor.White,
             RenderColor.Transparent,
             RenderSampling.Nearest)]);
-    application.Run(
-        frame,
+    var result = application.Run(
+        _ => frame,
+        static () => { },
         frameLimit,
+        tickLimit,
         screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
+    reportTiming(result);
     return 0;
 }
 
@@ -76,14 +81,22 @@ static byte[] createCheckerboard()
 }
 
 static int? parseFrameLimit(string[] arguments)
+    => parseLimit(arguments, "--frames=");
+
+static int? parseLimit(string[] arguments, string prefix)
 {
-    const string prefix = "--frames=";
     var option = arguments.SingleOrDefault(argument => argument.StartsWith(prefix, StringComparison.Ordinal));
     if (option is null)
         return null;
     return int.TryParse(option.AsSpan(prefix.Length), out var value) && value >= 0
         ? value
-        : throw new ArgumentException("--frames must be a non-negative integer.");
+        : throw new ArgumentException($"{prefix[..^1]} must be a non-negative integer.");
+}
+
+static void reportTiming(SdlRunResult result)
+{
+    if (result.DroppedTicks > 0)
+        Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
 }
 
 static string? parseOption(string[] arguments, string prefix)

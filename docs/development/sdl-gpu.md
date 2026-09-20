@@ -31,14 +31,17 @@ Run it interactively with:
 dotnet run --project src/Waddamburo.App
 ```
 
-Use `--frames=N` to render a bounded number of frames for local smoke tests. This is
-a diagnostic option, not a gameplay timing mechanism. The successful Linux x64
-baseline uses SDL's Vulkan GPU backend.
+Use `--frames=N` to render a bounded number of presentation frames for local smoke
+tests. `--ticks=N` instead stops after an exact number of authored 60 Hz simulation
+ticks. `SdlApplication` accumulates monotonic wall time independently of display
+presentation, executes at most five catch-up ticks per display frame, and reports
+discarded excess ticks explicitly. The successful Linux x64 baseline uses SDL's
+Vulkan GPU backend.
 
 `--screenshot=PATH` downloads the final bounded swapchain image and writes a
-top-down RGBA capture as PNG or BMP. Without `--frames`, capture renders one frame.
-The readback waits on a GPU fence by design and is restricted to this explicit
-diagnostic path; normal presentation performs no GPU readback.
+top-down RGBA capture as PNG or BMP. Without a frame or tick bound, capture renders
+one frame. The readback waits on a GPU fence by design and is restricted to this
+explicit diagnostic path; normal presentation performs no GPU readback.
 
 The platform adapter references `ppy.SDL3-CS` at the centrally pinned version. Its
 NuGet package provides the platform-native SDL shared library. Shader bytecode is

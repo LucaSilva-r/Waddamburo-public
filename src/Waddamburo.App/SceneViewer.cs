@@ -12,7 +12,12 @@ internal static class SceneViewer
 {
     private const int MaxSceneLayers = 256;
 
-    public static int Run(string scenePath, string assetRoot, int? frameLimit, string? screenshotPath)
+    public static int Run(
+        string scenePath,
+        string assetRoot,
+        int? frameLimit,
+        int? tickLimit,
+        string? screenshotPath)
     {
         var entries = readScene(scenePath);
         var root = Path.GetFullPath(assetRoot);
@@ -73,12 +78,18 @@ internal static class SceneViewer
                 layer.Entry.Transform,
                 layer.TextureOffset,
                 layer.TextureCount)));
-        var frame = LumenRenderFrameAdapter.Compose(
-            scene.CreateRenderSnapshot(),
-            RenderColor.WaddamburoBlue,
-            index => index < textureIds.Length
-                ? textureIds[index]
-                : throw new InvalidDataException($"Scene snapshot references missing texture {index}."));
+        RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
+                scene.CreateRenderSnapshot((float)interpolationFraction),
+                RenderColor.WaddamburoBlue,
+                index => index < textureIds.Length
+                    ? textureIds[index]
+                    : throw new InvalidDataException($"Scene snapshot references missing texture {index}."));
+        var result = application.Run(
+            createFrame,
+            scene.Advance,
+            frameLimit,
+            tickLimit,
+            screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
         for (var index = 0; index < scene.Layers.Length; index++)
         {
             foreach (var diagnostic in scene.Layers[index].Player.Diagnostics)
@@ -87,10 +98,9 @@ internal static class SceneViewer
                     $"{loaded[index].Entry.MovieName}: {diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
             }
         }
-        return application.Run(
-            frame,
-            frameLimit,
-            screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
+        if (result.DroppedTicks > 0)
+            Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
+        return result.RenderedFrames;
     }
 
     private static ImmutableArray<SceneEntry> readScene(string scenePath)

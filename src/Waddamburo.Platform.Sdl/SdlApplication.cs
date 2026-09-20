@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using SDL;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.Platform.Sdl.Timing;
 using static SDL.SDL3;
 
 namespace Waddamburo.Platform.Sdl;
@@ -69,16 +71,36 @@ public sealed unsafe class SdlApplication : IDisposable
         RenderFrame frame,
         int? frameLimit = null,
         Action<RenderCapture>? captureFinalFrame = null)
+        => Run(
+            _ => frame,
+            static () => { },
+            frameLimit,
+            tickLimit: null,
+            captureFinalFrame).RenderedFrames;
+
+    public SdlRunResult Run(
+        Func<double, RenderFrame> createFrame,
+        Action simulationTick,
+        int? frameLimit = null,
+        int? tickLimit = null,
+        Action<RenderCapture>? captureFinalFrame = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(createFrame);
+        ArgumentNullException.ThrowIfNull(simulationTick);
         if (frameLimit < 0)
             throw new ArgumentOutOfRangeException(nameof(frameLimit));
-        if (captureFinalFrame is not null && frameLimit is null)
-            throw new ArgumentException("A final-frame capture requires a bounded frame count.", nameof(frameLimit));
+        if (tickLimit < 0)
+            throw new ArgumentOutOfRangeException(nameof(tickLimit));
+        if (captureFinalFrame is not null && frameLimit is null && tickLimit is null)
+            throw new ArgumentException("A final-frame capture requires a frame or tick limit.");
 
         var renderedFrames = 0;
+        var simulationTicks = 0;
+        var droppedTicks = 0;
+        var clock = new FixedStepAccumulator();
+        var previousTimestamp = Stopwatch.GetTimestamp();
         var running = true;
         while (running && (frameLimit is null || renderedFrames < frameLimit))
         {
@@ -94,13 +116,27 @@ public sealed unsafe class SdlApplication : IDisposable
 
             if (!running)
                 break;
-            var shouldCapture = captureFinalFrame is not null && renderedFrames + 1 == frameLimit;
-            var capture = _renderer!.Present(frame, shouldCapture);
+
+            var timestamp = Stopwatch.GetTimestamp();
+            var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
+            previousTimestamp = timestamp;
+            var remainingTicks = tickLimit is int limit ? limit - simulationTicks : int.MaxValue;
+            var update = clock.AddElapsed(elapsed, simulationTick, remainingTicks);
+            simulationTicks += update.ExecutedTicks;
+            droppedTicks += update.DroppedTicks;
+
+            var reachedTickLimit = tickLimit is int requestedTicks && simulationTicks >= requestedTicks;
+            var reachedFrameLimit = frameLimit is int requestedFrames && renderedFrames + 1 >= requestedFrames;
+            var shouldCapture = captureFinalFrame is not null && (reachedTickLimit || reachedFrameLimit);
+            var interpolationFraction = reachedTickLimit ? 1d : clock.InterpolationFraction;
+            var capture = _renderer!.Present(createFrame(interpolationFraction), shouldCapture);
             if (capture is not null)
                 captureFinalFrame!(capture);
             renderedFrames++;
+            if (reachedTickLimit)
+                break;
         }
-        return renderedFrames;
+        return new SdlRunResult(renderedFrames, simulationTicks, droppedTicks, clock.InterpolationFraction);
     }
 
     public void Dispose()
@@ -148,3 +184,9 @@ public sealed unsafe class SdlApplication : IDisposable
         return new InvalidOperationException($"Failed to {operation}: {error}");
     }
 }
+
+public readonly record struct SdlRunResult(
+    int RenderedFrames,
+    int SimulationTicks,
+    int DroppedTicks,
+    double InterpolationFraction);

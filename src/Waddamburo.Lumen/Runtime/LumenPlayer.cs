@@ -6,11 +6,15 @@ namespace Waddamburo.Lumen.Runtime;
 
 /// <summary>
 /// Small deterministic display-list core. It currently applies ordinary-frame
-/// placement/removal records and builds render snapshots; AVM actions and key-frame
-/// interpolation remain explicit diagnostics until their runtime modules exist.
+/// placement/removal records and builds interpolated render snapshots; AVM actions
+/// and F105 seek-state restoration remain explicit diagnostics until their runtime
+/// modules exist.
 /// </summary>
 public sealed class LumenPlayer
 {
+    private const float TranslationCutThreshold = 200f;
+    private const float ColorCutThreshold = 0.3f;
+
     private readonly LmbMovieDefinition _movie;
     private readonly Dictionary<uint, LmbShapeDefinition> _shapes;
     private readonly Dictionary<uint, SpriteTimeline> _sprites;
@@ -41,7 +45,7 @@ public sealed class LumenPlayer
                 "LUM_KEYFRAMES_DEFERRED",
                 timeline.CharacterId,
                 0,
-                "Key-frame interpolation data is retained but not applied by the display-list slice.");
+                "F105 seek-state data is retained but not applied by the display-list slice.");
         }
 
         var rootId = rootCharacterId ?? movie.Properties?.RootCharacterId
@@ -63,6 +67,7 @@ public sealed class LumenPlayer
 
     public void Advance()
     {
+        snapshotInstances(_root);
         var existing = new List<DisplayInstance>();
         collectPlayingInstances(_root, existing);
         foreach (var instance in existing)
@@ -72,10 +77,12 @@ public sealed class LumenPlayer
         }
     }
 
-    public LumenRenderSnapshot CreateRenderSnapshot()
+    public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f)
     {
+        if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
+            throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
-        appendInstance(_root, LumenMatrix.Identity, ColorState.Identity, quads);
+        appendInstance(_root, LumenMatrix.Identity, ColorState.Identity, interpolationFraction, quads);
         return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());
     }
 
@@ -278,12 +285,14 @@ public sealed class LumenPlayer
         DisplayInstance instance,
         LumenMatrix parentTransform,
         ColorState parentColor,
+        float interpolationFraction,
         ImmutableArray<LumenRenderQuad>.Builder quads)
     {
         if (instance.Removed)
             return;
-        var transform = instance.Transform.Then(parentTransform);
-        var color = instance.Color.Then(parentColor);
+        var local = interpolate(instance, interpolationFraction);
+        var transform = local.Transform.Then(parentTransform);
+        var color = local.Color.Then(parentColor);
         if (_shapes.TryGetValue(instance.CharacterId, out var shape))
         {
             foreach (var geometry in shape.Geometry)
@@ -311,7 +320,7 @@ public sealed class LumenPlayer
         }
 
         foreach (var child in instance.Children.Values)
-            appendInstance(child, transform, color, quads);
+            appendInstance(child, transform, color, interpolationFraction, quads);
     }
 
     private void reportOnce(string code, uint characterId, int frame, string message)
@@ -338,6 +347,62 @@ public sealed class LumenPlayer
             collectPlayingInstances(child, destination);
     }
 
+    private static void snapshotInstances(DisplayInstance instance)
+    {
+        if (instance.Removed)
+            return;
+        instance.PreviousTransform = instance.Transform;
+        instance.PreviousMultiply = instance.Color.Multiply;
+        foreach (var child in instance.Children.Values)
+            snapshotInstances(child);
+    }
+
+    private static InterpolatedState interpolate(DisplayInstance instance, float fraction)
+    {
+        if (fraction >= 1 || instance.PreviousTransform is not LumenMatrix previousTransform
+            || instance.PreviousMultiply is not LumenRenderColor previousMultiply)
+        {
+            return new InterpolatedState(instance.Transform, instance.Color);
+        }
+
+        var currentTransform = instance.Transform;
+        if (Math.Abs(currentTransform.X - previousTransform.X)
+            + Math.Abs(currentTransform.Y - previousTransform.Y) > TranslationCutThreshold
+            || colorDistanceExceeds(previousMultiply, instance.Color.Multiply, ColorCutThreshold))
+        {
+            return new InterpolatedState(instance.Transform, instance.Color);
+        }
+
+        return new InterpolatedState(
+            new LumenMatrix(
+                lerp(previousTransform.M11, currentTransform.M11, fraction),
+                lerp(previousTransform.M12, currentTransform.M12, fraction),
+                lerp(previousTransform.M21, currentTransform.M21, fraction),
+                lerp(previousTransform.M22, currentTransform.M22, fraction),
+                lerp(previousTransform.X, currentTransform.X, fraction),
+                lerp(previousTransform.Y, currentTransform.Y, fraction)),
+            instance.Color with
+            {
+                Multiply = new LumenRenderColor(
+                    lerp(previousMultiply.Red, instance.Color.Multiply.Red, fraction),
+                    lerp(previousMultiply.Green, instance.Color.Multiply.Green, fraction),
+                    lerp(previousMultiply.Blue, instance.Color.Multiply.Blue, fraction),
+                    lerp(previousMultiply.Alpha, instance.Color.Multiply.Alpha, fraction)),
+            });
+    }
+
+    private static bool colorDistanceExceeds(
+        LumenRenderColor previous,
+        LumenRenderColor current,
+        float threshold) =>
+        Math.Abs(current.Red - previous.Red) > threshold
+        || Math.Abs(current.Green - previous.Green) > threshold
+        || Math.Abs(current.Blue - previous.Blue) > threshold
+        || Math.Abs(current.Alpha - previous.Alpha) > threshold;
+
+    private static float lerp(float from, float to, float fraction) =>
+        from + ((to - from) * fraction);
+
     private static LumenRenderVertex transformVertex(LmbVertex vertex, LumenMatrix transform)
     {
         var position = transform.Transform(vertex.X, vertex.Y);
@@ -363,6 +428,10 @@ public sealed class LumenPlayer
 
         public ColorState Color { get; set; } = ColorState.Identity;
 
+        public LumenMatrix? PreviousTransform { get; set; }
+
+        public LumenRenderColor? PreviousMultiply { get; set; }
+
         public SortedDictionary<uint, DisplayInstance> Children { get; } = [];
     }
 
@@ -370,6 +439,8 @@ public sealed class LumenPlayer
         uint CharacterId,
         ImmutableArray<ImmutableArray<LmbTimelineCommand>> Frames,
         bool HasKeyFrames);
+
+    private readonly record struct InterpolatedState(LumenMatrix Transform, ColorState Color);
 
     private readonly record struct ColorState(LumenRenderColor Multiply, LumenRenderColor Add)
     {

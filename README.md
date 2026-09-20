@@ -50,12 +50,15 @@ Run the current SDL_GPU visual smoke test until the window is closed:
 dotnet run --project src/Waddamburo.App
 ```
 
-For a bounded automated smoke test, pass `--frames=N`. With no asset options the app
-renders a synthetic nearest-sampled checkerboard.
+For a bounded automated smoke test, pass `--frames=N`. Use `--ticks=N` to stop on
+an exact authored 60 Hz simulation tick; display frames and simulation ticks are
+independent. With no asset options the app renders a synthetic nearest-sampled
+checkerboard.
 
 Capture the final bounded frame directly from the SDL_GPU swapchain with
-`--screenshot=/path/to/frame.png` (or `.bmp`). If `--frames` is omitted, a screenshot
-run renders one frame and exits.
+`--screenshot=/path/to/frame.png` (or `.bmp`). If neither `--frames` nor `--ticks` is
+present, a screenshot run renders one frame and exits. With `--ticks`, it captures
+the exact requested simulation state.
 
 The asset-backed vertical slice can open frame zero of a user-supplied DDP movie
 without copying that archive into the repository:
@@ -67,9 +70,10 @@ dotnet run --project src/Waddamburo.App -- \
 ```
 
 This validates DDP/LMB/NUT structures, decodes and uploads textures, builds the
-initial Lumen display list, and presents its immutable render snapshot. Deferred
-AVM actions, key-frame interpolation, special blend modes, and native fill surfaces
-are diagnosed explicitly; this is not yet a full compatibility viewer.
+initial Lumen display list, advances it at 60 Hz, and presents immutable render
+snapshots. Deferred AVM actions, F105 seek-state restoration, special blend modes,
+and native fill surfaces are diagnosed explicitly; this is not yet a full
+compatibility viewer.
 
 Compose several independently loaded Lumen movies on the 1280x720 stage with a
 scene description and a user-owned asset root:
@@ -78,6 +82,7 @@ scene description and a user-owned asset root:
 dotnet run --project src/Waddamburo.App -- \
   --scene=/path/to/scene.txt \
   --asset-root=/path/to/lumendata/packed \
+  --ticks=30 \
   --screenshot=/tmp/scene.png
 ```
 

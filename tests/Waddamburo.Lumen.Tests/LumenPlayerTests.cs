@@ -47,6 +47,54 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void RenderSnapshotInterpolatesBetweenPreviousAndCurrentTickState()
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        player.Advance();
+        var previous = Assert.Single(player.CreateRenderSnapshot(0).Quads);
+        var halfway = Assert.Single(player.CreateRenderSnapshot(0.5f).Quads);
+        var current = Assert.Single(player.CreateRenderSnapshot(1).Quads);
+
+        Assert.Equal(new LumenRenderVertex(10, 20, 0, 0), previous.TopLeft);
+        Assert.Equal(new LumenRenderVertex(20, 30, 0, 0), halfway.TopLeft);
+        Assert.Equal(new LumenRenderVertex(30, 40, 0, 0), current.TopLeft);
+    }
+
+    [Fact]
+    public void RenderSnapshotTreatsLargeTranslationAsCut()
+    {
+        var player = new LumenPlayer(createMovie(secondX: 250), 1280, 720);
+
+        player.Advance();
+        var atStartOfPresentationInterval = Assert.Single(player.CreateRenderSnapshot(0).Quads);
+
+        Assert.Equal(new LumenRenderVertex(250, 40, 0, 0), atStartOfPresentationInterval.TopLeft);
+    }
+
+    [Fact]
+    public void RenderSnapshotTreatsAbruptMultiplyColorChangeAsCut()
+    {
+        var player = new LumenPlayer(createMovie(secondColorIndex: 1), 1280, 720);
+
+        player.Advance();
+        var atStartOfPresentationInterval = Assert.Single(player.CreateRenderSnapshot(0).Quads);
+
+        Assert.Equal(LumenRenderColor.Transparent, atStartOfPresentationInterval.MultiplyColor);
+    }
+
+    [Theory]
+    [InlineData(-0.01f)]
+    [InlineData(1.01f)]
+    [InlineData(float.NaN)]
+    public void RenderSnapshotRejectsInvalidInterpolationFraction(float fraction)
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => player.CreateRenderSnapshot(fraction));
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -71,7 +119,15 @@ public sealed class LumenPlayerTests
         Assert.Equal(1, second.CurrentFrame);
     }
 
-    private static LmbMovieDefinition createMovie()
+    [Fact]
+    public void EmptySceneStillRejectsInvalidInterpolationFraction()
+    {
+        var scene = new LumenScenePlayer(1280, 720, []);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => scene.CreateRenderSnapshot(float.PositiveInfinity));
+    }
+
+    private static LmbMovieDefinition createMovie(float secondX = 30, uint secondColorIndex = uint.MaxValue)
     {
         var geometry = new uint[]
         {
@@ -83,8 +139,8 @@ public sealed class LumenPlayerTests
         };
         var file = createLmb(
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
-            words(LmbTags.ColorTransformPool, 1, 0x00800100, 0x01000080),
-            words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(30), bits(40)),
+            words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
+            words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
             record(LmbTags.ActionPool, actionPool([0])),
             words(LmbTags.DefineShape, 42, 0, 0, 1),
@@ -93,7 +149,7 @@ public sealed class LumenPlayerTests
             words(LmbTags.ShowFrame, 0, 1),
             words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
             words(LmbTags.ShowFrame, 1, 2),
-            words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00020000, 0x00030000, 0, 0, uint.MaxValue, uint.MaxValue, 0, 0),
+            words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
             words(LmbTags.DoAction, 0, 0),
             words(LmbTags.ShowFrame, 2, 1),
             words(LmbTags.RemoveObject, 42, 0x00020000));
