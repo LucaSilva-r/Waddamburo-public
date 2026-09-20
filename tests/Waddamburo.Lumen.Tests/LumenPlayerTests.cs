@@ -568,6 +568,151 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void AuthoredFunctionReturnsPropagateToCallers()
+    {
+        var player = new LumenPlayer(
+            createMovie(actionBytecode: [
+                0x9B, 0x06, 0x00,
+                    0x14, 0x00,
+                    0x00, 0x00,
+                    0x15, 0x00,
+                    0x96, 0x08, 0x00,
+                        0x07, 0x00, 0x00, 0x00, 0x00,
+                        0x09, 0x07, 0x00,
+                    0x1C,
+                    0x96, 0x03, 0x00, 0x09, 0x08, 0x00,
+                    0x52,
+                    0x3E,
+                    0x00,
+                0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+                0x1C,
+                0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+                0x96, 0x08, 0x00,
+                    0x07, 0x00, 0x00, 0x00, 0x00,
+                    0x09, 0x14, 0x00,
+                0x3D,
+                0x4F,
+                0x00,
+            ]),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterObject("resource", resource =>
+                resource.RegisterMethod("ResolveVisible", _ => LumenHostValue.FromBoolean(true)))));
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void AuthoredGotoAndStopUsesOneBasedClipFrames()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x0A, 0x00,
+                0x07, 0x03, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x15, 0x00,
+            0x52,
+            0x17,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.False(player.IsPlaying);
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void PrimitiveToStringReturnsAnAvmString()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+            0x96, 0x0A, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x07, 0x03, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x16, 0x00,
+            0x52,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void ArrayIndexWritesOverrideInitialValues()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x07, 0x00,
+                0x05, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x42,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x07, 0x00,
+                0x04, 0x00,
+                0x09, 0x17, 0x00,
+                0x05, 0x01,
+            0x4F,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+            0x96, 0x05, 0x00, 0x04, 0x00, 0x09, 0x17, 0x00,
+            0x4E,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void StringLengthAndCharAtReturnAvmValues()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+            0x96, 0x06, 0x00, 0x09, 0x18, 0x00, 0x09, 0x19, 0x00,
+            0x4E,
+            0x96, 0x05, 0x00, 0x07, 0x01, 0x00, 0x00, 0x00,
+            0x49,
+            0x60,
+            0x4F,
+            0x96, 0x0D, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+                0x09, 0x18, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x1A, 0x00,
+            0x52,
+            0x96, 0x03, 0x00, 0x09, 0x1B, 0x00,
+            0x49,
+            0x60,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
     public void HostFailuresReturnUndefinedWithStableDiagnostic()
     {
         var player = new LumenPlayer(
@@ -758,7 +903,8 @@ public sealed class LumenPlayerTests
             record(LmbTags.StringPool, stringPool(
                 "middle", "end", "_visible", "prototype", "Object", "RootExport", "registerClass",
                 "resource", "ResolveVisible", "this", "FailingHost", "flash", "external",
-                "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame")),
+                "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame",
+                "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

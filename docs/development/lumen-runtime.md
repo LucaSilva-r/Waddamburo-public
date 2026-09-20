@@ -48,6 +48,11 @@ preflighted, and playback/member changes are committed only after successful
 termination, so unsupported opcodes and stack underflow defer the whole record
 without partial writes.
 
+Authored function returns propagate through nested calls rather than collapsing to
+`undefined`. Primitive strings expose `length`, `charAt`, and `toString`, while
+array member writes override their initialized indices. These small built-ins are
+implemented in the AVM boundary rather than in a game host.
+
 `LumenRuntimeLimits` supplies positive per-player ceilings for instructions per
 action, operand-stack values, queued frame actions, registers, and call depth.
 Instruction/stack/register exhaustion emits `LUM_ACTION_LIMIT`; excess queued work
@@ -69,7 +74,9 @@ The candidate DefineSprite header-word-2 linkage index connects exported sprites
 `Object.registerClass`. Registration is a commit-time effect: it binds both existing
 and subsequently placed instances, installs the class prototype, and invokes the
 constructor with preloaded `this`. `MovieClip.play` and `stop` bridge to timeline
-state. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
+state. `MovieClip.gotoAndPlay` and `gotoAndStop` resolve one-based frame numbers or
+authored labels on the target clip, rebuild only that clip's timeline, and reset its
+interpolation. Invalid targets emit `LUM_AVM_GOTO_INVALID`. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
 diagnostics. Synthetic fixtures cover class bootstrap and binding without embedding
 or reproducing original content.
 
@@ -92,7 +99,9 @@ same primitive-only host values. Callback return values and object arguments rem
 outside this slice. The standalone viewer installs a `Lumen` presence object
 through its host binding so movies select their native-game branch. Its
 deterministic `IsReady`, `InitInfo`, and `IsStartLumen` methods allow Entry's
-initialization handler to complete without pretending to supply game state; other
+initialization handler to complete without pretending to supply game state. Its
+single-movie Entry defaults also select paid play, decline synthetic coin entry,
+and acknowledge voice-stop requests; other
 unimplemented native methods remain diagnostics rather than hidden stubs.
 
 The Formats layer supplies immutable prevalidated code blocks rather than asking
@@ -118,8 +127,9 @@ stable, deduplicated diagnostics for those deferred paths. Synthetic tests cover
 place/move/remove/loop behavior, nested matrix order, color conversion, F105 and
 replay-based seeks, immutable snapshots, interpolation and cut behavior, simple
 play/stop actions, transactional variables and clip members, function/class
-bootstrap, exported-sprite constructor binding, same-tick enter-frame dispatch,
-and explicit deferred-action diagnostics.
+bootstrap, exported-sprite constructor binding, nested function returns, primitive
+string access, clip-local jumps, same-tick enter-frame dispatch, and explicit
+deferred-action diagnostics.
 
 `Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
 the vertical slice. It receives a validated DDP movie view, requires the observed

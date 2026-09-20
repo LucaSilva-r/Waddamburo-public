@@ -14,7 +14,15 @@ internal static class Avm1Interpreter
         out bool resultingPlaying)
     {
         var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
-        return tryExecute(code, strings, initialPlaying, limits, context, registers, out resultingPlaying);
+        return tryExecute(
+            code,
+            strings,
+            initialPlaying,
+            limits,
+            context,
+            registers,
+            out resultingPlaying,
+            out _);
     }
 
     public static Avm1ExecutionStatus TryExecuteFunction(
@@ -25,12 +33,14 @@ internal static class Avm1Interpreter
         bool initialPlaying,
         LumenRuntimeLimits limits,
         Avm1ExecutionContext context,
-        out bool resultingPlaying)
+        out bool resultingPlaying,
+        out object? returnValue)
     {
         var definition = function.Definition;
         if (definition.RegisterCount >= limits.MaxRegisters)
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
@@ -38,36 +48,42 @@ internal static class Avm1Interpreter
         if ((definition.Flags & 0x0001) != 0 && !trySeedRegister(registers, ref nextRegister, thisValue))
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         if ((definition.Flags & 0x0004) != 0
             && !trySeedRegister(registers, ref nextRegister, new Avm1ArrayObject(arguments)))
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         if ((definition.Flags & 0x0010) != 0
             && !trySeedRegister(registers, ref nextRegister, function.GetProperty("__super__").Value))
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         if ((definition.Flags & 0x0040) != 0
             && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_root").Value))
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         if ((definition.Flags & 0x0080) != 0
             && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_parent").Value))
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         if ((definition.Flags & 0x0100) != 0
             && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_global").Value))
         {
             resultingPlaying = initialPlaying;
+            returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
         for (var index = 0; index < definition.Parameters.Length; index++)
@@ -79,6 +95,7 @@ internal static class Avm1Interpreter
                 if (register >= registers.Length)
                 {
                     resultingPlaying = initialPlaying;
+                    returnValue = Avm1Undefined.Instance;
                     return Avm1ExecutionStatus.RegisterLimit;
                 }
                 registers[register] = value;
@@ -86,7 +103,15 @@ internal static class Avm1Interpreter
             else
                 context.SetVariable(getString(strings, parameter.NameStringIndex), value);
         }
-        return tryExecute(function.Body, strings, initialPlaying, limits, context, registers, out resultingPlaying);
+        return tryExecute(
+            function.Body,
+            strings,
+            initialPlaying,
+            limits,
+            context,
+            registers,
+            out resultingPlaying,
+            out returnValue);
     }
 
     private static Avm1ExecutionStatus tryExecute(
@@ -96,9 +121,11 @@ internal static class Avm1Interpreter
         LumenRuntimeLimits limits,
         Avm1ExecutionContext context,
         object?[] registers,
-        out bool resultingPlaying)
+        out bool resultingPlaying,
+        out object? returnValue)
     {
         resultingPlaying = initialPlaying;
+        returnValue = Avm1Undefined.Instance;
         if (!isSupported(code))
             return Avm1ExecutionStatus.Unsupported;
 
@@ -189,7 +216,7 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x3E: // Return
-                    if (!tryPop(stack, out _))
+                    if (!tryPop(stack, out returnValue))
                         return Avm1ExecutionStatus.StackUnderflow;
                     resultingPlaying = playing;
                     return Avm1ExecutionStatus.Success;

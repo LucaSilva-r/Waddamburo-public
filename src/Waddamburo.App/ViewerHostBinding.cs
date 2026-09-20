@@ -18,5 +18,8 @@ internal sealed class ViewerHostBinding : ILumenHostBinding
             lumen.RegisterMethod("IsReady", _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("InitInfo", _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("IsStartLumen", _ => LumenHostValue.FromBoolean(true));
+            lumen.RegisterMethod("EntryCoin", _ => LumenHostValue.FromBoolean(false));
+            lumen.RegisterMethod("IsFreePlay", _ => LumenHostValue.FromBoolean(false));
+            lumen.RegisterMethod("StopVoice", _ => LumenHostValue.Undefined);
         });
 }

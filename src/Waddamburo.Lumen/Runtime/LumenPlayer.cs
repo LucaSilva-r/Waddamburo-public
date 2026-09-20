@@ -421,8 +421,8 @@ public sealed class LumenPlayer
             out var playing);
         if (status == Avm1ExecutionStatus.Success)
         {
-            context.Commit();
             instance.Playing = playing;
+            context.Commit();
         }
         return status;
     }
@@ -483,9 +483,32 @@ public sealed class LumenPlayer
                 }
                 if (ReferenceEquals(target, _externalInterface) && name == "call")
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
+                if (name == "toString" && target is null or bool or double or string or Avm1Undefined)
+                    return new Avm1Lookup(true, toAvmString(target));
+                if (target is string text && name == "charAt")
+                {
+                    var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
+                    return new Avm1Lookup(
+                        true,
+                        (uint)index < (uint)text.Length ? text[index].ToString() : string.Empty);
+                }
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
                 {
                     context!.OnCommit(() => targetInstance.Playing = name == "play");
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
+                }
+                if (target is DisplayInstance jumpTarget
+                    && name is "gotoAndPlay" or "gotoAndStop"
+                    && arguments.Count > 0)
+                {
+                    if (tryResolveTimelineFrame(jumpTarget, arguments[0], out var targetFrame))
+                        context!.OnCommit(() => jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay"));
+                    else
+                        reportOnce(
+                            "LUM_AVM_GOTO_INVALID",
+                            instance.CharacterId,
+                            instance.Frame,
+                            $"Movie clip method '{name}' could not resolve target '{toAvmString(arguments[0])}'.");
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
                 }
                 if (name.Length == 0 && target is Avm1Object)
@@ -510,7 +533,7 @@ public sealed class LumenPlayer
                     "LUM_AVM_METHOD_UNRESOLVED",
                     instance.CharacterId,
                     instance.Frame,
-                    $"AVM method '{name}' is not registered; undefined was returned.");
+                    $"AVM method '{name}' is not registered on {describeAvmType(target)}; undefined was returned.");
                 return default;
             },
             (name, arguments) =>
@@ -600,7 +623,8 @@ public sealed class LumenPlayer
                 timelineTarget.Playing,
                 _limits,
                 context,
-                out var playing);
+                out var playing,
+                out var returnValue);
             if (status != Avm1ExecutionStatus.Success)
             {
                 reportOnce(
@@ -610,9 +634,9 @@ public sealed class LumenPlayer
                     $"AVM function body requires unsupported semantics or failed with {status}.");
                 return default;
             }
-            context.Commit();
             timelineTarget.Playing = playing;
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            context.Commit();
+            return new Avm1Lookup(true, returnValue);
         }
         finally
         {
@@ -644,6 +668,37 @@ public sealed class LumenPlayer
         var result = invokeFunction(instance, function, instance, []);
         if (result.Found)
             instance.ConstructedClass = function;
+    }
+
+    private bool tryResolveTimelineFrame(DisplayInstance instance, object? value, out int frame)
+    {
+        var timeline = _sprites[instance.CharacterId];
+        if (value is string label && timeline.Labels.TryGetValue(label, out frame))
+            return true;
+        var authoredFrame = toNumber(value);
+        if (double.IsFinite(authoredFrame)
+            && authoredFrame >= 1
+            && authoredFrame <= timeline.Frames.Length)
+        {
+            frame = checked((int)Math.Truncate(authoredFrame)) - 1;
+            return true;
+        }
+        frame = -1;
+        return false;
+    }
+
+    private void jumpInstance(DisplayInstance instance, int frame, bool play)
+    {
+        if (instance.Removed)
+            return;
+        if (instance.Frame != frame)
+        {
+            instance.Playing = true;
+            restoreInstance(instance, frame);
+            enqueueCurrentFrameActions(instance);
+            resetInterpolation(instance);
+        }
+        instance.Playing = play;
     }
 
     private Avm1Lookup readVariable(DisplayInstance instance, string name)
@@ -689,10 +744,14 @@ public sealed class LumenPlayer
         }
         if (target is Avm1ArrayObject array)
         {
+            if (array.Properties.TryGetValue(name, out var overridden))
+                return new Avm1Lookup(true, overridden);
             var indexed = array.GetIndexedProperty(name);
             if (indexed.Found)
                 return indexed;
         }
+        if (target is string text && name == "length")
+            return new Avm1Lookup(true, (double)text.Length);
         if (target is Avm1Object avmObject)
             return avmObject.GetProperty(name);
         if (target is Dictionary<string, object?> dictionary && dictionary.TryGetValue(name, out var member))
@@ -772,6 +831,31 @@ public sealed class LumenPlayer
         double number => number,
         string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
         _ => double.NaN,
+    };
+
+    private static string toAvmString(object? value) => value switch
+    {
+        null => "null",
+        Avm1Undefined => "undefined",
+        bool boolean => boolean ? "true" : "false",
+        double number => number.ToString("G15", System.Globalization.CultureInfo.InvariantCulture),
+        string text => text,
+        _ => "[object Object]",
+    };
+
+    private static string describeAvmType(object? value) => value switch
+    {
+        null => "null",
+        Avm1Undefined => "undefined",
+        DisplayInstance => "a movie clip",
+        Avm1FunctionValue => "a function",
+        Avm1ArrayObject => "an array",
+        Avm1Object => "an object",
+        Dictionary<string, object?> => "a global object",
+        bool => "a boolean",
+        double => "a number",
+        string => "a string",
+        _ => "an unknown value",
     };
 
     private void applyPlacement(
