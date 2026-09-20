@@ -9,6 +9,7 @@ The implemented transaction is intentionally small:
 
 - initialization enters ordinary frame zero;
 - place, move, replace, and remove commands mutate depth-ordered children;
+- frame actions are queued during timeline mutation and drained parent before child;
 - matrix and translation pool entries compose through nested instances;
 - multiply/add color transforms compose through the hierarchy; and
 - a render call creates a new immutable logical-stage snapshot without exposing or
@@ -30,8 +31,16 @@ Root labels are compiled into an ordinal immutable lookup. `GotoFrame` and
 `GotoLabel` combine the same cut transaction with an explicit resulting playback
 state; `Stop` prevents authored advancement while snapshots continue rendering,
 and `Play` resumes on the next simulation tick. Seeking while stopped still rebuilds
-the requested state before restoring the paused state. Frame actions remain
-deferred until the deterministic action queue and AVM execution boundary exist.
+the requested state. Skipped frames apply their display-list mutations without
+running their actions; only actions on the final visible frame are queued. The
+requested playback state is established before that queue drains, so an authored
+target-frame `Play` or `Stop` takes precedence.
+
+The first action boundary is deliberately narrow. A record containing only the
+AVM `Play`, `Stop`, and `End` opcodes is validated in full and then applied to its
+own display instance. Any other opcode defers the entire record without partially
+executing it and emits `LUM_ACTION_DEFERRED`. Full AVM execution, enter-frame
+handlers, and recursive queue draining remain outside this slice.
 
 Each display instance also retains its previous transform and multiply color. A
 snapshot accepts the display accumulator's fractional tick and interpolates those
@@ -40,11 +49,12 @@ greater than 200 logical pixels and multiply-color component changes greater tha
 0.3 are explicit cuts; new and replaced instances render their current state. Add
 color remains at its current authored value.
 
-AVM actions, native fill-zero surfaces, and non-normal blend modes are retained but
-not guessed. The player emits stable, deduplicated diagnostics for those deferred
-paths. Synthetic tests cover root resolution, place/move/remove/loop behavior,
-nested matrix order, color conversion, F105 and replay-based seeks, immutable
-snapshots, interpolation and cut behavior, and explicit action diagnostics.
+Unsupported AVM actions, native fill-zero surfaces, and non-normal blend modes are
+retained but not guessed. The player emits stable, deduplicated diagnostics for
+those deferred paths. Synthetic tests cover root resolution,
+place/move/remove/loop behavior, nested matrix order, color conversion, F105 and
+replay-based seeks, immutable snapshots, interpolation and cut behavior, simple
+play/stop actions, and explicit deferred-action diagnostics.
 
 `Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
 the vertical slice. It receives a validated DDP movie view, requires the observed

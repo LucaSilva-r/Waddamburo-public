@@ -20,7 +20,9 @@ public sealed class LumenPlayer
     private readonly Dictionary<uint, SpriteTimeline> _sprites;
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
     private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
+    private readonly List<PendingFrameAction> _pendingActions = [];
     private readonly DisplayInstance _root;
+    private long _nextActionSequence;
 
     public LumenPlayer(
         LmbMovieDefinition movie,
@@ -46,8 +48,9 @@ public sealed class LumenPlayer
         if (!_sprites.ContainsKey(rootId))
             throw new ArgumentException($"Root character {rootId} is not a defined sprite.", nameof(rootCharacterId));
 
-        _root = new DisplayInstance(rootId);
-        enterFrame(_root, 0);
+        _root = new DisplayInstance(rootId, hierarchyDepth: 0);
+        enterFrame(_root, 0, queueActions: true);
+        drainActions();
     }
 
     public float StageWidth { get; }
@@ -65,7 +68,8 @@ public sealed class LumenPlayer
     public void Advance()
     {
         snapshotInstances(_root);
-        advanceSubtree(_root);
+        advanceSubtree(_root, queueActions: true);
+        drainActions();
     }
 
     public void Seek(int frame)
@@ -74,17 +78,7 @@ public sealed class LumenPlayer
         if ((uint)frame >= (uint)timeline.Frames.Length)
             throw new ArgumentOutOfRangeException(nameof(frame));
 
-        var wasPlaying = _root.Playing;
-        _root.Playing = true;
-        try
-        {
-            restoreInstance(_root, frame);
-        }
-        finally
-        {
-            _root.Playing = wasPlaying;
-        }
-        resetInterpolation(_root);
+        seekCore(frame, _root.Playing);
     }
 
     public void GotoFrame(int frame, bool play)
@@ -93,9 +87,10 @@ public sealed class LumenPlayer
         if ((uint)frame >= (uint)timeline.Frames.Length)
             throw new ArgumentOutOfRangeException(nameof(frame));
 
-        if (frame != _root.Frame)
-            Seek(frame);
-        _root.Playing = play;
+        if (frame == _root.Frame)
+            _root.Playing = play;
+        else
+            seekCore(frame, play);
     }
 
     public void GotoLabel(string label, bool play)
@@ -111,14 +106,25 @@ public sealed class LumenPlayer
 
     public void Stop() => _root.Playing = false;
 
-    private void advanceSubtree(DisplayInstance root)
+    private void seekCore(int frame, bool play)
+    {
+        _pendingActions.Clear();
+        _root.Playing = true;
+        restoreInstance(_root, frame);
+        _root.Playing = play;
+        enqueueCurrentFrameActions(_root);
+        drainActions();
+        resetInterpolation(_root);
+    }
+
+    private void advanceSubtree(DisplayInstance root, bool queueActions)
     {
         var existing = new List<DisplayInstance>();
         collectPlayingInstances(root, existing);
         foreach (var instance in existing)
         {
             if (!instance.Removed)
-                advanceInstance(instance);
+                advanceInstance(instance, queueActions);
         }
     }
 
@@ -191,7 +197,7 @@ public sealed class LumenPlayer
         if (keyFrame >= 0)
         {
             instance.Frame = keyFrame;
-            applyCommands(instance, timeline.KeyFrames[keyFrame]);
+            applyCommands(instance, timeline.KeyFrames[keyFrame], queueActions: false);
             foreach (var child in instance.Children.Values)
             {
                 if (!_sprites.TryGetValue(child.CharacterId, out var childTimeline)
@@ -206,15 +212,15 @@ public sealed class LumenPlayer
         else
         {
             instance.Frame = -1;
-            enterFrame(instance, 0);
+            enterFrame(instance, 0, queueActions: false);
             keyFrame = 0;
         }
 
         for (var frame = keyFrame + 1; frame <= targetFrame; frame++)
-            advanceSubtree(instance);
+            advanceSubtree(instance, queueActions: false);
     }
 
-    private void advanceInstance(DisplayInstance instance)
+    private void advanceInstance(DisplayInstance instance, bool queueActions)
     {
         if (!instance.Playing)
             return;
@@ -229,26 +235,29 @@ public sealed class LumenPlayer
             instance.Children.Clear();
             nextFrame = 0;
         }
-        enterFrame(instance, nextFrame);
+        enterFrame(instance, nextFrame, queueActions);
     }
 
-    private void enterFrame(DisplayInstance instance, int frame)
+    private void enterFrame(DisplayInstance instance, int frame, bool queueActions)
     {
         var timeline = _sprites[instance.CharacterId];
         if ((uint)frame >= (uint)timeline.Frames.Length)
             return;
         instance.Frame = frame;
-        applyCommands(instance, timeline.Frames[frame]);
+        applyCommands(instance, timeline.Frames[frame], queueActions);
     }
 
-    private void applyCommands(DisplayInstance instance, ImmutableArray<LmbTimelineCommand> commands)
+    private void applyCommands(
+        DisplayInstance instance,
+        ImmutableArray<LmbTimelineCommand> commands,
+        bool queueActions)
     {
         foreach (var command in commands)
         {
             switch (command)
             {
                 case LmbPlaceObjectCommand place:
-                    applyPlacement(instance, place);
+                    applyPlacement(instance, place, queueActions);
                     break;
                 case LmbRemoveObjectCommand remove:
                     var depth = remove.Depth;
@@ -258,18 +267,88 @@ public sealed class LumenPlayer
                         removed.Removed = true;
                     }
                     break;
-                case LmbDoActionCommand:
-                    reportOnce(
-                        "LUM_ACTION_DEFERRED",
-                        instance.CharacterId,
-                        instance.Frame,
-                        "AVM frame action is retained but not executed by the display-list slice.");
+                case LmbDoActionCommand action when queueActions:
+                    _pendingActions.Add(new PendingFrameAction(
+                        instance,
+                        action.ActionIndex,
+                        _nextActionSequence++));
                     break;
             }
         }
     }
 
-    private void applyPlacement(DisplayInstance parent, LmbPlaceObjectCommand placement)
+    private void enqueueCurrentFrameActions(DisplayInstance instance)
+    {
+        if (instance.Removed || instance.Frame < 0)
+            return;
+        var timeline = _sprites[instance.CharacterId];
+        foreach (var action in timeline.Frames[instance.Frame].OfType<LmbDoActionCommand>())
+        {
+            _pendingActions.Add(new PendingFrameAction(
+                instance,
+                action.ActionIndex,
+                _nextActionSequence++));
+        }
+        foreach (var child in instance.Children.Values)
+        {
+            if (_sprites.ContainsKey(child.CharacterId))
+                enqueueCurrentFrameActions(child);
+        }
+    }
+
+    private void drainActions()
+    {
+        foreach (var pending in _pendingActions
+            .OrderBy(action => action.Instance.HierarchyDepth)
+            .ThenBy(action => action.Sequence))
+        {
+            if (pending.Instance.Removed)
+                continue;
+            if (pending.ActionIndex >= (uint)_movie.Actions.Length
+                || !tryExecuteSimpleAction(
+                    pending.Instance,
+                    _movie.Actions[checked((int)pending.ActionIndex)].Bytecode))
+            {
+                reportOnce(
+                    "LUM_ACTION_DEFERRED",
+                    pending.Instance.CharacterId,
+                    pending.Instance.Frame,
+                    $"AVM action {pending.ActionIndex} requires the full interpreter.");
+            }
+        }
+        _pendingActions.Clear();
+    }
+
+    private static bool tryExecuteSimpleAction(
+        DisplayInstance instance,
+        ImmutableArray<byte> bytecode)
+    {
+        var controls = new List<byte>();
+        var foundEnd = false;
+        foreach (var opcode in bytecode)
+        {
+            if (opcode == 0)
+            {
+                foundEnd = true;
+                break;
+            }
+            if (opcode is not (0x06 or 0x07))
+                return false;
+            controls.Add(opcode);
+        }
+
+        if (!foundEnd)
+            return false;
+
+        foreach (var opcode in controls)
+            instance.Playing = opcode == 0x06;
+        return true;
+    }
+
+    private void applyPlacement(
+        DisplayInstance parent,
+        LmbPlaceObjectCommand placement,
+        bool queueActions)
     {
         parent.Children.TryGetValue(placement.Depth, out var instance);
         switch (placement.Mode)
@@ -277,7 +356,7 @@ public sealed class LumenPlayer
             case 1:
                 if (instance is not null)
                     instance.Removed = true;
-                instance = new DisplayInstance(placement.CharacterId)
+                instance = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1)
                 {
                     PlacementId = placement.PlacementId,
                     FirstFrame = placement.FirstFrame,
@@ -285,7 +364,7 @@ public sealed class LumenPlayer
                 parent.Children[placement.Depth] = instance;
                 applyPlacementFields(instance, placement, isNew: true);
                 if (_sprites.ContainsKey(instance.CharacterId))
-                    enterFrame(instance, 0);
+                    enterFrame(instance, 0, queueActions);
                 else if (!_shapes.ContainsKey(instance.CharacterId))
                     reportOnce("LUM_CHARACTER_NOT_FOUND", instance.CharacterId, parent.Frame, "Placed character has no shape or sprite definition.");
                 break;
@@ -296,7 +375,7 @@ public sealed class LumenPlayer
                 if (instance.CharacterId != placement.CharacterId)
                 {
                     instance.Removed = true;
-                    var replacement = new DisplayInstance(placement.CharacterId)
+                    var replacement = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1)
                     {
                         PlacementId = placement.PlacementId,
                         FirstFrame = placement.FirstFrame,
@@ -307,7 +386,7 @@ public sealed class LumenPlayer
                     parent.Children[placement.Depth] = instance = replacement;
                     applyPlacementFields(instance, placement, isNew: false);
                     if (_sprites.ContainsKey(instance.CharacterId))
-                        enterFrame(instance, 0);
+                        enterFrame(instance, 0, queueActions);
                 }
                 else
                 {
@@ -534,9 +613,11 @@ public sealed class LumenPlayer
     private static LumenRenderColor convertColor(LmbColorTransform color) =>
         new(color.Red / 256f, color.Green / 256f, color.Blue / 256f, color.Alpha / 256f);
 
-    private sealed class DisplayInstance(uint characterId)
+    private sealed class DisplayInstance(uint characterId, int hierarchyDepth)
     {
         public uint CharacterId { get; } = characterId;
+
+        public int HierarchyDepth { get; } = hierarchyDepth;
 
         public uint PlacementId { get; set; } = uint.MaxValue;
 
@@ -568,6 +649,11 @@ public sealed class LumenPlayer
         ImmutableDictionary<string, int> Labels);
 
     private readonly record struct InterpolatedState(LumenMatrix Transform, ColorState Color);
+
+    private readonly record struct PendingFrameAction(
+        DisplayInstance Instance,
+        uint ActionIndex,
+        long Sequence);
 
     private readonly record struct ColorState(LumenRenderColor Multiply, LumenRenderColor Add)
     {
