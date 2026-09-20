@@ -29,3 +29,8 @@ The semantic layer retains the complete `F00C` movie-properties word array. Gree
 asset observation identifies word 3 as a candidate root sprite ID and word 7 as a
 candidate IEEE-754 frame rate; both remain evidence-labelled and are validated
 without discarding the raw record.
+
+Timeline semantics keep ordinary `0001` frame groups separate from `F105` seek-state
+groups. The latter are full display-list snapshots used only by explicit seeks, not
+additional sequential frames. For `0005` removal records, the high 16 bits of payload
+word 1 are the timeline depth directly; no one-based adjustment is applied.

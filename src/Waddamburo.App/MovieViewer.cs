@@ -12,6 +12,7 @@ internal static class MovieViewer
         string movieName,
         int windowWidth,
         int windowHeight,
+        int? seekFrame,
         int? frameLimit,
         int? tickLimit,
         string? screenshotPath)
@@ -46,6 +47,8 @@ internal static class MovieViewer
                 texture.Rgba8.AsSpan()))
             .ToArray();
         var player = content.CreatePlayer();
+        if (seekFrame is int requestedFrame)
+            player.Seek(requestedFrame);
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.ComposeContentFit(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.WaddamburoBlue,
@@ -59,7 +62,10 @@ internal static class MovieViewer
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
         foreach (var diagnostic in player.Diagnostics)
-            Console.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
+        {
+            Console.WriteLine(
+                $"{diagnostic.Severity} {diagnostic.Code} at character {diagnostic.CharacterId} frame {diagnostic.Frame}: {diagnostic.Message}");
+        }
         if (result.DroppedTicks > 0)
             Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
         return result.RenderedFrames;

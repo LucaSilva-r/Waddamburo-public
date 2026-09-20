@@ -19,6 +19,13 @@ child created during a tick does not advance twice. Ordinary timelines loop to
 frame zero. This initial loop rebuilds timeline children; identity-preserving loop
 reuse belongs to the fuller scheduler implementation.
 
+`Seek` is a separate cut transaction. It restores the nearest F105 display-list
+snapshot at or before the requested root frame, recursively derives placed child
+timeline ages from their original first-frame values, and replays only the remaining
+ordinary frames. If no snapshot exists it replays from frame zero. A completed seek
+sets previous state equal to current state so presentation interpolation cannot smear
+across the jump. Out-of-range root frames are rejected.
+
 Each display instance also retains its previous transform and multiply color. A
 snapshot accepts the display accumulator's fractional tick and interpolates those
 values without exposing mutable timeline state to the renderer. Translation changes
@@ -26,10 +33,10 @@ greater than 200 logical pixels and multiply-color component changes greater tha
 0.3 are explicit cuts; new and replaced instances render their current state. Add
 color remains at its current authored value.
 
-AVM actions, F105 seek-state restoration, native fill-zero surfaces, and non-normal
-blend modes are retained but not guessed. The player emits stable, deduplicated
-diagnostics for those deferred paths. Synthetic tests cover root resolution,
-place/move/remove/loop behavior, nested matrix order, color conversion, immutable
+AVM actions, native fill-zero surfaces, and non-normal blend modes are retained but
+not guessed. The player emits stable, deduplicated diagnostics for those deferred
+paths. Synthetic tests cover root resolution, place/move/remove/loop behavior,
+nested matrix order, color conversion, F105 and replay-based seeks, immutable
 snapshots, interpolation and cut behavior, and explicit action diagnostics.
 
 `Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for

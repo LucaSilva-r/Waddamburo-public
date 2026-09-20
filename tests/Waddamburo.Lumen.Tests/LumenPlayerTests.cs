@@ -95,6 +95,44 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void SeekRestoresExactF105SnapshotAndResetsInterpolation()
+    {
+        var player = new LumenPlayer(createMovie(includeSeekKey: true), 1280, 720);
+
+        player.Seek(2);
+
+        Assert.Equal(2, player.CurrentFrame);
+        var previous = Assert.Single(player.CreateRenderSnapshot(0).Quads);
+        var current = Assert.Single(player.CreateRenderSnapshot(1).Quads);
+        Assert.Equal(new LumenRenderVertex(30, 40, 0, 0), current.TopLeft);
+        Assert.Equal(current, previous);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_KEYFRAMES_DEFERRED");
+    }
+
+    [Fact]
+    public void SeekWithoutSnapshotReplaysOrdinaryFramesFromStart()
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        player.Seek(1);
+
+        Assert.Equal(1, player.CurrentFrame);
+        var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.Equal(new LumenRenderVertex(30, 40, 0, 0), quad.TopLeft);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(3)]
+    public void SeekRejectsFramesOutsideRootTimeline(int frame)
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => player.Seek(frame));
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -127,7 +165,10 @@ public sealed class LumenPlayerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => scene.CreateRenderSnapshot(float.PositiveInfinity));
     }
 
-    private static LmbMovieDefinition createMovie(float secondX = 30, uint secondColorIndex = uint.MaxValue)
+    private static LmbMovieDefinition createMovie(
+        float secondX = 30,
+        uint secondColorIndex = uint.MaxValue,
+        bool includeSeekKey = false)
     {
         var geometry = new uint[]
         {
@@ -137,7 +178,8 @@ public sealed class LumenPlayerTests
             bits(0), bits(50), bits(0), bits(1),
             4, 0x00410000,
         };
-        var file = createLmb(
+        var records = new List<(uint Tag, byte[] Payload)>
+        {
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
@@ -152,7 +194,17 @@ public sealed class LumenPlayerTests
             words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
             words(LmbTags.DoAction, 0, 0),
             words(LmbTags.ShowFrame, 2, 1),
-            words(LmbTags.RemoveObject, 42, 0x00020000));
+            words(LmbTags.RemoveObject, 42, 0x00030000),
+        };
+        if (includeSeekKey)
+        {
+            records.Add(words(LmbTags.FrameKey, 2, 1));
+            records.Add(words(
+                LmbTags.PlaceObject,
+                42, 2, 0, uint.MaxValue, 0x00010000, 0x00020000,
+                0x00020000, 0, uint.MaxValue, uint.MaxValue, 0, 0));
+        }
+        var file = createLmb([.. records]);
         return LmbSemanticReader.Read(file, validationContext: new LmbSemanticValidationContext(textureCount: 5)).Value;
     }
 

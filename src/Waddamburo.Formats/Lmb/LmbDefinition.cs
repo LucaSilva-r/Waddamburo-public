@@ -135,9 +135,9 @@ public sealed record LmbRemoveObjectCommand(
     uint PackedDepth,
     ImmutableArray<uint> UninterpretedWords,
     LmbRecord Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.Candidate)
+    : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference)
 {
-    public uint CandidateDepth => (PackedDepth >> 16) + 1;
+    public ushort Depth => (ushort)(PackedDepth >> 16);
 }
 
 public sealed record LmbDoActionCommand(

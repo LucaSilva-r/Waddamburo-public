@@ -83,7 +83,7 @@ public sealed class LmbSemanticReaderTests
                 Assert.Equal(EvidenceStatus.CorpusValidatedInference, place.Evidence);
                 Assert.Equal(PlaceUnknownWords, place.UninterpretedWords);
             },
-            command => Assert.Equal(3U, Assert.IsType<LmbRemoveObjectCommand>(command).CandidateDepth),
+            command => Assert.Equal((ushort)2, Assert.IsType<LmbRemoveObjectCommand>(command).Depth),
             command => Assert.IsType<LmbDoActionCommand>(command),
             command => Assert.IsType<LmbShowFrameCommand>(command),
             command => Assert.IsType<LmbFrameKeyCommand>(command));

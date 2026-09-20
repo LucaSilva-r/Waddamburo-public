@@ -67,13 +67,15 @@ without copying that archive into the repository:
 ```sh
 dotnet run --project src/Waddamburo.App -- \
   --archive=/path/to/archive.ddp --movie=movie_name \
+  --seek-frame=30 \
   --screenshot=/tmp/movie.png
 ```
 
 This validates DDP/LMB/NUT structures, decodes and uploads textures, builds the
 initial Lumen display list, advances it at 60 Hz, and presents immutable render
-snapshots. Deferred AVM actions, F105 seek-state restoration, special blend modes,
-and native fill surfaces are diagnosed explicitly; this is not yet a full
+snapshots. `--seek-frame=N` restores a single movie through its nearest F105
+seek-state snapshot and ordinary-frame replay. Deferred AVM actions, special blend
+modes, and native fill surfaces are diagnosed explicitly; this is not yet a full
 compatibility viewer.
 
 Compose several independently loaded Lumen movies on the 1280x720 stage with a

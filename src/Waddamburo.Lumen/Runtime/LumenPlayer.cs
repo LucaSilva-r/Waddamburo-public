@@ -6,9 +6,9 @@ namespace Waddamburo.Lumen.Runtime;
 
 /// <summary>
 /// Small deterministic display-list core. It currently applies ordinary-frame
-/// placement/removal records and builds interpolated render snapshots; AVM actions
-/// and F105 seek-state restoration remain explicit diagnostics until their runtime
-/// modules exist.
+/// placement/removal records, restores F105 seek snapshots, and builds interpolated
+/// render snapshots; AVM actions remain explicit diagnostics until their runtime
+/// module exists.
 /// </summary>
 public sealed class LumenPlayer
 {
@@ -39,15 +39,6 @@ public sealed class LumenPlayer
         StageHeight = stageHeight;
         _shapes = movie.Shapes.ToDictionary(shape => shape.CharacterId);
         _sprites = movie.Sprites.ToDictionary(sprite => sprite.CharacterId, compileTimeline);
-        foreach (var timeline in _sprites.Values.Where(timeline => timeline.HasKeyFrames))
-        {
-            reportOnce(
-                "LUM_KEYFRAMES_DEFERRED",
-                timeline.CharacterId,
-                0,
-                "F105 seek-state data is retained but not applied by the display-list slice.");
-        }
-
         var rootId = rootCharacterId ?? movie.Properties?.RootCharacterId
             ?? throw new ArgumentException("The movie has no candidate root sprite; provide a root character ID.", nameof(rootCharacterId));
         if (!_sprites.ContainsKey(rootId))
@@ -68,8 +59,23 @@ public sealed class LumenPlayer
     public void Advance()
     {
         snapshotInstances(_root);
+        advanceSubtree(_root);
+    }
+
+    public void Seek(int frame)
+    {
+        var timeline = _sprites[_root.CharacterId];
+        if ((uint)frame >= (uint)timeline.Frames.Length)
+            throw new ArgumentOutOfRangeException(nameof(frame));
+
+        restoreInstance(_root, frame);
+        resetInterpolation(_root);
+    }
+
+    private void advanceSubtree(DisplayInstance root)
+    {
         var existing = new List<DisplayInstance>();
-        collectPlayingInstances(_root, existing);
+        collectPlayingInstances(root, existing);
         foreach (var instance in existing)
         {
             if (!instance.Removed)
@@ -93,30 +99,73 @@ public sealed class LumenPlayer
             .Select(_ => ImmutableArray.CreateBuilder<LmbTimelineCommand>())
             .ToArray();
         int? ordinaryFrame = null;
-        var hasKeyFrames = false;
+        int? keyFrame = null;
+        var keyBuilders = new Dictionary<int, ImmutableArray<LmbTimelineCommand>.Builder>();
         foreach (var command in sprite.Timeline)
         {
             switch (command)
             {
                 case LmbShowFrameCommand show when show.Frame < (uint)frameCount:
                     ordinaryFrame = (int)show.Frame;
+                    keyFrame = null;
                     break;
-                case LmbFrameKeyCommand:
-                    hasKeyFrames = true;
+                case LmbFrameKeyCommand key when key.Frame < (uint)frameCount:
                     ordinaryFrame = null;
+                    keyFrame = (int)key.Frame;
+                    if (!keyBuilders.ContainsKey(keyFrame.Value))
+                        keyBuilders.Add(keyFrame.Value, ImmutableArray.CreateBuilder<LmbTimelineCommand>());
                     break;
                 case LmbFrameLabelCommand:
                     break;
                 default:
                     if (ordinaryFrame is int frame)
                         builders[frame].Add(command);
+                    else if (keyFrame is int key)
+                        keyBuilders[key].Add(command);
                     break;
             }
         }
         return new SpriteTimeline(
             sprite.CharacterId,
             builders.Select(builder => builder.ToImmutable()).ToImmutableArray(),
-            hasKeyFrames);
+            keyBuilders.ToImmutableDictionary(pair => pair.Key, pair => pair.Value.ToImmutable()));
+    }
+
+    private void restoreInstance(DisplayInstance instance, int targetFrame)
+    {
+        var timeline = _sprites[instance.CharacterId];
+        if ((uint)targetFrame >= (uint)timeline.Frames.Length)
+            throw new ArgumentOutOfRangeException(nameof(targetFrame));
+
+        var keyFrame = timeline.KeyFrames.Keys
+            .Where(frame => frame <= targetFrame)
+            .DefaultIfEmpty(-1)
+            .Max();
+        clearChildren(instance);
+        if (keyFrame >= 0)
+        {
+            instance.Frame = keyFrame;
+            applyCommands(instance, timeline.KeyFrames[keyFrame]);
+            foreach (var child in instance.Children.Values)
+            {
+                if (!_sprites.TryGetValue(child.CharacterId, out var childTimeline)
+                    || childTimeline.Frames.IsEmpty)
+                {
+                    continue;
+                }
+                var age = Math.Max(0, keyFrame - child.FirstFrame);
+                restoreInstance(child, age % childTimeline.Frames.Length);
+            }
+        }
+        else
+        {
+            instance.Frame = -1;
+            enterFrame(instance, 0);
+            keyFrame = 0;
+        }
+
+        for (var frame = keyFrame + 1; frame <= targetFrame; frame++)
+            advanceSubtree(instance);
     }
 
     private void advanceInstance(DisplayInstance instance)
@@ -141,7 +190,12 @@ public sealed class LumenPlayer
         if ((uint)frame >= (uint)timeline.Frames.Length)
             return;
         instance.Frame = frame;
-        foreach (var command in timeline.Frames[frame])
+        applyCommands(instance, timeline.Frames[frame]);
+    }
+
+    private void applyCommands(DisplayInstance instance, ImmutableArray<LmbTimelineCommand> commands)
+    {
+        foreach (var command in commands)
         {
             switch (command)
             {
@@ -149,7 +203,7 @@ public sealed class LumenPlayer
                     applyPlacement(instance, place);
                     break;
                 case LmbRemoveObjectCommand remove:
-                    var depth = remove.CandidateDepth;
+                    var depth = remove.Depth;
                     if (instance.Children.TryGetValue(depth, out var removed))
                     {
                         instance.Children.Remove(depth);
@@ -160,7 +214,7 @@ public sealed class LumenPlayer
                     reportOnce(
                         "LUM_ACTION_DEFERRED",
                         instance.CharacterId,
-                        frame,
+                        instance.Frame,
                         "AVM frame action is retained but not executed by the display-list slice.");
                     break;
             }
@@ -178,6 +232,7 @@ public sealed class LumenPlayer
                 instance = new DisplayInstance(placement.CharacterId)
                 {
                     PlacementId = placement.PlacementId,
+                    FirstFrame = placement.FirstFrame,
                 };
                 parent.Children[placement.Depth] = instance;
                 applyPlacementFields(instance, placement, isNew: true);
@@ -196,6 +251,7 @@ public sealed class LumenPlayer
                     var replacement = new DisplayInstance(placement.CharacterId)
                     {
                         PlacementId = placement.PlacementId,
+                        FirstFrame = placement.FirstFrame,
                         Transform = instance.Transform,
                         Color = instance.Color,
                         BlendMode = instance.BlendMode,
@@ -208,6 +264,7 @@ public sealed class LumenPlayer
                 else
                 {
                     instance.PlacementId = placement.PlacementId;
+                    instance.FirstFrame = placement.FirstFrame;
                     applyPlacementFields(instance, placement, isNew: false);
                 }
                 break;
@@ -357,6 +414,23 @@ public sealed class LumenPlayer
             snapshotInstances(child);
     }
 
+    private static void resetInterpolation(DisplayInstance instance)
+    {
+        if (instance.Removed)
+            return;
+        instance.PreviousTransform = instance.Transform;
+        instance.PreviousMultiply = instance.Color.Multiply;
+        foreach (var child in instance.Children.Values)
+            resetInterpolation(child);
+    }
+
+    private static void clearChildren(DisplayInstance instance)
+    {
+        foreach (var child in instance.Children.Values)
+            child.Removed = true;
+        instance.Children.Clear();
+    }
+
     private static InterpolatedState interpolate(DisplayInstance instance, float fraction)
     {
         if (fraction >= 1 || instance.PreviousTransform is not LumenMatrix previousTransform
@@ -418,6 +492,8 @@ public sealed class LumenPlayer
 
         public uint PlacementId { get; set; } = uint.MaxValue;
 
+        public int FirstFrame { get; set; }
+
         public int Frame { get; set; } = -1;
 
         public bool Removed { get; set; }
@@ -438,7 +514,7 @@ public sealed class LumenPlayer
     private readonly record struct SpriteTimeline(
         uint CharacterId,
         ImmutableArray<ImmutableArray<LmbTimelineCommand>> Frames,
-        bool HasKeyFrames);
+        ImmutableDictionary<int, ImmutableArray<LmbTimelineCommand>> KeyFrames);
 
     private readonly record struct InterpolatedState(LumenMatrix Transform, ColorState Color);
 

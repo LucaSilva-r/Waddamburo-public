@@ -97,7 +97,8 @@ internal static class SceneViewer
             foreach (var diagnostic in scene.Layers[index].Player.Diagnostics)
             {
                 Console.WriteLine(
-                    $"{loaded[index].Entry.MovieName}: {diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
+                    $"{loaded[index].Entry.MovieName}: {diagnostic.Severity} {diagnostic.Code} "
+                    + $"at character {diagnostic.CharacterId} frame {diagnostic.Frame}: {diagnostic.Message}");
             }
         }
         if (result.DroppedTicks > 0)
