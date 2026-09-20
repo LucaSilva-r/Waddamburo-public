@@ -133,6 +133,50 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void StopAndPlayControlRootTimelineAdvancement()
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        player.Stop();
+        player.Advance();
+        Assert.False(player.IsPlaying);
+        Assert.Equal(0, player.CurrentFrame);
+
+        player.Play();
+        player.Advance();
+        Assert.True(player.IsPlaying);
+        Assert.Equal(1, player.CurrentFrame);
+    }
+
+    [Fact]
+    public void GotoLabelRestoresFrameAndAppliesRequestedPlaybackState()
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        player.GotoLabel("middle", play: false);
+        Assert.False(player.IsPlaying);
+        Assert.Equal(1, player.CurrentFrame);
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        player.Advance();
+        Assert.Equal(1, player.CurrentFrame);
+
+        player.GotoLabel("end", play: true);
+        Assert.True(player.IsPlaying);
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
+    public void GotoLabelRejectsUnknownLabelWithoutChangingState()
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+
+        Assert.Throws<KeyNotFoundException>(() => player.GotoLabel("missing", play: false));
+        Assert.True(player.IsPlaying);
+        Assert.Equal(0, player.CurrentFrame);
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -181,13 +225,16 @@ public sealed class LumenPlayerTests
         var records = new List<(uint Tag, byte[] Payload)>
         {
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
+            record(LmbTags.StringPool, stringPool("middle", "end")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
             record(LmbTags.ActionPool, actionPool([0])),
             words(LmbTags.DefineShape, 42, 0, 0, 1),
             words(LmbTags.ShapeGeometry, geometry),
-            words(LmbTags.DefineSprite, 7, 0, 0, 0, 3, 0, 0),
+            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
+            words(LmbTags.FrameLabel, 0, 1, 0),
+            words(LmbTags.FrameLabel, 1, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
             words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
             words(LmbTags.ShowFrame, 1, 2),
@@ -240,6 +287,22 @@ public sealed class LumenPlayerTests
         {
             writeUInt32(stream, checked((uint)value.Length));
             stream.Write(value);
+            while (stream.Position % 4 != 0)
+                stream.WriteByte(0);
+        }
+        return stream.ToArray();
+    }
+
+    private static byte[] stringPool(params string[] values)
+    {
+        using var stream = new MemoryStream();
+        writeUInt32(stream, checked((uint)values.Length));
+        foreach (var value in values)
+        {
+            var encoded = System.Text.Encoding.UTF8.GetBytes(value);
+            writeUInt32(stream, checked((uint)encoded.Length));
+            stream.Write(encoded);
+            stream.WriteByte(0);
             while (stream.Position % 4 != 0)
                 stream.WriteByte(0);
         }

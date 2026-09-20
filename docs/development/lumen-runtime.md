@@ -26,6 +26,13 @@ ordinary frames. If no snapshot exists it replays from frame zero. A completed s
 sets previous state equal to current state so presentation interpolation cannot smear
 across the jump. Out-of-range root frames are rejected.
 
+Root labels are compiled into an ordinal immutable lookup. `GotoFrame` and
+`GotoLabel` combine the same cut transaction with an explicit resulting playback
+state; `Stop` prevents authored advancement while snapshots continue rendering,
+and `Play` resumes on the next simulation tick. Seeking while stopped still rebuilds
+the requested state before restoring the paused state. Frame actions remain
+deferred until the deterministic action queue and AVM execution boundary exist.
+
 Each display instance also retains its previous transform and multiply color. A
 snapshot accepts the display accumulator's fractional tick and interpolates those
 values without exposing mutable timeline state to the renderer. Translation changes

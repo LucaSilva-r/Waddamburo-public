@@ -38,7 +38,9 @@ public sealed class LumenPlayer
         StageWidth = stageWidth;
         StageHeight = stageHeight;
         _shapes = movie.Shapes.ToDictionary(shape => shape.CharacterId);
-        _sprites = movie.Sprites.ToDictionary(sprite => sprite.CharacterId, compileTimeline);
+        _sprites = movie.Sprites.ToDictionary(
+            sprite => sprite.CharacterId,
+            sprite => compileTimeline(sprite, movie.Strings));
         var rootId = rootCharacterId ?? movie.Properties?.RootCharacterId
             ?? throw new ArgumentException("The movie has no candidate root sprite; provide a root character ID.", nameof(rootCharacterId));
         if (!_sprites.ContainsKey(rootId))
@@ -54,6 +56,10 @@ public sealed class LumenPlayer
 
     public int CurrentFrame => _root.Frame;
 
+    public bool IsPlaying => _root.Playing;
+
+    public ImmutableDictionary<string, int> Labels => _sprites[_root.CharacterId].Labels;
+
     public ImmutableArray<LumenRuntimeDiagnostic> Diagnostics => [.. _diagnostics];
 
     public void Advance()
@@ -68,9 +74,42 @@ public sealed class LumenPlayer
         if ((uint)frame >= (uint)timeline.Frames.Length)
             throw new ArgumentOutOfRangeException(nameof(frame));
 
-        restoreInstance(_root, frame);
+        var wasPlaying = _root.Playing;
+        _root.Playing = true;
+        try
+        {
+            restoreInstance(_root, frame);
+        }
+        finally
+        {
+            _root.Playing = wasPlaying;
+        }
         resetInterpolation(_root);
     }
+
+    public void GotoFrame(int frame, bool play)
+    {
+        var timeline = _sprites[_root.CharacterId];
+        if ((uint)frame >= (uint)timeline.Frames.Length)
+            throw new ArgumentOutOfRangeException(nameof(frame));
+
+        if (frame != _root.Frame)
+            Seek(frame);
+        _root.Playing = play;
+    }
+
+    public void GotoLabel(string label, bool play)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        var timeline = _sprites[_root.CharacterId];
+        if (!timeline.Labels.TryGetValue(label, out var frame))
+            throw new KeyNotFoundException($"Label '{label}' is not defined on root character {_root.CharacterId}.");
+        GotoFrame(frame, play);
+    }
+
+    public void Play() => _root.Playing = true;
+
+    public void Stop() => _root.Playing = false;
 
     private void advanceSubtree(DisplayInstance root)
     {
@@ -92,7 +131,9 @@ public sealed class LumenPlayer
         return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());
     }
 
-    private static SpriteTimeline compileTimeline(LmbSpriteDefinition sprite)
+    private static SpriteTimeline compileTimeline(
+        LmbSpriteDefinition sprite,
+        ImmutableArray<LmbString> strings)
     {
         var frameCount = checked((int)sprite.DeclaredFrameCount);
         var builders = Enumerable.Range(0, frameCount)
@@ -101,6 +142,7 @@ public sealed class LumenPlayer
         int? ordinaryFrame = null;
         int? keyFrame = null;
         var keyBuilders = new Dictionary<int, ImmutableArray<LmbTimelineCommand>.Builder>();
+        var labels = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var command in sprite.Timeline)
         {
             switch (command)
@@ -115,7 +157,10 @@ public sealed class LumenPlayer
                     if (!keyBuilders.ContainsKey(keyFrame.Value))
                         keyBuilders.Add(keyFrame.Value, ImmutableArray.CreateBuilder<LmbTimelineCommand>());
                     break;
-                case LmbFrameLabelCommand:
+                case LmbFrameLabelCommand label
+                    when label.StringIndex < (uint)strings.Length
+                        && label.Frame < (uint)frameCount:
+                    labels[strings[checked((int)label.StringIndex)].Value] = checked((int)label.Frame);
                     break;
                 default:
                     if (ordinaryFrame is int frame)
@@ -128,7 +173,8 @@ public sealed class LumenPlayer
         return new SpriteTimeline(
             sprite.CharacterId,
             builders.Select(builder => builder.ToImmutable()).ToImmutableArray(),
-            keyBuilders.ToImmutableDictionary(pair => pair.Key, pair => pair.Value.ToImmutable()));
+            keyBuilders.ToImmutableDictionary(pair => pair.Key, pair => pair.Value.ToImmutable()),
+            labels.ToImmutableDictionary(StringComparer.Ordinal));
     }
 
     private void restoreInstance(DisplayInstance instance, int targetFrame)
@@ -170,6 +216,8 @@ public sealed class LumenPlayer
 
     private void advanceInstance(DisplayInstance instance)
     {
+        if (!instance.Playing)
+            return;
         var timeline = _sprites[instance.CharacterId];
         if (timeline.Frames.Length == 0)
             return;
@@ -498,6 +546,8 @@ public sealed class LumenPlayer
 
         public bool Removed { get; set; }
 
+        public bool Playing { get; set; } = true;
+
         public ushort BlendMode { get; set; }
 
         public LumenMatrix Transform { get; set; } = LumenMatrix.Identity;
@@ -514,7 +564,8 @@ public sealed class LumenPlayer
     private readonly record struct SpriteTimeline(
         uint CharacterId,
         ImmutableArray<ImmutableArray<LmbTimelineCommand>> Frames,
-        ImmutableDictionary<int, ImmutableArray<LmbTimelineCommand>> KeyFrames);
+        ImmutableDictionary<int, ImmutableArray<LmbTimelineCommand>> KeyFrames,
+        ImmutableDictionary<string, int> Labels);
 
     private readonly record struct InterpolatedState(LumenMatrix Transform, ColorState Color);
 
