@@ -83,6 +83,16 @@ per-player host binding and prints any authored `ExternalInterface` callback nam
 registered by the movie. It does not silently implement the corresponding game
 services; missing native methods remain structured runtime diagnostics.
 
+For a deterministic single-movie probe, invoke registered callbacks after optional
+seek and before ticking with repeatable `--invoke=` options. Arguments are separated
+by `|` and explicitly typed as `b:true`, `n:1.5`, `s:text`, `null`, or `undefined`:
+
+```sh
+dotnet run --project src/Waddamburo.App -- \
+  --archive=/path/to/archive.ddp --movie=movie_name \
+  '--invoke=SetPlayer|n:1' --ticks=1 --screenshot=/tmp/callback.png
+```
+
 Compose several independently loaded Lumen movies on the 1280x720 stage with a
 scene description and a user-owned asset root:
 

@@ -8,6 +8,7 @@ try
     var seekFrame = parseLimit(args, "--seek-frame=");
     var windowSize = parseWindowSize(args);
     var screenshotPath = parseOption(args, "--screenshot=");
+    var callbackInvocations = CallbackInvocation.Parse(args);
     if (screenshotPath is not null)
     {
         if (frameLimit is null && tickLimit is null)
@@ -27,6 +28,8 @@ try
             throw new ArgumentException("Scene options cannot be combined with --archive or --movie.");
         if (seekFrame is not null)
             throw new ArgumentException("--seek-frame currently requires a single --archive/--movie input.");
+        if (!callbackInvocations.IsEmpty)
+            throw new ArgumentException("--invoke currently requires a single --archive/--movie input.");
         SceneViewer.Run(
             scenePath,
             assetRoot,
@@ -49,11 +52,14 @@ try
             seekFrame,
             frameLimit,
             tickLimit,
-            screenshotPath);
+            screenshotPath,
+            callbackInvocations);
         return 0;
     }
     if (seekFrame is not null)
         throw new ArgumentException("--seek-frame requires --archive and --movie.");
+    if (!callbackInvocations.IsEmpty)
+        throw new ArgumentException("--invoke requires --archive and --movie.");
     using var application = new SdlApplication(
         "Waddamburo",
         windowSize.Width,

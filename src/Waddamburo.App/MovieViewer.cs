@@ -4,6 +4,7 @@ using Waddamburo.Formats;
 using Waddamburo.Game;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
+using System.Collections.Immutable;
 
 internal static class MovieViewer
 {
@@ -15,7 +16,8 @@ internal static class MovieViewer
         int? seekFrame,
         int? frameLimit,
         int? tickLimit,
-        string? screenshotPath)
+        string? screenshotPath,
+        ImmutableArray<CallbackInvocation> callbackInvocations)
     {
         var archiveLength = new FileInfo(archivePath).Length;
         if (archiveLength > ParserLimits.Default.MaxFileBytes)
@@ -49,6 +51,12 @@ internal static class MovieViewer
         var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
         if (seekFrame is int requestedFrame)
             player.Seek(requestedFrame);
+        foreach (var invocation in callbackInvocations)
+        {
+            if (!player.TryInvokeCallback(invocation.Name, invocation.Arguments))
+                throw new ArgumentException($"Lumen callback '{invocation.Name}' is not registered or could not complete.");
+            Console.WriteLine($"Invoked Lumen callback: {invocation.Name}");
+        }
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.ComposeContentFit(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.WaddamburoBlue,
