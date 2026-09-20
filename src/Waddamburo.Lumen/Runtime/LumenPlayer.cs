@@ -22,6 +22,7 @@ public sealed class LumenPlayer
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
     private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
     private readonly List<PendingFrameAction> _pendingActions = [];
+    private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
     private readonly DisplayInstance _root;
     private long _nextActionSequence;
 
@@ -51,7 +52,9 @@ public sealed class LumenPlayer
         if (!_sprites.ContainsKey(rootId))
             throw new ArgumentException($"Root character {rootId} is not a defined sprite.", nameof(rootCharacterId));
 
-        _root = new DisplayInstance(rootId, hierarchyDepth: 0);
+        _root = new DisplayInstance(rootId, hierarchyDepth: 0, parent: null) { Name = "_level0" };
+        _globals["_global"] = _globals;
+        _globals["_root"] = _root;
         enterFrame(_root, 0, queueActions: true);
         drainActions();
     }
@@ -316,7 +319,9 @@ public sealed class LumenPlayer
                 _movie.Actions[checked((int)pending.ActionIndex)].Code);
             if (status == Avm1ExecutionStatus.Success)
                 continue;
-            var limited = status is Avm1ExecutionStatus.InstructionLimit or Avm1ExecutionStatus.StackLimit;
+            var limited = status is Avm1ExecutionStatus.InstructionLimit
+                or Avm1ExecutionStatus.StackLimit
+                or Avm1ExecutionStatus.RegisterLimit;
             reportOnce(
                 limited ? "LUM_ACTION_LIMIT" : "LUM_ACTION_DEFERRED",
                 pending.Instance.CharacterId,
@@ -346,11 +351,126 @@ public sealed class LumenPlayer
         DisplayInstance instance,
         Avm1CodeBlock code)
     {
-        var status = Avm1Interpreter.TryExecute(code, _movie.Strings, instance.Playing, _limits, out var playing);
+        var context = new Avm1ExecutionContext(
+            name => readVariable(instance, name),
+            (name, value) => instance.Variables[name] = value,
+            readMember,
+            writeMember,
+            (name, _) =>
+            {
+                reportOnce(
+                    "LUM_AVM_CALL_UNRESOLVED",
+                    instance.CharacterId,
+                    instance.Frame,
+                    $"AVM function '{name}' is not registered; undefined was returned.");
+                return default;
+            });
+        var status = Avm1Interpreter.TryExecute(
+            code,
+            _movie.Strings,
+            instance.Playing,
+            _limits,
+            context,
+            out var playing);
         if (status == Avm1ExecutionStatus.Success)
+        {
+            context.Commit();
             instance.Playing = playing;
+        }
         return status;
     }
+
+    private Avm1Lookup readVariable(DisplayInstance instance, string name)
+    {
+        if (name == "this")
+            return new Avm1Lookup(true, instance);
+        if (name == "_root" || name == "_level0")
+            return new Avm1Lookup(true, _root);
+        if (name == "_parent")
+            return new Avm1Lookup(instance.Parent is not null, instance.Parent);
+        if (name == "_global")
+            return new Avm1Lookup(true, _globals);
+        if (instance.Variables.TryGetValue(name, out var value))
+            return new Avm1Lookup(true, value);
+        var child = instance.Children.Values.FirstOrDefault(candidate => candidate.Name == name && !candidate.Removed);
+        if (child is not null)
+            return new Avm1Lookup(true, child);
+        return _globals.TryGetValue(name, out value)
+            ? new Avm1Lookup(true, value)
+            : default;
+    }
+
+    private static Avm1Lookup readMember(object? target, string name)
+    {
+        if (target is DisplayInstance instance)
+        {
+            var child = instance.Children.Values.FirstOrDefault(candidate => candidate.Name == name && !candidate.Removed);
+            if (child is not null)
+                return new Avm1Lookup(true, child);
+            if (instance.Variables.TryGetValue(name, out var value))
+                return new Avm1Lookup(true, value);
+            return name switch
+            {
+                "_visible" => new Avm1Lookup(true, instance.Visible),
+                "_x" => new Avm1Lookup(true, (double)instance.Transform.X),
+                "_y" => new Avm1Lookup(true, (double)instance.Transform.Y),
+                "_alpha" => new Avm1Lookup(true, instance.Color.Multiply.Alpha * 100d),
+                "_currentframe" => new Avm1Lookup(true, (double)instance.Frame + 1),
+                _ => default,
+            };
+        }
+        if (target is Dictionary<string, object?> dictionary && dictionary.TryGetValue(name, out var member))
+            return new Avm1Lookup(true, member);
+        return default;
+    }
+
+    private static void writeMember(object? target, string name, object? value)
+    {
+        if (target is DisplayInstance instance)
+        {
+            switch (name)
+            {
+                case "_visible":
+                    instance.Visible = toBoolean(value);
+                    return;
+                case "_x":
+                    instance.Transform = instance.Transform with { X = (float)toNumber(value) };
+                    return;
+                case "_y":
+                    instance.Transform = instance.Transform with { Y = (float)toNumber(value) };
+                    return;
+                case "_alpha":
+                    instance.Color = instance.Color with
+                    {
+                        Multiply = instance.Color.Multiply with { Alpha = (float)(toNumber(value) / 100d) },
+                    };
+                    return;
+                default:
+                    instance.Variables[name] = value;
+                    return;
+            }
+        }
+        if (target is Dictionary<string, object?> dictionary)
+            dictionary[name] = value;
+    }
+
+    private static bool toBoolean(object? value) => value switch
+    {
+        null => false,
+        bool boolean => boolean,
+        double number => number != 0 && !double.IsNaN(number),
+        string text => text.Length != 0,
+        _ => true,
+    };
+
+    private static double toNumber(object? value) => value switch
+    {
+        null => 0,
+        bool boolean => boolean ? 1 : 0,
+        double number => number,
+        string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
+        _ => double.NaN,
+    };
 
     private void applyPlacement(
         DisplayInstance parent,
@@ -363,7 +483,7 @@ public sealed class LumenPlayer
             case 1:
                 if (instance is not null)
                     instance.Removed = true;
-                instance = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1)
+                instance = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1, parent)
                 {
                     PlacementId = placement.PlacementId,
                     FirstFrame = placement.FirstFrame,
@@ -382,7 +502,7 @@ public sealed class LumenPlayer
                 if (instance.CharacterId != placement.CharacterId)
                 {
                     instance.Removed = true;
-                    var replacement = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1)
+                    var replacement = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1, parent)
                     {
                         PlacementId = placement.PlacementId,
                         FirstFrame = placement.FirstFrame,
@@ -414,6 +534,8 @@ public sealed class LumenPlayer
 
     private void applyPlacementFields(DisplayInstance instance, LmbPlaceObjectCommand placement, bool isNew)
     {
+        if (placement.NameStringIndex < _movie.Strings.Length)
+            instance.Name = _movie.Strings[checked((int)placement.NameStringIndex)].Value;
         if (isNew || placement.BlendMode != 0)
             instance.BlendMode = placement.BlendMode;
         if (instance.BlendMode > 2)
@@ -479,7 +601,7 @@ public sealed class LumenPlayer
         float interpolationFraction,
         ImmutableArray<LumenRenderQuad>.Builder quads)
     {
-        if (instance.Removed)
+        if (instance.Removed || !instance.Visible)
             return;
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
@@ -620,11 +742,15 @@ public sealed class LumenPlayer
     private static LumenRenderColor convertColor(LmbColorTransform color) =>
         new(color.Red / 256f, color.Green / 256f, color.Blue / 256f, color.Alpha / 256f);
 
-    private sealed class DisplayInstance(uint characterId, int hierarchyDepth)
+    private sealed class DisplayInstance(uint characterId, int hierarchyDepth, DisplayInstance? parent)
     {
         public uint CharacterId { get; } = characterId;
 
         public int HierarchyDepth { get; } = hierarchyDepth;
+
+        public DisplayInstance? Parent { get; } = parent;
+
+        public string Name { get; set; } = "";
 
         public uint PlacementId { get; set; } = uint.MaxValue;
 
@@ -635,6 +761,8 @@ public sealed class LumenPlayer
         public bool Removed { get; set; }
 
         public bool Playing { get; set; } = true;
+
+        public bool Visible { get; set; } = true;
 
         public ushort BlendMode { get; set; }
 
@@ -647,6 +775,8 @@ public sealed class LumenPlayer
         public LumenRenderColor? PreviousMultiply { get; set; }
 
         public SortedDictionary<uint, DisplayInstance> Children { get; } = [];
+
+        public Dictionary<string, object?> Variables { get; } = new(StringComparer.Ordinal);
     }
 
     private readonly record struct SpriteTimeline(

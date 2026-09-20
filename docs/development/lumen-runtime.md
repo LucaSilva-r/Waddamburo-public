@@ -51,6 +51,14 @@ Defaults are 10,000 instructions, 4,096 stack values, and 4,096 pending actions.
 Full AVM execution, enter-frame handlers, and recursive queue draining remain
 outside this slice.
 
+Each action also receives bounded registers and a transactional variable/member
+context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
+exposing mutable display instances publicly. `_visible`, `_x`, `_y`, `_alpha`, and
+`_currentframe` bridge to private clip state. Writes commit only when the action
+finishes successfully. Unregistered function calls consume the authored arguments,
+return `undefined`, and emit `LUM_AVM_CALL_UNRESOLVED`, allowing optional host calls
+to remain observable without aborting otherwise valid initialization.
+
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
 records, branch destinations, and the out-of-line lexical bodies used by Lumen's

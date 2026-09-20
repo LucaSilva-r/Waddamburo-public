@@ -262,6 +262,7 @@ public sealed class LumenPlayerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxInstructionsPerAction: 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxStackValues: 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxPendingActions: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxRegisters: 0));
     }
 
     [Fact]
@@ -333,6 +334,84 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void NamedClipMemberActionCanHidePlacedContent()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void FailedMemberActionDoesNotCommitStagedVisibility()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+            0x4F,
+            0x12,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void RegisterValuesCanFeedNamedClipMembers()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x02, 0x00, 0x05, 0x00,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x04, 0x00,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
+    public void UnresolvedFunctionReturnsUndefinedAndAllowsInitializerToFinish()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x0D, 0x00,
+            0x07, 0x2A, 0x00, 0x00, 0x00,
+            0x07, 0x01, 0x00, 0x00, 0x00,
+            0x09, 0x01, 0x00,
+            0x3D,
+            0x17,
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_CALL_UNRESOLVED");
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -383,7 +462,7 @@ public sealed class LumenPlayerTests
         var records = new List<(uint Tag, byte[] Payload)>
         {
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
-            record(LmbTags.StringPool, stringPool("middle", "end")),
+            record(LmbTags.StringPool, stringPool("middle", "end", "_visible")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
@@ -394,9 +473,9 @@ public sealed class LumenPlayerTests
             words(LmbTags.FrameLabel, 0, 1, 0),
             words(LmbTags.FrameLabel, 1, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
-            words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
+            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
             words(LmbTags.ShowFrame, 1, duplicateAction ? 3U : 2U),
-            words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
+            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
             words(LmbTags.DoAction, 0, 0),
             words(LmbTags.ShowFrame, 2, 1),
             words(LmbTags.RemoveObject, 42, 0x00030000),

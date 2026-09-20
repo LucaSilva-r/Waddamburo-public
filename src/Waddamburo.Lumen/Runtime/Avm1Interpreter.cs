@@ -10,6 +10,7 @@ internal static class Avm1Interpreter
         IReadOnlyList<LmbString> strings,
         bool initialPlaying,
         LumenRuntimeLimits limits,
+        Avm1ExecutionContext context,
         out bool resultingPlaying)
     {
         resultingPlaying = initialPlaying;
@@ -18,6 +19,7 @@ internal static class Avm1Interpreter
 
         var instructions = code.Instructions.ToDictionary(instruction => instruction.Offset);
         var stack = new List<object?>();
+        var registers = Enumerable.Repeat<object?>(UndefinedValue.Instance, limits.MaxRegisters).ToArray();
         var playing = initialPlaying;
         var pc = code.Offset;
         for (var remaining = limits.MaxInstructionsPerAction; remaining > 0; remaining--)
@@ -78,6 +80,26 @@ internal static class Avm1Interpreter
                     if (!tryPop(stack, out _))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
+                case 0x1C: // GetVariable
+                    if (!tryPop(stack, out var variableName))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var variable = context.GetVariable(toAvmString(variableName));
+                    if (!tryPush(stack, variable.Found ? variable.Value : UndefinedValue.Instance, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
+                case 0x1D: // SetVariable
+                    if (!tryPop(stack, out var variableValue) || !tryPop(stack, out variableName))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    context.SetVariable(toAvmString(variableName), variableValue);
+                    break;
+                case 0x3D: // CallFunction
+                    if (!tryPop(stack, out var functionName)
+                        || !tryPopArguments(stack, out var arguments))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var call = context.CallFunction(toAvmString(functionName), arguments);
+                    if (!tryPush(stack, call.Found ? call.Value : UndefinedValue.Instance, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
                 case 0x4C: // PushDuplicate
                     if (!tryPeek(stack, out var duplicate))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -88,6 +110,20 @@ internal static class Avm1Interpreter
                     if (stack.Count < 2)
                         return Avm1ExecutionStatus.StackUnderflow;
                     (stack[^1], stack[^2]) = (stack[^2], stack[^1]);
+                    break;
+                case 0x4E: // GetMember
+                    if (!tryPop(stack, out var memberName) || !tryPop(stack, out var memberTarget))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var member = context.GetMember(memberTarget, toAvmString(memberName));
+                    if (!tryPush(stack, member.Found ? member.Value : UndefinedValue.Instance, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
+                case 0x4F: // SetMember
+                    if (!tryPop(stack, out var memberValue)
+                        || !tryPop(stack, out memberName)
+                        || !tryPop(stack, out memberTarget))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    context.SetMember(memberTarget, toAvmString(memberName), memberValue);
                     break;
                 case 0x47: // Add2
                     if (!tryBinary(stack, add2))
@@ -118,9 +154,17 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x96: // Push
-                    var pushStatus = pushValues(stack, (Avm1PushOperand)instruction.Operand!, strings, limits.MaxStackValues);
+                    var pushStatus = pushValues(stack, (Avm1PushOperand)instruction.Operand!, strings, registers, limits.MaxStackValues);
                     if (pushStatus != Avm1ExecutionStatus.Success)
                         return pushStatus;
+                    break;
+                case 0x87: // StoreRegister
+                    if (!tryPeek(stack, out var registerValue))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var register = ((Avm1RegisterOperand)instruction.Operand!).Register;
+                    if (register >= registers.Length)
+                        return Avm1ExecutionStatus.RegisterLimit;
+                    registers[register] = registerValue;
                     break;
                 case 0x99: // Jump
                     next = ((Avm1BranchOperand)instruction.Operand!).Target;
@@ -143,10 +187,10 @@ internal static class Avm1Interpreter
         {
             0x00 or 0x06 or 0x07
                 or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17
-                or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x50 or 0x51
-                or 0x66 or 0x67 or 0x99 or 0x9D => true,
-            0x96 => ((Avm1PushOperand?)instruction.Operand)?.Values.All(value =>
-                value is not Avm1PushRegisterValue) == true,
+                or 0x1C or 0x1D or 0x3D
+                or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51
+                or 0x66 or 0x67 or 0x87 or 0x99 or 0x9D => true,
+            0x96 => instruction.Operand is Avm1PushOperand,
             _ => false,
         });
 
@@ -154,6 +198,7 @@ internal static class Avm1Interpreter
         List<object?> stack,
         Avm1PushOperand push,
         IReadOnlyList<LmbString> strings,
+        object?[] registers,
         int maxStackValues)
     {
         foreach (var value in push.Values)
@@ -188,8 +233,12 @@ internal static class Avm1Interpreter
                     if (!tryPush(stack, (double)number.Value, maxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
+                case Avm1PushRegisterValue register when register.Register < registers.Length:
+                    if (!tryPush(stack, registers[register.Register], maxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
                 default:
-                    return Avm1ExecutionStatus.Unsupported;
+                    return Avm1ExecutionStatus.RegisterLimit;
             }
         }
         return Avm1ExecutionStatus.Success;
@@ -324,6 +373,34 @@ internal static class Avm1Interpreter
         return true;
     }
 
+    private static bool tryPopArguments(List<object?> stack, out IReadOnlyList<object?> arguments)
+    {
+        if (!tryPop(stack, out var countValue))
+        {
+            arguments = [];
+            return false;
+        }
+        var countNumber = toNumber(countValue);
+        if (!double.IsFinite(countNumber) || countNumber < 0 || countNumber != Math.Truncate(countNumber)
+            || countNumber > stack.Count || countNumber > int.MaxValue)
+        {
+            arguments = [];
+            return false;
+        }
+        var count = (int)countNumber;
+        var values = new object?[count];
+        for (var index = count - 1; index >= 0; index--)
+        {
+            if (!tryPop(stack, out values[index]))
+            {
+                arguments = [];
+                return false;
+            }
+        }
+        arguments = values;
+        return true;
+    }
+
     private sealed class UndefinedValue
     {
         public static UndefinedValue Instance { get; } = new();
@@ -338,4 +415,5 @@ internal enum Avm1ExecutionStatus
     StackLimit,
     InstructionLimit,
     InvalidControlFlow,
+    RegisterLimit,
 }
