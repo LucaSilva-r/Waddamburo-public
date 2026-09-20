@@ -1,11 +1,29 @@
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Platform.Sdl.Timing;
+using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.Architecture.Tests;
 
 public sealed class RenderSnapshotTests
 {
+    [Fact]
+    public void SdlKeyboardSnapshotMapsToFlashKeyCodesWithoutLeakingReleasedKeys()
+    {
+        var keyboard = new SdlKeyboardSnapshot([
+            SdlKeyboardKey.A,
+            SdlKeyboardKey.Enter,
+            SdlKeyboardKey.Left,
+        ]);
+
+        var lumen = LumenInputAdapter.CreateSnapshot(keyboard);
+
+        Assert.True(lumen.IsDown(65));
+        Assert.True(lumen.IsDown(13));
+        Assert.True(lumen.IsDown(37));
+        Assert.False(lumen.IsDown(83));
+    }
+
     [Fact]
     public void AdapterNormalizesStageCoordinatesAndPreservesDrawOrder()
     {

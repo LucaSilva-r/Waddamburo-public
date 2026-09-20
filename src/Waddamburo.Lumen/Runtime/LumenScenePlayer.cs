@@ -53,6 +53,13 @@ public sealed class LumenScenePlayer
             layer.Player.Advance();
     }
 
+    public void Advance(LumenInputSnapshot inputSnapshot)
+    {
+        ArgumentNullException.ThrowIfNull(inputSnapshot);
+        foreach (var layer in _layers)
+            layer.Player.Advance(inputSnapshot);
+    }
+
     public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f)
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)

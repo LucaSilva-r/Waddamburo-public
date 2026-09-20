@@ -83,6 +83,12 @@ per-player host binding and prints any authored `ExternalInterface` callback nam
 registered by the movie. It does not silently implement the corresponding game
 services; missing native methods remain structured runtime diagnostics.
 
+Live SDL keyboard state is delivered to each Lumen tick through Flash-compatible
+key codes. Letters, digits, arrow keys, Enter, Escape, Space, and Backspace are
+supported; focus loss clears every held key. Movies use their authored bindings—for
+example, Green selection scripts commonly poll `A`/`S`/`Z` for left/right/decide
+and `D`/`F`/`C` for the second player.
+
 For a deterministic single-movie probe, invoke registered callbacks after optional
 seek and before ticking with repeatable `--invoke=` options. Arguments are separated
 by `|` and explicitly typed as `b:true`, `n:1.5`, `s:text`, `null`, or `undefined`:

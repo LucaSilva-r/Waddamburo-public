@@ -39,6 +39,12 @@ presentation, executes at most five catch-up ticks per display frame, and report
 discarded excess ticks explicitly. The successful Linux x64 baseline uses SDL's
 Vulkan GPU backend.
 
+SDL key-down/up events maintain a portable immutable keyboard snapshot. Every set
+of catch-up ticks sees the snapshot captured after that presentation loop's event
+poll, and window focus loss clears held state. `LumenInputAdapter` maps letters,
+digits, arrows, Enter, Escape, Space, and Backspace to the standard key codes read
+by AVM `Key.isDown`; SDL types do not cross into the Lumen runtime.
+
 Lumen frames carry their logical-stage aspect ratio into the renderer. Every
 presentation derives an integer-pixel viewport from the acquired swapchain image
 and applies matching GPU viewport and scissor state, preserving the stage across

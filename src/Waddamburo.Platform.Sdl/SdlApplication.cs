@@ -16,6 +16,7 @@ public sealed unsafe class SdlApplication : IDisposable
     private bool _windowClaimed;
     private bool _sdlInitialized;
     private bool _disposed;
+    private readonly HashSet<SdlKeyboardKey> _pressedKeys = [];
 
     public SdlApplication(string title, int width, int height, bool debugGpu = false)
     {
@@ -85,6 +86,22 @@ public sealed unsafe class SdlApplication : IDisposable
         int? tickLimit = null,
         Action<RenderCapture>? captureFinalFrame = null)
     {
+        ArgumentNullException.ThrowIfNull(simulationTick);
+        return Run(
+            createFrame,
+            _ => simulationTick(),
+            frameLimit,
+            tickLimit,
+            captureFinalFrame);
+    }
+
+    public SdlRunResult Run(
+        Func<double, RenderFrame> createFrame,
+        Action<SdlKeyboardSnapshot> simulationTick,
+        int? frameLimit = null,
+        int? tickLimit = null,
+        Action<RenderCapture>? captureFinalFrame = null)
+    {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(createFrame);
@@ -112,6 +129,20 @@ public sealed unsafe class SdlApplication : IDisposable
                 {
                     running = false;
                 }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST)
+                    _pressedKeys.Clear();
+                else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
+                    or (uint)SDL_EventType.SDL_EVENT_KEY_UP)
+                {
+                    var key = mapKey(currentEvent.key.key);
+                    if (key is SdlKeyboardKey mapped)
+                    {
+                        if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
+                            _pressedKeys.Add(mapped);
+                        else
+                            _pressedKeys.Remove(mapped);
+                    }
+                }
             }
 
             if (!running)
@@ -121,7 +152,8 @@ public sealed unsafe class SdlApplication : IDisposable
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
             previousTimestamp = timestamp;
             var remainingTicks = tickLimit is int limit ? limit - simulationTicks : int.MaxValue;
-            var update = clock.AddElapsed(elapsed, simulationTick, remainingTicks);
+            var keyboard = new SdlKeyboardSnapshot(_pressedKeys);
+            var update = clock.AddElapsed(elapsed, () => simulationTick(keyboard), remainingTicks);
             simulationTicks += update.ExecutedTicks;
             droppedTicks += update.DroppedTicks;
 
@@ -138,6 +170,23 @@ public sealed unsafe class SdlApplication : IDisposable
         }
         return new SdlRunResult(renderedFrames, simulationTicks, droppedTicks, clock.InterpolationFraction);
     }
+
+    private static SdlKeyboardKey? mapKey(SDL_Keycode key) => key switch
+    {
+        SDL_Keycode.SDLK_BACKSPACE => SdlKeyboardKey.Backspace,
+        SDL_Keycode.SDLK_RETURN => SdlKeyboardKey.Enter,
+        SDL_Keycode.SDLK_ESCAPE => SdlKeyboardKey.Escape,
+        SDL_Keycode.SDLK_SPACE => SdlKeyboardKey.Space,
+        SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,
+        SDL_Keycode.SDLK_UP => SdlKeyboardKey.Up,
+        SDL_Keycode.SDLK_RIGHT => SdlKeyboardKey.Right,
+        SDL_Keycode.SDLK_DOWN => SdlKeyboardKey.Down,
+        >= SDL_Keycode.SDLK_0 and <= SDL_Keycode.SDLK_9 =>
+            SdlKeyboardKey.Digit0 + (int)(key - SDL_Keycode.SDLK_0),
+        >= SDL_Keycode.SDLK_A and <= SDL_Keycode.SDLK_Z =>
+            SdlKeyboardKey.A + (int)(key - SDL_Keycode.SDLK_A),
+        _ => null,
+    };
 
     public void Dispose()
     {

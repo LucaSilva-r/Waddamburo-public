@@ -65,7 +65,7 @@ internal static class MovieViewer
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
         var result = application.Run(
             createFrame,
-            player.Advance,
+            keyboard => player.Advance(LumenInputAdapter.CreateSnapshot(keyboard)),
             frameLimit,
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));

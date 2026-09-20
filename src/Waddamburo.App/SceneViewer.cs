@@ -88,7 +88,7 @@ internal static class SceneViewer
                     : throw new InvalidDataException($"Scene snapshot references missing texture {index}."));
         var result = application.Run(
             createFrame,
-            scene.Advance,
+            keyboard => scene.Advance(LumenInputAdapter.CreateSnapshot(keyboard)),
             frameLimit,
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
