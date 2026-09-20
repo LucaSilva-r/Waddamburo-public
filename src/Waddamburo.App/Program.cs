@@ -21,6 +21,25 @@ try
     var movieName = parseOption(args, "--movie=");
     var scenePath = parseOption(args, "--scene=");
     var assetRoot = parseOption(args, "--asset-root=");
+    var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
+    if (entrySongSelect)
+    {
+        if (assetRoot is null)
+            throw new ArgumentException("--entry-song-select requires --asset-root.");
+        if (archivePath is not null || movieName is not null || scenePath is not null)
+            throw new ArgumentException("--entry-song-select cannot be combined with movie or scene inputs.");
+        if (seekFrame is not null || !callbackInvocations.IsEmpty)
+            throw new ArgumentException("--seek-frame and --invoke are unavailable for --entry-song-select.");
+        EntrySongSelectFlow.Run(
+            assetRoot,
+            windowSize.Width,
+            windowSize.Height,
+            frameLimit,
+            tickLimit,
+            screenshotPath,
+            inputTimeline);
+        return 0;
+    }
     if (scenePath is not null || assetRoot is not null)
     {
         if (scenePath is null || assetRoot is null)

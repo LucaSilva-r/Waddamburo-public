@@ -199,6 +199,23 @@ public sealed class GameFlowSessionTests
             "host"));
     }
 
+    [Fact]
+    public async Task DirectoryMovieSourceRejectsRelativeRootsAndEscapingArchiveIds()
+    {
+        Assert.Throws<ArgumentException>(() => new DirectoryLumenMovieContentSource("relative-assets"));
+        var directory = Directory.CreateTempSubdirectory("waddamburo-assets-");
+        try
+        {
+            var source = new DirectoryLumenMovieContentSource(directory.FullName);
+            await Assert.ThrowsAsync<InvalidDataException>(async () =>
+                await source.LoadAsync("../outside.ddp", "movie.lm", CancellationToken.None));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     private static GameFlowSession activeSession(string sceneName)
     {
         var flow = new GameFlowSession();

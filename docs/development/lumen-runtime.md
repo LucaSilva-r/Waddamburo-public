@@ -141,6 +141,16 @@ instance is then disposed. Cancellation keeps the previous scene active; missing
 routes and load failures become explicit failed flow states. This orchestration is
 independent of filesystem layout, SDL, GPU resources, and particular movie names.
 
+`DirectoryLumenMovieContentSource` is the first concrete user-asset source. It
+requires an absolute configured root, rejects absolute or escaping archive IDs,
+honours cancellation while reading, and applies the normal parser limits. The
+`LumenGameSceneLoader` builds fresh isolated players and host bindings for every
+ordered layer, preserves a scene-local texture namespace, and exposes immutable
+CPU textures for the platform adapter. The diagnostic app's
+`--entry-song-select --asset-root=...` composition uses those generic pieces to
+exercise the measured Entry request against user-supplied archives; its relative
+movie IDs and route live in the app composition, not in Lumen runtime behavior.
+
 Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
 transaction as variable and member writes. A clone copies the source display state,
 script variables, prototype/class binding, and child hierarchy into its authored

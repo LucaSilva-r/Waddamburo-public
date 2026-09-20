@@ -65,6 +65,7 @@ public sealed class LumenPlayer
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
         installKeyObject();
+        installMathObject();
         installExternalInterface();
         hostBinding?.Install(new LumenHostContext(_globals, _externalInterface));
         enterFrame(_root, 0, queueActions: true);
@@ -557,6 +558,25 @@ public sealed class LumenPlayer
                         true,
                         (uint)index < (uint)codeText.Length ? (double)codeText[index] : double.NaN);
                 }
+                if (target is Avm1ArrayObject array && name == "push")
+                {
+                    var lengthLookup = context!.GetMember(array, "length");
+                    var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
+                    if (!double.IsFinite(length)
+                        || length < 0
+                        || length != Math.Truncate(length)
+                        || length > _limits.MaxStackValues - arguments.Count)
+                    {
+                        return new Avm1Lookup(true, double.NaN);
+                    }
+
+                    var start = (int)length;
+                    for (var index = 0; index < arguments.Count; index++)
+                        context.SetMember(array, (start + index).ToString(System.Globalization.CultureInfo.InvariantCulture), arguments[index]);
+                    var newLength = (double)(start + arguments.Count);
+                    context.SetMember(array, "length", newLength);
+                    return new Avm1Lookup(true, newLength);
+                }
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
                 {
                     context!.OnCommit(() => targetInstance.Playing = name == "play");
@@ -980,6 +1000,29 @@ public sealed class LumenPlayer
             });
         _globals["Key"] = key;
     }
+
+    private void installMathObject()
+    {
+        var math = new Avm1Object();
+        math.Properties["floor"] = new Avm1NativeFunction(
+            "Math.floor",
+            call => LumenHostValue.FromNumber(
+                call.Arguments.IsEmpty ? double.NaN : Math.Floor(toHostNumber(call.Arguments[0]))));
+        _globals["Math"] = math;
+    }
+
+    private static double toHostNumber(LumenHostValue value) => value.Kind switch
+    {
+        LumenHostValueKind.Null => 0,
+        LumenHostValueKind.Boolean => value.AsBoolean() ? 1 : 0,
+        LumenHostValueKind.Number => value.AsNumber(),
+        LumenHostValueKind.Text => double.TryParse(
+            value.AsString(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var number) ? number : double.NaN,
+        _ => double.NaN,
+    };
 
     private static bool toBoolean(object? value) => value switch
     {

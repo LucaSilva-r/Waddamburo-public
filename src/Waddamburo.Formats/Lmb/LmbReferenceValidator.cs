@@ -269,7 +269,7 @@ internal static class LmbReferenceValidator
         {
             add(
                 diagnostics,
-                DiagnosticSeverity.Error,
+                DiagnosticSeverity.Warning,
                 "LMB_CHARACTER_ID_NOT_FOUND",
                 place.Record,
                 place.Evidence,

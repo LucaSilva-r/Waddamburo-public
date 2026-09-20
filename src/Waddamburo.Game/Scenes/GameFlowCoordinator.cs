@@ -19,13 +19,17 @@ public sealed class GameFlowCoordinator : IAsyncDisposable
     private readonly IGameSceneLoader _loader;
     private int _operationActive;
 
-    public GameFlowCoordinator(SceneCatalog catalog, IGameSceneLoader loader)
+    public GameFlowCoordinator(
+        SceneCatalog catalog,
+        IGameSceneLoader loader,
+        GameFlowSession? flow = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _loader = loader ?? throw new ArgumentNullException(nameof(loader));
+        Flow = flow ?? new GameFlowSession();
     }
 
-    public GameFlowSession Flow { get; } = new();
+    public GameFlowSession Flow { get; }
 
     public IGameSceneInstance? ActiveScene { get; private set; }
 

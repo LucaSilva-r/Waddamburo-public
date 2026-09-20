@@ -145,6 +145,24 @@ archive/packeddata.ddp movie/movie.lm x y scale
 Each child has an independent display-list player and texture namespace. This
 static composition slice does not yet implement script-driven `MovieClipLoader`.
 
+The game-flow diagnostic can exercise the configured Green Entry-to-Song-Select
+handoff using user-owned archives below one explicit asset root:
+
+```sh
+dotnet run --project src/Waddamburo.App -- \
+  --entry-song-select \
+  --asset-root=/path/to/lumendata/packed \
+  --press=F@30,F@240 --ticks=360 \
+  --window-size=640x360 \
+  --screenshot=/tmp/entry-to-song-select.png
+```
+
+This initializes Entry through its exported callbacks, receives its authored scene
+request, resolves that request in the app-owned scene catalog, loads a fresh Song
+Select movie and host, then disposes Entry. The relative archive/movie IDs and
+numeric request mapping are composition data; neither the AVM runtime nor generic
+scene loader contains Entry-specific behavior.
+
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).
 Binary parser limits and failure behavior are documented in

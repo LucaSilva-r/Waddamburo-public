@@ -308,6 +308,9 @@ public sealed class LmbSemanticReaderTests
         Assert.Contains("LMB_LABEL_COUNT_MISMATCH", codes);
         Assert.Contains("LMB_STRING_INDEX_OUT_OF_RANGE", codes);
         Assert.Contains("LMB_CHARACTER_ID_NOT_FOUND", codes);
+        Assert.Equal(
+            DiagnosticSeverity.Warning,
+            result.Diagnostics.Single(diagnostic => diagnostic.Code == "LMB_CHARACTER_ID_NOT_FOUND").Severity);
         Assert.Contains("LMB_FRAME_OUT_OF_RANGE", codes);
         Assert.Contains("LMB_POSITION_INDEX_OUT_OF_RANGE", codes);
         Assert.Contains("LMB_COLOR_INDEX_OUT_OF_RANGE", codes);
