@@ -8,6 +8,7 @@ internal sealed class Avm1ExecutionContext(
     Func<string, IReadOnlyList<object?>, Avm1Lookup> functionCaller,
     Func<object?, string, IReadOnlyList<object?>, int, Avm1Lookup> methodCaller,
     Func<string, IReadOnlyList<object?>, Avm1Lookup> objectConstructor,
+    Action<string> timelineLabelJumper,
     Action<Action>? commitActionWriter = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
@@ -37,6 +38,8 @@ internal sealed class Avm1ExecutionContext(
 
     public Avm1Lookup ConstructObject(string name, IReadOnlyList<object?> arguments) =>
         objectConstructor(name, arguments);
+
+    public void GotoLabel(string label) => timelineLabelJumper(label);
 
     public void OnCommit(Action action) => _commitActions.Add(action);
 

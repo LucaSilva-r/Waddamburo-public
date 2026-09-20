@@ -116,6 +116,13 @@ single-movie Entry defaults also select paid play, decline synthetic coin entry,
 and acknowledge voice-stop requests; other
 unimplemented native methods remain diagnostics rather than hidden stubs.
 
+The callback inspection surface also exposes immutable callback names and authored
+parameter names. The standalone app uses that metadata for an interactive debug
+console and pairs keyboard `1`–`9` with the first nine root labels. Terminal
+commands can list callbacks/labels, switch a state, or invoke a callback with typed
+primitive arguments while the movie keeps running. This debugger belongs to the
+app composition layer and does not add console or keyboard dependencies to Lumen.
+
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
 records, branch destinations, and the out-of-line lexical bodies used by Lumen's

@@ -85,6 +85,16 @@ public sealed class LumenPlayer
 
     public ImmutableArray<string> CallbackNames => [.. _callbacks.Keys.Order(StringComparer.Ordinal)];
 
+    public ImmutableArray<LumenCallbackDescriptor> Callbacks =>
+        [.. _callbacks
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => new LumenCallbackDescriptor(
+                pair.Key,
+                [.. pair.Value.Function.Definition.Parameters.Select(parameter =>
+                    parameter.NameStringIndex < _movie.Strings.Length
+                        ? _movie.Strings[parameter.NameStringIndex].Value
+                        : $"arg{parameter.Register ?? 0}")]))];
+
     public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -579,6 +589,18 @@ public sealed class LumenPlayer
                         return default;
                 }
                 return new Avm1Lookup(true, value);
+            },
+            label =>
+            {
+                var timeline = _sprites[instance.CharacterId];
+                if (timeline.Labels.TryGetValue(label, out var frame))
+                    context!.OnCommit(() => jumpInstance(instance, frame, instance.Playing));
+                else
+                    reportOnce(
+                        "LUM_AVM_GOTO_INVALID",
+                        instance.CharacterId,
+                        instance.Frame,
+                        $"Timeline action could not resolve label '{label}'.");
             },
             parentContext is null ? null : parentContext.OnCommit);
         return context;
@@ -1264,3 +1286,7 @@ public sealed class LumenPlayer
                 left.Alpha + right.Alpha);
     }
 }
+
+public sealed record LumenCallbackDescriptor(
+    string Name,
+    ImmutableArray<string> Parameters);

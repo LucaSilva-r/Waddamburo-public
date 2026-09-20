@@ -13,6 +13,12 @@ internal sealed record CallbackInvocation(
             .Where(argument => argument.StartsWith(Prefix, StringComparison.Ordinal))
             .Select(parseOne)];
 
+    public static CallbackInvocation ParseExpression(string expression)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expression);
+        return parseOne(Prefix + expression);
+    }
+
     private static CallbackInvocation parseOne(string option)
     {
         var fields = option[Prefix.Length..].Split('|');

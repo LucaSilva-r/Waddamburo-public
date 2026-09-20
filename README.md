@@ -99,6 +99,21 @@ dotnet run --project src/Waddamburo.App -- \
   '--invoke=SetPlayer|n:1' --ticks=1 --screenshot=/tmp/callback.png
 ```
 
+An unbounded single-movie run also starts the interactive Lumen debugger. It prints
+exported callback signatures and the first nine root labels. Press keyboard `1`–`9`
+to jump to the corresponding labelled state, or enter commands in the launching
+terminal:
+
+```text
+callbacks
+labels
+state 3
+invoke SetPlayer|n:0|b:true|b:false|b:false
+```
+
+Callback values use the same typed syntax as `--invoke`. These controls are a
+diagnostic surface and can deliberately bypass normal game flow.
+
 Compose several independently loaded Lumen movies on the 1280x720 stage with a
 scene description and a user-owned asset root:
 

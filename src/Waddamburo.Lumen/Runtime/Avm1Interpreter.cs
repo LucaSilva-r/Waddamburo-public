@@ -353,6 +353,10 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.RegisterLimit;
                     registers[register] = registerValue;
                     break;
+                case 0x8C: // GoToLabel
+                    var labelOperand = (Avm1StringIndexOperand)instruction.Operand!;
+                    context.GotoLabel(getString(strings, labelOperand.StringIndex));
+                    break;
                 case 0x69: // Extends
                     if (!tryPop(stack, out var superClass) || !tryPop(stack, out var subClass))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -410,7 +414,7 @@ internal static class Avm1Interpreter
                 or 0x1C or 0x1D or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
                 or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52
                 or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69
-                or 0x87 or 0x99 or 0x9D => true,
+                or 0x87 or 0x8C or 0x99 or 0x9D => true,
             0x8E or 0x9B => instruction.Operand is Avm1FunctionOperand && instruction.Body is not null,
             0x96 => instruction.Operand is Avm1PushOperand,
             _ => false,

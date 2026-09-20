@@ -57,6 +57,9 @@ internal static class MovieViewer
                 throw new ArgumentException($"Lumen callback '{invocation.Name}' is not registered or could not complete.");
             Console.WriteLine($"Invoked Lumen callback: {invocation.Name}");
         }
+        var debugger = frameLimit is null && tickLimit is null
+            ? new InteractiveMovieDebugger(player)
+            : null;
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.ComposeContentFit(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.WaddamburoBlue,
@@ -65,7 +68,13 @@ internal static class MovieViewer
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
         var result = application.Run(
             createFrame,
-            keyboard => player.Advance(LumenInputAdapter.CreateSnapshot(keyboard)),
+            keyboard =>
+            {
+                if (debugger is null)
+                    player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
+                else
+                    debugger.Tick(keyboard);
+            },
             frameLimit,
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));

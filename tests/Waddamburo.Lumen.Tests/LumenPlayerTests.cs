@@ -202,6 +202,22 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void TimelineGoToLabelActionJumpsCurrentClipAndContinuesPlaying()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x8C, 0x02, 0x00, 0x01, 0x00,
+            0x06,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.True(player.IsPlaying);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void TargetFrameActionTakesPrecedenceOverRequestedPlaybackState()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [0x06, 0x00]), 1280, 720);
@@ -861,6 +877,9 @@ public sealed class LumenPlayerTests
         Assert.True(
             player.CallbackNames.SequenceEqual(["SetVisible"]),
             string.Join(" | ", player.Diagnostics.Select(diagnostic => $"{diagnostic.Code}: {diagnostic.Message}")));
+        var callback = Assert.Single(player.Callbacks);
+        Assert.Equal("SetVisible", callback.Name);
+        Assert.Equal("middle", Assert.Single(callback.Parameters));
         Assert.True(player.TryInvokeCallback(
             "SetVisible",
             [LumenHostValue.FromBoolean(false)]));
