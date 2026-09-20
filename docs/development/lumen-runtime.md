@@ -123,6 +123,16 @@ unimplemented native methods remain diagnostics rather than hidden stubs. It tra
 authored `ExternalInterface.call` traffic and scene-change requests without owning
 game-flow policy.
 
+The product `Waddamburo.Game` layer now owns that policy boundary. Its reusable
+front-end binding supplies the measured `Lumen` methods and converts
+`SetNextScene` into a validated three-integer `LumenSceneRequest`; it contains no
+movie-name, frame, label, or Entry-specific branch. `GameFlowSession` then keeps
+loading, active, transition-pending, failure, restart, and stop ownership explicit.
+Authored numeric requests deliberately remain unresolved until the composition
+root maps them to a stable `SceneId`, and the old scene remains current until the
+resolved target has loaded and is explicitly activated. A separate synthetic game
+test project locks this lifecycle down without using original content.
+
 Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
 transaction as variable and member writes. A clone copies the source display state,
 script variables, prototype/class binding, and child hierarchy into its authored

@@ -11,6 +11,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Waddamburo.Architecture.Tests/Waddamburo.Architecture.Tests.csproj" />
     <Project Path="tests/Waddamburo.Formats.Tests/Waddamburo.Formats.Tests.csproj" />
+    <Project Path="tests/Waddamburo.Game.Tests/Waddamburo.Game.Tests.csproj" />
     <Project Path="tests/Waddamburo.Lumen.Tests/Waddamburo.Lumen.Tests.csproj" />
   </Folder>
 </Solution>
