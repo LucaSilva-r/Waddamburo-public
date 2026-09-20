@@ -8,20 +8,25 @@ namespace Waddamburo.Architecture.Tests;
 public sealed class RenderSnapshotTests
 {
     [Fact]
-    public void SdlKeyboardSnapshotMapsToFlashKeyCodesWithoutLeakingReleasedKeys()
+    public void SdlKeyboardSnapshotMapsPhysicalDrumsToAuthoredPlayerControls()
     {
         var keyboard = new SdlKeyboardSnapshot([
-            SdlKeyboardKey.A,
+            SdlKeyboardKey.D,
+            SdlKeyboardKey.J,
+            SdlKeyboardKey.V,
+            SdlKeyboardKey.X,
             SdlKeyboardKey.Enter,
-            SdlKeyboardKey.Left,
         ]);
 
         var lumen = LumenInputAdapter.CreateSnapshot(keyboard);
 
-        Assert.True(lumen.IsDown(65));
+        Assert.True(lumen.IsDown('A'));
+        Assert.True(lumen.IsDown('Z'));
+        Assert.True(lumen.IsDown('F'));
+        Assert.True(lumen.IsDown('C'));
         Assert.True(lumen.IsDown(13));
-        Assert.True(lumen.IsDown(37));
-        Assert.False(lumen.IsDown(83));
+        Assert.False(lumen.IsDown('D'));
+        Assert.False(lumen.IsDown('J'));
     }
 
     [Fact]

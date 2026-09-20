@@ -43,7 +43,9 @@ SDL key-down/up events maintain a portable immutable keyboard snapshot. Every se
 of catch-up ticks sees the snapshot captured after that presentation loop's event
 poll, and window focus loss clears held state. `LumenInputAdapter` maps letters,
 digits, arrows, Enter, Escape, Space, and Backspace to the standard key codes read
-by AVM `Key.isDown`; SDL types do not cross into the Lumen runtime.
+by AVM `Key.isDown`; SDL types do not cross into the Lumen runtime. Physical Taiko
+keys map P1 `D/F/J/K` and P2 `Z/X/C/V` onto each movie's authored
+left/right/decide polling, with either center hit acting as decide.
 
 Lumen frames carry their logical-stage aspect ratio into the renderer. Every
 presentation derives an integer-pixel viewport from the acquired swapchain image

@@ -85,9 +85,9 @@ services; missing native methods remain structured runtime diagnostics.
 
 Live SDL keyboard state is delivered to each Lumen tick through Flash-compatible
 key codes. Letters, digits, arrow keys, Enter, Escape, Space, and Backspace are
-supported; focus loss clears every held key. Movies use their authored bindings—for
-example, Green selection scripts commonly poll `A`/`S`/`Z` for left/right/decide
-and `D`/`F`/`C` for the second player.
+supported; focus loss clears every held key. The Taiko keyboard layout is P1
+`D`/`F`/`J`/`K` and P2 `Z`/`X`/`C`/`V`. Either center (`don`) confirms. The left
+and right rims (`ka`) navigate in their corresponding direction.
 
 For a deterministic single-movie probe, invoke registered callbacks after optional
 seek and before ticking with repeatable `--invoke=` options. Arguments are separated
