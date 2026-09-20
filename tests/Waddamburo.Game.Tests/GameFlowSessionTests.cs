@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
@@ -106,6 +107,98 @@ public sealed class GameFlowSessionTests
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
     }
 
+    [Fact]
+    public async Task AuthoredRequestLoadsAndSwapsItsCatalogMappedScene()
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var entry = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
+        var player = new LumenPlayer(
+            createTransitionMovie(),
+            1280,
+            720,
+            hostBinding: new LumenFrontendHostBinding(new SyntheticFrontendServices(), coordinator.Flow));
+
+        player.Advance();
+        await coordinator.ApplyPendingTransitionAsync();
+
+        Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
+        Assert.Equal(new SceneId("song-select"), coordinator.Flow.CurrentScene);
+        Assert.Equal(new SceneId("song-select"), coordinator.ActiveScene!.Id);
+        Assert.Equal([new SceneId("entry"), new SceneId("song-select")], loader.LoadedIds);
+        Assert.Equal(1, entry.DisposeCount);
+    }
+
+    [Fact]
+    public async Task CancelledTransitionKeepsThePreviousSceneActive()
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var entry = coordinator.ActiveScene;
+        Assert.True(coordinator.Flow.TryRequestTransition(new LumenSceneRequest(1, 0, 0)));
+        loader.CancelNextLoad = true;
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await coordinator.ApplyPendingTransitionAsync(cancellation.Token));
+
+        Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
+        Assert.Equal(new SceneId("entry"), coordinator.Flow.CurrentScene);
+        Assert.Same(entry, coordinator.ActiveScene);
+    }
+
+    [Fact]
+    public async Task MissingRouteFailsExplicitlyWithoutReplacingTheCurrentScene()
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: false), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var entry = coordinator.ActiveScene;
+        Assert.True(coordinator.Flow.TryRequestTransition(new LumenSceneRequest(99, 0, 0)));
+
+        var failure = await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            await coordinator.ApplyPendingTransitionAsync());
+
+        Assert.Contains("no route", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(GameFlowState.Failed, coordinator.Flow.State);
+        Assert.Same(entry, coordinator.ActiveScene);
+        Assert.Equal([new SceneId("entry")], loader.LoadedIds);
+    }
+
+    [Fact]
+    public async Task CoordinatorRestartBuildsAFreshSceneAndDisposesTheOldOne()
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var first = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
+
+        await coordinator.RestartAsync();
+
+        Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
+        Assert.Equal(new SceneId("entry"), coordinator.ActiveScene!.Id);
+        Assert.NotSame(first, coordinator.ActiveScene);
+        Assert.Equal(1, first.DisposeCount);
+        Assert.Equal([new SceneId("entry"), new SceneId("entry")], loader.LoadedIds);
+    }
+
+    [Fact]
+    public void SceneDefinitionsRejectUnknownVersionsAndInvalidTransforms()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SceneDefinition(
+            SceneDefinition.CurrentVersion + 1,
+            new SceneId("future"),
+            [layer("host")]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SceneLayerDefinition(
+            "archive",
+            "movie",
+            LumenMatrix.Identity with { X = float.NaN },
+            "host"));
+    }
+
     private static GameFlowSession activeSession(string sceneName)
     {
         var flow = new GameFlowSession();
@@ -116,6 +209,26 @@ public sealed class GameFlowSessionTests
 
     private static LumenHostCall call(params double[] values) => new(
         values.Select(LumenHostValue.FromNumber).ToImmutableArray());
+
+    private static SceneCatalog createCatalog(bool includeRoute)
+    {
+        var entry = new SceneId("entry");
+        var songSelect = new SceneId("song-select");
+        return new SceneCatalog(
+            [
+                new SceneDefinition(SceneDefinition.CurrentVersion, entry, [layer("entry-host")]),
+                new SceneDefinition(SceneDefinition.CurrentVersion, songSelect, [layer("song-select-host")]),
+            ],
+            includeRoute
+                ? [new SceneTransitionRoute(entry, new LumenSceneRequest(1, 0, 0), songSelect)]
+                : []);
+    }
+
+    private static SceneLayerDefinition layer(string hostId) => new(
+        "green-ui",
+        "synthetic-movie",
+        LumenMatrix.Identity,
+        hostId);
 
     private static LmbMovieDefinition createTransitionMovie()
     {
@@ -221,5 +334,38 @@ public sealed class GameFlowSessionTests
         }
 
         public LumenHostValue CallExternalInterface(LumenHostCall hostCall) => LumenHostValue.Undefined;
+    }
+
+    private sealed class SyntheticSceneLoader : IGameSceneLoader
+    {
+        public List<SceneId> LoadedIds { get; } = [];
+
+        public bool CancelNextLoad { get; set; }
+
+        public ValueTask<IGameSceneInstance> LoadAsync(
+            SceneDefinition definition,
+            CancellationToken cancellationToken)
+        {
+            if (CancelNextLoad)
+            {
+                CancelNextLoad = false;
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            LoadedIds.Add(definition.Id);
+            return ValueTask.FromResult<IGameSceneInstance>(new SyntheticSceneInstance(definition.Id));
+        }
+    }
+
+    private sealed class SyntheticSceneInstance(SceneId id) : IGameSceneInstance
+    {
+        public SceneId Id { get; } = id;
+
+        public int DisposeCount { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
     }
 }

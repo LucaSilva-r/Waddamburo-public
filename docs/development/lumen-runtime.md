@@ -133,6 +133,14 @@ root maps them to a stable `SceneId`, and the old scene remains current until th
 resolved target has loaded and is explicitly activated. A separate synthetic game
 test project locks this lifecycle down without using original content.
 
+Scene composition now has a versioned `SceneDefinition` with ordered archive/movie
+IDs, transforms, host IDs, and optional anchors. `SceneCatalog` owns explicit
+source/request/target routes, while `GameFlowCoordinator` asks an injected loader
+for a fresh scene instance and swaps it only after loading succeeds. The previous
+instance is then disposed. Cancellation keeps the previous scene active; missing
+routes and load failures become explicit failed flow states. This orchestration is
+independent of filesystem layout, SDL, GPU resources, and particular movie names.
+
 Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
 transaction as variable and member writes. A clone copies the source display state,
 script variables, prototype/class binding, and child hierarchy into its authored
