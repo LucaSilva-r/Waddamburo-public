@@ -694,7 +694,13 @@ public sealed class LumenPlayer
         if (instance.Frame != frame)
         {
             instance.Playing = true;
-            restoreInstance(instance, frame);
+            if (frame > instance.Frame)
+            {
+                for (var nextFrame = instance.Frame + 1; nextFrame <= frame; nextFrame++)
+                    enterFrame(instance, nextFrame, queueActions: false);
+            }
+            else
+                restoreInstance(instance, frame);
             enqueueCurrentFrameActions(instance);
             resetInterpolation(instance);
         }

@@ -75,8 +75,10 @@ The candidate DefineSprite header-word-2 linkage index connects exported sprites
 and subsequently placed instances, installs the class prototype, and invokes the
 constructor with preloaded `this`. `MovieClip.play` and `stop` bridge to timeline
 state. `MovieClip.gotoAndPlay` and `gotoAndStop` resolve one-based frame numbers or
-authored labels on the target clip, rebuild only that clip's timeline, and reset its
-interpolation. Invalid targets emit `LUM_AVM_GOTO_INVALID`. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
+authored labels on the target clip. Forward jumps preserve existing children while
+applying intervening display-list frames without their scripts; backward jumps use
+the current cut reconstruction. Both reset interpolation, and invalid targets emit
+`LUM_AVM_GOTO_INVALID`. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
 diagnostics. Synthetic fixtures cover class bootstrap and binding without embedding
 or reproducing original content.
 

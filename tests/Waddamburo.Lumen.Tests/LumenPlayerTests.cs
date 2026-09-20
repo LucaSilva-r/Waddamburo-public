@@ -608,7 +608,11 @@ public sealed class LumenPlayerTests
     [Fact]
     public void AuthoredGotoAndStopUsesOneBasedClipFrames()
     {
-        var player = new LumenPlayer(createMovie(actionBytecode: [
+        var player = new LumenPlayer(createMovie(removeOnThirdFrame: false, actionBytecode: [
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+            0x4F,
             0x96, 0x0A, 0x00,
                 0x07, 0x03, 0x00, 0x00, 0x00,
                 0x07, 0x01, 0x00, 0x00, 0x00,
@@ -887,7 +891,8 @@ public sealed class LumenPlayerTests
         byte[]? actionBytecode = null,
         bool duplicateAction = false,
         uint rootExportStringIndex = 0,
-        ushort firstBlendMode = 0)
+        ushort firstBlendMode = 0,
+        bool removeOnThirdFrame = true)
     {
         var geometry = new uint[]
         {
@@ -922,6 +927,8 @@ public sealed class LumenPlayerTests
             words(LmbTags.ShowFrame, 2, 1),
             words(LmbTags.RemoveObject, 42, 0x00030000),
         };
+        if (!removeOnThirdFrame)
+            records.RemoveAt(records.Count - 1);
         if (duplicateAction)
             records.Insert(records.Count - 2, words(LmbTags.DoAction, 0, 0));
         if (includeSeekKey)
