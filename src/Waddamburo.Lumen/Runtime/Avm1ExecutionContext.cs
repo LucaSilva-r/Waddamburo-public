@@ -7,6 +7,7 @@ internal sealed class Avm1ExecutionContext(
     Action<object?, string, object?> memberWriter,
     Func<string, IReadOnlyList<object?>, Avm1Lookup> functionCaller,
     Func<object?, string, IReadOnlyList<object?>, Avm1Lookup> methodCaller,
+    Func<string, IReadOnlyList<object?>, Avm1Lookup> objectConstructor,
     Action<Action>? commitActionWriter = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
@@ -33,6 +34,9 @@ internal sealed class Avm1ExecutionContext(
 
     public Avm1Lookup CallMethod(object? target, string name, IReadOnlyList<object?> arguments) =>
         methodCaller(target, name, arguments);
+
+    public Avm1Lookup ConstructObject(string name, IReadOnlyList<object?> arguments) =>
+        objectConstructor(name, arguments);
 
     public void OnCommit(Action action) => _commitActions.Add(action);
 

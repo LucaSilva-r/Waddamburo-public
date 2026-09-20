@@ -202,10 +202,11 @@ internal static class Avm1Interpreter
                     if (!tryPop(stack, out var constructorName)
                         || !tryPopArguments(stack, out var constructorArguments))
                         return Avm1ExecutionStatus.StackUnderflow;
-                    var newObject = new Avm1Object();
-                    newObject.Properties["__constructor__"] = toAvmString(constructorName);
-                    newObject.Properties["__arguments__"] = new Avm1ArrayObject(constructorArguments);
-                    if (!tryPush(stack, newObject, limits.MaxStackValues))
+                    var constructed = context.ConstructObject(toAvmString(constructorName), constructorArguments);
+                    if (!tryPush(
+                        stack,
+                        constructed.Found ? constructed.Value : Avm1Undefined.Instance,
+                        limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x41: // DefineLocal2

@@ -76,7 +76,7 @@ internal static class SceneViewer
             1280,
             720,
             loaded.Select(layer => new LumenSceneLayer(
-                layer.Content.CreatePlayer(),
+                layer.Content.CreatePlayer(hostBinding: ViewerHostBinding.Instance),
                 layer.Entry.Transform,
                 layer.TextureOffset,
                 layer.TextureCount)));
@@ -94,6 +94,9 @@ internal static class SceneViewer
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
         for (var index = 0; index < scene.Layers.Length; index++)
         {
+            var callbacks = scene.Layers[index].Player.CallbackNames;
+            if (!callbacks.IsEmpty)
+                Console.WriteLine($"{loaded[index].Entry.MovieName}: Lumen callbacks: {string.Join(", ", callbacks)}");
             foreach (var diagnostic in scene.Layers[index].Player.Diagnostics)
             {
                 Console.WriteLine(

@@ -46,7 +46,7 @@ internal static class MovieViewer
                 checked((uint)texture.Height),
                 texture.Rgba8.AsSpan()))
             .ToArray();
-        var player = content.CreatePlayer();
+        var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
         if (seekFrame is int requestedFrame)
             player.Seek(requestedFrame);
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.ComposeContentFit(
@@ -61,6 +61,8 @@ internal static class MovieViewer
             frameLimit,
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
+        if (!player.CallbackNames.IsEmpty)
+            Console.WriteLine($"Lumen callbacks: {string.Join(", ", player.CallbackNames)}");
         foreach (var diagnostic in player.Diagnostics)
         {
             Console.WriteLine(

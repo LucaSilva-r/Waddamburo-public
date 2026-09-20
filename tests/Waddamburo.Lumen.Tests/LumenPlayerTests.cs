@@ -593,6 +593,88 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ExternalInterfaceCallbacksAreRegisteredAndInvokedSynchronously()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x8E, 0x0C, 0x00,
+                0x10, 0x00,
+                0x01, 0x00,
+                0x03,
+                0x01, 0x00,
+                0x02, 0x00, 0x00,
+                0x0F, 0x00,
+                0x96, 0x02, 0x00, 0x04, 0x01,
+                0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x04, 0x02,
+                0x4F,
+                0x00,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x08, 0x00,
+                0x09, 0x0F, 0x00,
+                0x07, 0x03, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x0B, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x0C, 0x00,
+            0x4E,
+            0x96, 0x03, 0x00, 0x09, 0x0D, 0x00,
+            0x4E,
+            0x96, 0x03, 0x00, 0x09, 0x0E, 0x00,
+            0x52,
+            0x17,
+            0x00,
+        ]), 1280, 720);
+
+        Assert.Empty(player.CallbackNames);
+        player.Advance();
+
+        Assert.True(
+            player.CallbackNames.SequenceEqual(["SetVisible"]),
+            string.Join(" | ", player.Diagnostics.Select(diagnostic => $"{diagnostic.Code}: {diagnostic.Message}")));
+        Assert.True(player.TryInvokeCallback(
+            "SetVisible",
+            [LumenHostValue.FromBoolean(false)]));
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.False(player.TryInvokeCallback("Missing", []));
+    }
+
+    [Fact]
+    public void NewObjectInvokesAuthoredConstructorWithPrototype()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x8E, 0x09, 0x00,
+                0x11, 0x00,
+                0x00, 0x00,
+                0x02,
+                0x01, 0x00,
+                0x0F, 0x00,
+                0x96, 0x02, 0x00, 0x04, 0x01,
+                0x96, 0x05, 0x00, 0x09, 0x12, 0x00, 0x05, 0x00,
+                0x4F,
+                0x00,
+            0x96, 0x08, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x09, 0x11, 0x00,
+            0x40,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x05, 0x00, 0x04, 0x00, 0x09, 0x12, 0x00,
+            0x4E,
+            0x87, 0x01, 0x00, 0x01,
+            0x17,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x04, 0x01,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -647,7 +729,8 @@ public sealed class LumenPlayerTests
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
             record(LmbTags.StringPool, stringPool(
                 "middle", "end", "_visible", "prototype", "Object", "RootExport", "registerClass",
-                "resource", "ResolveVisible", "this", "FailingHost")),
+                "resource", "ResolveVisible", "this", "FailingHost", "flash", "external",
+                "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

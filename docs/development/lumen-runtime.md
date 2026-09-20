@@ -80,6 +80,16 @@ cross this first public boundary yet, and host side effects are synchronous rath
 than transactionally reversible. `LumenMovieContent.CreatePlayer` accepts the same
 optional binding without coupling the content loader to a concrete game host.
 
+Authored `NewObject` now resolves AVM function constructors, attaches their
+prototype, preloads `this`, and runs the constructor inside the calling action's
+transaction. The built-in `flash.external.ExternalInterface` captures committed
+`addCallback` registrations per player. `CallbackNames` is an immutable sorted
+snapshot, and `TryInvokeCallback` synchronously invokes a named callback with the
+same primitive-only host values. Callback return values and object arguments remain
+outside this slice. The standalone viewer installs an empty `Lumen` presence object
+through its host binding so movies select their native-game branch; unimplemented
+native methods remain diagnostics rather than hidden stubs.
+
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
 records, branch destinations, and the out-of-line lexical bodies used by Lumen's

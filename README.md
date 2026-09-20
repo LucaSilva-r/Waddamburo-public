@@ -78,6 +78,11 @@ seek-state snapshot and ordinary-frame replay. Deferred AVM actions, special ble
 modes, and native fill surfaces are diagnosed explicitly; this is not yet a full
 compatibility viewer.
 
+The diagnostic viewer selects the native-game script branch through an explicit
+per-player host binding and prints any authored `ExternalInterface` callback names
+registered by the movie. It does not silently implement the corresponding game
+services; missing native methods remain structured runtime diagnostics.
+
 Compose several independently loaded Lumen movies on the 1280x720 stage with a
 scene description and a user-owned asset root:
 

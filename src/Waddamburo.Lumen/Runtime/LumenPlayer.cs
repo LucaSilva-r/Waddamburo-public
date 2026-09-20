@@ -24,6 +24,8 @@ public sealed class LumenPlayer
     private readonly List<PendingFrameAction> _pendingActions = [];
     private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
+    private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
     private long _nextActionSequence;
     private int _callDepth;
@@ -61,6 +63,7 @@ public sealed class LumenPlayer
         _globals["Object"] = createBuiltinConstructor();
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
+        installExternalInterface();
         hostBinding?.Install(new LumenHostContext(_globals));
         enterFrame(_root, 0, queueActions: true);
         drainActions();
@@ -77,6 +80,22 @@ public sealed class LumenPlayer
     public ImmutableDictionary<string, int> Labels => _sprites[_root.CharacterId].Labels;
 
     public ImmutableArray<LumenRuntimeDiagnostic> Diagnostics => [.. _diagnostics];
+
+    public ImmutableArray<string> CallbackNames => [.. _callbacks.Keys.Order(StringComparer.Ordinal)];
+
+    public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (!_callbacks.TryGetValue(name, out var callback))
+            return false;
+        var converted = arguments.Select(fromHostValue).ToArray();
+        return invokeFunction(
+            callback.Instance,
+            callback.Function,
+            callback.ThisValue,
+            converted).Found;
+    }
 
     public void Advance()
     {
@@ -423,6 +442,22 @@ public sealed class LumenPlayer
             },
             (target, name, arguments) =>
             {
+                if (ReferenceEquals(target, _externalInterface) && name == "addCallback")
+                {
+                    if (arguments.Count >= 3
+                        && arguments[0] is string callbackName
+                        && arguments[2] is Avm1FunctionValue callbackFunction)
+                    {
+                        context!.OnCommit(() => _callbacks[callbackName] = new CallbackRegistration(
+                            instance,
+                            arguments[1],
+                            callbackFunction));
+                        return new Avm1Lookup(true, true);
+                    }
+                    return new Avm1Lookup(true, false);
+                }
+                if (ReferenceEquals(target, _externalInterface) && name == "call")
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
                 {
                     context!.OnCommit(() => targetInstance.Playing = name == "play");
@@ -452,6 +487,20 @@ public sealed class LumenPlayer
                     instance.Frame,
                     $"AVM method '{name}' is not registered; undefined was returned.");
                 return default;
+            },
+            (name, arguments) =>
+            {
+                var candidate = context!.GetVariable(name);
+                var value = new Avm1Object();
+                value.Properties["__constructor__"] = name;
+                value.Properties["__arguments__"] = new Avm1ArrayObject(arguments);
+                if (candidate.Found && candidate.Value is Avm1FunctionValue constructor)
+                {
+                    value.Prototype = constructor.GetProperty("prototype").Value as Avm1Object;
+                    if (!invokeFunction(instance, constructor, value, arguments, context).Found)
+                        return default;
+                }
+                return new Avm1Lookup(true, value);
             },
             parentContext is null ? null : parentContext.OnCommit);
         return context;
@@ -669,6 +718,16 @@ public sealed class LumenPlayer
         var constructor = new Avm1Object();
         constructor.Properties["prototype"] = new Avm1Object();
         return constructor;
+    }
+
+    private void installExternalInterface()
+    {
+        _externalInterface.Properties["available"] = true;
+        var external = new Avm1Object();
+        external.Properties["ExternalInterface"] = _externalInterface;
+        var flash = new Avm1Object();
+        flash.Properties["external"] = external;
+        _globals["flash"] = flash;
     }
 
     private static bool toBoolean(object? value) => value switch
@@ -1022,6 +1081,11 @@ public sealed class LumenPlayer
         DisplayInstance Instance,
         uint ActionIndex,
         long Sequence);
+
+    private readonly record struct CallbackRegistration(
+        DisplayInstance Instance,
+        object? ThisValue,
+        Avm1FunctionValue Function);
 
     private readonly record struct ColorState(LumenRenderColor Multiply, LumenRenderColor Add)
     {
