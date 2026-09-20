@@ -144,7 +144,13 @@ public sealed class LumenPlayer
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
-        appendInstance(_root, LumenMatrix.Identity, ColorState.Identity, interpolationFraction, quads);
+        appendInstance(
+            _root,
+            LumenMatrix.Identity,
+            ColorState.Identity,
+            LumenRenderBlend.Normal,
+            interpolationFraction,
+            quads);
         return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());
     }
 
@@ -708,7 +714,7 @@ public sealed class LumenPlayer
             instance.Name = _movie.Strings[checked((int)placement.NameStringIndex)].Value;
         if (isNew || placement.BlendMode != 0)
             instance.BlendMode = placement.BlendMode;
-        if (instance.BlendMode > 2)
+        if (instance.BlendMode > 2 && instance.BlendMode != 8)
         {
             reportOnce(
                 "LUM_BLEND_MODE_DEFERRED",
@@ -768,6 +774,7 @@ public sealed class LumenPlayer
         DisplayInstance instance,
         LumenMatrix parentTransform,
         ColorState parentColor,
+        LumenRenderBlend parentBlend,
         float interpolationFraction,
         ImmutableArray<LumenRenderQuad>.Builder quads)
     {
@@ -776,6 +783,7 @@ public sealed class LumenPlayer
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
         var color = local.Color.Then(parentColor);
+        var blend = instance.BlendMode == 8 ? LumenRenderBlend.Add : parentBlend;
         if (_shapes.TryGetValue(instance.CharacterId, out var shape))
         {
             foreach (var geometry in shape.Geometry)
@@ -798,12 +806,13 @@ public sealed class LumenPlayer
                     transformVertex(geometry.Vertices[2], transform),
                     transformVertex(geometry.Vertices[3], transform),
                     color.Multiply,
-                    color.Add));
+                    color.Add,
+                    blend));
             }
         }
 
         foreach (var child in instance.Children.Values)
-            appendInstance(child, transform, color, interpolationFraction, quads);
+            appendInstance(child, transform, color, blend, interpolationFraction, quads);
     }
 
     private void reportOnce(string code, uint characterId, int frame, string message)

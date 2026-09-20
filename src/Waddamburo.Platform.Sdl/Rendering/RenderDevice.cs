@@ -12,7 +12,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     private readonly SDL_GPUDevice* _device;
     private readonly SDL_Window* _window;
     private readonly Dictionary<uint, nint> _textures = [];
-    private SDL_GPUGraphicsPipeline* _quadPipeline;
+    private SDL_GPUGraphicsPipeline* _normalQuadPipeline;
+    private SDL_GPUGraphicsPipeline* _addQuadPipeline;
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUSampler* _linearSampler;
     private uint _nextTextureId = 1;
@@ -31,7 +32,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         {
             _nearestSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_NEAREST);
             _linearSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR);
-            _quadPipeline = createQuadPipeline();
+            _normalQuadPipeline = createQuadPipeline(RenderBlend.Normal);
+            _addQuadPipeline = createQuadPipeline(RenderBlend.Add);
         }
         catch
         {
@@ -187,9 +189,18 @@ internal sealed unsafe class RenderDevice : IDisposable
             };
             SDL_SetGPUViewport(renderPass, &viewport);
             SDL_SetGPUScissor(renderPass, &scissor);
-            SDL_BindGPUGraphicsPipeline(renderPass, _quadPipeline);
+            RenderBlend? boundBlend = null;
             foreach (var quad in frame.Quads)
+            {
+                if (quad.Blend != boundBlend)
+                {
+                    SDL_BindGPUGraphicsPipeline(
+                        renderPass,
+                        quad.Blend == RenderBlend.Add ? _addQuadPipeline : _normalQuadPipeline);
+                    boundBlend = quad.Blend;
+                }
                 drawQuad(commandBuffer, renderPass, quad);
+            }
             SDL_EndGPURenderPass(renderPass);
 
             if (capture)
@@ -311,7 +322,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         SDL_DrawGPUPrimitives(renderPass, 6, 1, 0, 0);
     }
 
-    private SDL_GPUGraphicsPipeline* createQuadPipeline()
+    private SDL_GPUGraphicsPipeline* createQuadPipeline(RenderBlend blend)
     {
         var formats = SDL_GetGPUShaderFormats(_device);
         var format = (formats & SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV) != 0
@@ -329,7 +340,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             var blendState = new SDL_GPUColorTargetBlendState
             {
                 src_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
-                dst_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                dst_color_blendfactor = blend == RenderBlend.Add
+                    ? SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE
+                    : SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
                 color_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
                 src_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
                 dst_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
@@ -431,6 +444,8 @@ internal sealed unsafe class RenderDevice : IDisposable
                 throw new ArgumentException($"Render frame references unknown texture {quad.Texture.Value}.", nameof(frame));
             if (!Enum.IsDefined(quad.Sampling))
                 throw new ArgumentException("Render frame contains an unknown sampling mode.", nameof(frame));
+            if (!Enum.IsDefined(quad.Blend))
+                throw new ArgumentException("Render frame contains an unknown blend mode.", nameof(frame));
             validateVertex(quad.TopLeft, nameof(quad.TopLeft));
             validateVertex(quad.TopRight, nameof(quad.TopRight));
             validateVertex(quad.BottomRight, nameof(quad.BottomRight));
@@ -481,10 +496,15 @@ internal sealed unsafe class RenderDevice : IDisposable
         foreach (var texture in _textures.Values)
             SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
         _textures.Clear();
-        if (_quadPipeline is not null)
+        if (_addQuadPipeline is not null)
         {
-            SDL_ReleaseGPUGraphicsPipeline(_device, _quadPipeline);
-            _quadPipeline = null;
+            SDL_ReleaseGPUGraphicsPipeline(_device, _addQuadPipeline);
+            _addQuadPipeline = null;
+        }
+        if (_normalQuadPipeline is not null)
+        {
+            SDL_ReleaseGPUGraphicsPipeline(_device, _normalQuadPipeline);
+            _normalQuadPipeline = null;
         }
         if (_linearSampler is not null)
         {

@@ -25,6 +25,7 @@ public static class LumenRenderFrameAdapter
                 convert(quad.BottomLeft, inverseWidth, inverseHeight),
                 convert(quad.MultiplyColor),
                 convert(quad.AddColor),
+                convert(quad.Blend),
                 quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)),
             (double)snapshot.StageWidth / snapshot.StageHeight);
     }
@@ -87,6 +88,7 @@ public static class LumenRenderFrameAdapter
                 convert(quad.BottomLeft, viewLeft, viewTop, inverseWidth, inverseHeight),
                 convert(quad.MultiplyColor),
                 convert(quad.AddColor),
+                convert(quad.Blend),
                 quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)),
             (double)snapshot.StageWidth / snapshot.StageHeight);
     }
@@ -117,4 +119,11 @@ public static class LumenRenderFrameAdapter
 
     private static RenderColor convert(LumenRenderColor color) =>
         new(color.Red, color.Green, color.Blue, color.Alpha);
+
+    private static RenderBlend convert(LumenRenderBlend blend) => blend switch
+    {
+        LumenRenderBlend.Normal => RenderBlend.Normal,
+        LumenRenderBlend.Add => RenderBlend.Add,
+        _ => throw new ArgumentOutOfRangeException(nameof(blend)),
+    };
 }

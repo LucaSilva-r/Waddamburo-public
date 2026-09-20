@@ -11,12 +11,13 @@ color and ordered four-corner textured quads; public texture IDs keep SDL pointe
 out of frame state. Positions and UVs are normalized, both nearest and linear
 sampling are available, color multiply/add is explicit, source RGBA is treated as
 straight alpha, and the fragment shader emits premultiplied alpha for one/source-
-alpha blending. The sample app uploads a synthetic checkerboard through this same
-path. A temporarily unavailable swapchain image is valid and is not replaced with
-an invented render target.
+alpha blending. Ordered quads may also select an additive pipeline, which uses one/
+one RGB blending while preserving the normal alpha equation. The sample app uploads
+a synthetic checkerboard through this same path. A temporarily unavailable swapchain
+image is valid and is not replaced with an invented render target.
 
 Lumen owns its renderer-independent `LumenRenderSnapshot`: logical stage size,
-ordered quad vertices, texture indices, colors, and sampling intent. The SDL adapter
+ordered quad vertices, texture indices, colors, blend, and sampling intent. The SDL adapter
 normalizes those coordinates and resolves texture indices to opaque GPU IDs. This
 keeps mutable display state and SDL resources on opposite sides of one small,
 testable conversion boundary.

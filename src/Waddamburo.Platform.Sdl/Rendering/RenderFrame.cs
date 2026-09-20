@@ -56,6 +56,12 @@ public enum RenderSampling
     Linear,
 }
 
+public enum RenderBlend
+{
+    Normal,
+    Add,
+}
+
 public readonly record struct RenderQuad(
     RenderTextureId Texture,
     RenderVertex TopLeft,
@@ -64,6 +70,7 @@ public readonly record struct RenderQuad(
     RenderVertex BottomLeft,
     RenderColor MultiplyColor,
     RenderColor AddColor,
+    RenderBlend Blend = RenderBlend.Normal,
     RenderSampling Sampling = RenderSampling.Linear)
 {
     public static RenderQuad FromRectangles(
@@ -72,7 +79,8 @@ public readonly record struct RenderQuad(
         RenderRectangle uvRectangle,
         RenderColor multiplyColor,
         RenderColor addColor,
-        RenderSampling sampling = RenderSampling.Linear) =>
+        RenderSampling sampling = RenderSampling.Linear,
+        RenderBlend blend = RenderBlend.Normal) =>
         new(
             texture,
             new RenderVertex(destination.X, destination.Y, uvRectangle.X, uvRectangle.Y),
@@ -81,6 +89,7 @@ public readonly record struct RenderQuad(
             new RenderVertex(destination.X, destination.Y + destination.Height, uvRectangle.X, uvRectangle.Y + uvRectangle.Height),
             multiplyColor,
             addColor,
+            blend,
             sampling);
 }
 

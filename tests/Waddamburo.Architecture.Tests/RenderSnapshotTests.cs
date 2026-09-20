@@ -89,6 +89,20 @@ public sealed class RenderSnapshotTests
     }
 
     [Fact]
+    public void LumenAdapterPreservesAddBlendCommands()
+    {
+        var additive = quad(1, default) with { Blend = LumenRenderBlend.Add };
+        var snapshot = new LumenRenderSnapshot(1280, 720, [additive]);
+
+        var frame = LumenRenderFrameAdapter.Compose(
+            snapshot,
+            RenderColor.WaddamburoBlue,
+            _ => new RenderTextureId(1));
+
+        Assert.Equal(RenderBlend.Add, Assert.Single(frame.Quads).Blend);
+    }
+
+    [Fact]
     public void ContentFitFallsBackToStageForEmptySnapshot()
     {
         var snapshot = new LumenRenderSnapshot(1280, 720, []);

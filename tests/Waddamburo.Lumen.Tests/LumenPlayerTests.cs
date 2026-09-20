@@ -35,6 +35,17 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void AddBlendModeFlowsIntoRenderSnapshot()
+    {
+        var player = new LumenPlayer(createMovie(firstBlendMode: 8), 1280, 720);
+
+        var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
+
+        Assert.Equal(LumenRenderBlend.Add, quad.Blend);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_BLEND_MODE_DEFERRED");
+    }
+
+    [Fact]
     public void MatrixCompositionAppliesChildBeforeParent()
     {
         var local = new LumenMatrix(2, 0, 0, 3, 5, 7);
@@ -538,7 +549,8 @@ public sealed class LumenPlayerTests
         bool includeSeekKey = false,
         byte[]? actionBytecode = null,
         bool duplicateAction = false,
-        uint rootExportStringIndex = 0)
+        uint rootExportStringIndex = 0,
+        ushort firstBlendMode = 0)
     {
         var geometry = new uint[]
         {
@@ -562,7 +574,7 @@ public sealed class LumenPlayerTests
             words(LmbTags.FrameLabel, 0, 1, 0),
             words(LmbTags.FrameLabel, 1, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
-            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
+            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00010000U | firstBlendMode, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
             words(LmbTags.ShowFrame, 1, duplicateAction ? 3U : 2U),
             words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
             words(LmbTags.DoAction, 0, 0),

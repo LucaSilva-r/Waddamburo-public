@@ -11,6 +11,12 @@ public readonly record struct LumenRenderColor(float Red, float Green, float Blu
     public static LumenRenderColor Transparent { get; } = new(0f, 0f, 0f, 0f);
 }
 
+public enum LumenRenderBlend
+{
+    Normal,
+    Add,
+}
+
 public readonly record struct LumenRenderQuad(
     uint TextureIndex,
     LumenRenderVertex TopLeft,
@@ -19,6 +25,7 @@ public readonly record struct LumenRenderQuad(
     LumenRenderVertex BottomLeft,
     LumenRenderColor MultiplyColor,
     LumenRenderColor AddColor,
+    LumenRenderBlend Blend = LumenRenderBlend.Normal,
     bool UseNearestSampling = false);
 
 /// <summary>

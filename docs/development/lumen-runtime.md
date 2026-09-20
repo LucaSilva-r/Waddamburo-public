@@ -86,9 +86,10 @@ greater than 200 logical pixels and multiply-color component changes greater tha
 0.3 are explicit cuts; new and replaced instances render their current state. Add
 color remains at its current authored value.
 
-Unsupported AVM actions, native fill-zero surfaces, and non-normal blend modes are
-retained but not guessed. The player emits stable, deduplicated diagnostics for
-those deferred paths. Synthetic tests cover root resolution,
+Flash blend mode 8 is retained as renderer-neutral additive intent through nested
+clips and scene composition. Other non-normal blend modes, unsupported AVM actions,
+and native fill-zero surfaces are retained but not guessed. The player emits
+stable, deduplicated diagnostics for those deferred paths. Synthetic tests cover root resolution,
 place/move/remove/loop behavior, nested matrix order, color conversion, F105 and
 replay-based seeks, immutable snapshots, interpolation and cut behavior, simple
 play/stop actions, transactional variables and clip members, function/class
