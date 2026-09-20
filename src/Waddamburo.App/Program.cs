@@ -5,6 +5,7 @@ try
 {
     var frameLimit = parseFrameLimit(args);
     var tickLimit = parseLimit(args, "--ticks=");
+    var windowSize = parseWindowSize(args);
     var screenshotPath = parseOption(args, "--screenshot=");
     if (screenshotPath is not null)
     {
@@ -23,17 +24,35 @@ try
             throw new ArgumentException("--scene and --asset-root must be supplied together.");
         if (archivePath is not null || movieName is not null)
             throw new ArgumentException("Scene options cannot be combined with --archive or --movie.");
-        SceneViewer.Run(scenePath, assetRoot, frameLimit, tickLimit, screenshotPath);
+        SceneViewer.Run(
+            scenePath,
+            assetRoot,
+            windowSize.Width,
+            windowSize.Height,
+            frameLimit,
+            tickLimit,
+            screenshotPath);
         return 0;
     }
     if (archivePath is not null || movieName is not null)
     {
         if (archivePath is null || movieName is null)
             throw new ArgumentException("--archive and --movie must be supplied together.");
-        MovieViewer.Run(archivePath, movieName, frameLimit, tickLimit, screenshotPath);
+        MovieViewer.Run(
+            archivePath,
+            movieName,
+            windowSize.Width,
+            windowSize.Height,
+            frameLimit,
+            tickLimit,
+            screenshotPath);
         return 0;
     }
-    using var application = new SdlApplication("Waddamburo", 1280, 720, debugGpu: false);
+    using var application = new SdlApplication(
+        "Waddamburo",
+        windowSize.Width,
+        windowSize.Height,
+        debugGpu: false);
     Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
     var checkerboard = createCheckerboard();
     var texture = application.UploadRgba8(8, 8, checkerboard);
@@ -82,6 +101,24 @@ static byte[] createCheckerboard()
 
 static int? parseFrameLimit(string[] arguments)
     => parseLimit(arguments, "--frames=");
+
+static (int Width, int Height) parseWindowSize(string[] arguments)
+{
+    const string prefix = "--window-size=";
+    var option = arguments.SingleOrDefault(argument => argument.StartsWith(prefix, StringComparison.Ordinal));
+    if (option is null)
+        return (1280, 720);
+    var value = option.AsSpan(prefix.Length);
+    var separator = value.IndexOfAny('x', 'X');
+    if (separator <= 0 || separator == value.Length - 1
+        || !int.TryParse(value[..separator], out var width)
+        || !int.TryParse(value[(separator + 1)..], out var height)
+        || width <= 0 || height <= 0)
+    {
+        throw new ArgumentException("--window-size must use positive integer WIDTHxHEIGHT dimensions.");
+    }
+    return (width, height);
+}
 
 static int? parseLimit(string[] arguments, string prefix)
 {

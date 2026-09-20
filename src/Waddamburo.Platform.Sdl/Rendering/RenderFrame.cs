@@ -20,6 +20,36 @@ public readonly record struct RenderTextureId(uint Value);
 
 public readonly record struct RenderVertex(float X, float Y, float U, float V);
 
+public readonly record struct RenderViewport(int X, int Y, int Width, int Height)
+{
+    public static RenderViewport AspectFit(uint surfaceWidth, uint surfaceHeight, double contentAspectRatio)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(surfaceWidth);
+        ArgumentOutOfRangeException.ThrowIfZero(surfaceHeight);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(surfaceWidth, (uint)int.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(surfaceHeight, (uint)int.MaxValue);
+        if (!double.IsFinite(contentAspectRatio) || contentAspectRatio <= 0)
+            throw new ArgumentOutOfRangeException(nameof(contentAspectRatio));
+
+        var width = checked((int)surfaceWidth);
+        var height = checked((int)surfaceHeight);
+        if ((double)width / height > contentAspectRatio)
+        {
+            var fittedWidth = Math.Clamp(
+                (int)Math.Round(height * (double)contentAspectRatio, MidpointRounding.AwayFromZero),
+                1,
+                width);
+            return new RenderViewport((width - fittedWidth) / 2, 0, fittedWidth, height);
+        }
+
+        var fittedHeight = Math.Clamp(
+            (int)Math.Round(width / (double)contentAspectRatio, MidpointRounding.AwayFromZero),
+            1,
+            height);
+        return new RenderViewport(0, (height - fittedHeight) / 2, width, fittedHeight);
+    }
+}
+
 public enum RenderSampling
 {
     Nearest,
@@ -57,14 +87,34 @@ public readonly record struct RenderQuad(
 /// <summary>Immutable commands for one presentation frame. Coordinates are normalized to the window.</summary>
 public sealed class RenderFrame
 {
-    public RenderFrame(RenderColor clearColor, IEnumerable<RenderQuad> quads)
+    public RenderFrame(
+        RenderColor clearColor,
+        IEnumerable<RenderQuad> quads,
+        double? contentAspectRatio = null)
     {
         ArgumentNullException.ThrowIfNull(quads);
+        if (contentAspectRatio is double aspectRatio
+            && (!double.IsFinite(aspectRatio) || aspectRatio <= 0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(contentAspectRatio));
+        }
         ClearColor = clearColor;
         Quads = quads.ToImmutableArray();
+        ContentAspectRatio = contentAspectRatio;
     }
 
     public RenderColor ClearColor { get; }
 
     public ImmutableArray<RenderQuad> Quads { get; }
+
+    public double? ContentAspectRatio { get; }
+
+    public RenderViewport ResolveViewport(uint surfaceWidth, uint surfaceHeight) =>
+        ContentAspectRatio is double aspectRatio
+            ? RenderViewport.AspectFit(surfaceWidth, surfaceHeight, aspectRatio)
+            : new RenderViewport(
+                0,
+                0,
+                checked((int)surfaceWidth),
+                checked((int)surfaceHeight));
 }

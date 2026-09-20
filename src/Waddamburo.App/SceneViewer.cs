@@ -15,6 +15,8 @@ internal static class SceneViewer
     public static int Run(
         string scenePath,
         string assetRoot,
+        int windowWidth,
+        int windowHeight,
         int? frameLimit,
         int? tickLimit,
         string? screenshotPath)
@@ -59,8 +61,8 @@ internal static class SceneViewer
 
         using var application = new SdlApplication(
             $"Waddamburo — {Path.GetFileNameWithoutExtension(scenePath)}",
-            1280,
-            720,
+            windowWidth,
+            windowHeight,
             debugGpu: false);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
         var textureIds = loaded

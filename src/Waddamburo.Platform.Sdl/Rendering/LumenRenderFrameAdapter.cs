@@ -25,7 +25,8 @@ public static class LumenRenderFrameAdapter
                 convert(quad.BottomLeft, inverseWidth, inverseHeight),
                 convert(quad.MultiplyColor),
                 convert(quad.AddColor),
-                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)));
+                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)),
+            (double)snapshot.StageWidth / snapshot.StageHeight);
     }
 
     /// <summary>
@@ -86,7 +87,8 @@ public static class LumenRenderFrameAdapter
                 convert(quad.BottomLeft, viewLeft, viewTop, inverseWidth, inverseHeight),
                 convert(quad.MultiplyColor),
                 convert(quad.AddColor),
-                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)));
+                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)),
+            (double)snapshot.StageWidth / snapshot.StageHeight);
     }
 
     private static RenderVertex convert(LumenRenderVertex vertex, float inverseWidth, float inverseHeight) =>

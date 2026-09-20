@@ -38,6 +38,12 @@ presentation, executes at most five catch-up ticks per display frame, and report
 discarded excess ticks explicitly. The successful Linux x64 baseline uses SDL's
 Vulkan GPU backend.
 
+Lumen frames carry their logical-stage aspect ratio into the renderer. Every
+presentation derives an integer-pixel viewport from the acquired swapchain image
+and applies matching GPU viewport and scissor state, preserving the stage across
+resize and high-DPI drawable sizes. `--window-size=WIDTHxHEIGHT` provides a bounded
+diagnostic startup size for framebuffer checks.
+
 `--screenshot=PATH` downloads the final bounded swapchain image and writes a
 top-down RGBA capture as PNG or BMP. Without a frame or tick bound, capture renders
 one frame. The readback waits on a GPU fence by design and is restricted to this

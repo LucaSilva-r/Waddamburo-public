@@ -53,7 +53,8 @@ dotnet run --project src/Waddamburo.App
 For a bounded automated smoke test, pass `--frames=N`. Use `--ticks=N` to stop on
 an exact authored 60 Hz simulation tick; display frames and simulation ticks are
 independent. With no asset options the app renders a synthetic nearest-sampled
-checkerboard.
+checkerboard. `--window-size=WIDTHxHEIGHT` selects a diagnostic startup size; Lumen
+frames preserve their logical-stage aspect ratio in the drawable pixel surface.
 
 Capture the final bounded frame directly from the SDL_GPU swapchain with
 `--screenshot=/path/to/frame.png` (or `.bmp`). If neither `--frames` nor `--ticks` is

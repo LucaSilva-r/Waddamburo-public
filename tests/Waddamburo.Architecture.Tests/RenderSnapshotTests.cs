@@ -27,6 +27,38 @@ public sealed class RenderSnapshotTests
         Assert.Equal(new RenderVertex(0.25f, 0.25f, 0.1f, 0.2f), frame.Quads[0].TopLeft);
         Assert.Equal(new RenderVertex(0.5f, 0.5f, 0.3f, 0.4f), frame.Quads[1].TopLeft);
         Assert.Equal(RenderSampling.Nearest, frame.Quads[0].Sampling);
+        Assert.Equal(16d / 9d, frame.ContentAspectRatio);
+    }
+
+    [Theory]
+    [InlineData(1000, 1000, 0, 218, 1000, 563)]
+    [InlineData(2000, 720, 360, 0, 1280, 720)]
+    [InlineData(2560, 1440, 0, 0, 2560, 1440)]
+    public void LumenFrameAspectFitsItsLogicalStageToDrawablePixels(
+        uint surfaceWidth,
+        uint surfaceHeight,
+        int expectedX,
+        int expectedY,
+        int expectedWidth,
+        int expectedHeight)
+    {
+        var snapshot = new LumenRenderSnapshot(1280, 720, []);
+        var frame = LumenRenderFrameAdapter.Compose(
+            snapshot,
+            RenderColor.WaddamburoBlue,
+            _ => throw new InvalidOperationException());
+
+        Assert.Equal(
+            new RenderViewport(expectedX, expectedY, expectedWidth, expectedHeight),
+            frame.ResolveViewport(surfaceWidth, surfaceHeight));
+    }
+
+    [Fact]
+    public void FrameWithoutContentAspectUsesFullDrawableSurface()
+    {
+        var frame = new RenderFrame(RenderColor.WaddamburoBlue, []);
+
+        Assert.Equal(new RenderViewport(0, 0, 1000, 700), frame.ResolveViewport(1000, 700));
     }
 
     [Fact]

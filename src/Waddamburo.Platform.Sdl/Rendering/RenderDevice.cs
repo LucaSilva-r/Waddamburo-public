@@ -168,6 +168,25 @@ internal sealed unsafe class RenderDevice : IDisposable
                 throw sdlFailure("begin the GPU render pass");
             }
 
+            var resolvedViewport = frame.ResolveViewport(width, height);
+            var viewport = new SDL_GPUViewport
+            {
+                x = resolvedViewport.X,
+                y = resolvedViewport.Y,
+                w = resolvedViewport.Width,
+                h = resolvedViewport.Height,
+                min_depth = 0,
+                max_depth = 1,
+            };
+            var scissor = new SDL_Rect
+            {
+                x = resolvedViewport.X,
+                y = resolvedViewport.Y,
+                w = resolvedViewport.Width,
+                h = resolvedViewport.Height,
+            };
+            SDL_SetGPUViewport(renderPass, &viewport);
+            SDL_SetGPUScissor(renderPass, &scissor);
             SDL_BindGPUGraphicsPipeline(renderPass, _quadPipeline);
             foreach (var quad in frame.Quads)
                 drawQuad(commandBuffer, renderPass, quad);

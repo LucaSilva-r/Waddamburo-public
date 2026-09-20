@@ -10,6 +10,8 @@ internal static class MovieViewer
     public static int Run(
         string archivePath,
         string movieName,
+        int windowWidth,
+        int windowHeight,
         int? frameLimit,
         int? tickLimit,
         string? screenshotPath)
@@ -31,7 +33,11 @@ internal static class MovieViewer
         if (content.Diagnostics.Any(diagnostic => diagnostic.Severity is DiagnosticSeverity.Error))
             throw new InvalidDataException("Movie has semantic errors and cannot be presented safely.");
 
-        using var application = new SdlApplication($"Waddamburo — {content.Name}", 1280, 720, debugGpu: false);
+        using var application = new SdlApplication(
+            $"Waddamburo — {content.Name}",
+            windowWidth,
+            windowHeight,
+            debugGpu: false);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
         var textureIds = content.Textures
             .Select(texture => application.UploadRgba8(
