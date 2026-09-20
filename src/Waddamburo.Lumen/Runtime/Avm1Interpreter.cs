@@ -280,7 +280,11 @@ internal static class Avm1Interpreter
                     var resolvedMethodName = methodName is null or Avm1Undefined
                         ? ""
                         : toAvmString(methodName);
-                    var methodCall = context.CallMethod(methodTarget, resolvedMethodName, methodArguments);
+                    var methodCall = context.CallMethod(
+                        methodTarget,
+                        resolvedMethodName,
+                        methodArguments,
+                        instruction.Offset);
                     if (!tryPush(stack, methodCall.Found ? methodCall.Value : Avm1Undefined.Instance, limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;

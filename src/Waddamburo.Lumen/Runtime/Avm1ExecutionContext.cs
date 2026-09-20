@@ -6,7 +6,7 @@ internal sealed class Avm1ExecutionContext(
     Func<object?, string, Avm1Lookup> memberReader,
     Action<object?, string, object?> memberWriter,
     Func<string, IReadOnlyList<object?>, Avm1Lookup> functionCaller,
-    Func<object?, string, IReadOnlyList<object?>, Avm1Lookup> methodCaller,
+    Func<object?, string, IReadOnlyList<object?>, int, Avm1Lookup> methodCaller,
     Func<string, IReadOnlyList<object?>, Avm1Lookup> objectConstructor,
     Action<Action>? commitActionWriter = null)
 {
@@ -32,8 +32,8 @@ internal sealed class Avm1ExecutionContext(
     public Avm1Lookup CallFunction(string name, IReadOnlyList<object?> arguments) =>
         functionCaller(name, arguments);
 
-    public Avm1Lookup CallMethod(object? target, string name, IReadOnlyList<object?> arguments) =>
-        methodCaller(target, name, arguments);
+    public Avm1Lookup CallMethod(object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset) =>
+        methodCaller(target, name, arguments, instructionOffset);
 
     public Avm1Lookup ConstructObject(string name, IReadOnlyList<object?> arguments) =>
         objectConstructor(name, arguments);

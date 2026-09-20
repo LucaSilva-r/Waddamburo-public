@@ -66,7 +66,8 @@ Each action also receives bounded registers and a transactional variable/member
 context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
 exposing mutable display instances publicly. `_visible`, `_x`, `_y`, `_alpha`, and
 `_currentframe` bridge to private clip state. Writes commit only when the action
-finishes successfully. Unregistered function calls consume the authored arguments,
+finishes successfully, while later instructions and nested calls can read pending
+instance/global member writes through the same transaction. Unregistered function calls consume the authored arguments,
 return `undefined`, and emit `LUM_AVM_CALL_UNRESOLVED`, allowing optional host calls
 to remain observable without aborting otherwise valid initialization.
 
@@ -79,7 +80,9 @@ authored labels on the target clip. Forward jumps preserve existing children whi
 applying intervening display-list frames without their scripts; backward jumps use
 the current cut reconstruction. Both reset interpolation, and invalid targets emit
 `LUM_AVM_GOTO_INVALID`. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
-diagnostics. Synthetic fixtures cover class bootstrap and binding without embedding
+diagnostics with their action offset. A zero placement-name field retains an
+instance's existing authored name instead of clearing it during timeline updates.
+Synthetic fixtures cover class bootstrap and binding without embedding
 or reproducing original content.
 
 Game integration enters through `ILumenHostBinding`, which installs globals before

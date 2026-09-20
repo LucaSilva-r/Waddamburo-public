@@ -433,7 +433,23 @@ public sealed class LumenPlayer
     {
         Avm1ExecutionContext? context = null;
         context = new Avm1ExecutionContext(
-            name => parentContext?.GetVariable(name) ?? readVariable(instance, name),
+            name =>
+            {
+                if (parentContext is not null)
+                    return parentContext.GetVariable(name);
+                if (name == "this")
+                    return new Avm1Lookup(true, instance);
+                if (name == "_root" || name == "_level0")
+                    return new Avm1Lookup(true, _root);
+                if (name == "_parent")
+                    return new Avm1Lookup(instance.Parent is not null, instance.Parent);
+                if (name == "_global")
+                    return new Avm1Lookup(true, _globals);
+                var instanceMember = context!.GetMember(instance, name);
+                return instanceMember.Found
+                    ? instanceMember
+                    : context.GetMember(_globals, name);
+            },
             (name, value) =>
             {
                 if (parentContext is null)
@@ -465,7 +481,7 @@ public sealed class LumenPlayer
                     $"AVM function '{name}' is not registered; undefined was returned.");
                 return default;
             },
-            (target, name, arguments) =>
+            (target, name, arguments, instructionOffset) =>
             {
                 if (ReferenceEquals(target, _externalInterface) && name == "addCallback")
                 {
@@ -533,7 +549,7 @@ public sealed class LumenPlayer
                     "LUM_AVM_METHOD_UNRESOLVED",
                     instance.CharacterId,
                     instance.Frame,
-                    $"AVM method '{name}' is not registered on {describeAvmType(target)}; undefined was returned.");
+                    $"AVM method '{name}' at action offset 0x{instructionOffset:X} is not registered on {describeAvmType(target)}; undefined was returned.");
                 return default;
             },
             (name, arguments) =>
@@ -705,26 +721,6 @@ public sealed class LumenPlayer
             resetInterpolation(instance);
         }
         instance.Playing = play;
-    }
-
-    private Avm1Lookup readVariable(DisplayInstance instance, string name)
-    {
-        if (name == "this")
-            return new Avm1Lookup(true, instance);
-        if (name == "_root" || name == "_level0")
-            return new Avm1Lookup(true, _root);
-        if (name == "_parent")
-            return new Avm1Lookup(instance.Parent is not null, instance.Parent);
-        if (name == "_global")
-            return new Avm1Lookup(true, _globals);
-        if (instance.Variables.TryGetValue(name, out var value))
-            return new Avm1Lookup(true, value);
-        var child = instance.Children.Values.FirstOrDefault(candidate => candidate.Name == name && !candidate.Removed);
-        if (child is not null)
-            return new Avm1Lookup(true, child);
-        return _globals.TryGetValue(name, out value)
-            ? new Avm1Lookup(true, value)
-            : default;
     }
 
     private static Avm1Lookup readMember(object? target, string name)
@@ -931,7 +927,7 @@ public sealed class LumenPlayer
 
     private void applyPlacementFields(DisplayInstance instance, LmbPlaceObjectCommand placement, bool isNew)
     {
-        if (placement.NameStringIndex < _movie.Strings.Length)
+        if (placement.NameStringIndex != 0 && placement.NameStringIndex < _movie.Strings.Length)
             instance.Name = _movie.Strings[checked((int)placement.NameStringIndex)].Value;
         if (isNew || placement.BlendMode != 0)
             instance.BlendMode = placement.BlendMode;
