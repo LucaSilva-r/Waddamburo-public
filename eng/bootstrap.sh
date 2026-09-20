@@ -6,6 +6,7 @@ configuration=Debug
 build_managed=true
 build_native=true
 build_ffmpeg=false
+build_nijiro_audio=false
 
 usage() {
   cat <<'EOF'
@@ -18,6 +19,8 @@ Options:
   --managed-only       Skip the native build.
   --native-only        Skip the managed build.
   --with-ffmpeg        Build and audit the pinned minimal FFmpeg dependency.
+  --with-nijiro-audio  Build local-only vgmstream/G.719 support; requires
+                       WADDAMBURO_G719_SOURCE_DIR.
   -h, --help           Show this help.
 EOF
 }
@@ -42,6 +45,11 @@ while (($# > 0)); do
       ;;
     --with-ffmpeg)
       build_ffmpeg=true
+      shift
+      ;;
+    --with-nijiro-audio)
+      build_ffmpeg=true
+      build_nijiro_audio=true
       shift
       ;;
     -h|--help)
@@ -133,6 +141,20 @@ if [[ "$build_native" == true ]]; then
     require_command make
     cmake --preset linux-ffmpeg
     cmake --build --preset linux-ffmpeg
+    cmake --preset linux-audio-pinned
+    cmake --build --preset linux-audio-pinned
+    ctest --preset linux-audio-pinned
+  fi
+  if [[ "$build_nijiro_audio" == true ]]; then
+    if [[ -z "${WADDAMBURO_G719_SOURCE_DIR:-}" ]]; then
+      echo "error: --with-nijiro-audio requires WADDAMBURO_G719_SOURCE_DIR" >&2
+      exit 2
+    fi
+    cmake --preset linux-vgmstream-g719
+    cmake --build --preset linux-vgmstream-g719
+    cmake --preset linux-audio-complete
+    cmake --build --preset linux-audio-complete
+    ctest --preset linux-audio-complete
   fi
   popd >/dev/null
 fi

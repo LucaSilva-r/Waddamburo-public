@@ -28,6 +28,8 @@ The native dependency pipeline can download and build:
 | Component | Version and source | License | Link/use mode and obligations |
 | --- | --- | --- | --- |
 | FFmpeg | 8.1.2; <https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz>; SHA-256 `464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c` | LGPL-2.1-or-later for the reviewed configuration | Dynamically linked libraries; GPL, nonfree, version-3-only, network, external libraries, programs, devices, and filters are disabled. Binary distributions must include the exact corresponding source, build configuration, copyright and LGPL notices, and permit replacement of the shared libraries. |
+| vgmstream | Commit `09c9f40caae4747e44b6a993b3d5b654cef4d1f7`; <https://github.com/vgmstream/vgmstream/tree/09c9f40caae4747e44b6a993b3d5b654cef4d1f7>; source archive SHA-256 `7f012e143fe2945b2edae44bbfdfbad4671d5277c925d38d968a32659369383c` | ISC-style permissive license; copyright 2008-2025 Adam Gashlin, Fastelbja, Ronny Elfert, bnnm, Christopher Snowhill, NicknineTheEagle, bxaimc, Thealexbarney, CyberBotX, EdnessP, et al., with additional authors listed in upstream `COPYING` | Dynamically linked by the opt-in local Nijiro backend. The recipe disables its optional FFmpeg, MPEG, Vorbis, ATRAC9, CELT, Speex, CLI, and player components. The exact upstream `COPYING` is installed beside the local library. A G.719-enabled build is not approved for redistribution for the separate reason below. |
+| libg719_decode and ITU-T G.719 reference code | Local developer-supplied checkout expected at commit `da90ad8a676876c6c47889bcea6a753f9bbf7a73`; <https://github.com/kode54/libg719_decode/tree/da90ad8a676876c6c47889bcea6a753f9bbf7a73> | **No open-source license or redistribution grant identified.** The repository carries copyright notices for Ericsson AB and Polycom, Inc. and references ITU-T G.719 licensing declarations. | Statically incorporated into the locally built vgmstream shared library only when a developer explicitly opts in. Waddamburo never downloads this source, never stages it in the public source tree, and marks the resulting prefix `NON-REDISTRIBUTABLE-G719.txt`. Do not publish, package, or redistribute that library without a separate rights review and any required permission. |
 | FreeType | Developer opt-in accepts system 2.13 or newer; <https://freetype.org/> | FreeType License (FTL) or GPL-2.0-or-later | Dynamically linked by the optional native title rasterizer. Not enabled by default and not approved for release packaging until an exact version, source archive checksum, and authoritative FTL text are pinned and staged. |
 
 FFmpeg's combined license includes compatible separately licensed files. The built
@@ -54,3 +56,6 @@ linked or packaged until this file records:
 
 License summaries are not substitutes for the license texts distributed with the
 exact dependency versions. Release packages must include those authoritative texts.
+The local G.719 notice above is a prohibition for Waddamburo release engineering,
+not a representation that possessing or building the third-party source grants any
+particular patent, copyright, or redistribution rights.

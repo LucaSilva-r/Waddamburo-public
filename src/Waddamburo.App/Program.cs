@@ -1,4 +1,5 @@
 using Waddamburo.Platform.Sdl;
+using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 
 try
@@ -23,6 +24,7 @@ try
     var assetRoot = parseOption(args, "--asset-root=");
     var tjaRoot = parseOption(args, "--tja-root=");
     var fontPath = parseOption(args, "--font=");
+    var audioPath = parseOption(args, "--play-audio=");
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
     if (entrySongSelect)
     {
@@ -98,6 +100,19 @@ try
         resizable: screenshotPath is null,
         highPixelDensity: screenshotPath is null);
     Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
+    using var audioDevice = audioPath is null ? null : new SdlAudioDevice();
+    using var music = audioPath is null ? null : new StreamingMusicPlayer(audioDevice!, audioPath);
+    if (music is not null)
+    {
+        music.Play();
+        Console.WriteLine(
+            $"Audio: {Path.GetFileName(audioPath)}, {music.Info.SampleRate} Hz, {music.Info.Channels} channels");
+        Console.WriteLine(
+            $"SDL audio: {audioDevice!.Driver}, " +
+            $"{audioDevice.HardwareFormat.SampleRate} Hz, " +
+            $"{audioDevice.HardwareFormat.Channels} channels, " +
+            $"{audioDevice.HardwareBufferFrames} buffer frames");
+    }
     var checkerboard = createCheckerboard();
     var texture = application.UploadRgba8(8, 8, checkerboard);
     var frame = new RenderFrame(

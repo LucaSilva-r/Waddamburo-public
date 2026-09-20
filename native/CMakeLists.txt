@@ -67,6 +67,11 @@ if(WADDAMBURO_BUILD_FFMPEG)
   add_subdirectory(ffmpeg)
 endif()
 
+option(WADDAMBURO_BUILD_VGMSTREAM "Enable the pinned vgmstream dependency target" OFF)
+if(WADDAMBURO_BUILD_VGMSTREAM)
+  add_subdirectory(vgmstream)
+endif()
+
 if(BUILD_TESTING)
   add_executable(waddamburo_native_build_policy_test tests/build_policy_test.c)
   waddamburo_configure_native_target(waddamburo_native_build_policy_test)

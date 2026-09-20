@@ -62,6 +62,25 @@
       }
     },
     {
+      "name": "linux-audio",
+      "displayName": "Linux x64 Debug with system FFmpeg",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WADDAMBURO_MEDIA_FFMPEG": true
+      }
+    },
+    {
+      "name": "linux-audio-pinned",
+      "displayName": "Linux x64 Release with pinned FFmpeg",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_MEDIA_FFMPEG": true,
+        "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix"
+      }
+    },
+    {
       "name": "linux-ffmpeg",
       "displayName": "Linux x64 pinned FFmpeg dependency",
       "inherits": "linux-base",
@@ -69,6 +88,29 @@
         "BUILD_TESTING": false,
         "CMAKE_BUILD_TYPE": "Release",
         "WADDAMBURO_BUILD_FFMPEG": true
+      }
+    },
+    {
+      "name": "linux-vgmstream-g719",
+      "displayName": "Linux x64 local-only vgmstream with G.719",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_BUILD_VGMSTREAM": true,
+        "WADDAMBURO_G719_SOURCE_DIR": "$env{WADDAMBURO_G719_SOURCE_DIR}"
+      }
+    },
+    {
+      "name": "linux-audio-complete",
+      "displayName": "Linux x64 complete local audio backend",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_MEDIA_FFMPEG": true,
+        "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix",
+        "WADDAMBURO_MEDIA_VGMSTREAM": true,
+        "WADDAMBURO_VGMSTREAM_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-vgmstream-g719/vgmstream/prefix"
       }
     },
     {
@@ -104,17 +146,35 @@
         "CMAKE_BUILD_TYPE": "Release",
         "WADDAMBURO_BUILD_FFMPEG": true
       }
+    },
+    {
+      "name": "windows-audio-pinned",
+      "displayName": "Windows x64 Release with pinned FFmpeg",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_MEDIA_FFMPEG": true,
+        "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/win-x64/windows-ffmpeg/ffmpeg/prefix"
+      }
     }
   ],
   "buildPresets": [
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "linux-release", "configurePreset": "linux-release" },
     { "name": "linux-sanitize", "configurePreset": "linux-sanitize" },
+    { "name": "linux-audio", "configurePreset": "linux-audio" },
+    { "name": "linux-audio-pinned", "configurePreset": "linux-audio-pinned" },
     {
       "name": "linux-ffmpeg",
       "configurePreset": "linux-ffmpeg",
       "targets": ["waddamburo_ffmpeg_audit"]
     },
+    {
+      "name": "linux-vgmstream-g719",
+      "configurePreset": "linux-vgmstream-g719",
+      "targets": ["waddamburo_vgmstream_audit"]
+    },
+    { "name": "linux-audio-complete", "configurePreset": "linux-audio-complete" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },
@@ -122,7 +182,8 @@
       "name": "windows-ffmpeg",
       "configurePreset": "windows-ffmpeg",
       "targets": ["waddamburo_ffmpeg_audit"]
-    }
+    },
+    { "name": "windows-audio-pinned", "configurePreset": "windows-audio-pinned" }
   ],
   "testPresets": [
     {
@@ -141,6 +202,21 @@
       "output": { "outputOnFailure": true }
     },
     {
+      "name": "linux-audio",
+      "configurePreset": "linux-audio",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-audio-pinned",
+      "configurePreset": "linux-audio-pinned",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-audio-complete",
+      "configurePreset": "linux-audio-complete",
+      "output": { "outputOnFailure": true }
+    },
+    {
       "name": "windows-debug",
       "configurePreset": "windows-debug",
       "output": { "outputOnFailure": true }
@@ -153,6 +229,11 @@
     {
       "name": "windows-sanitize",
       "configurePreset": "windows-sanitize",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-audio-pinned",
+      "configurePreset": "windows-audio-pinned",
       "output": { "outputOnFailure": true }
     }
   ]

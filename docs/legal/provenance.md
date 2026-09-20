@@ -27,6 +27,24 @@ configuration written against FFmpeg's public configure interface. It downloads
 the unmodified official FFmpeg 8.1.2 archive by version and SHA-256; no FFmpeg or
 private proof-of-concept source is vendored in this repository.
 
+`native/media/src/media.c` is an original decoder wrapper written against FFmpeg's
+public libavformat, libavcodec, libavutil, and libswresample APIs. Its NUB behavior
+uses the independently described fact that the container carries a complete RIFF/
+WAVE stream; no TaikoRecomp, proof-of-concept, executable-derived, or game source
+code is copied or translated. Synthetic RIFF data supplies the public regression.
+
+The optional vgmstream integration in `native/media/src/media.c` is original wrapper
+code written against vgmstream's public `libvgmstream` API. The dependency recipe in
+`native/vgmstream/` is original Waddamburo build configuration against upstream
+vgmstream commit `09c9f40caae4747e44b6a993b3d5b654cef4d1f7`. It downloads the
+unmodified upstream archive and accepts a separately obtained local G.719 source
+directory; neither dependency's source is vendored in this repository. Container
+selection uses filename extensions and public library behavior. The public decode
+regression uses a project-authored, silent synthetic BNSF/IS22 fixture. Private game
+audio was used only for local compatibility checks; no sample, hash, path, capture,
+or content-derived fixture is stored here. Licensing and the resulting local-only
+distribution restriction are recorded in `THIRD_PARTY_NOTICES.md`.
+
 `src/Waddamburo.Providers.OsuLazer/` is original integration code written against
 the public `ppy.osu.Game` 2026.916.0 and Realm 20.1.0 APIs. It consumes official
 model types through NuGet and does not copy or adapt osu! source files. The package

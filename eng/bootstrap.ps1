@@ -87,6 +87,15 @@ try {
 
                 & cmake --build --preset windows-ffmpeg
                 if ($LASTEXITCODE -ne 0) { throw 'FFmpeg build or audit failed.' }
+
+                & cmake --preset windows-audio-pinned
+                if ($LASTEXITCODE -ne 0) { throw 'Media decoder configure failed.' }
+
+                & cmake --build --preset windows-audio-pinned
+                if ($LASTEXITCODE -ne 0) { throw 'Media decoder build failed.' }
+
+                & ctest --preset windows-audio-pinned
+                if ($LASTEXITCODE -ne 0) { throw 'Media decoder tests failed.' }
             }
         }
         finally {

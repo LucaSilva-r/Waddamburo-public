@@ -1,0 +1,8 @@
+This local build contains libg719_decode from:
+@WADDAMBURO_G719_SOURCE_DIR@
+reviewed revision @WADDAMBURO_G719_REVISION@
+
+Do not place this library in a Waddamburo release or public artifact. The
+libg719_decode sources and their ITU-T G.719 reference implementation do not
+carry an open-source redistribution grant. This build exists only for local
+development and compatibility testing.

@@ -27,6 +27,9 @@ Build the Linux dependency from the repository root with:
 cd native
 cmake --preset linux-ffmpeg
 cmake --build --preset linux-ffmpeg
+cmake --preset linux-audio-pinned
+cmake --build --preset linux-audio-pinned
+ctest --preset linux-audio-pinned
 ```
 
 The installed prefix is
@@ -34,6 +37,67 @@ The installed prefix is
 The build preset finishes by auditing the generated FFmpeg configuration against
 the exact component allowlist and checking the shared libraries and compliance
 files.
+
+`linux-audio-pinned` links `waddamburo_media` against that prefix and runs a
+synthetic decode test. Developers with compatible system FFmpeg headers may use
+`linux-audio` for faster iteration; release and compatibility conclusions must use
+the pinned preset.
+
+For a local Linux playback smoke test, build the managed app and put the media
+library and its four pinned FFmpeg shared libraries on the loader path:
+
+```sh
+LD_LIBRARY_PATH=out/build/native/linux-x64/linux-audio-pinned/stage/Release/lib:\
+out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix/lib \
+  dotnet run --project src/Waddamburo.App -- --play-audio=/path/to/song.ogg
+```
+
+The same entry point accepts MP3, Ogg/Vorbis, Opus, FLAC, WAV, and Green NUB files.
+It is diagnostic scaffolding for the streaming decoder, not the final BGM/preview/
+sound-effect mixer. SDL device ownership and queue semantics are documented in
+[`sdl-audio.md`](sdl-audio.md).
+
+## Local Nijiro backend
+
+Nijiro NUS3BANK files containing IDSP or BNSF/IS22 payloads use an optional
+vgmstream backend. This backend is deliberately excluded from normal and release
+builds because its G.719 implementation has no identified open-source redistribution
+grant. Waddamburo downloads pinned vgmstream source, but never downloads G.719 source;
+a developer must obtain it independently and point the build at a local checkout.
+
+The currently reviewed local checkout is `libg719_decode` commit
+`da90ad8a676876c6c47889bcea6a753f9bbf7a73`. To build the complete Linux decoder:
+
+```sh
+export WADDAMBURO_G719_SOURCE_DIR=/path/to/libg719_decode
+cd native
+cmake --preset linux-ffmpeg
+cmake --build --preset linux-ffmpeg
+cmake --preset linux-vgmstream-g719
+cmake --build --preset linux-vgmstream-g719
+cmake --preset linux-audio-complete
+cmake --build --preset linux-audio-complete
+ctest --preset linux-audio-complete
+```
+
+Equivalently, run this from the repository root to build and test all three
+native layers:
+
+```sh
+WADDAMBURO_G719_SOURCE_DIR=/path/to/libg719_decode \
+  ./eng/bootstrap.sh --native-only --configuration Release --with-nijiro-audio
+```
+
+The vgmstream prefix includes
+`NON-REDISTRIBUTABLE-G719.txt`. Do not copy its library into a release, CI artifact,
+public download, or package. This is a Linux-only developer recipe; the ordinary
+FFmpeg backend remains the distributable path.
+
+With `linux-audio-complete`, file inputs ending in `.nus3bank`, `.nus3audio`,
+`.bnsf`, `.spsis14`, `.spsis22`, or `.idsp` are routed to vgmstream. A NUS3BANK
+opens its default/first stream. Callback-backed inputs continue through FFmpeg and
+therefore do not support these formats yet. The ABI regression constructs a silent
+synthetic BNSF/IS22 file; no commercial audio is stored in the repository.
 
 The Windows preset expects a Visual Studio x64 developer environment plus Bash
 and Make from MSYS2. It selects FFmpeg's MSVC toolchain and produces DLLs rather
