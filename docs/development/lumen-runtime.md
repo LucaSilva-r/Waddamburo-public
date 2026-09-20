@@ -36,13 +36,18 @@ running their actions; only actions on the final visible frame are queued. The
 requested playback state is established before that queue drains, so an authored
 target-frame `Play` or `Stop` takes precedence.
 
-The first interpreter boundary is deliberately narrow. It executes primitive
-`Push`, `Pop`, `PushDuplicate`, `StackSwap`, `Not`, `If`, `Jump`, `Play`, `Stop`,
-and `End` records against the current display instance with a 10,000-instruction
-budget. Register pushes and every other opcode remain unsupported. The entire code
-block is preflighted, and playback changes are committed only after successful
-termination; unsupported opcodes, stack underflow, and budget exhaustion therefore
-defer the whole record without partial side effects and emit `LUM_ACTION_DEFERRED`.
+The first interpreter boundary executes primitive `Push`, `Pop`, `PushDuplicate`,
+`StackSwap`, conversions, arithmetic, comparisons, `Not`, `If`, `Jump`, `Play`,
+`Stop`, and `End` records against the current display instance. Register pushes and
+object/variable/function opcodes remain unsupported. The entire code block is
+preflighted, and playback changes are committed only after successful termination;
+unsupported opcodes and stack underflow therefore defer the whole record without
+partial side effects.
+
+`LumenRuntimeLimits` supplies positive per-player ceilings for instructions per
+action, operand-stack values, and queued frame actions. Instruction/stack exhaustion
+emits `LUM_ACTION_LIMIT`; excess queued work emits `LUM_ACTION_QUEUE_LIMIT`.
+Defaults are 10,000 instructions, 4,096 stack values, and 4,096 pending actions.
 Full AVM execution, enter-frame handlers, and recursive queue draining remain
 outside this slice.
 

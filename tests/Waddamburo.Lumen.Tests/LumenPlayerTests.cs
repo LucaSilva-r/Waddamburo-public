@@ -253,7 +253,83 @@ public sealed class LumenPlayerTests
         player.Advance();
 
         Assert.True(player.IsPlaying);
-        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_LIMIT");
+    }
+
+    [Fact]
+    public void RuntimeLimitsRejectInvalidValues()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxInstructionsPerAction: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxStackValues: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxPendingActions: 0));
+    }
+
+    [Fact]
+    public void ConfiguredInstructionLimitRollsBackPlaybackMutation()
+    {
+        var player = new LumenPlayer(
+            createMovie(actionBytecode: [0x07, 0x00]),
+            1280,
+            720,
+            limits: new LumenRuntimeLimits(maxInstructionsPerAction: 1));
+
+        player.Advance();
+
+        Assert.True(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_LIMIT");
+    }
+
+    [Fact]
+    public void ConfiguredStackLimitRollsBackPlaybackMutation()
+    {
+        var player = new LumenPlayer(
+            createMovie(actionBytecode: [0x07, 0x96, 0x02, 0x00, 0x02, 0x02, 0x00]),
+            1280,
+            720,
+            limits: new LumenRuntimeLimits(maxStackValues: 1));
+
+        player.Advance();
+
+        Assert.True(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_LIMIT");
+    }
+
+    [Fact]
+    public void PendingActionLimitDropsExcessWorkWithStableDiagnostic()
+    {
+        var player = new LumenPlayer(
+            createMovie(actionBytecode: [0x07, 0x00], duplicateAction: true),
+            1280,
+            720,
+            limits: new LumenRuntimeLimits(maxPendingActions: 1));
+
+        player.Advance();
+
+        Assert.False(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_QUEUE_LIMIT");
+    }
+
+    [Fact]
+    public void PrimitiveArithmeticAndComparisonCanDrivePlaybackBranch()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x0A, 0x00,
+            0x07, 0x02, 0x00, 0x00, 0x00,
+            0x07, 0x03, 0x00, 0x00, 0x00,
+            0x47,
+            0x96, 0x05, 0x00, 0x07, 0x05, 0x00, 0x00, 0x00,
+            0x49,
+            0x9D, 0x02, 0x00, 0x06, 0x00,
+            0x06,
+            0x99, 0x02, 0x00, 0x01, 0x00,
+            0x07,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.False(player.IsPlaying);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
     }
 
     [Fact]
@@ -293,7 +369,8 @@ public sealed class LumenPlayerTests
         float secondX = 30,
         uint secondColorIndex = uint.MaxValue,
         bool includeSeekKey = false,
-        byte[]? actionBytecode = null)
+        byte[]? actionBytecode = null,
+        bool duplicateAction = false)
     {
         var geometry = new uint[]
         {
@@ -318,12 +395,14 @@ public sealed class LumenPlayerTests
             words(LmbTags.FrameLabel, 1, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
             words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
-            words(LmbTags.ShowFrame, 1, 2),
+            words(LmbTags.ShowFrame, 1, duplicateAction ? 3U : 2U),
             words(LmbTags.PlaceObject, 42, 1, 0, uint.MaxValue, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
             words(LmbTags.DoAction, 0, 0),
             words(LmbTags.ShowFrame, 2, 1),
             words(LmbTags.RemoveObject, 42, 0x00030000),
         };
+        if (duplicateAction)
+            records.Insert(records.Count - 2, words(LmbTags.DoAction, 0, 0));
         if (includeSeekKey)
         {
             records.Add(words(LmbTags.FrameKey, 2, 1));

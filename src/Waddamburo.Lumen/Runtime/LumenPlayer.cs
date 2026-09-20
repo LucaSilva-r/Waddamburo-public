@@ -16,6 +16,7 @@ public sealed class LumenPlayer
     private const float ColorCutThreshold = 0.3f;
 
     private readonly LmbMovieDefinition _movie;
+    private readonly LumenRuntimeLimits _limits;
     private readonly Dictionary<uint, LmbShapeDefinition> _shapes;
     private readonly Dictionary<uint, SpriteTimeline> _sprites;
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
@@ -28,7 +29,8 @@ public sealed class LumenPlayer
         LmbMovieDefinition movie,
         float stageWidth,
         float stageHeight,
-        uint? rootCharacterId = null)
+        uint? rootCharacterId = null,
+        LumenRuntimeLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(movie);
         if (!float.IsFinite(stageWidth) || stageWidth <= 0)
@@ -37,6 +39,7 @@ public sealed class LumenPlayer
             throw new ArgumentOutOfRangeException(nameof(stageHeight));
 
         _movie = movie;
+        _limits = limits ?? LumenRuntimeLimits.Default;
         StageWidth = stageWidth;
         StageHeight = stageHeight;
         _shapes = movie.Shapes.ToDictionary(shape => shape.CharacterId);
@@ -268,10 +271,7 @@ public sealed class LumenPlayer
                     }
                     break;
                 case LmbDoActionCommand action when queueActions:
-                    _pendingActions.Add(new PendingFrameAction(
-                        instance,
-                        action.ActionIndex,
-                        _nextActionSequence++));
+                    enqueueAction(instance, action.ActionIndex);
                     break;
             }
         }
@@ -284,10 +284,7 @@ public sealed class LumenPlayer
         var timeline = _sprites[instance.CharacterId];
         foreach (var action in timeline.Frames[instance.Frame].OfType<LmbDoActionCommand>())
         {
-            _pendingActions.Add(new PendingFrameAction(
-                instance,
-                action.ActionIndex,
-                _nextActionSequence++));
+            enqueueAction(instance, action.ActionIndex);
         }
         foreach (var child in instance.Children.Values)
         {
@@ -304,29 +301,55 @@ public sealed class LumenPlayer
         {
             if (pending.Instance.Removed)
                 continue;
-            if (pending.ActionIndex >= (uint)_movie.Actions.Length
-                || !tryExecuteAction(
-                    pending.Instance,
-                    _movie.Actions[checked((int)pending.ActionIndex)].Code))
+            if (pending.ActionIndex >= (uint)_movie.Actions.Length)
             {
                 reportOnce(
                     "LUM_ACTION_DEFERRED",
                     pending.Instance.CharacterId,
                     pending.Instance.Frame,
                     $"AVM action {pending.ActionIndex} requires the full interpreter.");
+                continue;
             }
+
+            var status = executeAction(
+                pending.Instance,
+                _movie.Actions[checked((int)pending.ActionIndex)].Code);
+            if (status == Avm1ExecutionStatus.Success)
+                continue;
+            var limited = status is Avm1ExecutionStatus.InstructionLimit or Avm1ExecutionStatus.StackLimit;
+            reportOnce(
+                limited ? "LUM_ACTION_LIMIT" : "LUM_ACTION_DEFERRED",
+                pending.Instance.CharacterId,
+                pending.Instance.Frame,
+                limited
+                    ? $"AVM action {pending.ActionIndex} reached the {status} safety limit."
+                    : $"AVM action {pending.ActionIndex} requires unsupported semantics or failed with {status}.");
         }
         _pendingActions.Clear();
     }
 
-    private bool tryExecuteAction(
+    private void enqueueAction(DisplayInstance instance, uint actionIndex)
+    {
+        if (_pendingActions.Count >= _limits.MaxPendingActions)
+        {
+            reportOnce(
+                "LUM_ACTION_QUEUE_LIMIT",
+                instance.CharacterId,
+                instance.Frame,
+                $"Pending AVM action limit {_limits.MaxPendingActions} was reached.");
+            return;
+        }
+        _pendingActions.Add(new PendingFrameAction(instance, actionIndex, _nextActionSequence++));
+    }
+
+    private Avm1ExecutionStatus executeAction(
         DisplayInstance instance,
         Avm1CodeBlock code)
     {
-        if (!Avm1Interpreter.TryExecute(code, _movie.Strings, instance.Playing, out var playing))
-            return false;
-        instance.Playing = playing;
-        return true;
+        var status = Avm1Interpreter.TryExecute(code, _movie.Strings, instance.Playing, _limits, out var playing);
+        if (status == Avm1ExecutionStatus.Success)
+            instance.Playing = playing;
+        return status;
     }
 
     private void applyPlacement(
