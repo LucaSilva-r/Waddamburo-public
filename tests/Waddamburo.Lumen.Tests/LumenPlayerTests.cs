@@ -213,6 +213,50 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ConditionalFrameActionUsesTypedPushAndBranchOperands()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x02, 0x00, 0x05, 0x01,
+            0x9D, 0x02, 0x00, 0x06, 0x00,
+            0x06,
+            0x99, 0x02, 0x00, 0x01, 0x00,
+            0x07,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.False(player.IsPlaying);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void FailedPrimitiveActionDoesNotCommitPlaybackChanges()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [0x07, 0x12, 0x00]), 1280, 720);
+
+        player.Advance();
+
+        Assert.True(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void PrimitiveActionInstructionBudgetStopsInfiniteBranchWithoutSideEffects()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x07,
+            0x99, 0x02, 0x00, 0xFB, 0xFF,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.True(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);

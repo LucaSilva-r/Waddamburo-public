@@ -36,11 +36,15 @@ running their actions; only actions on the final visible frame are queued. The
 requested playback state is established before that queue drains, so an authored
 target-frame `Play` or `Stop` takes precedence.
 
-The first action boundary is deliberately narrow. A record containing only the
-AVM `Play`, `Stop`, and `End` opcodes is validated in full and then applied to its
-own display instance. Any other opcode defers the entire record without partially
-executing it and emits `LUM_ACTION_DEFERRED`. Full AVM execution, enter-frame
-handlers, and recursive queue draining remain outside this slice.
+The first interpreter boundary is deliberately narrow. It executes primitive
+`Push`, `Pop`, `PushDuplicate`, `StackSwap`, `Not`, `If`, `Jump`, `Play`, `Stop`,
+and `End` records against the current display instance with a 10,000-instruction
+budget. Register pushes and every other opcode remain unsupported. The entire code
+block is preflighted, and playback changes are committed only after successful
+termination; unsupported opcodes, stack underflow, and budget exhaustion therefore
+defer the whole record without partial side effects and emit `LUM_ACTION_DEFERRED`.
+Full AVM execution, enter-frame handlers, and recursive queue draining remain
+outside this slice.
 
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action

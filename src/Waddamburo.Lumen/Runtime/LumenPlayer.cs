@@ -305,7 +305,7 @@ public sealed class LumenPlayer
             if (pending.Instance.Removed)
                 continue;
             if (pending.ActionIndex >= (uint)_movie.Actions.Length
-                || !tryExecuteSimpleAction(
+                || !tryExecuteAction(
                     pending.Instance,
                     _movie.Actions[checked((int)pending.ActionIndex)].Code))
             {
@@ -319,30 +319,13 @@ public sealed class LumenPlayer
         _pendingActions.Clear();
     }
 
-    private static bool tryExecuteSimpleAction(
+    private bool tryExecuteAction(
         DisplayInstance instance,
         Avm1CodeBlock code)
     {
-        var controls = new List<byte>();
-        var foundEnd = false;
-        foreach (var instruction in code.Instructions)
-        {
-            var opcode = instruction.Opcode;
-            if (opcode == 0)
-            {
-                foundEnd = true;
-                break;
-            }
-            if (opcode is not (0x06 or 0x07))
-                return false;
-            controls.Add(opcode);
-        }
-
-        if (!foundEnd)
+        if (!Avm1Interpreter.TryExecute(code, _movie.Strings, instance.Playing, out var playing))
             return false;
-
-        foreach (var opcode in controls)
-            instance.Playing = opcode == 0x06;
+        instance.Playing = playing;
         return true;
     }
 
