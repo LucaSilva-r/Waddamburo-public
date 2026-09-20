@@ -611,6 +611,45 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void KeyIsDownReadsOnlyTheCurrentPlayersImmutableInputSnapshot()
+    {
+        var action = new byte[]
+        {
+            0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+            0x96, 0x0A, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x22, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x23, 0x00,
+            0x52,
+            0x96, 0x05, 0x00, 0x07, 0x01, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x20, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x21, 0x00,
+            0x52,
+            0x4F,
+            0x00,
+        };
+        var released = new LumenPlayer(
+            createMovie(placementNameStringIndex: 31, actionBytecode: action),
+            1280,
+            720);
+        var pressed = new LumenPlayer(
+            createMovie(placementNameStringIndex: 31, actionBytecode: action),
+            1280,
+            720);
+
+        released.Advance(LumenInputSnapshot.Empty);
+        pressed.Advance(new LumenInputSnapshot([68]));
+
+        Assert.Empty(released.CreateRenderSnapshot().Quads);
+        Assert.Single(pressed.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(pressed.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
     public void AuthoredFunctionReturnsPropagateToCallers()
     {
         var player = new LumenPlayer(
@@ -954,7 +993,7 @@ public sealed class LumenPlayerTests
                 "resource", "ResolveVisible", "this", "FailingHost", "flash", "external",
                 "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame",
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
-                "alias", "Ping", "_global", "placed")),
+                "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

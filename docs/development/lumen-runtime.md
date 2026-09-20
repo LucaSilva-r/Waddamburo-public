@@ -53,6 +53,13 @@ Authored function returns propagate through nested calls rather than collapsing 
 array member writes override their initialized indices. These small built-ins are
 implemented in the AVM boundary rather than in a game host.
 
+`Advance(LumenInputSnapshot)` installs an immutable set of Flash key codes for one
+simulation tick. The built-in `Key.isDown` reads only that player's current
+snapshot, and the parameterless `Advance()` supplies an empty snapshot so input
+cannot remain accidentally latched. Strings also expose `charCodeAt`, allowing
+authored polling code to derive the numeric codes it queries. SDL event mapping and
+game-level player controls remain outside the renderer-independent runtime.
+
 `LumenRuntimeLimits` supplies positive per-player ceilings for instructions per
 action, operand-stack values, queued frame actions, registers, and call depth.
 Instruction/stack/register exhaustion emits `LUM_ACTION_LIMIT`; excess queued work

@@ -27,6 +27,7 @@ public sealed class LumenPlayer
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
+    private LumenInputSnapshot _inputSnapshot = LumenInputSnapshot.Empty;
     private long _nextActionSequence;
     private int _callDepth;
 
@@ -63,6 +64,7 @@ public sealed class LumenPlayer
         _globals["Object"] = createBuiltinConstructor();
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
+        installKeyObject();
         installExternalInterface();
         hostBinding?.Install(new LumenHostContext(_globals));
         enterFrame(_root, 0, queueActions: true);
@@ -98,7 +100,12 @@ public sealed class LumenPlayer
     }
 
     public void Advance()
+        => Advance(LumenInputSnapshot.Empty);
+
+    public void Advance(LumenInputSnapshot inputSnapshot)
     {
+        ArgumentNullException.ThrowIfNull(inputSnapshot);
+        _inputSnapshot = inputSnapshot;
         snapshotInstances(_root);
         advanceSubtree(_root, queueActions: true);
         drainActions();
@@ -508,6 +515,13 @@ public sealed class LumenPlayer
                         true,
                         (uint)index < (uint)text.Length ? text[index].ToString() : string.Empty);
                 }
+                if (target is string codeText && name == "charCodeAt")
+                {
+                    var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
+                    return new Avm1Lookup(
+                        true,
+                        (uint)index < (uint)codeText.Length ? (double)codeText[index] : double.NaN);
+                }
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
                 {
                     context!.OnCommit(() => targetInstance.Playing = name == "play");
@@ -814,6 +828,25 @@ public sealed class LumenPlayer
         var flash = new Avm1Object();
         flash.Properties["external"] = external;
         _globals["flash"] = flash;
+    }
+
+    private void installKeyObject()
+    {
+        var key = new Avm1Object();
+        key.Properties["isDown"] = new Avm1NativeFunction(
+            "Key.isDown",
+            call =>
+            {
+                if (call.Arguments.IsEmpty || call.Arguments[0].Kind != LumenHostValueKind.Number)
+                    return LumenHostValue.FromBoolean(false);
+                var code = call.Arguments[0].AsNumber();
+                return LumenHostValue.FromBoolean(
+                    double.IsFinite(code)
+                    && code >= int.MinValue
+                    && code <= int.MaxValue
+                    && _inputSnapshot.IsDown((int)code));
+            });
+        _globals["Key"] = key;
     }
 
     private static bool toBoolean(object? value) => value switch
