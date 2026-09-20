@@ -675,6 +675,34 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void FrameScriptsInstallHandlersBeforeTheSameTicksEnterFramePhase()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x9B, 0x06, 0x00,
+                0x10, 0x00,
+                0x00, 0x00,
+                0x11, 0x00,
+                0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+                0x1C,
+                0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+                0x4F,
+                0x00,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x13, 0x00, 0x04, 0x00,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -730,7 +758,7 @@ public sealed class LumenPlayerTests
             record(LmbTags.StringPool, stringPool(
                 "middle", "end", "_visible", "prototype", "Object", "RootExport", "registerClass",
                 "resource", "ResolveVisible", "this", "FailingHost", "flash", "external",
-                "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value")),
+                "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

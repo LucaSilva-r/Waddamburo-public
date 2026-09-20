@@ -10,6 +10,8 @@ The implemented transaction is intentionally small:
 - initialization enters ordinary frame zero;
 - place, move, replace, and remove commands mutate depth-ordered children;
 - frame actions are queued during timeline mutation and drained parent before child;
+- authored `onEnterFrame` handlers then run child before parent, followed by a
+  second action drain;
 - matrix and translation pool entries compose through nested instances;
 - multiply/add color transforms compose through the hierarchy; and
 - a render call creates a new immutable logical-stage snapshot without exposing or
@@ -51,8 +53,9 @@ action, operand-stack values, queued frame actions, registers, and call depth.
 Instruction/stack/register exhaustion emits `LUM_ACTION_LIMIT`; excess queued work
 emits `LUM_ACTION_QUEUE_LIMIT`, and recursive calls stop at `LUM_AVM_CALL_LIMIT`.
 Defaults are 10,000 instructions, 4,096 stack values, 4,096 pending actions, 256
-registers, and 64 nested calls. Tick-wide budgets, enter-frame handlers, and
-recursive queue draining remain outside this slice.
+registers, and 64 nested calls. The pending-action ceiling also bounds the number
+of enter-frame candidates collected during one dispatch. Tick-wide instruction
+budgets and recursive queue draining remain outside this slice.
 
 Each action also receives bounded registers and a transactional variable/member
 context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
@@ -86,9 +89,11 @@ transaction. The built-in `flash.external.ExternalInterface` captures committed
 `addCallback` registrations per player. `CallbackNames` is an immutable sorted
 snapshot, and `TryInvokeCallback` synchronously invokes a named callback with the
 same primitive-only host values. Callback return values and object arguments remain
-outside this slice. The standalone viewer installs an empty `Lumen` presence object
-through its host binding so movies select their native-game branch; unimplemented
-native methods remain diagnostics rather than hidden stubs.
+outside this slice. The standalone viewer installs a `Lumen` presence object
+through its host binding so movies select their native-game branch. Its
+deterministic `IsReady`, `InitInfo`, and `IsStartLumen` methods allow Entry's
+initialization handler to complete without pretending to supply game state; other
+unimplemented native methods remain diagnostics rather than hidden stubs.
 
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
@@ -113,8 +118,8 @@ stable, deduplicated diagnostics for those deferred paths. Synthetic tests cover
 place/move/remove/loop behavior, nested matrix order, color conversion, F105 and
 replay-based seeks, immutable snapshots, interpolation and cut behavior, simple
 play/stop actions, transactional variables and clip members, function/class
-bootstrap, exported-sprite constructor binding, and explicit deferred-action
-diagnostics.
+bootstrap, exported-sprite constructor binding, same-tick enter-frame dispatch,
+and explicit deferred-action diagnostics.
 
 `Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
 the vertical slice. It receives a validated DDP movie view, requires the observed

@@ -102,6 +102,8 @@ public sealed class LumenPlayer
         snapshotInstances(_root);
         advanceSubtree(_root, queueActions: true);
         drainActions();
+        dispatchEnterFrameHandlers();
+        drainActions();
     }
 
     public void Seek(int frame)
@@ -366,6 +368,29 @@ public sealed class LumenPlayer
                     : $"AVM action {pending.ActionIndex} requires unsupported semantics or failed with {status}.");
         }
         _pendingActions.Clear();
+    }
+
+    private void dispatchEnterFrameHandlers()
+    {
+        var instances = new List<DisplayInstance>();
+        collectInstancesPostOrder(_root, instances);
+        if (instances.Count > _limits.MaxPendingActions)
+        {
+            reportOnce(
+                "LUM_EVENT_QUEUE_LIMIT",
+                _root.CharacterId,
+                _root.Frame,
+                $"Enter-frame candidate count {instances.Count} exceeds the {_limits.MaxPendingActions}-event limit.");
+            instances.RemoveRange(_limits.MaxPendingActions, instances.Count - _limits.MaxPendingActions);
+        }
+        foreach (var instance in instances)
+        {
+            if (instance.Removed)
+                continue;
+            var handler = readMember(instance, "onEnterFrame");
+            if (handler.Found && handler.Value is Avm1FunctionValue function)
+                invokeFunction(instance, function, instance, []);
+        }
     }
 
     private void enqueueAction(DisplayInstance instance, uint actionIndex)
@@ -943,6 +968,15 @@ public sealed class LumenPlayer
             destination.Add(instance);
         foreach (var child in instance.Children.Values)
             collectPlayingInstances(child, destination);
+    }
+
+    private static void collectInstancesPostOrder(DisplayInstance instance, List<DisplayInstance> destination)
+    {
+        if (instance.Removed)
+            return;
+        foreach (var child in instance.Children.Values)
+            collectInstancesPostOrder(child, destination);
+        destination.Add(instance);
     }
 
     private static void snapshotInstances(DisplayInstance instance)

@@ -13,5 +13,10 @@ internal sealed class ViewerHostBinding : ILumenHostBinding
     }
 
     public void Install(LumenHostContext context) =>
-        context.RegisterObject("Lumen", _ => { });
+        context.RegisterObject("Lumen", lumen =>
+        {
+            lumen.RegisterMethod("IsReady", _ => LumenHostValue.FromBoolean(true));
+            lumen.RegisterMethod("InitInfo", _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("IsStartLumen", _ => LumenHostValue.FromBoolean(true));
+        });
 }
