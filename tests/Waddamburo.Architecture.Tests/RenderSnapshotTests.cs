@@ -85,30 +85,31 @@ public sealed class RenderSnapshotTests
     }
 
     [Fact]
-    public void ContentFitCentersSmallMovieWithoutChangingStageAspect()
+    public void OffStageContentDoesNotChangeLogicalStageTransform()
     {
         var snapshot = new LumenRenderSnapshot(
             1280,
             720,
             [new LumenRenderQuad(
                 0,
-                new LumenRenderVertex(-64, -64, 0, 0),
-                new LumenRenderVertex(64, -64, 1, 0),
-                new LumenRenderVertex(64, 64, 1, 1),
-                new LumenRenderVertex(-64, 64, 0, 1),
+                new LumenRenderVertex(-128, -72, 0, 0),
+                new LumenRenderVertex(1408, -72, 1, 0),
+                new LumenRenderVertex(1408, 792, 1, 1),
+                new LumenRenderVertex(-128, 792, 0, 1),
                 LumenRenderColor.White,
                 LumenRenderColor.Transparent)]);
 
-        var frame = LumenRenderFrameAdapter.ComposeContentFit(
+        var frame = LumenRenderFrameAdapter.Compose(
             snapshot,
             RenderColor.WaddamburoBlue,
             _ => new RenderTextureId(1));
 
         var quad = Assert.Single(frame.Quads);
-        Assert.Equal(0.2328125f, quad.TopLeft.X, 5);
-        Assert.Equal(0.025f, quad.TopLeft.Y, 5);
-        Assert.Equal(0.7671875f, quad.BottomRight.X, 5);
-        Assert.Equal(0.975f, quad.BottomRight.Y, 5);
+        Assert.Equal(-0.1f, quad.TopLeft.X, 5);
+        Assert.Equal(-0.1f, quad.TopLeft.Y, 5);
+        Assert.Equal(1.1f, quad.BottomRight.X, 5);
+        Assert.Equal(1.1f, quad.BottomRight.Y, 5);
+        Assert.Equal(16d / 9d, frame.ContentAspectRatio);
     }
 
     [Fact]
@@ -123,19 +124,6 @@ public sealed class RenderSnapshotTests
             _ => new RenderTextureId(1));
 
         Assert.Equal(RenderBlend.Add, Assert.Single(frame.Quads).Blend);
-    }
-
-    [Fact]
-    public void ContentFitFallsBackToStageForEmptySnapshot()
-    {
-        var snapshot = new LumenRenderSnapshot(1280, 720, []);
-
-        var frame = LumenRenderFrameAdapter.ComposeContentFit(
-            snapshot,
-            RenderColor.WaddamburoBlue,
-            _ => throw new InvalidOperationException());
-
-        Assert.Empty(frame.Quads);
     }
 
     [Fact]

@@ -60,7 +60,7 @@ internal static class MovieViewer
         var debugger = frameLimit is null && tickLimit is null
             ? new InteractiveMovieDebugger(player)
             : null;
-        RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.ComposeContentFit(
+        RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.WaddamburoBlue,
                 index => index < textureIds.Length
