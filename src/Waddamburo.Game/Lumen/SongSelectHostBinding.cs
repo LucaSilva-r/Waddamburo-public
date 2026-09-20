@@ -33,20 +33,8 @@ public readonly record struct SongSelectCoursePresentation(
     public static SongSelectCoursePresentation FromSong(SongSelectSong song)
     {
         ArgumentNullException.ThrowIfNull(song);
-        var valid = AuthoredSongCourseBits.None;
-        if (song.HasCourse(TaikoCourse.Easy))
-            valid |= AuthoredSongCourseBits.Easy;
-        if (song.HasCourse(TaikoCourse.Normal))
-            valid |= AuthoredSongCourseBits.Normal;
-        if (song.HasCourse(TaikoCourse.Hard))
-            valid |= AuthoredSongCourseBits.Hard;
-        if (song.HasCourse(TaikoCourse.Oni))
-            valid |= AuthoredSongCourseBits.Oni;
-        if (song.HasCourse(TaikoCourse.Ura))
-            valid |= AuthoredSongCourseBits.HiddenOni;
-
         return new SongSelectCoursePresentation(
-            AuthoredSongCourseBits.All & ~valid,
+            AuthoredSongCourseBits.None,
             song.Level(TaikoCourse.Easy) ?? 0,
             song.Level(TaikoCourse.Normal) ?? 0,
             song.Level(TaikoCourse.Hard) ?? 0,
@@ -197,7 +185,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue notifySelection(LumenHostCall call)
     {
-        _session.Select(integer(call, 0), integer(call, 1), integer(call, 2), integer(call, 3));
+        _session.Select(integer(call, 0), integer(call, 1), integer(call, 2), optionalInteger(call, 3, -1));
         return LumenHostValue.Undefined;
     }
 
@@ -218,6 +206,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (!double.IsFinite(value) || value != Math.Truncate(value) || value < int.MinValue || value > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(call), $"Host argument {index} must be a finite integer.");
         return (int)value;
+    }
+
+    private static int optionalInteger(LumenHostCall call, int index, int fallback)
+    {
+        if ((uint)index >= (uint)call.Arguments.Length
+            || call.Arguments[index].Kind is LumenHostValueKind.Undefined or LumenHostValueKind.Null)
+        {
+            return fallback;
+        }
+        return integer(call, index);
     }
 
 }

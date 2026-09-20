@@ -8,7 +8,7 @@ namespace Waddamburo.Game.Tests;
 public sealed class SongSelectSessionTests
 {
     [Fact]
-    public void CoursePresentationMapsUraToTheAuthoredHiddenOniSlot()
+    public void CoursePresentationPublishesOniAndUraWithoutCourseRestrictions()
     {
         var key = new SongKey(SongSourceKind.Tja, "course-projection");
         var descriptor = new SongDescriptor(
@@ -17,11 +17,11 @@ public sealed class SongSelectSessionTests
             null,
             [
                 new SongChartDescriptor(
-                    new ChartKey(key, "normal"),
-                    "Normal",
-                    new CatalogAssetKey(new CatalogProviderId("synthetic"), "normal"),
-                    TaikoCourse.Normal,
-                    4),
+                    new ChartKey(key, "oni"),
+                    "Oni",
+                    new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"),
+                    TaikoCourse.Oni,
+                    8),
                 new SongChartDescriptor(
                     new ChartKey(key, "ura"),
                     "Ura",
@@ -31,22 +31,20 @@ public sealed class SongSelectSessionTests
             ]);
         var song = new SongSelectSong(
             descriptor,
-            SongCourseBits.Normal | SongCourseBits.Ura,
-            [null, 4, null, null, 9]);
+            SongCourseBits.Oni | SongCourseBits.Ura,
+            [null, null, null, 8, 9]);
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
-        Assert.Equal(
-            AuthoredSongCourseBits.Easy
-            | AuthoredSongCourseBits.Hard
-            | AuthoredSongCourseBits.Oni
-            | AuthoredSongCourseBits.HiddenEasy
-            | AuthoredSongCourseBits.HiddenNormal
-            | AuthoredSongCourseBits.HiddenHard,
-            presentation.InvalidCourses);
-        Assert.Equal(4, presentation.NormalStars);
+        Assert.Equal(AuthoredSongCourseBits.None, presentation.InvalidCourses);
+        Assert.Equal(8, presentation.OniStars);
         Assert.Equal(9, presentation.HiddenOniStars);
-        Assert.Equal(0, presentation.OniStars);
+        Assert.Equal(0, presentation.EasyStars);
+        Assert.Equal(0, presentation.NormalStars);
+        Assert.Equal(0, presentation.HardStars);
+        Assert.Equal(0, presentation.HiddenEasyStars);
+        Assert.Equal(0, presentation.HiddenNormalStars);
+        Assert.Equal(0, presentation.HiddenHardStars);
     }
 
     [Fact]
