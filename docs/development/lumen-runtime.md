@@ -49,8 +49,9 @@ termination, so unsupported opcodes and stack underflow defer the whole record
 without partial writes.
 
 Authored function returns propagate through nested calls rather than collapsing to
-`undefined`. Primitive strings expose `length`, `charAt`, and `toString`, while
-array member writes override their initialized indices. These small built-ins are
+`undefined`. Primitive strings expose `length`, `charAt`, and `toString`.
+`new Array(length)` creates a bounded indexed array with the requested length,
+while array member writes override their initialized indices. These small built-ins are
 implemented in the AVM boundary rather than in a game host.
 
 `Advance(LumenInputSnapshot)` installs an immutable set of Flash key codes for one
@@ -66,8 +67,9 @@ Instruction/stack/register exhaustion emits `LUM_ACTION_LIMIT`; excess queued wo
 emits `LUM_ACTION_QUEUE_LIMIT`, and recursive calls stop at `LUM_AVM_CALL_LIMIT`.
 Defaults are 10,000 instructions, 4,096 stack values, 4,096 pending actions, 256
 registers, and 64 nested calls. The pending-action ceiling also bounds the number
-of enter-frame candidates collected during one dispatch. Tick-wide instruction
-budgets and recursive queue draining remain outside this slice.
+of enter-frame candidates collected during one dispatch. Actions queued by an
+authored timeline jump drain in subsequent bounded batches during the same phase.
+Tick-wide instruction budgets remain outside this slice.
 
 Each action also receives bounded registers and a transactional variable/member
 context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
@@ -84,7 +86,8 @@ and subsequently placed instances, installs the class prototype, and invokes the
 constructor with preloaded `this`. `MovieClip.play` and `stop` bridge to timeline
 state. `MovieClip.gotoAndPlay` and `gotoAndStop` resolve one-based frame numbers or
 authored labels on the target clip. Forward jumps preserve existing children while
-applying intervening display-list frames without their scripts; backward jumps use
+applying intervening display-list frames without their scripts, then run only the
+destination frame's actions and newly placed children's initialization actions; backward jumps use
 the current cut reconstruction. Both reset interpolation, and invalid targets emit
 `LUM_AVM_GOTO_INVALID`. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
 diagnostics with their action offset. A zero placement-name field retains an
@@ -111,9 +114,9 @@ same primitive-only host values. Callback return values and object arguments rem
 outside this slice. The standalone viewer installs a `Lumen` presence object
 through its host binding so movies select their native-game branch. Its
 deterministic `IsReady`, `InitInfo`, and `IsStartLumen` methods allow Entry's
-initialization handler to complete without pretending to supply game state. Its
-single-movie Entry defaults also select paid play, decline synthetic coin entry,
-and acknowledge voice-stop requests; other
+initialization handler to complete without pretending to supply broader game state.
+The standalone viewer accepts an authored entry request because it has no cabinet
+credit service, retains paid-play reporting, and acknowledges voice-stop requests; other
 unimplemented native methods remain diagnostics rather than hidden stubs.
 
 The callback inspection surface also exposes immutable callback names and authored

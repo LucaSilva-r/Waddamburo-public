@@ -18,7 +18,9 @@ internal sealed class ViewerHostBinding : ILumenHostBinding
             lumen.RegisterMethod("IsReady", _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("InitInfo", _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("IsStartLumen", _ => LumenHostValue.FromBoolean(true));
-            lumen.RegisterMethod("EntryCoin", _ => LumenHostValue.FromBoolean(false));
+            // The standalone viewer has no cabinet credit service. Accept an
+            // authored entry request so input-driven scenes remain testable.
+            lumen.RegisterMethod("EntryCoin", _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("IsFreePlay", _ => LumenHostValue.FromBoolean(false));
             lumen.RegisterMethod("StopVoice", _ => LumenHostValue.Undefined);
         });

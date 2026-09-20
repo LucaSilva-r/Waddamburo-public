@@ -218,6 +218,24 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void TimelineJumpExecutesTheDestinationFramesAction()
+    {
+        var player = new LumenPlayer(createMovie(
+            actionBytecode: [
+                0x8C, 0x02, 0x00, 0x01, 0x00,
+                0x06,
+                0x00,
+            ],
+            targetActionBytecode: [0x07, 0x00]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.False(player.IsPlaying);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void TargetFrameActionTakesPrecedenceOverRequestedPlaybackState()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [0x06, 0x00]), 1280, 720);
@@ -666,6 +684,35 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ConstructedArrayExposesItsRequestedLength()
+    {
+        var player = new LumenPlayer(
+            createMovie(placementNameStringIndex: 31, actionBytecode: [
+                0x96, 0x0D, 0x00,
+                    0x07, 0x02, 0x00, 0x00, 0x00,
+                    0x07, 0x01, 0x00, 0x00, 0x00,
+                    0x09, 0x24, 0x00,
+                0x40,
+                0x87, 0x01, 0x00, 0x00,
+                0x17,
+                0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+                0x1C,
+                0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x04, 0x00,
+                0x96, 0x03, 0x00, 0x09, 0x19, 0x00,
+                0x4E,
+                0x4F,
+                0x00,
+            ]),
+            1280,
+            720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void AuthoredFunctionReturnsPropagateToCallers()
     {
         var player = new LumenPlayer(
@@ -994,7 +1041,8 @@ public sealed class LumenPlayerTests
         uint rootExportStringIndex = 0,
         ushort firstBlendMode = 0,
         bool removeOnThirdFrame = true,
-        uint placementNameStringIndex = 0)
+        uint placementNameStringIndex = 0,
+        byte[]? targetActionBytecode = null)
     {
         var geometry = new uint[]
         {
@@ -1012,11 +1060,15 @@ public sealed class LumenPlayerTests
                 "resource", "ResolveVisible", "this", "FailingHost", "flash", "external",
                 "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame",
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
-                "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt")),
+                "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
-            record(LmbTags.ActionPool, actionPool(actionBytecode ?? [0x04, 0x00])),
+            record(
+                LmbTags.ActionPool,
+                targetActionBytecode is null
+                    ? actionPool(actionBytecode ?? [0x04, 0x00])
+                    : actionPool(actionBytecode ?? [0x04, 0x00], targetActionBytecode)),
             words(LmbTags.DefineShape, 42, 0, 0, 1),
             words(LmbTags.ShapeGeometry, geometry),
             words(LmbTags.DefineSprite, 7, 0, rootExportStringIndex, 2, 3, 2, 0),
@@ -1027,9 +1079,11 @@ public sealed class LumenPlayerTests
             words(LmbTags.ShowFrame, 1, duplicateAction ? 3U : 2U),
             words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
             words(LmbTags.DoAction, 0, 0),
-            words(LmbTags.ShowFrame, 2, 1),
+            words(LmbTags.ShowFrame, 2, targetActionBytecode is null ? 1U : 2U),
             words(LmbTags.RemoveObject, 42, 0x00030000),
         };
+        if (targetActionBytecode is not null)
+            records.Insert(records.Count - 1, words(LmbTags.DoAction, 1, 0));
         if (!removeOnThirdFrame)
             records.RemoveAt(records.Count - 1);
         if (duplicateAction)

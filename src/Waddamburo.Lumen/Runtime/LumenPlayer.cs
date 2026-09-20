@@ -352,39 +352,66 @@ public sealed class LumenPlayer
 
     private void drainActions()
     {
-        foreach (var pending in _pendingActions
-            .OrderBy(action => action.Instance.HierarchyDepth)
-            .ThenBy(action => action.Sequence))
+        var processed = 0;
+        while (_pendingActions.Count > 0 && processed < _limits.MaxPendingActions)
         {
-            if (pending.Instance.Removed)
-                continue;
-            if (pending.ActionIndex >= (uint)_movie.Actions.Length)
+            var remaining = _limits.MaxPendingActions - processed;
+            var batch = _pendingActions
+                .OrderBy(action => action.Instance.HierarchyDepth)
+                .ThenBy(action => action.Sequence)
+                .Take(remaining)
+                .ToArray();
+            var dropped = _pendingActions.Count - batch.Length;
+            _pendingActions.Clear();
+            foreach (var pending in batch)
             {
+                processed++;
+                if (pending.Instance.Removed)
+                    continue;
+                if (pending.ActionIndex >= (uint)_movie.Actions.Length)
+                {
+                    reportOnce(
+                        "LUM_ACTION_DEFERRED",
+                        pending.Instance.CharacterId,
+                        pending.Instance.Frame,
+                        $"AVM action {pending.ActionIndex} requires the full interpreter.");
+                    continue;
+                }
+
+                var status = executeAction(
+                    pending.Instance,
+                    _movie.Actions[checked((int)pending.ActionIndex)].Code);
+                if (status == Avm1ExecutionStatus.Success)
+                    continue;
+                var limited = status is Avm1ExecutionStatus.InstructionLimit
+                    or Avm1ExecutionStatus.StackLimit
+                    or Avm1ExecutionStatus.RegisterLimit;
                 reportOnce(
-                    "LUM_ACTION_DEFERRED",
+                    limited ? "LUM_ACTION_LIMIT" : "LUM_ACTION_DEFERRED",
                     pending.Instance.CharacterId,
                     pending.Instance.Frame,
-                    $"AVM action {pending.ActionIndex} requires the full interpreter.");
-                continue;
+                    limited
+                        ? $"AVM action {pending.ActionIndex} reached the {status} safety limit."
+                        : $"AVM action {pending.ActionIndex} requires unsupported semantics or failed with {status}.");
             }
-
-            var status = executeAction(
-                pending.Instance,
-                _movie.Actions[checked((int)pending.ActionIndex)].Code);
-            if (status == Avm1ExecutionStatus.Success)
+            if (dropped == 0)
                 continue;
-            var limited = status is Avm1ExecutionStatus.InstructionLimit
-                or Avm1ExecutionStatus.StackLimit
-                or Avm1ExecutionStatus.RegisterLimit;
             reportOnce(
-                limited ? "LUM_ACTION_LIMIT" : "LUM_ACTION_DEFERRED",
-                pending.Instance.CharacterId,
-                pending.Instance.Frame,
-                limited
-                    ? $"AVM action {pending.ActionIndex} reached the {status} safety limit."
-                    : $"AVM action {pending.ActionIndex} requires unsupported semantics or failed with {status}.");
+                "LUM_ACTION_QUEUE_LIMIT",
+                _root.CharacterId,
+                _root.Frame,
+                $"Pending AVM action limit {_limits.MaxPendingActions} was reached; {dropped} actions were dropped.");
         }
-        _pendingActions.Clear();
+        if (_pendingActions.Count > 0)
+        {
+            var dropped = _pendingActions.Count;
+            _pendingActions.Clear();
+            reportOnce(
+                "LUM_ACTION_QUEUE_LIMIT",
+                _root.CharacterId,
+                _root.Frame,
+                $"Pending AVM action limit {_limits.MaxPendingActions} was reached; {dropped} actions were dropped.");
+        }
     }
 
     private void dispatchEnterFrameHandlers()
@@ -579,7 +606,24 @@ public sealed class LumenPlayer
             (name, arguments) =>
             {
                 var candidate = context!.GetVariable(name);
-                var value = new Avm1Object();
+                Avm1Object value;
+                if (name == "Array")
+                {
+                    if (arguments.Count == 1
+                        && toNumber(arguments[0]) is var requestedLength
+                        && double.IsFinite(requestedLength)
+                        && requestedLength >= 0
+                        && requestedLength == Math.Truncate(requestedLength)
+                        && requestedLength <= _limits.MaxStackValues)
+                    {
+                        value = new Avm1ArrayObject(
+                            Enumerable.Repeat<object?>(Avm1Undefined.Instance, (int)requestedLength).ToArray());
+                    }
+                    else
+                        value = new Avm1ArrayObject(arguments);
+                }
+                else
+                    value = new Avm1Object();
                 value.Properties["__constructor__"] = name;
                 value.Properties["__arguments__"] = new Avm1ArrayObject(arguments);
                 if (candidate.Found && candidate.Value is Avm1FunctionValue constructor)
@@ -749,11 +793,13 @@ public sealed class LumenPlayer
             if (frame > instance.Frame)
             {
                 for (var nextFrame = instance.Frame + 1; nextFrame <= frame; nextFrame++)
-                    enterFrame(instance, nextFrame, queueActions: false);
+                    enterFrame(instance, nextFrame, queueActions: nextFrame == frame);
             }
             else
+            {
                 restoreInstance(instance, frame);
-            enqueueCurrentFrameActions(instance);
+                enqueueCurrentFrameActions(instance);
+            }
             resetInterpolation(instance);
         }
         instance.Playing = play;
