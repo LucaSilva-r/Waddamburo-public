@@ -9,11 +9,14 @@ internal sealed class Avm1ExecutionContext(
     Func<object?, string, IReadOnlyList<object?>, int, Avm1Lookup> methodCaller,
     Func<string, IReadOnlyList<object?>, Avm1Lookup> objectConstructor,
     Action<string> timelineLabelJumper,
+    Func<object?, string, int, Avm1Lookup> spriteCloner,
+    Action<object?> spriteRemover,
     Action<Action>? commitActionWriter = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
     private readonly Dictionary<MemberKey, object?> _memberWrites = [];
     private readonly List<Action> _commitActions = [];
+    private readonly Dictionary<MemberKey, object?> _transientMembers = [];
 
     public Avm1Lookup GetVariable(string name) =>
         _variableWrites.TryGetValue(name, out var value)
@@ -23,7 +26,9 @@ internal sealed class Avm1ExecutionContext(
     public void SetVariable(string name, object? value) => _variableWrites[name] = value;
 
     public Avm1Lookup GetMember(object? target, string name) =>
-        _memberWrites.TryGetValue(new MemberKey(target, name), out var value)
+        _transientMembers.TryGetValue(new MemberKey(target, name), out var transient)
+            ? new Avm1Lookup(true, transient)
+            : _memberWrites.TryGetValue(new MemberKey(target, name), out var value)
             ? new Avm1Lookup(true, value)
             : memberReader(target, name);
 
@@ -40,6 +45,14 @@ internal sealed class Avm1ExecutionContext(
         objectConstructor(name, arguments);
 
     public void GotoLabel(string label) => timelineLabelJumper(label);
+
+    public Avm1Lookup CloneSprite(object? source, string name, int depth)
+        => spriteCloner(source, name, depth);
+
+    public void RemoveSprite(object? target) => spriteRemover(target);
+
+    public void SetTransientMember(object target, string name, object? value) =>
+        _transientMembers[new MemberKey(target, name)] = value;
 
     public void OnCommit(Action action) => _commitActions.Add(action);
 

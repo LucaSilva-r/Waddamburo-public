@@ -53,7 +53,8 @@ and applies matching GPU viewport and scissor state, preserving the stage across
 resize and high-DPI drawable sizes. Standalone movies use that same fixed stage
 transform: animated elements outside the stage are clipped and never change the
 camera or scale. `--window-size=WIDTHxHEIGHT` provides a bounded diagnostic startup
-size for framebuffer checks.
+size for framebuffer checks. Screenshot runs use a non-resizable, logical-density
+window so the requested pixel dimensions cannot vary with window-manager placement.
 
 `--screenshot=PATH` downloads the final bounded swapchain image and writes a
 top-down RGBA capture as PNG or BMP. Without a frame or tick bound, capture renders

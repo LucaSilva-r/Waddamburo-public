@@ -5,6 +5,12 @@ namespace Waddamburo.Lumen.Runtime;
 
 internal static class Avm1Interpreter
 {
+    public static string DescribeUnsupported(Avm1CodeBlock code) => string.Join(
+        ", ",
+        code.Instructions
+            .Where(instruction => !isSupportedInstruction(instruction))
+            .Select(instruction => $"0x{instruction.Opcode:X2} at 0x{instruction.Offset:X}"));
+
     public static Avm1ExecutionStatus TryExecute(
         Avm1CodeBlock code,
         IReadOnlyList<LmbString> strings,
@@ -207,6 +213,23 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     context.SetVariable(toAvmString(variableName), variableValue);
                     break;
+                case 0x24: // CloneSprite
+                    if (!tryPop(stack, out var cloneDepth)
+                        || !tryPop(stack, out var cloneName)
+                        || !tryPop(stack, out var cloneSource))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var depthNumber = toNumber(cloneDepth);
+                    if (!double.IsFinite(depthNumber)
+                        || depthNumber < 0
+                        || depthNumber > int.MaxValue)
+                        break;
+                    context.CloneSprite(cloneSource, toAvmString(cloneName), (int)depthNumber);
+                    break;
+                case 0x25: // RemoveSprite
+                    if (!tryPop(stack, out var removeTarget))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    context.RemoveSprite(removeTarget);
+                    break;
                 case 0x3D: // CallFunction
                     if (!tryPop(stack, out var functionName)
                         || !tryPopArguments(stack, out var arguments))
@@ -407,18 +430,21 @@ internal static class Avm1Interpreter
 
     private static bool isSupported(Avm1CodeBlock code) =>
         code.Instructions.Any(instruction => instruction.Opcode == 0x00)
-        && code.Instructions.All(instruction => instruction.Opcode switch
+        && code.Instructions.All(isSupportedInstruction);
+
+    private static bool isSupportedInstruction(Avm1Instruction instruction) =>
+        instruction.Opcode switch
         {
             0x00 or 0x06 or 0x07
                 or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17
-                or 0x1C or 0x1D or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
+                or 0x1C or 0x1D or 0x24 or 0x25 or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
                 or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52
                 or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69
                 or 0x87 or 0x8C or 0x99 or 0x9D => true,
             0x8E or 0x9B => instruction.Operand is Avm1FunctionOperand && instruction.Body is not null,
             0x96 => instruction.Operand is Avm1PushOperand,
             _ => false,
-        });
+        };
 
     private static Avm1ExecutionStatus pushValues(
         List<object?> stack,

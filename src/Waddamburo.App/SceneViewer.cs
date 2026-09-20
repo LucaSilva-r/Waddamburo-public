@@ -19,7 +19,8 @@ internal static class SceneViewer
         int windowHeight,
         int? frameLimit,
         int? tickLimit,
-        string? screenshotPath)
+        string? screenshotPath,
+        SdlKeyboardTimeline inputTimeline)
     {
         var entries = readScene(scenePath);
         var root = Path.GetFullPath(assetRoot);
@@ -63,7 +64,9 @@ internal static class SceneViewer
             $"Waddamburo — {Path.GetFileNameWithoutExtension(scenePath)}",
             windowWidth,
             windowHeight,
-            debugGpu: false);
+            debugGpu: false,
+            resizable: screenshotPath is null,
+            highPixelDensity: screenshotPath is null);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
         var textureIds = loaded
             .SelectMany(layer => layer.Content.Textures)
@@ -86,9 +89,14 @@ internal static class SceneViewer
                 index => index < textureIds.Length
                     ? textureIds[index]
                     : throw new InvalidDataException($"Scene snapshot references missing texture {index}."));
+        var simulationTick = 0;
         var result = application.Run(
             createFrame,
-            keyboard => scene.Advance(LumenInputAdapter.CreateSnapshot(keyboard)),
+            keyboard =>
+            {
+                simulationTick++;
+                scene.Advance(LumenInputAdapter.CreateSnapshot(inputTimeline.Apply(simulationTick, keyboard)));
+            },
             frameLimit,
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));

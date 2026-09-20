@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Immutable;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -935,6 +936,69 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ExternalInterfaceCallsReachThePlayersHostBindingSynchronously()
+    {
+        ImmutableArray<LumenHostValue> received = [];
+        var player = new LumenPlayer(
+            createMovie(actionBytecode: [
+                0x96, 0x0D, 0x00,
+                    0x07, 0x07, 0x00, 0x00, 0x00,
+                    0x09, 0x26, 0x00,
+                    0x07, 0x02, 0x00, 0x00, 0x00,
+                0x96, 0x03, 0x00, 0x09, 0x0B, 0x00,
+                0x1C,
+                0x96, 0x03, 0x00, 0x09, 0x0C, 0x00,
+                0x4E,
+                0x96, 0x03, 0x00, 0x09, 0x0D, 0x00,
+                0x4E,
+                0x96, 0x03, 0x00, 0x09, 0x25, 0x00,
+                0x52,
+                0x17,
+                0x00,
+            ]),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context =>
+                context.RegisterExternalInterfaceCall(call =>
+                {
+                    received = call.Arguments;
+                    return LumenHostValue.Undefined;
+                })));
+
+        player.Advance();
+
+        Assert.Equal(2, received.Length);
+        Assert.Equal("Confirm", received[0].AsString());
+        Assert.Equal(7, received[1].AsNumber());
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void CloneAndRemoveSpriteCommitAsOneDisplayListTransaction()
+    {
+        var player = new LumenPlayer(createMovie(
+            placementNameStringIndex: 31,
+            actionBytecode: [
+                0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+                0x1C,
+                0x96, 0x08, 0x00,
+                    0x09, 0x27, 0x00,
+                    0x07, 0xE8, 0x03, 0x00, 0x00,
+                0x24,
+                0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+                0x1C,
+                0x25,
+                0x00,
+            ]), 1280, 720);
+
+        player.Advance();
+
+        var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.Equal(new LumenRenderVertex(30, 40, 0, 0), quad.TopLeft);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void NewObjectInvokesAuthoredConstructorWithPrototype()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [
@@ -1060,7 +1124,8 @@ public sealed class LumenPlayerTests
                 "resource", "ResolveVisible", "this", "FailingHost", "flash", "external",
                 "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame",
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
-                "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array")),
+                "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
+                "call", "Confirm", "copy")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

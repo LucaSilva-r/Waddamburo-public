@@ -12,7 +12,13 @@ internal sealed class ViewerHostBinding : ILumenHostBinding
     {
     }
 
-    public void Install(LumenHostContext context) =>
+    public void Install(LumenHostContext context)
+    {
+        context.RegisterExternalInterfaceCall(call =>
+        {
+            Console.WriteLine($"ExternalInterface.call({string.Join(", ", call.Arguments.Select(formatValue))})");
+            return LumenHostValue.Undefined;
+        });
         context.RegisterObject("Lumen", lumen =>
         {
             lumen.RegisterMethod("IsReady", _ => LumenHostValue.FromBoolean(true));
@@ -23,5 +29,21 @@ internal sealed class ViewerHostBinding : ILumenHostBinding
             lumen.RegisterMethod("EntryCoin", _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("IsFreePlay", _ => LumenHostValue.FromBoolean(false));
             lumen.RegisterMethod("StopVoice", _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("SetNextScene", call =>
+            {
+                Console.WriteLine($"Lumen.SetNextScene({string.Join(", ", call.Arguments.Select(formatValue))})");
+                return LumenHostValue.Undefined;
+            });
         });
+    }
+
+    private static string formatValue(LumenHostValue value) => value.Kind switch
+    {
+        LumenHostValueKind.Undefined => "undefined",
+        LumenHostValueKind.Null => "null",
+        LumenHostValueKind.Boolean => value.AsBoolean() ? "true" : "false",
+        LumenHostValueKind.Number => value.AsNumber().ToString("G15", System.Globalization.CultureInfo.InvariantCulture),
+        LumenHostValueKind.Text => $"\"{value.AsString()}\"",
+        _ => "undefined",
+    };
 }

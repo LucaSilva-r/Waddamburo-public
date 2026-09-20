@@ -18,7 +18,13 @@ public sealed unsafe class SdlApplication : IDisposable
     private bool _disposed;
     private readonly HashSet<SdlKeyboardKey> _pressedKeys = [];
 
-    public SdlApplication(string title, int width, int height, bool debugGpu = false)
+    public SdlApplication(
+        string title,
+        int width,
+        int height,
+        bool debugGpu = false,
+        bool resizable = true,
+        bool highPixelDensity = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -31,11 +37,16 @@ public sealed unsafe class SdlApplication : IDisposable
                 throw sdlFailure("initialize SDL video");
             _sdlInitialized = true;
 
+            var windowFlags = highPixelDensity
+                ? SDL_WindowFlags.SDL_WINDOW_HIGH_PIXEL_DENSITY
+                : 0;
+            if (resizable)
+                windowFlags |= SDL_WindowFlags.SDL_WINDOW_RESIZABLE;
             _window = SDL_CreateWindow(
                 title,
                 width,
                 height,
-                SDL_WindowFlags.SDL_WINDOW_RESIZABLE | SDL_WindowFlags.SDL_WINDOW_HIGH_PIXEL_DENSITY);
+                windowFlags);
             if (_window is null)
                 throw sdlFailure("create the window");
 

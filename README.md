@@ -89,6 +89,10 @@ supported; focus loss clears every held key. The Taiko keyboard layout is P1
 `D`/`F`/`J`/`K` and P2 `Z`/`X`/`C`/`V`. Either center (`don`) confirms. The left
 and right rims (`ka`) navigate in their corresponding direction.
 
+Bounded probes can add one-tick physical-key pulses with repeatable
+`--press=KEY@TICK[,KEY@TICK...]` options. Tick numbers are one-based, and scripted
+keys are combined with any live keys held during that tick.
+
 For a deterministic single-movie probe, invoke registered callbacks after optional
 seek and before ticking with repeatable `--invoke=` options. Arguments are separated
 by `|` and explicitly typed as `b:true`, `n:1.5`, `s:text`, `null`, or `undefined`:
@@ -96,8 +100,12 @@ by `|` and explicitly typed as `b:true`, `n:1.5`, `s:text`, `null`, or `undefine
 ```sh
 dotnet run --project src/Waddamburo.App -- \
   --archive=/path/to/archive.ddp --movie=movie_name \
-  '--invoke=SetPlayer|n:1' --ticks=1 --screenshot=/tmp/callback.png
+  '--invoke=SetPlayer|n:1' --press=F@30,K@120 \
+  --ticks=180 --window-size=1280x720 --screenshot=/tmp/callback.png
 ```
+
+Screenshot runs use the requested dimensions as fixed framebuffer pixels, disabling
+interactive resize and display-density scaling for byte-repeatable local probes.
 
 An unbounded single-movie run also starts the interactive Lumen debugger. It prints
 exported callback signatures and the first nine root labels. Press keyboard `1`–`9`

@@ -9,6 +9,7 @@ try
     var windowSize = parseWindowSize(args);
     var screenshotPath = parseOption(args, "--screenshot=");
     var callbackInvocations = CallbackInvocation.Parse(args);
+    var inputTimeline = InputPulseParser.Parse(args);
     if (screenshotPath is not null)
     {
         if (frameLimit is null && tickLimit is null)
@@ -37,7 +38,8 @@ try
             windowSize.Height,
             frameLimit,
             tickLimit,
-            screenshotPath);
+            screenshotPath,
+            inputTimeline);
         return 0;
     }
     if (archivePath is not null || movieName is not null)
@@ -53,18 +55,23 @@ try
             frameLimit,
             tickLimit,
             screenshotPath,
-            callbackInvocations);
+            callbackInvocations,
+            inputTimeline);
         return 0;
     }
     if (seekFrame is not null)
         throw new ArgumentException("--seek-frame requires --archive and --movie.");
     if (!callbackInvocations.IsEmpty)
         throw new ArgumentException("--invoke requires --archive and --movie.");
+    if (!inputTimeline.IsEmpty)
+        throw new ArgumentException("--press requires --archive/--movie or --scene/--asset-root.");
     using var application = new SdlApplication(
         "Waddamburo",
         windowSize.Width,
         windowSize.Height,
-        debugGpu: false);
+        debugGpu: false,
+        resizable: screenshotPath is null,
+        highPixelDensity: screenshotPath is null);
     Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
     var checkerboard = createCheckerboard();
     var texture = application.UploadRgba8(8, 8, checkerboard);

@@ -81,8 +81,14 @@ public sealed class LumenHostObject
 public sealed class LumenHostContext
 {
     private readonly Dictionary<string, object?> _globals;
+    private readonly Avm1Object _externalInterface;
+    private bool _externalInterfaceCallRegistered;
 
-    internal LumenHostContext(Dictionary<string, object?> globals) => _globals = globals;
+    internal LumenHostContext(Dictionary<string, object?> globals, Avm1Object externalInterface)
+    {
+        _globals = globals;
+        _externalInterface = externalInterface;
+    }
 
     public void RegisterFunction(string name, LumenHostCallback callback)
     {
@@ -101,6 +107,16 @@ public sealed class LumenHostContext
         foreach (var (methodName, callback) in builder.Methods)
             value.Properties.Add(methodName, new Avm1NativeFunction($"{name}.{methodName}", callback));
         addGlobal(name, value);
+    }
+
+    /// <summary>Registers the movie-to-host endpoint used by flash.external.ExternalInterface.call.</summary>
+    public void RegisterExternalInterfaceCall(LumenHostCallback callback)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        if (_externalInterfaceCallRegistered)
+            throw new ArgumentException("The ExternalInterface call endpoint is already registered.", nameof(callback));
+        _externalInterface.Properties["call"] = new Avm1NativeFunction("ExternalInterface.call", callback);
+        _externalInterfaceCallRegistered = true;
     }
 
     private void addGlobal(string name, object value)

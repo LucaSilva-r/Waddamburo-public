@@ -17,7 +17,8 @@ internal static class MovieViewer
         int? frameLimit,
         int? tickLimit,
         string? screenshotPath,
-        ImmutableArray<CallbackInvocation> callbackInvocations)
+        ImmutableArray<CallbackInvocation> callbackInvocations,
+        SdlKeyboardTimeline inputTimeline)
     {
         var archiveLength = new FileInfo(archivePath).Length;
         if (archiveLength > ParserLimits.Default.MaxFileBytes)
@@ -40,7 +41,9 @@ internal static class MovieViewer
             $"Waddamburo — {content.Name}",
             windowWidth,
             windowHeight,
-            debugGpu: false);
+            debugGpu: false,
+            resizable: screenshotPath is null,
+            highPixelDensity: screenshotPath is null);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
         var textureIds = content.Textures
             .Select(texture => application.UploadRgba8(
@@ -66,10 +69,13 @@ internal static class MovieViewer
                 index => index < textureIds.Length
                     ? textureIds[index]
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
+        var simulationTick = 0;
         var result = application.Run(
             createFrame,
             keyboard =>
             {
+                simulationTick++;
+                keyboard = inputTimeline.Apply(simulationTick, keyboard);
                 if (debugger is null)
                     player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
                 else

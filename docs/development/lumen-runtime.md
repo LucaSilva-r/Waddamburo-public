@@ -111,13 +111,23 @@ transaction. The built-in `flash.external.ExternalInterface` captures committed
 `addCallback` registrations per player. `CallbackNames` is an immutable sorted
 snapshot, and `TryInvokeCallback` synchronously invokes a named callback with the
 same primitive-only host values. Callback return values and object arguments remain
-outside this slice. The standalone viewer installs a `Lumen` presence object
+outside this slice. Host bindings can also register the synchronous primitive-only
+movie-to-host endpoint for `ExternalInterface.call`; without one, the optional call
+returns `undefined`. The standalone viewer installs a `Lumen` presence object
 through its host binding so movies select their native-game branch. Its
 deterministic `IsReady`, `InitInfo`, and `IsStartLumen` methods allow Entry's
 initialization handler to complete without pretending to supply broader game state.
 The standalone viewer accepts an authored entry request because it has no cabinet
 credit service, retains paid-play reporting, and acknowledges voice-stop requests; other
-unimplemented native methods remain diagnostics rather than hidden stubs.
+unimplemented native methods remain diagnostics rather than hidden stubs. It traces
+authored `ExternalInterface.call` traffic and scene-change requests without owning
+game-flow policy.
+
+Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
+transaction as variable and member writes. A clone copies the source display state,
+script variables, prototype/class binding, and child hierarchy into its authored
+dynamic depth; replacement and removal become visible only when the action commits.
+Synthetic fixtures exercise clone-followed-by-remove without relying on game assets.
 
 The callback inspection surface also exposes immutable callback names and authored
 parameter names. The standalone app uses that metadata for an interactive debug
@@ -125,6 +135,8 @@ console and pairs keyboard `1`–`9` with the first nine root labels. Terminal
 commands can list callbacks/labels, switch a state, or invoke a callback with typed
 primitive arguments while the movie keeps running. This debugger belongs to the
 app composition layer and does not add console or keyboard dependencies to Lumen.
+Bounded viewer runs can overlay one-tick physical-key pulses on exact simulation
+ticks, making input-driven framebuffer probes repeatable without SDL event injection.
 
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action

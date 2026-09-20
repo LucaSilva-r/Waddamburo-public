@@ -66,7 +66,7 @@ public sealed class LumenPlayer
         _globals["Array"] = createBuiltinConstructor();
         installKeyObject();
         installExternalInterface();
-        hostBinding?.Install(new LumenHostContext(_globals));
+        hostBinding?.Install(new LumenHostContext(_globals, _externalInterface));
         enterFrame(_root, 0, queueActions: true);
         drainActions();
     }
@@ -541,8 +541,6 @@ public sealed class LumenPlayer
                     }
                     return new Avm1Lookup(true, false);
                 }
-                if (ReferenceEquals(target, _externalInterface) && name == "call")
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
                 if (name == "toString" && target is null or bool or double or string or Avm1Undefined)
                     return new Avm1Lookup(true, toAvmString(target));
                 if (target is string text && name == "charAt")
@@ -646,8 +644,67 @@ public sealed class LumenPlayer
                         instance.Frame,
                         $"Timeline action could not resolve label '{label}'.");
             },
+            (source, name, depth) =>
+            {
+                if (source is not DisplayInstance sourceInstance
+                    || sourceInstance.Parent is not DisplayInstance parent
+                    || depth < 0)
+                    return default;
+                var clone = cloneInstance(sourceInstance, parent, name);
+                context!.SetTransientMember(parent, name, clone);
+                context!.OnCommit(() =>
+                {
+                    var targetDepth = checked((uint)depth);
+                    if (parent.Children.TryGetValue(targetDepth, out var replaced))
+                        replaced.Removed = true;
+                    parent.Children[targetDepth] = clone;
+                });
+                return new Avm1Lookup(true, clone);
+            },
+            target =>
+            {
+                if (target is not DisplayInstance targetInstance
+                    || targetInstance.Parent is not DisplayInstance parent)
+                    return;
+                context!.OnCommit(() =>
+                {
+                    var child = parent.Children.FirstOrDefault(pair => ReferenceEquals(pair.Value, targetInstance));
+                    if (child.Value is null)
+                        return;
+                    parent.Children.Remove(child.Key);
+                    targetInstance.Removed = true;
+                });
+            },
             parentContext is null ? null : parentContext.OnCommit);
         return context;
+    }
+
+    private static DisplayInstance cloneInstance(
+        DisplayInstance source,
+        DisplayInstance parent,
+        string name)
+    {
+        var clone = new DisplayInstance(source.CharacterId, parent.HierarchyDepth + 1, parent)
+        {
+            Name = name,
+            PlacementId = source.PlacementId,
+            FirstFrame = source.FirstFrame,
+            Frame = source.Frame,
+            Playing = source.Playing,
+            Visible = source.Visible,
+            BlendMode = source.BlendMode,
+            Transform = source.Transform,
+            Color = source.Color,
+            PreviousTransform = source.PreviousTransform,
+            PreviousMultiply = source.PreviousMultiply,
+            ScriptPrototype = source.ScriptPrototype,
+            ConstructedClass = source.ConstructedClass,
+        };
+        foreach (var (variableName, value) in source.Variables)
+            clone.Variables.Add(variableName, value);
+        foreach (var (depth, child) in source.Children)
+            clone.Children.Add(depth, cloneInstance(child, clone, child.Name));
+        return clone;
     }
 
     private Avm1Lookup invokeHost(
@@ -723,11 +780,15 @@ public sealed class LumenPlayer
                 out var returnValue);
             if (status != Avm1ExecutionStatus.Success)
             {
+                var unsupported = status == Avm1ExecutionStatus.Unsupported
+                    ? Avm1Interpreter.DescribeUnsupported(function.Body)
+                    : string.Empty;
                 reportOnce(
                     "LUM_AVM_FUNCTION_DEFERRED",
                     timelineTarget.CharacterId,
                     timelineTarget.Frame,
-                    $"AVM function body requires unsupported semantics or failed with {status}.");
+                    $"AVM function body requires unsupported semantics or failed with {status}"
+                    + (unsupported.Length == 0 ? "." : $": {unsupported}."));
                 return default;
             }
             timelineTarget.Playing = playing;
@@ -891,6 +952,9 @@ public sealed class LumenPlayer
     private void installExternalInterface()
     {
         _externalInterface.Properties["available"] = true;
+        _externalInterface.Properties["call"] = new Avm1NativeFunction(
+            "ExternalInterface.call",
+            _ => LumenHostValue.Undefined);
         var external = new Avm1Object();
         external.Properties["ExternalInterface"] = _externalInterface;
         var flash = new Avm1Object();

@@ -8,6 +8,18 @@ namespace Waddamburo.Architecture.Tests;
 public sealed class RenderSnapshotTests
 {
     [Fact]
+    public void ScriptedKeyboardPulsesApplyOnlyOnTheirExactTick()
+    {
+        var timeline = new SdlKeyboardTimeline([(2, SdlKeyboardKey.D), (2, SdlKeyboardKey.F)]);
+        var live = new SdlKeyboardSnapshot([SdlKeyboardKey.Enter]);
+
+        Assert.True(timeline.Apply(1, live).PressedKeys.SequenceEqual([SdlKeyboardKey.Enter]));
+        Assert.True(timeline.Apply(2, live).PressedKeys.SequenceEqual(
+            [SdlKeyboardKey.Enter, SdlKeyboardKey.D, SdlKeyboardKey.F]));
+        Assert.True(timeline.Apply(3, live).PressedKeys.SequenceEqual([SdlKeyboardKey.Enter]));
+    }
+
+    [Fact]
     public void SdlKeyboardSnapshotMapsPhysicalDrumsToAuthoredPlayerControls()
     {
         var keyboard = new SdlKeyboardSnapshot([
