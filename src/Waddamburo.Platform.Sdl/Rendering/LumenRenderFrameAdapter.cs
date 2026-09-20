@@ -9,20 +9,25 @@ public static class LumenRenderFrameAdapter
         LumenRenderSnapshot snapshot,
         RenderColor clearColor,
         Func<uint, RenderTextureId> resolveTexture,
-        Func<LumenNativeSurfaceKey, RenderTextureId>? resolveNativeSurface = null)
+        Func<LumenNativeSurfaceKey, RenderTextureId?>? resolveNativeSurface = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(resolveTexture);
 
         var inverseWidth = 1f / snapshot.StageWidth;
         var inverseHeight = 1f / snapshot.StageHeight;
-        return new RenderFrame(
-            clearColor,
-            snapshot.Quads.Select(quad => new RenderQuad(
-                quad.NativeSurface is { } surface
-                    ? (resolveNativeSurface ?? throw new InvalidOperationException(
-                        $"Native Lumen surface '{surface}' has no platform resolver."))(surface)
-                    : resolveTexture(quad.TextureIndex),
+        var quads = new List<RenderQuad>(snapshot.Quads.Length);
+        foreach (var quad in snapshot.Quads)
+        {
+            RenderTextureId? texture = quad.NativeSurface is { } surface
+                ? (resolveNativeSurface ?? throw new InvalidOperationException(
+                    $"Native Lumen surface '{surface}' has no platform resolver."))(surface)
+                : resolveTexture(quad.TextureIndex);
+            if (texture is null)
+                continue;
+
+            quads.Add(new RenderQuad(
+                texture.Value,
                 convert(quad.TopLeft, inverseWidth, inverseHeight),
                 convert(quad.TopRight, inverseWidth, inverseHeight),
                 convert(quad.BottomRight, inverseWidth, inverseHeight),
@@ -30,7 +35,11 @@ public static class LumenRenderFrameAdapter
                 convert(quad.MultiplyColor),
                 convert(quad.AddColor),
                 convert(quad.Blend),
-                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear)),
+                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear));
+        }
+        return new RenderFrame(
+            clearColor,
+            quads,
             (double)snapshot.StageWidth / snapshot.StageHeight);
     }
 

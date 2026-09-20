@@ -46,7 +46,10 @@ internal static class EntrySongSelectFlow
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
-        using var titleTextures = new SongTitleTextureCache(application, fontPath);
+        using var titleTextures = new SongTitleTextureCache(
+            application,
+            fontPath,
+            asynchronous: screenshotPath is null);
 
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
@@ -81,13 +84,17 @@ internal static class EntrySongSelectFlow
             var textureIds = uploadTextures(application, active);
             var simulationTick = 0;
 
-            RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
-                active.Player.CreateRenderSnapshot((float)interpolationFraction),
-                RenderColor.WaddamburoBlue,
-                index => index < textureIds.Length
-                    ? textureIds[index]
-                    : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
-                titleTextures.Resolve);
+            RenderFrame createFrame(double interpolationFraction)
+            {
+                titleTextures.UploadCompleted();
+                return LumenRenderFrameAdapter.Compose(
+                    active.Player.CreateRenderSnapshot((float)interpolationFraction),
+                    RenderColor.WaddamburoBlue,
+                    index => index < textureIds.Length
+                        ? textureIds[index]
+                        : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
+                    titleTextures.Resolve);
+            }
 
             var result = application.Run(
                 createFrame,

@@ -65,6 +65,29 @@ public sealed class RenderSnapshotTests
         Assert.Equal(16d / 9d, frame.ContentAspectRatio);
     }
 
+    [Fact]
+    public void AdapterOmitsNativeSurfaceUntilItsTextureIsReady()
+    {
+        var pending = new LumenNativeSurfaceKey("pending-title");
+        var ready = new LumenNativeSurfaceKey("ready-title");
+        var snapshot = new LumenRenderSnapshot(
+            1280,
+            720,
+            [
+                quad(1, default) with { NativeSurface = pending },
+                quad(2, default),
+                quad(3, default) with { NativeSurface = ready },
+            ]);
+
+        var frame = LumenRenderFrameAdapter.Compose(
+            snapshot,
+            RenderColor.WaddamburoBlue,
+            index => new RenderTextureId(index + 10),
+            surface => surface == ready ? new RenderTextureId(99) : null);
+
+        Assert.Equal([12u, 99u], frame.Quads.Select(quad => quad.Texture.Value));
+    }
+
     [Theory]
     [InlineData(1000, 1000, 0, 218, 1000, 563)]
     [InlineData(2000, 720, 360, 0, 1280, 720)]

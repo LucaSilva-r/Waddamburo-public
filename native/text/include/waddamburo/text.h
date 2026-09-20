@@ -19,7 +19,9 @@
 extern "C" {
 #endif
 
-#define WADDAMBURO_TEXT_ABI_VERSION_1_1 UINT32_C(0x00010001)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_2 UINT32_C(0x00010002)
+
+typedef struct waddamburo_text_context waddamburo_text_context;
 
 typedef int32_t waddamburo_text_result;
 #define WADDAMBURO_TEXT_OK ((waddamburo_text_result)0)
@@ -42,6 +44,16 @@ typedef struct waddamburo_text_error {
 
 WADDAMBURO_TEXT_API uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void);
 
+/* Contexts retain one FreeType library and font face. Calls using the same
+ * context must be serialized by the caller. */
+WADDAMBURO_TEXT_API waddamburo_text_context *WADDAMBURO_TEXT_CALL
+waddamburo_text_context_create(
+    const char *utf8_font_path,
+    waddamburo_text_error *error);
+
+WADDAMBURO_TEXT_API void WADDAMBURO_TEXT_CALL
+waddamburo_text_context_destroy(waddamburo_text_context *context);
+
 /* Produces premultiplied RGBA8. Each Unicode scalar is laid out top-to-bottom. */
 WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
 waddamburo_text_render_vertical_rgba8(
@@ -58,6 +70,20 @@ waddamburo_text_render_vertical_rgba8(
 WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
 waddamburo_text_render_song_title_rgba8(
     const char *utf8_font_path,
+    const char *utf8_title,
+    const char *utf8_subtitle,
+    waddamburo_text_profile profile,
+    uint32_t outline_rgb,
+    uint32_t raster_scale,
+    uint32_t width,
+    uint32_t height,
+    uint8_t *rgba8,
+    uint64_t rgba8_capacity,
+    waddamburo_text_error *error);
+
+WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
+waddamburo_text_context_render_song_title_rgba8(
+    waddamburo_text_context *context,
     const char *utf8_title,
     const char *utf8_subtitle,
     waddamburo_text_profile profile,
