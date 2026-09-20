@@ -42,6 +42,13 @@ own display instance. Any other opcode defers the entire record without partiall
 executing it and emits `LUM_ACTION_DEFERRED`. Full AVM execution, enter-frame
 handlers, and recursive queue draining remain outside this slice.
 
+The Formats layer supplies immutable prevalidated code blocks rather than asking
+the runtime to rediscover byte boundaries. It validates short and long action
+records, branch destinations, and the out-of-line lexical bodies used by Lumen's
+`DefineFunction`, `DefineFunction2`, and `With` records under instruction-count and
+nesting limits. The simple executor consumes that model directly. Typed decoding
+of every operand form remains future Formats work.
+
 Each display instance also retains its previous transform and multiply color. A
 snapshot accepts the display accumulator's fractional tick and interpolates those
 values without exposing mutable timeline state to the renderer. Translation changes

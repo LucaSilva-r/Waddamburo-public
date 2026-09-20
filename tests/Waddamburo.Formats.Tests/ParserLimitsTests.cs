@@ -15,6 +15,8 @@ public sealed class ParserLimitsTests
         Assert.True(limits.MaxTextureDimension > 0);
         Assert.True(limits.MaxTextureBytes > 0);
         Assert.True(limits.MaxActionBytes > 0);
+        Assert.True(limits.MaxActionInstructions > 0);
+        Assert.True(limits.MaxActionNesting > 0);
         Assert.True(limits.MaxVertices > 0);
         Assert.True(limits.MaxIndices > 0);
         Assert.True(limits.MaxBones > 0);
@@ -30,5 +32,7 @@ public sealed class ParserLimitsTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new ParserLimits(maxRecordCount: invalid));
         Assert.Throws<ArgumentOutOfRangeException>(() => new ParserLimits(maxFileBytes: invalid));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ParserLimits(maxActionInstructions: invalid));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ParserLimits(maxActionNesting: invalid));
     }
 }

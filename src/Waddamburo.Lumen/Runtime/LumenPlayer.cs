@@ -307,7 +307,7 @@ public sealed class LumenPlayer
             if (pending.ActionIndex >= (uint)_movie.Actions.Length
                 || !tryExecuteSimpleAction(
                     pending.Instance,
-                    _movie.Actions[checked((int)pending.ActionIndex)].Bytecode))
+                    _movie.Actions[checked((int)pending.ActionIndex)].Code))
             {
                 reportOnce(
                     "LUM_ACTION_DEFERRED",
@@ -321,12 +321,13 @@ public sealed class LumenPlayer
 
     private static bool tryExecuteSimpleAction(
         DisplayInstance instance,
-        ImmutableArray<byte> bytecode)
+        Avm1CodeBlock code)
     {
         var controls = new List<byte>();
         var foundEnd = false;
-        foreach (var opcode in bytecode)
+        foreach (var instruction in code.Instructions)
         {
+            var opcode = instruction.Opcode;
             if (opcode == 0)
             {
                 foundEnd = true;

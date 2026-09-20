@@ -20,6 +20,8 @@ The defaults are ceilings rather than expected asset sizes:
 | Texture dimension | 16,384 |
 | Texture bytes | 512 MiB |
 | Action bytes | 16 MiB |
+| Action instructions | 1,000,000 |
+| Action lexical nesting | 256 |
 | Vertices | 10,000,000 |
 | Indices | 30,000,000 |
 | Bones | 4,096 |

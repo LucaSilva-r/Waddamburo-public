@@ -297,10 +297,15 @@ public static class LmbSemanticReader
 
             var storageLength = align4(checked((int)byteLength));
             requireBytes(record, cursor, storageLength, "action bytecode");
+            var bytecode = ImmutableArray.CreateRange(span.Slice(cursor, (int)byteLength).ToArray());
+            var actionOffset = record.PayloadOffset + cursor;
             destination.Add(new LmbAction(
                 destination.Count,
-                ImmutableArray.CreateRange(span.Slice(cursor, (int)byteLength).ToArray()),
-                record.PayloadOffset + cursor));
+                bytecode,
+                actionOffset)
+            {
+                Code = Avm1BytecodeReader.Read(bytecode, actionOffset, limits),
+            });
             cursor += storageLength;
         }
         requireExactEnd(record, cursor);

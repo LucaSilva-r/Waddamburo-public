@@ -19,7 +19,9 @@ public sealed record ParserLimits
         int maxBones = 4_096,
         int maxFrames = 1_000_000,
         int maxMeasures = 1_000_000,
-        int maxNotes = 10_000_000)
+        int maxNotes = 10_000_000,
+        int maxActionInstructions = 1_000_000,
+        int maxActionNesting = 256)
     {
         MaxFileBytes = requirePositive(maxFileBytes, nameof(maxFileBytes));
         MaxAllocationBytes = requirePositive(maxAllocationBytes, nameof(maxAllocationBytes));
@@ -35,6 +37,8 @@ public sealed record ParserLimits
         MaxFrames = requirePositive(maxFrames, nameof(maxFrames));
         MaxMeasures = requirePositive(maxMeasures, nameof(maxMeasures));
         MaxNotes = requirePositive(maxNotes, nameof(maxNotes));
+        MaxActionInstructions = requirePositive(maxActionInstructions, nameof(maxActionInstructions));
+        MaxActionNesting = requirePositive(maxActionNesting, nameof(maxActionNesting));
     }
 
     public long MaxFileBytes { get; }
@@ -64,6 +68,10 @@ public sealed record ParserLimits
     public int MaxMeasures { get; }
 
     public int MaxNotes { get; }
+
+    public int MaxActionInstructions { get; }
+
+    public int MaxActionNesting { get; }
 
     private static int requirePositive(int value, string parameterName)
     {

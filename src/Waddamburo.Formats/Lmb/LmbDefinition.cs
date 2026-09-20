@@ -32,6 +32,8 @@ public sealed record LmbString(int Index, string Value, long Offset)
 public sealed record LmbAction(int Index, ImmutableArray<byte> Bytecode, long Offset)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Confirmed;
+
+    public required Avm1CodeBlock Code { get; init; }
 }
 
 public sealed record LmbColorTransform(short Red, short Green, short Blue, short Alpha)

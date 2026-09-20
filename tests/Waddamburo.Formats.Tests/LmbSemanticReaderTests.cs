@@ -29,7 +29,7 @@ public sealed class LmbSemanticReaderTests
             words(LmbTags.TranslationPool, 1, single(7), single(8)),
             words(LmbTags.BoundsPool, 1, single(9), single(10), single(11), single(12)),
             words(LmbTags.TextureBoundsPool, 1, single(13), single(14), single(15), single(16)),
-            record(LmbTags.ActionPool, actionPool([0x81, 0x02, 0xFF])),
+            record(LmbTags.ActionPool, actionPool([0x81, 0x01, 0x00, 0xFF])),
             words(LmbTags.DefineShape, 42, 0xAA, 0xBB, 1),
             words(LmbTags.ShapeGeometry, geometry),
             words(LmbTags.DefineSprite, 7, 0x11, 0x22, 1, 2, 1, 0x33),
@@ -54,7 +54,9 @@ public sealed class LmbSemanticReaderTests
         Assert.Equal(new LmbTranslation(7, 8), Assert.Single(movie.Translations));
         Assert.Equal(12, Assert.Single(movie.Bounds).Bottom);
         Assert.Equal(EvidenceStatus.CorpusValidatedInference, Assert.Single(movie.TextureBounds).Evidence);
-        Assert.Equal(new byte[] { 0x81, 0x02, 0xFF }, Assert.Single(movie.Actions).Bytecode);
+        var action = Assert.Single(movie.Actions);
+        Assert.Equal(new byte[] { 0x81, 0x01, 0x00, 0xFF }, action.Bytecode);
+        Assert.Equal(4, Assert.Single(action.Code.Instructions).Length);
 
         var shape = Assert.Single(movie.Shapes);
         Assert.Equal(42U, shape.CharacterId);
@@ -124,6 +126,49 @@ public sealed class LmbSemanticReaderTests
         var exception = Assert.Throws<FormatLimitException>(() =>
             LmbSemanticReader.Read(action, new ParserLimits(maxActionBytes: 2)));
         Assert.Equal(nameof(ParserLimits.MaxActionBytes), exception.LimitName);
+    }
+
+    [Fact]
+    public void DecodesActionBoundariesBranchesAndLexicalBodies()
+    {
+        var branch = readSingleAction([0x06, 0x99, 0x02, 0x00, 0x01, 0x00, 0x07, 0x00]);
+        Assert.Equal([0, 1, 6, 7], branch.Code.Instructions.Select(instruction => instruction.Offset));
+        Assert.Equal(7, branch.Code.Instructions[1].BranchTarget);
+        Assert.Equal(new byte[] { 0x01, 0x00 }, branch.Code.Instructions[1].OperandBytes);
+
+        var lexical = readSingleAction([
+            0x9B, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x07, 0x00,
+            0x94, 0x02, 0x00, 0x02, 0x00, 0x06, 0x00,
+            0x00,
+        ]);
+        Assert.Equal((9, 2), (lexical.Code.Instructions[0].Body!.Offset, lexical.Code.Instructions[0].Body!.Length));
+        Assert.Equal((16, 2), (lexical.Code.Instructions[1].Body!.Offset, lexical.Code.Instructions[1].Body!.Length));
+        Assert.Equal(0x07, lexical.Code.Instructions[0].Body!.Instructions[0].Opcode);
+        Assert.Equal(0x06, lexical.Code.Instructions[1].Body!.Instructions[0].Opcode);
+    }
+
+    [Fact]
+    public void RejectsTruncatedActionsAndBranchesIntoInstructionPayloads()
+    {
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x81, 0x02, 0x00, 0xFF]));
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x99, 0x02, 0x00, 0xFC, 0xFF, 0x00]));
+    }
+
+    [Fact]
+    public void EnforcesActionInstructionAndLexicalNestingLimits()
+    {
+        var twoInstructions = createLmb(record(LmbTags.ActionPool, actionPool([0x06, 0x00])));
+        var instructionException = Assert.Throws<FormatLimitException>(() =>
+            LmbSemanticReader.Read(twoInstructions, new ParserLimits(maxActionInstructions: 1)));
+        Assert.Equal(nameof(ParserLimits.MaxActionInstructions), instructionException.LimitName);
+
+        var nestedWith = createLmb(record(LmbTags.ActionPool, actionPool([
+            0x94, 0x02, 0x00, 0x07, 0x00,
+            0x94, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00,
+        ])));
+        var nestingException = Assert.Throws<FormatLimitException>(() =>
+            LmbSemanticReader.Read(nestedWith, new ParserLimits(maxActionNesting: 1)));
+        Assert.Equal(nameof(ParserLimits.MaxActionNesting), nestingException.LimitName);
     }
 
     [Fact]
@@ -201,6 +246,9 @@ public sealed class LmbSemanticReaderTests
         }
         return LmbFile.Parse(stream.ToArray());
     }
+
+    private static LmbAction readSingleAction(byte[] bytecode) =>
+        Assert.Single(LmbSemanticReader.Read(createLmb(record(LmbTags.ActionPool, actionPool(bytecode)))).Value.Actions);
 
     private static (uint Tag, byte[] Payload) record(uint tag, byte[] payload) => (tag, payload);
 
