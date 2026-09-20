@@ -45,6 +45,7 @@ internal static class LmbReferenceValidator
             addCharacterId(characterIds, sprite.CharacterId, sprite.RawRecord, diagnostics);
 
         validateProperties(movie, diagnostics);
+        validateActionStringReferences(movie, diagnostics);
 
         foreach (var sprite in movie.Sprites)
         {
@@ -73,6 +74,61 @@ internal static class LmbReferenceValidator
                 }
             }
         }
+    }
+
+    private static void validateActionStringReferences(
+        LmbMovieDefinition movie,
+        ImmutableArray<ParseDiagnostic>.Builder diagnostics)
+    {
+        foreach (var action in movie.Actions)
+            validateActionBlock(action, action.Code, movie.Strings.Length, diagnostics);
+    }
+
+    private static void validateActionBlock(
+        LmbAction action,
+        Avm1CodeBlock block,
+        int stringCount,
+        ImmutableArray<ParseDiagnostic>.Builder diagnostics)
+    {
+        foreach (var instruction in block.Instructions)
+        {
+            switch (instruction.Operand)
+            {
+                case Avm1StringIndexOperand reference:
+                    validateActionStringIndex(action, instruction, reference.StringIndex, stringCount, diagnostics);
+                    break;
+                case Avm1FunctionOperand function:
+                    validateActionStringIndex(action, instruction, function.NameStringIndex, stringCount, diagnostics);
+                    foreach (var parameter in function.Parameters)
+                        validateActionStringIndex(action, instruction, parameter.NameStringIndex, stringCount, diagnostics);
+                    break;
+                case Avm1PushOperand push:
+                    foreach (var value in push.Values.OfType<Avm1PushStringValue>())
+                        validateActionStringIndex(action, instruction, value.StringIndex, stringCount, diagnostics);
+                    break;
+            }
+
+            if (instruction.Body is { } body)
+                validateActionBlock(action, body, stringCount, diagnostics);
+        }
+    }
+
+    private static void validateActionStringIndex(
+        LmbAction action,
+        Avm1Instruction instruction,
+        ushort index,
+        int stringCount,
+        ImmutableArray<ParseDiagnostic>.Builder diagnostics)
+    {
+        if (index < stringCount)
+            return;
+        diagnostics.Add(new ParseDiagnostic(
+            DiagnosticSeverity.Error,
+            "LMB_AVM_STRING_INDEX_OUT_OF_RANGE",
+            action.Offset + instruction.Offset,
+            null,
+            EvidenceStatus.Confirmed,
+            $"Action {action.Index} instruction 0x{instruction.Offset:X} references string index {index}, outside the {stringCount}-entry F001 pool."));
     }
 
     private static void validateProperties(

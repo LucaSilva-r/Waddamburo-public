@@ -46,8 +46,10 @@ The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
 records, branch destinations, and the out-of-line lexical bodies used by Lumen's
 `DefineFunction`, `DefineFunction2`, and `With` records under instruction-count and
-nesting limits. The simple executor consumes that model directly. Typed decoding
-of every operand form remains future Formats work.
+nesting limits. Observed control, register, string, function, URL, and heterogeneous
+`Push` operands are immutable typed values; F001 references are validated before
+runtime use while raw payload bytes remain available for losslessness. The simple
+executor consumes this model directly.
 
 Each display instance also retains its previous transform and multiply color. A
 snapshot accepts the display accumulator's fractional tick and interpolates those

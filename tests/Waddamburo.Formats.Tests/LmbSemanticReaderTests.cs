@@ -29,7 +29,7 @@ public sealed class LmbSemanticReaderTests
             words(LmbTags.TranslationPool, 1, single(7), single(8)),
             words(LmbTags.BoundsPool, 1, single(9), single(10), single(11), single(12)),
             words(LmbTags.TextureBoundsPool, 1, single(13), single(14), single(15), single(16)),
-            record(LmbTags.ActionPool, actionPool([0x81, 0x01, 0x00, 0xFF])),
+            record(LmbTags.ActionPool, actionPool([0x81, 0x02, 0x00, 0xFF, 0x00])),
             words(LmbTags.DefineShape, 42, 0xAA, 0xBB, 1),
             words(LmbTags.ShapeGeometry, geometry),
             words(LmbTags.DefineSprite, 7, 0x11, 0x22, 1, 2, 1, 0x33),
@@ -55,8 +55,8 @@ public sealed class LmbSemanticReaderTests
         Assert.Equal(12, Assert.Single(movie.Bounds).Bottom);
         Assert.Equal(EvidenceStatus.CorpusValidatedInference, Assert.Single(movie.TextureBounds).Evidence);
         var action = Assert.Single(movie.Actions);
-        Assert.Equal(new byte[] { 0x81, 0x01, 0x00, 0xFF }, action.Bytecode);
-        Assert.Equal(4, Assert.Single(action.Code.Instructions).Length);
+        Assert.Equal(new byte[] { 0x81, 0x02, 0x00, 0xFF, 0x00 }, action.Bytecode);
+        Assert.Equal(5, Assert.Single(action.Code.Instructions).Length);
 
         var shape = Assert.Single(movie.Shapes);
         Assert.Equal(42U, shape.CharacterId);
@@ -135,6 +135,7 @@ public sealed class LmbSemanticReaderTests
         Assert.Equal([0, 1, 6, 7], branch.Code.Instructions.Select(instruction => instruction.Offset));
         Assert.Equal(7, branch.Code.Instructions[1].BranchTarget);
         Assert.Equal(new byte[] { 0x01, 0x00 }, branch.Code.Instructions[1].OperandBytes);
+        Assert.Equal(new Avm1BranchOperand(1, 7), branch.Code.Instructions[1].Operand);
 
         var lexical = readSingleAction([
             0x9B, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x07, 0x00,
@@ -148,10 +149,95 @@ public sealed class LmbSemanticReaderTests
     }
 
     [Fact]
+    public void DecodesTypedPushFunctionAndUrlOperands()
+    {
+        var push = Assert.IsType<Avm1PushOperand>(readSingleAction([
+            0x96, 0x21, 0x00,
+            0x00, 0x34, 0x12,
+            0x01, 0x00, 0x00, 0xC0, 0x3F,
+            0x02,
+            0x03,
+            0x04, 0x07,
+            0x05, 0x01,
+            0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x40,
+            0x07, 0xFE, 0xFF, 0xFF, 0xFF,
+            0x08, 0xAA,
+            0x09, 0x78, 0x56,
+            0x00,
+        ]).Code.Instructions[0].Operand);
+        Assert.Collection(
+            push.Values,
+            value => Assert.Equal(new Avm1PushStringValue(0, 0x1234), value),
+            value => Assert.Equal(new Avm1PushFloatValue(1.5f), value),
+            value => Assert.IsType<Avm1PushNullValue>(value),
+            value => Assert.IsType<Avm1PushUndefinedValue>(value),
+            value => Assert.Equal(new Avm1PushRegisterValue(7), value),
+            value => Assert.Equal(new Avm1PushBooleanValue(true), value),
+            value => Assert.Equal(new Avm1PushDoubleValue(2.5), value),
+            value => Assert.Equal(new Avm1PushIntegerValue(-2), value),
+            value => Assert.Equal(new Avm1PushStringValue(8, 0xAA), value),
+            value => Assert.Equal(new Avm1PushStringValue(9, 0x5678), value));
+
+        var functionInstruction = readSingleAction([
+            0x8E, 0x0F, 0x00,
+            0x02, 0x00, 0x02, 0x00, 0x05, 0x34, 0x12,
+            0x01, 0x03, 0x00, 0x00, 0x04, 0x00,
+            0x02, 0x00,
+            0x06, 0x00,
+        ]).Code.Instructions[0];
+        var function = Assert.IsType<Avm1FunctionOperand>(functionInstruction.Operand);
+        Assert.Equal((2, 5, 0x1234, 2), (function.NameStringIndex, function.RegisterCount, function.Flags, function.BodyLength));
+        Assert.Collection(
+            function.Parameters,
+            parameter => Assert.Equal(new Avm1FunctionParameter(1, 3), parameter),
+            parameter => Assert.Equal(new Avm1FunctionParameter(0, 4), parameter));
+        Assert.Equal(2, functionInstruction.Body!.Length);
+
+        var url = Assert.IsType<Avm1GetUrlOperand>(readSingleAction([
+            0x83, 0x0A, 0x00,
+            (byte)'e', (byte)'v', (byte)'e', (byte)'n', (byte)'t', 0x00,
+            (byte)'_', (byte)'r', (byte)'o', 0x00,
+            0x00,
+        ]).Code.Instructions[0].Operand);
+        Assert.Equal(("event", "_ro"), (url.Url, url.Target));
+    }
+
+    [Fact]
+    public void DecodesTypedTimelineRegisterAndStringControlOperands()
+    {
+        var action = readSingleAction([
+            0x81, 0x02, 0x00, 0x34, 0x12,
+            0x87, 0x01, 0x00, 0x05,
+            0x8C, 0x02, 0x00, 0x07, 0x00,
+            0x8A, 0x03, 0x00, 0x09, 0x00, 0x02,
+            0x8D, 0x01, 0x00, 0x03,
+            0x9A, 0x01, 0x00, 0xC1,
+            0x9F, 0x03, 0x00, 0x02, 0x78, 0x56,
+            0x00,
+        ]);
+
+        Assert.Collection(
+            action.Code.Instructions,
+            instruction => Assert.Equal(new Avm1FrameOperand(0x1234), instruction.Operand),
+            instruction => Assert.Equal(new Avm1RegisterOperand(5), instruction.Operand),
+            instruction => Assert.Equal(new Avm1StringIndexOperand(7), instruction.Operand),
+            instruction => Assert.Equal(new Avm1WaitForFrameOperand(9, 2), instruction.Operand),
+            instruction => Assert.Equal(new Avm1WaitForFrame2Operand(3), instruction.Operand),
+            instruction => Assert.Equal(new Avm1FlagsOperand(0xC1), instruction.Operand),
+            instruction => Assert.Equal(new Avm1GotoFrame2Operand(2, 0x5678), instruction.Operand),
+            instruction => Assert.Null(instruction.Operand));
+    }
+
+    [Fact]
     public void RejectsTruncatedActionsAndBranchesIntoInstructionPayloads()
     {
         Assert.Throws<FormatReadException>(() => readSingleAction([0x81, 0x02, 0x00, 0xFF]));
         Assert.Throws<FormatReadException>(() => readSingleAction([0x99, 0x02, 0x00, 0xFC, 0xFF, 0x00]));
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x96, 0x01, 0x00, 0xFF, 0x00]));
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x96, 0x02, 0x00, 0x07, 0x01, 0x00]));
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x83, 0x03, 0x00, (byte)'x', 0x00, (byte)'y', 0x00]));
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x87, 0x02, 0x00, 0x01, 0x02, 0x00]));
+        Assert.Throws<FormatReadException>(() => readSingleAction([0x9F, 0x02, 0x00, 0x01, 0x02, 0x00]));
     }
 
     [Fact]
@@ -169,6 +255,25 @@ public sealed class LmbSemanticReaderTests
         var nestingException = Assert.Throws<FormatLimitException>(() =>
             LmbSemanticReader.Read(nestedWith, new ParserLimits(maxActionNesting: 1)));
         Assert.Equal(nameof(ParserLimits.MaxActionNesting), nestingException.LimitName);
+    }
+
+    [Fact]
+    public void ReportsTypedActionStringReferencesOutsideTheMoviePool()
+    {
+        var file = createLmb(
+            record(LmbTags.StringPool, stringPool("only")),
+            record(LmbTags.ActionPool, actionPool([
+                0x96, 0x03, 0x00, 0x00, 0x02, 0x00,
+                0x8C, 0x02, 0x00, 0x03, 0x00,
+                0x00,
+            ])));
+
+        var result = LmbSemanticReader.Read(file);
+
+        Assert.Equal(
+            ["LMB_AVM_STRING_INDEX_OUT_OF_RANGE", "LMB_AVM_STRING_INDEX_OUT_OF_RANGE"],
+            result.Diagnostics.Select(diagnostic => diagnostic.Code));
+        Assert.All(result.Diagnostics, diagnostic => Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity));
     }
 
     [Fact]
