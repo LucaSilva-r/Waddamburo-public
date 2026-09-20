@@ -160,6 +160,15 @@ public sealed record LmbSpriteDefinition(
     LmbRecord RawRecord)
 {
     public EvidenceStatus HeaderEvidence { get; init; } = EvidenceStatus.Candidate;
+
+    /// <summary>
+    /// Candidate linkage/export name index stored in DefineSprite header word 2.
+    /// Zero denotes no exported name in the observed corpus.
+    /// </summary>
+    public uint? ExportStringIndex =>
+        UninterpretedHeaderWords.Length >= 2 && UninterpretedHeaderWords[1] != 0
+            ? UninterpretedHeaderWords[1]
+            : null;
 }
 
 public sealed record LmbMovieDefinition(

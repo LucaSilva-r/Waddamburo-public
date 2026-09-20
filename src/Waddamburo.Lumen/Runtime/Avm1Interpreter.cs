@@ -13,13 +13,97 @@ internal static class Avm1Interpreter
         Avm1ExecutionContext context,
         out bool resultingPlaying)
     {
+        var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
+        return tryExecute(code, strings, initialPlaying, limits, context, registers, out resultingPlaying);
+    }
+
+    public static Avm1ExecutionStatus TryExecuteFunction(
+        Avm1FunctionValue function,
+        IReadOnlyList<LmbString> strings,
+        object? thisValue,
+        IReadOnlyList<object?> arguments,
+        bool initialPlaying,
+        LumenRuntimeLimits limits,
+        Avm1ExecutionContext context,
+        out bool resultingPlaying)
+    {
+        var definition = function.Definition;
+        if (definition.RegisterCount >= limits.MaxRegisters)
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
+        var nextRegister = 1;
+        if ((definition.Flags & 0x0001) != 0 && !trySeedRegister(registers, ref nextRegister, thisValue))
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        if ((definition.Flags & 0x0004) != 0
+            && !trySeedRegister(registers, ref nextRegister, new Avm1ArrayObject(arguments)))
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        if ((definition.Flags & 0x0010) != 0
+            && !trySeedRegister(registers, ref nextRegister, function.GetProperty("__super__").Value))
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        if ((definition.Flags & 0x0040) != 0
+            && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_root").Value))
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        if ((definition.Flags & 0x0080) != 0
+            && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_parent").Value))
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        if ((definition.Flags & 0x0100) != 0
+            && !trySeedRegister(registers, ref nextRegister, context.GetVariable("_global").Value))
+        {
+            resultingPlaying = initialPlaying;
+            return Avm1ExecutionStatus.RegisterLimit;
+        }
+        for (var index = 0; index < definition.Parameters.Length; index++)
+        {
+            var parameter = definition.Parameters[index];
+            var value = index < arguments.Count ? arguments[index] : Avm1Undefined.Instance;
+            if (parameter.Register is > 0 and var register)
+            {
+                if (register >= registers.Length)
+                {
+                    resultingPlaying = initialPlaying;
+                    return Avm1ExecutionStatus.RegisterLimit;
+                }
+                registers[register] = value;
+            }
+            else
+                context.SetVariable(getString(strings, parameter.NameStringIndex), value);
+        }
+        return tryExecute(function.Body, strings, initialPlaying, limits, context, registers, out resultingPlaying);
+    }
+
+    private static Avm1ExecutionStatus tryExecute(
+        Avm1CodeBlock code,
+        IReadOnlyList<LmbString> strings,
+        bool initialPlaying,
+        LumenRuntimeLimits limits,
+        Avm1ExecutionContext context,
+        object?[] registers,
+        out bool resultingPlaying)
+    {
         resultingPlaying = initialPlaying;
         if (!isSupported(code))
             return Avm1ExecutionStatus.Unsupported;
 
         var instructions = code.Instructions.ToDictionary(instruction => instruction.Offset);
         var stack = new List<object?>();
-        var registers = Enumerable.Repeat<object?>(UndefinedValue.Instance, limits.MaxRegisters).ToArray();
         var playing = initialPlaying;
         var pc = code.Offset;
         for (var remaining = limits.MaxInstructionsPerAction; remaining > 0; remaining--)
@@ -60,6 +144,10 @@ internal static class Avm1Interpreter
                     if (!tryBinary(stack, (left, right) => toNumber(left) / toNumber(right)))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
+                case 0x3F: // Modulo
+                    if (!tryBinary(stack, (left, right) => toNumber(left) % toNumber(right)))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
                 case 0x0E: // Equals
                 case 0x49: // Equals2
                     if (!tryBinary(stack, (left, right) => looseEquals(left, right)))
@@ -84,7 +172,7 @@ internal static class Avm1Interpreter
                     if (!tryPop(stack, out var variableName))
                         return Avm1ExecutionStatus.StackUnderflow;
                     var variable = context.GetVariable(toAvmString(variableName));
-                    if (!tryPush(stack, variable.Found ? variable.Value : UndefinedValue.Instance, limits.MaxStackValues))
+                    if (!tryPush(stack, variable.Found ? variable.Value : Avm1Undefined.Instance, limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x1D: // SetVariable
@@ -97,7 +185,38 @@ internal static class Avm1Interpreter
                         || !tryPopArguments(stack, out var arguments))
                         return Avm1ExecutionStatus.StackUnderflow;
                     var call = context.CallFunction(toAvmString(functionName), arguments);
-                    if (!tryPush(stack, call.Found ? call.Value : UndefinedValue.Instance, limits.MaxStackValues))
+                    if (!tryPush(stack, call.Found ? call.Value : Avm1Undefined.Instance, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
+                case 0x3E: // Return
+                    if (!tryPop(stack, out _))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    resultingPlaying = playing;
+                    return Avm1ExecutionStatus.Success;
+                case 0x3C: // DefineLocal
+                    if (!tryPop(stack, out var localValue) || !tryPop(stack, out var localName))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    context.SetVariable(toAvmString(localName), localValue);
+                    break;
+                case 0x40: // NewObject
+                    if (!tryPop(stack, out var constructorName)
+                        || !tryPopArguments(stack, out var constructorArguments))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var newObject = new Avm1Object();
+                    newObject.Properties["__constructor__"] = toAvmString(constructorName);
+                    newObject.Properties["__arguments__"] = new Avm1ArrayObject(constructorArguments);
+                    if (!tryPush(stack, newObject, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
+                case 0x41: // DefineLocal2
+                    if (!tryPop(stack, out localName))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    context.SetVariable(toAvmString(localName), Avm1Undefined.Instance);
+                    break;
+                case 0x42: // InitArray
+                    if (!tryPopArguments(stack, out var arrayValues))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    if (!tryPush(stack, new Avm1ArrayObject(arrayValues), limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x4C: // PushDuplicate
@@ -115,7 +234,7 @@ internal static class Avm1Interpreter
                     if (!tryPop(stack, out var memberName) || !tryPop(stack, out var memberTarget))
                         return Avm1ExecutionStatus.StackUnderflow;
                     var member = context.GetMember(memberTarget, toAvmString(memberName));
-                    if (!tryPush(stack, member.Found ? member.Value : UndefinedValue.Instance, limits.MaxStackValues))
+                    if (!tryPush(stack, member.Found ? member.Value : Avm1Undefined.Instance, limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x4F: // SetMember
@@ -124,6 +243,42 @@ internal static class Avm1Interpreter
                         || !tryPop(stack, out memberTarget))
                         return Avm1ExecutionStatus.StackUnderflow;
                     context.SetMember(memberTarget, toAvmString(memberName), memberValue);
+                    break;
+                case 0x52: // CallMethod
+                    if (!tryPop(stack, out var methodName)
+                        || !tryPop(stack, out var methodTarget)
+                        || !tryPopArguments(stack, out var methodArguments))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var resolvedMethodName = methodName is null or Avm1Undefined
+                        ? ""
+                        : toAvmString(methodName);
+                    var methodCall = context.CallMethod(methodTarget, resolvedMethodName, methodArguments);
+                    if (!tryPush(stack, methodCall.Found ? methodCall.Value : Avm1Undefined.Instance, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
+                case 0x60: // BitAnd
+                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) & toInt32(right))))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
+                case 0x61: // BitOr
+                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) | toInt32(right))))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
+                case 0x62: // BitXor
+                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) ^ toInt32(right))))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
+                case 0x63: // BitLShift
+                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) << (toInt32(right) & 0x1f))))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
+                case 0x64: // BitRShift
+                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) >> (toInt32(right) & 0x1f))))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
+                case 0x65: // BitURShift
+                    if (!tryBinary(stack, (left, right) => (double)((uint)toInt32(left) >> (toInt32(right) & 0x1f))))
+                        return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x47: // Add2
                     if (!tryBinary(stack, add2))
@@ -166,6 +321,31 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.RegisterLimit;
                     registers[register] = registerValue;
                     break;
+                case 0x69: // Extends
+                    if (!tryPop(stack, out var superClass) || !tryPop(stack, out var subClass))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    context.SetMember(subClass, "__super__", superClass);
+                    var subPrototype = context.GetMember(subClass, "prototype");
+                    var superPrototype = context.GetMember(superClass, "prototype");
+                    if (subPrototype.Found && subPrototype.Value is Avm1Object prototype
+                        && superPrototype.Found && superPrototype.Value is Avm1Object parentPrototype)
+                    {
+                        context.SetMember(prototype, "__proto__", parentPrototype);
+                    }
+                    break;
+                case 0x8E: // DefineFunction2
+                case 0x9B: // DefineFunction
+                    var definition = (Avm1FunctionOperand)instruction.Operand!;
+                    var function = new Avm1FunctionValue(definition, instruction.Body!);
+                    var definedName = getString(strings, definition.NameStringIndex);
+                    if (definedName.Length == 0)
+                    {
+                        if (!tryPush(stack, function, limits.MaxStackValues))
+                            return Avm1ExecutionStatus.StackLimit;
+                    }
+                    else
+                        context.SetVariable(definedName, function);
+                    break;
                 case 0x99: // Jump
                     next = ((Avm1BranchOperand)instruction.Operand!).Target;
                     break;
@@ -181,15 +361,25 @@ internal static class Avm1Interpreter
         return Avm1ExecutionStatus.InstructionLimit;
     }
 
+    private static bool trySeedRegister(object?[] registers, ref int nextRegister, object? value)
+    {
+        if (nextRegister >= registers.Length)
+            return false;
+        registers[nextRegister++] = value;
+        return true;
+    }
+
     private static bool isSupported(Avm1CodeBlock code) =>
         code.Instructions.Any(instruction => instruction.Opcode == 0x00)
         && code.Instructions.All(instruction => instruction.Opcode switch
         {
             0x00 or 0x06 or 0x07
                 or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17
-                or 0x1C or 0x1D or 0x3D
-                or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51
-                or 0x66 or 0x67 or 0x87 or 0x99 or 0x9D => true,
+                or 0x1C or 0x1D or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
+                or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52
+                or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69
+                or 0x87 or 0x99 or 0x9D => true,
+            0x8E or 0x9B => instruction.Operand is Avm1FunctionOperand && instruction.Body is not null,
             0x96 => instruction.Operand is Avm1PushOperand,
             _ => false,
         });
@@ -218,7 +408,7 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case Avm1PushUndefinedValue:
-                    if (!tryPush(stack, UndefinedValue.Instance, maxStackValues))
+                    if (!tryPush(stack, Avm1Undefined.Instance, maxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case Avm1PushBooleanValue boolean:
@@ -254,7 +444,7 @@ internal static class Avm1Interpreter
 
     private static bool toBoolean(object? value) => value switch
     {
-        null or UndefinedValue => false,
+        null or Avm1Undefined => false,
         bool boolean => boolean,
         double number => number != 0 && !double.IsNaN(number),
         string text => text.Length != 0,
@@ -277,7 +467,7 @@ internal static class Avm1Interpreter
 
     private static bool looseEquals(object? left, object? right)
     {
-        if (left is null or UndefinedValue && right is null or UndefinedValue)
+        if (left is null or Avm1Undefined && right is null or Avm1Undefined)
             return true;
         if (left is bool)
             return looseEquals(toNumber(left), right);
@@ -290,7 +480,7 @@ internal static class Avm1Interpreter
 
     private static bool strictEquals(object? left, object? right) => (left, right) switch
     {
-        (UndefinedValue, UndefinedValue) => true,
+        (Avm1Undefined, Avm1Undefined) => true,
         (null, null) => true,
         (bool leftBoolean, bool rightBoolean) => leftBoolean == rightBoolean,
         (double leftNumber, double rightNumber) => numericEquals(leftNumber, rightNumber),
@@ -304,7 +494,7 @@ internal static class Avm1Interpreter
     private static double toNumber(object? value) => value switch
     {
         null => 0,
-        UndefinedValue => double.NaN,
+        Avm1Undefined => double.NaN,
         bool boolean => boolean ? 1 : 0,
         double number => number,
         string text => parseNumber(text),
@@ -324,7 +514,7 @@ internal static class Avm1Interpreter
     private static string toAvmString(object? value) => value switch
     {
         null => "null",
-        UndefinedValue => "undefined",
+        Avm1Undefined => "undefined",
         bool boolean => boolean ? "true" : "false",
         double number when double.IsNaN(number) => "NaN",
         double number when double.IsPositiveInfinity(number) => "Infinity",
@@ -340,6 +530,21 @@ internal static class Avm1Interpreter
             return false;
         stack.Add(operation(value));
         return true;
+    }
+
+    private static string getString(IReadOnlyList<LmbString> strings, ushort index) =>
+        index < strings.Count ? strings[index].Value : "";
+
+    private static int toInt32(object? value)
+    {
+        var number = toNumber(value);
+        if (!double.IsFinite(number) || number == 0)
+            return 0;
+        var integer = Math.Truncate(number);
+        var modulo = integer % 4_294_967_296d;
+        if (modulo < 0)
+            modulo += 4_294_967_296d;
+        return unchecked((int)(uint)modulo);
     }
 
     private static bool tryBinary(List<object?> stack, Func<object?, object?, object?> operation)
@@ -389,7 +594,7 @@ internal static class Avm1Interpreter
         }
         var count = (int)countNumber;
         var values = new object?[count];
-        for (var index = count - 1; index >= 0; index--)
+        for (var index = 0; index < count; index++)
         {
             if (!tryPop(stack, out values[index]))
             {
@@ -399,11 +604,6 @@ internal static class Avm1Interpreter
         }
         arguments = values;
         return true;
-    }
-
-    private sealed class UndefinedValue
-    {
-        public static UndefinedValue Instance { get; } = new();
     }
 }
 

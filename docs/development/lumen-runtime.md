@@ -36,20 +36,23 @@ running their actions; only actions on the final visible frame are queued. The
 requested playback state is established before that queue drains, so an authored
 target-frame `Play` or `Stop` takes precedence.
 
-The first interpreter boundary executes primitive `Push`, `Pop`, `PushDuplicate`,
-`StackSwap`, conversions, arithmetic, comparisons, `Not`, `If`, `Jump`, `Play`,
-`Stop`, and `End` records against the current display instance. Register pushes and
-object/variable/function opcodes remain unsupported. The entire code block is
-preflighted, and playback changes are committed only after successful termination;
-unsupported opcodes and stack underflow therefore defer the whole record without
-partial side effects.
+The bounded interpreter executes the primitive stack, conversion, arithmetic,
+comparison, bitwise, branch, variable/member, local, array/object, call, function,
+inheritance, return, and playback opcodes needed by the Entry initialization path.
+`DefineFunction` and `DefineFunction2` create inert function values with validated
+out-of-line bodies. Invocations seed bounded registers from parameters and observed
+preload flags; recursive calls are depth-limited. The entire code block is
+preflighted, and playback/member changes are committed only after successful
+termination, so unsupported opcodes and stack underflow defer the whole record
+without partial writes.
 
 `LumenRuntimeLimits` supplies positive per-player ceilings for instructions per
-action, operand-stack values, and queued frame actions. Instruction/stack exhaustion
-emits `LUM_ACTION_LIMIT`; excess queued work emits `LUM_ACTION_QUEUE_LIMIT`.
-Defaults are 10,000 instructions, 4,096 stack values, and 4,096 pending actions.
-Full AVM execution, enter-frame handlers, and recursive queue draining remain
-outside this slice.
+action, operand-stack values, queued frame actions, registers, and call depth.
+Instruction/stack/register exhaustion emits `LUM_ACTION_LIMIT`; excess queued work
+emits `LUM_ACTION_QUEUE_LIMIT`, and recursive calls stop at `LUM_AVM_CALL_LIMIT`.
+Defaults are 10,000 instructions, 4,096 stack values, 4,096 pending actions, 256
+registers, and 64 nested calls. Tick-wide budgets, enter-frame handlers, and
+recursive queue draining remain outside this slice.
 
 Each action also receives bounded registers and a transactional variable/member
 context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
@@ -58,6 +61,14 @@ exposing mutable display instances publicly. `_visible`, `_x`, `_y`, `_alpha`, a
 finishes successfully. Unregistered function calls consume the authored arguments,
 return `undefined`, and emit `LUM_AVM_CALL_UNRESOLVED`, allowing optional host calls
 to remain observable without aborting otherwise valid initialization.
+
+The candidate DefineSprite header-word-2 linkage index connects exported sprites to
+`Object.registerClass`. Registration is a commit-time effect: it binds both existing
+and subsequently placed instances, installs the class prototype, and invokes the
+constructor with preloaded `this`. `MovieClip.play` and `stop` bridge to timeline
+state. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
+diagnostics. Synthetic fixtures cover class bootstrap and binding without embedding
+or reproducing original content.
 
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
@@ -80,7 +91,9 @@ retained but not guessed. The player emits stable, deduplicated diagnostics for
 those deferred paths. Synthetic tests cover root resolution,
 place/move/remove/loop behavior, nested matrix order, color conversion, F105 and
 replay-based seeks, immutable snapshots, interpolation and cut behavior, simple
-play/stop actions, and explicit deferred-action diagnostics.
+play/stop actions, transactional variables and clip members, function/class
+bootstrap, exported-sprite constructor binding, and explicit deferred-action
+diagnostics.
 
 `Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
 the vertical slice. It receives a validated DDP movie view, requires the observed

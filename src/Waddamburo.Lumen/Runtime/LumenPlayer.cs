@@ -7,8 +7,8 @@ namespace Waddamburo.Lumen.Runtime;
 /// <summary>
 /// Small deterministic display-list core. It currently applies ordinary-frame
 /// placement/removal records, restores F105 seek snapshots, and builds interpolated
-/// render snapshots; AVM actions remain explicit diagnostics until their runtime
-/// module exists.
+/// render snapshots, and executes the bounded AVM subset used by initialized
+/// timelines.
 /// </summary>
 public sealed class LumenPlayer
 {
@@ -23,8 +23,10 @@ public sealed class LumenPlayer
     private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
     private readonly List<PendingFrameAction> _pendingActions = [];
     private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly DisplayInstance _root;
     private long _nextActionSequence;
+    private int _callDepth;
 
     public LumenPlayer(
         LmbMovieDefinition movie,
@@ -55,6 +57,9 @@ public sealed class LumenPlayer
         _root = new DisplayInstance(rootId, hierarchyDepth: 0, parent: null) { Name = "_level0" };
         _globals["_global"] = _globals;
         _globals["_root"] = _root;
+        _globals["Object"] = createBuiltinConstructor();
+        _globals["MovieClip"] = createBuiltinConstructor();
+        _globals["Array"] = createBuiltinConstructor();
         enterFrame(_root, 0, queueActions: true);
         drainActions();
     }
@@ -184,6 +189,9 @@ public sealed class LumenPlayer
         }
         return new SpriteTimeline(
             sprite.CharacterId,
+            sprite.ExportStringIndex is uint exportIndex && exportIndex < strings.Length
+                ? strings[checked((int)exportIndex)].Value
+                : null,
             builders.Select(builder => builder.ToImmutable()).ToImmutableArray(),
             keyBuilders.ToImmutableDictionary(pair => pair.Key, pair => pair.Value.ToImmutable()),
             labels.ToImmutableDictionary(StringComparer.Ordinal));
@@ -351,20 +359,7 @@ public sealed class LumenPlayer
         DisplayInstance instance,
         Avm1CodeBlock code)
     {
-        var context = new Avm1ExecutionContext(
-            name => readVariable(instance, name),
-            (name, value) => instance.Variables[name] = value,
-            readMember,
-            writeMember,
-            (name, _) =>
-            {
-                reportOnce(
-                    "LUM_AVM_CALL_UNRESOLVED",
-                    instance.CharacterId,
-                    instance.Frame,
-                    $"AVM function '{name}' is not registered; undefined was returned.");
-                return default;
-            });
+        var context = createExecutionContext(instance);
         var status = Avm1Interpreter.TryExecute(
             code,
             _movie.Strings,
@@ -378,6 +373,150 @@ public sealed class LumenPlayer
             instance.Playing = playing;
         }
         return status;
+    }
+
+    private Avm1ExecutionContext createExecutionContext(
+        DisplayInstance instance,
+        Avm1ExecutionContext? parentContext = null)
+    {
+        Avm1ExecutionContext? context = null;
+        context = new Avm1ExecutionContext(
+            name => parentContext?.GetVariable(name) ?? readVariable(instance, name),
+            (name, value) =>
+            {
+                if (parentContext is null)
+                    instance.Variables[name] = value;
+                else
+                    parentContext.SetVariable(name, value);
+            },
+            (target, name) => parentContext?.GetMember(target, name) ?? readMember(target, name),
+            (target, name, value) =>
+            {
+                if (parentContext is null)
+                    writeMember(target, name, value);
+                else
+                    parentContext.SetMember(target, name, value);
+            },
+            (name, arguments) =>
+            {
+                var candidate = context!.GetVariable(name);
+                if (candidate.Found && candidate.Value is Avm1FunctionValue function)
+                    return invokeFunction(instance, function, instance, arguments, context);
+                if (name == "ASSetPropFlags")
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
+                reportOnce(
+                    "LUM_AVM_CALL_UNRESOLVED",
+                    instance.CharacterId,
+                    instance.Frame,
+                    $"AVM function '{name}' is not registered; undefined was returned.");
+                return default;
+            },
+            (target, name, arguments) =>
+            {
+                if (target is DisplayInstance targetInstance && name is "play" or "stop")
+                {
+                    context!.OnCommit(() => targetInstance.Playing = name == "play");
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
+                }
+                if (name.Length == 0 && target is Avm1Object)
+                    return new Avm1Lookup(true, Avm1Undefined.Instance);
+                if (name == "registerClass"
+                    && ReferenceEquals(target, _globals["Object"])
+                    && arguments.Count >= 2
+                    && arguments[0] is string exportName
+                    && arguments[1] is Avm1FunctionValue registeredClass)
+                {
+                    context!.OnCommit(() => registerClass(exportName, registeredClass));
+                    return new Avm1Lookup(true, true);
+                }
+                var candidate = name.Length == 0
+                    ? new Avm1Lookup(target is Avm1FunctionValue, target)
+                    : context!.GetMember(target, name);
+                if (candidate.Found && candidate.Value is Avm1FunctionValue function)
+                    return invokeFunction(instance, function, target, arguments, context);
+                reportOnce(
+                    "LUM_AVM_METHOD_UNRESOLVED",
+                    instance.CharacterId,
+                    instance.Frame,
+                    $"AVM method '{name}' is not registered; undefined was returned.");
+                return default;
+            },
+            parentContext is null ? null : parentContext.OnCommit);
+        return context;
+    }
+
+    private Avm1Lookup invokeFunction(
+        DisplayInstance timelineTarget,
+        Avm1FunctionValue function,
+        object? thisValue,
+        IReadOnlyList<object?> arguments,
+        Avm1ExecutionContext? parentContext = null)
+    {
+        if (_callDepth >= _limits.MaxCallDepth)
+        {
+            reportOnce(
+                "LUM_AVM_CALL_LIMIT",
+                timelineTarget.CharacterId,
+                timelineTarget.Frame,
+                $"AVM call depth limit {_limits.MaxCallDepth} was reached.");
+            return default;
+        }
+        _callDepth++;
+        try
+        {
+            var context = createExecutionContext(timelineTarget, parentContext);
+            var status = Avm1Interpreter.TryExecuteFunction(
+                function,
+                _movie.Strings,
+                thisValue,
+                arguments,
+                timelineTarget.Playing,
+                _limits,
+                context,
+                out var playing);
+            if (status != Avm1ExecutionStatus.Success)
+            {
+                reportOnce(
+                    "LUM_AVM_FUNCTION_DEFERRED",
+                    timelineTarget.CharacterId,
+                    timelineTarget.Frame,
+                    $"AVM function body requires unsupported semantics or failed with {status}.");
+                return default;
+            }
+            context.Commit();
+            timelineTarget.Playing = playing;
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        }
+        finally
+        {
+            _callDepth--;
+        }
+    }
+
+    private void registerClass(string exportName, Avm1FunctionValue function)
+    {
+        _classes[exportName] = function;
+        bindClass(_root, exportName, function);
+    }
+
+    private void bindClass(DisplayInstance instance, string exportName, Avm1FunctionValue function)
+    {
+        if (_sprites.TryGetValue(instance.CharacterId, out var timeline)
+            && timeline.ExportName == exportName
+            && !ReferenceEquals(instance.ConstructedClass, function))
+        {
+            constructInstance(instance, function);
+        }
+        foreach (var child in instance.Children.Values)
+            bindClass(child, exportName, function);
+    }
+
+    private void constructInstance(DisplayInstance instance, Avm1FunctionValue function)
+    {
+        instance.ScriptPrototype = function.GetProperty("prototype").Value as Avm1Object;
+        var result = invokeFunction(instance, function, instance, []);
+        if (result.Found)
+            instance.ConstructedClass = function;
     }
 
     private Avm1Lookup readVariable(DisplayInstance instance, string name)
@@ -409,6 +548,8 @@ public sealed class LumenPlayer
                 return new Avm1Lookup(true, child);
             if (instance.Variables.TryGetValue(name, out var value))
                 return new Avm1Lookup(true, value);
+            if (instance.ScriptPrototype?.GetProperty(name) is { Found: true } inherited)
+                return inherited;
             return name switch
             {
                 "_visible" => new Avm1Lookup(true, instance.Visible),
@@ -419,6 +560,14 @@ public sealed class LumenPlayer
                 _ => default,
             };
         }
+        if (target is Avm1ArrayObject array)
+        {
+            var indexed = array.GetIndexedProperty(name);
+            if (indexed.Found)
+                return indexed;
+        }
+        if (target is Avm1Object avmObject)
+            return avmObject.GetProperty(name);
         if (target is Dictionary<string, object?> dictionary && dictionary.TryGetValue(name, out var member))
             return new Avm1Lookup(true, member);
         return default;
@@ -450,13 +599,28 @@ public sealed class LumenPlayer
                     return;
             }
         }
+        if (target is Avm1Object avmObject)
+        {
+            if (name == "__proto__" && value is Avm1Object prototype)
+                avmObject.Prototype = prototype;
+            else
+                avmObject.Properties[name] = value;
+            return;
+        }
         if (target is Dictionary<string, object?> dictionary)
             dictionary[name] = value;
     }
 
+    private static Avm1Object createBuiltinConstructor()
+    {
+        var constructor = new Avm1Object();
+        constructor.Properties["prototype"] = new Avm1Object();
+        return constructor;
+    }
+
     private static bool toBoolean(object? value) => value switch
     {
-        null => false,
+        null or Avm1Undefined => false,
         bool boolean => boolean,
         double number => number != 0 && !double.IsNaN(number),
         string text => text.Length != 0,
@@ -466,6 +630,7 @@ public sealed class LumenPlayer
     private static double toNumber(object? value) => value switch
     {
         null => 0,
+        Avm1Undefined => double.NaN,
         bool boolean => boolean ? 1 : 0,
         double number => number,
         string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
@@ -490,8 +655,13 @@ public sealed class LumenPlayer
                 };
                 parent.Children[placement.Depth] = instance;
                 applyPlacementFields(instance, placement, isNew: true);
-                if (_sprites.ContainsKey(instance.CharacterId))
+                if (_sprites.TryGetValue(instance.CharacterId, out var childTimeline))
+                {
                     enterFrame(instance, 0, queueActions);
+                    var exportName = childTimeline.ExportName;
+                    if (exportName is not null && _classes.TryGetValue(exportName, out var registeredClass))
+                        constructInstance(instance, registeredClass);
+                }
                 else if (!_shapes.ContainsKey(instance.CharacterId))
                     reportOnce("LUM_CHARACTER_NOT_FOUND", instance.CharacterId, parent.Frame, "Placed character has no shape or sprite definition.");
                 break;
@@ -777,10 +947,15 @@ public sealed class LumenPlayer
         public SortedDictionary<uint, DisplayInstance> Children { get; } = [];
 
         public Dictionary<string, object?> Variables { get; } = new(StringComparer.Ordinal);
+
+        public Avm1Object? ScriptPrototype { get; set; }
+
+        public Avm1FunctionValue? ConstructedClass { get; set; }
     }
 
     private readonly record struct SpriteTimeline(
         uint CharacterId,
+        string? ExportName,
         ImmutableArray<ImmutableArray<LmbTimelineCommand>> Frames,
         ImmutableDictionary<int, ImmutableArray<LmbTimelineCommand>> KeyFrames,
         ImmutableDictionary<string, int> Labels);

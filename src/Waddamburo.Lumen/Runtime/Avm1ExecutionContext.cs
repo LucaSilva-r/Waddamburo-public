@@ -5,10 +5,13 @@ internal sealed class Avm1ExecutionContext(
     Action<string, object?> variableWriter,
     Func<object?, string, Avm1Lookup> memberReader,
     Action<object?, string, object?> memberWriter,
-    Func<string, IReadOnlyList<object?>, Avm1Lookup> functionCaller)
+    Func<string, IReadOnlyList<object?>, Avm1Lookup> functionCaller,
+    Func<object?, string, IReadOnlyList<object?>, Avm1Lookup> methodCaller,
+    Action<Action>? commitActionWriter = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
     private readonly Dictionary<MemberKey, object?> _memberWrites = [];
+    private readonly List<Action> _commitActions = [];
 
     public Avm1Lookup GetVariable(string name) =>
         _variableWrites.TryGetValue(name, out var value)
@@ -28,12 +31,24 @@ internal sealed class Avm1ExecutionContext(
     public Avm1Lookup CallFunction(string name, IReadOnlyList<object?> arguments) =>
         functionCaller(name, arguments);
 
+    public Avm1Lookup CallMethod(object? target, string name, IReadOnlyList<object?> arguments) =>
+        methodCaller(target, name, arguments);
+
+    public void OnCommit(Action action) => _commitActions.Add(action);
+
     public void Commit()
     {
         foreach (var (name, value) in _variableWrites)
             variableWriter(name, value);
         foreach (var (key, value) in _memberWrites)
             memberWriter(key.Target, key.Name, value);
+        foreach (var action in _commitActions)
+        {
+            if (commitActionWriter is null)
+                action();
+            else
+                commitActionWriter(action);
+        }
     }
 
     private readonly record struct MemberKey(object? Target, string Name);

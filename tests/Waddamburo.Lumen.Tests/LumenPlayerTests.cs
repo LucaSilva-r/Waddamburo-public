@@ -412,6 +412,94 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ClassBootstrapValuesCompleteAndReachAuthoredStop()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x9B, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00,
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x05, 0x00, 0x04, 0x00, 0x09, 0x04, 0x00,
+            0x1C,
+            0x69,
+            0x96, 0x0F, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+                0x07, 0x02, 0x00, 0x00, 0x00,
+                0x07, 0x02, 0x00, 0x00, 0x00,
+            0x42,
+            0x17,
+            0x96, 0x08, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x09, 0x04, 0x00,
+            0x40,
+            0x17,
+            0x96, 0x0A, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x04, 0x00,
+                0x09, 0x01, 0x00,
+            0x52,
+            0x17,
+            0x96, 0x0A, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+                0x07, 0x03, 0x00, 0x00, 0x00,
+            0x63,
+            0x96, 0x05, 0x00, 0x07, 0x02, 0x00, 0x00, 0x00,
+            0x61,
+            0x17,
+            0x07,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+        player.Advance();
+
+        Assert.Equal(1, player.CurrentFrame);
+        Assert.False(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void RegisterClassBindsAnExistingExportAndRunsItsConstructor()
+    {
+        var player = new LumenPlayer(createMovie(
+            rootExportStringIndex: 5,
+            actionBytecode: [
+                0x8E, 0x09, 0x00,
+                    0x00, 0x00,
+                    0x00, 0x00,
+                    0x02,
+                    0x01, 0x00,
+                    0x0F, 0x00,
+                    0x96, 0x02, 0x00, 0x04, 0x01,
+                    0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+                    0x4F,
+                    0x00,
+                0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+                0x1C,
+                0x96, 0x0B, 0x00,
+                    0x09, 0x05, 0x00,
+                    0x07, 0x02, 0x00, 0x00, 0x00,
+                    0x09, 0x04, 0x00,
+                0x1C,
+                0x96, 0x03, 0x00, 0x09, 0x06, 0x00,
+                0x52,
+                0x17,
+                0x07,
+                0x00,
+            ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.False(player.IsPlaying);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -449,7 +537,8 @@ public sealed class LumenPlayerTests
         uint secondColorIndex = uint.MaxValue,
         bool includeSeekKey = false,
         byte[]? actionBytecode = null,
-        bool duplicateAction = false)
+        bool duplicateAction = false,
+        uint rootExportStringIndex = 0)
     {
         var geometry = new uint[]
         {
@@ -462,14 +551,14 @@ public sealed class LumenPlayerTests
         var records = new List<(uint Tag, byte[] Payload)>
         {
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
-            record(LmbTags.StringPool, stringPool("middle", "end", "_visible")),
+            record(LmbTags.StringPool, stringPool("middle", "end", "_visible", "prototype", "Object", "RootExport", "registerClass")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
             record(LmbTags.ActionPool, actionPool(actionBytecode ?? [0x04, 0x00])),
             words(LmbTags.DefineShape, 42, 0, 0, 1),
             words(LmbTags.ShapeGeometry, geometry),
-            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
+            words(LmbTags.DefineSprite, 7, 0, rootExportStringIndex, 2, 3, 2, 0),
             words(LmbTags.FrameLabel, 0, 1, 0),
             words(LmbTags.FrameLabel, 1, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
