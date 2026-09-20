@@ -329,12 +329,38 @@ public sealed class LumenPlayer
         var nextFrame = instance.Frame + 1;
         if (nextFrame >= timeline.Frames.Length)
         {
-            foreach (var child in instance.Children.Values)
-                child.Removed = true;
-            instance.Children.Clear();
-            nextFrame = 0;
+            rewindTimeline(instance, 0, queueActions);
+            return;
         }
         enterFrame(instance, nextFrame, queueActions);
+    }
+
+    private void rewindTimeline(DisplayInstance instance, int targetFrame, bool queueActions)
+    {
+        var reusable = instance.Children
+            .Where(static pair => pair.Value.FromTimeline)
+            .ToDictionary(static pair => pair.Key, static pair => pair.Value);
+        foreach (var depth in reusable.Keys)
+            instance.Children.Remove(depth);
+
+        instance.ReusableTimelineChildren = reusable;
+        instance.Frame = -1;
+        try
+        {
+            for (var frame = 0; frame <= targetFrame; frame++)
+                enterFrame(instance, frame, queueActions && frame == targetFrame);
+        }
+        finally
+        {
+            foreach (var child in reusable.Values)
+                child.Removed = true;
+            instance.ReusableTimelineChildren = null;
+        }
+        foreach (var child in instance.Children.Values)
+        {
+            child.PreviousTransform = null;
+            child.PreviousMultiply = null;
+        }
     }
 
     private void enterFrame(DisplayInstance instance, int frame, bool queueActions)
@@ -811,6 +837,7 @@ public sealed class LumenPlayer
             Color = source.Color,
             PreviousTransform = source.PreviousTransform,
             PreviousMultiply = source.PreviousMultiply,
+            ScriptTransformed = source.ScriptTransformed,
             ScriptPrototype = source.ScriptPrototype,
             ConstructedClass = source.ConstructedClass,
         };
@@ -980,8 +1007,7 @@ public sealed class LumenPlayer
             }
             else
             {
-                restoreInstance(instance, frame);
-                enqueueCurrentFrameActions(instance);
+                rewindTimeline(instance, frame, queueActions: true);
             }
             resetInterpolation(instance);
         }
@@ -1007,6 +1033,9 @@ public sealed class LumenPlayer
                 "_visible" => new Avm1Lookup(true, instance.Visible),
                 "_x" => new Avm1Lookup(true, (double)instance.Transform.X),
                 "_y" => new Avm1Lookup(true, (double)instance.Transform.Y),
+                "_xscale" => new Avm1Lookup(true, decompose(instance.Transform).ScaleX * 100d),
+                "_yscale" => new Avm1Lookup(true, decompose(instance.Transform).ScaleY * 100d),
+                "_rotation" => new Avm1Lookup(true, decompose(instance.Transform).Rotation * 180d / Math.PI),
                 "_alpha" => new Avm1Lookup(true, instance.Color.Multiply.Alpha * 100d),
                 "_currentframe" => new Avm1Lookup(true, (double)instance.Frame + 1),
                 _ => default,
@@ -1049,16 +1078,52 @@ public sealed class LumenPlayer
                     instance.Visible = toBoolean(value);
                     return;
                 case "_x":
-                    instance.Transform = instance.Transform with { X = (float)toNumber(value) };
+                    if (tryDisplayNumber(value, out var x))
+                    {
+                        instance.ScriptTransformed = true;
+                        instance.Transform = instance.Transform with { X = (float)x };
+                    }
                     return;
                 case "_y":
-                    instance.Transform = instance.Transform with { Y = (float)toNumber(value) };
+                    if (tryDisplayNumber(value, out var y))
+                    {
+                        instance.ScriptTransformed = true;
+                        instance.Transform = instance.Transform with { Y = (float)y };
+                    }
+                    return;
+                case "_xscale":
+                    if (tryDisplayNumber(value, out var scaleX))
+                    {
+                        instance.ScriptTransformed = true;
+                        var parts = decompose(instance.Transform);
+                        instance.Transform = compose(instance.Transform, scaleX / 100d, parts.ScaleY, parts.Rotation);
+                    }
+                    return;
+                case "_yscale":
+                    if (tryDisplayNumber(value, out var scaleY))
+                    {
+                        instance.ScriptTransformed = true;
+                        var parts = decompose(instance.Transform);
+                        instance.Transform = compose(instance.Transform, parts.ScaleX, scaleY / 100d, parts.Rotation);
+                    }
+                    return;
+                case "_rotation":
+                    if (tryDisplayNumber(value, out var rotation))
+                    {
+                        instance.ScriptTransformed = true;
+                        var parts = decompose(instance.Transform);
+                        instance.Transform = compose(instance.Transform, parts.ScaleX, parts.ScaleY, rotation * Math.PI / 180d);
+                    }
                     return;
                 case "_alpha":
-                    instance.Color = instance.Color with
+                    if (tryDisplayNumber(value, out var alpha))
                     {
-                        Multiply = instance.Color.Multiply with { Alpha = (float)(toNumber(value) / 100d) },
-                    };
+                        instance.ScriptTransformed = true;
+                        instance.Color = instance.Color with
+                        {
+                            Multiply = instance.Color.Multiply with { Alpha = (float)(alpha / 100d) },
+                        };
+                    }
                     return;
                 default:
                     instance.Variables[name] = value;
@@ -1076,6 +1141,35 @@ public sealed class LumenPlayer
         if (target is Dictionary<string, object?> dictionary)
             dictionary[name] = value;
     }
+
+    private static bool tryDisplayNumber(object? value, out double number)
+    {
+        if (value is null or Avm1Undefined)
+        {
+            number = 0;
+            return false;
+        }
+        number = toNumber(value);
+        return double.IsFinite(number);
+    }
+
+    private static (double ScaleX, double ScaleY, double Rotation) decompose(LumenMatrix matrix) =>
+        (Math.Sqrt(matrix.M11 * matrix.M11 + matrix.M12 * matrix.M12),
+            Math.Sqrt(matrix.M21 * matrix.M21 + matrix.M22 * matrix.M22),
+            Math.Atan2(matrix.M12, matrix.M11));
+
+    private static LumenMatrix compose(
+        LumenMatrix current,
+        double scaleX,
+        double scaleY,
+        double rotation) =>
+        new(
+            (float)(scaleX * Math.Cos(rotation)),
+            (float)(scaleX * Math.Sin(rotation)),
+            (float)(-scaleY * Math.Sin(rotation)),
+            (float)(scaleY * Math.Cos(rotation)),
+            current.X,
+            current.Y);
 
     private static Avm1Object createBuiltinConstructor()
     {
@@ -1123,6 +1217,10 @@ public sealed class LumenPlayer
             "Math.floor",
             call => LumenHostValue.FromNumber(
                 call.Arguments.IsEmpty ? double.NaN : Math.Floor(toHostNumber(call.Arguments[0]))));
+        math.Properties["abs"] = new Avm1NativeFunction(
+            "Math.abs",
+            call => LumenHostValue.FromNumber(
+                call.Arguments.IsEmpty ? double.NaN : Math.Abs(toHostNumber(call.Arguments[0]))));
         _globals["Math"] = math;
     }
 
@@ -1207,12 +1305,24 @@ public sealed class LumenPlayer
         switch (placement.Mode)
         {
             case 1:
+                if (parent.ReusableTimelineChildren is { } reusable
+                    && reusable.TryGetValue(placement.Depth, out var reusableInstance)
+                    && reusableInstance.CharacterId == placement.CharacterId
+                    && reusableInstance.PlacementId == placement.PlacementId)
+                {
+                    reusable.Remove(placement.Depth);
+                    reusableInstance.Removed = false;
+                    parent.Children[placement.Depth] = reusableInstance;
+                    applyPlacementFields(reusableInstance, placement, isNew: false);
+                    break;
+                }
                 if (instance is not null)
                     instance.Removed = true;
                 instance = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1, parent)
                 {
                     PlacementId = placement.PlacementId,
                     FirstFrame = placement.FirstFrame,
+                    FromTimeline = true,
                 };
                 parent.Children[placement.Depth] = instance;
                 applyPlacementFields(instance, placement, isNew: true);
@@ -1235,8 +1345,10 @@ public sealed class LumenPlayer
                     instance.Removed = true;
                     var replacement = new DisplayInstance(placement.CharacterId, parent.HierarchyDepth + 1, parent)
                     {
+                        Name = instance.Name,
                         PlacementId = placement.PlacementId,
                         FirstFrame = placement.FirstFrame,
+                        FromTimeline = true,
                         Transform = instance.Transform,
                         Color = instance.Color,
                         BlendMode = instance.BlendMode,
@@ -1277,6 +1389,8 @@ public sealed class LumenPlayer
                 0,
                 $"Blend mode {instance.BlendMode} is currently rendered as normal.");
         }
+        if (instance.ScriptTransformed)
+            return;
 
         switch (placement.PositionKind)
         {
@@ -1543,9 +1657,13 @@ public sealed class LumenPlayer
 
         public bool Removed { get; set; }
 
+        public bool FromTimeline { get; set; }
+
         public bool Playing { get; set; } = true;
 
         public bool Visible { get; set; } = true;
+
+        public bool ScriptTransformed { get; set; }
 
         public ushort BlendMode { get; set; }
 
@@ -1558,6 +1676,8 @@ public sealed class LumenPlayer
         public LumenRenderColor? PreviousMultiply { get; set; }
 
         public SortedDictionary<uint, DisplayInstance> Children { get; } = [];
+
+        public Dictionary<uint, DisplayInstance>? ReusableTimelineChildren { get; set; }
 
         public Dictionary<string, object?> Variables { get; } = new(StringComparer.Ordinal);
 

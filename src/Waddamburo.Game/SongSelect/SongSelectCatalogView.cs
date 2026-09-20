@@ -15,6 +15,14 @@ public enum SongCourseBits
     All = Easy | Normal | Hard | Oni | Ura,
 }
 
+[Flags]
+public enum SongCategoryPresentation
+{
+    None = 0,
+    AlwaysVisible = 1 << 0,
+    HideSongCount = 1 << 1,
+}
+
 public sealed record SongSelectSong(
     SongDescriptor Descriptor,
     SongCourseBits AvailableCourses,
@@ -31,6 +39,7 @@ public sealed record SongSelectCategory(
     CategoryKey Key,
     string Name,
     string AuthoredLabel,
+    SongCategoryPresentation Presentation,
     ImmutableArray<SongSelectSong> Songs);
 
 /// <summary>Source-neutral, revision-pinned data consumed by the authored Song Select host.</summary>
@@ -44,6 +53,7 @@ public sealed class SongSelectCatalogView
             category.Key,
             category.Name,
             authoredLabel(category.Name),
+            SongCategoryPresentation.AlwaysVisible,
             [.. category.Songs.Select(key => createSong(snapshot.Songs[key]))]))];
     }
 

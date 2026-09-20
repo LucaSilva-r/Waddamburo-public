@@ -17,6 +17,7 @@ public sealed class SongSelectSessionTests
         var category = Assert.Single(view.Categories);
         Assert.Equal("Anime", category.Name);
         Assert.Equal("アニメ", category.AuthoredLabel);
+        Assert.Equal(SongCategoryPresentation.AlwaysVisible, category.Presentation);
         var song = Assert.Single(category.Songs);
         Assert.Equal(SongCourseBits.Easy | SongCourseBits.Oni, song.AvailableCourses);
         Assert.Equal(2, song.Level(TaikoCourse.Easy));

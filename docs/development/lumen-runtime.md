@@ -193,6 +193,14 @@ bootstrap, exported-sprite constructor binding, nested function returns, primiti
 string access, clip-local jumps, same-tick enter-frame dispatch, and explicit
 deferred-action diagnostics.
 
+Timeline rewinds and loops preserve dynamic children and reuse surviving authored
+placements by depth, character, and placement identity. Per-instance script state
+therefore survives a loop when Flash would retain the clip. Once ActionScript writes
+a numeric display property (`_x`, `_y`, scale, rotation, or alpha), that instance
+owns its transform and later timeline placement updates no longer overwrite it.
+Character replacement retains the authored instance name so host-owned native-fill
+surfaces remain addressable across swaps.
+
 `Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
 the vertical slice. It receives a validated DDP movie view, requires the observed
 one-texture-per-NTP3-entry profile, decodes bounded RGBA base mips, reads semantic

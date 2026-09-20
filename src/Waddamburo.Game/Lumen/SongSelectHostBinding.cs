@@ -59,7 +59,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 "AssignMusic",
                 LumenHostValue.FromString(category.AuthoredLabel),
                 LumenHostValue.FromNumber(category.Songs.Length),
-                LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber((int)category.Presentation),
                 LumenHostValue.FromNumber(-1));
         }
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(-1));

@@ -67,6 +67,24 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void CharacterReplacementRetainsTheAuthoredInstanceName()
+    {
+        var player = new LumenPlayer(
+            createMovie(
+                placementNameStringIndex: 31,
+                geometryFlags: 0,
+                replaceOnSecondFrame: true),
+            1280,
+            720);
+        var surface = new LumenNativeSurfaceKey("replacement-surface");
+        player.SetNativeFill("placed", surface);
+
+        player.Advance();
+
+        Assert.Equal(surface, Assert.Single(player.CreateRenderSnapshot().Quads).NativeSurface);
+    }
+
+    [Fact]
     public void MatrixCompositionAppliesChildBeforeParent()
     {
         var local = new LumenMatrix(2, 0, 0, 3, 5, 7);
@@ -178,6 +196,56 @@ public sealed class LumenPlayerTests
         player.Advance();
         Assert.True(player.IsPlaying);
         Assert.Equal(1, player.CurrentFrame);
+    }
+
+    [Fact]
+    public void TimelineLoopReusesSurvivingPlacementScriptState()
+    {
+        var player = new LumenPlayer(createMovie(
+            placementNameStringIndex: 31,
+            removeOnThirdFrame: false,
+            actionBytecode:
+            [
+                0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+                0x1C,
+                0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x05, 0x00,
+                0x4F,
+                0x00,
+            ]), 1280, 720);
+
+        player.Advance();
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        player.Advance();
+        player.Advance();
+
+        Assert.Equal(0, player.CurrentFrame);
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
+    public void TimelineUpdatesDoNotOverwriteAScriptOwnedTransform()
+    {
+        var player = new LumenPlayer(createMovie(
+            placementNameStringIndex: 31,
+            removeOnThirdFrame: false,
+            actionBytecode:
+            [
+                0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
+                0x1C,
+                0x96, 0x08, 0x00,
+                    0x09, 0x2E, 0x00,
+                    0x07, 0x4D, 0x00, 0x00, 0x00,
+                0x4F,
+                0x00,
+            ]), 1280, 720);
+
+        player.Advance();
+        Assert.Equal(77, Assert.Single(player.CreateRenderSnapshot().Quads).TopLeft.X);
+        player.Advance();
+        player.Advance();
+
+        Assert.Equal(0, player.CurrentFrame);
+        Assert.Equal(77, Assert.Single(player.CreateRenderSnapshot().Quads).TopLeft.X);
     }
 
     [Fact]
@@ -943,6 +1011,34 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void MathAbsReturnsTheMagnitudeOfItsArgument()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode:
+        [
+            0x96, 0x05, 0x00, 0x07, 0xF9, 0xFF, 0xFF, 0xFF,
+            0x96, 0x05, 0x00, 0x07, 0x01, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x29, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x2D, 0x00,
+            0x52,
+            0x96, 0x05, 0x00, 0x07, 0x07, 0x00, 0x00, 0x00,
+            0x49,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x03, 0x00, 0x09, 0x2C, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x04, 0x00,
+            0x4F,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
     public void StringLengthAndCharAtReturnAvmValues()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [
@@ -1220,7 +1316,8 @@ public sealed class LumenPlayerTests
         bool removeOnThirdFrame = true,
         uint placementNameStringIndex = 0,
         byte[]? targetActionBytecode = null,
-        byte[]? packageActionBytecode = null)
+        byte[]? packageActionBytecode = null,
+        bool replaceOnSecondFrame = false)
     {
         var geometry = new uint[]
         {
@@ -1244,7 +1341,7 @@ public sealed class LumenPlayerTests
                 "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame",
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
-                "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic")),
+                "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
@@ -1257,11 +1354,33 @@ public sealed class LumenPlayerTests
             words(LmbTags.ShowFrame, 0, 1),
             words(LmbTags.PlaceObject, 42, 1, 0, placementNameStringIndex, 0x00010000U | firstBlendMode, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
             words(LmbTags.ShowFrame, 1, duplicateAction ? 3U : 2U),
-            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00020000, 0x00030000, 0, 0, secondColorIndex, uint.MaxValue, 0, 0),
+            words(
+                LmbTags.PlaceObject,
+                replaceOnSecondFrame ? 43U : 42U,
+                1,
+                0,
+                0,
+                replaceOnSecondFrame ? 0x00030000U : 0x00020000U,
+                0x00030000,
+                0,
+                0,
+                secondColorIndex,
+                uint.MaxValue,
+                0,
+                0),
             words(LmbTags.DoAction, 0, 0),
             words(LmbTags.ShowFrame, 2, targetActionBytecode is null ? 1U : 2U),
             words(LmbTags.RemoveObject, 42, 0x00030000),
         };
+        if (replaceOnSecondFrame)
+        {
+            var rootIndex = records.FindIndex(item => item.Tag == LmbTags.DefineSprite);
+            records.InsertRange(rootIndex,
+            [
+                words(LmbTags.DefineShape, 43, 0, 0, 1),
+                words(LmbTags.ShapeGeometry, geometry),
+            ]);
+        }
         if (packageActionBytecode is not null)
         {
             var rootIndex = records.FindIndex(record => record.Tag == LmbTags.DefineSprite);
