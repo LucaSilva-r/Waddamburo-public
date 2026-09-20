@@ -1093,6 +1093,9 @@
         "resolved": "1.4.25",
         "contentHash": "V2yJMl/QKceXEjYEnf2EWcNkUJI5/zE04cNUnawHbdR0wjMHv1dVTLf0IUJk0D0w29FrCWdQQK/n4L4vx0HeQA=="
       },
+      "waddamburo.catalog": {
+        "type": "Project"
+      },
       "ppy.SDL3-CS": {
         "type": "CentralTransitive",
         "requested": "[2026.722.0, )",

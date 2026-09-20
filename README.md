@@ -165,6 +165,8 @@ scene loader contains Entry-specific behavior.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).
+The source-neutral song/category catalog and provider contract are documented in
+[docs/development/song-catalog.md](docs/development/song-catalog.md).
 Binary parser limits and failure behavior are documented in
 [docs/development/parser-safety.md](docs/development/parser-safety.md).
 The first format implementation, the Green-profile DDP archive index, is described

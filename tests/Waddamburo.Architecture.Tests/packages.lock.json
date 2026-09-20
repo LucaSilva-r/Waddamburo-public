@@ -1155,6 +1155,9 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "waddamburo.catalog": {
+        "type": "Project"
+      },
       "waddamburo.formats": {
         "type": "Project"
       },
@@ -1175,6 +1178,7 @@
       "waddamburo.providers.osulazer": {
         "type": "Project",
         "dependencies": {
+          "Waddamburo.Catalog": "[1.0.0, )",
           "ppy.osu.Game": "[2026.916.0, )"
         }
       },

@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Waddamburo.App/Waddamburo.App.csproj" />
+    <Project Path="src/Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <Project Path="src/Waddamburo.Formats/Waddamburo.Formats.csproj" />
     <Project Path="src/Waddamburo.Game/Waddamburo.Game.csproj" />
     <Project Path="src/Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
@@ -10,6 +11,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Waddamburo.Architecture.Tests/Waddamburo.Architecture.Tests.csproj" />
+    <Project Path="tests/Waddamburo.Catalog.Tests/Waddamburo.Catalog.Tests.csproj" />
     <Project Path="tests/Waddamburo.Formats.Tests/Waddamburo.Formats.Tests.csproj" />
     <Project Path="tests/Waddamburo.Game.Tests/Waddamburo.Game.Tests.csproj" />
     <Project Path="tests/Waddamburo.Lumen.Tests/Waddamburo.Lumen.Tests.csproj" />

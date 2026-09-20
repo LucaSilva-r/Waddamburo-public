@@ -11,11 +11,12 @@ public sealed class DependencyRulesTests
     {
         var expected = new Dictionary<string, string[]>
         {
+            ["Waddamburo.Catalog"] = [],
             ["Waddamburo.Formats"] = [],
             ["Waddamburo.Lumen"] = ["Waddamburo.Formats"],
-            ["Waddamburo.Game"] = ["Waddamburo.Formats", "Waddamburo.Lumen"],
+            ["Waddamburo.Game"] = ["Waddamburo.Catalog", "Waddamburo.Formats", "Waddamburo.Lumen"],
             ["Waddamburo.Platform.Sdl"] = ["Waddamburo.Formats", "Waddamburo.Lumen"],
-            ["Waddamburo.Providers.OsuLazer"] = [],
+            ["Waddamburo.Providers.OsuLazer"] = ["Waddamburo.Catalog"],
             ["Waddamburo.App"] = ["Waddamburo.Game", "Waddamburo.Platform.Sdl"],
             ["Waddamburo.Tool"] = ["Waddamburo.Formats", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
         };

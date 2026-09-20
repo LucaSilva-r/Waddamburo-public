@@ -4,10 +4,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="ppy.osu.Game" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
-  </ItemGroup>
 </Project>
