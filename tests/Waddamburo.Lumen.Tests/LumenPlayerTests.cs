@@ -511,6 +511,88 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void HostObjectCallsAreSynchronousAndScopedToOnePlayer()
+    {
+        var firstCalls = 0;
+        var secondCalls = 0;
+        var firstArgument = double.NaN;
+        var action = new byte[]
+        {
+            0x96, 0x0A, 0x00,
+                0x07, 0x2A, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x07, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x08, 0x00,
+            0x52,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x05, 0x00, 0x09, 0x02, 0x00, 0x04, 0x00,
+            0x4F,
+            0x00,
+        };
+        var first = new LumenPlayer(
+            createMovie(actionBytecode: action),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterObject("resource", resource =>
+                resource.RegisterMethod("ResolveVisible", call =>
+                {
+                    firstCalls++;
+                    firstArgument = call.Arguments[0].AsNumber();
+                    return LumenHostValue.FromBoolean(false);
+                }))));
+        var second = new LumenPlayer(
+            createMovie(actionBytecode: action),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterObject("resource", resource =>
+                resource.RegisterMethod("ResolveVisible", _ =>
+                {
+                    secondCalls++;
+                    return LumenHostValue.FromBoolean(true);
+                }))));
+
+        first.Advance();
+        second.Advance();
+
+        Assert.Equal(1, firstCalls);
+        Assert.Equal(1, secondCalls);
+        Assert.Equal(42, firstArgument);
+        Assert.Empty(first.CreateRenderSnapshot().Quads);
+        Assert.Single(second.CreateRenderSnapshot().Quads);
+        Assert.DoesNotContain(first.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+        Assert.DoesNotContain(second.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void HostFailuresReturnUndefinedWithStableDiagnostic()
+    {
+        var player = new LumenPlayer(
+            createMovie(actionBytecode: [
+                0x96, 0x0D, 0x00,
+                    0x07, 0x2A, 0x00, 0x00, 0x00,
+                    0x07, 0x01, 0x00, 0x00, 0x00,
+                    0x09, 0x0A, 0x00,
+                0x3D,
+                0x17,
+                0x00,
+            ]),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterFunction(
+                "FailingHost",
+                _ => throw new InvalidOperationException("test"))));
+
+        player.Advance();
+
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_HOST_CALL_FAILED");
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void SceneComposesChildTransformsTextureNamespacesAndLayerOrder()
     {
         var first = new LumenPlayer(createMovie(), 1280, 720);
@@ -563,7 +645,9 @@ public sealed class LumenPlayerTests
         var records = new List<(uint Tag, byte[] Payload)>
         {
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
-            record(LmbTags.StringPool, stringPool("middle", "end", "_visible", "prototype", "Object", "RootExport", "registerClass")),
+            record(LmbTags.StringPool, stringPool(
+                "middle", "end", "_visible", "prototype", "Object", "RootExport", "registerClass",
+                "resource", "ResolveVisible", "this", "FailingHost")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
@@ -656,5 +740,10 @@ public sealed class LumenPlayerTests
         Span<byte> buffer = stackalloc byte[4];
         BinaryPrimitives.WriteUInt32BigEndian(buffer, value);
         stream.Write(buffer);
+    }
+
+    private sealed class DelegateHostBinding(Action<LumenHostContext> install) : ILumenHostBinding
+    {
+        public void Install(LumenHostContext context) => install(context);
     }
 }

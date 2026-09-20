@@ -66,8 +66,11 @@ public sealed class LumenMovieContent
             semantic.Diagnostics);
     }
 
-    public LumenPlayer CreatePlayer(float stageWidth = 1280, float stageHeight = 720) =>
-        new(Definition, stageWidth, stageHeight);
+    public LumenPlayer CreatePlayer(
+        float stageWidth = 1280,
+        float stageHeight = 720,
+        ILumenHostBinding? hostBinding = null) =>
+        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding);
 }
 
 public sealed record LumenTextureContent(

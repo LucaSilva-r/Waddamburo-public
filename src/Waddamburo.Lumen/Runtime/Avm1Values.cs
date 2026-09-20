@@ -54,3 +54,10 @@ internal sealed class Avm1FunctionValue : Avm1Object
 
     public Avm1CodeBlock Body { get; }
 }
+
+internal sealed class Avm1NativeFunction(string name, LumenHostCallback callback) : Avm1Object
+{
+    public string Name { get; } = name;
+
+    public LumenHostCallback Callback { get; } = callback;
+}

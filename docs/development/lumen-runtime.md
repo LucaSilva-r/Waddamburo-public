@@ -70,6 +70,16 @@ state. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
 diagnostics. Synthetic fixtures cover class bootstrap and binding without embedding
 or reproducing original content.
 
+Game integration enters through `ILumenHostBinding`, which installs globals before
+the movie enters frame zero. A binding can register named functions and objects with
+named methods; callbacks receive an immutable primitive argument array and return a
+bounded primitive `LumenHostValue`. Registries are private to one player, so scene
+layers cannot leak native state into each other. Host exceptions become deduplicated
+`LUM_HOST_CALL_FAILED` diagnostics and return `undefined`. Object references do not
+cross this first public boundary yet, and host side effects are synchronous rather
+than transactionally reversible. `LumenMovieContent.CreatePlayer` accepts the same
+optional binding without coupling the content loader to a concrete game host.
+
 The Formats layer supplies immutable prevalidated code blocks rather than asking
 the runtime to rediscover byte boundaries. It validates short and long action
 records, branch destinations, and the out-of-line lexical bodies used by Lumen's

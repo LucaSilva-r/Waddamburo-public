@@ -33,7 +33,8 @@ public sealed class LumenPlayer
         float stageWidth,
         float stageHeight,
         uint? rootCharacterId = null,
-        LumenRuntimeLimits? limits = null)
+        LumenRuntimeLimits? limits = null,
+        ILumenHostBinding? hostBinding = null)
     {
         ArgumentNullException.ThrowIfNull(movie);
         if (!float.IsFinite(stageWidth) || stageWidth <= 0)
@@ -60,6 +61,7 @@ public sealed class LumenPlayer
         _globals["Object"] = createBuiltinConstructor();
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
+        hostBinding?.Install(new LumenHostContext(_globals));
         enterFrame(_root, 0, queueActions: true);
         drainActions();
     }
@@ -408,6 +410,8 @@ public sealed class LumenPlayer
                 var candidate = context!.GetVariable(name);
                 if (candidate.Found && candidate.Value is Avm1FunctionValue function)
                     return invokeFunction(instance, function, instance, arguments, context);
+                if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
+                    return invokeHost(instance, nativeFunction, arguments);
                 if (name == "ASSetPropFlags")
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
                 reportOnce(
@@ -440,6 +444,8 @@ public sealed class LumenPlayer
                     : context!.GetMember(target, name);
                 if (candidate.Found && candidate.Value is Avm1FunctionValue function)
                     return invokeFunction(instance, function, target, arguments, context);
+                if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
+                    return invokeHost(instance, nativeFunction, arguments);
                 reportOnce(
                     "LUM_AVM_METHOD_UNRESOLVED",
                     instance.CharacterId,
@@ -450,6 +456,47 @@ public sealed class LumenPlayer
             parentContext is null ? null : parentContext.OnCommit);
         return context;
     }
+
+    private Avm1Lookup invokeHost(
+        DisplayInstance instance,
+        Avm1NativeFunction function,
+        IReadOnlyList<object?> arguments)
+    {
+        try
+        {
+            var converted = arguments.Select(toHostValue).ToImmutableArray();
+            return new Avm1Lookup(true, fromHostValue(function.Callback(new LumenHostCall(converted))));
+        }
+        catch (Exception exception)
+        {
+            reportOnce(
+                "LUM_HOST_CALL_FAILED",
+                instance.CharacterId,
+                instance.Frame,
+                $"Host call '{function.Name}' failed with {exception.GetType().Name}; undefined was returned.");
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        }
+    }
+
+    private static LumenHostValue toHostValue(object? value) => value switch
+    {
+        null => LumenHostValue.Null,
+        Avm1Undefined => LumenHostValue.Undefined,
+        bool boolean => LumenHostValue.FromBoolean(boolean),
+        double number => LumenHostValue.FromNumber(number),
+        string text => LumenHostValue.FromString(text),
+        _ => LumenHostValue.Undefined,
+    };
+
+    private static object? fromHostValue(LumenHostValue value) => value.Kind switch
+    {
+        LumenHostValueKind.Undefined => Avm1Undefined.Instance,
+        LumenHostValueKind.Null => null,
+        LumenHostValueKind.Boolean => value.AsBoolean(),
+        LumenHostValueKind.Number => value.AsNumber(),
+        LumenHostValueKind.Text => value.AsString(),
+        _ => Avm1Undefined.Instance,
+    };
 
     private Avm1Lookup invokeFunction(
         DisplayInstance timelineTarget,
