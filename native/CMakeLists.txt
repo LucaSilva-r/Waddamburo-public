@@ -56,6 +56,12 @@ include(CTest)
 
 add_subdirectory(media)
 
+option(WADDAMBURO_BUILD_TEXT "Build the FreeType-backed text rasterizer" OFF)
+if(WADDAMBURO_BUILD_TEXT)
+  find_package(Freetype 2.13 REQUIRED)
+  add_subdirectory(text)
+endif()
+
 option(WADDAMBURO_BUILD_FFMPEG "Enable the pinned minimal FFmpeg dependency target" OFF)
 if(WADDAMBURO_BUILD_FFMPEG)
   add_subdirectory(ffmpeg)

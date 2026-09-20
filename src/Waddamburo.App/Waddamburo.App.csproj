@@ -8,8 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+    <ProjectReference Include="../Waddamburo.Providers.Tja/Waddamburo.Providers.Tja.csproj" />
   </ItemGroup>
 
 </Project>

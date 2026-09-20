@@ -25,6 +25,7 @@ public sealed class LumenPlayer
     private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LumenNativeSurfaceKey> _nativeFills = new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
     private LumenInputSnapshot _inputSnapshot = LumenInputSnapshot.Empty;
@@ -68,6 +69,7 @@ public sealed class LumenPlayer
         installMathObject();
         installExternalInterface();
         hostBinding?.Install(new LumenHostContext(_globals, _externalInterface));
+        bootstrapPackageClasses();
         enterFrame(_root, 0, queueActions: true);
         drainActions();
     }
@@ -95,6 +97,19 @@ public sealed class LumenPlayer
                     parameter.NameStringIndex < _movie.Strings.Length
                         ? _movie.Strings[parameter.NameStringIndex].Value
                         : $"arg{parameter.Register ?? 0}")]))];
+
+    /// <summary>Maps one authored fill-zero clip name to a host-owned texture surface.</summary>
+    public void SetNativeFill(string instanceName, LumenNativeSurfaceKey surface)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
+        _nativeFills[instanceName] = surface;
+    }
+
+    public bool RemoveNativeFill(string instanceName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
+        return _nativeFills.Remove(instanceName);
+    }
 
     public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments)
     {
@@ -157,6 +172,29 @@ public sealed class LumenPlayer
     public void Play() => _root.Playing = true;
 
     public void Stop() => _root.Playing = false;
+
+    private void bootstrapPackageClasses()
+    {
+        foreach (var sprite in _movie.Sprites)
+        {
+            var timeline = _sprites[sprite.CharacterId];
+            if (timeline.ExportName?.StartsWith("__Packages.", StringComparison.Ordinal) != true)
+                continue;
+            if (timeline.Frames.IsEmpty)
+                continue;
+            var package = new DisplayInstance(timeline.CharacterId, hierarchyDepth: 0, parent: null)
+            {
+                Name = timeline.ExportName!,
+                Frame = 0,
+                Playing = false,
+            };
+            foreach (var action in timeline.Frames[0].OfType<LmbDoActionCommand>())
+            {
+                if (action.ActionIndex < (uint)_movie.Actions.Length)
+                    _ = executeAction(package, _movie.Actions[checked((int)action.ActionIndex)].Code);
+            }
+        }
+    }
 
     private void seekCore(int frame, bool play)
     {
@@ -456,6 +494,8 @@ public sealed class LumenPlayer
         DisplayInstance instance,
         Avm1CodeBlock code)
     {
+        var startingFrame = instance.Frame;
+        var startingPlaying = instance.Playing;
         var context = createExecutionContext(instance);
         var status = Avm1Interpreter.TryExecute(
             code,
@@ -466,7 +506,8 @@ public sealed class LumenPlayer
             out var playing);
         if (status == Avm1ExecutionStatus.Success)
         {
-            instance.Playing = playing;
+            if (instance.Frame == startingFrame && instance.Playing == startingPlaying)
+                instance.Playing = playing;
             context.Commit();
         }
         return status;
@@ -577,9 +618,60 @@ public sealed class LumenPlayer
                     context.SetMember(array, "length", newLength);
                     return new Avm1Lookup(true, newLength);
                 }
+                if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
+                {
+                    var nextDepth = depthTarget.Children.Count == 0
+                        ? 0U
+                        : checked(depthTarget.Children.Keys.Max() + 1U);
+                    return new Avm1Lookup(true, (double)nextDepth);
+                }
+                if (target is DisplayInstance attachTarget
+                    && name == "attachMovie"
+                    && arguments.Count >= 3
+                    && arguments[0] is string linkageName
+                    && arguments[1] is string instanceName
+                    && tryAvmDepth(arguments[2], out var attachDepth))
+                {
+                    var exported = _movie.Sprites
+                        .Select(sprite => _sprites[sprite.CharacterId])
+                        .FirstOrDefault(timeline => timeline.ExportName == linkageName);
+                    if (exported.ExportName is null)
+                    {
+                        reportOnce(
+                            "LUM_AVM_ATTACH_EXPORT_NOT_FOUND",
+                            instance.CharacterId,
+                            instance.Frame,
+                            $"MovieClip.attachMovie could not resolve exported symbol '{linkageName}'.");
+                        return new Avm1Lookup(true, Avm1Undefined.Instance);
+                    }
+
+                    var attached = new DisplayInstance(
+                        exported.CharacterId,
+                        attachTarget.HierarchyDepth + 1,
+                        attachTarget)
+                    {
+                        Name = instanceName,
+                    };
+                    if (arguments.Count >= 4 && arguments[3] is Avm1Object initialValues)
+                    {
+                        foreach (var (propertyName, propertyValue) in initialValues.Properties)
+                            writeMember(attached, propertyName, propertyValue);
+                    }
+                    enterFrame(attached, 0, queueActions: true);
+                    if (_classes.TryGetValue(linkageName, out var attachedClass))
+                        constructInstance(attached, attachedClass);
+                    context!.SetTransientMember(attachTarget, instanceName, attached);
+                    context.OnCommit(() =>
+                    {
+                        if (attachTarget.Children.TryGetValue(attachDepth, out var replaced))
+                            replaced.Removed = true;
+                        attachTarget.Children[attachDepth] = attached;
+                    });
+                    return new Avm1Lookup(true, attached);
+                }
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
                 {
-                    context!.OnCommit(() => targetInstance.Playing = name == "play");
+                    targetInstance.Playing = name == "play";
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
                 }
                 if (target is DisplayInstance jumpTarget
@@ -587,13 +679,15 @@ public sealed class LumenPlayer
                     && arguments.Count > 0)
                 {
                     if (tryResolveTimelineFrame(jumpTarget, arguments[0], out var targetFrame))
-                        context!.OnCommit(() => jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay"));
+                        jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay");
                     else
                         reportOnce(
                             "LUM_AVM_GOTO_INVALID",
                             instance.CharacterId,
                             instance.Frame,
-                            $"Movie clip method '{name}' could not resolve target '{toAvmString(arguments[0])}'.");
+                            $"Movie clip method '{name}' on character {jumpTarget.CharacterId} "
+                            + $"instance '{jumpTarget.Name}' could not resolve target '{toAvmString(arguments[0])}'; "
+                            + $"available labels: {string.Join(", ", _sprites[jumpTarget.CharacterId].Labels.Keys.Order(StringComparer.Ordinal))}.");
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
                 }
                 if (name.Length == 0 && target is Avm1Object)
@@ -656,7 +750,7 @@ public sealed class LumenPlayer
             {
                 var timeline = _sprites[instance.CharacterId];
                 if (timeline.Labels.TryGetValue(label, out var frame))
-                    context!.OnCommit(() => jumpInstance(instance, frame, instance.Playing));
+                    jumpInstance(instance, frame, instance.Playing);
                 else
                     reportOnce(
                         "LUM_AVM_GOTO_INVALID",
@@ -743,7 +837,7 @@ public sealed class LumenPlayer
                 "LUM_HOST_CALL_FAILED",
                 instance.CharacterId,
                 instance.Frame,
-                $"Host call '{function.Name}' failed with {exception.GetType().Name}; undefined was returned.");
+                $"Host call '{function.Name}' failed with {exception.GetType().Name}: {exception.Message} Undefined was returned.");
             return new Avm1Lookup(true, Avm1Undefined.Instance);
         }
     }
@@ -787,6 +881,8 @@ public sealed class LumenPlayer
         _callDepth++;
         try
         {
+            var startingFrame = timelineTarget.Frame;
+            var startingPlaying = timelineTarget.Playing;
             var context = createExecutionContext(timelineTarget, parentContext);
             var status = Avm1Interpreter.TryExecuteFunction(
                 function,
@@ -811,7 +907,8 @@ public sealed class LumenPlayer
                     + (unsupported.Length == 0 ? "." : $": {unsupported}."));
                 return default;
             }
-            timelineTarget.Playing = playing;
+            if (timelineTarget.Frame == startingFrame && timelineTarget.Playing == startingPlaying)
+                timelineTarget.Playing = playing;
             context.Commit();
             return new Avm1Lookup(true, returnValue);
         }
@@ -844,7 +941,12 @@ public sealed class LumenPlayer
         instance.ScriptPrototype = function.GetProperty("prototype").Value as Avm1Object;
         var result = invokeFunction(instance, function, instance, []);
         if (result.Found)
+        {
             instance.ConstructedClass = function;
+            var onLoad = readMember(instance, "onLoad");
+            if (onLoad.Found && onLoad.Value is Avm1FunctionValue onLoadFunction)
+                _ = invokeFunction(instance, onLoadFunction, instance, []);
+        }
     }
 
     private bool tryResolveTimelineFrame(DisplayInstance instance, object? value, out int frame)
@@ -899,6 +1001,9 @@ public sealed class LumenPlayer
                 return inherited;
             return name switch
             {
+                "_parent" => new Avm1Lookup(instance.Parent is not null, instance.Parent),
+                "_root" => new Avm1Lookup(true, rootOf(instance)),
+                "_name" => new Avm1Lookup(true, instance.Name),
                 "_visible" => new Avm1Lookup(true, instance.Visible),
                 "_x" => new Avm1Lookup(true, (double)instance.Transform.X),
                 "_y" => new Avm1Lookup(true, (double)instance.Transform.Y),
@@ -924,12 +1029,22 @@ public sealed class LumenPlayer
         return default;
     }
 
+    private static DisplayInstance rootOf(DisplayInstance instance)
+    {
+        while (instance.Parent is not null)
+            instance = instance.Parent;
+        return instance;
+    }
+
     private static void writeMember(object? target, string name, object? value)
     {
         if (target is DisplayInstance instance)
         {
             switch (name)
             {
+                case "_name":
+                    instance.Name = toAvmString(value);
+                    return;
                 case "_visible":
                     instance.Visible = toBoolean(value);
                     return;
@@ -1042,6 +1157,21 @@ public sealed class LumenPlayer
         string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
         _ => double.NaN,
     };
+
+    private static bool tryAvmDepth(object? value, out uint depth)
+    {
+        var number = toNumber(value);
+        if (double.IsFinite(number)
+            && number >= 0
+            && number <= uint.MaxValue
+            && number == Math.Truncate(number))
+        {
+            depth = (uint)number;
+            return true;
+        }
+        depth = 0;
+        return false;
+    }
 
     private static string toAvmString(object? value) => value switch
     {
@@ -1220,7 +1350,31 @@ public sealed class LumenPlayer
                 }
                 if ((geometry.Flags >> 16) == 0)
                 {
-                    reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has no host surface yet.");
+                    var slot = instance.Name.Length > 0 ? instance.Name : instance.Parent?.Name ?? "";
+                    if (_nativeFills.TryGetValue(slot, out var surface))
+                    {
+                        var minX = geometry.Vertices.Min(static vertex => vertex.X);
+                        var maxX = geometry.Vertices.Max(static vertex => vertex.X);
+                        var minY = geometry.Vertices.Min(static vertex => vertex.Y);
+                        var maxY = geometry.Vertices.Max(static vertex => vertex.Y);
+                        if (maxX <= minX || maxY <= minY)
+                        {
+                            reportOnce("LUM_NATIVE_FILL_EMPTY", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has empty bounds.");
+                            continue;
+                        }
+                        quads.Add(new LumenRenderQuad(
+                            0,
+                            transformNativeVertex(geometry.Vertices[0], transform, minX, maxX, minY, maxY),
+                            transformNativeVertex(geometry.Vertices[1], transform, minX, maxX, minY, maxY),
+                            transformNativeVertex(geometry.Vertices[2], transform, minX, maxX, minY, maxY),
+                            transformNativeVertex(geometry.Vertices[3], transform, minX, maxX, minY, maxY),
+                            color.Multiply,
+                            color.Add,
+                            blend,
+                            NativeSurface: surface));
+                        continue;
+                    }
+                    reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, $"Fill-zero/native shape '{slot}' has no host surface yet.");
                     continue;
                 }
 
@@ -1350,6 +1504,22 @@ public sealed class LumenPlayer
     {
         var position = transform.Transform(vertex.X, vertex.Y);
         return new LumenRenderVertex(position.X, position.Y, vertex.U, vertex.V);
+    }
+
+    private static LumenRenderVertex transformNativeVertex(
+        LmbVertex vertex,
+        LumenMatrix transform,
+        float minX,
+        float maxX,
+        float minY,
+        float maxY)
+    {
+        var position = transform.Transform(vertex.X, vertex.Y);
+        return new LumenRenderVertex(
+            position.X,
+            position.Y,
+            (vertex.X - minX) / (maxX - minX),
+            (vertex.Y - minY) / (maxY - minY));
     }
 
     private static LumenRenderColor convertColor(LmbColorTransform color) =>

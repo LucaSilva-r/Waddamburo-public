@@ -127,6 +127,14 @@ internal sealed unsafe class RenderDevice : IDisposable
         }
     }
 
+    public void ReleaseTexture(RenderTextureId id)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_textures.Remove(id.Value, out var texture))
+            throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
+        SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+    }
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

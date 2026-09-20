@@ -25,10 +25,13 @@ Course levels follow the reference converter's 1–10 clamp, `1P`/`2P` spellings
 normalize to `P1`/`P2`, and a course must be declared before `#START`. Negative
 `DEMOSTART` values clamp to zero.
 
-Song keys are SHA-256 identities of the original chart bytes. This keeps identity
-stable when a library root moves and intentionally creates a new identity when the
-chart file changes. Chart keys add course/player/occurrence identity. Identical
-chart copies within one provider are diagnosed and published once.
+TJA files that resolve the same relative `WAVE` asset are one browser song. This
+supports libraries that store separate difficulty files beside one audio file as
+well as files containing several courses. The song key is derived from the stable
+provider ID and root-relative audio identity; chart keys contain the original TJA
+byte hash plus course/player/occurrence. Moving the configured library root does
+not change either identity, while editing a chart changes only its chart identity.
+Identical chart copies within one song are diagnosed and published once.
 
 ## Assets and safety
 

@@ -17,6 +17,19 @@ public enum LumenRenderBlend
     Add,
 }
 
+public readonly record struct LumenNativeSurfaceKey
+{
+    public LumenNativeSurfaceKey(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        Value = value;
+    }
+
+    public string Value { get; }
+
+    public override string ToString() => Value;
+}
+
 public readonly record struct LumenRenderQuad(
     uint TextureIndex,
     LumenRenderVertex TopLeft,
@@ -26,7 +39,8 @@ public readonly record struct LumenRenderQuad(
     LumenRenderColor MultiplyColor,
     LumenRenderColor AddColor,
     LumenRenderBlend Blend = LumenRenderBlend.Normal,
-    bool UseNearestSampling = false);
+    bool UseNearestSampling = false,
+    LumenNativeSurfaceKey? NativeSurface = null);
 
 /// <summary>
 /// Immutable renderer-independent output from one Lumen player state. Coordinates

@@ -27,6 +27,7 @@ The native dependency pipeline can download and build:
 | Component | Version and source | License | Link/use mode and obligations |
 | --- | --- | --- | --- |
 | FFmpeg | 8.1.2; <https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz>; SHA-256 `464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c` | LGPL-2.1-or-later for the reviewed configuration | Dynamically linked libraries; GPL, nonfree, version-3-only, network, external libraries, programs, devices, and filters are disabled. Binary distributions must include the exact corresponding source, build configuration, copyright and LGPL notices, and permit replacement of the shared libraries. |
+| FreeType | Developer opt-in accepts system 2.13 or newer; <https://freetype.org/> | FreeType License (FTL) or GPL-2.0-or-later | Dynamically linked by the optional native title rasterizer. Not enabled by default and not approved for release packaging until an exact version, source archive checksum, and authoritative FTL text are pinned and staged. |
 
 FFmpeg's combined license includes compatible separately licensed files. The built
 `avcodec` library contains DCT objects derived from Independent JPEG Group software;

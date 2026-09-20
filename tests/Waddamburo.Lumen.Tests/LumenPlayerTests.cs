@@ -47,6 +47,26 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void HostSurfaceRendersIntoNamedFillZeroGeometry()
+    {
+        var player = new LumenPlayer(
+            createMovie(placementNameStringIndex: 31, geometryFlags: 0),
+            1280,
+            720);
+        var surface = new LumenNativeSurfaceKey("song-title:7");
+
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        player.SetNativeFill("placed", surface);
+        var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
+
+        Assert.Equal(surface, quad.NativeSurface);
+        Assert.Equal(new LumenRenderVertex(10, 20, 0, 0), quad.TopLeft);
+        Assert.Equal(new LumenRenderVertex(110, 70, 1, 1), quad.BottomRight);
+        Assert.True(player.RemoveNativeFill("placed"));
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
     public void MatrixCompositionAppliesChildBeforeParent()
     {
         var local = new LumenMatrix(2, 0, 0, 3, 5, 7);
@@ -543,6 +563,38 @@ public sealed class LumenPlayerTests
         Assert.False(player.IsPlaying);
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void PackageTimelineBootstrapsBeforeRootTimeline()
+    {
+        var calls = 0;
+        var packageAction = new byte[]
+        {
+            0x96, 0x0A, 0x00,
+                0x07, 0x2A, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x07, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x08, 0x00,
+            0x52,
+            0x17,
+            0x00,
+        };
+
+        _ = new LumenPlayer(
+            createMovie(packageActionBytecode: packageAction),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterObject("resource", resource =>
+                resource.RegisterMethod("ResolveVisible", call =>
+                {
+                    calls++;
+                    Assert.Equal(42, call.Arguments[0].AsNumber());
+                    return LumenHostValue.Undefined;
+                }))));
+
+        Assert.Equal(1, calls);
     }
 
     [Fact]
@@ -1164,9 +1216,11 @@ public sealed class LumenPlayerTests
         bool duplicateAction = false,
         uint rootExportStringIndex = 0,
         ushort firstBlendMode = 0,
+        uint geometryFlags = 0x00410000,
         bool removeOnThirdFrame = true,
         uint placementNameStringIndex = 0,
-        byte[]? targetActionBytecode = null)
+        byte[]? targetActionBytecode = null,
+        byte[]? packageActionBytecode = null)
     {
         var geometry = new uint[]
         {
@@ -1174,8 +1228,13 @@ public sealed class LumenPlayerTests
             bits(100), bits(0), bits(1), bits(0),
             bits(100), bits(50), bits(1), bits(1),
             bits(0), bits(50), bits(0), bits(1),
-            4, 0x00410000,
+            4, geometryFlags,
         };
+        var actionValues = new List<byte[]> { actionBytecode ?? [0x04, 0x00] };
+        if (targetActionBytecode is not null)
+            actionValues.Add(targetActionBytecode);
+        if (packageActionBytecode is not null)
+            actionValues.Add(packageActionBytecode);
         var records = new List<(uint Tag, byte[] Payload)>
         {
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
@@ -1185,15 +1244,11 @@ public sealed class LumenPlayerTests
                 "ExternalInterface", "addCallback", "SetVisible", "", "Ctor", "value", "onEnterFrame",
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
-                "call", "Confirm", "copy", "push", "Math", "floor")),
+                "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
-            record(
-                LmbTags.ActionPool,
-                targetActionBytecode is null
-                    ? actionPool(actionBytecode ?? [0x04, 0x00])
-                    : actionPool(actionBytecode ?? [0x04, 0x00], targetActionBytecode)),
+            record(LmbTags.ActionPool, actionPool([.. actionValues])),
             words(LmbTags.DefineShape, 42, 0, 0, 1),
             words(LmbTags.ShapeGeometry, geometry),
             words(LmbTags.DefineSprite, 7, 0, rootExportStringIndex, 2, 3, 2, 0),
@@ -1207,6 +1262,17 @@ public sealed class LumenPlayerTests
             words(LmbTags.ShowFrame, 2, targetActionBytecode is null ? 1U : 2U),
             words(LmbTags.RemoveObject, 42, 0x00030000),
         };
+        if (packageActionBytecode is not null)
+        {
+            var rootIndex = records.FindIndex(record => record.Tag == LmbTags.DefineSprite);
+            var packageActionIndex = targetActionBytecode is null ? 1U : 2U;
+            records.InsertRange(rootIndex,
+            [
+                words(LmbTags.DefineSprite, 8, 0, 43, 1, 1, 0, 0),
+                words(LmbTags.ShowFrame, 0, 1),
+                words(LmbTags.DoAction, packageActionIndex, 0),
+            ]);
+        }
         if (targetActionBytecode is not null)
             records.Insert(records.Count - 1, words(LmbTags.DoAction, 1, 0));
         if (!removeOnThirdFrame)

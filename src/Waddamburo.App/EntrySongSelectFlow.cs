@@ -1,9 +1,12 @@
+using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.Providers.Tja;
 
 /// <summary>
 /// Diagnostic composition for the measured Green Entry-to-Song-Select contract.
@@ -18,8 +21,33 @@ internal static class EntrySongSelectFlow
         int? frameLimit,
         int? tickLimit,
         string? screenshotPath,
-        SdlKeyboardTimeline inputTimeline)
+        SdlKeyboardTimeline inputTimeline,
+        string tjaRoot,
+        string fontPath)
     {
+        var tja = new TjaCatalogProvider(tjaRoot);
+        using var globalCatalog = new GlobalSongCatalog([tja]);
+        var snapshot = globalCatalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
+        var status = snapshot.Providers.Single(provider => provider.Provider == tja.Id);
+        if (!status.Succeeded)
+            throw new InvalidOperationException(snapshot.Diagnostics.First(diagnostic => diagnostic.Provider == tja.Id).Message);
+        var songCatalog = new SongSelectCatalogView(snapshot);
+        if (songCatalog.Categories.IsEmpty)
+            throw new InvalidOperationException("The custom TJA provider did not discover any browsable categories.");
+        Console.WriteLine($"Catalog revision {snapshot.Revision}: {status.SongCount} songs in {status.CategoryCount} categories.");
+        foreach (var diagnostic in snapshot.Diagnostics)
+            Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
+
+        using var application = new SdlApplication(
+            "Waddamburo — Entry → Song Select",
+            windowWidth,
+            windowHeight,
+            debugGpu: false,
+            resizable: screenshotPath is null,
+            highPixelDensity: screenshotPath is null);
+        Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
+        using var titleTextures = new SongTitleTextureCache(application, fontPath);
+
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
         var flow = new GameFlowSession();
@@ -43,20 +71,12 @@ internal static class EntrySongSelectFlow
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var loader = new LumenGameSceneLoader(
             new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)),
-            new ProbeHostFactory(flow));
+            new CatalogHostFactory(flow, songCatalog, titleTextures));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
         try
         {
-            using var application = new SdlApplication(
-                "Waddamburo — Entry → Song Select",
-                windowWidth,
-                windowHeight,
-                debugGpu: false,
-                resizable: screenshotPath is null,
-                highPixelDensity: screenshotPath is null);
-            Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
             var active = requireLumenScene(coordinator);
             var textureIds = uploadTextures(application, active);
             var simulationTick = 0;
@@ -66,7 +86,8 @@ internal static class EntrySongSelectFlow
                 RenderColor.WaddamburoBlue,
                 index => index < textureIds.Length
                     ? textureIds[index]
-                    : throw new InvalidDataException($"Scene snapshot references missing texture {index}."));
+                    : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
+                titleTextures.Resolve);
 
             var result = application.Run(
                 createFrame,
@@ -123,9 +144,14 @@ internal static class EntrySongSelectFlow
         }
     }
 
-    private sealed class ProbeHostFactory(GameFlowSession flow) : ILumenLayerHostFactory
+    private sealed class CatalogHostFactory(
+        GameFlowSession flow,
+        SongSelectCatalogView catalog,
+        ISongBoardTextureService textures) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
+        private readonly SongSelectCatalogView _catalog = catalog;
+        private readonly ISongBoardTextureService _textures = textures;
 
         public LumenLayerHost Create(SceneLayerDefinition layer) => layer.HostId switch
         {
@@ -154,9 +180,12 @@ internal static class EntrySongSelectFlow
             }
         }
 
-        private static LumenLayerHost createSongSelectHost()
+        private LumenLayerHost createSongSelectHost()
         {
-            var binding = new SongSelectProbeHostBinding();
+            var binding = new SongSelectHostBinding(new SongSelectSession(
+                _catalog,
+                _textures,
+                ConsolePreviewController.Instance));
             return new LumenLayerHost(binding, binding.Attach);
         }
     }
@@ -188,77 +217,16 @@ internal static class EntrySongSelectFlow
         }
     }
 
-    private sealed class SongSelectProbeHostBinding : ILumenHostBinding
+    private sealed class ConsolePreviewController : ISongPreviewController
     {
-        private static readonly string[] NotificationMethods =
-        [
-            "SetMotion", "RequestSE", "RequestSystemSE", "NotifyGenreFolder",
-            "NotifyOpenFolder", "NotifyCloseFolder", "NotifyStopBGM",
-        ];
+        public static ConsolePreviewController Instance { get; } = new();
 
-        private LumenPlayer? _player;
-        private bool _assigned;
-
-        public void Attach(LumenPlayer player) => _player = player;
-
-        public void Install(LumenHostContext context)
+        public void SetPreview(SongPreviewRequest? request)
         {
-            context.RegisterExternalInterfaceCall(_ => LumenHostValue.Undefined);
-            context.RegisterObject("Lumen", lumen =>
-            {
-                lumen.RegisterMethod("GetMusicData", _ => LumenHostValue.FromBoolean(true));
-                lumen.RegisterMethod("GetPlayerData", _ => LumenHostValue.FromBoolean(true));
-                lumen.RegisterMethod("IsStart", _ => LumenHostValue.FromBoolean(true));
-                lumen.RegisterMethod("IsInitWait", _ => LumenHostValue.FromBoolean(assignInitialData()));
-                lumen.RegisterMethod("GetMusicInfo_Basic", _ =>
-                {
-                    invoke("SetMusicData", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-                    invoke("SetPlayerBits", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-                    return LumenHostValue.Undefined;
-                });
-                lumen.RegisterMethod("RequestSongBoardTexture_Short", updateBoard);
-                lumen.RegisterMethod("RequestSongBoardTexture_Long", updateBoard);
-                foreach (var name in NotificationMethods)
-                {
-                    lumen.RegisterMethod(name, _ => LumenHostValue.Undefined);
-                }
-            });
-        }
-
-        private bool assignInitialData()
-        {
-            if (_assigned)
-                return true;
-            if (_player is null)
-                return false;
-            _assigned = true;
-            invoke(
-                "AssignMusic",
-                LumenHostValue.FromString("J-POP"),
-                LumenHostValue.FromNumber(1),
-                LumenHostValue.FromNumber(0),
-                LumenHostValue.FromNumber(-1));
-            invoke("SetSelectedMusic", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(-1));
-            invoke(
-                "SetPlayer",
-                LumenHostValue.FromNumber(0),
-                LumenHostValue.FromBoolean(true),
-                LumenHostValue.FromBoolean(true),
-                LumenHostValue.FromNumber(30));
-            return true;
-        }
-
-        private LumenHostValue updateBoard(LumenHostCall hostCall)
-        {
-            if (!hostCall.Arguments.IsEmpty)
-                invoke("UpdateMusicBoard", hostCall.Arguments[0]);
-            return LumenHostValue.Undefined;
-        }
-
-        private void invoke(string name, params LumenHostValue[] arguments)
-        {
-            if (_player is null || !_player.TryInvokeCallback(name, arguments))
-                throw new InvalidOperationException($"Song Select did not accept callback '{name}'.");
+            if (request is null)
+                Console.WriteLine("Song preview stopped.");
+            else
+                Console.WriteLine($"Song preview requested at {request.Start.TotalSeconds:0.###}s for {request.Song}.");
         }
     }
 }

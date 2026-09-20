@@ -21,11 +21,15 @@ try
     var movieName = parseOption(args, "--movie=");
     var scenePath = parseOption(args, "--scene=");
     var assetRoot = parseOption(args, "--asset-root=");
+    var tjaRoot = parseOption(args, "--tja-root=");
+    var fontPath = parseOption(args, "--font=");
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
     if (entrySongSelect)
     {
         if (assetRoot is null)
             throw new ArgumentException("--entry-song-select requires --asset-root.");
+        if (tjaRoot is null || fontPath is null)
+            throw new ArgumentException("--entry-song-select requires --tja-root and --font.");
         if (archivePath is not null || movieName is not null || scenePath is not null)
             throw new ArgumentException("--entry-song-select cannot be combined with movie or scene inputs.");
         if (seekFrame is not null || !callbackInvocations.IsEmpty)
@@ -37,7 +41,9 @@ try
             frameLimit,
             tickLimit,
             screenshotPath,
-            inputTimeline);
+            inputTimeline,
+            tjaRoot,
+            fontPath);
         return 0;
     }
     if (scenePath is not null || assetRoot is not null)

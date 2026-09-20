@@ -1,0 +1,15 @@
+add_library(waddamburo_text SHARED src/text.c)
+add_library(Waddamburo::Text ALIAS waddamburo_text)
+
+waddamburo_configure_native_target(waddamburo_text)
+target_compile_definitions(waddamburo_text PRIVATE WADDAMBURO_TEXT_BUILDING_LIBRARY=1)
+target_include_directories(waddamburo_text PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+target_link_libraries(waddamburo_text PRIVATE Freetype::Freetype)
+set_target_properties(waddamburo_text PROPERTIES C_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN true)
+
+if(BUILD_TESTING)
+  add_executable(waddamburo_text_abi_test tests/text_abi_test.c)
+  waddamburo_configure_native_target(waddamburo_text_abi_test)
+  target_link_libraries(waddamburo_text_abi_test PRIVATE Waddamburo::Text)
+  add_test(NAME text_abi COMMAND waddamburo_text_abi_test)
+endif()

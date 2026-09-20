@@ -152,16 +152,21 @@ handoff using user-owned archives below one explicit asset root:
 dotnet run --project src/Waddamburo.App -- \
   --entry-song-select \
   --asset-root=/path/to/lumendata/packed \
-  --press=F@30,F@240 --ticks=360 \
-  --window-size=640x360 \
+  --tja-root=/path/to/TJA \
+  --font=/path/to/user-owned-font.ttf \
+  --press=F@30,F@240,F@380,K@750 --ticks=1000 \
+  --window-size=1280x720 \
   --screenshot=/tmp/entry-to-song-select.png
 ```
 
 This initializes Entry through its exported callbacks, receives its authored scene
 request, resolves that request in the app-owned scene catalog, loads a fresh Song
-Select movie and host, then disposes Entry. The relative archive/movie IDs and
-numeric request mapping are composition data; neither the AVM runtime nor generic
-scene loader contains Entry-specific behavior.
+Select movie and host, scans the read-only TJA provider, and renders requested song
+titles with the user-supplied font. Build the optional native text adapter first;
+the font, TJA files, audio, Lumen archives, and framebuffer output are never copied
+into the repository. The relative archive/movie IDs and numeric request mapping are
+composition data; neither the AVM runtime nor generic scene loader contains
+Entry- or Song-Select-specific behavior.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).

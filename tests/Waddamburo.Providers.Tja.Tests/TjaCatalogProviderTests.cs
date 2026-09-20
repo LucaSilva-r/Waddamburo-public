@@ -120,6 +120,27 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task DifficultyFilesSharingAudioBecomeOneBrowserSong()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteBytes("Anime/Grouped/audio.ogg", [1, 2, 3]);
+        library.WriteText(
+            "Anime/Grouped/easy.tja",
+            "TITLE:Grouped song\nBPM:120\nWAVE:audio.ogg\nCOURSE:Easy\nLEVEL:2\n#START\n1000,\n#END\n");
+        library.WriteText(
+            "Anime/Grouped/oni.tja",
+            "TITLE:Grouped song\nBPM:120\nWAVE:audio.ogg\nCOURSE:Oni\nLEVEL:8\n#START\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+
+        var song = Assert.Single(contribution.Songs);
+        Assert.Equal("Grouped song", song.Title.Primary);
+        Assert.Equal([TaikoCourse.Easy, TaikoCourse.Oni], song.Charts.Select(static chart => chart.Course));
+        Assert.Equal(song.Key, Assert.Single(Assert.Single(contribution.Categories).Songs));
+    }
+
+    [Fact]
     public async Task BadFilesAndMissingAudioDoNotDiscardHealthySongs()
     {
         using var library = new TemporaryLibrary();

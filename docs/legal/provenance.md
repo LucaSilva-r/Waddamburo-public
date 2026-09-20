@@ -42,6 +42,14 @@ expresses metadata/course normalization, encoding fallback, relative-audio, and
 source-identity behavior behind Waddamburo's catalog contracts; synthetic public
 tests were authored specifically for this repository.
 
+The Song Select host, native-fill surface contract, package bootstrap, dynamic
+MovieClip behavior, and title-text integration are original public
+implementations. Behavioral expectations were checked against the private
+experimental viewer and user-supplied Green assets under the evidence policy; no
+viewer source, game asset, font, screenshot, trace, or content inventory is copied
+or packaged. `native/text/` is independently written against FreeType's public C
+API and accepts only an explicit user-owned font path.
+
 `src/Waddamburo.Platform.Sdl/SdlApplication.cs` is original integration code written
 against SDL's public GPU API and the generated `ppy.SDL3-CS` 2026.722.0 bindings.
 No SDL or binding source is copied into the repository; the NuGet package supplies

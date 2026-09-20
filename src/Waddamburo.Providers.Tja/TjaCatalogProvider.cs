@@ -36,10 +36,8 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
         progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));
         var paths = enumerateCharts(cancellationToken);
-        var songs = new List<SongDescriptor>(paths.Length);
-        var categories = new Dictionary<string, List<SongKey>>(StringComparer.Ordinal);
+        var inspected = new List<InspectedTjaFile>(paths.Length);
         var diagnostics = new List<CatalogDiagnostic>();
-        var acceptedKeys = new HashSet<SongKey>();
 
         for (var index = 0; index < paths.Length; index++)
         {
@@ -61,46 +59,26 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                 var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
                 var metadata = TjaMetadataReader.Read(bytes);
                 validateBpm(metadata);
-                var songKey = new SongKey(Source, Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
-                if (!acceptedKeys.Add(songKey))
+                if (!metadata.Charts.Any(static chart => chart.Course is not null))
                 {
-                    diagnostics.Add(warning(
-                        "TJA_DUPLICATE_CHART",
-                        $"'{relativePath}' duplicates an earlier TJA chart and was ignored."));
-                    continue;
-                }
-
-                var supportedCharts = createCharts(metadata, songKey, relativePath, diagnostics);
-                if (supportedCharts.Count == 0)
-                {
-                    acceptedKeys.Remove(songKey);
+                    foreach (var chart in metadata.Charts.Where(static chart => chart.Course is null))
+                    {
+                        diagnostics.Add(warning(
+                            "TJA_COURSE_UNSUPPORTED",
+                            $"'{relativePath}' contains unsupported course '{chart.DifficultyName}'."));
+                    }
                     diagnostics.Add(warning(
                         "TJA_NO_SUPPORTED_CHARTS",
                         $"'{relativePath}' contains no supported Taiko course."));
                     continue;
                 }
 
-                var audioAsset = resolveAudio(metadata.Get("WAVE"), path, relativePath, diagnostics);
-                var previewStart = parsePreview(metadata.Get("DEMOSTART"), relativePath, diagnostics);
-                var fallbackTitle = Path.GetFileNameWithoutExtension(path);
-                var japaneseTitle = metadata.Get("TITLEJA");
-                var baseTitle = metadata.Get("TITLE");
-                var englishTitle = metadata.Get("TITLEEN");
-                var primaryTitle = japaneseTitle ?? baseTitle ?? englishTitle ?? fallbackTitle;
-                var song = new SongDescriptor(
-                    songKey,
-                    new SongTitle(primaryTitle, japaneseTitle, englishTitle),
-                    metadata.Get("ARTIST"),
-                    supportedCharts,
-                    audioAsset,
-                    previewStart,
-                    normalizeSubtitle(metadata.Get("SUBTITLEJA") ?? metadata.Get("SUBTITLE")));
-                songs.Add(song);
-
-                var category = categoryFor(relativePath, metadata.Get("GENRE"));
-                if (!categories.TryGetValue(category, out var members))
-                    categories.Add(category, members = []);
-                members.Add(songKey);
+                inspected.Add(new InspectedTjaFile(
+                    relativePath,
+                    Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+                    metadata,
+                    resolveAudio(metadata.Get("WAVE"), path, relativePath, diagnostics),
+                    categoryFor(relativePath, metadata.Get("GENRE"))));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -115,6 +93,50 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                     "TJA_FILE_INVALID",
                     $"'{relativePath}' could not be inspected: {exception.Message}"));
             }
+        }
+
+        var songs = new List<SongDescriptor>(inspected.Count);
+        var categories = new Dictionary<string, List<SongKey>>(StringComparer.Ordinal);
+        foreach (var group in inspected
+            .GroupBy(static file => file.Audio.GroupKey, StringComparer.Ordinal)
+            .OrderBy(static group => group.Key, StringComparer.Ordinal))
+        {
+            var files = group.OrderBy(static file => file.RelativePath, StringComparer.Ordinal).ToArray();
+            var representative = files[0];
+            var songKey = new SongKey(Source, stableSongId(group.Key));
+            var charts = files
+                .SelectMany(file => createCharts(file, songKey, diagnostics))
+                .GroupBy(static chart => chart.Key)
+                .Select(chartGroup =>
+                {
+                    if (chartGroup.Skip(1).Any())
+                    {
+                        diagnostics.Add(warning(
+                            "TJA_DUPLICATE_CHART",
+                            $"Song '{representative.RelativePath}' contains a duplicate chart identity."));
+                    }
+                    return chartGroup.First();
+                })
+                .ToArray();
+
+            var japaneseTitle = firstMetadata(files, "TITLEJA");
+            var baseTitle = firstMetadata(files, "TITLE");
+            var englishTitle = firstMetadata(files, "TITLEEN");
+            var primaryTitle = japaneseTitle ?? baseTitle ?? englishTitle
+                ?? Path.GetFileNameWithoutExtension(representative.RelativePath);
+            var song = new SongDescriptor(
+                songKey,
+                new SongTitle(primaryTitle, japaneseTitle, englishTitle),
+                firstMetadata(files, "ARTIST"),
+                charts,
+                representative.Audio.Asset,
+                parsePreview(firstMetadata(files, "DEMOSTART"), representative.RelativePath, diagnostics),
+                normalizeSubtitle(firstMetadata(files, "SUBTITLEJA") ?? firstMetadata(files, "SUBTITLE")));
+            songs.Add(song);
+
+            if (!categories.TryGetValue(representative.Category, out var members))
+                categories.Add(representative.Category, members = []);
+            members.Add(songKey);
         }
 
         var orderedSongs = songs
@@ -182,28 +204,27 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
     }
 
     private List<SongChartDescriptor> createCharts(
-        TjaMetadata metadata,
+        InspectedTjaFile file,
         SongKey song,
-        string relativePath,
         List<CatalogDiagnostic> diagnostics)
     {
         var charts = new List<SongChartDescriptor>();
-        foreach (var chart in metadata.Charts)
+        foreach (var chart in file.Metadata.Charts)
         {
             if (chart.Course is not { } course)
             {
                 diagnostics.Add(warning(
                     "TJA_COURSE_UNSUPPORTED",
-                    $"'{relativePath}' contains unsupported course '{chart.DifficultyName}'."));
+                    $"'{file.RelativePath}' contains unsupported course '{chart.DifficultyName}'."));
                 continue;
             }
 
             var player = string.IsNullOrWhiteSpace(chart.Player) ? "solo" : chart.Player.ToLowerInvariant();
-            var stableId = $"{course.ToString().ToLowerInvariant()}:{player}:{chart.Occurrence.ToString(CultureInfo.InvariantCulture)}";
+            var stableId = $"{file.SourceHash}:{course.ToString().ToLowerInvariant()}:{player}:{chart.Occurrence.ToString(CultureInfo.InvariantCulture)}";
             charts.Add(new SongChartDescriptor(
                 new ChartKey(song, stableId),
                 chart.DifficultyName,
-                TjaAssetKeyCodec.Encode(Id, relativePath),
+                TjaAssetKeyCodec.Encode(Id, file.RelativePath),
                 course,
                 chart.Level));
         }
@@ -211,7 +232,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         return charts;
     }
 
-    private CatalogAssetKey? resolveAudio(
+    private ResolvedTjaAudio resolveAudio(
         string? wave,
         string chartPath,
         string relativeChartPath,
@@ -220,7 +241,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         if (string.IsNullOrWhiteSpace(wave))
         {
             diagnostics.Add(warning("TJA_AUDIO_UNSPECIFIED", $"'{relativeChartPath}' has no WAVE value."));
-            return null;
+            return new ResolvedTjaAudio($"chart:{relativeChartPath}", null);
         }
 
         wave = unquote(wave);
@@ -237,17 +258,17 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                 diagnostics.Add(warning(
                     "TJA_AUDIO_MISSING",
                     $"'{relativeChartPath}' refers to an audio file that does not exist."));
-                return null;
+                return new ResolvedTjaAudio($"chart:{relativeChartPath}", null);
             }
             rejectReparsePoints(combined);
-            return TjaAssetKeyCodec.Encode(Id, relativeAudio);
+            return new ResolvedTjaAudio($"audio:{relativeAudio}", TjaAssetKeyCodec.Encode(Id, relativeAudio));
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or NotSupportedException)
         {
             diagnostics.Add(warning(
                 "TJA_AUDIO_INVALID",
                 $"'{relativeChartPath}' has an invalid WAVE value: {exception.Message}"));
-            return null;
+            return new ResolvedTjaAudio($"chart:{relativeChartPath}", null);
         }
     }
 
@@ -309,6 +330,15 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     }
 
+    private string stableSongId(string groupKey)
+    {
+        var bytes = Encoding.UTF8.GetBytes($"{Id.Value}\0{groupKey}");
+        return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+    }
+
+    private static string? firstMetadata(IEnumerable<InspectedTjaFile> files, string name) =>
+        files.Select(file => file.Metadata.Get(name)).FirstOrDefault(static value => value is not null);
+
     private static string categoryFor(string relativePath, string? genre)
     {
         var separator = relativePath.IndexOf('/');
@@ -342,4 +372,13 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
     private static StringComparison pathComparison() =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    private sealed record InspectedTjaFile(
+        string RelativePath,
+        string SourceHash,
+        TjaMetadata Metadata,
+        ResolvedTjaAudio Audio,
+        string Category);
+
+    private sealed record ResolvedTjaAudio(string GroupKey, CatalogAssetKey? Asset);
 }

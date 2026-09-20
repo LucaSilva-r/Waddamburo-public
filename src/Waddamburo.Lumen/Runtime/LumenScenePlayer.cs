@@ -70,14 +70,16 @@ public sealed class LumenScenePlayer
             var child = layer.Player.CreateRenderSnapshot(interpolationFraction);
             foreach (var quad in child.Quads)
             {
-                if (quad.TextureIndex >= layer.TextureCount)
+                if (quad.NativeSurface is null && quad.TextureIndex >= layer.TextureCount)
                 {
                     throw new InvalidOperationException(
                         $"Child snapshot texture {quad.TextureIndex} exceeds its {layer.TextureCount}-texture namespace.");
                 }
                 quads.Add(quad with
                 {
-                    TextureIndex = checked(layer.TextureOffset + quad.TextureIndex),
+                    TextureIndex = quad.NativeSurface is null
+                        ? checked(layer.TextureOffset + quad.TextureIndex)
+                        : 0,
                     TopLeft = transform(quad.TopLeft, layer.Transform),
                     TopRight = transform(quad.TopRight, layer.Transform),
                     BottomRight = transform(quad.BottomRight, layer.Transform),

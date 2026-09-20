@@ -84,8 +84,11 @@ internal static class MovieViewer
             frameLimit,
             tickLimit,
             screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
-        if (!player.CallbackNames.IsEmpty)
-            Console.WriteLine($"Lumen callbacks: {string.Join(", ", player.CallbackNames)}");
+        if (!player.Callbacks.IsEmpty)
+        {
+            Console.WriteLine("Lumen callbacks: " + string.Join(", ", player.Callbacks.Select(callback =>
+                $"{callback.Name}({string.Join(", ", callback.Parameters)})")));
+        }
         foreach (var diagnostic in player.Diagnostics)
         {
             Console.WriteLine(

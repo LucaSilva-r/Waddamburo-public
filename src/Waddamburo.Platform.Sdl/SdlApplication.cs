@@ -79,6 +79,13 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.UploadRgba8(width, height, pixels);
     }
 
+    public void ReleaseTexture(RenderTextureId texture)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _renderer!.ReleaseTexture(texture);
+    }
+
     public int Run(
         RenderFrame frame,
         int? frameLimit = null,

@@ -34,6 +34,7 @@ The required tools are:
 | Linux x64 | .NET 10 SDK, CMake 3.25 or newer, Ninja, and a C17/C++20 GCC or Clang toolchain |
 | Windows x64 | .NET 10 SDK, CMake 3.25 or newer, Ninja, and Visual Studio 2022 C/C++ build tools in an x64 developer shell |
 | FFmpeg opt-in | `make`; Windows additionally requires MSYS2 `bash` |
+| Text rasterizer opt-in | FreeType 2.13 or newer development package discoverable by CMake |
 
 The scripts fail immediately for unsupported hosts or missing tools. They do not
 install SDKs, mutate user-level configuration, or consult product behavior flags
@@ -75,3 +76,10 @@ The first project-authored native target is the versioned
 report that the backend is unavailable until the pinned FFmpeg build is connected.
 The separate [FFmpeg dependency procedure](ffmpeg.md) downloads and builds only
 the reviewed codec/demuxer allowlist.
+
+The optional title rasterizer is enabled with
+`-DWADDAMBURO_BUILD_TEXT=ON`. It exposes only a small project-owned C ABI and
+links dynamically to a system FreeType 2.13-or-newer development installation.
+It accepts an explicit user-owned font path and returns premultiplied RGBA8; it
+does not discover, embed, cache, or redistribute fonts. Release builds must pin
+and stage an exact reviewed FreeType version before enabling this option.

@@ -8,7 +8,8 @@ public static class LumenRenderFrameAdapter
     public static RenderFrame Compose(
         LumenRenderSnapshot snapshot,
         RenderColor clearColor,
-        Func<uint, RenderTextureId> resolveTexture)
+        Func<uint, RenderTextureId> resolveTexture,
+        Func<LumenNativeSurfaceKey, RenderTextureId>? resolveNativeSurface = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(resolveTexture);
@@ -18,7 +19,10 @@ public static class LumenRenderFrameAdapter
         return new RenderFrame(
             clearColor,
             snapshot.Quads.Select(quad => new RenderQuad(
-                resolveTexture(quad.TextureIndex),
+                quad.NativeSurface is { } surface
+                    ? (resolveNativeSurface ?? throw new InvalidOperationException(
+                        $"Native Lumen surface '{surface}' has no platform resolver."))(surface)
+                    : resolveTexture(quad.TextureIndex),
                 convert(quad.TopLeft, inverseWidth, inverseHeight),
                 convert(quad.TopRight, inverseWidth, inverseHeight),
                 convert(quad.BottomRight, inverseWidth, inverseHeight),
