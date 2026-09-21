@@ -67,6 +67,24 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void HostSurfaceCanUseACharacterSizedPlacementCenteredOnTheSlotOrigin()
+    {
+        var player = new LumenPlayer(
+            createMovie(placementNameStringIndex: 31, geometryFlags: 0),
+            1280,
+            720);
+
+        player.SetNativeFill(
+            "placed",
+            new LumenNativeSurfaceKey("don:0"),
+            LumenNativeSurfacePlacement.Centered(600, 600));
+        var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
+
+        Assert.Equal(new LumenRenderVertex(-290, -280, 0, 0), quad.TopLeft);
+        Assert.Equal(new LumenRenderVertex(310, 320, 1, 1), quad.BottomRight);
+    }
+
+    [Fact]
     public void CharacterReplacementRetainsTheAuthoredInstanceName()
     {
         var player = new LumenPlayer(

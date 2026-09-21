@@ -30,6 +30,12 @@ public readonly record struct LumenNativeSurfaceKey
     public override string ToString() => Value;
 }
 
+public readonly record struct LumenNativeSurfacePlacement(float X, float Y, float Width, float Height)
+{
+    public static LumenNativeSurfacePlacement Centered(float width, float height) =>
+        new(-width / 2, -height / 2, width, height);
+}
+
 public readonly record struct LumenRenderQuad(
     uint TextureIndex,
     LumenRenderVertex TopLeft,

@@ -1,4 +1,5 @@
 using Waddamburo.Game.Flow;
+using Waddamburo.Game.Don;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
@@ -41,10 +42,12 @@ public interface ILumenFrontendServices
 /// </summary>
 public sealed class LumenFrontendHostBinding(
     ILumenFrontendServices services,
-    ISceneTransitionSink transitions) : ILumenHostBinding, IDisposable
+    ISceneTransitionSink transitions,
+    IDonPresentationController? don = null) : ILumenHostBinding, IDisposable
 {
     private readonly ILumenFrontendServices _services = services ?? throw new ArgumentNullException(nameof(services));
     private readonly ISceneTransitionSink _transitions = transitions ?? throw new ArgumentNullException(nameof(transitions));
+    private readonly IDonPresentationController? _don = don;
 
     public void Install(LumenHostContext context)
     {
@@ -69,6 +72,8 @@ public sealed class LumenFrontendHostBinding(
                 _services.StopVoice();
                 return LumenHostValue.Undefined;
             });
+            if (_don is not null)
+                DonLumenBinding.RegisterMotion(context, lumen, _don);
             lumen.RegisterMethod("SetNextScene", call =>
             {
                 _transitions.TryRequestTransition(LumenSceneRequest.FromHostCall(call));

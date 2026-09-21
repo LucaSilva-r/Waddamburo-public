@@ -26,7 +26,7 @@ public sealed class LumenPlayer
     private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, LumenNativeSurfaceKey> _nativeFills = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NativeFillBinding> _nativeFills = new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
     private LumenInputSnapshot _inputSnapshot = LumenInputSnapshot.Empty;
@@ -104,7 +104,22 @@ public sealed class LumenPlayer
     public void SetNativeFill(string instanceName, LumenNativeSurfaceKey surface)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
-        _nativeFills[instanceName] = surface;
+        _nativeFills[instanceName] = new NativeFillBinding(surface, null);
+    }
+
+    public void SetNativeFill(
+        string instanceName,
+        LumenNativeSurfaceKey surface,
+        LumenNativeSurfacePlacement placement)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
+        if (!float.IsFinite(placement.X) || !float.IsFinite(placement.Y)
+            || !float.IsFinite(placement.Width) || placement.Width <= 0
+            || !float.IsFinite(placement.Height) || placement.Height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(placement));
+        }
+        _nativeFills[instanceName] = new NativeFillBinding(surface, placement);
     }
 
     public bool RemoveNativeFill(string instanceName)
@@ -1606,7 +1621,7 @@ public sealed class LumenPlayer
                 if ((geometry.Flags >> 16) == 0)
                 {
                     var slot = instance.Name.Length > 0 ? instance.Name : instance.Parent?.Name ?? "";
-                    if (_nativeFills.TryGetValue(slot, out var surface))
+                    if (_nativeFills.TryGetValue(slot, out var nativeFill))
                     {
                         var minX = geometry.Vertices.Min(static vertex => vertex.X);
                         var maxX = geometry.Vertices.Max(static vertex => vertex.X);
@@ -1617,16 +1632,24 @@ public sealed class LumenPlayer
                             reportOnce("LUM_NATIVE_FILL_EMPTY", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has empty bounds.");
                             continue;
                         }
+                        var nativeVertices = geometry.Vertices.Select(vertex => transformNativeVertex(
+                            vertex,
+                            transform,
+                            minX,
+                            maxX,
+                            minY,
+                            maxY,
+                            nativeFill.Placement)).ToArray();
                         quads.Add(new LumenRenderQuad(
                             0,
-                            transformNativeVertex(geometry.Vertices[0], transform, minX, maxX, minY, maxY),
-                            transformNativeVertex(geometry.Vertices[1], transform, minX, maxX, minY, maxY),
-                            transformNativeVertex(geometry.Vertices[2], transform, minX, maxX, minY, maxY),
-                            transformNativeVertex(geometry.Vertices[3], transform, minX, maxX, minY, maxY),
+                            nativeVertices[0],
+                            nativeVertices[1],
+                            nativeVertices[2],
+                            nativeVertices[3],
                             color.Multiply,
                             color.Add,
                             blend,
-                            NativeSurface: surface));
+                            NativeSurface: nativeFill.Surface));
                         continue;
                     }
                     reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, $"Fill-zero/native shape '{slot}' has no host surface yet.");
@@ -1648,6 +1671,10 @@ public sealed class LumenPlayer
         foreach (var child in instance.Children.Values)
             appendInstance(child, transform, color, blend, interpolationFraction, quads);
     }
+
+    private readonly record struct NativeFillBinding(
+        LumenNativeSurfaceKey Surface,
+        LumenNativeSurfacePlacement? Placement);
 
     private void reportOnce(string code, uint characterId, int frame, string message)
     {
@@ -1767,14 +1794,21 @@ public sealed class LumenPlayer
         float minX,
         float maxX,
         float minY,
-        float maxY)
+        float maxY,
+        LumenNativeSurfacePlacement? placement)
     {
-        var position = transform.Transform(vertex.X, vertex.Y);
+        var u = (vertex.X - minX) / (maxX - minX);
+        var v = (vertex.Y - minY) / (maxY - minY);
+        var position = placement is { } nativePlacement
+            ? transform.Transform(
+                nativePlacement.X + u * nativePlacement.Width,
+                nativePlacement.Y + v * nativePlacement.Height)
+            : transform.Transform(vertex.X, vertex.Y);
         return new LumenRenderVertex(
             position.X,
             position.Y,
-            (vertex.X - minX) / (maxX - minX),
-            (vertex.Y - minY) / (maxY - minY));
+            u,
+            v);
     }
 
     private static LumenRenderColor convertColor(LmbColorTransform color) =>

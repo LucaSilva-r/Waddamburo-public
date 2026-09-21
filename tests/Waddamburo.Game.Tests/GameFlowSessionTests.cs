@@ -1,9 +1,11 @@
 using System.Buffers.Binary;
 using System.Collections.Immutable;
 using Waddamburo.Formats.Lmb;
+using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
@@ -104,6 +106,25 @@ public sealed class GameFlowSessionTests
         Assert.Equal(GameFlowState.TransitionPending, flow.State);
         Assert.Equal(new LumenSceneRequest(1, 0, 0), flow.PendingTransition);
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_HOST_CALL_FAILED");
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void FrontendBindingForwardsEntryDonMotionCalls()
+    {
+        var don = new SyntheticDonPresentation();
+        var player = new LumenPlayer(
+            createDonMotionMovie(),
+            1280,
+            720,
+            hostBinding: new LumenFrontendHostBinding(
+                new SyntheticFrontendServices(),
+                new GameFlowSession(),
+                don));
+
+        player.Advance();
+
+        Assert.Equal(new DonMotionRequest(0, null, null), Assert.Single(don.Requests));
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
     }
 
@@ -274,6 +295,33 @@ public sealed class GameFlowSessionTests
         return LmbSemanticReader.Read(file).Value;
     }
 
+    private static LmbMovieDefinition createDonMotionMovie()
+    {
+        var action = new byte[]
+        {
+            0x96, 0x14, 0x00,
+                0x07, 0x02, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+                0x07, 0x00, 0x00, 0x00, 0x00,
+                0x07, 0x03, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x01, 0x00,
+            0x52,
+            0x17,
+            0x00,
+        };
+        var file = createLmb(
+            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
+            record(LmbTags.StringPool, stringPool("Lumen", "SetMotion")),
+            record(LmbTags.ActionPool, actionPool(action)),
+            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
+            words(LmbTags.ShowFrame, 0, 1),
+            words(LmbTags.ShowFrame, 1, 2),
+            words(LmbTags.DoAction, 0, 0));
+        return LmbSemanticReader.Read(file).Value;
+    }
+
     private static LmbFile createLmb(params (uint Tag, byte[] Payload)[] records)
     {
         using var stream = new MemoryStream();
@@ -355,6 +403,15 @@ public sealed class GameFlowSessionTests
         }
 
         public LumenHostValue CallExternalInterface(LumenHostCall hostCall) => LumenHostValue.Undefined;
+    }
+
+    private sealed class SyntheticDonPresentation : IDonPresentationController
+    {
+        public List<DonMotionRequest> Requests { get; } = [];
+
+        public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"don:{playerIndex}");
+
+        public void SetMotion(DonMotionRequest request) => Requests.Add(request);
     }
 
     private sealed class SyntheticSceneLoader : IGameSceneLoader

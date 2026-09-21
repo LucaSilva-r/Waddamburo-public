@@ -28,6 +28,7 @@ try
     var audioPath = parseOption(args, "--play-audio=");
     var jinglePath = parseOption(args, "--play-jingle=");
     var soundRoot = parseOption(args, "--sound-root=");
+    var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
     var positionalRoots = args.Where(static argument => !argument.StartsWith("--", StringComparison.Ordinal)).ToArray();
     if (positionalRoots.Length > 1)
@@ -47,13 +48,14 @@ try
         || audioPath is not null
         || jinglePath is not null
         || soundRoot is not null
+        || donRoot is not null
         || soundBankProbe is not null;
     var normalBoot = gameDataRoot is not null || !hasDiagnosticContent;
     if (normalBoot)
     {
         if (archivePath is not null || movieName is not null || scenePath is not null
             || assetRoot is not null || tjaRoot is not null || audioPath is not null
-            || soundRoot is not null || entrySongSelect)
+            || soundRoot is not null || donRoot is not null || entrySongSelect)
         {
             throw new ArgumentException("--game-data cannot be combined with diagnostic content options.");
         }
@@ -65,6 +67,7 @@ try
         Console.WriteLine($"Title font: {layout.FontPath}");
         EntrySongSelectFlow.Run(
             layout.LumenRoot,
+            layout.DonRoot,
             windowSize.Width,
             windowSize.Height,
             frameLimit,
@@ -81,7 +84,7 @@ try
     {
         if (archivePath is not null || movieName is not null || scenePath is not null
             || assetRoot is not null || tjaRoot is not null || audioPath is not null
-            || jinglePath is not null || soundRoot is not null || entrySongSelect
+            || jinglePath is not null || soundRoot is not null || donRoot is not null || entrySongSelect
             || positionalRoots.Length != 0)
         {
             throw new ArgumentException("--probe-sound-bank cannot be combined with game or content options.");
@@ -103,6 +106,7 @@ try
             throw new ArgumentException("--seek-frame and --invoke are unavailable for --entry-song-select.");
         EntrySongSelectFlow.Run(
             assetRoot,
+            donRoot,
             windowSize.Width,
             windowSize.Height,
             frameLimit,
@@ -117,6 +121,8 @@ try
     }
     if (soundRoot is not null)
         throw new ArgumentException("--sound-root currently requires --entry-song-select.");
+    if (donRoot is not null)
+        throw new ArgumentException("--don-root currently requires --entry-song-select.");
     if (scenePath is not null || assetRoot is not null)
     {
         if (audioPath is not null || jinglePath is not null)

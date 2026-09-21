@@ -1,9 +1,11 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
+using Waddamburo.Game.Don;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
@@ -17,6 +19,7 @@ internal static class EntrySongSelectFlow
 {
     public static int Run(
         string assetRoot,
+        string? donRoot,
         int windowWidth,
         int windowHeight,
         int? frameLimit,
@@ -49,6 +52,8 @@ internal static class EntrySongSelectFlow
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
+        using var donRenderer = donRoot is null ? null : application.CreateDonRenderer(donRoot);
+        var donPresentation = donRenderer is null ? null : new DonPresentationController(donRenderer);
         var needsAudio = screenshotPath is null || jinglePath is not null || soundRoot is not null;
         using var audioDevice = needsAudio ? new SdlAudioDevice() : null;
         using var audioEngine = audioDevice is null ? null : new AudioEngine(audioDevice);
@@ -105,7 +110,8 @@ internal static class EntrySongSelectFlow
                 titleTextures,
                 previewController is null ? TracePreviewController.Instance : previewController,
                 soundController is null ? TraceSoundController.Instance : soundController,
-                new ViewerFrontendServices(soundController)));
+                new ViewerFrontendServices(soundController),
+                donPresentation));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -124,7 +130,7 @@ internal static class EntrySongSelectFlow
                     index => index < textureIds.Length
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
-                    titleTextures.Resolve);
+                    surface => donPresentation?.Resolve(surface) ?? titleTextures.Resolve(surface));
             }
 
             var result = application.Run(
@@ -134,6 +140,7 @@ internal static class EntrySongSelectFlow
                     simulationTick++;
                     var input = LumenInputAdapter.CreateSnapshot(inputTimeline.Apply(simulationTick, keyboard));
                     active.Player.Advance(input);
+                    donRenderer?.Advance();
                     if (coordinator.Flow.State != GameFlowState.TransitionPending)
                         return;
                     if (soundController?.IsVoicePlaying == true)
@@ -207,7 +214,8 @@ internal static class EntrySongSelectFlow
         ISongBoardTextureService textures,
         ISongPreviewController previews,
         ISongSelectSoundController sounds,
-        ILumenFrontendServices frontend) : ILumenLayerHostFactory
+        ILumenFrontendServices frontend,
+        IDonPresentationController? don) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
@@ -215,18 +223,21 @@ internal static class EntrySongSelectFlow
         private readonly ISongPreviewController _previews = previews;
         private readonly ISongSelectSoundController _sounds = sounds;
         private readonly ILumenFrontendServices _frontend = frontend;
+        private readonly IDonPresentationController? _don = don;
 
         public LumenLayerHost Create(SceneLayerDefinition layer) => layer.HostId switch
         {
             "player-entry" => new LumenLayerHost(
-                new LumenFrontendHostBinding(_frontend, _flow),
+                new LumenFrontendHostBinding(_frontend, _flow, _don),
                 initializeEntry),
             "song-select" => createSongSelectHost(),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 
-        private static void initializeEntry(LumenPlayer player)
+        private void initializeEntry(LumenPlayer player)
         {
+            if (_don is not null)
+                DonLumenBinding.Attach(player, _don);
             if (!player.TryInvokeCallback("SetPrevious", [
                     LumenHostValue.FromNumber(0),
                     LumenHostValue.FromNumber(-1)]))
@@ -250,8 +261,32 @@ internal static class EntrySongSelectFlow
                     _catalog,
                     _textures,
                     _previews),
-                _sounds);
+                _sounds,
+                _don);
             return new LumenLayerHost(binding, binding.Attach);
+        }
+    }
+
+    private sealed class DonPresentationController(SdlDonRenderer renderer) : IDonPresentationController
+    {
+        private readonly SdlDonRenderer _renderer = renderer;
+        private readonly LumenNativeSurfaceKey[] _surfaces =
+        [
+            new("don:0"),
+            new("don:1"),
+        ];
+
+        public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[playerIndex];
+
+        public void SetMotion(DonMotionRequest request) =>
+            _renderer.SetMotion(request.PlayerIndex, request.OneShot, request.Loop);
+
+        public RenderTextureId? Resolve(LumenNativeSurfaceKey surface)
+        {
+            for (var index = 0; index < _surfaces.Length; index++)
+                if (surface == _surfaces[index])
+                    return _renderer.GetTexture(index);
+            return null;
         }
     }
 

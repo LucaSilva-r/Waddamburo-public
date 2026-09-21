@@ -12,6 +12,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     private readonly SDL_GPUDevice* _device;
     private readonly SDL_Window* _window;
     private readonly Dictionary<uint, nint> _textures = [];
+    private readonly HashSet<uint> _borrowedTextures = [];
+    private readonly List<IGpuRenderPrepass> _prepasses = [];
     private SDL_GPUGraphicsPipeline* _normalQuadPipeline;
     private SDL_GPUGraphicsPipeline* _addQuadPipeline;
     private SDL_GPUSampler* _nearestSampler;
@@ -130,9 +132,41 @@ internal sealed unsafe class RenderDevice : IDisposable
     public void ReleaseTexture(RenderTextureId id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_borrowedTextures.Contains(id.Value))
+            throw new ArgumentException($"Texture {id.Value} is owned by a render prepass.", nameof(id));
         if (!_textures.Remove(id.Value, out var texture))
             throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
         SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+    }
+
+    internal RenderTextureId RegisterBorrowedTexture(nint texture)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (texture == 0)
+            throw new ArgumentNullException(nameof(texture));
+        var id = new RenderTextureId(_nextTextureId++);
+        _textures.Add(id.Value, texture);
+        _borrowedTextures.Add(id.Value);
+        return id;
+    }
+
+    internal void UnregisterBorrowedTexture(RenderTextureId id)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_borrowedTextures.Remove(id.Value) || !_textures.Remove(id.Value))
+            throw new ArgumentException($"Texture {id.Value} is not borrowed by this render device.", nameof(id));
+    }
+
+    internal void AddPrepass(IGpuRenderPrepass prepass)
+    {
+        ArgumentNullException.ThrowIfNull(prepass);
+        _prepasses.Add(prepass);
+    }
+
+    internal void RemovePrepass(IGpuRenderPrepass prepass)
+    {
+        if (!_prepasses.Remove(prepass))
+            throw new ArgumentException("Render prepass is not registered.", nameof(prepass));
     }
 
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
@@ -163,6 +197,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         }
         if (swapchainTexture is not null)
         {
+            foreach (var prepass in _prepasses)
+                prepass.Record(commandBuffer);
             var clear = frame.ClearColor;
             var target = new SDL_GPUColorTargetInfo
             {
@@ -501,9 +537,12 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     private void releaseResources()
     {
-        foreach (var texture in _textures.Values)
-            SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+        foreach (var (id, texture) in _textures)
+            if (!_borrowedTextures.Contains(id))
+                SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
         _textures.Clear();
+        _borrowedTextures.Clear();
+        _prepasses.Clear();
         if (_addQuadPipeline is not null)
         {
             SDL_ReleaseGPUGraphicsPipeline(_device, _addQuadPipeline);
@@ -542,4 +581,9 @@ internal sealed unsafe class RenderDevice : IDisposable
         public Float4 MultiplyColor;
         public Float4 AddColor;
     }
+}
+
+internal unsafe interface IGpuRenderPrepass
+{
+    void Record(SDL_GPUCommandBuffer* commandBuffer);
 }

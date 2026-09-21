@@ -97,6 +97,13 @@ public sealed unsafe class SdlApplication : IDisposable
         _renderer!.ReleaseTexture(texture);
     }
 
+    public SdlDonRenderer CreateDonRenderer(string assetRoot)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new SdlDonRenderer(_device, _renderer!, assetRoot);
+    }
+
     public int Run(
         RenderFrame frame,
         int? frameLimit = null,

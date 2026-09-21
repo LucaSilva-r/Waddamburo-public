@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Game.Don;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 
@@ -72,18 +73,27 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 {
     private readonly SongSelectSession _session;
     private readonly ISongSelectSoundController? _sounds;
+    private readonly IDonPresentationController? _don;
     private LumenPlayer? _player;
     private bool _assigned;
 
     public SongSelectHostBinding(
         SongSelectSession session,
-        ISongSelectSoundController? sounds = null)
+        ISongSelectSoundController? sounds = null,
+        IDonPresentationController? don = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
+        _don = don;
     }
 
-    public void Attach(LumenPlayer player) => _player = player ?? throw new ArgumentNullException(nameof(player));
+    public void Attach(LumenPlayer player)
+    {
+        _player = player ?? throw new ArgumentNullException(nameof(player));
+        if (_don is null)
+            return;
+        DonLumenBinding.Attach(player, _don);
+    }
 
     public void Install(LumenHostContext context)
     {
@@ -105,7 +115,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod(
                 "NotifyGenreFolder",
                 notifyGenreFolder);
-            lumen.RegisterMethod("SetMotion", _ => LumenHostValue.Undefined);
+            if (_don is not null)
+                DonLumenBinding.RegisterMotion(context, lumen, _don);
             lumen.RegisterMethod("RequestSE", call => requestSound(SongSelectSoundRequestKind.Effect, call));
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("RequestPlayerSE", call => requestSound(SongSelectSoundRequestKind.PlayerEffect, call));

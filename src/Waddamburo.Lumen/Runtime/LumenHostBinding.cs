@@ -109,6 +109,24 @@ public sealed class LumenHostContext
         addGlobal(name, value);
     }
 
+    /// <summary>
+    /// Resolves an authored numeric constant without exposing the VM's mutable global object.
+    /// The lookup is evaluated when called, after package bootstrap scripts may have run.
+    /// </summary>
+    public string? FindNumericGlobalName(string prefix, double value)
+    {
+        ArgumentNullException.ThrowIfNull(prefix);
+        if (!double.IsFinite(value))
+            return null;
+        return _globals
+            .Where(pair => pair.Key.StartsWith(prefix, StringComparison.Ordinal)
+                && pair.Value is double number
+                && number == value)
+            .Select(static pair => pair.Key)
+            .Order(StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
     /// <summary>Registers the movie-to-host endpoint used by flash.external.ExternalInterface.call.</summary>
     public void RegisterExternalInterfaceCall(LumenHostCallback callback)
     {

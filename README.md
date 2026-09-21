@@ -129,6 +129,7 @@ scene description and a user-owned asset root:
 dotnet run --project src/Waddamburo.App -- \
   --scene=/path/to/scene.txt \
   --asset-root=/path/to/lumendata/packed \
+  --don-root=/path/to/don3d \
   --ticks=30 \
   --screenshot=/tmp/scene.png
 ```

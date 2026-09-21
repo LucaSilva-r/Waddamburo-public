@@ -2,6 +2,7 @@
 internal sealed record GameDataLayout(
     string Root,
     string LumenRoot,
+    string DonRoot,
     string TjaRoot,
     string SoundRoot,
     string FontPath)
@@ -13,16 +14,18 @@ internal sealed record GameDataLayout(
         requireDirectory(fullRoot, "game data root");
 
         var lumen = Path.Combine(fullRoot, "data", "lumendata", "packed");
+        var don = Path.Combine(fullRoot, "data", "don3d");
         var tja = Path.Combine(fullRoot, "custom_songs");
         var sound = Path.Combine(fullRoot, "data", "sound");
         requireDirectory(lumen, "Lumen asset root");
+        requireDirectory(don, "Don asset root");
         requireDirectory(tja, "custom-song root");
         requireDirectory(sound, "sound root");
 
         var font = fontOverride is null ? findTitleFont(fullRoot) : Path.GetFullPath(fontOverride);
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
-        return new GameDataLayout(fullRoot, lumen, tja, sound, font);
+        return new GameDataLayout(fullRoot, lumen, don, tja, sound, font);
     }
 
     private static string findTitleFont(string root)
