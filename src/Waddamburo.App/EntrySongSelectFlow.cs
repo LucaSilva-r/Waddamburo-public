@@ -1,5 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
@@ -83,7 +84,9 @@ internal static class EntrySongSelectFlow
 
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
+        var gameplayId = new SceneId("gameplay");
         var flow = new GameFlowSession();
+        var playRequests = new PlayRequestState();
         var catalog = new SceneCatalog(
             [
                 new SceneDefinition(SceneDefinition.CurrentVersion, entryId, [
@@ -100,6 +103,7 @@ internal static class EntrySongSelectFlow
                         LumenMatrix.Identity,
                         "song-select"),
                 ]),
+                new SceneDefinition(SceneDefinition.CurrentVersion, gameplayId, []),
             ],
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var loader = new LumenGameSceneLoader(
@@ -111,7 +115,8 @@ internal static class EntrySongSelectFlow
                 previewController is null ? TracePreviewController.Instance : previewController,
                 soundController is null ? TraceSoundController.Instance : soundController,
                 new ViewerFrontendServices(soundController),
-                donPresentation));
+                donPresentation,
+                playRequests));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -142,7 +147,23 @@ internal static class EntrySongSelectFlow
                     active.Player.Advance(input);
                     donRenderer?.Advance();
                     if (coordinator.Flow.State != GameFlowState.TransitionPending)
+                    {
+                        if (active.Id == songSelectId && playRequests.Pending is not null)
+                        {
+                            reportDiagnostics(active);
+                            coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
+                            var request = playRequests.ActivatePending();
+                            active = requireLumenScene(coordinator);
+                            textureIds = uploadTextures(application, active);
+                            if (sceneBgm is { } previousBgm)
+                                audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
+                            sceneBgm = null;
+                            Console.WriteLine(
+                                $"Activated gameplay for '{request.Song}' with {request.Players.Length} player(s) at tick {simulationTick}.");
+                        }
                         return;
+                    }
+
                     if (soundController?.IsVoicePlaying == true)
                         return;
 
@@ -215,7 +236,8 @@ internal static class EntrySongSelectFlow
         ISongPreviewController previews,
         ISongSelectSoundController sounds,
         ILumenFrontendServices frontend,
-        IDonPresentationController? don) : ILumenLayerHostFactory
+        IDonPresentationController? don,
+        IPlayRequestSink playRequests) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
@@ -224,6 +246,7 @@ internal static class EntrySongSelectFlow
         private readonly ISongSelectSoundController _sounds = sounds;
         private readonly ILumenFrontendServices _frontend = frontend;
         private readonly IDonPresentationController? _don = don;
+        private readonly IPlayRequestSink _playRequests = playRequests;
 
         public LumenLayerHost Create(SceneLayerDefinition layer) => layer.HostId switch
         {
@@ -260,7 +283,8 @@ internal static class EntrySongSelectFlow
                 new SongSelectSession(
                     _catalog,
                     _textures,
-                    _previews),
+                    _previews,
+                    _playRequests),
                 _sounds,
                 _don);
             return new LumenLayerHost(binding, binding.Attach);

@@ -66,6 +66,13 @@ public sealed class GameFlowSession : ISceneTransitionSink
         beginLoad(CurrentScene ?? throw new InvalidOperationException("No active scene exists."));
     }
 
+    public void LoadScene(SceneId scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        requireState(GameFlowState.Active);
+        beginLoad(scene);
+    }
+
     public void CancelLoading()
     {
         requireState(GameFlowState.Loading);

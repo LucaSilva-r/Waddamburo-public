@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Rendering;
@@ -74,7 +75,8 @@ public sealed class SongSelectSessionTests
         var snapshot = await catalog.RefreshAsync();
         var textures = new RecordingTextureService();
         var previews = new RecordingPreviewController();
-        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), textures, previews);
+        var playRequests = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), textures, previews, playRequests);
 
         var surface = session.GetBoardTexture(0, 0, SongBoardTextureKind.Compact);
         var preview = session.Preview(0, 0);
@@ -88,7 +90,39 @@ public sealed class SongSelectSessionTests
         Assert.Equal("oni", selection.PlayerOneChart.StableId);
         Assert.Null(selection.PlayerTwoChart);
         Assert.Null(previews.Current);
+        var request = Assert.IsType<PlayRequest>(playRequests.Pending);
+        Assert.Equal(snapshot.Revision, request.CatalogRevision);
+        Assert.Equal(selection.Song, request.Song);
+        Assert.Equal(new CatalogAssetKey(new CatalogProviderId("synthetic"), "audio"), request.AudioAsset);
+        var player = Assert.Single(request.Players);
+        Assert.Equal(LocalPlayerSlot.PlayerOne, player.Player);
+        Assert.Equal(selection.PlayerOneChart, player.Chart);
+        Assert.Equal(new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"), player.ChartAsset);
+        Assert.Equal(TaikoCourse.Oni, player.Course);
         Assert.Throws<InvalidOperationException>(() => session.Select(0, 0, (int)TaikoCourse.Hard, -1));
+    }
+
+    [Fact]
+    public async Task PendingPlayRequestMustBeConsumedBeforeAnotherLaunch()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var session = new SongSelectSession(
+            new SongSelectCatalogView(snapshot),
+            new RecordingTextureService(),
+            new RecordingPreviewController(),
+            pending);
+
+        session.Select(0, 0, (int)TaikoCourse.Easy, -1);
+
+        Assert.Throws<InvalidOperationException>(() => session.Select(0, 0, (int)TaikoCourse.Oni, -1));
+        var first = pending.ActivatePending();
+        Assert.Equal(TaikoCourse.Easy, Assert.Single(first.Players).Course);
+
+        pending.ClearActive();
+        session.Select(0, 0, (int)TaikoCourse.Oni, -1);
+        Assert.Equal(TaikoCourse.Oni, Assert.Single(pending.Pending!.Players).Course);
     }
 
     private sealed class SyntheticProvider : ISongCatalogProvider

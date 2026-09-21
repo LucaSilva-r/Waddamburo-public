@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Rendering;
 
 namespace Waddamburo.Game.SongSelect;
@@ -49,15 +50,18 @@ public sealed class SongSelectSession
 {
     private readonly ISongBoardTextureService _textures;
     private readonly ISongPreviewController _previews;
+    private readonly IPlayRequestSink _playRequests;
 
     public SongSelectSession(
         SongSelectCatalogView catalog,
         ISongBoardTextureService textures,
-        ISongPreviewController previews)
+        ISongPreviewController previews,
+        IPlayRequestSink playRequests)
     {
         Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _textures = textures ?? throw new ArgumentNullException(nameof(textures));
         _previews = previews ?? throw new ArgumentNullException(nameof(previews));
+        _playRequests = playRequests ?? throw new ArgumentNullException(nameof(playRequests));
     }
 
     public SongSelectCatalogView Catalog { get; }
@@ -99,12 +103,27 @@ public sealed class SongSelectSession
             throw new ArgumentOutOfRangeException(nameof(song));
         var playerOne = chart(selected, playerOneCourse, required: true)!;
         var playerTwo = chart(selected, playerTwoCourse, required: false);
-        StopPreview();
-        return Selection = new SongSelection(
+        var selection = new SongSelection(
             Catalog.Revision,
             selected.Descriptor.Key,
             playerOne.Key,
             playerTwo?.Key);
+        var players = playerTwo is null
+            ? new[] { request(LocalPlayerSlot.PlayerOne, playerOne) }
+            : [
+                request(LocalPlayerSlot.PlayerOne, playerOne),
+                request(LocalPlayerSlot.PlayerTwo, playerTwo),
+            ];
+        var playRequest = new PlayRequest(
+            Catalog.Revision,
+            selected.Descriptor.Key,
+            selected.Descriptor.AudioAsset,
+            players);
+        if (!_playRequests.TryRequestPlay(playRequest))
+            throw new InvalidOperationException("Another play request is already pending.");
+
+        StopPreview();
+        return Selection = selection;
     }
 
     private static SongChartDescriptor? chart(SongSelectSong song, int courseIndex, bool required)
@@ -117,4 +136,10 @@ public sealed class SongSelectSession
         return song.Descriptor.Charts.FirstOrDefault(chart => chart.Course == course)
             ?? throw new InvalidOperationException($"Song '{song.Descriptor.Key}' does not provide {course}.");
     }
+
+    private static PlayerChartRequest request(LocalPlayerSlot player, SongChartDescriptor chart) => new(
+        player,
+        chart.Key,
+        chart.ChartAsset,
+        chart.Course ?? throw new InvalidOperationException($"Chart '{chart.Key}' has no Taiko course."));
 }

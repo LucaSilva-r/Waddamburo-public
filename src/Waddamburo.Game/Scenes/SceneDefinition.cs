@@ -4,7 +4,10 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Scenes;
 
-/// <summary>Versioned, source-independent description of one composed scene.</summary>
+/// <summary>
+/// Versioned, source-independent description of one composed scene. A native-only
+/// scene may have no authored movie layers.
+/// </summary>
 public sealed record SceneDefinition
 {
     public const int CurrentVersion = 1;
@@ -19,8 +22,6 @@ public sealed record SceneDefinition
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(layers);
         var materialized = layers.ToImmutableArray();
-        if (materialized.IsEmpty)
-            throw new ArgumentException("A scene must contain at least one layer.", nameof(layers));
         if (materialized.Any(static layer => layer is null))
             throw new ArgumentException("Scene layers cannot contain null entries.", nameof(layers));
 

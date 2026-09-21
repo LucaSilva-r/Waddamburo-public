@@ -220,6 +220,48 @@ public sealed class GameFlowSessionTests
     }
 
     [Fact]
+    public async Task ProductSelectedTransitionLoadsNativeOnlyGameplayScene()
+    {
+        var entry = new SceneId("entry");
+        var gameplay = new SceneId("gameplay");
+        var catalog = new SceneCatalog(
+            [
+                new SceneDefinition(SceneDefinition.CurrentVersion, entry, [layer("entry-host")]),
+                new SceneDefinition(SceneDefinition.CurrentVersion, gameplay, []),
+            ],
+            []);
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(catalog, loader);
+        await coordinator.StartAsync(entry);
+        var previous = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
+
+        await coordinator.TransitionToAsync(gameplay);
+
+        Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
+        Assert.Equal(gameplay, coordinator.Flow.CurrentScene);
+        Assert.Equal(gameplay, coordinator.ActiveScene!.Id);
+        Assert.Equal([entry, gameplay], loader.LoadedIds);
+        Assert.Equal(1, previous.DisposeCount);
+    }
+
+    [Fact]
+    public async Task LumenLoaderCreatesAnEmptyStageForNativeOnlyScenes()
+    {
+        var gameplay = new SceneId("gameplay");
+        var loader = new LumenGameSceneLoader(new UnusedContentSource(), new UnusedHostFactory());
+
+        var loaded = await loader.LoadAsync(
+            new SceneDefinition(SceneDefinition.CurrentVersion, gameplay, []),
+            CancellationToken.None);
+        await using var scene = Assert.IsType<LumenGameSceneInstance>(loaded);
+
+        Assert.Equal(gameplay, scene.Id);
+        Assert.Empty(scene.Layers);
+        Assert.Empty(scene.Textures);
+        Assert.Empty(scene.Player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
     public void SceneDefinitionsRejectUnknownVersionsAndInvalidTransforms()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SceneDefinition(
@@ -457,6 +499,21 @@ public sealed class GameFlowSessionTests
             LoadedIds.Add(definition.Id);
             return ValueTask.FromResult<IGameSceneInstance>(new SyntheticSceneInstance(definition.Id));
         }
+    }
+
+    private sealed class UnusedContentSource : ILumenMovieContentSource
+    {
+        public ValueTask<LumenMovieContent> LoadAsync(
+            string archiveId,
+            string movieId,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("A native-only scene must not load authored content.");
+    }
+
+    private sealed class UnusedHostFactory : ILumenLayerHostFactory
+    {
+        public LumenLayerHost Create(SceneLayerDefinition layer) =>
+            throw new InvalidOperationException("A native-only scene must not create a Lumen host.");
     }
 
     private sealed class SyntheticSceneInstance(SceneId id) : IGameSceneInstance
