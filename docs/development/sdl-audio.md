@@ -85,6 +85,12 @@ Unknown system and player-effect shapes are traced.
 Player Entry's observed `RequestSystemSE(0, hit)` shape routes hit `0` to the
 common-bank Don cue and hit `1` to Ka. Song Select uses its separate observed
 `RequestPlayerSE(player, hit)` shape for the same samples.
+When a root category settles, authored `NotifyGenreFolder(category, -1, false)`
+is resolved through the pinned catalog's semantic category name rather than its
+display index. The audio adapter maps `VO_SELECT` cues 0 through 7 as Namco
+Original, J-POP, Game Music, Classical, Variety, Anime, Kids, and Vocaloid. The active category
+announcement repeats on the voice bus until another category replaces it, a
+folder opens, or the scene releases its voice ownership.
 
 `SdlAudioDeviceTests` opens the available playback backend, queues silent float
 frames while paused, verifies queue accounting and clearing, and exercises resume,

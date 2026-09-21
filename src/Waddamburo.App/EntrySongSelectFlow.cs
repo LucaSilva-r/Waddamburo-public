@@ -307,6 +307,9 @@ internal static class EntrySongSelectFlow
                 $"Lumen.{request.Kind}({string.Join(", ", request.Arguments.Select(formatHostValue))})");
         }
 
+        public void SelectCategoryVoice(string category) =>
+            Console.WriteLine($"Category voice requested for \"{category}\".");
+
         public void StopVoice() => Console.WriteLine("Lumen.StopVoice()");
     }
 

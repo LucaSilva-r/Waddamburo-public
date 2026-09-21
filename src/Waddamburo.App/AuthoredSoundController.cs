@@ -14,6 +14,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
     private AudioClip? _latestVoice;
     private AudioPlaybackHandle? _oneShotVoiceHandle;
     private AudioPlaybackHandle? _loopVoiceHandle;
+    private bool _categoryVoiceSelected;
 
     public AuthoredSoundController(AudioEngine audio, string soundRoot)
     {
@@ -65,6 +66,32 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
 
     public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);
 
+    public void SelectCategoryVoice(string category)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(category);
+        var cue = category switch
+        {
+            "Namco Original" => 0,
+            "Pop" or "J-POP" => 1,
+            "Game Music" => 2,
+            "Classical" => 3,
+            "Variety" => 4,
+            "Anime" => 5,
+            "Children and Folk" or "Kids" => 6,
+            "Vocaloid" => 7,
+            _ => -1,
+        };
+        if (cue < 0)
+        {
+            Console.WriteLine($"Category voice for \"{category}\" is unmapped.");
+            StopVoice();
+            return;
+        }
+
+        _categoryVoiceSelected = true;
+        playNamedBankCue("VO_SELECT", cue, AudioBus.Voice, loop: true);
+    }
+
     public void StopVoice()
     {
         if (_loopVoiceHandle is not { } handle)
@@ -85,6 +112,12 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
             traceUnmapped("Effect", arguments);
             return;
         }
+
+        // Song Select emits its stock initial-genre sound ID after host data is
+        // assigned. The host-owned category selection above has already resolved
+        // the custom catalog's semantic genre and must not be replaced by that ID.
+        if (_categoryVoiceSelected && bankName == "VO_SELECT" && cueId == 32)
+            return;
 
         playNamedBankCue(bankName, cueId);
     }
@@ -137,7 +170,11 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
         playNamedBankCue("SE_COM", cueId, AudioBus.DrumHit);
     }
 
-    private void playNamedBankCue(string bankName, int cueId, AudioBus? busOverride = null)
+    private void playNamedBankCue(
+        string bankName,
+        int cueId,
+        AudioBus? busOverride = null,
+        bool loop = false)
     {
         var key = (bankName, cueId);
         try
@@ -158,11 +195,17 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
                 stopVoiceImmediately(_oneShotVoiceHandle);
                 stopVoiceImmediately(_loopVoiceHandle);
                 _latestVoice = clip;
+                _oneShotVoiceHandle = null;
                 _loopVoiceHandle = null;
             }
-            var handle = _audio.Mixer.Play(clip, bus);
+            var handle = _audio.Mixer.Play(clip, bus, loop: loop);
             if (bus == AudioBus.Voice)
-                _oneShotVoiceHandle = handle;
+            {
+                if (loop)
+                    _loopVoiceHandle = handle;
+                else
+                    _oneShotVoiceHandle = handle;
+            }
             Console.WriteLine($"Authored sound {bankName}#{cueId} -> {bus}.");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)

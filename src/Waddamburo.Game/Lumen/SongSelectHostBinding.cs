@@ -62,6 +62,8 @@ public interface ISongSelectSoundController
 {
     void RequestSound(SongSelectSoundRequest request);
 
+    void SelectCategoryVoice(string category);
+
     void StopVoice();
 }
 
@@ -97,10 +99,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
             lumen.RegisterMethod("RequestSongBoardTexture_Long", call => publishBoard(call, SongBoardTextureKind.Expanded));
             lumen.RegisterMethod("NotifyStopBGM", notifyPreview);
-            lumen.RegisterMethod("NotifyOpenFolder", _ => clearSelectionSurfaces());
+            lumen.RegisterMethod("NotifyOpenFolder", _ => openFolder());
             lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
-            lumen.RegisterMethod("NotifyGenreFolder", _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod(
+                "NotifyGenreFolder",
+                notifyGenreFolder);
             lumen.RegisterMethod("SetMotion", _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("RequestSE", call => requestSound(SongSelectSoundRequestKind.Effect, call));
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
@@ -143,6 +147,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             LumenHostValue.FromBoolean(true),
             LumenHostValue.FromBoolean(true),
             LumenHostValue.FromNumber(30));
+        _sounds?.SelectCategoryVoice(_session.Catalog.Categories[0].Name);
         return true;
     }
 
@@ -203,11 +208,27 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return LumenHostValue.Undefined;
     }
 
+    private LumenHostValue notifyGenreFolder(LumenHostCall call)
+    {
+        var category = integer(call, 0);
+        var song = integer(call, 1);
+        var isFolderOpen = boolean(call, 2);
+        if (song == -1 && !isFolderOpen && (uint)category < (uint)_session.Catalog.Categories.Length)
+            _sounds?.SelectCategoryVoice(_session.Catalog.Categories[category].Name);
+        return LumenHostValue.Undefined;
+    }
+
     private LumenHostValue clearSelectionSurfaces()
     {
         requirePlayer().RemoveNativeFill("song_name_center");
         requirePlayer().RemoveNativeFill("song_name_detail");
         return LumenHostValue.Undefined;
+    }
+
+    private LumenHostValue openFolder()
+    {
+        _sounds?.StopVoice();
+        return clearSelectionSurfaces();
     }
 
     private LumenHostValue clearFolderSurfaces()
@@ -242,6 +263,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (!double.IsFinite(value) || value != Math.Truncate(value) || value < int.MinValue || value > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(call), $"Host argument {index} must be a finite integer.");
         return (int)value;
+    }
+
+    private static bool boolean(LumenHostCall call, int index)
+    {
+        if ((uint)index >= (uint)call.Arguments.Length || call.Arguments[index].Kind != LumenHostValueKind.Boolean)
+            throw new ArgumentException($"Host argument {index} must be a boolean.", nameof(call));
+        return call.Arguments[index].AsBoolean();
     }
 
     private static int optionalInteger(LumenHostCall call, int index, int fallback)
