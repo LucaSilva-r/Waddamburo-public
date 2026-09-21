@@ -32,7 +32,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
                 playBankCue(request.Arguments);
                 break;
             case LumenFrontendSoundRequestKind.SystemEffect:
-                traceUnmapped("SystemEffect", request.Arguments);
+                playEntrySystemEffect(request.Arguments);
                 break;
             case LumenFrontendSoundRequestKind.LoopVoice:
                 replayLatestVoiceOnce();
@@ -107,6 +107,30 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
         if (cueId < 0)
         {
             traceUnmapped("PlayerEffect", arguments);
+            return;
+        }
+        playNamedBankCue("SE_COM", cueId, AudioBus.DrumHit);
+    }
+
+    private void playEntrySystemEffect(System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments)
+    {
+        if (!tryInteger(arguments, 0, out var group)
+            || !tryInteger(arguments, 1, out var hitKind)
+            || group != 0)
+        {
+            traceUnmapped("SystemEffect", arguments);
+            return;
+        }
+
+        var cueId = hitKind switch
+        {
+            0 => 0, // Don / confirm
+            1 => 3, // Ka / navigation
+            _ => -1,
+        };
+        if (cueId < 0)
+        {
+            traceUnmapped("SystemEffect", arguments);
             return;
         }
         playNamedBankCue("SE_COM", cueId, AudioBus.DrumHit);

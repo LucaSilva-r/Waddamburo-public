@@ -80,6 +80,9 @@ hit kind. Browser feedback uses the common `SE_COM` bank: cue 0 for Don (centre)
 and cue 3 for Ka (rim). This remains driven by authored `RequestPlayerSE` calls,
 not by platform-specific key bindings, and plays on the dedicated drum-hit bus.
 Unknown system and player-effect shapes are traced.
+Player Entry's observed `RequestSystemSE(0, hit)` shape routes hit `0` to the
+common-bank Don cue and hit `1` to Ka. Song Select uses its separate observed
+`RequestPlayerSE(player, hit)` shape for the same samples.
 
 `SdlAudioDeviceTests` opens the available playback backend, queues silent float
 frames while paused, verifies queue accounting and clearing, and exercises resume,
