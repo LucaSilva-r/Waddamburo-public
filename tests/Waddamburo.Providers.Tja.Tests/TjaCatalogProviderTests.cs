@@ -218,6 +218,119 @@ public sealed class TjaCatalogProviderTests
         Assert.Equal("Game", Assert.Single(snapshot.Categories).Name);
     }
 
+    [Fact]
+    public async Task PlayableChartLoadsTheSelectedSectionWithAbsoluteTimelineEvents()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText(
+            "Game/timeline.tja",
+            """
+            TITLE:Timeline
+            BPM:120
+            OFFSET:-0.25
+            COURSE:Easy
+            LEVEL:2
+            #START
+            1000,
+            #END
+            COURSE:Oni
+            LEVEL:8
+            #START
+            3000,
+            #BPMCHANGE 240
+            #MEASURE 3/4
+            #SCROLL 2
+            #GOGOSTART
+            0100,
+            #DELAY 0.5
+            #BARLINEOFF
+            0010,
+            #END
+            """);
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var descriptor = Assert.Single(contribution.Songs).Charts.Single(chart => chart.Course == TaikoCourse.Oni);
+
+        var chart = await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset);
+
+        Assert.Equal(TimeSpan.FromSeconds(-0.25), chart.AuthoredOffset);
+        Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+        Assert.Collection(
+            chart.HitObjects,
+            note =>
+            {
+                Assert.Equal(TimeSpan.Zero, note.StartTime);
+                Assert.Equal(PlayableNoteKind.BigDon, note.Kind);
+                Assert.True(note.IsStrong);
+            },
+            note =>
+            {
+                Assert.Equal(TimeSpan.FromSeconds(2.1875), note.StartTime);
+                Assert.Equal(PlayableNoteKind.Don, note.Kind);
+            },
+            note =>
+            {
+                Assert.Equal(TimeSpan.FromSeconds(3.625), note.StartTime);
+                Assert.Equal(PlayableNoteKind.Don, note.Kind);
+            });
+        Assert.Collection(
+            chart.TimingPoints,
+            point => Assert.Equal((TimeSpan.Zero, 120d, 4, 4),
+                (point.Time, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
+            point => Assert.Equal((TimeSpan.FromSeconds(2), 240d, 3, 4),
+                (point.Time, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)));
+        Assert.Collection(
+            chart.ScrollPoints,
+            point => Assert.Equal((TimeSpan.Zero, 1d), (point.Time, point.Multiplier)),
+            point => Assert.Equal((TimeSpan.FromSeconds(2), 2d), (point.Time, point.Multiplier)));
+        Assert.Collection(
+            chart.EffectPoints,
+            point => Assert.Equal((TimeSpan.Zero, false), (point.Time, point.IsGoGo)),
+            point => Assert.Equal((TimeSpan.FromSeconds(2), true), (point.Time, point.IsGoGo)));
+        Assert.Collection(
+            chart.BarLines,
+            line => Assert.Equal((TimeSpan.Zero, true), (line.Time, line.IsVisible)),
+            line => Assert.Equal((TimeSpan.FromSeconds(2), true), (line.Time, line.IsVisible)),
+            line => Assert.Equal((TimeSpan.FromSeconds(3.25), false), (line.Time, line.IsVisible)));
+
+        await using var stream = await provider.OpenReadAsync(descriptor.ChartAsset);
+        Assert.True(stream.Length > 0);
+    }
+
+    [Fact]
+    public async Task PlayableChartRejectsAFileChangedAfterCatalogScan()
+    {
+        using var library = new TemporaryLibrary();
+        const string path = "Game/song.tja";
+        library.WriteText(path, "TITLE:Song\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var descriptor = Assert.Single(Assert.Single(contribution.Songs).Charts);
+        library.WriteText(path, "TITLE:Changed\nBPM:120\nCOURSE:Oni\n#START\n2000,\n#END\n");
+
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset));
+
+        Assert.Contains("rescan", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PlayableChartFailsExplicitlyForUnsupportedLongNotes()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText(
+            "Game/song.tja",
+            "TITLE:Roll\nBPM:120\nCOURSE:Oni\n#START\n5008,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var descriptor = Assert.Single(Assert.Single(contribution.Songs).Charts);
+
+        var exception = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset));
+
+        Assert.Contains("note type '5'", exception.Message, StringComparison.Ordinal);
+    }
+
     private sealed class TemporaryLibrary : IDisposable
     {
         private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("waddamburo-tja-");

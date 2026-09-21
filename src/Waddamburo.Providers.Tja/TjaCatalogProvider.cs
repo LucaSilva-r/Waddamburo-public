@@ -6,7 +6,7 @@ using Waddamburo.Catalog;
 namespace Waddamburo.Providers.Tja;
 
 /// <summary>Discovers read-only custom TJA songs below one configured library root.</summary>
-public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver
+public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
 {
     private readonly string _root;
     private readonly TjaProviderOptions _options;
@@ -167,7 +167,9 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         if (asset.Provider != Id)
             throw new ArgumentException("The asset belongs to a different catalog provider.", nameof(asset));
         cancellationToken.ThrowIfCancellationRequested();
-        var relativePath = TjaAssetKeyCodec.Decode(asset);
+        var relativePath = TjaChartAssetKeyCodec.IsChart(asset)
+            ? TjaChartAssetKeyCodec.Decode(asset).RelativePath
+            : TjaAssetKeyCodec.Decode(asset);
         var path = resolveContainedPath(relativePath);
         rejectReparsePoints(path);
         Stream stream = new FileStream(
@@ -178,6 +180,37 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         return ValueTask.FromResult(stream);
+    }
+
+    public async ValueTask<PlayableChart> LoadChartAsync(
+        ChartKey chart,
+        CatalogAssetKey asset,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chart);
+        ArgumentNullException.ThrowIfNull(asset);
+        if (chart.Song.Source != Source)
+            throw new ArgumentException("The chart does not belong to the custom TJA source.", nameof(chart));
+        if (asset.Provider != Id)
+            throw new ArgumentException("The chart asset belongs to a different catalog provider.", nameof(asset));
+        var locator = TjaChartAssetKeyCodec.Decode(asset);
+        var path = resolveContainedPath(locator.RelativePath);
+        rejectReparsePoints(path);
+        var file = new FileInfo(path);
+        if (!file.Exists)
+            throw new FileNotFoundException("The selected TJA chart no longer exists.");
+        if (file.Length > _options.MaximumChartBytes)
+            throw new InvalidDataException("The selected TJA chart exceeds the configured chart-size limit.");
+        var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        var currentHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        if (!string.Equals(currentHash, locator.SourceHash, StringComparison.Ordinal))
+            throw new InvalidDataException("The selected TJA chart changed after the catalog snapshot was published; rescan the library.");
+        return TjaPlayableChartReader.Read(
+            bytes,
+            chart,
+            locator,
+            _options.MaximumMeasures,
+            _options.MaximumNotes);
     }
 
     private string[] enumerateCharts(CancellationToken cancellationToken)
@@ -224,7 +257,13 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             charts.Add(new SongChartDescriptor(
                 new ChartKey(song, stableId),
                 chart.DifficultyName,
-                TjaAssetKeyCodec.Encode(Id, file.RelativePath),
+                TjaChartAssetKeyCodec.Encode(
+                    Id,
+                    file.RelativePath,
+                    file.SourceHash,
+                    course,
+                    chart.Player,
+                    chart.Occurrence),
                 course,
                 chart.Level));
         }

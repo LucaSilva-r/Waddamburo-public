@@ -124,6 +124,7 @@ internal static class EntrySongSelectFlow
         {
             var active = requireLumenScene(coordinator);
             var textureIds = uploadTextures(application, active);
+            PlayableChart[] activeGameplayCharts = [];
             var simulationTick = 0;
 
             RenderFrame createFrame(double interpolationFraction)
@@ -148,18 +149,24 @@ internal static class EntrySongSelectFlow
                     donRenderer?.Advance();
                     if (coordinator.Flow.State != GameFlowState.TransitionPending)
                     {
-                        if (active.Id == songSelectId && playRequests.Pending is not null)
+                        if (active.Id == songSelectId && playRequests.Pending is { } pendingRequest)
                         {
                             reportDiagnostics(active);
+                            var loadedCharts = pendingRequest.Players
+                                .Select(player => tja.LoadChartAsync(player.Chart, player.ChartAsset)
+                                    .AsTask().GetAwaiter().GetResult())
+                                .ToArray();
                             coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                             var request = playRequests.ActivatePending();
+                            activeGameplayCharts = loadedCharts;
                             active = requireLumenScene(coordinator);
                             textureIds = uploadTextures(application, active);
                             if (sceneBgm is { } previousBgm)
                                 audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
                             sceneBgm = null;
                             Console.WriteLine(
-                                $"Activated gameplay for '{request.Song}' with {request.Players.Length} player(s) at tick {simulationTick}.");
+                                $"Activated gameplay for '{request.Song}' with {request.Players.Length} player(s), "
+                                + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
                         }
                         return;
                     }
@@ -187,6 +194,8 @@ internal static class EntrySongSelectFlow
                 screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
 
             Console.WriteLine($"Active scene: {active.Id}");
+            if (active.Id == gameplayId)
+                Console.WriteLine($"Loaded gameplay charts: {activeGameplayCharts.Length}.");
             reportDiagnostics(active);
             if (result.DroppedTicks > 0)
                 Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");

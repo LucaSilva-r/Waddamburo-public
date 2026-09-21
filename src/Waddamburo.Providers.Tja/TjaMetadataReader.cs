@@ -12,7 +12,7 @@ internal static class TjaMetadataReader
 
     public static TjaMetadata Read(ReadOnlySpan<byte> bytes)
     {
-        var text = decode(bytes);
+        var text = Decode(bytes);
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var charts = new List<TjaChartMetadata>();
         string? course = null;
@@ -22,7 +22,7 @@ internal static class TjaMetadataReader
 
         foreach (var rawLine in text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n'))
         {
-            var line = stripComment(rawLine).Trim();
+            var line = StripComment(rawLine).Trim();
             if (line.Length == 0)
                 continue;
             if (line.StartsWith("#START", StringComparison.OrdinalIgnoreCase))
@@ -40,7 +40,7 @@ internal static class TjaMetadataReader
                     charts.Add(new TjaChartMetadata(null, $"Invalid #START {rawPlayer}", null, rawPlayer, 0));
                     continue;
                 }
-                if (!tryParseCourse(course, out var parsedCourse))
+                if (!TryParseCourse(course, out var parsedCourse))
                 {
                     charts.Add(new TjaChartMetadata(null, course ?? "Missing COURSE", null, player, 0));
                     continue;
@@ -78,7 +78,7 @@ internal static class TjaMetadataReader
         return new TjaMetadata(headers, charts);
     }
 
-    private static string decode(ReadOnlySpan<byte> bytes)
+    internal static string Decode(ReadOnlySpan<byte> bytes)
     {
         if (bytes.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }))
             return StrictUtf8.GetString(bytes[3..]);
@@ -97,13 +97,13 @@ internal static class TjaMetadataReader
         }
     }
 
-    private static string stripComment(string line)
+    internal static string StripComment(string line)
     {
         var comment = line.IndexOf("//", StringComparison.Ordinal);
         return comment < 0 ? line : line[..comment];
     }
 
-    private static bool tryParseCourse(string? value, out TaikoCourse course)
+    internal static bool TryParseCourse(string? value, out TaikoCourse course)
     {
         switch (value?.Trim().ToUpperInvariant())
         {

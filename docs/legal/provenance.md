@@ -60,6 +60,18 @@ expresses metadata/course normalization, encoding fallback, relative-audio, and
 source-identity behavior behind Waddamburo's catalog contracts; synthetic public
 tests were authored specifically for this repository.
 
+`src/Waddamburo.Catalog/PlayableChart.cs` and the playable-chart conversion in
+`src/Waddamburo.Providers.Tja/` are original Waddamburo implementations. Their
+separation of absolute-time hit objects from timing, scroll, and effect control
+points was architecturally informed by the MIT-licensed osu!lazer source at commit
+`48c4800e3ae4ee752452cdff83bd3787ccf3105f`, principally
+`osu.Game/Beatmaps/ControlPoints/ControlPointInfo.cs`, `TimingControlPoint.cs`,
+`osu.Game/Rulesets/Scoring/HitWindows.cs`, and the Taiko ruleset's
+`Objects/Drawables/DrawableHit.cs` and `Scoring/TaikoHitWindows.cs`. No osu! source
+is copied verbatim, linked, or packaged; the TJA timeline conversion and public
+synthetic regressions were independently written for Waddamburo. The retained
+upstream attribution is recorded in `THIRD_PARTY_NOTICES.md`.
+
 The Song Select host, native-fill surface contract, package bootstrap, and dynamic
 MovieClip behavior are original public implementations. Behavioral expectations
 were checked against the private experimental viewer and user-supplied Green assets
