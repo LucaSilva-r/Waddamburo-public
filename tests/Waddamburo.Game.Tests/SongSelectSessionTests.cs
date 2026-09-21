@@ -3,13 +3,38 @@ using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
 
 public sealed class SongSelectSessionTests
 {
     [Fact]
-    public void CoursePresentationPublishesOniAndUraWithoutCourseRestrictions()
+    public void AuthoredOnePlayerSelectionAcceptsNonFinitePlayerTwoSentinel()
+    {
+        var request = AuthoredSongSelectionRequest.FromHostCall(new LumenHostCall([
+            LumenHostValue.FromNumber(2),
+            LumenHostValue.FromNumber(7),
+            LumenHostValue.FromNumber(3),
+            LumenHostValue.FromNumber(double.NaN),
+        ]));
+
+        Assert.Equal(new AuthoredSongSelectionRequest(2, 7, 3, null), request);
+    }
+
+    [Fact]
+    public void AuthoredSelectionKeepsRequiredFieldsStrict()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            AuthoredSongSelectionRequest.FromHostCall(new LumenHostCall([
+                LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber(double.NaN),
+            ])));
+    }
+
+    [Fact]
+    public void CoursePresentationPublishesLevelsAndRejectsUnavailableCourses()
     {
         var key = new SongKey(SongSourceKind.Tja, "course-projection");
         var descriptor = new SongDescriptor(
@@ -37,7 +62,14 @@ public sealed class SongSelectSessionTests
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
-        Assert.Equal(AuthoredSongCourseBits.None, presentation.InvalidCourses);
+        Assert.Equal(
+            AuthoredSongCourseBits.Easy
+                | AuthoredSongCourseBits.Normal
+                | AuthoredSongCourseBits.Hard
+                | AuthoredSongCourseBits.HiddenEasy
+                | AuthoredSongCourseBits.HiddenNormal
+                | AuthoredSongCourseBits.HiddenHard,
+            presentation.InvalidCourses);
         Assert.Equal(8, presentation.OniStars);
         Assert.Equal(9, presentation.HiddenOniStars);
         Assert.Equal(0, presentation.EasyStars);

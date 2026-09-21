@@ -103,7 +103,7 @@ internal static class EntrySongSelectFlow
                         LumenMatrix.Identity,
                         "song-select"),
                 ]),
-                new SceneDefinition(SceneDefinition.CurrentVersion, gameplayId, []),
+                GameplaySceneComposition.Create(gameplayId),
             ],
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var loader = new LumenGameSceneLoader(
@@ -322,6 +322,7 @@ internal static class EntrySongSelectFlow
                 new LumenFrontendHostBinding(_frontend, _flow, _don),
                 initializeEntry),
             "song-select" => createSongSelectHost(),
+            GameplaySceneComposition.StaticHostId => new LumenLayerHost(null),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 

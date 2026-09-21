@@ -35,7 +35,7 @@ public readonly record struct SongSelectCoursePresentation(
     {
         ArgumentNullException.ThrowIfNull(song);
         return new SongSelectCoursePresentation(
-            AuthoredSongCourseBits.None,
+            invalidCourses(song),
             song.Level(TaikoCourse.Easy) ?? 0,
             song.Level(TaikoCourse.Normal) ?? 0,
             song.Level(TaikoCourse.Hard) ?? 0,
@@ -44,6 +44,22 @@ public readonly record struct SongSelectCoursePresentation(
             0,
             0,
             song.Level(TaikoCourse.Ura) ?? 0);
+    }
+
+    private static AuthoredSongCourseBits invalidCourses(SongSelectSong song)
+    {
+        var available = AuthoredSongCourseBits.None;
+        if (song.HasCourse(TaikoCourse.Easy))
+            available |= AuthoredSongCourseBits.Easy;
+        if (song.HasCourse(TaikoCourse.Normal))
+            available |= AuthoredSongCourseBits.Normal;
+        if (song.HasCourse(TaikoCourse.Hard))
+            available |= AuthoredSongCourseBits.Hard;
+        if (song.HasCourse(TaikoCourse.Oni))
+            available |= AuthoredSongCourseBits.Oni;
+        if (song.HasCourse(TaikoCourse.Ura))
+            available |= AuthoredSongCourseBits.HiddenOni;
+        return AuthoredSongCourseBits.All & ~available;
     }
 }
 
@@ -58,6 +74,45 @@ public enum SongSelectSoundRequestKind
 public readonly record struct SongSelectSoundRequest(
     SongSelectSoundRequestKind Kind,
     System.Collections.Immutable.ImmutableArray<LumenHostValue> Arguments);
+
+/// <summary>The typed terminal selection emitted by the authored Song Select movie.</summary>
+public readonly record struct AuthoredSongSelectionRequest(
+    int Category,
+    int Song,
+    int PlayerOneCourse,
+    int? PlayerTwoCourse)
+{
+    public static AuthoredSongSelectionRequest FromHostCall(LumenHostCall call) => new(
+        requiredInteger(call, 0),
+        requiredInteger(call, 1),
+        requiredInteger(call, 2),
+        optionalInteger(call, 3));
+
+    private static int requiredInteger(LumenHostCall call, int index)
+    {
+        if ((uint)index >= (uint)call.Arguments.Length || call.Arguments[index].Kind != LumenHostValueKind.Number)
+            throw new ArgumentException($"Song selection argument {index} must be a number.", nameof(call));
+        var value = call.Arguments[index].AsNumber();
+        if (!double.IsFinite(value) || value != Math.Truncate(value) || value < int.MinValue || value > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(call), $"Song selection argument {index} must be a finite integer.");
+        return (int)value;
+    }
+
+    private static int? optionalInteger(LumenHostCall call, int index)
+    {
+        if ((uint)index >= (uint)call.Arguments.Length
+            || call.Arguments[index].Kind is LumenHostValueKind.Undefined or LumenHostValueKind.Null)
+        {
+            return null;
+        }
+        if (call.Arguments[index].Kind == LumenHostValueKind.Number
+            && !double.IsFinite(call.Arguments[index].AsNumber()))
+        {
+            return null;
+        }
+        return requiredInteger(call, index);
+    }
+}
 
 public interface ISongSelectSoundController
 {
@@ -253,7 +308,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue notifySelection(LumenHostCall call)
     {
-        _session.Select(integer(call, 0), integer(call, 1), integer(call, 2), optionalInteger(call, 3, -1));
+        var request = AuthoredSongSelectionRequest.FromHostCall(call);
+        _session.Select(
+            request.Category,
+            request.Song,
+            request.PlayerOneCourse,
+            request.PlayerTwoCourse ?? -1);
         return LumenHostValue.Undefined;
     }
 
@@ -281,16 +341,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if ((uint)index >= (uint)call.Arguments.Length || call.Arguments[index].Kind != LumenHostValueKind.Boolean)
             throw new ArgumentException($"Host argument {index} must be a boolean.", nameof(call));
         return call.Arguments[index].AsBoolean();
-    }
-
-    private static int optionalInteger(LumenHostCall call, int index, int fallback)
-    {
-        if ((uint)index >= (uint)call.Arguments.Length
-            || call.Arguments[index].Kind is LumenHostValueKind.Undefined or LumenHostValueKind.Null)
-        {
-            return fallback;
-        }
-        return integer(call, index);
     }
 
 }
