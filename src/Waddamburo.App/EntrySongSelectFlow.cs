@@ -81,6 +81,7 @@ internal static class EntrySongSelectFlow
             application,
             fontPath,
             asynchronous: screenshotPath is null);
+        using var gameplayPresentation = new TaikoGameplayPresentation(application);
 
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
@@ -133,13 +134,17 @@ internal static class EntrySongSelectFlow
             RenderFrame createFrame(double interpolationFraction)
             {
                 titleTextures.UploadCompleted();
-                return LumenRenderFrameAdapter.Compose(
+                var frame = LumenRenderFrameAdapter.Compose(
                     active.Player.CreateRenderSnapshot((float)interpolationFraction),
                     RenderColor.WaddamburoBlue,
                     index => index < textureIds.Length
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
                     surface => donPresentation?.Resolve(surface) ?? titleTextures.Resolve(surface));
+                if (active.Id != gameplayId)
+                    return frame;
+                var chartTime = TimeSpan.FromSeconds((simulationTick - gameplayStartTick + interpolationFraction) / 60d);
+                return gameplayPresentation.Compose(frame, chartTime);
             }
 
             var result = application.Run(
@@ -167,6 +172,7 @@ internal static class EntrySongSelectFlow
                             var request = playRequests.ActivatePending();
                             activeGameplayCharts = loadedCharts;
                             gameplayStartTick = simulationTick;
+                            gameplayPresentation.Start(activeGameplayCharts);
                             active = requireLumenScene(coordinator);
                             textureIds = uploadTextures(application, active);
                             if (sceneBgm is { } previousBgm)
@@ -207,6 +213,7 @@ internal static class EntrySongSelectFlow
                         else if (active.Id == gameplayId)
                         {
                             var elapsed = TimeSpan.FromSeconds((simulationTick - gameplayStartTick) / 60d);
+                            gameplayPresentation.Advance(keyboardState, elapsed);
                             var chartFinished = activeGameplayCharts.Length != 0
                                 && elapsed >= activeGameplayCharts.Max(static chart => chart.Duration)
                                     + TimeSpan.FromSeconds(1);
@@ -218,6 +225,7 @@ internal static class EntrySongSelectFlow
                                 if (gameplayMusic is { } currentMusic)
                                     audioEngine?.Mixer.Stop(currentMusic, TimeSpan.FromMilliseconds(20));
                                 gameplayMusic = null;
+                                gameplayPresentation.Stop();
                                 playRequests.ClearActive();
                                 coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
                                 activeGameplayCharts = [];

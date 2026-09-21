@@ -197,6 +197,12 @@ copied into the repository.
 Interactive Song Select also resolves each TJA's opaque audio asset through the
 provider and plays a debounced, seeked preview through the shared mixer. Changing
 or selecting the song and unloading the scene cancel and release that stream.
+Completing a one-player course selection loads the exact catalog-pinned TJA chart,
+swaps to the composed gameplay Lumen scene, starts the selected song stream, and
+renders timestamped Don/Ka notes above the authored lane. `F`/`J` are the left and
+right Don inputs, `D`/`K` are Ka, and Escape returns to a fresh Song Select scene.
+The initial gameplay composition deliberately rejects two-player launches until a
+two-lane presentation and input contract are implemented.
 `--sound-root=/path/to/user-owned-sound-tree` additionally enables authored
 nuSound2 bank/cue effects and voices; unresolved system/player request shapes are
 logged rather than guessed.
