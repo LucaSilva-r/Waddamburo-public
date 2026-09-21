@@ -21,15 +21,60 @@ try
     var archivePath = parseOption(args, "--archive=");
     var movieName = parseOption(args, "--movie=");
     var scenePath = parseOption(args, "--scene=");
+    var gameDataRoot = parseOption(args, "--game-data=");
     var assetRoot = parseOption(args, "--asset-root=");
     var tjaRoot = parseOption(args, "--tja-root=");
     var fontPath = parseOption(args, "--font=");
     var audioPath = parseOption(args, "--play-audio=");
     var jinglePath = parseOption(args, "--play-jingle=");
     var soundRoot = parseOption(args, "--sound-root=");
+    var positionalRoots = args.Where(static argument => !argument.StartsWith("--", StringComparison.Ordinal)).ToArray();
+    if (positionalRoots.Length > 1)
+        throw new ArgumentException("Normal boot accepts at most one positional game-data directory.");
+    if (gameDataRoot is not null && positionalRoots.Length != 0)
+        throw new ArgumentException("Supply the game-data directory either positionally or with --game-data, not both.");
+    gameDataRoot ??= positionalRoots.SingleOrDefault();
     if (audioPath is not null && jinglePath is not null)
         throw new ArgumentException("--play-audio and --play-jingle cannot be combined.");
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
+    var hasDiagnosticContent = entrySongSelect
+        || archivePath is not null
+        || movieName is not null
+        || scenePath is not null
+        || assetRoot is not null
+        || tjaRoot is not null
+        || audioPath is not null
+        || jinglePath is not null
+        || soundRoot is not null;
+    var normalBoot = gameDataRoot is not null || !hasDiagnosticContent;
+    if (normalBoot)
+    {
+        if (archivePath is not null || movieName is not null || scenePath is not null
+            || assetRoot is not null || tjaRoot is not null || audioPath is not null
+            || soundRoot is not null || entrySongSelect)
+        {
+            throw new ArgumentException("--game-data cannot be combined with diagnostic content options.");
+        }
+        if (seekFrame is not null || !callbackInvocations.IsEmpty)
+            throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
+
+        var layout = GameDataLayout.Resolve(gameDataRoot ?? Directory.GetCurrentDirectory(), fontPath);
+        Console.WriteLine($"Game data: {layout.Root}");
+        Console.WriteLine($"Title font: {layout.FontPath}");
+        EntrySongSelectFlow.Run(
+            layout.LumenRoot,
+            windowSize.Width,
+            windowSize.Height,
+            frameLimit,
+            tickLimit,
+            screenshotPath,
+            inputTimeline,
+            layout.TjaRoot,
+            layout.FontPath,
+            jinglePath,
+            layout.SoundRoot);
+        return 0;
+    }
     if (entrySongSelect)
     {
         if (audioPath is not null)

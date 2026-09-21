@@ -148,6 +148,22 @@ static composition slice does not yet implement script-driven `MovieClipLoader`.
 The game-flow diagnostic can exercise the configured Green Entry-to-Song-Select
 handoff using user-owned archives below one explicit asset root:
 
+For normal play, supply only the game's `USRDIR` directory. It resolves
+`data/lumendata/packed`, `custom_songs`, and `data/sound` from that root and boots
+the player Entry scene:
+
+```sh
+dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"
+```
+
+The equivalent explicit form is `--game-data=/path/to/game/USRDIR`. If the process
+working directory is already `USRDIR`, no arguments are required. A user-owned
+TrueType/OpenType font placed in `data/font` is selected automatically, with
+`font.ttf`, `font.otf`, and `font.ttc` preferred in that order. Otherwise an
+installed Japanese-capable system font is used. `--font=/path/to/font` remains the
+highest-priority override. All granular content options below are retained for
+diagnostic runs.
+
 ```sh
 dotnet run --project src/Waddamburo.App -- \
   --entry-song-select \
