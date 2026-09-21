@@ -60,6 +60,26 @@ public sealed class AudioMixerTests
     }
 
     [Fact]
+    public void BusFadeSilencesAndRestoresAContinuouslyAdvancingVoice()
+    {
+        var mixer = new AudioMixer(StereoFourHertz);
+        mixer.Play(
+            new AudioClip(StereoFourHertz, [1f, 1f, 1f, 1f, 1f, 1f]),
+            AudioBus.Bgm,
+            loop: true);
+        mixer.FadeBusVolume(AudioBus.Bgm, 0f, TimeSpan.FromSeconds(1));
+        var fadeOut = new float[10];
+
+        mixer.Render(fadeOut);
+        mixer.FadeBusVolume(AudioBus.Bgm, 1f, TimeSpan.FromSeconds(1));
+        var fadeIn = new float[10];
+        mixer.Render(fadeIn);
+
+        Assert.Equal([1f, 1f, 0.75f, 0.75f, 0.5f, 0.5f, 0.25f, 0.25f, 0f, 0f], fadeOut);
+        Assert.Equal([0f, 0f, 0.25f, 0.25f, 0.5f, 0.5f, 0.75f, 0.75f, 1f, 1f], fadeIn);
+    }
+
+    [Fact]
     public void StopFadeReachesSilenceAndRemovesVoice()
     {
         var mixer = new AudioMixer(StereoFourHertz);

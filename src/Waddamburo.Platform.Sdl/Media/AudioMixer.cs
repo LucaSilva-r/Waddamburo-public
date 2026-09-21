@@ -287,7 +287,18 @@ public sealed class AudioMixer
         validateBus(bus);
         validateVolume(volume, nameof(volume));
         lock (_gate)
-            _buses[(int)bus].Volume = volume;
+            _buses[(int)bus].SetVolume(volume);
+    }
+
+    /// <summary>Ramps a bus without stopping or rewinding any voice routed through it.</summary>
+    public void FadeBusVolume(AudioBus bus, float volume, TimeSpan duration)
+    {
+        validateBus(bus);
+        validateVolume(volume, nameof(volume));
+        ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero);
+        var frames = checked((long)Math.Ceiling(duration.TotalSeconds * Format.SampleRate));
+        lock (_gate)
+            _buses[(int)bus].FadeTo(volume, frames);
     }
 
     public void SetBusMuted(AudioBus bus, bool muted)
@@ -334,7 +345,9 @@ public sealed class AudioMixer
                     var fade = voice.FadeFramesTotal == 0
                         ? 1f
                         : (float)voice.FadeFramesRemaining / voice.FadeFramesTotal;
-                    var gain = bus.Muted ? 0f : _masterVolume * bus.Volume * voice.Volume * fade;
+                    var gain = bus.Muted
+                        ? 0f
+                        : _masterVolume * bus.VolumeAt(outputFrame) * voice.Volume * fade;
                     var sourceOffset = voice.Position * Format.Channels;
                     var outputOffset = outputFrame * Format.Channels;
                     for (var channel = 0; channel < Format.Channels; channel++)
@@ -366,7 +379,9 @@ public sealed class AudioMixer
                     var fade = voice.FadeFramesTotal == 0
                         ? 1f
                         : (float)voice.FadeFramesRemaining / voice.FadeFramesTotal;
-                    var gain = bus.Muted ? 0f : _masterVolume * bus.Volume * voice.Volume * fade;
+                    var gain = bus.Muted
+                        ? 0f
+                        : _masterVolume * bus.VolumeAt(frame) * voice.Volume * fade;
                     var offset = frame * Format.Channels;
                     for (var channel = 0; channel < Format.Channels; channel++)
                         interleavedDestination[offset + channel] += voice.Buffer[offset + channel] * gain;
@@ -381,6 +396,8 @@ public sealed class AudioMixer
             }
             for (var index = 0; index < interleavedDestination.Length; index++)
                 interleavedDestination[index] = Math.Clamp(interleavedDestination[index], -1f, 1f);
+            foreach (var bus in _buses)
+                bus.Advance(frameCount);
             return hadVoices;
         }
     }
@@ -399,9 +416,54 @@ public sealed class AudioMixer
 
     private sealed class BusState
     {
-        public float Volume { get; set; } = 1f;
+        private float _volume = 1f;
+        private float _fadeStep;
+        private float _fadeTarget = 1f;
+        private long _fadeFramesRemaining;
 
         public bool Muted { get; set; }
+
+        public float VolumeAt(int frameOffset)
+        {
+            if (_fadeFramesRemaining == 0)
+                return _volume;
+            var elapsed = Math.Min((long)frameOffset, _fadeFramesRemaining);
+            return _volume + _fadeStep * elapsed;
+        }
+
+        public void SetVolume(float volume)
+        {
+            _volume = volume;
+            _fadeTarget = volume;
+            _fadeStep = 0f;
+            _fadeFramesRemaining = 0;
+        }
+
+        public void FadeTo(float volume, long frames)
+        {
+            if (frames == 0)
+            {
+                SetVolume(volume);
+                return;
+            }
+            _fadeTarget = volume;
+            _fadeStep = (volume - _volume) / frames;
+            _fadeFramesRemaining = frames;
+        }
+
+        public void Advance(int frames)
+        {
+            if (_fadeFramesRemaining == 0)
+                return;
+            var elapsed = Math.Min((long)frames, _fadeFramesRemaining);
+            _volume += _fadeStep * elapsed;
+            _fadeFramesRemaining -= elapsed;
+            if (_fadeFramesRemaining == 0)
+            {
+                _volume = _fadeTarget;
+                _fadeStep = 0f;
+            }
+        }
     }
 
     private sealed class Voice(

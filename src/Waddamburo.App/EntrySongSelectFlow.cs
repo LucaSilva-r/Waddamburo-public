@@ -52,12 +52,14 @@ internal static class EntrySongSelectFlow
         var needsAudio = screenshotPath is null || jinglePath is not null || soundRoot is not null;
         using var audioDevice = needsAudio ? new SdlAudioDevice() : null;
         using var audioEngine = audioDevice is null ? null : new AudioEngine(audioDevice);
-        using var previewController = audioEngine is null ? null : new SongPreviewController(audioEngine, tja);
+        var entryJinglePath = jinglePath ?? findJingle(soundRoot, "JINGLE_ENTRY.nub");
+        var songSelectJinglePath = findJingle(soundRoot, "JINGLE_GENRE.nub");
+        using var previewController = audioEngine is null
+            ? null
+            : new SongPreviewController(audioEngine, tja, songSelectJinglePath);
         var soundController = soundRoot is null
             ? null
             : new AuthoredSoundController(audioEngine!, soundRoot);
-        var entryJinglePath = jinglePath ?? findJingle(soundRoot, "JINGLE_ENTRY.nub");
-        var songSelectJinglePath = findJingle(soundRoot, "JINGLE_GENRE.nub");
         AudioPlaybackHandle? sceneBgm = null;
         if (entryJinglePath is not null)
         {
@@ -145,9 +147,8 @@ internal static class EntrySongSelectFlow
                     {
                         if (sceneBgm is { } previousBgm)
                             audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
-                        sceneBgm = songSelectJinglePath is null
-                            ? null
-                            : audioEngine!.PlayLoop(songSelectJinglePath, AudioBus.Bgm);
+                        sceneBgm = null;
+                        previewController?.StartBackground();
                         if (songSelectJinglePath is not null)
                             Console.WriteLine($"Song Select jingle: {Path.GetFileName(songSelectJinglePath)}.");
                     }

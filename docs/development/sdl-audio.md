@@ -49,11 +49,20 @@ On activation it stops that voice and loops Song Select's distinct
 
 The interactive Entry-to-Song-Select flow opens one shared audio device (bounded
 screenshot runs stay silent unless audio is explicitly requested). Song Select
-resolves opaque catalog audio keys through their owning provider, waits for a 150 ms
-selection debounce, seeks to the chart's preview time, and plays the bounded stream
+resolves opaque catalog audio keys through their owning provider, waits for a 250 ms
+stable hover, seeks to the chart's preview time, and plays the bounded stream
 on the preview bus. Superseding, stopping, selecting, or disposing the scene cancels
-pending catalog I/O and decoding; an active preview fades for 30 ms. Generation
-checks prevent a completed asynchronous open from attaching to a superseded scene.
+pending catalog I/O and decoding; the active browser-music voice fades for 100 ms.
+Generation checks prevent a completed asynchronous open from attaching to a
+superseded scene. The authored `NotifyStopBGM(category, song)` call selects one
+logical browser-music slot: valid song coordinates fade the previous voice out,
+leave the debounce/decode interval silent, then fade the preview in over 300 ms.
+The movie sends `song = -1` for Return and other non-song boards. Leaving a preview
+fades it immediately, then restarts `JINGLE_GENRE` from its intro only after the
+cursor remains on a non-song board for 250 ms. Moving among non-song boards leaves
+an already playing jingle untouched, including a Return confirmation that closes a
+category. The jingle and previews therefore never play concurrently, and scrolling
+cannot expose fragments of the background between successive previews.
 
 Entry and Song Select now forward their authored `RequestSE`, `RequestSystemSE`,
 `RequestPlayerSE`, `NotifyPlayLoopVO`, and `StopVoice` calls across typed host

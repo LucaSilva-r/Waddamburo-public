@@ -100,7 +100,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
 
         var cueId = hitKind switch
         {
-            0 => 0, // Don (centre)
+            0 or 2 => 0, // Don (centre/confirm variants)
             1 => 3, // Ka (rim)
             _ => -1,
         };

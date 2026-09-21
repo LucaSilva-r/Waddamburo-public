@@ -2,88 +2,161 @@ using Waddamburo.Catalog;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
 
-/// <summary>Debounces catalog previews and owns their decoder/mixer lifetime.</summary>
+/// <summary>Owns the single Song Select music slot selected by the authored movie.</summary>
 internal sealed class SongPreviewController : ISongPreviewController, IDisposable
 {
-    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(150);
-    private static readonly TimeSpan StopFade = TimeSpan.FromMilliseconds(30);
+    private static readonly TimeSpan HoverDebounce = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan OutgoingFade = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan PreviewFadeIn = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan BackgroundFadeIn = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan CompletionPoll = TimeSpan.FromMilliseconds(20);
 
     private readonly object _gate = new();
     private readonly AudioEngine _audio;
     private readonly ICatalogAssetResolver _resolver;
+    private readonly AudioClip? _background;
     private Operation? _current;
     private bool _disposed;
 
-    public SongPreviewController(AudioEngine audio, ICatalogAssetResolver resolver)
+    public SongPreviewController(
+        AudioEngine audio,
+        ICatalogAssetResolver resolver,
+        string? backgroundPath = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+        _background = backgroundPath is null
+            ? null
+            : AudioClip.Load(backgroundPath, audio.Mixer.Format);
     }
 
-    public void SetPreview(SongPreviewRequest? request)
+    public void StartBackground() => replace(null, TimeSpan.Zero);
+
+    public void SetPreview(SongPreviewRequest? request) => replace(request, HoverDebounce);
+
+    private void replace(SongPreviewRequest? request, TimeSpan delay)
     {
-        Operation? operation = null;
+        Operation operation;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (request is not null && request.Audio.Provider != _resolver.Id)
+                throw new ArgumentException("The preview asset belongs to another catalog provider.", nameof(request));
+            if (request is null
+                && _current is { Request: null } background
+                && (background.Delay == TimeSpan.Zero
+                    || background.Handle is { } handle && _audio.Mixer.IsPlaying(handle)))
+            {
+                return;
+            }
+
             stopCurrent();
-            if (request is not null)
-            {
-                if (request.Audio.Provider != _resolver.Id)
-                    throw new ArgumentException("The preview asset belongs to another catalog provider.", nameof(request));
-                operation = new Operation(request);
-                _current = operation;
-            }
-        }
-        if (operation is not null)
-        {
-            lock (_gate)
-            {
-                if (_current == operation)
-                    operation.Task = Task.Run(() => startAsync(operation));
-            }
+            operation = new Operation(request, delay);
+            _current = operation;
+            operation.Task = Task.Run(() => startAsync(operation));
         }
     }
 
     private async Task startAsync(Operation operation)
     {
         BufferedAudioSource? source = null;
+        var restoreBackground = false;
         try
         {
-            await Task.Delay(Debounce, operation.Cancellation.Token).ConfigureAwait(false);
-            var input = await _resolver
-                .OpenReadAsync(operation.Request.Audio, operation.Cancellation.Token)
-                .ConfigureAwait(false);
-            try
+            if (operation.Delay > TimeSpan.Zero)
+                await Task.Delay(operation.Delay, operation.Cancellation.Token).ConfigureAwait(false);
+
+            if (operation.Request is null)
             {
-                source = new BufferedAudioSource(input, _audio.Mixer.Format, operation.Request.Start);
+                if (_background is null)
+                {
+                    finish(operation);
+                    return;
+                }
+
+                lock (_gate)
+                {
+                    if (!isCurrent(operation))
+                        return;
+                    _audio.Mixer.SetBusVolume(AudioBus.Bgm, 0f);
+                    operation.Handle = _audio.Mixer.Play(_background, AudioBus.Bgm, loop: true);
+                    _audio.Mixer.FadeBusVolume(AudioBus.Bgm, 1f, BackgroundFadeIn);
+                }
+                Console.WriteLine("Song Select background restarted.");
             }
-            catch
+            else
             {
-                input.Dispose();
-                throw;
+                var input = await _resolver
+                    .OpenReadAsync(operation.Request.Audio, operation.Cancellation.Token)
+                    .ConfigureAwait(false);
+                try
+                {
+                    source = new BufferedAudioSource(input, _audio.Mixer.Format, operation.Request.Start);
+                }
+                catch
+                {
+                    input.Dispose();
+                    throw;
+                }
+
+                lock (_gate)
+                {
+                    if (!isCurrent(operation))
+                        return;
+                    _audio.Mixer.SetBusVolume(AudioBus.Preview, 0f);
+                    operation.Handle = _audio.Mixer.PlayStream(source, AudioBus.Preview);
+                    _audio.Mixer.FadeBusVolume(AudioBus.Preview, 1f, PreviewFadeIn);
+                    source = null;
+                }
+                Console.WriteLine(
+                    $"Song preview started at {operation.Request.Start.TotalSeconds:0.###}s for {operation.Request.Song}.");
             }
 
-            lock (_gate)
-            {
-                if (_disposed || _current != operation || operation.Cancellation.IsCancellationRequested)
-                    return;
-                operation.Handle = _audio.Mixer.PlayStream(source, AudioBus.Preview);
-                source = null;
-            }
-            Console.WriteLine(
-                $"Song preview started at {operation.Request.Start.TotalSeconds:0.###}s for {operation.Request.Song}.");
+            while (operation.Handle is { } handle && _audio.Mixer.IsPlaying(handle))
+                await Task.Delay(CompletionPoll, operation.Cancellation.Token).ConfigureAwait(false);
+            restoreBackground = operation.Request is not null && finish(operation);
         }
         catch (OperationCanceledException) when (operation.Cancellation.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"Song preview {operation.Request.Song} is unavailable: {exception.Message}");
+            var description = operation.Request is null
+                ? "Song Select background"
+                : $"Song preview {operation.Request.Song}";
+            Console.Error.WriteLine($"{description} is unavailable: {exception.Message}");
+            var mayContinue = finish(operation);
+            restoreBackground = operation.Request is not null && mayContinue;
         }
         finally
         {
             source?.Dispose();
+        }
+
+        if (restoreBackground)
+        {
+            try
+            {
+                replace(null, TimeSpan.Zero);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+    }
+
+    private bool isCurrent(Operation operation) =>
+        !_disposed && _current == operation && !operation.Cancellation.IsCancellationRequested;
+
+    private bool finish(Operation operation)
+    {
+        lock (_gate)
+        {
+            if (_current != operation)
+                return false;
+            _current = null;
+            operation.DisposeCancellation();
+            return !_disposed;
         }
     }
 
@@ -95,9 +168,9 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
             return;
         current.Cancellation.Cancel();
         if (current.Handle is { } handle)
-            _audio.Mixer.Stop(handle, StopFade);
+            _audio.Mixer.Stop(handle, OutgoingFade);
         _ = current.Task.ContinueWith(
-            _ => current.Cancellation.Dispose(),
+            _ => current.DisposeCancellation(),
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
@@ -114,11 +187,19 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
         }
     }
 
-    private sealed class Operation(SongPreviewRequest request)
+    private sealed class Operation(SongPreviewRequest? request, TimeSpan delay)
     {
-        public SongPreviewRequest Request { get; } = request;
+        public SongPreviewRequest? Request { get; } = request;
+        public TimeSpan Delay { get; } = delay;
         public CancellationTokenSource Cancellation { get; } = new();
         public AudioPlaybackHandle? Handle { get; set; }
         public Task Task { get; set; } = Task.CompletedTask;
+        private int _cancellationDisposed;
+
+        public void DisposeCancellation()
+        {
+            if (Interlocked.Exchange(ref _cancellationDisposed, 1) == 0)
+                Cancellation.Dispose();
+        }
     }
 }
