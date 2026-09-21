@@ -66,6 +66,15 @@ were checked against the private experimental viewer and user-supplied Green ass
 under the evidence policy; no viewer source, game asset, font, screenshot, trace,
 or content inventory is copied or packaged.
 
+`src/Waddamburo.Formats/Audio/NuSoundBankCatalog.cs` and the authored-audio host
+adapters are original implementations from asset-derived table facts and observed
+movie-to-host call behavior. The public regression constructs a synthetic big-endian
+bank-name table. Local compatibility checks established only the numeric-bank/name
+relationship, zero-based cue relationship, and voice lifecycle ordering; no game
+table, audio, identifier inventory, trace, decompilation, or proof-of-concept source
+is copied or packaged. Multi-stream selection is implemented independently against
+vgmstream's public API described above.
+
 The independently written FreeType implementation in `native/text/src/text.c`
 adapts song-title typography constants and Unicode-layout sets from
 TaikoRecomp `src/taiko_title_render.c` at

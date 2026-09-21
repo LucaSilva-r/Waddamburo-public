@@ -3,6 +3,17 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
 
+public enum LumenFrontendSoundRequestKind
+{
+    Effect,
+    SystemEffect,
+    LoopVoice,
+}
+
+public readonly record struct LumenFrontendSoundRequest(
+    LumenFrontendSoundRequestKind Kind,
+    System.Collections.Immutable.ImmutableArray<LumenHostValue> Arguments);
+
 /// <summary>Game services exposed through the common native Lumen object.</summary>
 public interface ILumenFrontendServices
 {
@@ -16,6 +27,8 @@ public interface ILumenFrontendServices
 
     bool TryEnterPlayer();
 
+    void RequestSound(LumenFrontendSoundRequest request);
+
     void StopVoice();
 
     LumenHostValue CallExternalInterface(LumenHostCall hostCall);
@@ -28,7 +41,7 @@ public interface ILumenFrontendServices
 /// </summary>
 public sealed class LumenFrontendHostBinding(
     ILumenFrontendServices services,
-    ISceneTransitionSink transitions) : ILumenHostBinding
+    ISceneTransitionSink transitions) : ILumenHostBinding, IDisposable
 {
     private readonly ILumenFrontendServices _services = services ?? throw new ArgumentNullException(nameof(services));
     private readonly ISceneTransitionSink _transitions = transitions ?? throw new ArgumentNullException(nameof(transitions));
@@ -48,6 +61,9 @@ public sealed class LumenFrontendHostBinding(
             lumen.RegisterMethod("IsStartLumen", _ => LumenHostValue.FromBoolean(_services.IsStartLumen));
             lumen.RegisterMethod("EntryCoin", _ => LumenHostValue.FromBoolean(_services.TryEnterPlayer()));
             lumen.RegisterMethod("IsFreePlay", _ => LumenHostValue.FromBoolean(_services.IsFreePlay));
+            lumen.RegisterMethod("RequestSE", call => requestSound(LumenFrontendSoundRequestKind.Effect, call));
+            lumen.RegisterMethod("RequestSystemSE", call => requestSound(LumenFrontendSoundRequestKind.SystemEffect, call));
+            lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(LumenFrontendSoundRequestKind.LoopVoice, call));
             lumen.RegisterMethod("StopVoice", _ =>
             {
                 _services.StopVoice();
@@ -60,4 +76,12 @@ public sealed class LumenFrontendHostBinding(
             });
         });
     }
+
+    private LumenHostValue requestSound(LumenFrontendSoundRequestKind kind, LumenHostCall call)
+    {
+        _services.RequestSound(new LumenFrontendSoundRequest(kind, call.Arguments));
+        return LumenHostValue.Undefined;
+    }
+
+    public void Dispose() => _services.StopVoice();
 }

@@ -30,9 +30,21 @@
 
 static int options_are_valid(const waddamburo_media_decoder_options *options)
 {
-    return options != NULL && options->struct_size >= sizeof(*options) && options->flags == 0U &&
-           options->output_channels <= 8U;
+    return options != NULL &&
+           options->struct_size >= offsetof(waddamburo_media_decoder_options, source_stream_index) &&
+           options->flags == 0U && options->output_channels <= 8U &&
+           (options->struct_size < sizeof(*options) || options->reserved == 0U);
 }
+
+#if defined(WADDAMBURO_MEDIA_HAS_FFMPEG)
+static uint32_t options_source_stream_index(const waddamburo_media_decoder_options *options)
+{
+    if (options->struct_size <
+        offsetof(waddamburo_media_decoder_options, source_stream_index) + sizeof(uint32_t))
+        return 0U;
+    return options->source_stream_index;
+}
+#endif
 
 static int error_is_valid(const waddamburo_media_error *error)
 {
@@ -525,6 +537,7 @@ static int path_uses_vgmstream(const char *path)
     ++extension;
     return ascii_equal_ignore_case(extension, "nus3bank") ||
            ascii_equal_ignore_case(extension, "nus3audio") ||
+           ascii_equal_ignore_case(extension, "nub") ||
            ascii_equal_ignore_case(extension, "bnsf") ||
            ascii_equal_ignore_case(extension, "spsis14") ||
            ascii_equal_ignore_case(extension, "spsis22") ||
@@ -562,7 +575,8 @@ static waddamburo_media_result vgmstream_open_file(
     }
     config.ignore_loop = true;
     config.force_sfmt = LIBVGMSTREAM_SFMT_FLOAT;
-    decoder->vgmstream = libvgmstream_create(stream_file, 0, &config);
+    decoder->vgmstream = libvgmstream_create(
+        stream_file, (int)options_source_stream_index(options), &config);
     libstreamfile_close(stream_file);
     if (decoder->vgmstream == NULL) {
         decoder_set_error(decoder, WADDAMBURO_MEDIA_ERROR_UNSUPPORTED, 0,
@@ -662,6 +676,12 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_create_fi
     if (path_uses_vgmstream(utf8_path))
         return vgmstream_open_file(created, options, utf8_path, decoder, error);
 #endif
+    if (options_source_stream_index(options) != 0U) {
+        set_error(error, WADDAMBURO_MEDIA_ERROR_UNSUPPORTED,
+                  "Selected-stream decoding is unavailable for this input backend.");
+        free(created);
+        return WADDAMBURO_MEDIA_ERROR_UNSUPPORTED;
+    }
     created->input.file = open_utf8_file(utf8_path);
     if (created->input.file == NULL) {
         set_error_details(error, WADDAMBURO_MEDIA_ERROR_IO, errno, "Could not open the audio file.");
@@ -687,6 +707,11 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_create_ca
         callbacks->struct_size < sizeof(*callbacks) || callbacks->read == NULL) {
         set_error(error, WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT, "Invalid decoder callbacks.");
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
+    }
+    if (options_source_stream_index(options) != 0U) {
+        set_error(error, WADDAMBURO_MEDIA_ERROR_UNSUPPORTED,
+                  "Selected-stream decoding is unavailable for callback inputs.");
+        return WADDAMBURO_MEDIA_ERROR_UNSUPPORTED;
     }
     created = calloc(1U, sizeof(*created));
     if (created == NULL) {
@@ -853,6 +878,14 @@ static waddamburo_media_result decode_more_vgmstream(waddamburo_media_decoder *d
         decoder_set_error(decoder, WADDAMBURO_MEDIA_ERROR_CANCELLED, AVERROR_EXIT,
                           "Audio decoding was cancelled");
         return WADDAMBURO_MEDIA_ERROR_CANCELLED;
+    }
+    if (decoder->demux_eof) {
+        waddamburo_media_result flush_result = decoder->resampler_flushed
+                                                   ? WADDAMBURO_MEDIA_END_OF_STREAM
+                                                   : flush_resampler(decoder);
+        if (flush_result == WADDAMBURO_MEDIA_END_OF_STREAM)
+            decoder->decoder_eof = 1;
+        return flush_result;
     }
     native_result = libvgmstream_render(decoder->vgmstream);
     if (native_result < 0) {

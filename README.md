@@ -174,6 +174,12 @@ Entry- or Song-Select-specific behavior.
 
 `--play-jingle` is optional. It decodes a bounded short clip and plays it through the
 menu-sound mixer bus; no referenced audio is copied into the repository.
+Interactive Song Select also resolves each TJA's opaque audio asset through the
+provider and plays a debounced, seeked preview through the shared mixer. Changing
+or selecting the song and unloading the scene cancel and release that stream.
+`--sound-root=/path/to/user-owned-sound-tree` additionally enables authored
+nuSound2 bank/cue effects and voices; unresolved system/player request shapes are
+logged rather than guessed.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).

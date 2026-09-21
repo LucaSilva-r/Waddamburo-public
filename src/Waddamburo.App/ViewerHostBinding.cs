@@ -31,8 +31,15 @@ internal sealed class ViewerHostBinding : ILumenHostBinding, ILumenFrontendServi
     // entry request so input-driven scenes remain testable.
     public bool TryEnterPlayer() => true;
 
+    public void RequestSound(LumenFrontendSoundRequest request)
+    {
+        Console.WriteLine(
+            $"Lumen.{request.Kind}({string.Join(", ", request.Arguments.Select(formatValue))})");
+    }
+
     public void StopVoice()
     {
+        Console.WriteLine("Lumen.StopVoice()");
     }
 
     public LumenHostValue CallExternalInterface(LumenHostCall hostCall)

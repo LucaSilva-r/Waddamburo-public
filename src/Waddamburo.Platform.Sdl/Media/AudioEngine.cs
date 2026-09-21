@@ -28,11 +28,24 @@ public sealed class AudioEngine : IDisposable
         string path,
         AudioBus bus = AudioBus.MenuSound,
         float volume = 1f,
-        TimeSpan? maximumDuration = null)
+        TimeSpan? maximumDuration = null,
+        uint sourceStreamIndex = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var clip = AudioClip.Load(path, _device.Format, maximumDuration);
+        var clip = AudioClip.Load(path, _device.Format, maximumDuration, sourceStreamIndex);
         return Mixer.Play(clip, bus, volume);
+    }
+
+    public AudioPlaybackHandle PlayLoop(
+        string path,
+        AudioBus bus,
+        float volume = 1f,
+        TimeSpan? maximumDuration = null,
+        uint sourceStreamIndex = 0)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var clip = AudioClip.Load(path, _device.Format, maximumDuration, sourceStreamIndex);
+        return Mixer.Play(clip, bus, volume, loop: true);
     }
 
     private async Task produce()
@@ -72,6 +85,7 @@ public sealed class AudioEngine : IDisposable
         }
         finally
         {
+            Mixer.StopAll();
             _device.Pause();
             _device.Clear();
             _cancellation.Dispose();

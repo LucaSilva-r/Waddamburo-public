@@ -23,6 +23,8 @@ internal struct MediaDecoderOptions
     internal uint OutputSampleRate;
     internal uint OutputChannels;
     internal uint Flags;
+    internal uint SourceStreamIndex;
+    internal uint Reserved;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -58,7 +60,7 @@ internal struct MediaIoCallbacks
 internal static partial class NativeMediaMethods
 {
     internal const string LibraryName = "waddamburo_media";
-    internal const uint AbiVersion = 1U << 16;
+    internal const uint AbiVersion = (1U << 16) | 1U;
 
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_get_abi_version")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

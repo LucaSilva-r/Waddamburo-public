@@ -346,6 +346,10 @@ public sealed class GameFlowSessionTests
 
         public bool TryEnterPlayer() => true;
 
+        public void RequestSound(LumenFrontendSoundRequest request)
+        {
+        }
+
         public void StopVoice()
         {
         }

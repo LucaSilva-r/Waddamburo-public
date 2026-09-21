@@ -28,21 +28,47 @@ Mixing is additive float with final saturation to `[-1, 1]`.
 
 `AudioClip` predecodes short one-shots into the device format, defaults to a
 30-second safety limit, and never permits a limit above two minutes. This is
-appropriate for jingles and effects; songs remain on
-the incremental streaming path until each mixed long-form source has its own bounded
-decode ring. Loading happens before `Play`, never on the mixer producer.
+appropriate for jingles and effects. `BufferedAudioSource` incrementally decodes a
+provider-owned `Stream` into a bounded half-second PCM ring. Its mixer-facing read
+never waits for the decoder, and stopping the voice cancels decoding and releases
+both the native decoder and input stream. `NativeAudioDecoder` keeps managed stream
+callbacks rooted for the native decoder lifetime and supports seek and cancellation
+through the same C ABI as file decoding. Loading happens before `Play`, never on the
+mixer producer.
 
 The `--play-audio=` diagnostic exercises streaming music. `--play-jingle=` decodes a
 short user-owned file and plays it on the menu-sound bus; it also works with
 `--entry-song-select` to accompany the real Entry-to-Song-Select composition. Both
 paths print SDL's selected hardware format.
 
+The interactive Entry-to-Song-Select flow opens one shared audio device (bounded
+screenshot runs stay silent unless audio is explicitly requested). Song Select
+resolves opaque catalog audio keys through their owning provider, waits for a 150 ms
+selection debounce, seeks to the chart's preview time, and plays the bounded stream
+on the preview bus. Superseding, stopping, selecting, or disposing the scene cancels
+pending catalog I/O and decoding; an active preview fades for 30 ms. Generation
+checks prevent a completed asynchronous open from attaching to a superseded scene.
+
+Entry and Song Select now forward their authored `RequestSE`, `RequestSystemSE`,
+`RequestPlayerSE`, `NotifyPlayLoopVO`, and `StopVoice` calls across typed host
+contracts. In the Entry-to-Song-Select diagnostic, `--sound-root=` points at a
+user-owned nuSound2 tree containing `config/nuSound2BankStr.bin` and `se/*.nub`.
+The bounded table parser maps authored numeric bank IDs to sanitized bank names;
+`RequestSE(bank, cue)` selects the one-based NUB substream `cue + 1`. `VO_` banks
+play on the voice bus, other banks play on the menu-sound bus, loop requests replay
+the latest authored voice as a loop, and `StopVoice` fades that bus. Unknown system
+and player-effect request shapes are traced explicitly until their protocol is
+measured; they are not guessed from UI state.
+
 `SdlAudioDeviceTests` opens the available playback backend, queues silent float
 frames while paused, verifies queue accounting and clearing, and exercises resume,
 pause, argument validation, and idempotent teardown. `AudioMixerTests` use synthetic
 PCM to lock bus summation, volume, saturation, mute timing, looping, fade-out, clip
-ownership, and format rejection.
+ownership, streaming-source mixing/disposal, full teardown, and format rejection.
+The managed callback bridge is also checked locally with a synthetic in-memory WAV,
+including frame seek; no game audio is used by that check.
 
-Still intentionally absent are source pause/resume, scene/session-owned voice groups,
-mixed streaming sources, a played-sample clock, underrun/device-change recovery, and
-persistent latency offsets. Those remaining pieces belong to PLT-024 through PLT-028.
+Still intentionally absent are complete system/player-effect mappings, source
+pause/resume, mixed gameplay BGM, a played-sample clock, underrun/device-change
+recovery, and persistent latency offsets. Those remaining pieces belong to PLT-024
+through PLT-028.

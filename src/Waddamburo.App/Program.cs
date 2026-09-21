@@ -26,6 +26,7 @@ try
     var fontPath = parseOption(args, "--font=");
     var audioPath = parseOption(args, "--play-audio=");
     var jinglePath = parseOption(args, "--play-jingle=");
+    var soundRoot = parseOption(args, "--sound-root=");
     if (audioPath is not null && jinglePath is not null)
         throw new ArgumentException("--play-audio and --play-jingle cannot be combined.");
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
@@ -51,9 +52,12 @@ try
             inputTimeline,
             tjaRoot,
             fontPath,
-            jinglePath);
+            jinglePath,
+            soundRoot);
         return 0;
     }
+    if (soundRoot is not null)
+        throw new ArgumentException("--sound-root currently requires --entry-song-select.");
     if (scenePath is not null || assetRoot is not null)
     {
         if (audioPath is not null || jinglePath is not null)

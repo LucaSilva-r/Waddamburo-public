@@ -24,7 +24,8 @@ extern "C" {
 #define WADDAMBURO_MEDIA_ABI_VERSION_MAJOR(version) ((uint32_t)(version) >> 16U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_MINOR(version) ((uint32_t)(version) & 0xffffU)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_0 WADDAMBURO_MEDIA_ABI_VERSION(1U, 0U)
-#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_0
+#define WADDAMBURO_MEDIA_ABI_VERSION_1_1 WADDAMBURO_MEDIA_ABI_VERSION(1U, 1U)
+#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_1
 
 typedef int32_t waddamburo_media_result;
 
@@ -50,6 +51,9 @@ typedef struct waddamburo_media_decoder_options {
     uint32_t output_sample_rate;
     uint32_t output_channels;
     uint32_t flags;
+    /* Zero selects the default stream; positive values are one-based. */
+    uint32_t source_stream_index;
+    uint32_t reserved;
 } waddamburo_media_decoder_options;
 
 typedef struct waddamburo_media_stream_info {

@@ -46,7 +46,8 @@ public sealed class AudioClip
     public static AudioClip Load(
         string path,
         SdlAudioFormat format,
-        TimeSpan? maximumDuration = null)
+        TimeSpan? maximumDuration = null,
+        uint sourceStreamIndex = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var durationLimit = maximumDuration ?? DefaultMaximumDuration;
@@ -56,7 +57,8 @@ public sealed class AudioClip
         using var decoder = new NativeAudioDecoder(
             path,
             checked((uint)format.SampleRate),
-            checked((uint)format.Channels));
+            checked((uint)format.Channels),
+            sourceStreamIndex);
         if (decoder.Info.TotalFrames is ulong reportedFrames && reportedFrames > maximumFrames)
         {
             throw new InvalidDataException(
@@ -98,6 +100,7 @@ public sealed class AudioMixer
     private readonly object _gate = new();
     private readonly BusState[] _buses = new BusState[Enum.GetValues<AudioBus>().Length];
     private readonly List<Voice> _voices = [];
+    private readonly List<StreamVoice> _streamVoices = [];
     private long _nextHandle;
     private float _masterVolume = 1f;
 
@@ -117,7 +120,7 @@ public sealed class AudioMixer
         get
         {
             lock (_gate)
-                return _voices.Count != 0;
+                return _voices.Count != 0 || _streamVoices.Count != 0;
         }
     }
 
@@ -155,19 +158,50 @@ public sealed class AudioMixer
         }
     }
 
+    /// <summary>Transfers ownership of a non-blocking stream source to the mixer.</summary>
+    public AudioPlaybackHandle PlayStream(
+        IAudioStreamSource source,
+        AudioBus bus,
+        float volume = 1f)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        validateBus(bus);
+        validateVolume(volume, nameof(volume));
+        if (source.Format != Format)
+            throw new ArgumentException("The stream format does not match the mixer format.", nameof(source));
+        lock (_gate)
+        {
+            var handle = new AudioPlaybackHandle(checked(++_nextHandle));
+            _streamVoices.Add(new StreamVoice(handle, source, bus, volume));
+            return handle;
+        }
+    }
+
     public void Stop(AudioPlaybackHandle handle, TimeSpan fadeDuration = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(fadeDuration, TimeSpan.Zero);
         lock (_gate)
         {
             var voice = _voices.Find(candidate => candidate.Handle == handle);
-            if (voice is null)
-                return;
             var fadeFrames = checked((long)Math.Ceiling(fadeDuration.TotalSeconds * Format.SampleRate));
+            if (voice is not null)
+            {
+                if (fadeFrames == 0)
+                    _voices.Remove(voice);
+                else
+                    voice.BeginFade(fadeFrames);
+                return;
+            }
+            var stream = _streamVoices.Find(candidate => candidate.Handle == handle);
+            if (stream is null)
+                return;
             if (fadeFrames == 0)
-                _voices.Remove(voice);
+            {
+                _streamVoices.Remove(stream);
+                stream.Source.Dispose();
+            }
             else
-                voice.BeginFade(fadeFrames);
+                stream.BeginFade(fadeFrames);
         }
     }
 
@@ -179,12 +213,31 @@ public sealed class AudioMixer
         {
             var fadeFrames = checked((long)Math.Ceiling(fadeDuration.TotalSeconds * Format.SampleRate));
             if (fadeFrames == 0)
+            {
                 _voices.RemoveAll(voice => voice.Bus == bus);
+                foreach (var stream in _streamVoices.Where(voice => voice.Bus == bus))
+                    stream.Source.Dispose();
+                _streamVoices.RemoveAll(voice => voice.Bus == bus);
+            }
             else
             {
                 foreach (var voice in _voices.Where(voice => voice.Bus == bus))
                     voice.BeginFade(fadeFrames);
+                foreach (var voice in _streamVoices.Where(voice => voice.Bus == bus))
+                    voice.BeginFade(fadeFrames);
             }
+        }
+    }
+
+    /// <summary>Immediately releases every clip and streaming source owned by the mixer.</summary>
+    public void StopAll()
+    {
+        lock (_gate)
+        {
+            _voices.Clear();
+            foreach (var voice in _streamVoices)
+                voice.Source.Dispose();
+            _streamVoices.Clear();
         }
     }
 
@@ -215,7 +268,7 @@ public sealed class AudioMixer
         interleavedDestination.Clear();
         lock (_gate)
         {
-            var hadVoices = _voices.Count != 0;
+            var hadVoices = _voices.Count != 0 || _streamVoices.Count != 0;
             var frameCount = interleavedDestination.Length / Format.Channels;
             for (var voiceIndex = _voices.Count - 1; voiceIndex >= 0; voiceIndex--)
             {
@@ -249,6 +302,33 @@ public sealed class AudioMixer
                     (voice.FadeFramesTotal != 0 && voice.FadeFramesRemaining == 0))
                 {
                     _voices.RemoveAt(voiceIndex);
+                }
+            }
+            for (var voiceIndex = _streamVoices.Count - 1; voiceIndex >= 0; voiceIndex--)
+            {
+                var voice = _streamVoices[voiceIndex];
+                voice.EnsureBuffer(interleavedDestination.Length);
+                var sampleCount = voice.Source.Read(voice.Buffer.AsSpan(0, interleavedDestination.Length));
+                if (sampleCount < 0 || sampleCount > interleavedDestination.Length || sampleCount % Format.Channels != 0)
+                    throw new InvalidDataException("An audio stream source returned a partial or invalid frame count.");
+                var bus = _buses[(int)voice.Bus];
+                var streamedFrames = sampleCount / Format.Channels;
+                for (var frame = 0; frame < streamedFrames; frame++)
+                {
+                    var fade = voice.FadeFramesTotal == 0
+                        ? 1f
+                        : (float)voice.FadeFramesRemaining / voice.FadeFramesTotal;
+                    var gain = bus.Muted ? 0f : _masterVolume * bus.Volume * voice.Volume * fade;
+                    var offset = frame * Format.Channels;
+                    for (var channel = 0; channel < Format.Channels; channel++)
+                        interleavedDestination[offset + channel] += voice.Buffer[offset + channel] * gain;
+                    if (voice.FadeFramesRemaining > 0 && --voice.FadeFramesRemaining == 0)
+                        break;
+                }
+                if (voice.Source.IsCompleted || (voice.FadeFramesTotal != 0 && voice.FadeFramesRemaining == 0))
+                {
+                    _streamVoices.RemoveAt(voiceIndex);
+                    voice.Source.Dispose();
                 }
             }
             for (var index = 0; index < interleavedDestination.Length; index++)
@@ -298,6 +378,35 @@ public sealed class AudioMixer
         public long FadeFramesTotal { get; private set; }
 
         public long FadeFramesRemaining { get; set; }
+
+        public void BeginFade(long frames)
+        {
+            if (FadeFramesRemaining != 0 && FadeFramesRemaining <= frames)
+                return;
+            FadeFramesTotal = frames;
+            FadeFramesRemaining = frames;
+        }
+    }
+
+    private sealed class StreamVoice(
+        AudioPlaybackHandle handle,
+        IAudioStreamSource source,
+        AudioBus bus,
+        float volume)
+    {
+        public AudioPlaybackHandle Handle { get; } = handle;
+        public IAudioStreamSource Source { get; } = source;
+        public AudioBus Bus { get; } = bus;
+        public float Volume { get; } = volume;
+        public float[] Buffer { get; private set; } = [];
+        public long FadeFramesTotal { get; private set; }
+        public long FadeFramesRemaining { get; set; }
+
+        public void EnsureBuffer(int sampleCount)
+        {
+            if (Buffer.Length < sampleCount)
+                Buffer = new float[sampleCount];
+        }
 
         public void BeginFade(long frames)
         {

@@ -25,7 +25,8 @@ internal static class EntrySongSelectFlow
         SdlKeyboardTimeline inputTimeline,
         string tjaRoot,
         string fontPath,
-        string? jinglePath)
+        string? jinglePath,
+        string? soundRoot)
     {
         var tja = new TjaCatalogProvider(tjaRoot);
         using var globalCatalog = new GlobalSongCatalog([tja]);
@@ -48,11 +49,16 @@ internal static class EntrySongSelectFlow
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
-        using var audioDevice = jinglePath is null ? null : new SdlAudioDevice();
-        using var audioEngine = jinglePath is null ? null : new AudioEngine(audioDevice!);
-        if (audioEngine is not null)
+        var needsAudio = screenshotPath is null || jinglePath is not null || soundRoot is not null;
+        using var audioDevice = needsAudio ? new SdlAudioDevice() : null;
+        using var audioEngine = audioDevice is null ? null : new AudioEngine(audioDevice);
+        using var previewController = audioEngine is null ? null : new SongPreviewController(audioEngine, tja);
+        var soundController = soundRoot is null
+            ? null
+            : new AuthoredSoundController(audioEngine!, soundRoot);
+        if (jinglePath is not null)
         {
-            audioEngine.PlayOneShot(jinglePath!, AudioBus.MenuSound);
+            audioEngine!.PlayOneShot(jinglePath, AudioBus.MenuSound);
             Console.WriteLine(
                 $"Menu jingle: {Path.GetFileName(jinglePath)} via {audioDevice!.Driver}, " +
                 $"{audioDevice.HardwareBufferFrames} hardware buffer frames.");
@@ -85,7 +91,13 @@ internal static class EntrySongSelectFlow
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var loader = new LumenGameSceneLoader(
             new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)),
-            new CatalogHostFactory(flow, songCatalog, titleTextures));
+            new CatalogHostFactory(
+                flow,
+                songCatalog,
+                titleTextures,
+                previewController is null ? TracePreviewController.Instance : previewController,
+                soundController is null ? TraceSoundController.Instance : soundController,
+                new ViewerFrontendServices(soundController)));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -165,16 +177,22 @@ internal static class EntrySongSelectFlow
     private sealed class CatalogHostFactory(
         GameFlowSession flow,
         SongSelectCatalogView catalog,
-        ISongBoardTextureService textures) : ILumenLayerHostFactory
+        ISongBoardTextureService textures,
+        ISongPreviewController previews,
+        ISongSelectSoundController sounds,
+        ILumenFrontendServices frontend) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
         private readonly ISongBoardTextureService _textures = textures;
+        private readonly ISongPreviewController _previews = previews;
+        private readonly ISongSelectSoundController _sounds = sounds;
+        private readonly ILumenFrontendServices _frontend = frontend;
 
         public LumenLayerHost Create(SceneLayerDefinition layer) => layer.HostId switch
         {
             "player-entry" => new LumenLayerHost(
-                new LumenFrontendHostBinding(ViewerFrontendServices.Instance, _flow),
+                new LumenFrontendHostBinding(_frontend, _flow),
                 initializeEntry),
             "song-select" => createSongSelectHost(),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
@@ -200,17 +218,19 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost createSongSelectHost()
         {
-            var binding = new SongSelectHostBinding(new SongSelectSession(
-                _catalog,
-                _textures,
-                ConsolePreviewController.Instance));
+            var binding = new SongSelectHostBinding(
+                new SongSelectSession(
+                    _catalog,
+                    _textures,
+                    _previews),
+                _sounds);
             return new LumenLayerHost(binding, binding.Attach);
         }
     }
 
-    private sealed class ViewerFrontendServices : ILumenFrontendServices
+    private sealed class ViewerFrontendServices(AuthoredSoundController? sounds) : ILumenFrontendServices
     {
-        public static ViewerFrontendServices Instance { get; } = new();
+        private readonly AuthoredSoundController? _sounds = sounds;
 
         public bool IsReady => true;
 
@@ -224,27 +244,63 @@ internal static class EntrySongSelectFlow
 
         public bool TryEnterPlayer() => true;
 
+        public void RequestSound(LumenFrontendSoundRequest request)
+        {
+            if (_sounds is not null)
+            {
+                _sounds.RequestSound(request);
+                return;
+            }
+            Console.WriteLine(
+                $"Lumen.{request.Kind}({string.Join(", ", request.Arguments.Select(formatHostValue))})");
+        }
+
         public void StopVoice()
         {
+            _sounds?.StopVoice();
+            if (_sounds is null)
+                Console.WriteLine("Lumen.StopVoice()");
         }
 
         public LumenHostValue CallExternalInterface(LumenHostCall hostCall)
         {
-            Console.WriteLine($"ExternalInterface.call({hostCall.Arguments.Length} arguments)");
+            Console.WriteLine(
+                $"ExternalInterface.call({string.Join(", ", hostCall.Arguments.Select(formatHostValue))})");
             return LumenHostValue.Undefined;
         }
     }
 
-    private sealed class ConsolePreviewController : ISongPreviewController
+    private sealed class TraceSoundController : ISongSelectSoundController
     {
-        public static ConsolePreviewController Instance { get; } = new();
+        public static TraceSoundController Instance { get; } = new();
+
+        public void RequestSound(SongSelectSoundRequest request)
+        {
+            Console.WriteLine(
+                $"Lumen.{request.Kind}({string.Join(", ", request.Arguments.Select(formatHostValue))})");
+        }
+
+        public void StopVoice() => Console.WriteLine("Lumen.StopVoice()");
+    }
+
+    private sealed class TracePreviewController : ISongPreviewController
+    {
+        public static TracePreviewController Instance { get; } = new();
 
         public void SetPreview(SongPreviewRequest? request)
         {
-            if (request is null)
-                Console.WriteLine("Song preview stopped.");
-            else
+            if (request is not null)
                 Console.WriteLine($"Song preview requested at {request.Start.TotalSeconds:0.###}s for {request.Song}.");
         }
     }
+
+    private static string formatHostValue(LumenHostValue value) => value.Kind switch
+    {
+        LumenHostValueKind.Undefined => "undefined",
+        LumenHostValueKind.Null => "null",
+        LumenHostValueKind.Boolean => value.AsBoolean() ? "true" : "false",
+        LumenHostValueKind.Number => value.AsNumber().ToString("G15", System.Globalization.CultureInfo.InvariantCulture),
+        LumenHostValueKind.Text => $"\"{value.AsString()}\"",
+        _ => "undefined",
+    };
 }

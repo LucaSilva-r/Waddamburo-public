@@ -11,7 +11,7 @@
     } while (0)
 
 _Static_assert(sizeof(void *) == 8U, "The initial media ABI targets 64-bit platforms");
-_Static_assert(sizeof(waddamburo_media_decoder_options) == 16U, "Decoder options ABI changed");
+_Static_assert(sizeof(waddamburo_media_decoder_options) == 24U, "Decoder options ABI changed");
 _Static_assert(sizeof(waddamburo_media_stream_info) == 24U, "Stream info ABI changed");
 _Static_assert(sizeof(waddamburo_media_error) == 272U, "Error ABI changed");
 _Static_assert(sizeof(waddamburo_media_io_callbacks) == 40U, "I/O callback ABI changed");
@@ -124,18 +124,21 @@ int main(void)
 {
     uint32_t negotiated = 0U;
     waddamburo_media_decoder *decoder = NULL;
-    waddamburo_media_decoder_options options = {sizeof(options), 0U, 0U, 0U};
+    waddamburo_media_decoder_options options = {sizeof(options), 0U, 0U, 0U, 0U, 0U};
     waddamburo_media_error error = {0};
     waddamburo_media_io_callbacks callbacks = {0};
 
-    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_0);
+    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_1);
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_0, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_0);
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(2U, 0U), &negotiated) ==
           WADDAMBURO_MEDIA_ERROR_ABI_MISMATCH);
     CHECK(negotiated == 0U);
-    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 1U), &negotiated) ==
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_1, &negotiated) ==
+          WADDAMBURO_MEDIA_OK);
+    CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_1);
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 2U), &negotiated) ==
           WADDAMBURO_MEDIA_ERROR_ABI_MISMATCH);
     CHECK(negotiated == 0U);
 
@@ -184,6 +187,11 @@ int main(void)
         callbacks.read = memory_read;
         callbacks.seek = memory_seek;
         callbacks.should_cancel = cancel_callback;
+        options.source_stream_index = 1U;
+        CHECK(waddamburo_media_decoder_create_callbacks(&options, &callbacks, &decoder, &error) ==
+              WADDAMBURO_MEDIA_ERROR_UNSUPPORTED);
+        CHECK(decoder == NULL);
+        options.source_stream_index = 0U;
         CHECK(waddamburo_media_decoder_create_callbacks(&options, &callbacks, &decoder, &error) ==
               WADDAMBURO_MEDIA_ERROR_CANCELLED);
         CHECK(decoder == NULL);

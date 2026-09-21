@@ -46,21 +46,39 @@ public readonly record struct SongSelectCoursePresentation(
     }
 }
 
+public enum SongSelectSoundRequestKind
+{
+    Effect,
+    SystemEffect,
+    PlayerEffect,
+    LoopVoice,
+}
+
+public readonly record struct SongSelectSoundRequest(
+    SongSelectSoundRequestKind Kind,
+    System.Collections.Immutable.ImmutableArray<LumenHostValue> Arguments);
+
+public interface ISongSelectSoundController
+{
+    void RequestSound(SongSelectSoundRequest request);
+
+    void StopVoice();
+}
+
 /// <summary>Translates the authored Song Select protocol into one catalog-pinned session.</summary>
 public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 {
-    private static readonly string[] NotificationMethods =
-    [
-        "SetMotion", "RequestSE", "RequestSystemSE",
-    ];
-
     private readonly SongSelectSession _session;
+    private readonly ISongSelectSoundController? _sounds;
     private LumenPlayer? _player;
     private bool _assigned;
 
-    public SongSelectHostBinding(SongSelectSession session)
+    public SongSelectHostBinding(
+        SongSelectSession session,
+        ISongSelectSoundController? sounds = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _sounds = sounds;
     }
 
     public void Attach(LumenPlayer player) => _player = player ?? throw new ArgumentNullException(nameof(player));
@@ -83,12 +101,24 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             lumen.RegisterMethod("NotifyGenreFolder", _ => LumenHostValue.Undefined);
-            foreach (var name in NotificationMethods)
-                lumen.RegisterMethod(name, _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("SetMotion", _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("RequestSE", call => requestSound(SongSelectSoundRequestKind.Effect, call));
+            lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
+            lumen.RegisterMethod("RequestPlayerSE", call => requestSound(SongSelectSoundRequestKind.PlayerEffect, call));
+            lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(SongSelectSoundRequestKind.LoopVoice, call));
+            lumen.RegisterMethod("StopVoice", _ =>
+            {
+                _sounds?.StopVoice();
+                return LumenHostValue.Undefined;
+            });
         });
     }
 
-    public void Dispose() => _session.StopPreview();
+    public void Dispose()
+    {
+        _session.StopPreview();
+        _sounds?.StopVoice();
+    }
 
     private bool assignInitialData()
     {
@@ -164,6 +194,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var song = integer(call, 1);
         if (_session.Preview(category, song) is null)
             clearSelectionSurfaces();
+        return LumenHostValue.Undefined;
+    }
+
+    private LumenHostValue requestSound(SongSelectSoundRequestKind kind, LumenHostCall call)
+    {
+        _sounds?.RequestSound(new SongSelectSoundRequest(kind, call.Arguments));
         return LumenHostValue.Undefined;
     }
 

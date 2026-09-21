@@ -72,6 +72,73 @@ public sealed class AudioMixerTests
             .Play(audioClip, AudioBus.DrumHit));
     }
 
+    [Fact]
+    public void StreamingVoiceMixesWithoutBlockingAndIsDisposedAtEnd()
+    {
+        var mixer = new AudioMixer(StereoFourHertz);
+        var source = new TestStreamSource(StereoFourHertz, [0.25f, -0.25f, 0.5f, -0.5f]);
+        mixer.PlayStream(source, AudioBus.Preview);
+        var output = new float[6];
+
+        Assert.True(mixer.Render(output));
+
+        Assert.Equal([0.25f, -0.25f, 0.5f, -0.5f, 0f, 0f], output);
+        Assert.True(source.Disposed);
+        Assert.False(mixer.HasActiveVoices);
+    }
+
+    [Fact]
+    public void StoppingStreamingVoiceDisposesItsSource()
+    {
+        var mixer = new AudioMixer(StereoFourHertz);
+        var source = new TestStreamSource(StereoFourHertz, [1f, 1f], completeAfterRead: false);
+        var handle = mixer.PlayStream(source, AudioBus.Preview);
+
+        mixer.Stop(handle);
+
+        Assert.True(source.Disposed);
+        Assert.False(mixer.HasActiveVoices);
+    }
+
+    [Fact]
+    public void StopAllDisposesEveryStreamingSource()
+    {
+        var mixer = new AudioMixer(StereoFourHertz);
+        var first = new TestStreamSource(StereoFourHertz, [], completeAfterRead: false);
+        var second = new TestStreamSource(StereoFourHertz, [], completeAfterRead: false);
+        mixer.PlayStream(first, AudioBus.Bgm);
+        mixer.PlayStream(second, AudioBus.Preview);
+
+        mixer.StopAll();
+
+        Assert.True(first.Disposed);
+        Assert.True(second.Disposed);
+        Assert.False(mixer.HasActiveVoices);
+    }
+
     private static AudioClip clip(float left, float right)
         => new(StereoFourHertz, [left, right]);
+
+    private sealed class TestStreamSource(
+        SdlAudioFormat format,
+        float[] samples,
+        bool completeAfterRead = true) : IAudioStreamSource
+    {
+        private int _position;
+
+        public SdlAudioFormat Format { get; } = format;
+        public bool IsCompleted => completeAfterRead && _position == samples.Length;
+        public Exception? Failure => null;
+        public bool Disposed { get; private set; }
+
+        public int Read(Span<float> interleavedDestination)
+        {
+            var count = Math.Min(interleavedDestination.Length, samples.Length - _position);
+            samples.AsSpan(_position, count).CopyTo(interleavedDestination);
+            _position += count;
+            return count;
+        }
+
+        public void Dispose() => Disposed = true;
+    }
 }
