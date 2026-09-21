@@ -154,6 +154,7 @@ dotnet run --project src/Waddamburo.App -- \
   --asset-root=/path/to/lumendata/packed \
   --tja-root=/path/to/TJA \
   --font=/path/to/user-owned-font.ttf \
+  --play-jingle=/path/to/user-owned-entry-jingle.nub \
   --press=F@30,F@240,F@380,K@700,D@850,F@1000,K@1200 \
   --ticks=1500 \
   --window-size=1280x720 \
@@ -170,6 +171,9 @@ the font, TJA files, audio, Lumen archives, and framebuffer output are never cop
 into the repository. The relative archive/movie IDs and numeric request mapping are
 composition data; neither the AVM runtime nor generic scene loader contains
 Entry- or Song-Select-specific behavior.
+
+`--play-jingle` is optional. It decodes a bounded short clip and plays it through the
+menu-sound mixer bus; no referenced audio is copied into the repository.
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](docs/development/native-builds.md).

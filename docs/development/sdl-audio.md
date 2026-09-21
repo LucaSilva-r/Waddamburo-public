@@ -15,18 +15,34 @@ is being destroyed. `SubmittedFrames` is the first piece of playback accounting;
 does not yet claim to be a played-sample clock because SDL and the physical device
 may hold additional buffered frames.
 
-`StreamingMusicPlayer` is the first producer. It decodes blocks into a reusable
-managed buffer and keeps at most roughly half a second on SDL's application-side
-queue. It borrows the device rather than opening or closing one itself. This
-ownership boundary permits the next audio-engine layer to place a mixer in front of
-the same sink without BGM, previews, voices, and effects creating competing physical
-devices.
+`StreamingMusicPlayer` handles long-form diagnostic playback. It decodes blocks into
+a reusable managed buffer and keeps at most roughly half a second on SDL's
+application-side queue. It borrows the device rather than opening or closing one
+itself.
 
-The `--play-audio=` diagnostic prints both the decoded stream format and SDL's
-selected hardware format. `SdlAudioDeviceTests` opens the available playback backend,
-queues silent float frames while paused, verifies queue accounting and clearing, and
-exercises resume, pause, argument validation, and idempotent teardown.
+`AudioEngine` is the first software-mixed path. Its background producer renders
+256-frame blocks and bounds SDL's queue to 1,024 application frames. `AudioMixer`
+provides BGM, preview, menu-sound, voice, and drum-hit buses, master/per-bus volume,
+bus mute, concurrent voices, looping, immediate stop, and sample-counted fade-out.
+Mixing is additive float with final saturation to `[-1, 1]`.
 
-Still intentionally absent are mixer buses, per-source pause/gain/fades, a played
-sample clock, underrun/device-change recovery, and persistent latency offsets. These
-belong to PLT-024 through PLT-028 rather than the device wrapper.
+`AudioClip` predecodes short one-shots into the device format, defaults to a
+30-second safety limit, and never permits a limit above two minutes. This is
+appropriate for jingles and effects; songs remain on
+the incremental streaming path until each mixed long-form source has its own bounded
+decode ring. Loading happens before `Play`, never on the mixer producer.
+
+The `--play-audio=` diagnostic exercises streaming music. `--play-jingle=` decodes a
+short user-owned file and plays it on the menu-sound bus; it also works with
+`--entry-song-select` to accompany the real Entry-to-Song-Select composition. Both
+paths print SDL's selected hardware format.
+
+`SdlAudioDeviceTests` opens the available playback backend, queues silent float
+frames while paused, verifies queue accounting and clearing, and exercises resume,
+pause, argument validation, and idempotent teardown. `AudioMixerTests` use synthetic
+PCM to lock bus summation, volume, saturation, mute timing, looping, fade-out, clip
+ownership, and format rejection.
+
+Still intentionally absent are source pause/resume, scene/session-owned voice groups,
+mixed streaming sources, a played-sample clock, underrun/device-change recovery, and
+persistent latency offsets. Those remaining pieces belong to PLT-024 through PLT-028.

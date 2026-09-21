@@ -5,6 +5,7 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
+using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Providers.Tja;
 
@@ -23,7 +24,8 @@ internal static class EntrySongSelectFlow
         string? screenshotPath,
         SdlKeyboardTimeline inputTimeline,
         string tjaRoot,
-        string fontPath)
+        string fontPath,
+        string? jinglePath)
     {
         var tja = new TjaCatalogProvider(tjaRoot);
         using var globalCatalog = new GlobalSongCatalog([tja]);
@@ -46,6 +48,15 @@ internal static class EntrySongSelectFlow
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
+        using var audioDevice = jinglePath is null ? null : new SdlAudioDevice();
+        using var audioEngine = jinglePath is null ? null : new AudioEngine(audioDevice!);
+        if (audioEngine is not null)
+        {
+            audioEngine.PlayOneShot(jinglePath!, AudioBus.MenuSound);
+            Console.WriteLine(
+                $"Menu jingle: {Path.GetFileName(jinglePath)} via {audioDevice!.Driver}, " +
+                $"{audioDevice.HardwareBufferFrames} hardware buffer frames.");
+        }
         using var titleTextures = new SongTitleTextureCache(
             application,
             fontPath,

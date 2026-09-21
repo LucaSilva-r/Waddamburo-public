@@ -25,9 +25,14 @@ try
     var tjaRoot = parseOption(args, "--tja-root=");
     var fontPath = parseOption(args, "--font=");
     var audioPath = parseOption(args, "--play-audio=");
+    var jinglePath = parseOption(args, "--play-jingle=");
+    if (audioPath is not null && jinglePath is not null)
+        throw new ArgumentException("--play-audio and --play-jingle cannot be combined.");
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
     if (entrySongSelect)
     {
+        if (audioPath is not null)
+            throw new ArgumentException("--play-audio cannot be combined with --entry-song-select.");
         if (assetRoot is null)
             throw new ArgumentException("--entry-song-select requires --asset-root.");
         if (tjaRoot is null || fontPath is null)
@@ -45,11 +50,14 @@ try
             screenshotPath,
             inputTimeline,
             tjaRoot,
-            fontPath);
+            fontPath,
+            jinglePath);
         return 0;
     }
     if (scenePath is not null || assetRoot is not null)
     {
+        if (audioPath is not null || jinglePath is not null)
+            throw new ArgumentException("Audio diagnostics cannot be combined with --scene.");
         if (scenePath is null || assetRoot is null)
             throw new ArgumentException("--scene and --asset-root must be supplied together.");
         if (archivePath is not null || movieName is not null)
@@ -71,6 +79,8 @@ try
     }
     if (archivePath is not null || movieName is not null)
     {
+        if (audioPath is not null || jinglePath is not null)
+            throw new ArgumentException("Audio diagnostics cannot be combined with --archive/--movie.");
         if (archivePath is null || movieName is null)
             throw new ArgumentException("--archive and --movie must be supplied together.");
         MovieViewer.Run(
@@ -100,13 +110,24 @@ try
         resizable: screenshotPath is null,
         highPixelDensity: screenshotPath is null);
     Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
-    using var audioDevice = audioPath is null ? null : new SdlAudioDevice();
+    using var audioDevice = audioPath is null && jinglePath is null ? null : new SdlAudioDevice();
     using var music = audioPath is null ? null : new StreamingMusicPlayer(audioDevice!, audioPath);
+    using var audioEngine = jinglePath is null ? null : new AudioEngine(audioDevice!);
     if (music is not null)
     {
         music.Play();
         Console.WriteLine(
             $"Audio: {Path.GetFileName(audioPath)}, {music.Info.SampleRate} Hz, {music.Info.Channels} channels");
+        Console.WriteLine(
+            $"SDL audio: {audioDevice!.Driver}, " +
+            $"{audioDevice.HardwareFormat.SampleRate} Hz, " +
+            $"{audioDevice.HardwareFormat.Channels} channels, " +
+            $"{audioDevice.HardwareBufferFrames} buffer frames");
+    }
+    if (audioEngine is not null)
+    {
+        var handle = audioEngine.PlayOneShot(jinglePath!, AudioBus.MenuSound);
+        Console.WriteLine($"Menu jingle: {Path.GetFileName(jinglePath)}, playback {handle.Value}");
         Console.WriteLine(
             $"SDL audio: {audioDevice!.Driver}, " +
             $"{audioDevice.HardwareFormat.SampleRate} Hz, " +
