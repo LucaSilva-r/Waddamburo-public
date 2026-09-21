@@ -77,7 +77,6 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
             "Classical" => 3,
             "Variety" => 4,
             "Anime" => 5,
-            "Children and Folk" or "Kids" => 6,
             "Vocaloid" => 7,
             _ => -1,
         };
