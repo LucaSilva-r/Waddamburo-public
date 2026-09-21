@@ -125,6 +125,9 @@ internal static class EntrySongSelectFlow
             var active = requireLumenScene(coordinator);
             var textureIds = uploadTextures(application, active);
             PlayableChart[] activeGameplayCharts = [];
+            AudioPlaybackHandle? gameplayMusic = null;
+            var gameplayStartTick = 0;
+            var escapeWasDown = false;
             var simulationTick = 0;
 
             RenderFrame createFrame(double interpolationFraction)
@@ -144,9 +147,13 @@ internal static class EntrySongSelectFlow
                 keyboard =>
                 {
                     simulationTick++;
-                    var input = LumenInputAdapter.CreateSnapshot(inputTimeline.Apply(simulationTick, keyboard));
+                    var keyboardState = inputTimeline.Apply(simulationTick, keyboard);
+                    var input = LumenInputAdapter.CreateSnapshot(keyboardState);
                     active.Player.Advance(input);
                     donRenderer?.Advance();
+                    var escapeIsDown = keyboardState.IsDown(SdlKeyboardKey.Escape);
+                    var escapePressed = escapeIsDown && !escapeWasDown;
+                    escapeWasDown = escapeIsDown;
                     if (coordinator.Flow.State != GameFlowState.TransitionPending)
                     {
                         if (active.Id == songSelectId && playRequests.Pending is { } pendingRequest)
@@ -159,14 +166,66 @@ internal static class EntrySongSelectFlow
                             coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                             var request = playRequests.ActivatePending();
                             activeGameplayCharts = loadedCharts;
+                            gameplayStartTick = simulationTick;
                             active = requireLumenScene(coordinator);
                             textureIds = uploadTextures(application, active);
                             if (sceneBgm is { } previousBgm)
                                 audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
                             sceneBgm = null;
+                            if (audioEngine is not null)
+                            {
+                                audioEngine.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
+                                audioEngine.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
+                                if (request.AudioAsset is { } audioAsset)
+                                {
+                                    var inputStream = tja.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
+                                    BufferedAudioSource? source = null;
+                                    try
+                                    {
+                                        try
+                                        {
+                                            source = new BufferedAudioSource(inputStream, audioEngine.Mixer.Format);
+                                        }
+                                        catch
+                                        {
+                                            inputStream.Dispose();
+                                            throw;
+                                        }
+                                        gameplayMusic = audioEngine.Mixer.PlayStream(source, AudioBus.Bgm);
+                                        source = null;
+                                    }
+                                    finally
+                                    {
+                                        source?.Dispose();
+                                    }
+                                }
+                            }
                             Console.WriteLine(
                                 $"Activated gameplay for '{request.Song}' with {request.Players.Length} player(s), "
                                 + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
+                        }
+                        else if (active.Id == gameplayId)
+                        {
+                            var elapsed = TimeSpan.FromSeconds((simulationTick - gameplayStartTick) / 60d);
+                            var chartFinished = activeGameplayCharts.Length != 0
+                                && elapsed >= activeGameplayCharts.Max(static chart => chart.Duration)
+                                    + TimeSpan.FromSeconds(1);
+                            var musicFinished = gameplayMusic is not { } music
+                                || audioEngine is null
+                                || !audioEngine.Mixer.IsPlaying(music);
+                            if (escapePressed || chartFinished && musicFinished)
+                            {
+                                if (gameplayMusic is { } currentMusic)
+                                    audioEngine?.Mixer.Stop(currentMusic, TimeSpan.FromMilliseconds(20));
+                                gameplayMusic = null;
+                                playRequests.ClearActive();
+                                coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
+                                activeGameplayCharts = [];
+                                active = requireLumenScene(coordinator);
+                                textureIds = uploadTextures(application, active);
+                                previewController?.StartBackground();
+                                Console.WriteLine($"Returned to Song Select at tick {simulationTick}.");
+                            }
                         }
                         return;
                     }
