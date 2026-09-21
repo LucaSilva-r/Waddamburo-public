@@ -95,7 +95,9 @@ FFmpeg backend remains the distributable path.
 
 With `linux-audio-complete`, file inputs ending in `.nub`, `.nus3bank`,
 `.nus3audio`, `.bnsf`, `.spsis14`, `.spsis22`, or `.idsp` are routed to
-vgmstream. Decoder ABI 1.1 accepts a one-based source-stream index (zero retains
+vgmstream. A single-stream `.nub` that vgmstream does not recognize falls back to
+the bounded embedded-RIFF scanner and FFmpeg; this covers ATRAC-family NUBs without
+weakening selected-cue routing. Decoder ABI 1.1 accepts a one-based source-stream index (zero retains
 the default/first stream), allowing individual cues in multi-stream banks to be
 decoded without extracting them. Callback-backed inputs continue through FFmpeg
 and therefore do not support these formats yet. The ABI regression constructs a

@@ -188,8 +188,11 @@ into the repository. The relative archive/movie IDs and numeric request mapping 
 composition data; neither the AVM runtime nor generic scene loader contains
 Entry- or Song-Select-specific behavior.
 
-`--play-jingle` is optional. It decodes a bounded short clip and plays it through the
-menu-sound mixer bus; no referenced audio is copied into the repository.
+Normal boot loops the user-owned `data/sound/bgm/nub/JINGLE_ENTRY.nub` during
+Player Entry, then stops it and starts `JINGLE_GENRE.nub` when Song Select becomes
+active. `--play-jingle` can override the Entry sound with a one-shot for a
+diagnostic run. Jingles are decoded as bounded short clips; no referenced audio is
+copied into the repository.
 Interactive Song Select also resolves each TJA's opaque audio asset through the
 provider and plays a debounced, seeked preview through the shared mixer. Changing
 or selecting the song and unloading the scene cancel and release that stream.

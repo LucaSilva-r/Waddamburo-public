@@ -126,6 +126,8 @@ struct waddamburo_media_decoder {
     uint32_t output_sample_rate;
     uint32_t output_channels;
     uint64_t total_frames;
+    uint64_t loop_start_frame;
+    uint64_t loop_end_frame;
     float *pending;
     uint64_t pending_frames;
     uint64_t pending_offset;
@@ -304,6 +306,70 @@ static uint32_t read_u32le(const uint8_t *value)
            ((uint32_t)value[3] << 24U);
 }
 
+static FILE *open_utf8_file(const char *path);
+
+/* Some stock NUBs carry ATRAC loop metadata in the enclosing RIFF `smpl` chunk,
+ * outside the elementary stream understood by vgmstream. */
+static void discover_file_riff_loop(const char *path, waddamburo_media_decoder *decoder)
+{
+    FILE *file = open_utf8_file(path);
+    uint8_t scan[NUB_SCAN_BUFFER_SIZE];
+    size_t count;
+    size_t index;
+    uint64_t riff_offset = 0U;
+    uint64_t riff_end = 0U;
+    if (file == NULL)
+        return;
+    count = fread(scan, 1U, sizeof(scan), file);
+    for (index = 0U; index + 12U <= count; ++index) {
+        if (memcmp(scan + index, "RIFF", 4U) == 0 &&
+            memcmp(scan + index + 8U, "WAVE", 4U) == 0) {
+            riff_offset = index;
+            riff_end = riff_offset + (uint64_t)read_u32le(scan + index + 4U) + 8U;
+            break;
+        }
+    }
+    if (riff_end <= riff_offset + 12U)
+        goto done;
+    {
+        uint64_t offset = riff_offset + 12U;
+        while (offset + 8U <= riff_end) {
+            uint8_t header[8];
+            uint32_t chunk_size;
+            if (offset > (uint64_t)INT64_MAX ||
+#if defined(_WIN32)
+                _fseeki64(file, (int64_t)offset, SEEK_SET) != 0 ||
+#else
+                fseeko(file, (off_t)offset, SEEK_SET) != 0 ||
+#endif
+                fread(header, 1U, sizeof(header), file) != sizeof(header))
+                break;
+            chunk_size = read_u32le(header + 4U);
+            if (memcmp(header, "smpl", 4U) == 0 && chunk_size >= 60U) {
+                uint8_t payload[60];
+                if (fread(payload, 1U, sizeof(payload), file) == sizeof(payload)) {
+                    uint32_t loop_count = read_u32le(payload + 28U);
+                    uint32_t start = read_u32le(payload + 44U);
+                    uint32_t end = read_u32le(payload + 48U);
+                    if (loop_count != 0U && end >= start && decoder->input_sample_rate > 0) {
+                        decoder->loop_start_frame = (uint64_t)av_rescale(
+                            start, decoder->output_sample_rate, decoder->input_sample_rate);
+                        decoder->loop_end_frame = (uint64_t)av_rescale(
+                            (uint64_t)end + 1U,
+                            decoder->output_sample_rate, decoder->input_sample_rate);
+                    }
+                }
+                break;
+            }
+            offset += 8U + (uint64_t)chunk_size + (chunk_size & 1U);
+            if (offset > riff_end)
+                break;
+        }
+    }
+done:
+    fclose(file);
+}
+
 /* NUB is treated only as a bounded carrier for a complete RIFF/WAVE stream. */
 static int discover_riff_view(waddamburo_media_decoder *decoder)
 {
@@ -401,6 +467,8 @@ static waddamburo_media_result decoder_open(
     decoder->backend = MEDIA_BACKEND_FFMPEG;
     decoder->input.view_size = -1;
     decoder->total_frames = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
+    decoder->loop_start_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
+    decoder->loop_end_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
     atomic_init(&decoder->cancelled, false);
 
     native_result = discover_riff_view(decoder);
@@ -529,19 +597,23 @@ static int ascii_equal_ignore_case(const char *left, const char *right)
     return *left == *right;
 }
 
-static int path_uses_vgmstream(const char *path)
+static int path_has_extension(const char *path, const char *expected)
 {
     const char *extension = strrchr(path, '.');
     if (extension == NULL)
         return 0;
-    ++extension;
-    return ascii_equal_ignore_case(extension, "nus3bank") ||
-           ascii_equal_ignore_case(extension, "nus3audio") ||
-           ascii_equal_ignore_case(extension, "nub") ||
-           ascii_equal_ignore_case(extension, "bnsf") ||
-           ascii_equal_ignore_case(extension, "spsis14") ||
-           ascii_equal_ignore_case(extension, "spsis22") ||
-           ascii_equal_ignore_case(extension, "idsp");
+    return ascii_equal_ignore_case(extension + 1, expected);
+}
+
+static int path_uses_vgmstream(const char *path)
+{
+    return path_has_extension(path, "nus3bank") ||
+           path_has_extension(path, "nus3audio") ||
+           path_has_extension(path, "nub") ||
+           path_has_extension(path, "bnsf") ||
+           path_has_extension(path, "spsis14") ||
+           path_has_extension(path, "spsis22") ||
+           path_has_extension(path, "idsp");
 }
 
 static waddamburo_media_result vgmstream_open_file(
@@ -560,6 +632,8 @@ static waddamburo_media_result vgmstream_open_file(
     decoder->error.struct_size = sizeof(decoder->error);
     decoder->backend = MEDIA_BACKEND_VGMSTREAM;
     decoder->total_frames = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
+    decoder->loop_start_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
+    decoder->loop_end_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
     atomic_init(&decoder->cancelled, false);
     if ((libvgmstream_get_version() >> 24U) != LIBVGMSTREAM_API_VERSION_MAJOR) {
         decoder_set_error(decoder, WADDAMBURO_MEDIA_ERROR_BACKEND_UNAVAILABLE, 0,
@@ -617,6 +691,17 @@ static waddamburo_media_result vgmstream_open_file(
         decoder->total_frames = (uint64_t)av_rescale(
             decoder->vgmstream->format->play_samples,
             decoder->output_sample_rate, decoder->input_sample_rate);
+    if (decoder->vgmstream->format->loop_start >= 0 &&
+        decoder->vgmstream->format->loop_end > decoder->vgmstream->format->loop_start) {
+        decoder->loop_start_frame = (uint64_t)av_rescale(
+            decoder->vgmstream->format->loop_start,
+            decoder->output_sample_rate, decoder->input_sample_rate);
+        decoder->loop_end_frame = (uint64_t)av_rescale(
+            decoder->vgmstream->format->loop_end,
+            decoder->output_sample_rate, decoder->input_sample_rate);
+    }
+    if (decoder->loop_start_frame == WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT)
+        discover_file_riff_loop(path, decoder);
     *result = decoder;
     set_error(error, WADDAMBURO_MEDIA_OK, "");
     return WADDAMBURO_MEDIA_OK;
@@ -673,8 +758,19 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_create_fi
         return WADDAMBURO_MEDIA_ERROR_INTERNAL;
     }
 #if defined(WADDAMBURO_MEDIA_HAS_VGMSTREAM)
-    if (path_uses_vgmstream(utf8_path))
-        return vgmstream_open_file(created, options, utf8_path, decoder, error);
+    if (path_uses_vgmstream(utf8_path)) {
+        waddamburo_media_result vgmstream_result =
+            vgmstream_open_file(created, options, utf8_path, decoder, error);
+        if (vgmstream_result != WADDAMBURO_MEDIA_ERROR_UNSUPPORTED ||
+            options_source_stream_index(options) != 0U ||
+            !path_has_extension(utf8_path, "nub"))
+            return vgmstream_result;
+        created = calloc(1U, sizeof(*created));
+        if (created == NULL) {
+            set_error(error, WADDAMBURO_MEDIA_ERROR_INTERNAL, "Could not allocate the decoder.");
+            return WADDAMBURO_MEDIA_ERROR_INTERNAL;
+        }
+    }
 #endif
     if (options_source_stream_index(options) != 0U) {
         set_error(error, WADDAMBURO_MEDIA_ERROR_UNSUPPORTED,
@@ -688,7 +784,13 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_create_fi
         free(created);
         return WADDAMBURO_MEDIA_ERROR_IO;
     }
-    return decoder_open(created, options, decoder, error);
+    {
+        waddamburo_media_result result = decoder_open(created, options, decoder, error);
+        if (result == WADDAMBURO_MEDIA_OK &&
+            created->loop_start_frame == WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT)
+            discover_file_riff_loop(utf8_path, created);
+        return result;
+    }
 }
 
 waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_create_callbacks(
@@ -727,12 +829,18 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_get_strea
     waddamburo_media_decoder *decoder,
     waddamburo_media_stream_info *stream_info)
 {
-    if (decoder == NULL || stream_info == NULL || stream_info->struct_size < sizeof(*stream_info))
+    const size_t base_size = offsetof(waddamburo_media_stream_info, total_frames) +
+                             sizeof(stream_info->total_frames);
+    if (decoder == NULL || stream_info == NULL || stream_info->struct_size < base_size)
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
     stream_info->sample_rate = decoder->output_sample_rate;
     stream_info->channels = decoder->output_channels;
     stream_info->reserved = 0U;
     stream_info->total_frames = decoder->total_frames;
+    if (stream_info->struct_size >= sizeof(*stream_info)) {
+        stream_info->loop_start_frame = decoder->loop_start_frame;
+        stream_info->loop_end_frame = decoder->loop_end_frame;
+    }
     return WADDAMBURO_MEDIA_OK;
 }
 
@@ -1116,7 +1224,9 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_get_strea
     waddamburo_media_decoder *decoder,
     waddamburo_media_stream_info *stream_info)
 {
-    if (decoder == NULL || stream_info == NULL || stream_info->struct_size < sizeof(*stream_info))
+    const size_t base_size = offsetof(waddamburo_media_stream_info, total_frames) +
+                             sizeof(stream_info->total_frames);
+    if (decoder == NULL || stream_info == NULL || stream_info->struct_size < base_size)
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
     return WADDAMBURO_MEDIA_ERROR_INTERNAL;
 }

@@ -6,7 +6,8 @@ uses opaque owned decoder handles, UTF-8 file paths or caller-owned I/O callback
 interleaved float output, frame-based seeking, cooperative cancellation, and copied
 error data. A zero requested sample rate or channel count preserves the source
 format. `total_frames` uses `WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT` when the input
-cannot report a duration.
+cannot report a duration. ABI 1.2 adds optional half-open loop start/end frames;
+both use the unknown-frame sentinel when no authored loop is present.
 
 Callers must negotiate `WADDAMBURO_MEDIA_ABI_VERSION_1_0` before using the decoder.
 The high 16 bits are the breaking major version and the low 16 bits are the additive
@@ -31,8 +32,10 @@ Builds with `WADDAMBURO_MEDIA_FFMPEG=ON` decode incrementally through FFmpeg and
 return interleaved float samples. File and callback inputs share the same AVIO
 path. Before opening the demuxer, seekable inputs are scanned for a bounded complete
 RIFF/WAVE stream; this permits Green-era NUB files to expose their contained
-ATRAC3plus stream without teaching managed code about the container. Builds without
-the option retain the explicit `BACKEND_UNAVAILABLE` behavior.
+ATRAC3plus stream without teaching managed code about the container. File-backed
+NUB decoding also reads the enclosing RIFF `smpl` loop when the elementary stream
+does not expose one. Builds without the option retain the explicit
+`BACKEND_UNAVAILABLE` behavior.
 
 `WADDAMBURO_MEDIA_VGMSTREAM=ON` adds file decoding for `.nus3bank`, `.nus3audio`,
 `.bnsf`, `.spsis14`, `.spsis22`, and `.idsp`. The backend uses vgmstream's public

@@ -41,6 +41,25 @@ public sealed class AudioMixerTests
     }
 
     [Fact]
+    public void AuthoredLoopRegionPlaysIntroOnceAndWrapsBeforeTheTail()
+    {
+        var mixer = new AudioMixer(StereoFourHertz);
+        var source = new AudioClip(
+            StereoFourHertz,
+            [0.1f, 0.1f, 0.2f, 0.2f, 0.3f, 0.3f, 0.4f, 0.4f, 0.9f, 0.9f],
+            new AudioLoopRegion(1, 4));
+        mixer.Play(source, AudioBus.Bgm, loop: true);
+        var output = new float[14];
+
+        mixer.Render(output);
+
+        Assert.Equal(
+            [0.1f, 0.1f, 0.2f, 0.2f, 0.3f, 0.3f, 0.4f, 0.4f,
+             0.2f, 0.2f, 0.3f, 0.3f, 0.4f, 0.4f],
+            output);
+    }
+
+    [Fact]
     public void StopFadeReachesSilenceAndRemovesVoice()
     {
         var mixer = new AudioMixer(StereoFourHertz);
@@ -114,6 +133,23 @@ public sealed class AudioMixerTests
         Assert.True(first.Disposed);
         Assert.True(second.Disposed);
         Assert.False(mixer.HasActiveVoices);
+    }
+
+    [Fact]
+    public void PlaybackHandleReportsWhetherItsVoiceIsStillActive()
+    {
+        var mixer = new AudioMixer(StereoFourHertz);
+        var first = mixer.Play(new AudioClip(StereoFourHertz, [1f, 1f, 1f, 1f]), AudioBus.Voice);
+        var second = mixer.Play(new AudioClip(StereoFourHertz, [0.5f, 0.5f]), AudioBus.MenuSound);
+
+        Assert.True(mixer.IsPlaying(first));
+        Assert.True(mixer.IsPlaying(second));
+        mixer.Render(new float[2]);
+        Assert.True(mixer.IsPlaying(first));
+        Assert.False(mixer.IsPlaying(second));
+
+        mixer.Stop(first);
+        Assert.False(mixer.IsPlaying(first));
     }
 
     private static AudioClip clip(float left, float right)

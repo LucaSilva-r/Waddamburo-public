@@ -4,7 +4,12 @@ using System.Text;
 
 namespace Waddamburo.Platform.Sdl.Media;
 
-public readonly record struct DecodedAudioInfo(uint SampleRate, uint Channels, ulong? TotalFrames);
+public readonly record struct DecodedAudioInfo(
+    uint SampleRate,
+    uint Channels,
+    ulong? TotalFrames,
+    ulong? LoopStartFrame,
+    ulong? LoopEndFrame);
 
 public sealed unsafe class NativeAudioDecoder : IDisposable
 {
@@ -54,7 +59,9 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
             Info = new DecodedAudioInfo(
                 streamInfo.SampleRate,
                 streamInfo.Channels,
-                streamInfo.TotalFrames == ulong.MaxValue ? null : streamInfo.TotalFrames);
+                optionalFrame(streamInfo.TotalFrames),
+                optionalFrame(streamInfo.LoopStartFrame),
+                optionalFrame(streamInfo.LoopEndFrame));
         }
         catch
         {
@@ -116,7 +123,9 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
             Info = new DecodedAudioInfo(
                 streamInfo.SampleRate,
                 streamInfo.Channels,
-                streamInfo.TotalFrames == ulong.MaxValue ? null : streamInfo.TotalFrames);
+                optionalFrame(streamInfo.TotalFrames),
+                optionalFrame(streamInfo.LoopStartFrame),
+                optionalFrame(streamInfo.LoopEndFrame));
         }
         catch
         {
@@ -126,6 +135,8 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
     }
 
     public DecodedAudioInfo Info { get; }
+
+    private static ulong? optionalFrame(ulong value) => value == ulong.MaxValue ? null : value;
 
     public int Read(Span<float> interleavedSamples)
     {

@@ -12,7 +12,7 @@
 
 _Static_assert(sizeof(void *) == 8U, "The initial media ABI targets 64-bit platforms");
 _Static_assert(sizeof(waddamburo_media_decoder_options) == 24U, "Decoder options ABI changed");
-_Static_assert(sizeof(waddamburo_media_stream_info) == 24U, "Stream info ABI changed");
+_Static_assert(sizeof(waddamburo_media_stream_info) == 40U, "Stream info ABI changed");
 _Static_assert(sizeof(waddamburo_media_error) == 272U, "Error ABI changed");
 _Static_assert(sizeof(waddamburo_media_io_callbacks) == 40U, "I/O callback ABI changed");
 
@@ -74,6 +74,31 @@ static int32_t WADDAMBURO_MEDIA_CALL cancel_callback(void *user_data)
     (void)user_data;
     return 1;
 }
+
+static int write_synthetic_nub(const char *path)
+{
+    static const uint8_t bytes[] = {
+        'N','U','B','0', 0,0,0,0,
+        'R','I','F','F', 108,0,0,0, 'W','A','V','E',
+        'f','m','t',' ', 16,0,0,0, 1,0, 2,0, 0x40,0x1f,0,0,
+        0x00,0x7d,0,0, 4,0, 16,0, 'd','a','t','a', 4,0,0,0,
+        0,0, 0,0,
+        's','m','p','l', 60,0,0,0,
+        0,0,0,0, 0,0,0,0, 0,0,0,0, 60,0,0,0,
+        0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0,
+        0,0,0,0,
+        0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+        0,0,0,0, 0,0,0,0
+    };
+    FILE *file = fopen(path, "wb");
+    if (file == NULL)
+        return 0;
+    if (fwrite(bytes, 1U, sizeof(bytes), file) != sizeof(bytes)) {
+        fclose(file);
+        return 0;
+    }
+    return fclose(file) == 0;
+}
 #endif
 
 #if defined(WADDAMBURO_MEDIA_HAS_VGMSTREAM)
@@ -128,7 +153,7 @@ int main(void)
     waddamburo_media_error error = {0};
     waddamburo_media_io_callbacks callbacks = {0};
 
-    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_1);
+    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_2);
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_0, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_0);
@@ -138,7 +163,10 @@ int main(void)
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_1, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_1);
-    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 2U), &negotiated) ==
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_2, &negotiated) ==
+          WADDAMBURO_MEDIA_OK);
+    CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_2);
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 3U), &negotiated) ==
           WADDAMBURO_MEDIA_ERROR_ABI_MISMATCH);
     CHECK(negotiated == 0U);
 
@@ -178,9 +206,10 @@ int main(void)
             0,0, 0,0
         };
         memory_input input = {wave, sizeof(wave), 0U};
-        waddamburo_media_stream_info info = {sizeof(info), 0U, 0U, 0U, 0U};
+        waddamburo_media_stream_info info = {0};
         float samples[16] = {0};
         uint64_t frames_read = 0U;
+        info.struct_size = sizeof(info);
         options.output_sample_rate = 8000U;
         options.output_channels = 2U;
         callbacks.user_data = &input;
@@ -214,14 +243,34 @@ int main(void)
         waddamburo_media_decoder_destroy(decoder);
         decoder = NULL;
     }
+    {
+        const char *path = "waddamburo-synthetic.nub";
+        waddamburo_media_stream_info info = {0};
+        info.struct_size = sizeof(info);
+        options.output_sample_rate = 8000U;
+        options.output_channels = 2U;
+        CHECK(write_synthetic_nub(path));
+        CHECK(waddamburo_media_decoder_create_file(&options, path, &decoder, &error) ==
+              WADDAMBURO_MEDIA_OK);
+        CHECK(decoder != NULL);
+        CHECK(waddamburo_media_decoder_get_stream_info(decoder, &info) == WADDAMBURO_MEDIA_OK);
+        CHECK(info.sample_rate == 8000U);
+        CHECK(info.channels == 2U);
+        CHECK(info.loop_start_frame == 0U);
+        CHECK(info.loop_end_frame == 1U);
+        waddamburo_media_decoder_destroy(decoder);
+        decoder = NULL;
+        CHECK(remove(path) == 0);
+    }
 #endif
 
 #if defined(WADDAMBURO_MEDIA_HAS_VGMSTREAM)
     {
         const char *path = "waddamburo-synthetic.bnsf";
-        waddamburo_media_stream_info info = {sizeof(info), 0U, 0U, 0U, 0U};
+        waddamburo_media_stream_info info = {0};
         float samples[1920] = {0};
         uint64_t frames_read = 0U;
+        info.struct_size = sizeof(info);
         options.output_sample_rate = 48000U;
         options.output_channels = 2U;
         CHECK(write_synthetic_bnsf(path));

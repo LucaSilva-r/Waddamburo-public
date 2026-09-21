@@ -56,11 +56,17 @@ internal static class EntrySongSelectFlow
         var soundController = soundRoot is null
             ? null
             : new AuthoredSoundController(audioEngine!, soundRoot);
-        if (jinglePath is not null)
+        var entryJinglePath = jinglePath ?? findJingle(soundRoot, "JINGLE_ENTRY.nub");
+        var songSelectJinglePath = findJingle(soundRoot, "JINGLE_GENRE.nub");
+        AudioPlaybackHandle? sceneBgm = null;
+        if (entryJinglePath is not null)
         {
-            audioEngine!.PlayOneShot(jinglePath, AudioBus.MenuSound);
+            if (jinglePath is null)
+                sceneBgm = audioEngine!.PlayLoop(entryJinglePath, AudioBus.Bgm);
+            else
+                sceneBgm = audioEngine!.PlayOneShot(entryJinglePath, AudioBus.Bgm);
             Console.WriteLine(
-                $"Menu jingle: {Path.GetFileName(jinglePath)} via {audioDevice!.Driver}, " +
+                $"Entry jingle: {Path.GetFileName(entryJinglePath)} via {audioDevice!.Driver}, " +
                 $"{audioDevice.HardwareBufferFrames} hardware buffer frames.");
         }
         using var titleTextures = new SongTitleTextureCache(
@@ -128,11 +134,23 @@ internal static class EntrySongSelectFlow
                     active.Player.Advance(input);
                     if (coordinator.Flow.State != GameFlowState.TransitionPending)
                         return;
+                    if (soundController?.IsVoicePlaying == true)
+                        return;
 
                     reportDiagnostics(active);
                     coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult();
                     active = requireLumenScene(coordinator);
                     textureIds = uploadTextures(application, active);
+                    if (active.Id == songSelectId)
+                    {
+                        if (sceneBgm is { } previousBgm)
+                            audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
+                        sceneBgm = songSelectJinglePath is null
+                            ? null
+                            : audioEngine!.PlayLoop(songSelectJinglePath, AudioBus.Bgm);
+                        if (songSelectJinglePath is not null)
+                            Console.WriteLine($"Song Select jingle: {Path.GetFileName(songSelectJinglePath)}.");
+                    }
                     Console.WriteLine($"Activated scene '{active.Id}' at tick {simulationTick}.");
                 },
                 frameLimit,
@@ -149,6 +167,14 @@ internal static class EntrySongSelectFlow
         {
             coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
+    }
+
+    private static string? findJingle(string? soundRoot, string fileName)
+    {
+        if (soundRoot is null)
+            return null;
+        var path = Path.Combine(Path.GetFullPath(soundRoot), "bgm", "nub", fileName);
+        return File.Exists(path) ? path : null;
     }
 
     private static LumenGameSceneInstance requireLumenScene(GameFlowCoordinator coordinator) =>

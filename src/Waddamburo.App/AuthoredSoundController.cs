@@ -9,9 +9,11 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
     private readonly AudioEngine _audio;
     private readonly string _bankRoot;
     private readonly NuSoundBankCatalog _catalog;
-    private readonly Dictionary<(int Bank, int Cue), AudioClip> _clips = [];
-    private readonly HashSet<(int Bank, int Cue)> _reportedFailures = [];
+    private readonly Dictionary<(string Bank, int Cue), AudioClip> _clips = [];
+    private readonly HashSet<(string Bank, int Cue)> _reportedFailures = [];
     private AudioClip? _latestVoice;
+    private AudioPlaybackHandle? _oneShotVoiceHandle;
+    private AudioPlaybackHandle? _loopVoiceHandle;
 
     public AuthoredSoundController(AudioEngine audio, string soundRoot)
     {
@@ -33,11 +35,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
                 traceUnmapped("SystemEffect", request.Arguments);
                 break;
             case LumenFrontendSoundRequestKind.LoopVoice:
-                if (_latestVoice is not null)
-                {
-                    _audio.Mixer.StopBus(AudioBus.Voice);
-                    _audio.Mixer.Play(_latestVoice, AudioBus.Voice, loop: true);
-                }
+                replayLatestVoiceOnce();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(request));
@@ -52,22 +50,28 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
                 playBankCue(request.Arguments);
                 break;
             case SongSelectSoundRequestKind.LoopVoice:
-                if (_latestVoice is not null)
-                {
-                    _audio.Mixer.StopBus(AudioBus.Voice);
-                    _audio.Mixer.Play(_latestVoice, AudioBus.Voice, loop: true);
-                }
+                replayLatestVoiceOnce();
                 break;
             case SongSelectSoundRequestKind.SystemEffect:
-            case SongSelectSoundRequestKind.PlayerEffect:
                 traceUnmapped(request.Kind.ToString(), request.Arguments);
+                break;
+            case SongSelectSoundRequestKind.PlayerEffect:
+                playPlayerEffect(request.Arguments);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(request));
         }
     }
 
-    public void StopVoice() => _audio.Mixer.StopBus(AudioBus.Voice, TimeSpan.FromMilliseconds(20));
+    public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);
+
+    public void StopVoice()
+    {
+        if (_loopVoiceHandle is not { } handle)
+            return;
+        _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+        _loopVoiceHandle = null;
+    }
 
     private void playBankCue(System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments)
     {
@@ -82,7 +86,35 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
             return;
         }
 
-        var key = (bankId, cueId);
+        playNamedBankCue(bankName, cueId);
+    }
+
+    private void playPlayerEffect(System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments)
+    {
+        if (!tryInteger(arguments, 0, out _)
+            || !tryInteger(arguments, 1, out var hitKind))
+        {
+            traceUnmapped("PlayerEffect", arguments);
+            return;
+        }
+
+        var cueId = hitKind switch
+        {
+            0 => 0, // Don (centre)
+            1 => 3, // Ka (rim)
+            _ => -1,
+        };
+        if (cueId < 0)
+        {
+            traceUnmapped("PlayerEffect", arguments);
+            return;
+        }
+        playNamedBankCue("SE_COM", cueId, AudioBus.DrumHit);
+    }
+
+    private void playNamedBankCue(string bankName, int cueId, AudioBus? busOverride = null)
+    {
+        var key = (bankName, cueId);
         try
         {
             if (!_clips.TryGetValue(key, out var clip))
@@ -94,17 +126,42 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
                     sourceStreamIndex: checked((uint)cueId + 1U));
                 _clips.Add(key, clip);
             }
-            var bus = bankName.StartsWith("VO_", StringComparison.Ordinal) ? AudioBus.Voice : AudioBus.MenuSound;
+            var bus = busOverride
+                ?? (bankName.StartsWith("VO_", StringComparison.Ordinal) ? AudioBus.Voice : AudioBus.MenuSound);
             if (bus == AudioBus.Voice)
+            {
+                stopVoiceImmediately(_oneShotVoiceHandle);
+                stopVoiceImmediately(_loopVoiceHandle);
                 _latestVoice = clip;
-            _audio.Mixer.Play(clip, bus);
+                _loopVoiceHandle = null;
+            }
+            var handle = _audio.Mixer.Play(clip, bus);
+            if (bus == AudioBus.Voice)
+                _oneShotVoiceHandle = handle;
             Console.WriteLine($"Authored sound {bankName}#{cueId} -> {bus}.");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
             if (_reportedFailures.Add(key))
-                Console.Error.WriteLine($"Authored sound {bankId}:{cueId} is unavailable: {exception.Message}");
+                Console.Error.WriteLine($"Authored sound {bankName}#{cueId} is unavailable: {exception.Message}");
         }
+    }
+
+    private void replayLatestVoiceOnce()
+    {
+        if (_latestVoice is null || IsVoicePlaying)
+            return;
+        _loopVoiceHandle = _audio.Mixer.Play(_latestVoice, AudioBus.Voice);
+        Console.WriteLine("Authored voice replay -> Voice.");
+    }
+
+    private bool isPlaying(AudioPlaybackHandle? handle)
+        => handle is { } value && _audio.Mixer.IsPlaying(value);
+
+    private void stopVoiceImmediately(AudioPlaybackHandle? handle)
+    {
+        if (handle is { } value)
+            _audio.Mixer.Stop(value);
     }
 
     private static bool tryInteger(

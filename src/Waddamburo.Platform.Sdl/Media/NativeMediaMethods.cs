@@ -35,6 +35,8 @@ internal struct MediaStreamInfo
     internal uint Channels;
     internal uint Reserved;
     internal ulong TotalFrames;
+    internal ulong LoopStartFrame;
+    internal ulong LoopEndFrame;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -60,7 +62,7 @@ internal struct MediaIoCallbacks
 internal static partial class NativeMediaMethods
 {
     internal const string LibraryName = "waddamburo_media";
-    internal const uint AbiVersion = (1U << 16) | 1U;
+    internal const uint AbiVersion = (1U << 16) | 2U;
 
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_get_abi_version")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

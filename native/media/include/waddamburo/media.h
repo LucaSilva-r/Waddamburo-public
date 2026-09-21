@@ -25,7 +25,8 @@ extern "C" {
 #define WADDAMBURO_MEDIA_ABI_VERSION_MINOR(version) ((uint32_t)(version) & 0xffffU)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_0 WADDAMBURO_MEDIA_ABI_VERSION(1U, 0U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_1 WADDAMBURO_MEDIA_ABI_VERSION(1U, 1U)
-#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_1
+#define WADDAMBURO_MEDIA_ABI_VERSION_1_2 WADDAMBURO_MEDIA_ABI_VERSION(1U, 2U)
+#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_2
 
 typedef int32_t waddamburo_media_result;
 
@@ -62,6 +63,9 @@ typedef struct waddamburo_media_stream_info {
     uint32_t channels;
     uint32_t reserved;
     uint64_t total_frames;
+    /* Half-open authored loop range in output frames, or UNKNOWN for both fields. */
+    uint64_t loop_start_frame;
+    uint64_t loop_end_frame;
 } waddamburo_media_stream_info;
 
 typedef struct waddamburo_media_error {

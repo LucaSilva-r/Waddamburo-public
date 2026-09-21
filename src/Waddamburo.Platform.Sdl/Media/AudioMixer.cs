@@ -11,6 +11,8 @@ public enum AudioBus
 
 public readonly record struct AudioPlaybackHandle(long Value);
 
+public readonly record struct AudioLoopRegion(int StartFrame, int EndFrame);
+
 /// <summary>Bounded, device-format PCM intended for jingles and sound effects.</summary>
 public sealed class AudioClip
 {
@@ -19,11 +21,22 @@ public sealed class AudioClip
     private readonly float[] _samples;
 
     public AudioClip(SdlAudioFormat format, ReadOnlySpan<float> interleavedSamples)
-        : this(format, interleavedSamples.ToArray())
+        : this(format, interleavedSamples.ToArray(), (AudioLoopRegion?)null)
     {
     }
 
-    private AudioClip(SdlAudioFormat format, float[] interleavedSamples)
+    public AudioClip(
+        SdlAudioFormat format,
+        ReadOnlySpan<float> interleavedSamples,
+        AudioLoopRegion loopRegion)
+        : this(format, interleavedSamples.ToArray(), (AudioLoopRegion?)loopRegion)
+    {
+    }
+
+    private AudioClip(
+        SdlAudioFormat format,
+        float[] interleavedSamples,
+        AudioLoopRegion? loopRegion)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(format.SampleRate);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(format.Channels);
@@ -35,6 +48,15 @@ public sealed class AudioClip
         }
         Format = format;
         _samples = interleavedSamples;
+        if (loopRegion is { } region &&
+            (region.StartFrame < 0 || region.EndFrame <= region.StartFrame ||
+             region.EndFrame > FrameCount))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(loopRegion),
+                "The loop region must be a non-empty range inside the clip.");
+        }
+        LoopRegion = loopRegion;
     }
 
     public SdlAudioFormat Format { get; }
@@ -42,6 +64,8 @@ public sealed class AudioClip
     public int FrameCount => _samples.Length / Format.Channels;
 
     public TimeSpan Duration => TimeSpan.FromSeconds((double)FrameCount / Format.SampleRate);
+
+    public AudioLoopRegion? LoopRegion { get; }
 
     public static AudioClip Load(
         string path,
@@ -88,7 +112,14 @@ public sealed class AudioClip
         }
         if (samples.Count == 0)
             throw new InvalidDataException("The audio clip contains no decoded frames.");
-        return new AudioClip(format, [.. samples]);
+        AudioLoopRegion? loopRegion = null;
+        if (decoder.Info.LoopStartFrame is ulong loopStart &&
+            decoder.Info.LoopEndFrame is ulong loopEnd &&
+            loopStart < loopEnd && loopEnd <= decodedFrames && loopEnd <= int.MaxValue)
+        {
+            loopRegion = new AudioLoopRegion(checked((int)loopStart), checked((int)loopEnd));
+        }
+        return new AudioClip(format, [.. samples], loopRegion);
     }
 
     internal ReadOnlySpan<float> Samples => _samples;
@@ -121,6 +152,16 @@ public sealed class AudioMixer
         {
             lock (_gate)
                 return _voices.Count != 0 || _streamVoices.Count != 0;
+        }
+    }
+
+    /// <summary>Reports whether the identified clip or stream still has mixer-owned samples to render.</summary>
+    public bool IsPlaying(AudioPlaybackHandle handle)
+    {
+        lock (_gate)
+        {
+            return _voices.Exists(candidate => candidate.Handle == handle)
+                || _streamVoices.Exists(candidate => candidate.Handle == handle);
         }
     }
 
@@ -276,11 +317,18 @@ public sealed class AudioMixer
                 var bus = _buses[(int)voice.Bus];
                 for (var outputFrame = 0; outputFrame < frameCount; outputFrame++)
                 {
-                    if (voice.Position >= voice.Clip.FrameCount)
+                    var loopEnd = voice.Clip.LoopRegion?.EndFrame ?? voice.Clip.FrameCount;
+                    if (voice.Position >= loopEnd)
                     {
                         if (!voice.Loop)
-                            break;
-                        voice.Position = 0;
+                        {
+                            if (voice.Position >= voice.Clip.FrameCount)
+                                break;
+                        }
+                        else
+                        {
+                            voice.Position = voice.Clip.LoopRegion?.StartFrame ?? 0;
+                        }
                     }
 
                     var fade = voice.FadeFramesTotal == 0

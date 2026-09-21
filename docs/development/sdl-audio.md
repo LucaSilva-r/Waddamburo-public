@@ -28,7 +28,11 @@ Mixing is additive float with final saturation to `[-1, 1]`.
 
 `AudioClip` predecodes short one-shots into the device format, defaults to a
 30-second safety limit, and never permits a limit above two minutes. This is
-appropriate for jingles and effects. `BufferedAudioSource` incrementally decodes a
+appropriate for jingles and effects. Clips retain an optional half-open authored
+loop region. The mixer plays the intro once, wraps from the authored end back to
+the authored start, and does not replay codec tail padding. Stock ATRAC NUBs expose
+that range through their enclosing RIFF `smpl` chunk even when the elementary
+stream decoder has no loop metadata. `BufferedAudioSource` incrementally decodes a
 provider-owned `Stream` into a bounded half-second PCM ring. Its mixer-facing read
 never waits for the decoder, and stopping the voice cancels decoding and releases
 both the native decoder and input stream. `NativeAudioDecoder` keeps managed stream
@@ -37,9 +41,11 @@ through the same C ABI as file decoding. Loading happens before `Play`, never on
 mixer producer.
 
 The `--play-audio=` diagnostic exercises streaming music. `--play-jingle=` decodes a
-short user-owned file and plays it on the menu-sound bus; it also works with
-`--entry-song-select` to accompany the real Entry-to-Song-Select composition. Both
-paths print SDL's selected hardware format.
+short user-owned file; in the Entry-to-Song-Select composition it plays on the BGM
+bus. When a sound root is present and no override is supplied, that composition
+resolves and loops the user-owned `bgm/nub/JINGLE_ENTRY.nub` during Player Entry.
+On activation it stops that voice and loops Song Select's distinct
+`bgm/nub/JINGLE_GENRE.nub`. Both paths print SDL's selected hardware format.
 
 The interactive Entry-to-Song-Select flow opens one shared audio device (bounded
 screenshot runs stay silent unless audio is explicitly requested). Song Select
@@ -55,10 +61,16 @@ contracts. In the Entry-to-Song-Select diagnostic, `--sound-root=` points at a
 user-owned nuSound2 tree containing `config/nuSound2BankStr.bin` and `se/*.nub`.
 The bounded table parser maps authored numeric bank IDs to sanitized bank names;
 `RequestSE(bank, cue)` selects the one-based NUB substream `cue + 1`. `VO_` banks
-play on the voice bus, other banks play on the menu-sound bus, loop requests replay
-the latest authored voice as a loop, and `StopVoice` fades that bus. Unknown system
-and player-effect request shapes are traced explicitly until their protocol is
-measured; they are not guessed from UI state.
+play exclusively on the voice bus, while other banks play on the menu-sound bus.
+An authored loop notification replays the latest voice once only when it is no
+longer active; it does not create an unbounded PCM loop. `StopVoice` stops only
+that replay, not an ordinary spoken one-shot. Entry keeps an accepted scene
+transition pending until the ordinary or replayed voice completes.
+Song Select's observed player-effect protocol carries a drum-tone ID and a semantic
+hit kind. Browser feedback uses the common `SE_COM` bank: cue 0 for Don (centre)
+and cue 3 for Ka (rim). This remains driven by authored `RequestPlayerSE` calls,
+not by platform-specific key bindings, and plays on the dedicated drum-hit bus.
+Unknown system and player-effect shapes are traced.
 
 `SdlAudioDeviceTests` opens the available playback backend, queues silent float
 frames while paused, verifies queue accounting and clearing, and exercises resume,
