@@ -98,18 +98,19 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
             return;
         }
 
-        var cueId = hitKind switch
+        var sound = hitKind switch
         {
-            0 or 2 => 0, // Don (centre/confirm variants)
-            1 => 3, // Ka (rim)
-            _ => -1,
+            0 => (Bank: "SE_COM", Cue: 0), // Don
+            1 => (Bank: "SE_COM", Cue: 3), // Ka
+            2 => (Bank: "SE_COM", Cue: 6), // Close-folder substitution
+            _ => default,
         };
-        if (cueId < 0)
+        if (sound.Bank is null)
         {
             traceUnmapped("PlayerEffect", arguments);
             return;
         }
-        playNamedBankCue("SE_COM", cueId, AudioBus.DrumHit);
+        playNamedBankCue(sound.Bank, sound.Cue, AudioBus.DrumHit);
     }
 
     private void playEntrySystemEffect(System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments)

@@ -77,8 +77,10 @@ that replay, not an ordinary spoken one-shot. Entry keeps an accepted scene
 transition pending until the ordinary or replayed voice completes.
 Song Select's observed player-effect protocol carries a drum-tone ID and a semantic
 hit kind. Browser feedback uses the common `SE_COM` bank: cue 0 for Don (centre)
-and cue 3 for Ka (rim). This remains driven by authored `RequestPlayerSE` calls,
-not by platform-specific key bindings, and plays on the dedicated drum-hit bus.
+and cue 3 for Ka (rim). The close-folder hit kind substitutes `SE_COM` cue 6 for
+Don. This remains driven by authored
+`RequestPlayerSE` calls, not by platform-specific key bindings, and plays on the
+dedicated drum-hit bus.
 Unknown system and player-effect shapes are traced.
 Player Entry's observed `RequestSystemSE(0, hit)` shape routes hit `0` to the
 common-bank Don cue and hit `1` to Ka. Song Select uses its separate observed
@@ -91,6 +93,12 @@ PCM to lock bus summation, volume, saturation, mute timing, looping, fade-out, c
 ownership, streaming-source mixing/disposal, full teardown, and format rejection.
 The managed callback bridge is also checked locally with a synthetic in-memory WAV,
 including frame seek; no game audio is used by that check.
+
+`--probe-sound-bank=PATH` opens a diagnostic window for a user-owned NUB or a
+directory of NUB banks. Up/Down changes bank, Right/K and Left/D change cue, and
+Space/F/Enter replays the current cue. The console reports the bank, zero-based
+authored cue, one-based decoder stream, and duration. This supports listening-based
+identification without adding extracted media to the repository.
 
 Still intentionally absent are complete system/player-effect mappings, source
 pause/resume, mixed gameplay BGM, a played-sample clock, underrun/device-change
