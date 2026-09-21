@@ -70,7 +70,7 @@ public sealed class LumenPlayer
         installKeyObject();
         installMathObject();
         installExternalInterface();
-        hostBinding?.Install(new LumenHostContext(_globals, _externalInterface));
+        hostBinding?.Install(new LumenHostContext(_globals, _externalInterface, findNumericVariableName));
         bootstrapPackageClasses();
         enterFrame(_root, 0, queueActions: true);
         drainActions();
@@ -212,12 +212,34 @@ public sealed class LumenPlayer
             foreach (var action in timeline.Frames[0].OfType<LmbDoActionCommand>())
             {
                 if (action.ActionIndex < (uint)_movie.Actions.Length)
+                {
                     _ = executeAction(
                         package,
                         _movie.Actions[checked((int)action.ActionIndex)].Code,
                         captureTimelineTarget: false);
+                    foreach (var (name, value) in package.Variables)
+                        _globals[name] = value;
+                    package.Variables.Clear();
+                }
             }
         }
+    }
+
+    private string? findNumericVariableName(string prefix, double value)
+    {
+        if (_activeContext is null)
+            return null;
+        foreach (var name in _movie.Strings
+                     .Select(static value => value.Value)
+                     .Where(name => name.StartsWith(prefix, StringComparison.Ordinal))
+                     .Distinct(StringComparer.Ordinal)
+                     .Order(StringComparer.Ordinal))
+        {
+            var candidate = _activeContext.GetVariable(name);
+            if (candidate.Found && candidate.Value is double number && number == value)
+                return name;
+        }
+        return null;
     }
 
     private void seekCore(int frame, bool play)

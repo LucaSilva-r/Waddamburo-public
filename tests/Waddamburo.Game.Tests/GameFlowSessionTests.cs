@@ -124,8 +124,21 @@ public sealed class GameFlowSessionTests
 
         player.Advance();
 
-        Assert.Equal(new DonMotionRequest(0, null, null), Assert.Single(don.Requests));
+        Assert.Equal(
+            new DonMotionRequest(0, "don_entry1P_out", "don_entry_loop"),
+            Assert.Single(don.Requests));
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
+    [Fact]
+    public void AttachingDonToANewMovieResetsPreviousSceneState()
+    {
+        var don = new SyntheticDonPresentation();
+        var player = new LumenPlayer(createTransitionMovie(), 1280, 720);
+
+        DonLumenBinding.Attach(player, don);
+
+        Assert.Equal(DonPresentationLayout.Standard, Assert.Single(don.ResetLayouts));
     }
 
     [Fact]
@@ -299,6 +312,14 @@ public sealed class GameFlowSessionTests
     {
         var action = new byte[]
         {
+            0x96, 0x08, 0x00,
+                0x09, 0x02, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x3C,
+            0x96, 0x08, 0x00,
+                0x09, 0x03, 0x00,
+                0x07, 0x02, 0x00, 0x00, 0x00,
+            0x3C,
             0x96, 0x14, 0x00,
                 0x07, 0x02, 0x00, 0x00, 0x00,
                 0x07, 0x01, 0x00, 0x00, 0x00,
@@ -313,7 +334,7 @@ public sealed class GameFlowSessionTests
         };
         var file = createLmb(
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
-            record(LmbTags.StringPool, stringPool("Lumen", "SetMotion")),
+            record(LmbTags.StringPool, stringPool("Lumen", "SetMotion", "DON_ENTRY1P_OUT", "DON_ENTRY_LOOP")),
             record(LmbTags.ActionPool, actionPool(action)),
             words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
@@ -408,6 +429,10 @@ public sealed class GameFlowSessionTests
     private sealed class SyntheticDonPresentation : IDonPresentationController
     {
         public List<DonMotionRequest> Requests { get; } = [];
+
+        public List<DonPresentationLayout> ResetLayouts { get; } = [];
+
+        public void Reset(DonPresentationLayout layout) => ResetLayouts.Add(layout);
 
         public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"don:{playerIndex}");
 

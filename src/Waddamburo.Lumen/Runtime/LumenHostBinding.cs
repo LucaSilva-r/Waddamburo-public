@@ -82,12 +82,17 @@ public sealed class LumenHostContext
 {
     private readonly Dictionary<string, object?> _globals;
     private readonly Avm1Object _externalInterface;
+    private readonly Func<string, double, string?>? _numericVariableResolver;
     private bool _externalInterfaceCallRegistered;
 
-    internal LumenHostContext(Dictionary<string, object?> globals, Avm1Object externalInterface)
+    internal LumenHostContext(
+        Dictionary<string, object?> globals,
+        Avm1Object externalInterface,
+        Func<string, double, string?>? numericVariableResolver = null)
     {
         _globals = globals;
         _externalInterface = externalInterface;
+        _numericVariableResolver = numericVariableResolver;
     }
 
     public void RegisterFunction(string name, LumenHostCallback callback)
@@ -110,10 +115,10 @@ public sealed class LumenHostContext
     }
 
     /// <summary>
-    /// Resolves an authored numeric constant without exposing the VM's mutable global object.
-    /// The lookup is evaluated when called, after package bootstrap scripts may have run.
+    /// Resolves a host-visible authored numeric constant without exposing mutable AVM state.
+    /// The lookup is evaluated inside the calling action so pending local definitions are visible.
     /// </summary>
-    public string? FindNumericGlobalName(string prefix, double value)
+    public string? FindNumericVariableName(string prefix, double value)
     {
         ArgumentNullException.ThrowIfNull(prefix);
         if (!double.IsFinite(value))
@@ -124,7 +129,8 @@ public sealed class LumenHostContext
                 && number == value)
             .Select(static pair => pair.Key)
             .Order(StringComparer.Ordinal)
-            .FirstOrDefault();
+            .FirstOrDefault()
+            ?? _numericVariableResolver?.Invoke(prefix, value);
     }
 
     /// <summary>Registers the movie-to-host endpoint used by flash.external.ExternalInterface.call.</summary>

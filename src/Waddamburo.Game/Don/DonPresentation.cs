@@ -5,12 +5,20 @@ namespace Waddamburo.Game.Don;
 
 public readonly record struct DonMotionRequest(int PlayerIndex, string? OneShot, string? Loop);
 
+public enum DonPresentationLayout
+{
+    Standard,
+    OpposedPlayers,
+}
+
 /// <summary>
 /// Renderer-facing Don state owned outside Lumen. Implementations advance at the game tick and
 /// provide GPU-backed native surfaces to the platform compositor.
 /// </summary>
 public interface IDonPresentationController
 {
+    void Reset(DonPresentationLayout layout);
+
     LumenNativeSurfaceKey GetSurface(int playerIndex);
 
     void SetMotion(DonMotionRequest request);
@@ -22,10 +30,14 @@ public static class DonLumenBinding
     private static readonly LumenNativeSurfacePlacement Placement =
         LumenNativeSurfacePlacement.Centered(600, 600);
 
-    public static void Attach(LumenPlayer player, IDonPresentationController presentation)
+    public static void Attach(
+        LumenPlayer player,
+        IDonPresentationController presentation,
+        DonPresentationLayout layout = DonPresentationLayout.Standard)
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(presentation);
+        presentation.Reset(layout);
         player.SetNativeFill("don1pM", presentation.GetSurface(0), Placement);
         player.SetNativeFill("don2pM", presentation.GetSurface(1), Placement);
     }
@@ -67,7 +79,11 @@ public static class DonLumenBinding
     {
         if (value.Kind != LumenHostValueKind.Number)
             return null;
-        var global = context.FindNumericGlobalName("DON_", value.AsNumber());
-        return global is null ? null : $"don_{global[4..].ToLowerInvariant()}";
+        var global = context.FindNumericVariableName("DON_", value.AsNumber());
+        return global is null
+            ? null
+            : $"don_{global[4..].ToLowerInvariant()}"
+                .Replace("1p", "1P", StringComparison.Ordinal)
+                .Replace("2p", "2P", StringComparison.Ordinal);
     }
 }

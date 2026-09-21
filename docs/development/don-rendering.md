@@ -31,8 +31,13 @@ vertex, animation, and pose data. `SongSelectHostBinding` forwards authored
 `Lumen.SetMotion(player, once, loop)` calls through `IDonPresentationController`
 and the shared `DonLumenBinding` assigns each player's output to `don1pM` /
 `don2pM` in both Player Entry and Song Select. Numeric motion ids are resolved
-from authored `DON_*` globals at call time, after movie bootstrap, so the product
-does not need a duplicated id table.
+from the authored `DON_*` variables visible to the calling AVM action, including
+pending local definitions, so the product does not need a duplicated id table.
+The ANI payload has no playback-mode flag: an authored third `SetMotion` argument
+selects the follow-up loop, while an absent loop holds the one-shot's final frame
+until the movie requests another motion. Attaching a fresh movie resets both
+players to the default select loop before that movie's authored motion calls run,
+so one-shot state cannot leak across scene transitions.
 
 ## GPU integration
 
@@ -47,6 +52,12 @@ The material path implements the default body's nearest-sampled repeating RGB
 replacement mask, ordinary textured and alpha-tested passes, the face-expression
 atlas, front-cull inverted hulls, and the silhouette dilation pass. Packaged
 GLSL/SPIR-V and HLSL/DXIL build inputs cover the Vulkan and D3D12 backends.
+The reflected 2P camera reverses projected triangle winding, so its render pass
+swaps front/back culling while retaining the movie-authored 2P placement. Player
+Entry instead uses the ordinary camera for 2P and lets that movie's mirrored
+right-hand slot turn the players inward. The default 2P palette swaps the body's
+red/teal regions and derives the matching teal face from the default paint atlas,
+preserving the same authored expressions and facial details.
 
 Normal game-data boot resolves `data/don3d`. Diagnostic Entry-to-Song-Select runs
 can opt in with `--don-root=/path/to/don3d`; omitting it keeps diagnostics usable

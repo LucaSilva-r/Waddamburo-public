@@ -237,7 +237,7 @@ internal static class EntrySongSelectFlow
         private void initializeEntry(LumenPlayer player)
         {
             if (_don is not null)
-                DonLumenBinding.Attach(player, _don);
+                DonLumenBinding.Attach(player, _don, DonPresentationLayout.OpposedPlayers);
             if (!player.TryInvokeCallback("SetPrevious", [
                     LumenHostValue.FromNumber(0),
                     LumenHostValue.FromNumber(-1)]))
@@ -275,6 +275,9 @@ internal static class EntrySongSelectFlow
             new("don:0"),
             new("don:1"),
         ];
+
+        public void Reset(DonPresentationLayout layout) =>
+            _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers);
 
         public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[playerIndex];
 

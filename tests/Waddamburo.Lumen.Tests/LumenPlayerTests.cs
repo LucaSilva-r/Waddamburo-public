@@ -684,6 +684,42 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void PackageTimelineVariablesBecomeAuthoredGlobals()
+    {
+        string? resolvedName = null;
+        var player = new LumenPlayer(
+            createMovie(
+                actionBytecode: [
+                    0x96, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00,
+                    0x96, 0x03, 0x00, 0x09, 0x07, 0x00,
+                    0x1C,
+                    0x96, 0x03, 0x00, 0x09, 0x08, 0x00,
+                    0x52,
+                    0x17,
+                    0x00,
+                ],
+                packageActionBytecode: [
+                    0x96, 0x08, 0x00,
+                        0x09, 0x31, 0x00,
+                        0x07, 0x47, 0x00, 0x00, 0x00,
+                    0x1D,
+                    0x00,
+                ]),
+            1280,
+            720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterObject("resource", resource =>
+                resource.RegisterMethod("ResolveVisible", _ =>
+                {
+                    resolvedName = context.FindNumericVariableName("DON_", 71);
+                    return LumenHostValue.Undefined;
+                }))));
+
+        player.Advance();
+
+        Assert.Equal("DON_SELECT_LOOP", resolvedName);
+    }
+
+    [Fact]
     public void HostObjectCallsAreSynchronousAndScopedToOnePlayer()
     {
         var firstCalls = 0;
@@ -1534,7 +1570,7 @@ public sealed class LumenPlayerTests
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
                 "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x",
-                "createEmptyMovieClip", "removeMovieClip")),
+                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

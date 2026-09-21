@@ -29,7 +29,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private readonly ImmutableArray<Matrix4x4> _bindWorld;
     private readonly Dictionary<string, DonAnimationFile> _animations = new(StringComparer.Ordinal);
     private readonly List<GpuMesh> _meshes = [];
-    private readonly Dictionary<uint, nint> _faceTextures = [];
+    private readonly Dictionary<uint, nint>[] _faceTextures = [[], []];
     private readonly List<nint> _ownedTextures = [];
     private readonly List<nint> _ownedBuffers = [];
     private readonly Dictionary<(bool Blend, SDL_GPUCullMode Cull), nint> _pipelines = [];
@@ -42,6 +42,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private SDL_GPUSampler* _linearSampler;
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUTexture* _whiteTexture;
+    private bool _mirrorPlayerTwoCamera = true;
     private bool _disposed;
 
     internal SdlDonRenderer(SDL_GPUDevice* device, RenderDevice compositor, string assetRoot)
@@ -65,7 +66,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             _whiteTexture = uploadRgba(1, 1, [255, 255, 255, 255]);
             loadModel("parts/body/body_000000.nud");
             loadModel("parts/head/head_000000.nud");
-            loadFaces("parts/paint/paint_000000.nut");
+            loadFaces(0, "parts/paint/paint_000000.nut", replaceFaceColor: false);
+            loadFaces(1, "parts/paint/paint_000000.nut", replaceFaceColor: true);
             for (var index = 0; index < _targets.Length; index++)
                 _targets[index] = createTarget();
             var idle = loadMotion("don_select_loop");
@@ -91,15 +93,29 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return _targets[playerIndex].TextureId;
     }
 
+    public void Reset(bool mirrorPlayerTwoCamera)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _mirrorPlayerTwoCamera = mirrorPlayerTwoCamera;
+        var idle = loadMotion("don_select_loop");
+        foreach (var player in _players)
+            player.Set(idle, idle);
+    }
+
     public void SetMotion(int playerIndex, string? oneShot, string? loop)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
         var player = _players[playerIndex];
-        var nextLoop = loop is null ? player.Loop : loadMotion(normalizeMotion(loop));
-        var next = oneShot is null ? nextLoop : loadMotion(normalizeMotion(oneShot));
-        player.Set(next, nextLoop);
+        var nextLoop = loop is null ? null : loadMotion(normalizeMotion(loop));
+        if (oneShot is not null)
+        {
+            player.Set(loadMotion(normalizeMotion(oneShot)), nextLoop);
+            return;
+        }
+        if (nextLoop is not null)
+            player.Set(nextLoop, nextLoop);
     }
 
     public void Advance()
@@ -136,7 +152,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var animatedWorld = _skeleton.EvaluateWorld(frame);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
         var camera = PlayerOneCamera;
-        if (playerIndex == 1)
+        var reflectedCamera = playerIndex == 1 && _mirrorPlayerTwoCamera;
+        if (reflectedCamera)
         {
             camera.M11 = -camera.M11;
             camera.M21 = -camera.M21;
@@ -173,7 +190,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             SDL_PushGPUVertexUniformData(commandBuffer, 0, (nint)pose, checked((uint)(_poseUniforms.Length * sizeof(float))));
 
         var expression = _skeleton.GetExpression(frame);
-        var face = _faceTextures.TryGetValue((uint)expression, out var faceAddress)
+        var face = _faceTextures[playerIndex].TryGetValue((uint)expression, out var faceAddress)
             ? (SDL_GPUTexture*)faceAddress
             : _whiteTexture;
         var binding = new SDL_GPUTextureSamplerBinding();
@@ -198,6 +215,17 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                         0x404 => SDL_GPUCullMode.SDL_GPU_CULLMODE_FRONT,
                         _ => SDL_GPUCullMode.SDL_GPU_CULLMODE_NONE,
                     };
+                    // Reflecting the 2P camera reverses projected triangle winding. Preserve
+                    // the authored visible side instead of rendering the mesh inside-out.
+                    if (reflectedCamera)
+                    {
+                        cull = cull switch
+                        {
+                            SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK => SDL_GPUCullMode.SDL_GPU_CULLMODE_FRONT,
+                            SDL_GPUCullMode.SDL_GPU_CULLMODE_FRONT => SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK,
+                            _ => cull,
+                        };
+                    }
                     SDL_BindGPUGraphicsPipeline(pass, getModelPipeline(blended, cull));
                     var vertexBinding = new SDL_GPUBufferBinding { buffer = (SDL_GPUBuffer*)mesh.VertexBuffer };
                     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
@@ -214,8 +242,12 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                         Parameters = new Float4(material.AlphaFunction != 0 || kind == 8
                             ? Math.Max(material.AlphaReference, (byte)6) / 255f
                             : 0, kind, 0, 0),
-                        ReplaceRed = color(0x6C, 0xC3, 0xC6),
-                        ReplaceGreen = color(0xF9, 0x4C, 0x2C),
+                        ReplaceRed = playerIndex == 0
+                            ? color(0x6C, 0xC3, 0xC6)
+                            : color(0xF9, 0x4C, 0x2C),
+                        ReplaceGreen = playerIndex == 0
+                            ? color(0xF9, 0x4C, 0x2C)
+                            : color(0x6C, 0xC3, 0xC6),
                         ReplaceBlue = color(0xF8, 0xF0, 0xDC),
                     };
                     SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&materialUniforms), (uint)sizeof(MaterialUniforms));
@@ -277,10 +309,40 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         }
     }
 
-    private void loadFaces(string relativePath)
+    private void loadFaces(int playerIndex, string relativePath, bool replaceFaceColor)
     {
-        foreach (var (id, texture) in uploadNut(resolveAsset(relativePath)))
-            _faceTextures[id] = texture;
+        var nut = NutFile.Parse(File.ReadAllBytes(resolveAsset(relativePath)));
+        foreach (var texture in nut.Textures)
+        {
+            var pixels = NutTextureDecoder.DecodeRgba8(texture);
+            if (replaceFaceColor)
+                replaceRgb(pixels, 0xF9, 0x4C, 0x2C, 0x6C, 0xC3, 0xC6);
+            var id = texture.GlobalId ?? checked((uint)texture.Index);
+            _faceTextures[playerIndex][id] = (nint)uploadRgba(texture.Width, texture.Height, pixels);
+        }
+    }
+
+    private static void replaceRgb(
+        Span<byte> pixels,
+        byte sourceRed,
+        byte sourceGreen,
+        byte sourceBlue,
+        byte targetRed,
+        byte targetGreen,
+        byte targetBlue)
+    {
+        for (var offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset] != sourceRed
+                || pixels[offset + 1] != sourceGreen
+                || pixels[offset + 2] != sourceBlue)
+            {
+                continue;
+            }
+            pixels[offset] = targetRed;
+            pixels[offset + 1] = targetGreen;
+            pixels[offset + 2] = targetBlue;
+        }
     }
 
     private Dictionary<uint, nint> uploadNut(string path)
@@ -587,10 +649,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         _ownedTextures.Clear();
     }
 
-    private static string normalizeMotion(string value) =>
-        value.Equals("don_siwng02", StringComparison.OrdinalIgnoreCase)
-            ? "don_swing02"
-            : value.ToLowerInvariant();
+    private static string normalizeMotion(string value)
+    {
+        var normalized = value.ToLowerInvariant()
+            .Replace("1p", "1P", StringComparison.Ordinal)
+            .Replace("2p", "2P", StringComparison.Ordinal);
+        return normalized == "don_siwng02" ? "don_swing02" : normalized;
+    }
 
     private static Float4 color(byte red, byte green, byte blue) => new(red / 255f, green / 255f, blue / 255f, 1);
 
@@ -599,10 +664,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private sealed class Player
     {
         public DonAnimationFile Motion { get; private set; } = null!;
-        public DonAnimationFile Loop { get; private set; } = null!;
+        public DonAnimationFile? Loop { get; private set; }
         public int Frame { get; private set; }
 
-        public void Set(DonAnimationFile motion, DonAnimationFile loop)
+        public void Set(DonAnimationFile motion, DonAnimationFile? loop)
         {
             Motion = motion;
             Loop = loop;
@@ -614,8 +679,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             Frame++;
             if (Frame < Motion.FrameCount)
                 return;
-            Motion = Loop;
-            Frame = 0;
+            if (Loop is not null)
+            {
+                Motion = Loop;
+                Frame = 0;
+            }
+            else
+                Frame = Motion.FrameCount - 1;
         }
     }
 
