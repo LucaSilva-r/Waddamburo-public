@@ -219,8 +219,10 @@ internal static class TjaPlayableChartReader
                 '2' => PlayableNoteKind.Ka,
                 '3' => PlayableNoteKind.BigDon,
                 '4' => PlayableNoteKind.BigKa,
-                >= '5' and <= '9' => throw new NotSupportedException(
-                    $"TJA note type '{data[index]}' is not supported by the initial gameplay loader."),
+                // Long-note families (rolls, balloons, and their terminators) do not yet
+                // have gameplay objects. Preserve their subdivision in the measure but
+                // omit the event so a chart's supported Don/Ka notes remain playable.
+                >= '5' and <= '9' => null,
                 _ => throw new InvalidDataException($"Invalid TJA note character '{data[index]}'."),
             };
             if (kind is not { } noteKind)

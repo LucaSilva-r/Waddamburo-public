@@ -315,20 +315,24 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
-    public async Task PlayableChartFailsExplicitlyForUnsupportedLongNotes()
+    public async Task PlayableChartSkipsUnsupportedLongNotesWithoutChangingTiming()
     {
         using var library = new TemporaryLibrary();
         library.WriteText(
             "Game/song.tja",
-            "TITLE:Roll\nBPM:120\nCOURSE:Oni\n#START\n5008,\n#END\n");
+            "TITLE:Roll\nBPM:120\nCOURSE:Oni\n#START\n1508,\n2639,\n#END\n");
         var provider = new TjaCatalogProvider(library.Path);
         var contribution = await provider.ScanAsync(null, CancellationToken.None);
         var descriptor = Assert.Single(Assert.Single(contribution.Songs).Charts);
 
-        var exception = await Assert.ThrowsAsync<NotSupportedException>(async () =>
-            await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset));
+        var chart = await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset);
 
-        Assert.Contains("note type '5'", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+        Assert.Collection(
+            chart.HitObjects,
+            note => Assert.Equal((TimeSpan.Zero, PlayableNoteKind.Don), (note.StartTime, note.Kind)),
+            note => Assert.Equal((TimeSpan.FromSeconds(2), PlayableNoteKind.Ka), (note.StartTime, note.Kind)),
+            note => Assert.Equal((TimeSpan.FromSeconds(3), PlayableNoteKind.BigDon), (note.StartTime, note.Kind)));
     }
 
     private sealed class TemporaryLibrary : IDisposable
