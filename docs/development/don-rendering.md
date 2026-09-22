@@ -64,5 +64,23 @@ can opt in with `--don-root=/path/to/don3d`; omitting it keeps diagnostics usabl
 without proprietary assets.
 
 The initial appearance uses the default body/head and select-loop motion.
+Single-player gameplay uses the gameplay movie's `don1p` state and native fill,
+with a 448-by-256 composite rectangle centered at (200, 92) on the 1280-by-720
+stage: left/top (-24, -36), right/bottom (424, 220). These are surface bounds,
+including transparency, not the animated character's silhouette bounds.
+The rectangle and gameplay camera framing were measured from a user-supplied
+gameplay graphics capture. The camera is independently constructed with a look-at
+transform, eye (-430, 22, 1045), target (6.6, 15.6, 0), vertical field of view
+approximately 2 degrees, and aspect ratio 448:256. GPU allocation remains 600 square;
+the camera aspect and composite rectangle together preserve the displayed proportions.
+Balloon presentation restores the standard camera and its authored slot; its exit
+restores gameplay framing. Outline rasterization and animation phase are not
+claimed pixel-identical to the reference.
+The host selects normal, Go-Go, and miss motions. The balloon movie temporarily
+owns placement and animation through its exit, then resumes the current gameplay
+loop. The standalone Don movie has no exported motion callbacks; its marker and
+state were verified with the public runtime against locally supplied assets.
+The measured framing is specific to the captured single-player gameplay state.
+Motion selection remains a project policy, not an original-game fidelity claim.
 Costume, paint, accessory, persisted color, and broader motion selection remain
 separate game-state work rather than format or compositor policy.

@@ -19,6 +19,7 @@ internal static class GameplaySceneComposition
                 "bg_nomal_b_32/bg_nomal_b_32.lm",
                 y: 360),
             layer("enso_A3/packeddata.ddp", "dance_b_32/dance_b_32.lm", y: 360),
+            layer("enso_A3/packeddata.ddp", "bg_fever_b_32/bg_fever_b_32.lm", y: 360),
             layer(
                 "enso_A3/packeddata.ddp",
                 "donbg_b_32_common/donbg_b_32_common.lm"),
@@ -39,6 +40,7 @@ internal static class GameplaySceneComposition
             layer("enso_system/common/packeddata.ddp", "onp_fusen/onp_fusen.lm"),
             layer("enso_system/common/packeddata.ddp", "renda_num/renda_num.lm", x: 190, y: 184),
             layer("enso_system/base1p/packeddata.ddp", "action_fusen_1p/action_fusen_1p.lm"),
+            layer("enso_system/common/packeddata.ddp", "don3d/don3d.lm", x: 200, y: 92),
             layer("enso_system/common/packeddata.ddp", "lane_syousetsu/lane_syousetsu.lm"),
             layer("enso_system/don1p/packeddata.ddp", "onp_kiseki_don_1p/onp_kiseki_don_1p.lm", y: 184),
         ]);

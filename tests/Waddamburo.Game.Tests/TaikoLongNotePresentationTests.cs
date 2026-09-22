@@ -1,6 +1,8 @@
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Lmb;
+using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
@@ -16,8 +18,11 @@ public sealed class TaikoLongNotePresentationTests
         var chart = chartFor(PlayableLongNoteKind.Balloon, 2);
         var session = sessionFor(chart);
         var layer = movie(calls);
-        var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer);
+        var don = new DonController();
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer, don: don);
+        Assert.False(presentation.BalloonVisible);
         presentation.Update(TimeSpan.FromSeconds(1));
+        Assert.True(presentation.BalloonVisible);
         presentation.Update(TimeSpan.FromSeconds(1.1));
         session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.2));
         if (pop) session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.3));
@@ -27,6 +32,14 @@ public sealed class TaikoLongNotePresentationTests
         Assert.Equal(new (string, double)[] { ("Reset", double.NaN), ("SetGekiRendaCount", 0),
             ("SetGekiRendaCount", 2), ("SetGekiRendaCount", 1), ("GekiRendaEnd", pop ? 0 : 1) }, calls);
         Assert.Empty(layer.Player.Diagnostics);
+        Assert.True(presentation.BalloonVisible);
+        Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
+        presentation.AdvanceAnimations();
+        Assert.False(presentation.BalloonVisible);
+        Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
+        var motionCount = don.Motions.Count;
+        presentation.AdvanceAnimations();
+        Assert.Equal(motionCount, don.Motions.Count);
     }
 
     [Fact]
@@ -89,6 +102,14 @@ public sealed class TaikoLongNotePresentationTests
         var movie = new LmbMovieDefinition(null!, null, [.. names.Select((name, index) => new LmbString(index, name, 0))],
             [], [], [], [], [], [action], [], [sprite], []);
         return new(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1, hostBinding: new Recorder(calls)), LumenMatrix.Identity, 0, 0);
+    }
+
+    private sealed class DonController : IDonPresentationController
+    {
+        public List<DonMotionRequest> Motions { get; } = [];
+        public void Reset(DonPresentationLayout layout) { }
+        public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"synthetic:{playerIndex}");
+        public void SetMotion(DonMotionRequest request) => Motions.Add(request);
     }
 
     private sealed class Recorder(List<(string, double)> calls) : ILumenHostBinding

@@ -186,11 +186,17 @@ internal static class EntrySongSelectFlow
                         active.Id == gameplayId
                             ? LumenInputMode.PresentationOnly
                             : LumenInputMode.AuthoredControls);
-                    active.Player.Advance(input);
                     if (active.Id == gameplayId)
-                        gameplayPresentation.AdvanceAnimations();
+                    {
+                        var animationFrames = gameplayPresentation.AdvanceAnimations(chartTime(), input);
+                        donRenderer?.Advance(animationFrames);
+                    }
+                    else
+                    {
+                        active.Player.Advance(input);
+                        donRenderer?.Advance();
+                    }
                     rainbow?.Player.Advance();
-                    donRenderer?.Advance();
                     var escapeIsDown = keyboardState.IsDown(SdlKeyboardKey.Escape);
                     var escapePressed = escapeIsDown && !escapeWasDown;
                     escapeWasDown = escapeIsDown;
@@ -545,7 +551,8 @@ internal static class EntrySongSelectFlow
         ];
 
         public void Reset(DonPresentationLayout layout) =>
-            _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers);
+            _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers,
+                gameplayCamera: layout == DonPresentationLayout.Gameplay);
 
         public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[playerIndex];
 

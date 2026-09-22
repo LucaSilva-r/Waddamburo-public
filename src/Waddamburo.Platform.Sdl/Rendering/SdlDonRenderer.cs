@@ -15,6 +15,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private const uint TargetSize = 600;
     private const int PaletteSize = 40;
     private const string ShaderPrefix = "Waddamburo.Shaders.";
+    // Independently reconstructed camera from observed gameplay projection geometry.
+    private static readonly Matrix4x4 GameplayCamera =
+        Matrix4x4.CreateLookAt(new(-430, 22, 1045), new(6.6f, 15.6f, 0), Vector3.UnitY)
+        * Matrix4x4.CreatePerspectiveFieldOfView(2 * MathF.PI / 180, 448f / 256, 1, 10000);
     private static readonly Matrix4x4 PlayerOneCamera = new(
         50.5310f, 0.4728f, 0.5763f, 0.4715f,
         0f, 57.2952f, -0.0214f, -0.0175f,
@@ -43,6 +47,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUTexture* _whiteTexture;
     private bool _mirrorPlayerTwoCamera = true;
+    private bool _gameplayCamera;
     private bool _disposed;
 
     internal SdlDonRenderer(SDL_GPUDevice* device, RenderDevice compositor, string assetRoot)
@@ -93,10 +98,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return _targets[playerIndex].TextureId;
     }
 
-    public void Reset(bool mirrorPlayerTwoCamera)
+    public void Reset(bool mirrorPlayerTwoCamera, bool gameplayCamera = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _mirrorPlayerTwoCamera = mirrorPlayerTwoCamera;
+        _gameplayCamera = gameplayCamera;
         var idle = loadMotion("don_select_loop");
         foreach (var player in _players)
             player.Set(idle, idle);
@@ -118,11 +124,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             player.Set(nextLoop, nextLoop);
     }
 
-    public void Advance()
+    public void Advance(double frames = 1)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!double.IsFinite(frames) || frames < 0)
+            throw new ArgumentOutOfRangeException(nameof(frames));
         foreach (var player in _players)
-            player.Advance();
+            player.Advance(frames);
     }
 
     void IGpuRenderPrepass.Record(SDL_GPUCommandBuffer* commandBuffer)
@@ -151,7 +159,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var frame = player.Motion.GetFrame(player.Frame);
         var animatedWorld = _skeleton.EvaluateWorld(frame);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
-        var camera = PlayerOneCamera;
+        var camera = _gameplayCamera ? GameplayCamera : PlayerOneCamera;
         var reflectedCamera = playerIndex == 1 && _mirrorPlayerTwoCamera;
         if (reflectedCamera)
         {
@@ -665,27 +673,28 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     {
         public DonAnimationFile Motion { get; private set; } = null!;
         public DonAnimationFile? Loop { get; private set; }
-        public int Frame { get; private set; }
+        private double _frame;
+        public int Frame => (int)_frame;
 
         public void Set(DonAnimationFile motion, DonAnimationFile? loop)
         {
             Motion = motion;
             Loop = loop;
-            Frame = 0;
+            _frame = 0;
         }
 
-        public void Advance()
+        public void Advance(double frames)
         {
-            Frame++;
-            if (Frame < Motion.FrameCount)
+            _frame += frames;
+            if (_frame < Motion.FrameCount)
                 return;
             if (Loop is not null)
             {
+                _frame = (_frame - Motion.FrameCount) % Loop.FrameCount;
                 Motion = Loop;
-                Frame = 0;
             }
             else
-                Frame = Motion.FrameCount - 1;
+                _frame = Motion.FrameCount - 1;
         }
     }
 

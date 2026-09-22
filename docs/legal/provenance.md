@@ -1,5 +1,16 @@
 # Implementation provenance
 
+Gameplay Don marker/state selection and fever callbacks were independently checked
+using the public runtime with user-supplied movie data. The tempo integrator,
+motion-state policy, and camera construction are original project choices; no
+private implementation, asset script, or capture is copied. Synthetic fixtures
+cover tempo boundaries and native-surface ownership. No dependency was added.
+Gameplay composite dimensions, center, and semantic camera framing were measured
+from a user-supplied graphics capture. Only geometric behavioral requirements are
+recorded publicly; raw draws, shader data, GPU constants, addresses, and screenshots
+remain outside the public repository. The gameplay camera is constructed with
+standard look-at/perspective operations rather than copying captured matrices.
+
 Audio transport interpolation is an original project timing policy. A monotonic
 clock drives playback independently of block-sized queue observations. Audio drift
 outside a hardware-buffer uncertainty interval is corrected at at most 1% speed;

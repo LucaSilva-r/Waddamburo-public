@@ -175,6 +175,17 @@ and audible synchronization checks must be reported separately.
 
 ## Long-note presentation follow-up
 
+Gameplay theme movies and normal Don motion now advance from integrated chart
+tempo, including tempo changes inside a measure. The presentation policy uses
+30 animation frames per quarter-note beat (native 60 Hz at 120 BPM), retaining
+fractional frames across ticks and tempo boundaries. Repeated or slightly backward
+audio position samples do not replay elapsed animation time. Hit feedback, note
+flights, counters, balloon overlays, and screen transitions retain real-time ticks.
+The theme's fever and Don-background movies receive `SetFever` on Go-Go changes.
+The dancer's `SetDancerFrame`/`GetDancerFrame` names are internal movie methods,
+not exported host callbacks; no invented BPM callback is sent. This is a product
+timing policy, not a verified recreation of every authored clip's beat period.
+
 Roll bodies have separate movie players so width and hit color do not leak between
 notes. The host supplies width, hit notifications, and animation updates. The
 shared counter opens once per roll, increments on each accepted hit, and closes

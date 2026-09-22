@@ -214,6 +214,20 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void SceneCanInterpolateBeatAndRealtimePlayersIndependently()
+    {
+        var beat = new LumenPlayer(createMovie(), 1280, 720);
+        var realtime = new LumenPlayer(createMovie(), 1280, 720);
+        beat.Advance();
+        realtime.Advance();
+        var scene = new LumenScenePlayer(1280, 720,
+            [new(beat, LumenMatrix.Identity, 0, 5), new(realtime, LumenMatrix.Identity, 5, 5)]);
+        var snapshot = scene.CreateRenderSnapshot(1, player => player == beat ? .25f : 1);
+        Assert.Equal(15, snapshot.Quads[0].TopLeft.X);
+        Assert.Equal(30, snapshot.Quads[1].TopLeft.X);
+    }
+
+    [Fact]
     public void RenderSnapshotTreatsAbruptMultiplyColorChangeAsCut()
     {
         var player = new LumenPlayer(createMovie(secondColorIndex: 1), 1280, 720);

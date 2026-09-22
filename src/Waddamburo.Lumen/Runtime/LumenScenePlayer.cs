@@ -60,14 +60,15 @@ public sealed class LumenScenePlayer
             layer.Player.Advance(inputSnapshot);
     }
 
-    public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f)
+    public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f,
+        Func<LumenPlayer, float>? playerInterpolation = null)
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
         foreach (var layer in _layers)
         {
-            var child = layer.Player.CreateRenderSnapshot(interpolationFraction);
+            var child = layer.Player.CreateRenderSnapshot(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction);
             foreach (var quad in child.Quads)
             {
                 if (quad.NativeSurface is null && quad.TextureIndex >= layer.TextureCount)

@@ -70,7 +70,8 @@ public sealed class TaikoLumenPresentation
         _gogo.Update(time);
     }
 
-    public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
+    public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation,
+        Func<LumenPlayer, float>? playerInterpolation = null)
     {
         var layers = new List<LumenSceneLayer>(_background);
         foreach (var bar in _chart.BarLines)
@@ -87,7 +88,7 @@ public sealed class TaikoLumenPresentation
             layers.AddRange(_longNotes.OverlayLayers);
         if (_flights is not null)
             layers.AddRange(_flights.ActiveLayers);
-        return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation);
+        return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, playerInterpolation);
     }
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,

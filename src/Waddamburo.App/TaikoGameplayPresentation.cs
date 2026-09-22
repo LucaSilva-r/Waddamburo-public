@@ -14,6 +14,11 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     private TaikoLumenPresentation? _presentation;
     private TaikoHitFlights? _flights;
     private TaikoLongNotePresentation? _longNotes;
+    private TaikoDonPresentation? _character;
+    private TaikoAnimationClock? _animationClock;
+    private LumenSceneLayer[] _beatLayers = [];
+    private LumenSceneLayer[] _fixedLayers = [];
+    private LumenPlayer[] _feverMovies = [];
 
     public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
     {
@@ -58,9 +63,16 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             var content = scene.Layers.Single(layer => Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == name).Content;
             return layers[name] with { Player = content.CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
         }, layers["renda_num"], layers["action_fusen_1p"], _flights, don);
+        _character = don is null ? null : new(don, layers["don3d"]);
+        _animationClock = new(chart.TimingPoints);
+        _beatLayers = layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
+            or "bg_fever_b_32" or "donbg_b_32_common").Select(pair => pair.Value).ToArray();
+        _fixedLayers = layers.Values.Except(_beatLayers).ToArray();
+        _feverMovies = [layers["bg_fever_b_32"].Player, layers["donbg_b_32_common"].Player];
+        _session.Judged += judgement => _character?.OnJudged(judgement);
         _presentation = new TaikoLumenPresentation(chart, _session,
             layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
-                or "donbg_b_32_common" or "lane" or "gage_don_1p_normal" or "lane_hit")
+                or "bg_fever_b_32" or "donbg_b_32_common" or "lane" or "gage_don_1p_normal" or "lane_hit")
                 .Select(pair => pair.Value),
             [layers["lane_hit_effect"], layers["lane_obi"]],
             new Dictionary<PlayableNoteKind, LumenSceneLayer>
@@ -71,7 +83,15 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                 [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
             }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
             _flights, _longNotes);
-        _presentation.GoGoChanged += active => Console.WriteLine($"Gameplay Go-Go: {(active ? "start" : "end")} at {_session.CurrentTime.TotalSeconds:F3}s.");
+        _presentation.GoGoChanged += active =>
+        {
+            _character?.SetBalloonVisible(_longNotes.BalloonVisible);
+            _character?.SetGoGo(active);
+            foreach (var movie in _feverMovies)
+                if (!movie.TryInvokeCallback("SetFever", [LumenHostValue.FromBoolean(active)]))
+                    throw new InvalidDataException("Gameplay background is missing SetFever.");
+            Console.WriteLine($"Gameplay Go-Go: {(active ? "start" : "end")} at {_session.CurrentTime.TotalSeconds:F3}s.");
+        };
     }
 
     public void Stop()
@@ -80,12 +100,24 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         _presentation = null;
         _flights = null;
         _longNotes = null;
+        _character = null;
+        _animationClock = null;
+        _beatLayers = [];
+        _fixedLayers = [];
+        _feverMovies = [];
     }
 
-    public void AdvanceAnimations()
+    public double AdvanceAnimations(TimeSpan chartTime, LumenInputSnapshot input)
     {
+        var delta = _animationClock?.Advance(chartTime) ?? 0;
+        foreach (var layer in _fixedLayers) layer.Player.Advance(input);
+        for (var i = 0; i < (_animationClock?.FramesToAdvance ?? 0); i++)
+            foreach (var layer in _beatLayers) layer.Player.Advance(input);
         _flights?.Advance();
         _longNotes?.AdvanceAnimations();
+        _character?.SetBalloonVisible(_longNotes?.BalloonVisible == true);
+        // Balloon one-shots follow their authored real-time overlay.
+        return _longNotes?.BalloonVisible == true ? 1 : delta;
     }
 
     public void ReportDiagnostics()
@@ -121,9 +153,14 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         }
         _session.AdvanceTo(chartTime);
         _presentation.Update(chartTime);
+        _character?.SetBalloonVisible(_longNotes?.BalloonVisible == true);
     }
 
-    public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation) =>
-        (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
-        .CreateSnapshot(time, interpolation);
+    public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
+    {
+        var snapshot = (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
+            .CreateSnapshot(time, interpolation, player => _beatLayers.Any(layer => layer.Player == player)
+                ? _animationClock?.Interpolation ?? 1 : interpolation);
+        return _character?.Compose(snapshot) ?? snapshot;
+    }
 }

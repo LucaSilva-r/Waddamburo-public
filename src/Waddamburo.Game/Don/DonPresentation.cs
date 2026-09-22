@@ -9,6 +9,7 @@ public enum DonPresentationLayout
 {
     Standard,
     OpposedPlayers,
+    Gameplay,
 }
 
 /// <summary>

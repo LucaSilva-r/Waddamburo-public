@@ -47,7 +47,10 @@ public sealed class TaikoLongNotePresentation
         if (_active is null)
         {
             if (!_counter.Player.IsPlaying) _counterVisible = false;
-            if (!_balloon.Player.IsPlaying) _balloonVisible = false;
+            if (_balloonVisible && !_balloon.Player.IsPlaying)
+            {
+                _balloonVisible = false;
+            }
         }
     }
 
@@ -100,6 +103,8 @@ public sealed class TaikoLongNotePresentation
             _visible.Remove(index);
     }
 
+    public bool BalloonVisible => _balloonVisible;
+
     public IEnumerable<LumenSceneLayer> OverlayLayers
     {
         get
@@ -118,6 +123,7 @@ public sealed class TaikoLongNotePresentation
         var note = _chart.LongNotes[index];
         if (note.IsBalloon)
         {
+            _don?.Reset(DonPresentationLayout.Standard);
             invoke(_balloon.Player, "Reset");
             // The opening timeline creates the balloon child two ticks after 'start'.
             // Prepare it before sending a nonzero quota, which also updates that child.
