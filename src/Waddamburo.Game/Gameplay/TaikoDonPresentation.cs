@@ -24,6 +24,11 @@ public sealed class TaikoDonPresentation
 
     private readonly IDonPresentationController _controller;
     private readonly LumenSceneLayer _layer;
+    private readonly LumenNativeSurfaceKey _surface;
+    // Full-gauge gold: the character's composite gains this additive colour (measured from a
+    // reference frame: black outlines become (125, 110, 5), lighter colours clamp).
+    // ponytail: constant; the game pulses it slightly. Animate once the pulse is measured.
+    private static readonly LumenRenderColor FullGaugeGlow = new(125 / 255f, 110 / 255f, 5 / 255f, 0);
     private bool _goGo;
     private bool _balloonVisible;
     private TaikoGaugeState _gauge;
@@ -34,8 +39,9 @@ public sealed class TaikoDonPresentation
     {
         _controller = controller;
         _layer = layer;
+        _surface = controller.GetSurface(0);
         controller.Reset(DonPresentationLayout.Gameplay);
-        layer.Player.SetNativeFill("don1p", controller.GetSurface(0),
+        layer.Player.SetNativeFill("don1p", _surface,
             LumenNativeSurfacePlacement.Centered(448, 256));
         if (!layer.Player.TryGotoLabel("", "don1p"))
             throw new InvalidDataException("Gameplay Don movie is missing its player-one state.");
@@ -110,6 +116,12 @@ public sealed class TaikoDonPresentation
     {
         if (!_balloonVisible) _controller.SetIdle(0, idle);
     }
+
+    /// <summary>Applies the full-gauge gold to every quad showing this character.</summary>
+    public LumenRenderSnapshot Tint(LumenRenderSnapshot scene) => _gauge != TaikoGaugeState.Full ? scene
+        : new(scene.StageWidth, scene.StageHeight, scene.Quads.Select(quad => quad.NativeSurface == _surface
+            ? quad with { AddColor = FullGaugeGlow }
+            : quad));
 
     /// <summary>The character marker to draw, or null while a long-note overlay owns Don.</summary>
     public LumenSceneLayer? Layer => _balloonVisible ? null : _layer;

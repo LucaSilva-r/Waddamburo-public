@@ -177,8 +177,9 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
 
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
     {
-        return (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
+        var snapshot = (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
             .CreateSnapshot(time, interpolation, player => _beatLayers.Any(layer => layer.Player == player)
                 ? _animationClock?.Interpolation ?? 1 : interpolation, _character?.Layer);
+        return _character?.Tint(snapshot) ?? snapshot;
     }
 }
