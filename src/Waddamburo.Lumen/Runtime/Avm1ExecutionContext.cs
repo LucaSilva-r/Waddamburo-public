@@ -14,7 +14,8 @@ internal sealed class Avm1ExecutionContext(
     Avm1LexicalScope? lexicalScope,
     object? timelineTarget,
     Avm1ExecutionContext? transactionParent,
-    Action<Action>? commitActionWriter = null)
+    Action<Action>? commitActionWriter = null,
+    Action<object?, bool, int>? timelineFrameJumper = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
     private readonly Dictionary<LexicalKey, object?> _lexicalWrites = [];
@@ -32,6 +33,8 @@ internal sealed class Avm1ExecutionContext(
     {
         if (tryFindLexicalOwner(name, out var owner))
             _lexicalWrites[new LexicalKey(owner, name)] = value;
+        else if (TimelineTarget is not null)
+            SetMember(TimelineTarget, name, value);
         else
             _variableWrites[name] = value;
     }
@@ -39,7 +42,7 @@ internal sealed class Avm1ExecutionContext(
     public void DefineLocal(string name, object? value)
     {
         if (LexicalScope is null)
-            _variableWrites[name] = value;
+            SetVariable(name, value);
         else
             _lexicalWrites[new LexicalKey(LexicalScope, name)] = value;
     }
@@ -81,6 +84,9 @@ internal sealed class Avm1ExecutionContext(
         objectConstructor(name, arguments);
 
     public void GotoLabel(string label) => timelineLabelJumper(label);
+
+    public void GotoFrame(object? frame, bool play, int sceneBias) =>
+        timelineFrameJumper?.Invoke(frame, play, sceneBias);
 
     public Avm1Lookup CloneSprite(object? source, string name, int depth)
         => spriteCloner(source, name, depth);

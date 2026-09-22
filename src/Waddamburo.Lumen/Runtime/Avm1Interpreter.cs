@@ -391,6 +391,12 @@ internal static class Avm1Interpreter
                     var labelOperand = (Avm1StringIndexOperand)instruction.Operand!;
                     context.GotoLabel(getString(strings, labelOperand.StringIndex));
                     break;
+                case 0x9F: // GotoFrame2 (stack-based frame or label)
+                    if (!tryPop(stack, out var frameValue))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var frameOperand = (Avm1GotoFrame2Operand)instruction.Operand!;
+                    context.GotoFrame(frameValue, (frameOperand.Flags & 1) != 0, frameOperand.SceneBias ?? 0);
+                    break;
                 case 0x69: // Extends
                     if (!tryPop(stack, out var superClass) || !tryPop(stack, out var subClass))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -462,6 +468,7 @@ internal static class Avm1Interpreter
                 or 0x87 or 0x8C or 0x99 or 0x9D => true,
             0x8E or 0x9B => instruction.Operand is Avm1FunctionOperand && instruction.Body is not null,
             0x96 => instruction.Operand is Avm1PushOperand,
+            0x9F => instruction.Operand is Avm1GotoFrame2Operand { Flags: <= 3 },
             _ => false,
         };
 

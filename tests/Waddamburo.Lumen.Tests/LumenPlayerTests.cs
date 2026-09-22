@@ -377,6 +377,64 @@ public sealed class LumenPlayerTests
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
     }
 
+    [Theory]
+    [InlineData(3, 0, 0, 2, false)]
+    [InlineData(3, 1, 0, 2, true)]
+    [InlineData(2, 0, 0, 1, false)]
+    [InlineData(2, 2, 1, 2, false)]
+    [InlineData(0, 0, 0, 1, true)]
+    [InlineData(4, 0, 0, 1, true)]
+    public void StackFrameJumpUsesOneBasedFramesAndIgnoresInvalidTargets(
+        byte frame, byte flags, byte bias, int expectedFrame, bool expectedPlaying)
+    {
+        byte[] jump = (flags & 2) != 0
+            ? [0x9F, 0x03, 0x00, flags, bias, 0x00]
+            : [0x9F, 0x01, 0x00, flags];
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x05, 0x00, 0x07, frame, 0x00, 0x00, 0x00,
+            .. jump, 0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Equal(expectedFrame, player.CurrentFrame);
+        Assert.Equal(expectedPlaying, player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void StackLabelJumpRunsDestinationAction()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0x00, 0x00, 0x01, 0x00,
+            0x9F, 0x01, 0x00, 0x01, 0x00,
+        ], targetActionBytecode: [0x07, 0x00]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.False(player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Theory]
+    [InlineData(50, 2, false)]
+    [InlineData(51, 1, true)]
+    public void StackFrameJumpResolvesAbsolutePathsAndIgnoresNonTimelineTargets(
+        byte stringIndex, int expectedFrame, bool expectedPlaying)
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31, actionBytecode: [
+            0x96, 0x03, 0x00, 0x00, stringIndex, 0x00,
+            0x9F, 0x01, 0x00, 0x00, 0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.Equal(expectedFrame, player.CurrentFrame);
+        Assert.Equal(expectedPlaying, player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
     [Fact]
     public void TargetFrameActionTakesPrecedenceOverRequestedPlaybackState()
     {
@@ -958,6 +1016,26 @@ public sealed class LumenPlayerTests
 
         Assert.Single(player.CreateRenderSnapshot().Quads);
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
+    public void NestedFunctionSeesSiblingDefinedInTheSameActionBlock()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            // alias() returns true; Ctor() calls alias before the outer action commits.
+            0x9B, 0x06, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x07, 0x00,
+                0x96, 0x02, 0x00, 0x05, 0x01, 0x3E, 0x00,
+            0x9B, 0x06, 0x00, 0x14, 0x00, 0x00, 0x00, 0x0E, 0x00,
+                0x96, 0x08, 0x00, 0x07, 0, 0, 0, 0, 0x09, 0x1C, 0,
+                0x3D, 0x3E, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00, 0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x02, 0x00,
+            0x96, 0x08, 0x00, 0x07, 0, 0, 0, 0, 0x09, 0x14, 0,
+            0x3D, 0x4F, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_CALL_UNRESOLVED");
+        Assert.Single(player.CreateRenderSnapshot().Quads);
     }
 
     [Fact]
@@ -1605,7 +1683,7 @@ public sealed class LumenPlayerTests
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
                 "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x",
-                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP")),
+                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

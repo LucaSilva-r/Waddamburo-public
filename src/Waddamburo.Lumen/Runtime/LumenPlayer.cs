@@ -957,7 +957,28 @@ public sealed class LumenPlayer
             lexicalScope,
             timelineTarget,
             parentContext,
-            parentContext is null ? null : parentContext.OnCommit);
+            parentContext is null ? null : parentContext.OnCommit,
+            (value, play, bias) =>
+            {
+                var target = instance;
+                if (value is string pathAndFrame && pathAndFrame.LastIndexOf(':') is var separator && separator >= 0)
+                {
+                    var path = pathAndFrame[..separator];
+                    target = path.StartsWith('/') ? _root : instance;
+                    foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        target = part is ".." or "_parent" ? target?.Parent
+                            : target?.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == part);
+                        if (target is null)
+                            return;
+                    }
+                    value = pathAndFrame[(separator + 1)..];
+                }
+                if (_sprites.TryGetValue(target.CharacterId, out var targetTimeline)
+                    && tryResolveTimelineFrame(target, value, out var frame)
+                    && frame + bias < targetTimeline.Frames.Length)
+                    jumpInstance(target, frame + bias, play);
+            });
         return context;
     }
 

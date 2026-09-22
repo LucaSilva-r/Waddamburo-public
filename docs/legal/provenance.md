@@ -1,5 +1,14 @@
 # Implementation provenance
 
+The stack-based AVM1 frame-jump instruction is independently implemented from
+Adobe's *SWF File Format Specification*, version 10, ActionGotoFrame2
+([specification mirror](https://www.flashrealtime.com/content/dam/Adobe/en/devnet/swf/pdf/swf_file_format_spec_v10.pdf)).
+No reference implementation or private bytecode was copied. Synthetic tests cover
+numeric frames, labels, scene bias, playback state, and invalid targets. Nested
+function visibility is a project runtime repair with a synthetic regression.
+Additional gameplay composition layers were identified from user-supplied asset
+relationships; no assets or diagnostic captures are included.
+
 The gameplay repair in `src/Waddamburo.Game/Gameplay/`, the app gameplay adapter,
 and the platform transport/input additions are independently written. Semantic
 Lumen integration requirements were derived from the private behavioral oracle;

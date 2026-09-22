@@ -29,6 +29,9 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(0)])
             || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
             throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
+        // Present the authored empty gauge; scoring/gauge gain rules are still separate work.
+        if (!layers["gage_don_1p_normal"].Player.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]))
+            throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
         foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai" })
             if (!layers[name].Player.TryGotoLabel("", "level01"))
                 throw new InvalidDataException("Gameplay note movie is missing its initial state.");
@@ -36,7 +39,8 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)),
             TimeSpan.FromMilliseconds(30));
         _presentation = new TaikoLumenPresentation(chart, _session,
-            layers.Where(pair => pair.Key is "bg_nomal_b_32" or "donbg_b_32_common" or "lane" or "lane_hit")
+            layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
+                or "donbg_b_32_common" or "lane" or "gage_don_1p_normal" or "lane_hit")
                 .Select(pair => pair.Value),
             [layers["lane_hit_effect"], layers["lane_obi"]],
             new Dictionary<PlayableNoteKind, LumenSceneLayer>

@@ -81,6 +81,19 @@ These runs establish execution and presentation, not measured audible/input late
 
 ## Remaining scope
 
+The first visual-runtime follow-up fixes nested calls observing pending timeline
+function definitions and adds AVM1 stack-based frame/label jumps, including scene
+bias. The composition now includes the dancer and a zero-initialized gauge; gauge
+scoring is still not implemented. A mode-specific support overlay is deliberately
+not enabled for ordinary play. Synthetic regressions and the filtered managed
+suite pass (240 tests); the same Realm exclusion above still applies. The app
+builds with warnings treated as errors, and a local asset-backed smoke run reaches
+gameplay. Remaining diagnostics include a dancer action stack underflow and
+unresolved child initialization calls. The player-side board can still display
+the wrong side despite one-player initialization; loading also reports dropped
+simulation ticks. Flickering and full visual compatibility
+are not yet verified as fixed. Captures and diagnostic output remain private.
+
 Long notes, score/gauge rules, hit flights, complete theme composition, two-player
 play, pause/calibration/device recovery, transactional scene preparation, and
 graceful launch errors are not completed by this slice. Do not describe this as

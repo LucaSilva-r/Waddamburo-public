@@ -18,6 +18,7 @@ internal static class GameplaySceneComposition
                 "enso_A3/packeddata.ddp",
                 "bg_nomal_b_32/bg_nomal_b_32.lm",
                 y: 360),
+            layer("enso_A3/packeddata.ddp", "dance_b_32/dance_b_32.lm", y: 360),
             layer(
                 "enso_A3/packeddata.ddp",
                 "donbg_b_32_common/donbg_b_32_common.lm"),
@@ -25,6 +26,7 @@ internal static class GameplaySceneComposition
                 "enso_system/common/packeddata.ddp",
                 "lane/lane.lm",
                 y: 184),
+            layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_normal/gage_don_1p_normal.lm", y: 184),
             layer("enso_system/common/packeddata.ddp", "lane_hit/lane_hit.lm", y: 184),
             layer("enso_system/common/packeddata.ddp", "lane_hit_effect/lane_hit_effect.lm", y: 184),
             layer("enso_system/common/packeddata.ddp", "lane_obi/lane_obi.lm", y: 184),
