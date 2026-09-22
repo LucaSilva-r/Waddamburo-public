@@ -1,5 +1,17 @@
 # Implementation provenance
 
+The gameplay repair in `src/Waddamburo.Game/Gameplay/`, the app gameplay adapter,
+and the platform transport/input additions are independently written. Semantic
+Lumen integration requirements were derived from the private behavioral oracle;
+no private implementation or guessed scoring/gauge formulas were copied. The
+clock and judgement separation was informed by osu!lazer commit
+`48c4800e3ae4ee752452cdff83bd3787ccf3105f`, specifically
+`osu.Game/Screens/Play/GameplayClockContainer.cs` and
+`osu.Game.Rulesets.Taiko/Objects/Drawables/DrawableHit.cs` (MIT, ppy Pty Ltd).
+The project implements its own source-position estimate, pre-roll scheduling,
+input delivery and semantic presentation. See `../development/gameplay-integration.md`
+for source links, behavioral requirements, decisions, and limitations.
+
 This repository began as a clean public implementation on 2026-09-19. It does not
 inherit the commit history of the private research and proof-of-concept repository.
 

@@ -81,11 +81,14 @@ internal static class EntrySongSelectFlow
             application,
             fontPath,
             asynchronous: screenshotPath is null);
-        using var gameplayPresentation = new TaikoGameplayPresentation(application);
+        var gameplayPresentation = new TaikoGameplayPresentation(action =>
+            soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon));
 
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
         var gameplayId = new SceneId("gameplay");
+        var rainbowTransitionId = new SceneId("rainbow-transition");
+        var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
         var flow = new GameFlowSession();
         var playRequests = new PlayRequestState();
         var catalog = new SceneCatalog(
@@ -121,30 +124,56 @@ internal static class EntrySongSelectFlow
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
+        LumenGameSceneInstance active = null!;
+        RenderTextureId[] textureIds = [];
+        LumenGameSceneInstance? rainbow = null;
+        RenderTextureId[] rainbowTextureIds = [];
+
         try
         {
-            var active = requireLumenScene(coordinator);
-            var textureIds = uploadTextures(application, active);
+            active = requireLumenScene(coordinator);
+            textureIds = uploadTextures(application, active);
+            var rainbowSequence = new RainbowTransitionSequence();
+            LumenNativeSurfaceKey? rainbowTitle = null;
             PlayableChart[] activeGameplayCharts = [];
-            AudioPlaybackHandle? gameplayMusic = null;
+            AudioStreamTransport? gameplayMusic = null;
+            GameplayTimeline? gameplayTimeline = null;
+            var gameplayClock = new System.Diagnostics.Stopwatch();
             var gameplayStartTick = 0;
             var escapeWasDown = false;
             var simulationTick = 0;
+
+            TimeSpan chartTime() => gameplayTimeline?.ChartTime(
+                rainbowSequence.State is not (RainbowTransitionState.Revealing or RainbowTransitionState.Complete)
+                ? TimeSpan.Zero : gameplayMusic is not null ? audioEngine!.GetPosition(gameplayMusic)
+                : screenshotPath is not null ? TimeSpan.FromSeconds((simulationTick - gameplayStartTick) / 60d)
+                : gameplayClock.Elapsed) ?? TimeSpan.Zero;
 
             RenderFrame createFrame(double interpolationFraction)
             {
                 titleTextures.UploadCompleted();
                 var frame = LumenRenderFrameAdapter.Compose(
-                    active.Player.CreateRenderSnapshot((float)interpolationFraction),
+                    active.Id == gameplayId
+                        ? gameplayPresentation.CreateSnapshot(chartTime(), (float)interpolationFraction)
+                        : active.Player.CreateRenderSnapshot((float)interpolationFraction),
                     RenderColor.WaddamburoBlue,
                     index => index < textureIds.Length
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
                     surface => donPresentation?.Resolve(surface) ?? titleTextures.Resolve(surface));
-                if (active.Id != gameplayId)
+                if (rainbow is null)
                     return frame;
-                var chartTime = TimeSpan.FromSeconds((simulationTick - gameplayStartTick + interpolationFraction) / 60d);
-                return gameplayPresentation.Compose(frame, chartTime);
+                var overlay = LumenRenderFrameAdapter.Compose(
+                    rainbow.Player.CreateRenderSnapshot((float)interpolationFraction),
+                    RenderColor.WaddamburoBlue,
+                    index => index < rainbowTextureIds.Length
+                        ? rainbowTextureIds[index]
+                        : throw new InvalidDataException($"Rainbow snapshot references missing texture {index}."),
+                    titleTextures.Resolve);
+                return new RenderFrame(
+                    frame.ClearColor,
+                    frame.Quads.Concat(overlay.Quads),
+                    frame.ContentAspectRatio);
             }
 
             var result = application.Run(
@@ -155,6 +184,7 @@ internal static class EntrySongSelectFlow
                     var keyboardState = inputTimeline.Apply(simulationTick, keyboard);
                     var input = LumenInputAdapter.CreateSnapshot(keyboardState);
                     active.Player.Advance(input);
+                    rainbow?.Player.Advance();
                     donRenderer?.Advance();
                     var escapeIsDown = keyboardState.IsDown(SdlKeyboardKey.Escape);
                     var escapePressed = escapeIsDown && !escapeWasDown;
@@ -163,72 +193,117 @@ internal static class EntrySongSelectFlow
                     {
                         if (active.Id == songSelectId && playRequests.Pending is { } pendingRequest)
                         {
-                            reportDiagnostics(active);
-                            var loadedCharts = pendingRequest.Players
-                                .Select(player => tja.LoadChartAsync(player.Chart, player.ChartAsset)
-                                    .AsTask().GetAwaiter().GetResult())
-                                .ToArray();
-                            coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
-                            var request = playRequests.ActivatePending();
-                            activeGameplayCharts = loadedCharts;
-                            gameplayStartTick = simulationTick;
-                            gameplayPresentation.Start(activeGameplayCharts);
-                            active = requireLumenScene(coordinator);
-                            textureIds = uploadTextures(application, active);
-                            if (sceneBgm is { } previousBgm)
-                                audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
-                            sceneBgm = null;
-                            if (audioEngine is not null)
+                            if (rainbowSequence.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete)
                             {
-                                audioEngine.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
-                                audioEngine.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
-                                if (request.AudioAsset is { } audioAsset)
-                                {
-                                    var inputStream = tja.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
-                                    BufferedAudioSource? source = null;
-                                    try
-                                    {
-                                        try
-                                        {
-                                            source = new BufferedAudioSource(inputStream, audioEngine.Mixer.Format);
-                                        }
-                                        catch
-                                        {
-                                            inputStream.Dispose();
-                                            throw;
-                                        }
-                                        gameplayMusic = audioEngine.Mixer.PlayStream(source, AudioBus.Bgm);
-                                        source = null;
-                                    }
-                                    finally
-                                    {
-                                        source?.Dispose();
-                                    }
-                                }
+                                if (pendingRequest.Players.Length != 1)
+                                    throw new NotSupportedException("Gameplay supports one local player.");
+                                reportDiagnostics(active);
+                                var selected = songCatalog.Categories
+                                    .SelectMany(category => category.Songs)
+                                    .Single(song => song.Descriptor.Key == pendingRequest.Song);
+                                rainbowTitle = titleTextures.GetTransitionTitle(selected);
+                                _ = titleTextures.Resolve(rainbowTitle.Value);
+                                rainbowSequence.Begin(simulationTick);
+                                Console.WriteLine($"Queued rainbow cover for '{pendingRequest.Song}' at tick {simulationTick}.");
                             }
-                            Console.WriteLine(
-                                $"Activated gameplay for '{request.Song}' with {request.Players.Length} player(s), "
-                                + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
+                            if (rainbowSequence.ShouldStartCover(simulationTick))
+                            {
+                                rainbow = (LumenGameSceneInstance)loader.LoadAsync(rainbowDefinition, CancellationToken.None)
+                                    .AsTask().GetAwaiter().GetResult();
+                                var player = rainbow.Player.Layers.Single().Player;
+                                player.SetNativeFill(
+                                    RainbowTransitionComposition.SongTitleFill,
+                                    rainbowTitle ?? throw new InvalidOperationException("Rainbow transition has no song title."));
+                                player.GotoLabel(RainbowTransitionComposition.CoverLabel, play: true);
+                                rainbowTextureIds = uploadTextures(application, rainbow);
+                                rainbowSequence.StartCover();
+                                if (sceneBgm is { } previousBgm)
+                                    audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
+                                sceneBgm = null;
+                                audioEngine?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
+                                audioEngine?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
+                                Console.WriteLine($"Rainbow cover started at tick {simulationTick}.");
+                            }
+                            if (rainbow is not null && rainbowSequence.FinishCoverWhenStopped(
+                                    rainbow.Player.Layers.Single().Player.IsPlaying,
+                                    simulationTick))
+                            {
+                                var loadedCharts = pendingRequest.Players
+                                    .Select(player => tja.LoadChartAsync(player.Chart, player.ChartAsset)
+                                        .AsTask().GetAwaiter().GetResult())
+                                    .ToArray();
+                                coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
+                                var request = playRequests.ActivatePending();
+                                activeGameplayCharts = loadedCharts;
+                                releaseTextures(application, textureIds);
+                                active = requireLumenScene(coordinator);
+                                textureIds = uploadTextures(application, active);
+                                gameplayTimeline = new GameplayTimeline(loadedCharts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
+                                gameplayStartTick = simulationTick;
+                                gameplayClock.Reset();
+                                gameplayPresentation.Start(loadedCharts[0], active, request.Players[0].Course);
+                                Console.WriteLine(
+                                    $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
+                                    + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
+                            }
                         }
                         else if (active.Id == gameplayId)
                         {
-                            var elapsed = TimeSpan.FromSeconds((simulationTick - gameplayStartTick) / 60d);
-                            gameplayPresentation.Advance(keyboardState, elapsed);
+                            if (rainbow is not null && rainbowSequence.ShouldStartReveal(simulationTick))
+                            {
+                                var request = playRequests.Active
+                                    ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
+                                gameplayStartTick = simulationTick;
+                                gameplayMusic = startGameplayAudio(audioEngine, tja, request, gameplayTimeline!, activeGameplayCharts[0].Duration);
+                                gameplayClock.Restart();
+                                rainbow.Player.Layers.Single().Player.GotoLabel(
+                                    RainbowTransitionComposition.RevealLabel,
+                                    play: true);
+                                rainbowSequence.StartReveal();
+                                Console.WriteLine($"Rainbow reveal and gameplay started at tick {simulationTick}.");
+                                return;
+                            }
+                            if (rainbow is not null && rainbowSequence.FinishRevealWhenStopped(
+                                    rainbow.Player.Layers.Single().Player.IsPlaying))
+                            {
+                                releaseTextures(application, rainbowTextureIds);
+                                rainbowTextureIds = [];
+                                rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                                rainbow = null;
+                                Console.WriteLine($"Rainbow reveal completed at tick {simulationTick}.");
+                            }
+                            if (rainbowSequence.State is not
+                                (RainbowTransitionState.Revealing or RainbowTransitionState.Complete))
+                            {
+                                return;
+                            }
+                            var elapsed = chartTime();
+                            if (screenshotPath is not null || !keyboardState.Presses.IsEmpty)
+                                gameplayPresentation.Advance(keyboardState, elapsed);
+                            if (gameplayMusic?.Failure is not null || audioEngine?.Failure is not null)
+                                throw new IOException("Gameplay audio failed.", gameplayMusic?.Failure ?? audioEngine?.Failure);
                             var chartFinished = activeGameplayCharts.Length != 0
                                 && elapsed >= activeGameplayCharts.Max(static chart => chart.Duration)
                                     + TimeSpan.FromSeconds(1);
                             var musicFinished = gameplayMusic is not { } music
                                 || audioEngine is null
-                                || !audioEngine.Mixer.IsPlaying(music);
+                                || !audioEngine.Mixer.IsPlaying(music.Handle);
                             if (escapePressed || chartFinished && musicFinished)
                             {
                                 if (gameplayMusic is { } currentMusic)
-                                    audioEngine?.Mixer.Stop(currentMusic, TimeSpan.FromMilliseconds(20));
+                                    audioEngine?.Mixer.Stop(currentMusic.Handle, TimeSpan.FromMilliseconds(20));
                                 gameplayMusic = null;
+                                gameplayClock.Reset();
+                                releaseTextures(application, rainbowTextureIds);
+                                rainbowTextureIds = [];
+                                rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                                rainbow = null;
+                                rainbowSequence = new RainbowTransitionSequence();
                                 gameplayPresentation.Stop();
                                 playRequests.ClearActive();
                                 coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
                                 activeGameplayCharts = [];
+                                releaseTextures(application, textureIds);
                                 active = requireLumenScene(coordinator);
                                 textureIds = uploadTextures(application, active);
                                 previewController?.StartBackground();
@@ -243,6 +318,7 @@ internal static class EntrySongSelectFlow
 
                     reportDiagnostics(active);
                     coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult();
+                    releaseTextures(application, textureIds);
                     active = requireLumenScene(coordinator);
                     textureIds = uploadTextures(application, active);
                     if (active.Id == songSelectId)
@@ -258,7 +334,13 @@ internal static class EntrySongSelectFlow
                 },
                 frameLimit,
                 tickLimit,
-                screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture));
+                screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture),
+                updateFrame: keyboard =>
+                {
+                    if (screenshotPath is null && active.Id == gameplayId
+                        && rainbowSequence.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete)
+                        gameplayPresentation.Advance(keyboard, chartTime());
+                });
 
             Console.WriteLine($"Active scene: {active.Id}");
             if (active.Id == gameplayId)
@@ -270,7 +352,45 @@ internal static class EntrySongSelectFlow
         }
         finally
         {
+            releaseTextures(application, rainbowTextureIds);
+            if (rainbow is not null)
+                rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            releaseTextures(application, textureIds);
             coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static AudioStreamTransport? startGameplayAudio(
+        AudioEngine? audioEngine,
+        TjaCatalogProvider tja,
+        PlayRequest request,
+        GameplayTimeline timeline,
+        TimeSpan duration)
+    {
+        if (audioEngine is null || request.AudioAsset is not { } audioAsset)
+            return null;
+        var inputStream = tja.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
+        BufferedAudioSource? source = null;
+        try
+        {
+            try
+            {
+                source = new BufferedAudioSource(inputStream, audioEngine.Mixer.Format);
+            }
+            catch
+            {
+                inputStream.Dispose();
+                throw;
+            }
+            source.Ready.GetAwaiter().GetResult();
+            var playback = audioEngine.PlayTransport(new ScheduledAudioSource(source,
+                timeline.AudioStart, timeline.LeadIn + duration + TimeSpan.FromSeconds(1)));
+            source = null;
+            return playback;
+        }
+        finally
+        {
+            source?.Dispose();
         }
     }
 
@@ -286,11 +406,28 @@ internal static class EntrySongSelectFlow
         coordinator.ActiveScene as LumenGameSceneInstance
         ?? throw new InvalidOperationException("The active scene is not a Lumen scene instance.");
 
-    private static RenderTextureId[] uploadTextures(SdlApplication application, LumenGameSceneInstance scene) =>
-        [.. scene.Textures.Select(texture => application.UploadRgba8(
-            checked((uint)texture.Width),
-            checked((uint)texture.Height),
-            texture.Rgba8.AsSpan()))];
+    private static RenderTextureId[] uploadTextures(SdlApplication application, LumenGameSceneInstance scene)
+    {
+        var uploaded = new List<RenderTextureId>();
+        try
+        {
+            foreach (var texture in scene.Textures)
+                uploaded.Add(application.UploadRgba8(checked((uint)texture.Width),
+                    checked((uint)texture.Height), texture.Rgba8.AsSpan()));
+            return [.. uploaded];
+        }
+        catch
+        {
+            releaseTextures(application, uploaded);
+            throw;
+        }
+    }
+
+    private static void releaseTextures(SdlApplication application, IEnumerable<RenderTextureId> textures)
+    {
+        foreach (var texture in textures)
+            application.ReleaseTexture(texture);
+    }
 
     private static void reportDiagnostics(LumenGameSceneInstance scene)
     {
@@ -331,6 +468,7 @@ internal static class EntrySongSelectFlow
                 initializeEntry),
             "song-select" => createSongSelectHost(),
             GameplaySceneComposition.StaticHostId => new LumenLayerHost(null),
+            RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 

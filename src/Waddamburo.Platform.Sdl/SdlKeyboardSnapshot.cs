@@ -9,16 +9,24 @@ public sealed class SdlKeyboardSnapshot
 
     public static SdlKeyboardSnapshot Empty { get; } = new([]);
 
-    public SdlKeyboardSnapshot(IEnumerable<SdlKeyboardKey> pressedKeys)
+    public SdlKeyboardSnapshot(IEnumerable<SdlKeyboardKey> pressedKeys,
+        IEnumerable<SdlKeyPress>? presses = null, TimeSpan timestamp = default)
     {
         ArgumentNullException.ThrowIfNull(pressedKeys);
         _pressedKeys = pressedKeys.ToImmutableHashSet();
+        Presses = presses is null ? [] : [.. presses.OrderBy(press => press.Timestamp)];
+        Timestamp = timestamp;
     }
+
+    public TimeSpan Timestamp { get; }
+    public ImmutableArray<SdlKeyPress> Presses { get; }
 
     public bool IsDown(SdlKeyboardKey key) => _pressedKeys.Contains(key);
 
     public ImmutableArray<SdlKeyboardKey> PressedKeys => [.. _pressedKeys.Order()];
 }
+
+public readonly record struct SdlKeyPress(SdlKeyboardKey Key, TimeSpan Timestamp);
 
 public enum SdlKeyboardKey
 {

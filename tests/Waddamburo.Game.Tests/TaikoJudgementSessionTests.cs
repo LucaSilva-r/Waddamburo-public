@@ -5,6 +5,44 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class TaikoJudgementSessionTests
 {
+    [Fact]
+    public void SimultaneousSecondHandCannotConsumeTheFollowingOrdinaryNote()
+    {
+        var session = createSession(
+            new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.Don),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.05), PlayableNoteKind.Don));
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        Assert.Equal(TaikoInputResult.Ignored,
+            session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1)));
+        Assert.False(session.IsJudged(1));
+    }
+
+    [Fact]
+    public void PreRollAllowsEarlyInputOnAChartZeroNote()
+    {
+        var session = createSession(new PlayableHitObject(TimeSpan.Zero, PlayableNoteKind.Don));
+        session.AdvanceTo(TimeSpan.FromSeconds(-3));
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromMilliseconds(-20));
+        Assert.Equal(TaikoHitResult.Great, Assert.Single(session.CreateSnapshot()).Result);
+    }
+
+    [Fact]
+    public void JudgementEventsIncludeTimeoutsAndStrongCompletionWithoutDuplicatingNotes()
+    {
+        var session = createSession(
+            new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon),
+            new PlayableHitObject(TimeSpan.FromSeconds(2), PlayableNoteKind.Ka));
+        var events = new List<TaikoNoteJudgement>();
+        session.Judged += events.Add;
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.02));
+        session.AdvanceTo(TimeSpan.FromSeconds(3));
+        Assert.Equal(3, events.Count);
+        Assert.True(events[1].StrongHitCompleted);
+        Assert.Equal(events[0].NoteIndex, events[1].NoteIndex);
+        Assert.Equal(TaikoHitResult.Miss, events[2].Result);
+    }
+
     private static readonly TaikoJudgementWindows Windows = new(
         TimeSpan.FromMilliseconds(35),
         TimeSpan.FromMilliseconds(80),

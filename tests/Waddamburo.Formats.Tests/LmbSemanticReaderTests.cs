@@ -281,6 +281,7 @@ public sealed class LmbSemanticReaderTests
     {
         var geometry = new uint[18];
         geometry[16] = 4;
+        geometry[17] = 0x00410000;
         var file = createLmb(
             record(LmbTags.StringPool, stringPool("name")),
             words(LmbTags.ColorTransformPool, 1, 0, 0),
@@ -338,6 +339,19 @@ public sealed class LmbSemanticReaderTests
         Assert.Equal("LMB_UNKNOWN_POSITION_KIND", diagnostic.Code);
         Assert.Equal(EvidenceStatus.Unknown, diagnostic.Evidence);
         Assert.Equal(3, result.Value.Sprites[0].Timeline.Length);
+    }
+
+    [Fact]
+    public void NativeFillDoesNotReferenceTheMovieTextureTable()
+    {
+        var geometry = new uint[18];
+        geometry[16] = 123;
+        var file = createLmb(words(LmbTags.DefineShape, 42, 0, 0, 1),
+            words(LmbTags.ShapeGeometry, geometry));
+        var result = LmbSemanticReader.Read(file,
+            validationContext: new LmbSemanticValidationContext(textureCount: 0));
+        Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Code == "LMB_TEXTURE_INDEX_OUT_OF_RANGE");
+        Assert.Equal(123U, Assert.Single(Assert.Single(result.Value.Shapes).Geometry).TextureIndex);
     }
 
     private static LmbFile createLmb(params (uint Tag, byte[] Payload)[] records)

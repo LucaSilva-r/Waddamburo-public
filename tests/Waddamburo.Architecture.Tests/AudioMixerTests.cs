@@ -4,6 +4,33 @@ namespace Waddamburo.Architecture.Tests;
 
 public sealed class AudioMixerTests
 {
+    [Fact]
+    public void ScheduledSongStartsWithinAMixerBlockAndKeepsTheTransportAliveAfterEof()
+    {
+        using var source = new ScheduledAudioSource(
+            new TestStreamSource(new SdlAudioFormat(4, 1), [0.5f, 0.75f]),
+            TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(2));
+        var first = new float[3];
+        Assert.Equal(3, source.Read(first));
+        Assert.Equal([0f, 0f, 0.5f], first);
+        var second = new float[5];
+        Assert.Equal(5, source.Read(second));
+        Assert.Equal([0.75f, 0f, 0f, 0f, 0f], second);
+        Assert.True(source.IsCompleted);
+        Assert.Equal(8, source.ProducedFrames);
+    }
+
+    [Fact]
+    public void ScheduledSongReportsStarvationInsteadOfSilentlyLosingSync()
+    {
+        using var source = new ScheduledAudioSource(
+            new TestStreamSource(new SdlAudioFormat(4, 1), [], completeAfterRead: false),
+            TimeSpan.Zero, TimeSpan.FromSeconds(2));
+        Assert.Equal(0, source.Read(new float[4]));
+        Assert.True(source.IsCompleted);
+        Assert.IsType<IOException>(source.Failure);
+    }
+
     private static readonly SdlAudioFormat StereoFourHertz = new(4, 2);
 
     [Fact]

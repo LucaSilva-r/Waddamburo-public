@@ -29,6 +29,9 @@ internal static class LmbReferenceValidator
             {
                 foreach (var geometry in shape.Geometry)
                 {
+                    // Native fills are resolved by the host, not the movie texture table.
+                    if ((geometry.Flags >> 16) == 0)
+                        continue;
                     validateIndex(
                         geometry.TextureIndex,
                         textureCount,

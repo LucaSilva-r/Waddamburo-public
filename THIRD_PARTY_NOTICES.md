@@ -1,6 +1,12 @@
 # Third-party notices
 
 The SDL platform adapter and application now restore the SDL3-CS runtime package.
+The gameplay clock/input repair also uses osu!lazer's `GameplayClockContainer.cs`
+and Taiko `DrawableHit.cs` at commit `48c4800e3ae4ee752452cdff83bd3787ccf3105f`
+as architectural references (MIT, copyright ppy Pty Ltd). No source was copied;
+the independent implementation and source links are recorded in
+`docs/development/gameplay-integration.md` and `docs/legal/provenance.md`.
+
 The test project and isolated osu!lazer provider prototype also restore:
 
 | Component | Version | License | Use |

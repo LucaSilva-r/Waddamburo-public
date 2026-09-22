@@ -344,9 +344,112 @@ static waddamburo_text_result render_title_column(
     return WADDAMBURO_TEXT_OK;
 }
 
+static waddamburo_text_result render_title_row(
+    FT_Face face,
+    FT_Stroker stroker,
+    const char *text,
+    uint32_t raster_scale,
+    uint8_t *mask,
+    uint8_t *outline,
+    uint32_t width,
+    uint32_t height,
+    waddamburo_text_error *error)
+{
+    uint32_t scalars[256];
+    uint32_t scalar_count = 0U;
+    const uint8_t *cursor = (const uint8_t *)text;
+    float font_px = 62.0f * raster_scale;
+    float advance = 0.0f;
+    float pen_x;
+    int baseline;
+    FT_Error ft_error;
+
+    while (*cursor != 0U) {
+        if (scalar_count == 256U)
+            return set_error(error, WADDAMBURO_TEXT_ERROR_TEXT, 0, "Transition title exceeds 256 Unicode scalars.");
+        if (!decode_utf8(&cursor, &scalars[scalar_count]))
+            return set_error(error, WADDAMBURO_TEXT_ERROR_TEXT, 0, "Transition title is not valid UTF-8.");
+        scalar_count++;
+    }
+    if (scalar_count == 0U)
+        return set_error(error, WADDAMBURO_TEXT_ERROR_TEXT, 0, "Transition title is empty.");
+
+    ft_error = FT_Set_Pixel_Sizes(face, 0U, (FT_UInt)(font_px + 0.5f));
+    if (ft_error != 0)
+        return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not size the transition-title font.");
+    for (uint32_t i = 0U; i < scalar_count; ++i) {
+        ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+        if (ft_error != 0)
+            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a transition-title glyph.");
+        advance += (float)face->glyph->advance.x / 64.0f;
+    }
+    if (advance > width * 0.94f) {
+        font_px *= width * 0.94f / advance;
+        if (font_px < 6.0f)
+            font_px = 6.0f;
+        ft_error = FT_Set_Pixel_Sizes(face, 0U, (FT_UInt)(font_px + 0.5f));
+        if (ft_error != 0)
+            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not fit the transition-title font.");
+        advance = 0.0f;
+        for (uint32_t i = 0U; i < scalar_count; ++i) {
+            ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            if (ft_error != 0)
+                return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a transition-title glyph.");
+            advance += (float)face->glyph->advance.x / 64.0f;
+        }
+    }
+
+    pen_x = ((float)width - advance) * 0.5f;
+    baseline = (int)(((float)height
+        + (float)face->size->metrics.ascender / 64.0f
+        + (float)face->size->metrics.descender / 64.0f) * 0.5f);
+    for (uint32_t i = 0U; i < scalar_count; ++i) {
+        FT_Glyph fill_glyph = NULL;
+        FT_Glyph outline_glyph = NULL;
+        FT_BitmapGlyph fill_bitmap;
+        FT_BitmapGlyph outline_bitmap;
+        float glyph_advance;
+
+        ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+        if (ft_error != 0)
+            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not rasterize a transition-title glyph.");
+        glyph_advance = (float)face->glyph->advance.x / 64.0f;
+        ft_error = FT_Get_Glyph(face->glyph, &fill_glyph);
+        if (ft_error != 0)
+            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not retain a transition-title glyph.");
+        ft_error = FT_Glyph_Copy(fill_glyph, &outline_glyph);
+        if (ft_error != 0) {
+            FT_Done_Glyph(fill_glyph);
+            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not copy a transition-title glyph.");
+        }
+        ft_error = FT_Glyph_To_Bitmap(&fill_glyph, FT_RENDER_MODE_NORMAL, NULL, 1);
+        if (ft_error == 0)
+            ft_error = FT_Glyph_StrokeBorder(&outline_glyph, stroker, 0, 1);
+        if (ft_error == 0)
+            ft_error = FT_Glyph_To_Bitmap(&outline_glyph, FT_RENDER_MODE_NORMAL, NULL, 1);
+        if (ft_error != 0) {
+            FT_Done_Glyph(outline_glyph);
+            FT_Done_Glyph(fill_glyph);
+            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not render a transition-title glyph.");
+        }
+        fill_bitmap = (FT_BitmapGlyph)fill_glyph;
+        outline_bitmap = (FT_BitmapGlyph)outline_glyph;
+        draw_bitmap_to_mask(
+            mask, width, height, &fill_bitmap->bitmap,
+            (int)pen_x + fill_bitmap->left, baseline - fill_bitmap->top, 0);
+        draw_bitmap_to_mask(
+            outline, width, height, &outline_bitmap->bitmap,
+            (int)pen_x + outline_bitmap->left, baseline - outline_bitmap->top, 0);
+        pen_x += glyph_advance;
+        FT_Done_Glyph(outline_glyph);
+        FT_Done_Glyph(fill_glyph);
+    }
+    return WADDAMBURO_TEXT_OK;
+}
+
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_2;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_3;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -551,11 +654,14 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         utf8_title == NULL || utf8_title[0] == '\0' || rgba8 == NULL ||
         raster_scale == 0U || raster_scale > 4U || outline_rgb > UINT32_C(0x00ffffff) ||
         (profile != WADDAMBURO_TEXT_PROFILE_SONG_COMPACT &&
-         profile != WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED))
+         profile != WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED &&
+         profile != WADDAMBURO_TEXT_PROFILE_TRANSITION))
         return set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "Invalid song-title rasterizer arguments.");
 
-    base_width = profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT ? 56U : 96U;
-    if (width != base_width * raster_scale || height != 400U * raster_scale)
+    base_width = profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT ? 56U
+        : profile == WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED ? 96U : 720U;
+    if (width != base_width * raster_scale ||
+        height != (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION ? 103U : 400U) * raster_scale)
         return set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "Song-title surface dimensions do not match its profile and scale.");
     pixel_count = (uint64_t)width * height;
     if (pixel_count > UINT64_MAX / 4U || rgba8_capacity != pixel_count * 4U || pixel_count > SIZE_MAX)
@@ -579,7 +685,11 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         FT_STROKER_LINEJOIN_ROUND,
         0);
 
-    if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
+    if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION) {
+        result = render_title_row(
+            context->face, stroker, utf8_title, raster_scale,
+            mask, outline, width, height, error);
+    } else if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
         result = render_title_column(
             context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
             28.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale,

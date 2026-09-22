@@ -9,6 +9,7 @@ public sealed class AudioEngine : IDisposable
     private readonly SdlAudioDevice _device;
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Task _producer;
+    private readonly object _outputGate = new();
     private bool _disposed;
 
     public AudioEngine(SdlAudioDevice device)
@@ -23,6 +24,26 @@ public sealed class AudioEngine : IDisposable
     public AudioMixer Mixer { get; }
 
     public Exception? Failure { get; private set; }
+
+    public AudioStreamTransport PlayTransport(ScheduledAudioSource source)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        lock (_outputGate)
+        {
+            var transport = new AudioStreamTransport(source, () => _device.SubmittedFrames);
+            transport.Handle = Mixer.PlayStream(transport, AudioBus.Bgm);
+            return transport;
+        }
+    }
+
+    /// <summary>Monotonic output-position estimate, including one hardware buffer of latency.</summary>
+    public TimeSpan GetPosition(AudioStreamTransport transport)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+        lock (_outputGate)
+            return transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
+                TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
+    }
 
     public AudioPlaybackHandle PlayOneShot(
         string path,
@@ -55,13 +76,16 @@ public sealed class AudioEngine : IDisposable
         {
             while (!_cancellation.IsCancellationRequested)
             {
-                if (!Mixer.HasActiveVoices || _device.QueuedFrames >= TargetQueuedFrames)
+                if (_device.QueuedFrames >= TargetQueuedFrames)
                 {
                     await Task.Delay(2, _cancellation.Token).ConfigureAwait(false);
                     continue;
                 }
-                if (Mixer.Render(samples))
+                lock (_outputGate)
+                {
+                    Mixer.Render(samples);
                     _device.Queue(samples);
+                }
             }
         }
         catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)

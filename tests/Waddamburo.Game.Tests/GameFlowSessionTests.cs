@@ -13,6 +13,40 @@ namespace Waddamburo.Game.Tests;
 public sealed class GameFlowSessionTests
 {
     [Fact]
+    public void RainbowTransitionWaitsForAuthoredCoverAndRevealAnimations()
+    {
+        var transition = new RainbowTransitionSequence(leadInTicks: 2, coveredTicks: 3);
+
+        transition.Begin(10);
+        Assert.Equal(RainbowTransitionState.WaitingToCover, transition.State);
+        Assert.False(transition.ShouldStartCover(11));
+        Assert.True(transition.ShouldStartCover(12));
+
+        transition.StartCover();
+        Assert.False(transition.FinishCoverWhenStopped(animationIsPlaying: true, 20));
+        Assert.True(transition.FinishCoverWhenStopped(animationIsPlaying: false, 21));
+        Assert.Equal(RainbowTransitionState.Covered, transition.State);
+        Assert.False(transition.ShouldStartReveal(23));
+        Assert.True(transition.ShouldStartReveal(24));
+
+        transition.StartReveal();
+        Assert.False(transition.FinishRevealWhenStopped(animationIsPlaying: true));
+        Assert.True(transition.FinishRevealWhenStopped(animationIsPlaying: false));
+        Assert.Equal(RainbowTransitionState.Complete, transition.State);
+    }
+
+    [Fact]
+    public void RainbowTransitionRejectsOverlappingSequences()
+    {
+        var transition = new RainbowTransitionSequence();
+
+        transition.Begin(0);
+
+        Assert.Throws<InvalidOperationException>(() => transition.Begin(1));
+        Assert.Throws<InvalidOperationException>(transition.StartReveal);
+    }
+
+    [Fact]
     public void AuthoredRequestWaitsForResolvedSceneToLoadBeforeActivation()
     {
         var flow = new GameFlowSession();

@@ -36,7 +36,27 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         SongBoardTextureKind kind)
     {
         ArgumentNullException.ThrowIfNull(song);
+        var textureKind = kind switch
+        {
+            SongBoardTextureKind.Compact => TitleTextureKind.Compact,
+            SongBoardTextureKind.Expanded => TitleTextureKind.Expanded,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
         var outlineRgb = kind == SongBoardTextureKind.Compact ? style.CompactOutlineRgb : 0U;
+        return register(song, textureKind, outlineRgb);
+    }
+
+    public LumenNativeSurfaceKey GetTransitionTitle(SongSelectSong song)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        return register(song, TitleTextureKind.Transition, 0U);
+    }
+
+    private LumenNativeSurfaceKey register(
+        SongSelectSong song,
+        TitleTextureKind kind,
+        uint outlineRgb)
+    {
         var key = new LumenNativeSurfaceKey(
             $"song-title:{song.Descriptor.Key}:{kind}:{outlineRgb:x6}");
         var request = new TitleRequest(
@@ -95,8 +115,9 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         {
             var profile = request.Kind switch
             {
-                SongBoardTextureKind.Compact => SongTitleTextProfile.Compact,
-                SongBoardTextureKind.Expanded => SongTitleTextProfile.Expanded,
+                TitleTextureKind.Compact => SongTitleTextProfile.Compact,
+                TitleTextureKind.Expanded => SongTitleTextProfile.Expanded,
+                TitleTextureKind.Transition => SongTitleTextProfile.Transition,
                 _ => throw new ArgumentOutOfRangeException(nameof(key)),
             };
             if (!_asynchronous)
@@ -190,8 +211,14 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     private sealed record TitleRequest(
         string Text,
         string? Subtitle,
-        SongBoardTextureKind Kind,
+        TitleTextureKind Kind,
         uint OutlineRgb);
+    private enum TitleTextureKind
+    {
+        Compact,
+        Expanded,
+        Transition,
+    }
     private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale);
     private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<RasterKey> Node);
 }

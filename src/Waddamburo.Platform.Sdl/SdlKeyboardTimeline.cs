@@ -30,6 +30,8 @@ public sealed class SdlKeyboardTimeline
         ArgumentNullException.ThrowIfNull(liveKeyboard);
         return !_keysByTick.TryGetValue(tick, out var scripted)
             ? liveKeyboard
-            : new SdlKeyboardSnapshot(liveKeyboard.PressedKeys.Concat(scripted));
+            : new SdlKeyboardSnapshot(liveKeyboard.PressedKeys.Concat(scripted),
+                liveKeyboard.Presses.Concat(scripted.Select(key => new SdlKeyPress(key, liveKeyboard.Timestamp))),
+                liveKeyboard.Timestamp);
     }
 }

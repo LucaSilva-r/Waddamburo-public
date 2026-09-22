@@ -198,9 +198,16 @@ Interactive Song Select also resolves each TJA's opaque audio asset through the
 provider and plays a debounced, seeked preview through the shared mixer. Changing
 or selecting the song and unloading the scene cancel and release that stream.
 Completing a one-player course selection loads the exact catalog-pinned TJA chart,
-swaps to the composed gameplay Lumen scene, starts the selected song stream, and
-renders timestamped Don/Ka notes above the authored lane. `F`/`J` are the left and
-right Don inputs, `D`/`K` are Ka, and Escape returns to a fresh Song Select scene.
+then runs the authored rainbow handoff: Song Select remains underneath `in_extra`,
+the composed gameplay scene loads only once the screen is covered, and chart/audio
+time starts with `out_extra`. The transition displays the selected song title in
+its native fill. Gameplay renders authored Don/Ka note movies above the lane and
+drives drum, judgement, combo, and Go-Go presentation. Chart offsets and pre-roll
+are explicit; interactive judgement follows an estimated audio output clock,
+independently of animation ticks. See [gameplay integration](docs/development/gameplay-integration.md)
+for the timing contract, reference sources, and remaining limitations.
+`F`/`J` are the left and right Don inputs, `D`/`K` are Ka, and Escape returns to a
+fresh Song Select scene.
 The initial gameplay composition deliberately rejects two-player launches until a
 two-lane presentation and input contract are implemented.
 `--sound-root=/path/to/user-owned-sound-tree` additionally enables authored

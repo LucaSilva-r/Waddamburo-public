@@ -2,11 +2,15 @@
 
 `waddamburo_text` is an optional, project-owned C ABI over FreeType. Its current
 vertical-title API retains a basic caller-sized profile and adds calibrated compact
-(56x400) and expanded (96x400) song-title profiles. The latter use vertical scalar
+(56x400), expanded (96x400), and scene-transition (720x103) song-title profiles.
+The Song Select profiles use vertical scalar
 layout, punctuation rotation/grouping, small-glyph spacing, an optional subtitle
 column, category-colored outlines, and proportional fitting. Output is
 premultiplied RGBA8 and can be rasterized at 1x through 4x for the drawable's pixel
 density while preserving logical Lumen dimensions.
+
+The transition profile lays out one centered horizontal title with proportional
+fitting and the same outline-based rasterization used by the vertical profiles.
 
 The context API keeps one FreeType library and face alive for repeated work with
 the same font. Song-title borders are rasterized from the font outlines with

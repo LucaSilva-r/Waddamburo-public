@@ -75,9 +75,10 @@ public sealed class TaikoJudgementSession
     private readonly TaikoHitResult?[] _results;
     private readonly TimeSpan?[] _offsets;
     private readonly bool[] _strongHits;
-    private TimeSpan _currentTime;
+    private TimeSpan _currentTime = TimeSpan.MinValue;
     private int _nextNoteIndex;
     private PendingStrongHit? _pendingStrong;
+    private TimeSpan? _lastJudgedInputTime;
 
     public TaikoJudgementSession(
         PlayableChart chart,
@@ -97,6 +98,10 @@ public sealed class TaikoJudgementSession
     public TimeSpan CurrentTime => _currentTime;
     public int NextNoteIndex => _nextNoteIndex;
     public bool IsComplete => _nextNoteIndex == _chart.NoteCount;
+
+    public event Action<TaikoNoteJudgement>? Judged;
+
+    public bool IsJudged(int index) => _results[index] is not null;
 
     public int AdvanceTo(TimeSpan time)
     {
@@ -119,6 +124,8 @@ public sealed class TaikoJudgementSession
         AdvanceTo(time);
         if (tryCompleteStrongHit(action, time))
             return TaikoInputResult.StrongHitCompleted;
+        if (_lastJudgedInputTime == time)
+            return TaikoInputResult.Ignored;
         if (_nextNoteIndex >= _chart.NoteCount)
             return TaikoInputResult.Ignored;
 
@@ -131,6 +138,7 @@ public sealed class TaikoJudgementSession
             result = TaikoHitResult.Miss;
 
         var judgedIndex = _nextNoteIndex++;
+        _lastJudgedInputTime = time;
         judge(judgedIndex, result.Value, offset);
         if (result != TaikoHitResult.Miss && hitObject.IsStrong)
             _pendingStrong = new PendingStrongHit(judgedIndex, action, time);
@@ -162,6 +170,8 @@ public sealed class TaikoJudgementSession
             return false;
         }
         _strongHits[pending.NoteIndex] = true;
+        Judged?.Invoke(new TaikoNoteJudgement(pending.NoteIndex, _chart.HitObjects[pending.NoteIndex],
+            _results[pending.NoteIndex], _offsets[pending.NoteIndex], true));
         _pendingStrong = null;
         return true;
     }
@@ -179,11 +189,11 @@ public sealed class TaikoJudgementSession
     {
         _results[index] = result;
         _offsets[index] = offset;
+        Judged?.Invoke(new TaikoNoteJudgement(index, _chart.HitObjects[index], result, offset, false));
     }
 
     private void ensureMonotonic(TimeSpan time)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(time, TimeSpan.Zero);
         if (time < _currentTime)
             throw new ArgumentOutOfRangeException(nameof(time), "Gameplay time cannot move backwards.");
     }

@@ -1,174 +1,87 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Scenes;
+using Waddamburo.Lumen.Runtime;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
-using Waddamburo.Platform.Sdl.Rendering;
 
-/// <summary>SDL presentation/input adapter for platform-neutral Taiko gameplay state.</summary>
-internal sealed class TaikoGameplayPresentation : IDisposable
+/// <summary>Maps platform input and composition roles to platform-neutral gameplay.</summary>
+internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHitSound = null)
 {
-    private const float StageWidth = 1280;
-    private const float StageHeight = 720;
-    private const float HitX = 414;
-    private const float PlayerOneY = 272;
-    private const float TravelPixelsPerSecond = 420;
-    private static readonly TimeSpan LookBehind = TimeSpan.FromMilliseconds(120);
-    private static readonly TimeSpan LookAhead = TimeSpan.FromSeconds(2.5);
-    private static readonly TaikoJudgementWindows DefaultWindows = new(
-        TimeSpan.FromMilliseconds(35),
-        TimeSpan.FromMilliseconds(80),
-        TimeSpan.FromMilliseconds(95));
+    private TaikoJudgementSession? _session;
+    private TaikoLumenPresentation? _presentation;
 
-    private readonly SdlApplication _application;
-    private readonly RenderTextureId _donTexture;
-    private readonly RenderTextureId _kaTexture;
-    private readonly HashSet<SdlKeyboardKey> _previousKeys = [];
-    private PlayableChart[] _charts = [];
-    private TaikoJudgementSession[] _sessions = [];
-    private bool _disposed;
-
-    public TaikoGameplayPresentation(SdlApplication application)
+    public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
     {
-        _application = application ?? throw new ArgumentNullException(nameof(application));
-        _donTexture = application.UploadRgba8(64, 64, createNoteTexture(220, 48, 36));
-        _kaTexture = application.UploadRgba8(64, 64, createNoteTexture(46, 145, 220));
-    }
-
-    public void Start(IEnumerable<PlayableChart> charts)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(charts);
-        _charts = charts.ToArray();
-        if (_charts.Length != 1)
-            throw new NotSupportedException("The initial gameplay presentation supports exactly one local player.");
-        _sessions = _charts
-            .Select(chart => new TaikoJudgementSession(
-                chart,
-                DefaultWindows,
-                TimeSpan.FromMilliseconds(30)))
-            .ToArray();
-        _previousKeys.Clear();
+        var layers = scene.Layers.Select((layer, index) =>
+            (Name: Path.GetFileNameWithoutExtension(layer.Definition.MovieId), Layer: scene.Player.Layers[index]))
+            .ToDictionary(pair => pair.Name, pair => pair.Layer);
+        var board = layers["lane_obi"].Player;
+        var courseLabel = course switch
+        {
+            TaikoCourse.Easy => "easy",
+            TaikoCourse.Normal => "normal",
+            TaikoCourse.Hard => "hard",
+            TaikoCourse.Oni => "mania",
+            TaikoCourse.Ura => "extreme",
+            _ => throw new ArgumentOutOfRangeException(nameof(course)),
+        };
+        if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(0)])
+            || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
+            throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
+        foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai" })
+            if (!layers[name].Player.TryGotoLabel("", "level01"))
+                throw new InvalidDataException("Gameplay note movie is missing its initial state.");
+        _session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(
+            TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)),
+            TimeSpan.FromMilliseconds(30));
+        _presentation = new TaikoLumenPresentation(chart, _session,
+            layers.Where(pair => pair.Key is "bg_nomal_b_32" or "donbg_b_32_common" or "lane" or "lane_hit")
+                .Select(pair => pair.Value),
+            [layers["lane_hit_effect"], layers["lane_obi"]],
+            new Dictionary<PlayableNoteKind, LumenSceneLayer>
+            {
+                [PlayableNoteKind.Don] = layers["onp_don"],
+                [PlayableNoteKind.Ka] = layers["onp_katsu"],
+                [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
+                [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
+            }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player);
     }
 
     public void Stop()
     {
-        _charts = [];
-        _sessions = [];
-        _previousKeys.Clear();
+        _session = null;
+        _presentation = null;
     }
 
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(keyboard);
-        if (_sessions.Length == 0)
+        if (_session is null || _presentation is null)
             return;
-
-        _sessions[0].AdvanceTo(chartTime);
-        submitOnPress(keyboard, SdlKeyboardKey.F, TaikoInputAction.LeftDon, chartTime);
-        submitOnPress(keyboard, SdlKeyboardKey.J, TaikoInputAction.RightDon, chartTime);
-        submitOnPress(keyboard, SdlKeyboardKey.D, TaikoInputAction.LeftKa, chartTime);
-        submitOnPress(keyboard, SdlKeyboardKey.K, TaikoInputAction.RightKa, chartTime);
-
-        _previousKeys.Clear();
-        _previousKeys.UnionWith(keyboard.PressedKeys);
-    }
-
-    public RenderFrame Compose(RenderFrame lumenFrame, TimeSpan chartTime)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(lumenFrame);
-        if (_charts.Length == 0)
-            return lumenFrame;
-
-        var quads = lumenFrame.Quads.ToBuilder();
-        appendChart(quads, _charts[0], _sessions[0].CreateSnapshot(), chartTime, PlayerOneY);
-        return new RenderFrame(lumenFrame.ClearColor, quads, lumenFrame.ContentAspectRatio);
-    }
-
-    private void submitOnPress(
-        SdlKeyboardSnapshot keyboard,
-        SdlKeyboardKey key,
-        TaikoInputAction action,
-        TimeSpan chartTime)
-    {
-        if (keyboard.IsDown(key) && !_previousKeys.Contains(key))
-            _sessions[0].SubmitInput(action, chartTime);
-    }
-
-    private void appendChart(
-        System.Collections.Immutable.ImmutableArray<RenderQuad>.Builder quads,
-        PlayableChart chart,
-        System.Collections.Immutable.ImmutableArray<TaikoNoteJudgement> judgements,
-        TimeSpan chartTime,
-        float centreY)
-    {
-        for (var index = 0; index < chart.HitObjects.Length; index++)
+        foreach (var press in keyboard.Presses)
         {
-            if (judgements[index].Result is not null)
-                continue;
-            var note = chart.HitObjects[index];
-            var until = note.StartTime - chartTime;
-            if (until < -LookBehind || until > LookAhead)
-                continue;
-            var scroll = scrollAt(chart, note.StartTime);
-            var centreX = HitX + (float)until.TotalSeconds * TravelPixelsPerSecond * (float)scroll;
-            var diameter = note.IsStrong ? 72f : 52f;
-            if (centreX + diameter / 2 < 0 || centreX - diameter / 2 > StageWidth)
-                continue;
-            quads.Add(RenderQuad.FromRectangles(
-                note.Kind is PlayableNoteKind.Don or PlayableNoteKind.BigDon ? _donTexture : _kaTexture,
-                new RenderRectangle(
-                    (centreX - diameter / 2) / StageWidth,
-                    (centreY - diameter / 2) / StageHeight,
-                    diameter / StageWidth,
-                    diameter / StageHeight),
-                RenderRectangle.Full,
-                RenderColor.White,
-                RenderColor.Transparent));
-        }
-    }
-
-    private static double scrollAt(PlayableChart chart, TimeSpan time)
-    {
-        var multiplier = chart.ScrollPoints[0].Multiplier;
-        foreach (var point in chart.ScrollPoints)
-        {
-            if (point.Time > time)
-                break;
-            multiplier = point.Multiplier;
-        }
-        return multiplier;
-    }
-
-    private static byte[] createNoteTexture(byte red, byte green, byte blue)
-    {
-        const int size = 64;
-        var pixels = new byte[size * size * 4];
-        var centre = (size - 1) / 2f;
-        for (var y = 0; y < size; y++)
-        {
-            for (var x = 0; x < size; x++)
+            TaikoInputAction? action = press.Key switch
             {
-                var distance = MathF.Sqrt(MathF.Pow(x - centre, 2) + MathF.Pow(y - centre, 2));
-                var offset = (y * size + x) * 4;
-                if (distance > 31)
-                    continue;
-                var border = distance >= 26;
-                pixels[offset] = border ? (byte)255 : red;
-                pixels[offset + 1] = border ? (byte)255 : green;
-                pixels[offset + 2] = border ? (byte)255 : blue;
-                pixels[offset + 3] = 255;
-            }
+                SdlKeyboardKey.F => TaikoInputAction.LeftDon,
+                SdlKeyboardKey.J => TaikoInputAction.RightDon,
+                SdlKeyboardKey.D => TaikoInputAction.LeftKa,
+                SdlKeyboardKey.K => TaikoInputAction.RightKa,
+                _ => null,
+            };
+            if (action is not { } hit)
+                continue;
+            var eventTime = chartTime - (keyboard.Timestamp - press.Timestamp);
+            eventTime = eventTime < _session.CurrentTime ? _session.CurrentTime : eventTime;
+            eventTime = eventTime > chartTime ? chartTime : eventTime;
+            _presentation.Hit(hit);
+            playHitSound?.Invoke(hit);
+            _session.SubmitInput(hit, eventTime);
         }
-        return pixels;
+        _session.AdvanceTo(chartTime);
+        _presentation.Update(chartTime);
     }
 
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-        _disposed = true;
-        _application.ReleaseTexture(_donTexture);
-        _application.ReleaseTexture(_kaTexture);
-    }
+    public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation) =>
+        (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
+        .CreateSnapshot(time, interpolation);
 }

@@ -136,7 +136,8 @@ public sealed unsafe class SdlApplication : IDisposable
         Action<SdlKeyboardSnapshot> simulationTick,
         int? frameLimit = null,
         int? tickLimit = null,
-        Action<RenderCapture>? captureFinalFrame = null)
+        Action<RenderCapture>? captureFinalFrame = null,
+        Action<SdlKeyboardSnapshot>? updateFrame = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -155,6 +156,7 @@ public sealed unsafe class SdlApplication : IDisposable
         var clock = new FixedStepAccumulator();
         var previousTimestamp = Stopwatch.GetTimestamp();
         var running = true;
+        var pendingPresses = new List<SdlKeyPress>();
         while (running && (frameLimit is null || renderedFrames < frameLimit))
         {
             SDL_Event currentEvent;
@@ -174,7 +176,12 @@ public sealed unsafe class SdlApplication : IDisposable
                     if (key is SdlKeyboardKey mapped)
                     {
                         if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
+                        {
+                            if (!_pressedKeys.Contains(mapped))
+                                pendingPresses.Add(new SdlKeyPress(mapped,
+                                    TimeSpan.FromTicks(checked((long)(currentEvent.key.timestamp / 100)))));
                             _pressedKeys.Add(mapped);
+                        }
                         else
                             _pressedKeys.Remove(mapped);
                     }
@@ -188,8 +195,17 @@ public sealed unsafe class SdlApplication : IDisposable
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
             previousTimestamp = timestamp;
             var remainingTicks = tickLimit is int limit ? limit - simulationTicks : int.MaxValue;
-            var keyboard = new SdlKeyboardSnapshot(_pressedKeys);
-            var update = clock.AddElapsed(elapsed, () => simulationTick(keyboard), remainingTicks);
+            var eventTime = TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)));
+            var keyboard = new SdlKeyboardSnapshot(_pressedKeys, pendingPresses, eventTime);
+            updateFrame?.Invoke(keyboard);
+            var delivered = updateFrame is not null;
+            var update = clock.AddElapsed(elapsed, () =>
+            {
+                simulationTick(delivered ? new SdlKeyboardSnapshot(_pressedKeys, timestamp: eventTime) : keyboard);
+                delivered = true;
+            }, remainingTicks);
+            if (delivered)
+                pendingPresses.Clear();
             simulationTicks += update.ExecutedTicks;
             droppedTicks += update.DroppedTicks;
 

@@ -32,7 +32,14 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
 
     public void StartBackground() => replace(null, TimeSpan.Zero);
 
-    public void SetPreview(SongPreviewRequest? request) => replace(request, HoverDebounce);
+    public void SetPreview(SongPreviewRequest? request)
+    {
+        if (request is not null)
+            replace(request, HoverDebounce);
+        else
+            lock (_gate)
+                stopCurrent();
+    }
 
     private void replace(SongPreviewRequest? request, TimeSpan delay)
     {

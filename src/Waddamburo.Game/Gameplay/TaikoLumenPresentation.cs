@@ -1,0 +1,131 @@
+using Waddamburo.Catalog;
+using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
+
+namespace Waddamburo.Game.Gameplay;
+
+/// <summary>Authored presentation driven by native judgement; no asset loading or audio.</summary>
+public sealed class TaikoLumenPresentation
+{
+    private readonly PlayableChart _chart;
+    private readonly TaikoJudgementSession _judgement;
+    private readonly LumenSceneLayer[] _background;
+    private readonly LumenSceneLayer[] _foreground;
+    private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> _notes;
+    private readonly LumenSceneLayer _bar;
+    private readonly LumenSceneLayer _target;
+    private readonly LumenPlayer _feedback;
+    private readonly LumenPlayer _board;
+    private readonly float _hitX;
+    private readonly float _hitY;
+    private int _combo;
+    private bool? _gogo;
+
+    public TaikoLumenPresentation(PlayableChart chart, TaikoJudgementSession judgement,
+        IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
+        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
+        LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board)
+    {
+        _chart = chart;
+        _judgement = judgement;
+        _background = background.ToArray();
+        _foreground = foreground.ToArray();
+        _notes = notes;
+        _bar = bar;
+        _target = target;
+        _feedback = feedback;
+        _board = board;
+        if (!target.Player.TryGetInstanceBounds("target", out var bounds))
+            throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
+        (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+        judgement.Judged += onJudged;
+        callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
+    }
+
+    public void Hit(TaikoInputAction action)
+    {
+        var don = action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon;
+        var left = action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa;
+        if (!_target.Player.TryGotoLabel("effect", don ? "don_s" : "katsu_s"))
+            throw new InvalidDataException("Gameplay lane has no drum feedback state.");
+        callback(_board, "SetTaikoHit", LumenHostValue.FromString(
+            (left ? "left_" : "right_") + (don ? "don" : "katsu")));
+    }
+
+    public void Update(TimeSpan time)
+    {
+        var active = _chart.EffectPoints[0].IsGoGo;
+        foreach (var point in _chart.EffectPoints)
+        {
+            if (point.Time > time)
+                break;
+            active = point.IsGoGo;
+        }
+        if (_gogo == active)
+            return;
+        _gogo = active;
+        callback(_target.Player, "SetGogo", LumenHostValue.FromBoolean(active));
+    }
+
+    public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
+    {
+        var layers = new List<LumenSceneLayer>(_background);
+        foreach (var bar in _chart.BarLines)
+            if (bar.IsVisible)
+                addAt(layers, _bar, bar.Time, time, scroll: false);
+        for (var index = _chart.NoteCount - 1; index >= 0; index--)
+            if (!_judgement.IsJudged(index))
+                addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
+        layers.AddRange(_foreground);
+        return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation);
+    }
+
+    private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
+        TimeSpan noteTime, TimeSpan time, bool scroll)
+    {
+        var bpm = _chart.TimingPoints[0].BeatsPerMinute;
+        foreach (var point in _chart.TimingPoints)
+        {
+            if (point.Time > noteTime)
+                break;
+            bpm = point.BeatsPerMinute;
+        }
+        var multiplier = 1d;
+        if (scroll)
+            foreach (var point in _chart.ScrollPoints)
+            {
+                if (point.Time > noteTime)
+                    break;
+                multiplier = point.Multiplier;
+            }
+        // Product layout: four beats span the visible lane at scroll 1.
+        var x = _hitX + (float)((noteTime - time).TotalSeconds * bpm / 60 * (1280 - _hitX) / 4 * multiplier);
+        if (x < _hitX - 100 || x > 1380)
+            return;
+        layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY } });
+    }
+
+    private void onJudged(TaikoNoteJudgement result)
+    {
+        if (result.StrongHitCompleted)
+            return;
+        _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
+        callback(_board, "SetComboCount", LumenHostValue.FromNumber(_combo));
+        var label = result.Result switch
+        {
+            TaikoHitResult.Great => "ryo",
+            TaikoHitResult.Good => "ka",
+            _ => "huka",
+        };
+        if (!_target.Player.TryGotoLabel("hit_effect", (result.HitObject.IsStrong ? "hit_dai_" : "hit_") + label)
+            || !_feedback.TryGotoLabel("", "hit_" + label
+                + (result.HitObject.IsStrong && result.Result != TaikoHitResult.Miss ? "_big" : "")))
+            throw new InvalidDataException("Gameplay movie is missing a judgement state.");
+    }
+
+    private static void callback(LumenPlayer player, string name, LumenHostValue value)
+    {
+        if (!player.TryInvokeCallback(name, [value]))
+            throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
+    }
+}

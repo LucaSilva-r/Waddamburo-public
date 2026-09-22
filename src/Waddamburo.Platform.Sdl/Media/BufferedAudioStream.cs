@@ -27,6 +27,7 @@ public sealed class BufferedAudioSource : IAudioStreamSource
     private bool _endOfStream;
     private bool _disposed;
     private Exception? _failure;
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public BufferedAudioSource(Stream input, SdlAudioFormat format, TimeSpan start = default)
     {
@@ -47,6 +48,9 @@ public sealed class BufferedAudioSource : IAudioStreamSource
     }
 
     public SdlAudioFormat Format { get; }
+
+    /// <summary>Completes when the bounded ring is full, or a short source reaches EOF.</summary>
+    public Task Ready => _ready.Task;
 
     public bool IsCompleted
     {
@@ -109,6 +113,8 @@ public sealed class BufferedAudioSource : IAudioStreamSource
                         decoded.AsSpan(offset, first).CopyTo(_ring.AsSpan(writePosition));
                         decoded.AsSpan(offset + first, writable - first).CopyTo(_ring);
                         _sampleCount += writable;
+                        if (_sampleCount == _ring.Length)
+                            _ready.TrySetResult();
                         offset += writable;
                     }
                 }
@@ -127,6 +133,12 @@ public sealed class BufferedAudioSource : IAudioStreamSource
             lock (_gate)
             {
                 _endOfStream = true;
+                if (_failure is { } failure)
+                    _ready.TrySetException(failure);
+                else if (_cancellation.IsCancellationRequested)
+                    _ready.TrySetCanceled();
+                else
+                    _ready.TrySetResult();
                 Monitor.PulseAll(_gate);
             }
         }

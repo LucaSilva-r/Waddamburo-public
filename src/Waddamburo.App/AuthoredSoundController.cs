@@ -66,6 +66,8 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
 
     public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);
 
+    public void PlayDrum(bool don) => playNamedBankCue("SE_COM", don ? 0 : 3, AudioBus.DrumHit);
+
     public void SelectCategoryVoice(string category)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(category);

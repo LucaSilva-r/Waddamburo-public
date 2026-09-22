@@ -10,12 +10,13 @@ public enum SongTitleTextProfile : uint
 {
     Compact = 0,
     Expanded = 1,
+    Transition = 2,
 }
 
 /// <summary>Rasterizes a user-supplied font through Waddamburo's stable FreeType C adapter.</summary>
 public static unsafe partial class NativeVerticalTextRasterizer
 {
-    private const uint AbiVersion = 0x0001_0002;
+    private const uint AbiVersion = 0x0001_0003;
     private static readonly ConcurrentDictionary<string, Lazy<NativeFontContext>> FontContexts =
         new(StringComparer.Ordinal);
 
@@ -40,6 +41,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         {
             SongTitleTextProfile.Compact => (Width: 56U, Height: 400U),
             SongTitleTextProfile.Expanded => (Width: 96U, Height: 400U),
+            SongTitleTextProfile.Transition => (Width: 720U, Height: 103U),
             _ => throw new ArgumentOutOfRangeException(nameof(profile)),
         };
         var width = checked(baseDimensions.Width * rasterScale);

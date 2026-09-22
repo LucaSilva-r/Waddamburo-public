@@ -9,6 +9,41 @@ namespace Waddamburo.Lumen.Tests;
 public sealed class LumenPlayerTests
 {
     [Fact]
+    public void NamedChildSeekPreservesParentStateAndTransforms()
+    {
+        var movie = createMovie(placementNameStringIndex: 31);
+        var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var placement = child.Timeline.OfType<LmbPlaceObjectCommand>().First();
+        var wrapper = child with
+        {
+            CharacterId = 99,
+            DeclaredFrameCount = 1,
+            DeclaredLabelCount = 0,
+            RepeatedLabelCount = 0,
+            Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(), placement with { CharacterId = 7 }],
+        };
+        var player = new LumenPlayer(movie with { Sprites = movie.Sprites.Add(wrapper) }, 1280, 720, rootCharacterId: 99);
+        Assert.True(player.TryGetInstanceBounds("placed/placed", out var before));
+        Assert.Equal(20, before.X);
+        Assert.True(player.TryGotoLabel("placed", movie.Strings[0].Value, play: false));
+        Assert.Equal(0, player.CurrentFrame);
+        Assert.True(player.TryGetInstanceBounds("placed/placed", out var after));
+        Assert.Equal(40, after.X);
+        Assert.Equal(60, after.Y);
+    }
+
+    [Fact]
+    public void NamedClipBoundsUseItsAuthoredTransform()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        Assert.True(player.TryGetInstanceBounds("placed", out var bounds));
+        Assert.Equal(new LumenNativeSurfacePlacement(10, 20, 100, 50), bounds);
+        Assert.False(player.TryGetInstanceBounds("missing", out _));
+        Assert.False(player.TryGotoLabel("placed", "missing"));
+        Assert.False(player.TryGotoLabel("missing", "idle"));
+    }
+
+    [Fact]
     public void FramePlacementsProduceImmutableTransformedRenderSnapshots()
     {
         var player = new LumenPlayer(createMovie(), 1280, 720);

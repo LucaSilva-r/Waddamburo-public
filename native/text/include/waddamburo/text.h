@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WADDAMBURO_TEXT_ABI_VERSION_1_2 UINT32_C(0x00010002)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_3 UINT32_C(0x00010003)
 
 typedef struct waddamburo_text_context waddamburo_text_context;
 
@@ -33,6 +33,7 @@ typedef int32_t waddamburo_text_result;
 typedef uint32_t waddamburo_text_profile;
 #define WADDAMBURO_TEXT_PROFILE_SONG_COMPACT ((waddamburo_text_profile)0)
 #define WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED ((waddamburo_text_profile)1)
+#define WADDAMBURO_TEXT_PROFILE_TRANSITION ((waddamburo_text_profile)2)
 
 typedef struct waddamburo_text_error {
     uint32_t struct_size;
@@ -65,8 +66,8 @@ waddamburo_text_render_vertical_rgba8(
     uint64_t rgba8_capacity,
     waddamburo_text_error *error);
 
-/* Calibrated Song Select title profiles. Dimensions must be the profile's
- * authored size multiplied by raster_scale (compact 56x400, expanded 96x400). */
+/* Calibrated title profiles. Dimensions must be the profile's authored size
+ * multiplied by raster_scale (compact 56x400, expanded 96x400, transition 720x103). */
 WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
 waddamburo_text_render_song_title_rgba8(
     const char *utf8_font_path,

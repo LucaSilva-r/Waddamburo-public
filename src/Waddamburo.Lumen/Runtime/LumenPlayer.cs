@@ -194,6 +194,54 @@ public sealed class LumenPlayer
 
     public void Stop() => _root.Playing = false;
 
+    /// <summary>Seeks an explicitly named child path without exposing runtime objects.</summary>
+    public bool TryGotoLabel(string instancePath, string label, bool play = true)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        var instance = findInstance(instancePath);
+        if (instance is null || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
+            || !timeline.Labels.TryGetValue(label, out var frame))
+            return false;
+        jumpInstance(instance, frame, play);
+        drainActions();
+        resetInterpolation(instance);
+        return true;
+    }
+
+    /// <summary>Returns the rendered bounds of a named clip in movie coordinates.</summary>
+    public bool TryGetInstanceBounds(string instancePath, out LumenNativeSurfacePlacement bounds)
+    {
+        var instance = findInstance(instancePath);
+        bounds = default;
+        if (instance is null)
+            return false;
+        var transform = LumenMatrix.Identity;
+        for (var parent = instance.Parent; parent is not null; parent = parent.Parent)
+            transform = transform.Then(parent.Transform);
+        var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
+        appendInstance(instance, transform, ColorState.Identity, LumenRenderBlend.Normal, 1, quads);
+        if (quads.Count == 0)
+            return false;
+        var vertices = quads.SelectMany(q => new[] { q.TopLeft, q.TopRight, q.BottomLeft, q.BottomRight }).ToArray();
+        var x = vertices.Min(v => v.X);
+        var y = vertices.Min(v => v.Y);
+        bounds = new(x, y, vertices.Max(v => v.X) - x, vertices.Max(v => v.Y) - y);
+        return true;
+    }
+
+    private DisplayInstance? findInstance(string path)
+    {
+        var instance = _root;
+        foreach (var name in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            instance = instance.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == name);
+            if (instance is null)
+                return null;
+        }
+        return instance;
+    }
+
     private void bootstrapPackageClasses()
     {
         foreach (var sprite in _movie.Sprites)

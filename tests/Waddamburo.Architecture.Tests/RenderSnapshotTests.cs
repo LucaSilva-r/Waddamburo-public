@@ -8,6 +8,21 @@ namespace Waddamburo.Architecture.Tests;
 public sealed class RenderSnapshotTests
 {
     [Fact]
+    public void ScriptedInputPreservesReleasedLivePressesAndTheirTimestamps()
+    {
+        var early = TimeSpan.FromMilliseconds(10);
+        var later = TimeSpan.FromMilliseconds(12);
+        var now = TimeSpan.FromMilliseconds(20);
+        var live = new SdlKeyboardSnapshot([], [new(SdlKeyboardKey.J, later), new(SdlKeyboardKey.F, early)], now);
+        var timeline = new SdlKeyboardTimeline([(2, SdlKeyboardKey.D)]);
+        var merged = timeline.Apply(2, live);
+        Assert.False(merged.IsDown(SdlKeyboardKey.F));
+        Assert.Equal(new[] { SdlKeyboardKey.F, SdlKeyboardKey.J, SdlKeyboardKey.D }, merged.Presses.Select(press => press.Key));
+        Assert.Equal(new[] { early, later, now }, merged.Presses.Select(press => press.Timestamp));
+        Assert.Equal(now, merged.Timestamp);
+    }
+
+    [Fact]
     public void ScriptedKeyboardPulsesApplyOnlyOnTheirExactTick()
     {
         var timeline = new SdlKeyboardTimeline([(2, SdlKeyboardKey.D), (2, SdlKeyboardKey.F)]);
