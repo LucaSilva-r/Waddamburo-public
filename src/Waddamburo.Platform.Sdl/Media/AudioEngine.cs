@@ -36,7 +36,7 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    /// <summary>Monotonic output-position estimate, including one hardware buffer of latency.</summary>
+    /// <summary>Monotonic output-position estimate interpolated between hardware buffer updates.</summary>
     public TimeSpan GetPosition(AudioStreamTransport transport)
     {
         ArgumentNullException.ThrowIfNull(transport);

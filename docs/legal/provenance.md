@@ -1,5 +1,13 @@
 # Implementation provenance
 
+Audio transport interpolation is an original project timing policy. A monotonic
+clock drives playback independently of block-sized queue observations. Audio drift
+outside a hardware-buffer uncertainty interval is corrected at at most 1% speed;
+unchanged output for the greater of 100 ms or four buffers freezes the clock.
+These are project policies, not precise hardware playhead measurements. Synthetic
+tests exercise high refresh rates, irregular consumption, and stalled output; no
+external implementation was adapted.
+
 Song Select countdown handling is an original host implementation based on the
 asset-derived start-duration/poll/stop protocol. Monotonic timing, upward rounding
 of displayed seconds, and stopped-timer semantics are explicit product policies.

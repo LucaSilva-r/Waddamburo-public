@@ -7,6 +7,8 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     private readonly Func<ulong> _submittedFrames;
     private long _firstOutputFrame = -1;
     private long _lastPosition;
+    private readonly AudioPlaybackClock _clock = new();
+    private readonly System.Diagnostics.Stopwatch _elapsed = System.Diagnostics.Stopwatch.StartNew();
 
     internal AudioStreamTransport(ScheduledAudioSource source, Func<ulong> submittedFrames)
     {
@@ -30,8 +32,10 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     {
         if (_firstOutputFrame < 0)
             return TimeSpan.Zero;
-        var latencyFrames = checked((long)Math.Ceiling(hardwareLatency.TotalSeconds * Format.SampleRate));
-        var played = checked((long)submitted) - checked((long)queued) - latencyFrames - _firstOutputFrame;
+        var consumed = checked((long)submitted) - checked((long)queued) - _firstOutputFrame;
+        var position = _clock.Update(TimeSpan.FromSeconds((double)consumed / Format.SampleRate),
+            hardwareLatency, _elapsed.Elapsed);
+        var played = checked((long)Math.Floor(position.TotalSeconds * Format.SampleRate));
         _lastPosition = Math.Max(_lastPosition, Math.Clamp(played, 0, _source.ProducedFrames));
         return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
     }
