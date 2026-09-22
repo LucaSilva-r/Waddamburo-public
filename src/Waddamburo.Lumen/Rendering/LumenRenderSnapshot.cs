@@ -36,6 +36,14 @@ public readonly record struct LumenNativeSurfacePlacement(float X, float Y, floa
         new(-width / 2, -height / 2, width, height);
 }
 
+/// <summary>Stencil writes never paint color. Depth is the reference before each operation.</summary>
+public enum LumenRenderMaskOperation
+{
+    Draw,
+    Push,
+    Pop,
+}
+
 public readonly record struct LumenRenderQuad(
     uint TextureIndex,
     LumenRenderVertex TopLeft,
@@ -46,7 +54,9 @@ public readonly record struct LumenRenderQuad(
     LumenRenderColor AddColor,
     LumenRenderBlend Blend = LumenRenderBlend.Normal,
     bool UseNearestSampling = false,
-    LumenNativeSurfaceKey? NativeSurface = null);
+    LumenNativeSurfaceKey? NativeSurface = null,
+    LumenRenderMaskOperation MaskOperation = LumenRenderMaskOperation.Draw,
+    byte MaskDepth = 0);
 
 /// <summary>
 /// Immutable renderer-independent output from one Lumen player state. Coordinates

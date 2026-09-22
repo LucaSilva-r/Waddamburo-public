@@ -37,6 +37,25 @@ public sealed class TaikoHitFlights
     public void Trigger(TaikoNoteJudgement judgement)
     {
         var label = StateFor(judgement.HitObject.Kind, judgement.Result, judgement.StrongHitCompleted);
+        trigger(label);
+    }
+
+    public static string StateFor(PlayableLongNoteKind kind, TaikoInputAction action) => kind switch
+    {
+        PlayableLongNoteKind.Balloon or PlayableLongNoteKind.Kusudama => "don_hit",
+        PlayableLongNoteKind.BigRoll => action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon
+            ? "don_renda_d_hit" : "katsu_renda_d_hit",
+        _ => action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don_hit" : "katsu_hit",
+    };
+
+    public void Trigger(TaikoLongNoteProgress progress)
+    {
+        if (progress.LastAction is { } action)
+            trigger(progress.IsPopped ? "geki_hit" : StateFor(progress.Note.Kind, action));
+    }
+
+    private void trigger(string? label)
+    {
         if (label is null)
             return;
         var index = Array.FindIndex(_active, active => !active);

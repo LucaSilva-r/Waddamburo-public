@@ -237,3 +237,27 @@ Scene composition is static at the host layer. Within a movie, bounded exported
 symbols can be created by `attachMovie` and AVM clone/remove operations; external
 movie loading through `MovieClipLoader` remains deferred until the resolver and
 resource-lifetime contracts exist.
+
+## Timeline clipping masks
+
+Placement word 5 contains the placement depth in its high half and an inclusive
+clipping end depth in its low half. A nonzero end depth marks mask artwork, which
+clips following siblings through that depth and is never drawn as color. This
+asset-derived interpretation is validated by synthetic placement/seek tests and a
+local animated-effect render. Zero on a move leaves the existing range unchanged.
+
+Render snapshots carry explicit stencil push/draw/pop operations and reference
+depths. Scene composition preserves these operations while transforming vertices
+and remapping textures. SDL uses a resize-aware depth/stencil target, clearing it
+on each frame; masks write stencil with color writes disabled. Texture alpha below
+0.5 is rejected, a project binary-mask policy. Overlapping pieces of one mask form
+a union; nested masks intersect. Each sibling's masks are scoped independently,
+including crossing authored depth ranges, so masking cannot leak into later scene
+layers. SPIR-V and DXIL mask shaders are built from project-authored source.
+
+This supports timeline masks with textured quad artwork, including animated mask
+sprites. A mask whose artwork itself contains clipped content is diagnosed and
+hides its range. Soft alpha masks, script-driven setMask, and arbitrary non-quad
+geometry remain outside this slice. Synthetic GPU pixel checks cover transparent
+mask texels, overlapping mask pieces, nested intersection, and restoration after
+pop; local captures remain private.

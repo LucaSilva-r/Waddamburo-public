@@ -25,7 +25,7 @@ fi
 slangc="$tool_root/bin/slangc"
 "$slangc" "$shader_root/quad.vert.glsl" -entry main -stage vertex -target spirv -profile glsl_450 -warnings-as-errors all -o "$output_root/quad.vert.spv"
 "$slangc" "$shader_root/quad.frag.glsl" -entry main -stage fragment -target spirv -profile glsl_450 -warnings-as-errors all -o "$output_root/quad.frag.spv"
-for shader in don.vert don.frag don-post.vert don-post.frag; do
+for shader in mask.frag don.vert don.frag don-post.vert don-post.frag; do
     stage=fragment
     case "$shader" in *.vert) stage=vertex ;; esac
     "$slangc" "$shader_root/$shader.glsl" -entry main -stage "$stage" -target spirv -profile glsl_450 -warnings-as-errors all -o "$output_root/$shader.spv"

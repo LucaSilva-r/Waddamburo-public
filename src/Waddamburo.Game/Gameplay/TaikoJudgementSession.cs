@@ -23,6 +23,8 @@ public enum TaikoInputResult
     Ignored,
     Judged,
     StrongHitCompleted,
+    LongNoteHit,
+    BalloonPopped,
 }
 
 public readonly record struct TaikoJudgementWindows
@@ -56,6 +58,11 @@ public readonly record struct TaikoJudgementWindows
     }
 }
 
+public readonly record struct TaikoLongNoteProgress(int NoteIndex, PlayableLongNote Note, int Hits, bool IsPopped)
+{
+    public TaikoInputAction? LastAction { get; init; }
+}
+
 public readonly record struct TaikoNoteJudgement(
     int NoteIndex,
     PlayableHitObject HitObject,
@@ -75,6 +82,8 @@ public sealed class TaikoJudgementSession
     private readonly TaikoHitResult?[] _results;
     private readonly TimeSpan?[] _offsets;
     private readonly bool[] _strongHits;
+    private readonly int[] _longHits;
+    private int _nextLongIndex;
     private TimeSpan _currentTime = TimeSpan.MinValue;
     private int _nextNoteIndex;
     private PendingStrongHit? _pendingStrong;
@@ -93,13 +102,21 @@ public sealed class TaikoJudgementSession
         _results = new TaikoHitResult?[chart.NoteCount];
         _offsets = new TimeSpan?[chart.NoteCount];
         _strongHits = new bool[chart.NoteCount];
+        _longHits = new int[chart.LongNotes.Length];
     }
 
     public TimeSpan CurrentTime => _currentTime;
     public int NextNoteIndex => _nextNoteIndex;
-    public bool IsComplete => _nextNoteIndex == _chart.NoteCount;
+    public bool IsComplete => _nextNoteIndex == _chart.NoteCount && _nextLongIndex == _chart.LongNotes.Length;
 
     public event Action<TaikoNoteJudgement>? Judged;
+    public event Action<TaikoLongNoteProgress>? LongNoteHit;
+
+    public TaikoLongNoteProgress GetLongNoteProgress(int index)
+    {
+        var note = _chart.LongNotes[index];
+        return new(index, note, _longHits[index], note.IsBalloon && _longHits[index] >= note.RequiredHits);
+    }
 
     public bool IsJudged(int index) => _results[index] is not null;
 
@@ -108,6 +125,9 @@ public sealed class TaikoJudgementSession
         ensureMonotonic(time);
         _currentTime = time;
         expireStrongHit(time);
+        while (_nextLongIndex < _chart.LongNotes.Length
+               && (time >= _chart.LongNotes[_nextLongIndex].EndTime || GetLongNoteProgress(_nextLongIndex).IsPopped))
+            _nextLongIndex++;
         var missed = 0;
         while (_nextNoteIndex < _chart.NoteCount
                && time - _chart.HitObjects[_nextNoteIndex].StartTime > _windows.Miss)
@@ -127,13 +147,13 @@ public sealed class TaikoJudgementSession
         if (_lastJudgedInputTime == time)
             return TaikoInputResult.Ignored;
         if (_nextNoteIndex >= _chart.NoteCount)
-            return TaikoInputResult.Ignored;
+            return hitLongNote(action, time);
 
         var hitObject = _chart.HitObjects[_nextNoteIndex];
         var offset = time - hitObject.StartTime;
         var result = _windows.ResultFor(offset);
         if (result is null)
-            return TaikoInputResult.Ignored;
+            return hitLongNote(action, time);
         if (!matches(action, hitObject.Kind))
             result = TaikoHitResult.Miss;
 
@@ -143,6 +163,19 @@ public sealed class TaikoJudgementSession
         if (result != TaikoHitResult.Miss && hitObject.IsStrong)
             _pendingStrong = new PendingStrongHit(judgedIndex, action, time);
         return TaikoInputResult.Judged;
+    }
+
+    private TaikoInputResult hitLongNote(TaikoInputAction action, TimeSpan time)
+    {
+        if (_nextLongIndex >= _chart.LongNotes.Length) return TaikoInputResult.Ignored;
+        var note = _chart.LongNotes[_nextLongIndex];
+        if (time < note.StartTime || time >= note.EndTime || (note.IsBalloon && !isDon(action)))
+            return TaikoInputResult.Ignored;
+        _longHits[_nextLongIndex]++;
+        var progress = GetLongNoteProgress(_nextLongIndex) with { LastAction = action };
+        LongNoteHit?.Invoke(progress);
+        if (progress.IsPopped) _nextLongIndex++;
+        return progress.IsPopped ? TaikoInputResult.BalloonPopped : TaikoInputResult.LongNoteHit;
     }
 
     public ImmutableArray<TaikoNoteJudgement> CreateSnapshot()

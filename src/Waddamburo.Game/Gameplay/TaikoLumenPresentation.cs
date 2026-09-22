@@ -19,14 +19,15 @@ public sealed class TaikoLumenPresentation
     private readonly float _hitX;
     private readonly float _hitY;
     private int _combo;
-    private bool? _gogo;
+    private readonly TaikoGoGoPresentation _gogo;
     private readonly TaikoHitFlights? _flights;
+    private readonly TaikoLongNotePresentation? _longNotes;
 
     public TaikoLumenPresentation(PlayableChart chart, TaikoJudgementSession judgement,
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
-        TaikoHitFlights? flights = null)
+        TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null)
     {
         _chart = chart;
         _judgement = judgement;
@@ -38,6 +39,12 @@ public sealed class TaikoLumenPresentation
         _feedback = feedback;
         _board = board;
         _flights = flights;
+        _longNotes = longNotes;
+        _gogo = new TaikoGoGoPresentation(chart.EffectPoints, active =>
+        {
+            callback(_target.Player, "SetGogo", LumenHostValue.FromBoolean(active));
+            GoGoChanged?.Invoke(active);
+        });
         if (!target.Player.TryGetInstanceBounds("target", out var bounds))
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
@@ -55,19 +62,12 @@ public sealed class TaikoLumenPresentation
             (left ? "left_" : "right_") + (don ? "don" : "katsu")));
     }
 
+    public event Action<bool>? GoGoChanged;
+
     public void Update(TimeSpan time)
     {
-        var active = _chart.EffectPoints[0].IsGoGo;
-        foreach (var point in _chart.EffectPoints)
-        {
-            if (point.Time > time)
-                break;
-            active = point.IsGoGo;
-        }
-        if (_gogo == active)
-            return;
-        _gogo = active;
-        callback(_target.Player, "SetGogo", LumenHostValue.FromBoolean(active));
+        _longNotes?.Update(time);
+        _gogo.Update(time);
     }
 
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
@@ -76,10 +76,15 @@ public sealed class TaikoLumenPresentation
         foreach (var bar in _chart.BarLines)
             if (bar.IsVisible)
                 addAt(layers, _bar, bar.Time, time, scroll: false);
+        if (_longNotes is not null)
+            layers.AddRange(_longNotes.NoteLayers(time,
+                (noteTime, controlTime) => position(noteTime, time, controlTime, scroll: true), _hitX, _hitY));
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
             if (!_judgement.IsJudged(index))
                 addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
         layers.AddRange(_foreground);
+        if (_longNotes is not null)
+            layers.AddRange(_longNotes.OverlayLayers);
         if (_flights is not null)
             layers.AddRange(_flights.ActiveLayers);
         return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation);
@@ -88,10 +93,18 @@ public sealed class TaikoLumenPresentation
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
         TimeSpan noteTime, TimeSpan time, bool scroll)
     {
+        var x = position(noteTime, time, noteTime, scroll);
+        if (x < _hitX - 100 || x > 1380)
+            return;
+        layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY } });
+    }
+
+    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, bool scroll)
+    {
         var bpm = _chart.TimingPoints[0].BeatsPerMinute;
         foreach (var point in _chart.TimingPoints)
         {
-            if (point.Time > noteTime)
+            if (point.Time > controlTime)
                 break;
             bpm = point.BeatsPerMinute;
         }
@@ -99,15 +112,13 @@ public sealed class TaikoLumenPresentation
         if (scroll)
             foreach (var point in _chart.ScrollPoints)
             {
-                if (point.Time > noteTime)
+                if (point.Time > controlTime)
                     break;
                 multiplier = point.Multiplier;
             }
         // Product layout: four beats span the visible lane at scroll 1.
-        var x = _hitX + (float)((noteTime - time).TotalSeconds * bpm / 60 * (1280 - _hitX) / 4 * multiplier);
-        if (x < _hitX - 100 || x > 1380)
-            return;
-        layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY } });
+        return (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * bpm / 60
+            * (1280 - _hitX) / 4 * multiplier, -100_000, 100_000);
     }
 
     private void onJudged(TaikoNoteJudgement result)

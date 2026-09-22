@@ -82,7 +82,7 @@ internal static class EntrySongSelectFlow
             fontPath,
             asynchronous: screenshotPath is null);
         var gameplayPresentation = new TaikoGameplayPresentation(action =>
-            soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon));
+            soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon), donPresentation);
 
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
@@ -233,10 +233,31 @@ internal static class EntrySongSelectFlow
                                     rainbow.Player.Layers.Single().Player.IsPlaying,
                                     simulationTick))
                             {
-                                var loadedCharts = pendingRequest.Players
-                                    .Select(player => tja.LoadChartAsync(player.Chart, player.ChartAsset)
-                                        .AsTask().GetAwaiter().GetResult())
-                                    .ToArray();
+                                PlayableChart[] loadedCharts;
+                                try
+                                {
+                                    loadedCharts = pendingRequest.Players
+                                        .Select(player => tja.LoadChartAsync(player.Chart, player.ChartAsset)
+                                            .AsTask().GetAwaiter().GetResult())
+                                        .ToArray();
+                                }
+                                catch (Exception exception) when (exception is InvalidDataException
+                                    or NotSupportedException or IOException or OverflowException or ArgumentException)
+                                {
+                                    Console.Error.WriteLine($"Cannot play selected chart: {exception.Message}");
+                                    playRequests.CancelPending();
+                                    releaseTextures(application, rainbowTextureIds);
+                                    rainbowTextureIds = [];
+                                    rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                                    rainbow = null;
+                                    rainbowSequence = new RainbowTransitionSequence();
+                                    coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
+                                    releaseTextures(application, textureIds);
+                                    active = requireLumenScene(coordinator);
+                                    textureIds = uploadTextures(application, active);
+                                    previewController?.StartBackground();
+                                    return;
+                                }
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                                 var request = playRequests.ActivatePending();
                                 activeGameplayCharts = loadedCharts;
@@ -283,7 +304,7 @@ internal static class EntrySongSelectFlow
                                 return;
                             }
                             var elapsed = chartTime();
-                            if (screenshotPath is not null || !keyboardState.Presses.IsEmpty)
+                            if (screenshotPath is not null)
                                 gameplayPresentation.Advance(keyboardState, elapsed);
                             if (gameplayMusic?.Failure is not null || audioEngine?.Failure is not null)
                                 throw new IOException("Gameplay audio failed.", gameplayMusic?.Failure ?? audioEngine?.Failure);
@@ -304,6 +325,8 @@ internal static class EntrySongSelectFlow
                                 rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
                                 rainbow = null;
                                 rainbowSequence = new RainbowTransitionSequence();
+                                reportDiagnostics(active);
+                                gameplayPresentation.ReportDiagnostics();
                                 gameplayPresentation.Stop();
                                 playRequests.ClearActive();
                                 coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
@@ -351,6 +374,7 @@ internal static class EntrySongSelectFlow
             if (active.Id == gameplayId)
                 Console.WriteLine($"Loaded gameplay charts: {activeGameplayCharts.Length}.");
             reportDiagnostics(active);
+            if (active.Id == gameplayId) gameplayPresentation.ReportDiagnostics();
             if (result.DroppedTicks > 0)
                 Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
             return result.RenderedFrames;
@@ -472,7 +496,7 @@ internal static class EntrySongSelectFlow
                 new LumenFrontendHostBinding(_frontend, _flow, _don),
                 initializeEntry),
             "song-select" => createSongSelectHost(),
-            GameplaySceneComposition.StaticHostId => new LumenLayerHost(null),
+            GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding()),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };

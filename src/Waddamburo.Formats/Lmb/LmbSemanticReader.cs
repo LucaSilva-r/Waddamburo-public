@@ -185,7 +185,7 @@ public static class LmbSemanticReader
                                 words[8],
                                 words[9],
                                 ImmutableArray.Create(words[2], words[10], words[11]).AddRange(words[12..]),
-                                record),
+                                record) { ClipDepth = low(words[5]) },
                             record,
                             diagnostics,
                             uninterpreted);

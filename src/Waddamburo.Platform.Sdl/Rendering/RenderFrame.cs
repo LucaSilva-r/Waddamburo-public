@@ -62,6 +62,14 @@ public enum RenderBlend
     Add,
 }
 
+/// <summary>Stencil writes never paint color. Depth is the reference before each operation.</summary>
+public enum RenderMaskOperation
+{
+    Draw,
+    Push,
+    Pop,
+}
+
 public readonly record struct RenderQuad(
     RenderTextureId Texture,
     RenderVertex TopLeft,
@@ -71,7 +79,9 @@ public readonly record struct RenderQuad(
     RenderColor MultiplyColor,
     RenderColor AddColor,
     RenderBlend Blend = RenderBlend.Normal,
-    RenderSampling Sampling = RenderSampling.Linear)
+    RenderSampling Sampling = RenderSampling.Linear,
+    RenderMaskOperation MaskOperation = RenderMaskOperation.Draw,
+    byte MaskDepth = 0)
 {
     public static RenderQuad FromRectangles(
         RenderTextureId texture,

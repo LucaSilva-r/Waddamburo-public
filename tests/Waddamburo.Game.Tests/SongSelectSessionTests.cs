@@ -171,6 +171,25 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
+    public async Task FailedChartLaunchCanBeCancelledAndRetried()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot),
+            new RecordingTextureService(), new RecordingPreviewController(), pending);
+        session.Select(0, 0, (int)TaikoCourse.Easy, -1);
+        pending.CancelPending();
+        Assert.Null(pending.Pending);
+        Assert.Null(pending.Active);
+        session.Select(0, 0, (int)TaikoCourse.Oni, -1);
+        var active = pending.ActivatePending();
+        Assert.Equal(TaikoCourse.Oni, Assert.Single(active.Players).Course);
+        pending.CancelPending();
+        Assert.Same(active, pending.Active);
+    }
+
+    [Fact]
     public async Task UnrestrictedSongCanLaunchBothOniAndUraButNotMissingCourses()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider(includeUra: true)]);

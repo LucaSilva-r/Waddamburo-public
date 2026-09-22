@@ -208,6 +208,10 @@ independently of animation ticks. See [gameplay integration](docs/development/ga
 for the timing contract, reference sources, and remaining limitations.
 `F`/`J` are the left and right Don inputs, `D`/`K` are Ka, and Escape returns to a
 fresh Song Select scene.
+TJA supports standard rolls, balloons, partner notes, mid-measure commands, and
+fixed-route branches; see the [compatibility matrix](docs/development/custom-tja.md#gameplay-compatibility)
+for supported features and remaining limits. Invalid or unsupported chart loads
+return to Song Select with a console diagnostic.
 The initial gameplay composition deliberately rejects two-player launches until a
 two-lane presentation and input contract are implemented.
 `--sound-root=/path/to/user-owned-sound-tree` additionally enables authored

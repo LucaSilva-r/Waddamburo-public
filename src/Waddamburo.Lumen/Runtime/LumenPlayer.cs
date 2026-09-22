@@ -224,9 +224,9 @@ public sealed class LumenPlayer
             transform = transform.Then(parent.Transform);
         var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
         appendInstance(instance, transform, ColorState.Identity, LumenRenderBlend.Normal, 1, quads);
-        if (quads.Count == 0)
-            return false;
-        var vertices = quads.SelectMany(q => new[] { q.TopLeft, q.TopRight, q.BottomLeft, q.BottomRight }).ToArray();
+        var vertices = quads.Where(q => q.MaskOperation == LumenRenderMaskOperation.Draw)
+            .SelectMany(q => new[] { q.TopLeft, q.TopRight, q.BottomLeft, q.BottomRight }).ToArray();
+        if (vertices.Length == 0) return false;
         var x = vertices.Min(v => v.X);
         var y = vertices.Min(v => v.Y);
         bounds = new(x, y, vertices.Max(v => v.X) - x, vertices.Max(v => v.Y) - y);
@@ -997,7 +997,23 @@ public sealed class LumenPlayer
                     jumpInstance(target, frame + bias, play);
                 }
             },
-            (command, argument) => HostCommand?.Invoke(command, argument));
+            (command, argument) => HostCommand?.Invoke(command, argument),
+            (target, name, arguments) =>
+            {
+                var candidate = string.IsNullOrEmpty(name) ? new Avm1Lookup(true, target) : context!.GetMember(target, name);
+                if (candidate.Value is ColorTransformConstructor)
+                    return new Avm1Lookup(true, createColorTransform(arguments));
+                if (candidate.Value is not Avm1FunctionValue constructor)
+                {
+                    reportOnce("LUM_AVM_CONSTRUCTOR_UNRESOLVED", instance.CharacterId, instance.Frame,
+                        $"AVM constructor '{name}' is not registered.");
+                    return default;
+                }
+                var value = new Avm1Object { Prototype = constructor.GetProperty("prototype").Value as Avm1Object };
+                value.Properties["__constructor__"] = constructor;
+                return invokeFunction(instance, constructor, value, arguments, context).Found
+                    ? new Avm1Lookup(true, value) : default;
+            });
         return context;
     }
 
@@ -1046,6 +1062,8 @@ public sealed class LumenPlayer
             PreviousTransform = source.PreviousTransform,
             PreviousMultiply = source.PreviousMultiply,
             ScriptTransformed = source.ScriptTransformed,
+            ScriptColored = source.ScriptColored,
+            ClipDepth = source.ClipDepth,
             ScriptPrototype = source.ScriptPrototype,
             ConstructedClass = source.ConstructedClass,
         };
@@ -1265,6 +1283,12 @@ public sealed class LumenPlayer
 
     private static Avm1Lookup readMember(object? target, string name)
     {
+        if (target is ClipTransform transform && name == "colorTransform")
+            return new Avm1Lookup(true, createColorTransform([
+                (double)transform.Instance.Color.Multiply.Red, (double)transform.Instance.Color.Multiply.Green,
+                (double)transform.Instance.Color.Multiply.Blue, (double)transform.Instance.Color.Multiply.Alpha,
+                (double)transform.Instance.Color.Add.Red * 255, (double)transform.Instance.Color.Add.Green * 255,
+                (double)transform.Instance.Color.Add.Blue * 255, (double)transform.Instance.Color.Add.Alpha * 255]));
         if (target is Avm1SuperValue super
             && super.Level?.Prototype is Avm1Object parentPrototype)
         {
@@ -1281,6 +1305,7 @@ public sealed class LumenPlayer
                 return inherited;
             return name switch
             {
+                "transform" => new Avm1Lookup(true, new ClipTransform(instance)),
                 "_parent" => new Avm1Lookup(instance.Parent is not null, instance.Parent),
                 "_root" => new Avm1Lookup(true, rootOf(instance)),
                 "_name" => new Avm1Lookup(true, instance.Name),
@@ -1324,6 +1349,20 @@ public sealed class LumenPlayer
 
     private void writeMember(object? target, string name, object? value)
     {
+        if (target is ClipTransform transform && name == "colorTransform" && value is Avm1Object color)
+        {
+            float channel(string property, double fallback, double divisor = 1)
+            {
+                var entry = color.GetProperty(property);
+                var number = entry.Found ? toNumber(entry.Value) : fallback;
+                return double.IsFinite(number) ? (float)Math.Clamp(number / divisor, -1e6, 1e6) : (float)fallback;
+            }
+            transform.Instance.ScriptColored = true;
+            transform.Instance.Color = new ColorState(
+                new(channel("redMultiplier", 1), channel("greenMultiplier", 1), channel("blueMultiplier", 1), channel("alphaMultiplier", 1)),
+                new(channel("redOffset", 0, 255), channel("greenOffset", 0, 255), channel("blueOffset", 0, 255), channel("alphaOffset", 0, 255)));
+            return;
+        }
         if (target is DisplayInstance instance)
         {
             switch (name)
@@ -1445,6 +1484,21 @@ public sealed class LumenPlayer
         return constructor;
     }
 
+    private sealed record ClipTransform(DisplayInstance Instance);
+    private sealed class ColorTransformConstructor;
+    private static readonly string[] ColorTransformProperties =
+        ["redMultiplier", "greenMultiplier", "blueMultiplier", "alphaMultiplier",
+         "redOffset", "greenOffset", "blueOffset", "alphaOffset"];
+
+    private static Avm1Object createColorTransform(IReadOnlyList<object?> arguments)
+    {
+        var value = new Avm1Object();
+        for (var index = 0; index < ColorTransformProperties.Length; index++)
+            value.Properties[ColorTransformProperties[index]] = index < arguments.Count
+                ? toNumber(arguments[index]) : index < 4 ? 1d : 0d;
+        return value;
+    }
+
     private void installExternalInterface()
     {
         _externalInterface.Properties["available"] = true;
@@ -1455,6 +1509,9 @@ public sealed class LumenPlayer
         external.Properties["ExternalInterface"] = _externalInterface;
         var flash = new Avm1Object();
         flash.Properties["external"] = external;
+        var geometry = new Avm1Object();
+        geometry.Properties["ColorTransform"] = new ColorTransformConstructor();
+        flash.Properties["geom"] = geometry;
         _globals["flash"] = flash;
     }
 
@@ -1625,6 +1682,7 @@ public sealed class LumenPlayer
                         Transform = instance.Transform,
                         Color = instance.Color,
                         BlendMode = instance.BlendMode,
+                        ClipDepth = instance.ClipDepth,
                     };
                     parent.Children[depth] = instance = replacement;
                     applyPlacementFields(instance, placement, isNew: false);
@@ -1652,6 +1710,8 @@ public sealed class LumenPlayer
     {
         if (placement.NameStringIndex != 0 && placement.NameStringIndex < _movie.Strings.Length)
             instance.Name = _movie.Strings[checked((int)placement.NameStringIndex)].Value;
+        if (isNew || placement.ClipDepth != 0)
+            instance.ClipDepth = placement.ClipDepth == 0 ? null : TimelineDepthBase + placement.ClipDepth;
         if (isNew || placement.BlendMode != 0)
             instance.BlendMode = placement.BlendMode;
         if (instance.BlendMode > 2 && instance.BlendMode != 8)
@@ -1696,6 +1756,7 @@ public sealed class LumenPlayer
                 break;
         }
 
+        if (instance.ScriptColored) return;
         var color = instance.Color;
         if (placement.ColorMultiplyIndex < _movie.ColorTransforms.Length)
             color = color with { Multiply = convertColor(_movie.ColorTransforms[checked((int)placement.ColorMultiplyIndex)]) };
@@ -1718,7 +1779,8 @@ public sealed class LumenPlayer
         ColorState parentColor,
         LumenRenderBlend parentBlend,
         float interpolationFraction,
-        ImmutableArray<LumenRenderQuad>.Builder quads)
+        ImmutableArray<LumenRenderQuad>.Builder quads,
+        byte maskDepth = 0)
     {
         if (instance.Removed || !instance.Visible)
             return;
@@ -1766,7 +1828,7 @@ public sealed class LumenPlayer
                             color.Multiply,
                             color.Add,
                             blend,
-                            NativeSurface: nativeFill.Surface));
+                            NativeSurface: nativeFill.Surface, MaskDepth: maskDepth));
                         continue;
                     }
                     reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, $"Fill-zero/native shape '{slot}' has no host surface yet.");
@@ -1781,12 +1843,44 @@ public sealed class LumenPlayer
                     transformVertex(geometry.Vertices[3], transform),
                     color.Multiply,
                     color.Add,
-                    blend));
+                    blend, MaskDepth: maskDepth));
             }
         }
 
+        if (instance.Children.Count == 0) return;
+
+        // Masks apply only to following siblings through the inclusive authored depth.
+        // Scope each child separately so crossing depth ranges and nested sprites compose safely.
+        var masks = new List<(long End, ImmutableArray<LumenRenderQuad> Quads)>();
         foreach (var child in instance.Children.Values)
-            appendInstance(child, transform, color, blend, interpolationFraction, quads);
+        {
+            masks.RemoveAll(mask => mask.End < child.Depth);
+            if (child.ClipDepth is { } end && end > child.Depth)
+            {
+                var geometry = ImmutableArray.CreateBuilder<LumenRenderQuad>();
+                appendInstance(child, transform, color, blend, interpolationFraction, geometry);
+                if (geometry.Any(quad => quad.MaskOperation != LumenRenderMaskOperation.Draw))
+                {
+                    reportOnce("LUM_NESTED_MASK_SHAPE", child.CharacterId, child.Frame,
+                        "A mask containing its own clipped content is not supported; its range is hidden.");
+                    geometry.Clear();
+                }
+                masks.Add((end, geometry.ToImmutable()));
+                continue;
+            }
+            if (maskDepth + masks.Count > byte.MaxValue)
+            {
+                reportOnce("LUM_MASK_DEPTH_LIMIT", child.CharacterId, child.Frame, "Mask nesting exceeds the stencil limit.");
+                continue;
+            }
+            for (var index = 0; index < masks.Count; index++)
+                foreach (var quad in masks[index].Quads)
+                    quads.Add(quad with { MaskOperation = LumenRenderMaskOperation.Push, MaskDepth = (byte)(maskDepth + index) });
+            appendInstance(child, transform, color, blend, interpolationFraction, quads, (byte)(maskDepth + masks.Count));
+            for (var index = masks.Count - 1; index >= 0; index--)
+                foreach (var quad in masks[index].Quads)
+                    quads.Add(quad with { MaskOperation = LumenRenderMaskOperation.Pop, MaskDepth = (byte)(maskDepth + index + 1) });
+        }
     }
 
     private readonly record struct NativeFillBinding(
@@ -1943,6 +2037,8 @@ public sealed class LumenPlayer
 
         public string Name { get; set; } = "";
 
+        public bool ScriptColored { get; set; }
+        public long? ClipDepth { get; set; }
         public uint PlacementId { get; set; } = uint.MaxValue;
 
         public int FirstFrame { get; set; }

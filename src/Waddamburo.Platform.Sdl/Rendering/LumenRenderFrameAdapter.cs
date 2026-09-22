@@ -35,7 +35,14 @@ public static class LumenRenderFrameAdapter
                 convert(quad.MultiplyColor),
                 convert(quad.AddColor),
                 convert(quad.Blend),
-                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear));
+                quad.UseNearestSampling ? RenderSampling.Nearest : RenderSampling.Linear,
+                quad.MaskOperation switch
+                {
+                    LumenRenderMaskOperation.Draw => RenderMaskOperation.Draw,
+                    LumenRenderMaskOperation.Push => RenderMaskOperation.Push,
+                    LumenRenderMaskOperation.Pop => RenderMaskOperation.Pop,
+                    _ => throw new ArgumentOutOfRangeException(nameof(snapshot)),
+                }, quad.MaskDepth));
         }
         return new RenderFrame(
             clearColor,

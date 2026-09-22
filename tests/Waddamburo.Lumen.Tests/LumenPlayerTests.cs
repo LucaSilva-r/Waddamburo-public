@@ -8,6 +8,44 @@ namespace Waddamburo.Lumen.Tests;
 
 public sealed class LumenPlayerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NewMethodColorTransformAppliesChannelsAndRollsBackUnsupportedActions(bool fail)
+    {
+        var code = new List<byte>();
+        void constant(byte index) => code.AddRange([0x96, 2, 0, 8, index]);
+        void integer(int value) { code.AddRange([0x96, 5, 0, 7]); code.AddRange(BitConverter.GetBytes(value)); }
+        constant(31); code.Add(0x1C); // named clip
+        constant(53); code.Add(0x4E); // transform
+        constant(54); // colorTransform assignment
+        foreach (var value in new[] { 0, 0, 128, 255, 1, 1, 0, 0 }) integer(value);
+        integer(8);
+        constant(11); code.Add(0x1C); // flash
+        constant(55); code.Add(0x4E); // geom
+        constant(56); code.Add(0x53); // new ColorTransform
+        code.Add(0x4F);
+        if (fail) code.Add(0x04); // unsupported; preflight must leave colors untouched
+        code.Add(0);
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31,
+            removeOnThirdFrame: false, actionBytecode: code.ToArray()), 1280, 720);
+        player.Advance();
+        var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
+        if (fail)
+        {
+            Assert.Equal(new LumenRenderColor(0.5f, 1, 1, 0.5f), quad.MultiplyColor);
+            Assert.Equal(LumenRenderColor.Transparent, quad.AddColor);
+        }
+        else
+        {
+            Assert.Equal(new LumenRenderColor(0, 0, 1, 1), quad.MultiplyColor);
+            Assert.Equal(new LumenRenderColor(1, 128f / 255, 0, 0), quad.AddColor);
+            Assert.Empty(player.Diagnostics);
+            player.Advance(); player.Advance();
+            Assert.Equal(quad.MultiplyColor, Assert.Single(player.CreateRenderSnapshot().Quads).MultiplyColor);
+        }
+    }
+
     [Fact]
     public void NamedChildSeekPreservesParentStateAndTransforms()
     {
@@ -1776,6 +1814,73 @@ public sealed class LumenPlayerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => scene.CreateRenderSnapshot(float.PositiveInfinity));
     }
 
+    [Fact]
+    public void ClipDepthMasksOnlyFollowingSiblingsAndSurvivesMoveAndSeek()
+    {
+        var movie = createMovie();
+        var sprite = movie.Sprites.Single();
+        var placement = sprite.Timeline.OfType<LmbPlaceObjectCommand>().First();
+        var mask = placement with { Depth = 0, ClipDepth = 1 };
+        var target = placement with { Depth = 1 };
+        var outside = placement with { Depth = 2 };
+        movie = movie with { Sprites = [sprite with { Timeline = [
+            new LmbShowFrameCommand(0, 3, [], null!), mask, target, outside,
+            new LmbShowFrameCommand(1, 1, [], null!), mask with { Mode = 2, ClipDepth = 0, PositionKind = 0 },
+            new LmbShowFrameCommand(2, 1, [], null!), new LmbRemoveObjectCommand(42, 0, [], null!),
+        ] }] };
+        var player = new LumenPlayer(movie, 1280, 720);
+        assertMasked(player.CreateRenderSnapshot());
+        player.Advance();
+        var moved = player.CreateRenderSnapshot();
+        assertMasked(moved);
+        Assert.Equal(30, moved.Quads[0].TopLeft.X);
+        player.Advance();
+        Assert.All(player.CreateRenderSnapshot().Quads, quad => Assert.Equal(LumenRenderMaskOperation.Draw, quad.MaskOperation));
+        player.Seek(0);
+        assertMasked(player.CreateRenderSnapshot());
+        Assert.Empty(player.Diagnostics);
+
+        static void assertMasked(LumenRenderSnapshot snapshot)
+        {
+            Assert.Equal([LumenRenderMaskOperation.Push, LumenRenderMaskOperation.Draw,
+                LumenRenderMaskOperation.Pop, LumenRenderMaskOperation.Draw], snapshot.Quads.Select(q => q.MaskOperation));
+            Assert.Equal(new byte[] { 0, 1, 1, 0 }, snapshot.Quads.Select(q => q.MaskDepth));
+        }
+    }
+
+    [Fact]
+    public void CrossingMasksAndNestedSpriteMasksComposeWithoutLeakingToOtherLayers()
+    {
+        var movie = createMovie();
+        var sprite = movie.Sprites.Single();
+        var placement = sprite.Timeline.OfType<LmbPlaceObjectCommand>().First();
+        var child = sprite with { CharacterId = 8, DeclaredFrameCount = 1, Timeline = [
+            new LmbShowFrameCommand(0, 2, [], null!),
+            placement with { Depth = 0, ClipDepth = 1 }, placement with { Depth = 1 },
+        ] };
+        var root = sprite with { Timeline = [new LmbShowFrameCommand(0, 5, [], null!),
+            placement with { Depth = 0, ClipDepth = 2 },
+            placement with { Depth = 1, ClipDepth = 3 },
+            placement with { Depth = 2, CharacterId = 8 },
+            placement with { Depth = 3 }, placement with { Depth = 4 },
+        ] };
+        movie = movie with { Sprites = [root, child] };
+        var player = new LumenPlayer(movie, 1280, 720);
+        var quads = player.CreateRenderSnapshot().Quads;
+        Assert.Equal(new byte[] { 3, 1, 0 }, quads.Where(q => q.MaskOperation == LumenRenderMaskOperation.Draw).Select(q => q.MaskDepth));
+        Assert.Equal(new byte[] { 0, 1, 2, 3, 3, 2, 1, 0, 1, 1, 0 }, quads.Select(q => q.MaskDepth));
+        var scene = new LumenScenePlayer(1280, 720, [
+            new(player, LumenMatrix.Identity with { X = 100 }, 5, 5),
+            new(new LumenPlayer(createMovie(), 1280, 720), LumenMatrix.Identity, 0, 5),
+        ]);
+        var composed = scene.CreateRenderSnapshot().Quads;
+        Assert.Equal(9U, composed[0].TextureIndex);
+        Assert.Equal(110, composed[0].TopLeft.X);
+        Assert.Equal(LumenRenderMaskOperation.Push, composed[0].MaskOperation);
+        Assert.Equal(0, composed[^1].MaskDepth);
+        Assert.Empty(player.Diagnostics);
+    }
+
     private static LmbMovieDefinition createMovie(
         float secondX = 30,
         uint secondColorIndex = uint.MaxValue,
@@ -1814,7 +1919,7 @@ public sealed class LumenPlayerTests
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
                 "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x",
-                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random")),
+                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random", "transform", "colorTransform", "geom", "ColorTransform")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

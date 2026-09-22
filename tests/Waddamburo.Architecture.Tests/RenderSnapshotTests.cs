@@ -9,6 +9,28 @@ namespace Waddamburo.Architecture.Tests;
 public sealed class RenderSnapshotTests
 {
     [Fact]
+    public void AdapterPreservesMaskOrderDepthAndTextureCoordinates()
+    {
+        var shape = new LumenRenderQuad(3, new(0, 0, 0, 0), new(100, 0, 1, 0),
+            new(100, 100, 1, 1), new(0, 100, 0, 1), LumenRenderColor.White, LumenRenderColor.Transparent);
+        var snapshot = new LumenRenderSnapshot(200, 100, [
+            shape with { MaskOperation = LumenRenderMaskOperation.Push },
+            shape with { MaskDepth = 1 },
+            shape with { MaskOperation = LumenRenderMaskOperation.Pop, MaskDepth = 1 },
+            shape,
+        ]);
+        var frame = LumenRenderFrameAdapter.Compose(snapshot, RenderColor.White, index => new(index + 10));
+        Assert.Equal([RenderMaskOperation.Push, RenderMaskOperation.Draw, RenderMaskOperation.Pop,
+            RenderMaskOperation.Draw], frame.Quads.Select(q => q.MaskOperation));
+        Assert.Equal(new byte[] { 0, 1, 1, 0 }, frame.Quads.Select(q => q.MaskDepth));
+        Assert.All(frame.Quads, q =>
+        {
+            Assert.Equal(new RenderTextureId(13), q.Texture);
+            Assert.Equal(new RenderVertex(0.5f, 1, 1, 1), q.BottomRight);
+        });
+    }
+
+    [Fact]
     public void ScriptedInputPreservesReleasedLivePressesAndTheirTimestamps()
     {
         var early = TimeSpan.FromMilliseconds(10);

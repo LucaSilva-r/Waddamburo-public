@@ -153,3 +153,36 @@ Waddamburo code. Their checked-in SPIR-V and DXIL files are generated from those
 sources by the unmodified Slang 2026.18 command-line compiler and, for Windows
 DXIL, Microsoft DirectX Shader Compiler 1.9.2602.24 pinned in
 `eng/build-shaders.*`; neither compiler is vendored or shipped at runtime.
+
+
+The expanded TJA gameplay reader and long-note session/presentation are original
+project implementations. Format facts were checked against the public
+[taiko-web TJA documentation](https://github.com/269Seahorse/Better-taiko-web/blob/master/TJA-format.mediawiki)
+(master, accessed 2026-09-22) and the
+[TJAPlayer3 format reference](https://iepiweidieng.github.io/TJAPlayer3/tja/)
+(revision dated 2026-09-13). No upstream implementation or private PoC code was
+copied or adapted, and no dependency was added. Fixed branch selection, permissive
+long-note closure, missing-quota defaults, and chart-load
+recovery are Waddamburo product policies, not original-game behavior claims.
+All new regression fixtures are synthetic.
+
+
+The authored long-note presentation adapters are independently written from
+user-supplied movie interface facts (callbacks, labels, and native-fill semantics).
+No movie scripts, assets, captures, private PoC code, or identifier inventory are
+copied into the repository. The AVM1 NewMethod and ColorTransform support was
+implemented against the public
+[Adobe SWF specification](https://www.flashrealtime.com/content/dam/Adobe/en/devnet/swf/pdf/swf_file_format_spec_v10.pdf)
+and [ActionScript 2 ColorTransform reference](https://open-flash.github.io/mirrors/as2-language-reference/flash/geom/ColorTransform.html)
+(accessed 2026-09-22), with original synthetic bytecode fixtures. No code was
+adapted and no dependency was introduced.
+
+Timeline clip-depth interpretation is independently derived from user-supplied
+placement data and observed mask/artwork relationships. Stencil command scoping,
+the binary alpha threshold, and backend implementation are original project
+choices. The backend uses SDL's public
+[depth/stencil state](https://wiki.libsdl.org/SDL3/SDL_GPUDepthStencilState) and
+[render-target API](https://wiki.libsdl.org/SDL3/SDL_GPUDepthStencilTargetInfo)
+(accessed 2026-09-22). Tests use synthetic shapes, textures, and placements. No
+private implementation, asset, or raw capture is copied. The new mask shaders use
+the existing Slang 2026.18 and DXC 1.9.2602.24 toolchain; no dependency was added.

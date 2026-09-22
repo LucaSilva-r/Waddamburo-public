@@ -35,7 +35,7 @@ public sealed class LmbSemanticReaderTests
             words(LmbTags.DefineSprite, 7, 0x11, 0x22, 1, 2, 1, 0x33),
             words(LmbTags.FrameLabel, 0, 0, 0x99),
             words(LmbTags.ShowFrame, 0, 3),
-            words(LmbTags.PlaceObject, 42, 6, 0xDEAD, 0, 0x00010002, 0x00030000, 0x00010000, 0x80000000, 0, uint.MaxValue, 0xA, 0xB),
+            words(LmbTags.PlaceObject, 42, 6, 0xDEAD, 0, 0x00010002, 0x00030006, 0x00010000, 0x80000000, 0, uint.MaxValue, 0xA, 0xB),
             words(LmbTags.RemoveObject, 42, 0x00020000),
             words(LmbTags.DoAction, 0, 0x55),
             words(LmbTags.ShowFrame, 1, 0),
@@ -80,6 +80,7 @@ public sealed class LmbSemanticReaderTests
                 Assert.Equal(1, place.Mode);
                 Assert.Equal(2, place.BlendMode);
                 Assert.Equal(3, place.Depth);
+                Assert.Equal(6, place.ClipDepth);
                 Assert.Equal(0x8000, place.PositionKind);
                 Assert.Equal(0, place.PositionIndex);
                 Assert.Equal(EvidenceStatus.CorpusValidatedInference, place.Evidence);

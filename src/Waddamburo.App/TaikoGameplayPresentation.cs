@@ -1,16 +1,19 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Don;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 
 /// <summary>Maps platform input and composition roles to platform-neutral gameplay.</summary>
-internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHitSound = null)
+internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHitSound = null,
+    IDonPresentationController? don = null)
 {
     private TaikoJudgementSession? _session;
     private TaikoLumenPresentation? _presentation;
     private TaikoHitFlights? _flights;
+    private TaikoLongNotePresentation? _longNotes;
 
     public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
     {
@@ -44,6 +47,17 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         _session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(
             TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)),
             TimeSpan.FromMilliseconds(30));
+        _longNotes = new TaikoLongNotePresentation(chart, _session, kind =>
+        {
+            var name = kind switch
+            {
+                PlayableLongNoteKind.Roll => "onp_renda",
+                PlayableLongNoteKind.BigRoll => "onp_renda_dai",
+                _ => "onp_fusen",
+            };
+            var content = scene.Layers.Single(layer => Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == name).Content;
+            return layers[name] with { Player = content.CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
+        }, layers["renda_num"], layers["action_fusen_1p"], _flights, don);
         _presentation = new TaikoLumenPresentation(chart, _session,
             layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
                 or "donbg_b_32_common" or "lane" or "gage_don_1p_normal" or "lane_hit")
@@ -56,7 +70,8 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                 [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
                 [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
             }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
-            _flights);
+            _flights, _longNotes);
+        _presentation.GoGoChanged += active => Console.WriteLine($"Gameplay Go-Go: {(active ? "start" : "end")} at {_session.CurrentTime.TotalSeconds:F3}s.");
     }
 
     public void Stop()
@@ -64,9 +79,22 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         _session = null;
         _presentation = null;
         _flights = null;
+        _longNotes = null;
     }
 
-    public void AdvanceAnimations() => _flights?.Advance();
+    public void AdvanceAnimations()
+    {
+        _flights?.Advance();
+        _longNotes?.AdvanceAnimations();
+    }
+
+    public void ReportDiagnostics()
+    {
+        if (_longNotes is null) return;
+        foreach (var player in _longNotes.Players)
+            foreach (var diagnostic in player.Diagnostics)
+                Console.Error.WriteLine($"Long-note presentation: {diagnostic.Code}: {diagnostic.Message}");
+    }
 
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {

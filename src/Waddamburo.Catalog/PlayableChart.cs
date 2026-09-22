@@ -24,6 +24,29 @@ public readonly record struct PlayableHitObject
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }
 
+public enum PlayableLongNoteKind { Roll, BigRoll, Balloon, Kusudama }
+
+public readonly record struct PlayableLongNote
+{
+    public PlayableLongNote(TimeSpan startTime, TimeSpan endTime, PlayableLongNoteKind kind, int requiredHits = 0)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(startTime, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(endTime, startTime);
+        ArgumentOutOfRangeException.ThrowIfNegative(requiredHits);
+        if (kind is PlayableLongNoteKind.Balloon or PlayableLongNoteKind.Kusudama && requiredHits == 0)
+            throw new ArgumentOutOfRangeException(nameof(requiredHits));
+        StartTime = startTime;
+        EndTime = endTime;
+        Kind = kind;
+        RequiredHits = requiredHits;
+    }
+    public TimeSpan StartTime { get; }
+    public TimeSpan EndTime { get; }
+    public PlayableLongNoteKind Kind { get; }
+    public int RequiredHits { get; }
+    public bool IsBalloon => Kind is PlayableLongNoteKind.Balloon or PlayableLongNoteKind.Kusudama;
+}
+
 public readonly record struct ChartTimingPoint
 {
     public ChartTimingPoint(TimeSpan time, double beatsPerMinute, int beatsPerMeasure, int beatUnit)
@@ -96,7 +119,8 @@ public sealed record PlayableChart
         IEnumerable<ChartTimingPoint> timingPoints,
         IEnumerable<ChartScrollPoint> scrollPoints,
         IEnumerable<ChartEffectPoint> effectPoints,
-        IEnumerable<ChartBarLine> barLines)
+        IEnumerable<ChartBarLine> barLines,
+        IEnumerable<PlayableLongNote>? longNotes = null)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero);
@@ -107,6 +131,9 @@ public sealed record PlayableChart
         TimingPoints = nonEmptyOrdered(timingPoints, static value => value.Time, nameof(timingPoints));
         ScrollPoints = nonEmptyOrdered(scrollPoints, static value => value.Time, nameof(scrollPoints));
         EffectPoints = nonEmptyOrdered(effectPoints, static value => value.Time, nameof(effectPoints));
+        LongNotes = ordered(longNotes ?? [], static value => value.StartTime, nameof(longNotes));
+        if (LongNotes.Any(note => note.EndTime > duration))
+            throw new ArgumentException("A long note cannot end after the chart duration.", nameof(longNotes));
         BarLines = ordered(barLines, static value => value.Time, nameof(barLines));
         if (!HitObjects.IsEmpty && HitObjects[^1].StartTime > duration)
             throw new ArgumentException("A hit object cannot occur after the chart duration.", nameof(duration));
@@ -120,6 +147,7 @@ public sealed record PlayableChart
     public ImmutableArray<ChartScrollPoint> ScrollPoints { get; }
     public ImmutableArray<ChartEffectPoint> EffectPoints { get; }
     public ImmutableArray<ChartBarLine> BarLines { get; }
+    public ImmutableArray<PlayableLongNote> LongNotes { get; }
     public int NoteCount => HitObjects.Length;
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(

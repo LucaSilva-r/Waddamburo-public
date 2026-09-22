@@ -315,7 +315,7 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
-    public async Task PlayableChartSkipsUnsupportedLongNotesWithoutChangingTiming()
+    public async Task PlayableChartRetainsLongNotesWithoutChangingTapTiming()
     {
         using var library = new TemporaryLibrary();
         library.WriteText(
@@ -328,11 +328,119 @@ public sealed class TjaCatalogProviderTests
         var chart = await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset);
 
         Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+        Assert.Equal(3, chart.LongNotes.Length);
+        Assert.Equal(TimeSpan.FromSeconds(0.5), chart.LongNotes[0].StartTime);
+        Assert.Equal(TimeSpan.FromSeconds(1.5), chart.LongNotes[0].EndTime);
+        Assert.Equal(PlayableLongNoteKind.BigRoll, chart.LongNotes[1].Kind);
+        Assert.Equal(TimeSpan.FromSeconds(4), chart.LongNotes[2].EndTime);
         Assert.Collection(
             chart.HitObjects,
             note => Assert.Equal((TimeSpan.Zero, PlayableNoteKind.Don), (note.StartTime, note.Kind)),
             note => Assert.Equal((TimeSpan.FromSeconds(2), PlayableNoteKind.Ka), (note.StartTime, note.Kind)),
             note => Assert.Equal((TimeSpan.FromSeconds(3), PlayableNoteKind.BigDon), (note.StartTime, note.Kind)));
+    }
+
+    [Fact]
+    public async Task CommandsWithinMeasuresPreserveSubdivisionsAndTheirExactPositions()
+    {
+        var chart = await loadSynthetic("10\n#BPMCHANGE 240\n#SCROLL 2\n#GOGOSTART\n1\n#DELAY 0.25\n2,\n#SECTION\n#LEVELHOLD\n#SENOTECHANGE 1\n#LYRIC synthetic\n1,");
+        Assert.Equal([0d, 1d, 1.5d, 1.75d], chart.HitObjects.Select(n => n.StartTime.TotalSeconds));
+        Assert.Equal(2.75, chart.Duration.TotalSeconds);
+        Assert.Equal(TimeSpan.FromSeconds(1), chart.TimingPoints[1].Time);
+        Assert.Equal(TimeSpan.FromSeconds(1), chart.ScrollPoints[1].Time);
+        Assert.True(chart.EffectPoints[1].IsGoGo);
+        Assert.Equal(TimeSpan.FromSeconds(1.75), chart.BarLines[1].Time);
+    }
+
+    [Fact]
+    public async Task BranchesPlayNormalOnlyAndDoNotLeakTimingFromOtherRoutes()
+    {
+        var chart = await loadSynthetic("#SECTION\n#BRANCHSTART p,50,80\n#N\n1,\n#E\n#BPMCHANGE 999\n2,\n#M\n#DELAY 10\n3,\n#BRANCHEND\n4,");
+        Assert.Equal(new[] { PlayableNoteKind.Don, PlayableNoteKind.BigKa }, chart.HitObjects.Select(n => n.Kind));
+        Assert.Equal(TimeSpan.FromSeconds(2), chart.HitObjects[1].StartTime);
+        Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+        Assert.Single(chart.TimingPoints);
+    }
+
+    [Fact]
+    public async Task ConsecutiveAndEmptyBranchesAndFallbackRoutesLoad()
+    {
+        var chart = await loadSynthetic("#BRANCHSTART p,0,0\n#BRANCHEND\n#BRANCHSTART p,50,80\n#N\n1,\n#E\n2,\n#BRANCHSTART p,-1,-1\n#M\n3,");
+        Assert.Equal(new[] { PlayableNoteKind.Don, PlayableNoteKind.BigDon }, chart.HitObjects.Select(n => n.Kind));
+        Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+    }
+
+    [Fact]
+    public async Task LongNotesSpanMeasuresAndConsumeBalloonQuotas()
+    {
+        var chart = await loadSynthetic("50,\n08,\n7080,\n9090,\n6080,", "BALLOON:3,5\n");
+        Assert.Empty(chart.HitObjects);
+        Assert.Equal(4, chart.LongNotes.Length);
+        Assert.Equal(TimeSpan.FromSeconds(3), chart.LongNotes[0].EndTime);
+        Assert.Equal(3, chart.LongNotes[1].RequiredHits);
+        Assert.Equal(5, chart.LongNotes[2].RequiredHits);
+        Assert.Equal(TimeSpan.FromSeconds(7), chart.LongNotes[2].EndTime);
+        Assert.Equal(PlayableLongNoteKind.BigRoll, chart.LongNotes[3].Kind);
+    }
+
+    [Theory]
+    [InlineData("", 3)]
+    [InlineData("BALLOONNOR:8\n", 8)]
+    public async Task SkippedBranchesStillConsumeTheirGlobalBalloonEntries(string branchHeader, int expectedHits)
+    {
+        var chart = await loadSynthetic("#BRANCHSTART p,50,80\n#E\n7080,\n#N\n7080,\n#M\n7080,\n#BRANCHEND\n7080,", "BALLOON:2,3,4,5\n" + branchHeader);
+        Assert.Equal(expectedHits, chart.LongNotes[0].RequiredHits);
+        Assert.Equal(branchHeader.Length == 0 ? 5 : 2, chart.LongNotes[1].RequiredHits);
+        Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+    }
+
+    [Fact]
+    public async Task PartnerNotesUseSinglePlayerBigNoteSemantics()
+    {
+        var chart = await loadSynthetic("ABab,");
+        Assert.Equal(new[] { PlayableNoteKind.BigDon, PlayableNoteKind.BigKa,
+            PlayableNoteKind.BigDon, PlayableNoteKind.BigKa }, chart.HitObjects.Select(n => n.Kind));
+    }
+
+    [Fact]
+    public async Task EmptyMeasuresAndTrailingCommandsRetainDuration()
+    {
+        var chart = await loadSynthetic("#MEASURE 3/4\n,\n#DELAY 0.5\n#BARLINEOFF\n,\n#DELAY 0.25");
+        Assert.Equal(TimeSpan.FromSeconds(3.75), chart.Duration);
+        Assert.False(chart.BarLines[1].IsVisible);
+    }
+
+    [Theory]
+    [InlineData("#UNKNOWN\n1,", typeof(NotSupportedException))]
+    [InlineData("C,", typeof(NotSupportedException))]
+    [InlineData("1", typeof(InvalidDataException))]
+    [InlineData("#BPMCHANGE 0\n1,", typeof(InvalidDataException))]
+    [InlineData("#MEASURE 0/4\n1,", typeof(InvalidDataException))]
+    [InlineData("#DELAY -1\n1,", typeof(InvalidDataException))]
+    public async Task MalformedAndGimmickChartsStillReportAnExplicitFailure(string body, Type exception)
+    {
+        await Assert.ThrowsAsync(exception, async () => await loadSynthetic(body));
+    }
+
+    [Fact]
+    public async Task LongNotesCountTowardsTheSafetyLimit()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("limit.tja", "TITLE:Limit\nBPM:120\nCOURSE:Oni\n#START\n50805080,\n#END");
+        var provider = new TjaCatalogProvider(library.Path, options: new TjaProviderOptions { MaximumNotes = 1 });
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var descriptor = Assert.Single(Assert.Single(contribution.Songs).Charts);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset));
+    }
+
+    private static async Task<PlayableChart> loadSynthetic(string body, string headers = "")
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("synthetic.tja", "TITLE:Synthetic\nBPM:120\nCOURSE:Oni\n" + headers + "#START\n" + body + "\n#END");
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var descriptor = Assert.Single(Assert.Single(contribution.Songs).Charts);
+        return await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset);
     }
 
     private sealed class TemporaryLibrary : IDisposable

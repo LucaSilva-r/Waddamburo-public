@@ -130,7 +130,11 @@ public sealed record LmbPlaceObjectCommand(
     uint ColorAddIndex,
     ImmutableArray<uint> UninterpretedWords,
     LmbRecord Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference);
+    : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference)
+{
+    /// <summary>Inclusive last sibling depth clipped by this placement; zero means no mask.</summary>
+    public ushort ClipDepth { get; init; }
+}
 
 public sealed record LmbRemoveObjectCommand(
     uint CharacterId,

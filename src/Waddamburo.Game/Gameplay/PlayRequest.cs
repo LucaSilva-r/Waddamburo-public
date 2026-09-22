@@ -135,6 +135,12 @@ public sealed class PlayRequestState : IPlayRequestSink
         }
     }
 
+    public void CancelPending()
+    {
+        lock (_sync)
+            _pending = null;
+    }
+
     public void ClearActive()
     {
         lock (_sync)

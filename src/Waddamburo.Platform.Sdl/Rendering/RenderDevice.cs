@@ -16,6 +16,12 @@ internal sealed unsafe class RenderDevice : IDisposable
     private readonly List<IGpuRenderPrepass> _prepasses = [];
     private SDL_GPUGraphicsPipeline* _normalQuadPipeline;
     private SDL_GPUGraphicsPipeline* _addQuadPipeline;
+    private SDL_GPUGraphicsPipeline* _pushMaskPipeline;
+    private SDL_GPUGraphicsPipeline* _popMaskPipeline;
+    private SDL_GPUTexture* _stencil;
+    private uint _stencilWidth;
+    private uint _stencilHeight;
+    private readonly SDL_GPUTextureFormat _stencilFormat;
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUSampler* _linearSampler;
     private uint _nextTextureId = 1;
@@ -29,6 +35,10 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new ArgumentNullException(nameof(window));
         _device = device;
         _window = window;
+        _stencilFormat = SDL_GPUTextureSupportsFormat(device, SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+            SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D, SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)
+            ? SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT
+            : SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
 
         try
         {
@@ -36,6 +46,8 @@ internal sealed unsafe class RenderDevice : IDisposable
             _linearSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR);
             _normalQuadPipeline = createQuadPipeline(RenderBlend.Normal);
             _addQuadPipeline = createQuadPipeline(RenderBlend.Add);
+            _pushMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Push);
+            _popMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Pop);
         }
         catch
         {
@@ -207,7 +219,18 @@ internal sealed unsafe class RenderDevice : IDisposable
                 load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
                 store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_STORE,
             };
-            var renderPass = SDL_BeginGPURenderPass(commandBuffer, &target, 1, null);
+            ensureStencil(width, height);
+            var stencilTarget = new SDL_GPUDepthStencilTargetInfo
+            {
+                texture = _stencil,
+                load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_DONT_CARE,
+                store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_DONT_CARE,
+                stencil_load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
+                stencil_store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_DONT_CARE,
+                clear_stencil = 0,
+                cycle = true,
+            };
+            var renderPass = SDL_BeginGPURenderPass(commandBuffer, &target, 1, &stencilTarget);
             if (renderPass is null)
             {
                 SDL_CancelGPUCommandBuffer(commandBuffer);
@@ -233,16 +256,21 @@ internal sealed unsafe class RenderDevice : IDisposable
             };
             SDL_SetGPUViewport(renderPass, &viewport);
             SDL_SetGPUScissor(renderPass, &scissor);
-            RenderBlend? boundBlend = null;
+            SDL_GPUGraphicsPipeline* boundPipeline = null;
             foreach (var quad in frame.Quads)
             {
-                if (quad.Blend != boundBlend)
+                var pipeline = quad.MaskOperation switch
                 {
-                    SDL_BindGPUGraphicsPipeline(
-                        renderPass,
-                        quad.Blend == RenderBlend.Add ? _addQuadPipeline : _normalQuadPipeline);
-                    boundBlend = quad.Blend;
+                    RenderMaskOperation.Push => _pushMaskPipeline,
+                    RenderMaskOperation.Pop => _popMaskPipeline,
+                    _ => quad.Blend == RenderBlend.Add ? _addQuadPipeline : _normalQuadPipeline,
+                };
+                if (pipeline != boundPipeline)
+                {
+                    SDL_BindGPUGraphicsPipeline(renderPass, pipeline);
+                    boundPipeline = pipeline;
                 }
+                SDL_SetGPUStencilReference(renderPass, quad.MaskDepth);
                 drawQuad(commandBuffer, renderPass, quad);
             }
             SDL_EndGPURenderPass(renderPass);
@@ -366,7 +394,27 @@ internal sealed unsafe class RenderDevice : IDisposable
         SDL_DrawGPUPrimitives(renderPass, 6, 1, 0, 0);
     }
 
-    private SDL_GPUGraphicsPipeline* createQuadPipeline(RenderBlend blend)
+    private void ensureStencil(uint width, uint height)
+    {
+        if (_stencil is not null && _stencilWidth == width && _stencilHeight == height) return;
+        var info = new SDL_GPUTextureCreateInfo
+        {
+            type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
+            format = _stencilFormat,
+            usage = SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+            width = width, height = height, layer_count_or_depth = 1, num_levels = 1,
+            sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
+        };
+        var texture = SDL_CreateGPUTexture(_device, &info);
+        if (texture is null) throw sdlFailure("create the stencil target");
+        if (_stencil is not null) SDL_ReleaseGPUTexture(_device, _stencil);
+        _stencil = texture;
+        _stencilWidth = width;
+        _stencilHeight = height;
+    }
+
+    private SDL_GPUGraphicsPipeline* createQuadPipeline(RenderBlend blend,
+        RenderMaskOperation maskOperation = RenderMaskOperation.Draw)
     {
         var formats = SDL_GetGPUShaderFormats(_device);
         var format = (formats & SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV) != 0
@@ -380,7 +428,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         SDL_GPUShader* fragmentShader = null;
         try
         {
-            fragmentShader = createShader($"quad.frag.{extension}", format, SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
+            var fragmentName = maskOperation == RenderMaskOperation.Draw ? "quad" : "mask";
+            fragmentShader = createShader($"{fragmentName}.frag.{extension}", format, SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
             var blendState = new SDL_GPUColorTargetBlendState
             {
                 src_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
@@ -391,12 +440,26 @@ internal sealed unsafe class RenderDevice : IDisposable
                 src_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
                 dst_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
                 alpha_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
-                enable_blend = true,
+                enable_blend = maskOperation == RenderMaskOperation.Draw,
+                enable_color_write_mask = maskOperation != RenderMaskOperation.Draw,
+                color_write_mask = 0,
             };
             var targetDescription = new SDL_GPUColorTargetDescription
             {
                 format = SDL_GetGPUSwapchainTextureFormat(_device, _window),
                 blend_state = blendState,
+            };
+            var stencilState = new SDL_GPUStencilOpState
+            {
+                compare_op = SDL_GPUCompareOp.SDL_GPU_COMPAREOP_EQUAL,
+                fail_op = SDL_GPUStencilOp.SDL_GPU_STENCILOP_KEEP,
+                depth_fail_op = SDL_GPUStencilOp.SDL_GPU_STENCILOP_KEEP,
+                pass_op = maskOperation switch
+                {
+                    RenderMaskOperation.Push => SDL_GPUStencilOp.SDL_GPU_STENCILOP_INCREMENT_AND_CLAMP,
+                    RenderMaskOperation.Pop => SDL_GPUStencilOp.SDL_GPU_STENCILOP_DECREMENT_AND_CLAMP,
+                    _ => SDL_GPUStencilOp.SDL_GPU_STENCILOP_KEEP,
+                },
             };
             var pipelineInfo = new SDL_GPUGraphicsPipelineCreateInfo
             {
@@ -410,6 +473,14 @@ internal sealed unsafe class RenderDevice : IDisposable
                     front_face = SDL_GPUFrontFace.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
                     enable_depth_clip = true,
                 },
+                depth_stencil_state = new SDL_GPUDepthStencilState
+                {
+                    enable_stencil_test = true,
+                    compare_mask = byte.MaxValue,
+                    write_mask = maskOperation == RenderMaskOperation.Draw ? (byte)0 : byte.MaxValue,
+                    front_stencil_state = stencilState,
+                    back_stencil_state = stencilState,
+                },
                 multisample_state = new SDL_GPUMultisampleState
                 {
                     sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
@@ -418,6 +489,8 @@ internal sealed unsafe class RenderDevice : IDisposable
                 {
                     color_target_descriptions = &targetDescription,
                     num_color_targets = 1,
+                    has_depth_stencil_target = true,
+                    depth_stencil_format = _stencilFormat,
                 },
             };
             var pipeline = SDL_CreateGPUGraphicsPipeline(_device, &pipelineInfo);
@@ -488,6 +561,10 @@ internal sealed unsafe class RenderDevice : IDisposable
                 throw new ArgumentException($"Render frame references unknown texture {quad.Texture.Value}.", nameof(frame));
             if (!Enum.IsDefined(quad.Sampling))
                 throw new ArgumentException("Render frame contains an unknown sampling mode.", nameof(frame));
+            if (!Enum.IsDefined(quad.MaskOperation)
+                || (quad.MaskOperation == RenderMaskOperation.Push && quad.MaskDepth == byte.MaxValue)
+                || (quad.MaskOperation == RenderMaskOperation.Pop && quad.MaskDepth == 0))
+                throw new ArgumentException("Render frame contains an invalid stencil operation.", nameof(frame));
             if (!Enum.IsDefined(quad.Blend))
                 throw new ArgumentException("Render frame contains an unknown blend mode.", nameof(frame));
             validateVertex(quad.TopLeft, nameof(quad.TopLeft));
@@ -543,6 +620,21 @@ internal sealed unsafe class RenderDevice : IDisposable
         _textures.Clear();
         _borrowedTextures.Clear();
         _prepasses.Clear();
+        if (_stencil is not null)
+        {
+            SDL_ReleaseGPUTexture(_device, _stencil);
+            _stencil = null;
+        }
+        if (_pushMaskPipeline is not null)
+        {
+            SDL_ReleaseGPUGraphicsPipeline(_device, _pushMaskPipeline);
+            _pushMaskPipeline = null;
+        }
+        if (_popMaskPipeline is not null)
+        {
+            SDL_ReleaseGPUGraphicsPipeline(_device, _popMaskPipeline);
+            _popMaskPipeline = null;
+        }
         if (_addQuadPipeline is not null)
         {
             SDL_ReleaseGPUGraphicsPipeline(_device, _addQuadPipeline);

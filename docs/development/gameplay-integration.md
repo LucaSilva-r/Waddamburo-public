@@ -163,9 +163,59 @@ movies and isolated as described above. Loading also reports dropped
 simulation ticks. Flickering and full visual compatibility
 are not yet verified as fixed. Captures and diagnostic output remain private.
 
-Long notes, score/gauge rules, complete theme composition, two-player
+Long-note input and authored graphics, plus chart-load error recovery, are now
+implemented; see [TJA compatibility](custom-tja.md#gameplay-compatibility).
+Score/gauge rules, dynamic branching, complete theme composition, two-player
 play, pause/calibration/device recovery, transactional scene preparation, and
-graceful launch errors are not completed by this slice. Do not describe this as
+recovery from audio/scene-loading failures remain incomplete. Do not describe this as
 full gameplay compatibility. Synthetic tests verify the time mapping, scheduled
 audio, pre-roll judgement, secondary input, and generic Lumen bounds. Asset-backed
 and audible synchronization checks must be reported separately.
+
+
+## Long-note presentation follow-up
+
+Roll bodies have separate movie players so width and hit color do not leak between
+notes. The host supplies width, hit notifications, and animation updates. The
+shared counter opens once per roll, increments on each accepted hit, and closes
+at its end. The balloon overlay opens once, counts remaining Don hits, and selects
+success or expiry. Its opening child is prepared with two authored timeline ticks
+before the initial nonzero quota is sent. Don native fills and balloon motions are
+connected through the existing presentation controller. These are independent
+host integration policies derived from movie interfaces, not copied game code.
+
+The runtime now supports AVM1 NewMethod and flash.geom.ColorTransform construction
+and MovieClip transform.colorTransform assignment, including action rollback and
+persistence across timeline placements. These operations are required by the
+roll's authored hit-color animation. Synthetic tests exercise both successful
+assignment and rollback on a later unsupported operation.
+
+Gameplay installs a Lumen host marker to disable standalone movie demo controls.
+Go-Go callbacks are sent only when the effective chart state changes; duplicate
+markers and repeated updates cannot replay the entrance. Transitions and gameplay
+movie diagnostics are logged before scene disposal. An isolated local movie probe
+reached the steady Go-Go loop without restarting the entrance; the reported
+full-game symptom has not been reproduced, so its resolution remains unverified.
+
+Local synthetic-chart probes exercised small/big rolls, balloon countdown and pop,
+counters, overlapping flights, and authored hit colors without Lumen diagnostics.
+These bounded checks do not establish compatibility with all maps or themes.
+
+The follow-up managed suite passes 313 tests with warnings treated as errors and
+the existing Realm exclusion. The app builds with zero warnings. A local GPU
+probe verifies the balloon's native Don blowing animation and remaining-hit bubble;
+raw captures and diagnostic output remain outside the public repository.
+
+The balloon completion rainbow now uses timeline clipping masks rather than
+painting the mask artwork and unclipped rainbow as ordinary quads. A local GPU
+probe reproduces the prior spill and verifies the corrected arc without affecting
+the surrounding lane, Don, or flights. A subsequently inspected user chart has
+17 explicit Go-Go start/end pairs on Hard; repeated entrances on that chart can
+therefore be requested by its authored effects. No beat-synchronized suppression
+or change to those chart commands is applied.
+
+The masking follow-up passes 316 managed tests with the existing Realm exclusion,
+and the app builds without warnings. Synthetic GPU pixel checks pass for alpha
+rejection, overlapping mask union, nested intersection, and restored unmasked
+layers. The local roll probe now uses the composition's counter position and
+confirms that its full hit-count bubble fits on-screen.

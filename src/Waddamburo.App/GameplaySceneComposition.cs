@@ -34,13 +34,18 @@ internal static class GameplaySceneComposition
             layer("enso_system/common/packeddata.ddp", "onp_katsu/onp_katsu.lm"),
             layer("enso_system/common/packeddata.ddp", "onp_don_dai/onp_don_dai.lm"),
             layer("enso_system/common/packeddata.ddp", "onp_katsu_dai/onp_katsu_dai.lm"),
+            layer("enso_system/common/packeddata.ddp", "onp_renda/onp_renda.lm"),
+            layer("enso_system/common/packeddata.ddp", "onp_renda_dai/onp_renda_dai.lm"),
+            layer("enso_system/common/packeddata.ddp", "onp_fusen/onp_fusen.lm"),
+            layer("enso_system/common/packeddata.ddp", "renda_num/renda_num.lm", x: 190, y: 184),
+            layer("enso_system/base1p/packeddata.ddp", "action_fusen_1p/action_fusen_1p.lm"),
             layer("enso_system/common/packeddata.ddp", "lane_syousetsu/lane_syousetsu.lm"),
             layer("enso_system/don1p/packeddata.ddp", "onp_kiseki_don_1p/onp_kiseki_don_1p.lm", y: 184),
         ]);
 
-    private static SceneLayerDefinition layer(string archive, string movie, float y = 0) => new(
+    private static SceneLayerDefinition layer(string archive, string movie, float y = 0, float x = 0) => new(
         archive,
         movie,
-        LumenMatrix.Identity with { Y = y },
+        LumenMatrix.Identity with { X = x, Y = y },
         StaticHostId);
 }

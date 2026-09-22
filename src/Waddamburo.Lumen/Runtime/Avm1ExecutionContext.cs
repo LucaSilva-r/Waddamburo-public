@@ -16,7 +16,8 @@ internal sealed class Avm1ExecutionContext(
     Avm1ExecutionContext? transactionParent,
     Action<Action>? commitActionWriter = null,
     Action<object?, bool, int>? timelineFrameJumper = null,
-    Action<string, string>? hostCommand = null)
+    Action<string, string>? hostCommand = null,
+    Func<object?, string, IReadOnlyList<object?>, Avm1Lookup>? methodConstructor = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
     private readonly Dictionary<LexicalKey, object?> _lexicalWrites = [];
@@ -85,6 +86,9 @@ internal sealed class Avm1ExecutionContext(
 
     public Avm1Lookup ConstructObject(string name, IReadOnlyList<object?> arguments) =>
         objectConstructor(name, arguments);
+
+    public Avm1Lookup ConstructMethod(object? target, string name, IReadOnlyList<object?> arguments) =>
+        methodConstructor?.Invoke(target, name, arguments) ?? default;
 
     public void GotoLabel(string label) => timelineLabelJumper(label);
 

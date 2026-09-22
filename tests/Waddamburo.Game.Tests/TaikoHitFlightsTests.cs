@@ -7,6 +7,17 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class TaikoHitFlightsTests
 {
+    [Theory]
+    [InlineData(PlayableLongNoteKind.Roll, TaikoInputAction.LeftDon, "don_hit")]
+    [InlineData(PlayableLongNoteKind.Roll, TaikoInputAction.RightKa, "katsu_hit")]
+    [InlineData(PlayableLongNoteKind.BigRoll, TaikoInputAction.RightDon, "don_renda_d_hit")]
+    [InlineData(PlayableLongNoteKind.BigRoll, TaikoInputAction.LeftKa, "katsu_renda_d_hit")]
+    [InlineData(PlayableLongNoteKind.Balloon, TaikoInputAction.LeftDon, "don_hit")]
+    public void LongHitsSelectSurfaceAndSize(PlayableLongNoteKind kind, TaikoInputAction action, string expected)
+    {
+        Assert.Equal(expected, TaikoHitFlights.StateFor(kind, action));
+    }
+
     [Fact]
     public void FlightsOverlapStayBoundedAndRetireWhenAuthoredTimelineStops()
     {

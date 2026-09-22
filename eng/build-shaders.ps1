@@ -44,11 +44,13 @@ if (-not (Test-Path $dxc)) {
 if ($LASTEXITCODE -ne 0) { throw "Vertex SPIR-V compilation failed." }
 & $slangc (Join-Path $shaderRoot "quad.frag.glsl") -entry main -stage fragment -target spirv -profile glsl_450 -warnings-as-errors all -o (Join-Path $outputRoot "quad.frag.spv")
 if ($LASTEXITCODE -ne 0) { throw "Fragment SPIR-V compilation failed." }
+& $slangc (Join-Path $shaderRoot "mask.frag.glsl") -entry main -stage fragment -target spirv -profile glsl_450 -warnings-as-errors all -o (Join-Path $outputRoot "mask.frag.spv")
+if ($LASTEXITCODE -ne 0) { throw "Mask SPIR-V compilation failed." }
 & $dxc -WX -E main -T vs_6_0 -Fo (Join-Path $outputRoot "quad.vert.dxil") (Join-Path $shaderRoot "quad.vert.hlsl")
 if ($LASTEXITCODE -ne 0) { throw "Vertex DXIL compilation failed." }
 & $dxc -WX -E main -T ps_6_0 -Fo (Join-Path $outputRoot "quad.frag.dxil") (Join-Path $shaderRoot "quad.frag.hlsl")
 if ($LASTEXITCODE -ne 0) { throw "Fragment DXIL compilation failed." }
-foreach ($shader in @("don.vert", "don.frag", "don-post.vert", "don-post.frag")) {
+foreach ($shader in @("mask.frag", "don.vert", "don.frag", "don-post.vert", "don-post.frag")) {
     $profile = if ($shader.EndsWith(".vert")) { "vs_6_0" } else { "ps_6_0" }
     & $dxc -WX -E main -T $profile -Fo (Join-Path $outputRoot "$shader.dxil") (Join-Path $shaderRoot "$shader.hlsl")
     if ($LASTEXITCODE -ne 0) { throw "Don shader compilation failed: $shader" }
