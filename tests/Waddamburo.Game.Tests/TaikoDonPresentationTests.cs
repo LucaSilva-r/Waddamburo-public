@@ -1,3 +1,4 @@
+using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Runtime;
@@ -9,37 +10,79 @@ namespace Waddamburo.Game.Tests;
 public sealed class TaikoDonPresentationTests
 {
     [Fact]
-    public void CharacterDrawsAboveSceneAndHandsPlacementToBalloonUntilItCloses()
+    public void CharacterMarkerHandsPlacementToBalloonUntilItCloses()
     {
-        var lane = new LumenRenderQuad(7, new(0, 184, 0, 0), new(1280, 184, 1, 0),
-            new(1280, 360, 1, 1), new(0, 360, 0, 1),
-            LumenRenderColor.White, LumenRenderColor.Transparent);
-        var scene = new LumenRenderSnapshot(1280, 720, [lane]);
         var controller = new Controller();
         var presentation = new TaikoDonPresentation(controller, marker());
         Assert.Equal("don_normal", controller.Motions[^1].Loop);
-        var normal = presentation.Compose(scene);
-        Assert.Equal(lane, normal.Quads[0]);
-        var character = Assert.Single(normal.Quads.Where(quad => quad.NativeSurface is not null));
+        var layer = Assert.IsType<LumenSceneLayer>(presentation.Layer);
+        var character = Assert.Single(new LumenScenePlayer(1280, 720, [layer]).CreateRenderSnapshot().Quads);
         Assert.Equal(new LumenNativeSurfaceKey("synthetic-player:0"), character.NativeSurface);
-        Assert.Equal(character, normal.Quads[^1]);
         Assert.Equal(448, character.BottomRight.X - character.TopLeft.X);
         Assert.Equal(256, character.BottomRight.Y - character.TopLeft.Y);
         Assert.Equal(-24, character.TopLeft.X);
         Assert.Equal(-36, character.TopLeft.Y);
         Assert.Equal(DonPresentationLayout.Gameplay, Assert.Single(controller.Layouts));
         presentation.SetBalloonVisible(true);
-        Assert.Same(scene, presentation.Compose(scene));
+        Assert.Null(presentation.Layer);
         presentation.SetGoGo(true);
         Assert.Single(controller.Motions);
         presentation.SetBalloonVisible(false);
         Assert.Equal(2, controller.Layouts.Count);
         Assert.Equal(DonPresentationLayout.Gameplay, controller.Layouts[^1]);
-        Assert.Equal("don_swing02", controller.Motions[^1].Loop);
+        Assert.Equal("don_sabi", controller.Motions[^1].Loop);
         presentation.SetGoGo(false);
-        Assert.Equal("don_normal", controller.Motions[^1].Loop);
-        Assert.Equal(normal.Quads.ToArray(), presentation.Compose(scene).Quads.ToArray());
-        Assert.Single(scene.Quads);
+        Assert.Equal("don_normal", controller.Idles[^1]);
+        Assert.Same(layer.Player, presentation.Layer?.Player);
+    }
+
+    [Fact]
+    public void PlayStateSelectsIdleAndReactions()
+    {
+        var controller = new Controller();
+        var don = new TaikoDonPresentation(controller, marker());
+        void judge(TaikoHitResult result, int count = 1)
+        {
+            for (var i = 0; i < count; i++)
+                don.OnJudged(new(0, new(TimeSpan.Zero, PlayableNoteKind.Don), result, TimeSpan.Zero, false));
+        }
+
+        judge(TaikoHitResult.Great, 9);
+        Assert.Equal(new(0, null, "don_normal"), controller.Motions[^1]);
+        judge(TaikoHitResult.Good);
+        Assert.Equal(new(0, "don_combo", "don_normal"), controller.Motions[^1]);
+        don.OnJudged(new(0, new(TimeSpan.Zero, PlayableNoteKind.Don), TaikoHitResult.Great, TimeSpan.Zero, true));
+        Assert.Equal(new(0, "don_combo", "don_normal"), controller.Motions[^1]);
+
+        judge(TaikoHitResult.Miss);
+        Assert.Equal("don_miss", controller.Idles[^1]);
+        judge(TaikoHitResult.Miss, 4);
+        Assert.Single(controller.Idles);
+        judge(TaikoHitResult.Miss);
+        Assert.Equal("don_miss6", controller.Idles[^1]);
+        judge(TaikoHitResult.Great);
+        Assert.Equal(new(0, "don_miss_normal", "don_normal"), controller.Motions[^1]);
+
+        don.SetGauge(TaikoGaugeState.Cleared);
+        Assert.Equal(new(0, "don_norm_up", "don_norm_loop"), controller.Motions[^1]);
+        don.SetGauge(TaikoGaugeState.Full);
+        Assert.Equal(new(0, "don_full_gage", "don_norm_loop"), controller.Motions[^1]);
+        judge(TaikoHitResult.Great, 9);
+        Assert.Equal(new(0, "don_full_combo", "don_norm_loop"), controller.Motions[^1]);
+        don.SetGauge(TaikoGaugeState.Cleared);
+        Assert.Equal("don_norm_loop", controller.Idles[^1]);
+        don.SetGauge(TaikoGaugeState.BelowClear);
+        Assert.Equal(new(0, "don_norm_down", "don_normal"), controller.Motions[^1]);
+
+        don.SetGoGo(true);
+        Assert.Equal(new(0, "don_sabi_start", "don_sabi"), controller.Motions[^1]);
+        var reactions = controller.Motions.Count;
+        judge(TaikoHitResult.Miss);
+        judge(TaikoHitResult.Great, 10);
+        Assert.Equal(reactions, controller.Motions.Count);
+        Assert.Equal("don_sabi", controller.Idles[^1]);
+        don.SetGoGo(false);
+        Assert.Equal("don_normal", controller.Idles[^1]);
     }
 
     private static LumenSceneLayer marker()
@@ -63,5 +106,7 @@ public sealed class TaikoDonPresentationTests
         public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"synthetic-player:{playerIndex}");
         public List<DonMotionRequest> Motions { get; } = [];
         public void SetMotion(DonMotionRequest request) => Motions.Add(request);
+        public List<string> Idles { get; } = [];
+        public void SetIdle(int playerIndex, string loop) => Idles.Add(loop);
     }
 }

@@ -23,6 +23,12 @@ public interface IDonPresentationController
     LumenNativeSurfaceKey GetSurface(int playerIndex);
 
     void SetMotion(DonMotionRequest request);
+
+    /// <summary>
+    /// Changes the loop without interrupting a running one-shot: the one-shot finishes into the
+    /// new loop, and an idle that is already looping switches at once.
+    /// </summary>
+    void SetIdle(int playerIndex, string loop) => SetMotion(new(playerIndex, null, loop));
 }
 
 /// <summary>Connects the authored Don fill markers in a Lumen movie to native render targets.</summary>

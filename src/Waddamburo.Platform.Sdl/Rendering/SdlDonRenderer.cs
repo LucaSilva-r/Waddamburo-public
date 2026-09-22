@@ -12,7 +12,8 @@ namespace Waddamburo.Platform.Sdl.Rendering;
 /// <summary>Shared-device Don renderer. All methods must run on the owning SDL thread.</summary>
 public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 {
-    private const uint TargetSize = 600;
+    private const uint TargetSize = 600; // stage units covered by a target
+    private uint _targetPixels = TargetSize;
     private const int PaletteSize = 40;
     private const string ShaderPrefix = "Waddamburo.Shaders.";
     // Independently reconstructed camera from observed gameplay projection geometry.
@@ -38,6 +39,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private readonly List<nint> _ownedBuffers = [];
     private readonly Dictionary<(bool Blend, SDL_GPUCullMode Cull), nint> _pipelines = [];
     private readonly Player[] _players = [new(), new()];
+    private readonly float[] _pose = new float[DonSkeleton.CharacterValuesPerFrame];
+
+    /// <summary>Display-rate position between the last two ticks (0 = previous, 1 = latest).</summary>
+    public float Interpolation { get; set; } = 1;
     private readonly Target[] _targets = new Target[2];
     private readonly float[] _poseUniforms = new float[16 * (PaletteSize + 1)];
     private SDL_GPUShader* _vertexShader;
@@ -124,6 +129,14 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             player.Set(nextLoop, nextLoop);
     }
 
+    public void SetIdle(int playerIndex, string loop)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
+        _players[playerIndex].SetIdle(loadMotion(normalizeMotion(loop)));
+    }
+
     public void Advance(double frames = 1)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -133,8 +146,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             player.Advance(frames);
     }
 
-    void IGpuRenderPrepass.Record(SDL_GPUCommandBuffer* commandBuffer)
+    void IGpuRenderPrepass.Record(SDL_GPUCommandBuffer* commandBuffer, uint width, uint height)
     {
+        // Render at twice the window's stage scale and let the composite's downscale anti-alias.
+        var scale = Math.Min(width / 1280f, height / 720f);
+        resizeTargets((uint)Math.Clamp(MathF.Round(TargetSize * scale * 2 / 8) * 8, 256, 4096));
         for (var index = 0; index < _players.Length; index++)
             recordPlayer(commandBuffer, index);
     }
@@ -156,7 +172,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     {
         var player = _players[playerIndex];
         var target = _targets[playerIndex];
-        var frame = player.Motion.GetFrame(player.Frame);
+        player.Sample(Interpolation, _pose, _skeleton.ExpressionOffset);
+        ReadOnlySpan<float> frame = _pose;
         var animatedWorld = _skeleton.EvaluateWorld(frame);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
         var camera = _gameplayCamera ? GameplayCamera : PlayerOneCamera;
@@ -283,7 +300,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         SDL_BindGPUGraphicsPipeline(post, _postPipeline);
         var postBinding = new SDL_GPUTextureSamplerBinding { texture = (SDL_GPUTexture*)target.Color, sampler = _linearSampler };
         SDL_BindGPUFragmentSamplers(post, 0, &postBinding, 1);
-        var postUniform = new Float4(3, 1f / TargetSize, 1f / TargetSize, 0);
+        var postUniform = new Float4(3f * _targetPixels / TargetSize, 1f / _targetPixels, 1f / _targetPixels, 0);
         SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&postUniform), (uint)sizeof(Float4));
         SDL_DrawGPUPrimitives(post, 3, 1, 0, 0);
         SDL_EndGPURenderPass(post);
@@ -390,7 +407,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return path;
     }
 
-    private Target createTarget()
+    private Target createTarget(RenderTextureId? reuse = null)
     {
         var colorTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
             SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER);
@@ -398,11 +415,33 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
         var finalTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
             SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER);
-        return new Target((nint)colorTexture, (nint)depthTexture, (nint)finalTexture, _compositor.RegisterBorrowedTexture((nint)finalTexture));
+        if (reuse is { } id)
+            _compositor.ReplaceBorrowedTexture(id, (nint)finalTexture);
+        return new Target((nint)colorTexture, (nint)depthTexture, (nint)finalTexture,
+            reuse ?? _compositor.RegisterBorrowedTexture((nint)finalTexture));
     }
 
-    private SDL_GPUTexture* createTexture(SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage, uint width = TargetSize, uint height = TargetSize)
+    private void resizeTargets(uint pixels)
     {
+        if (pixels == _targetPixels) return;
+        _targetPixels = pixels;
+        for (var index = 0; index < _targets.Length; index++)
+        {
+            var old = _targets[index];
+            var fresh = createTarget(old.TextureId);
+            _targets[index] = fresh;
+            // SDL defers the release until submitted work no longer uses the textures.
+            foreach (var texture in new[] { old.Color, old.Depth, old.Final })
+            {
+                _ownedTextures.Remove(texture);
+                SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+            }
+        }
+    }
+
+    private SDL_GPUTexture* createTexture(SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage, uint width = 0, uint height = 0)
+    {
+        if (width == 0) (width, height) = (_targetPixels, _targetPixels);
         var info = new SDL_GPUTextureCreateInfo
         {
             type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
@@ -674,17 +713,25 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         public DonAnimationFile Motion { get; private set; } = null!;
         public DonAnimationFile? Loop { get; private set; }
         private double _frame;
-        public int Frame => (int)_frame;
+        private double _lastStep; // frames advanced by the latest tick; 0 after a cut
 
         public void Set(DonAnimationFile motion, DonAnimationFile? loop)
         {
             Motion = motion;
             Loop = loop;
             _frame = 0;
+            _lastStep = 0;
+        }
+
+        public void SetIdle(DonAnimationFile loop)
+        {
+            if (Motion != Loop) Loop = loop; // a one-shot is running: it ends into the new idle
+            else if (Motion != loop) Set(loop, loop);
         }
 
         public void Advance(double frames)
         {
+            _lastStep = frames;
             _frame += frames;
             if (_frame < Motion.FrameCount)
                 return;
@@ -692,9 +739,39 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             {
                 _frame = (_frame - Motion.FrameCount) % Loop.FrameCount;
                 Motion = Loop;
+                return;
             }
-            else
-                _frame = Motion.FrameCount - 1;
+            // Holding the final frame: report only the distance actually moved.
+            var last = Motion.FrameCount - 1;
+            _lastStep = Math.Max(0, last - (_frame - frames));
+            _frame = last;
+        }
+
+        /// <summary>
+        /// Writes the pose one tick behind the simulation, moved forward by the display
+        /// interpolation, blending the two nearest baked frames. The expression is not blended.
+        /// </summary>
+        // ponytail: right after a one-shot hands over to its loop the lagged position clamps
+        // to the loop's first frame for the rest of that tick.
+        public void Sample(float interpolation, float[] pose, int? expressionOffset)
+        {
+            var position = Math.Max(0, _frame - _lastStep * (1 - interpolation));
+            var index = Math.Min((int)position, Motion.FrameCount - 1);
+            var weight = (float)Math.Min(1, position - index);
+            var current = Motion.GetFrame(index);
+            var next = index + 1 < Motion.FrameCount ? Motion.GetFrame(index + 1)
+                : Loop == Motion ? Motion.GetFrame(0)
+                : current;
+            for (var i = 0; i < pose.Length; i++)
+            {
+                var delta = next[i] - current[i];
+                // Baked Euler angles can wrap by a full turn between frames.
+                if (MathF.Abs(MathF.Abs(delta) - MathF.Tau) < 0.5f)
+                    delta -= MathF.CopySign(MathF.Tau, delta);
+                pose[i] = current[i] + delta * weight;
+            }
+            if (expressionOffset is int offset)
+                pose[offset] = current[offset];
         }
     }
 

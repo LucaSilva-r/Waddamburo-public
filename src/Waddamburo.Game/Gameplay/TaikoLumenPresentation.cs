@@ -71,7 +71,7 @@ public sealed class TaikoLumenPresentation
     }
 
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation,
-        Func<LumenPlayer, float>? playerInterpolation = null)
+        Func<LumenPlayer, float>? playerInterpolation = null, LumenSceneLayer? character = null)
     {
         var layers = new List<LumenSceneLayer>(_background);
         foreach (var bar in _chart.BarLines)
@@ -84,6 +84,9 @@ public sealed class TaikoLumenPresentation
             if (!_judgement.IsJudged(index))
                 addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
         layers.AddRange(_foreground);
+        // The character sits under the roll counter, balloon overlay and note flights.
+        if (character is { } don)
+            layers.Add(don);
         if (_longNotes is not null)
             layers.AddRange(_longNotes.OverlayLayers);
         if (_flights is not null)

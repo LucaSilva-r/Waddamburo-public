@@ -149,6 +149,8 @@ public sealed record PlayableChart
     public ImmutableArray<ChartBarLine> BarLines { get; }
     public ImmutableArray<PlayableLongNote> LongNotes { get; }
     public int NoteCount => HitObjects.Length;
+    /// <summary>Authored star rating, when the source has one.</summary>
+    public int? Level { get; init; }
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(
         IEnumerable<T> values,

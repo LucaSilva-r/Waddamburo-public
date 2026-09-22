@@ -132,7 +132,9 @@ public sealed class TaikoLongNotePresentation
             _balloon.Player.Advance();
             invoke(_balloon.Player, "SetGekiRendaCount", note.RequiredHits);
             _balloonVisible = true;
-            _don?.SetMotion(new DonMotionRequest(0, null, "don_balloon_nobeat"));
+            _don?.SetMotion(note.Kind == PlayableLongNoteKind.Kusudama
+                ? new DonMotionRequest(0, "don_kusu1P_in", "don_kusu1P_nobeat")
+                : new DonMotionRequest(0, null, "don_balloon_nobeat"));
         }
         else
         {
@@ -156,8 +158,9 @@ public sealed class TaikoLongNotePresentation
             else
             {
                 invoke(_balloon.Player, "SetGekiRendaCount", progress.Note.RequiredHits - progress.Hits);
-                if (progress.Hits == 1)
-                    _don?.SetMotion(new DonMotionRequest(0, null, "don_balloon_loop"));
+                // Every hit restarts the pumping motion, which settles back to the no-beat idle.
+                var (pump, rest) = motions(progress.Note);
+                _don?.SetMotion(new DonMotionRequest(0, pump, rest));
             }
         }
         else
@@ -174,13 +177,24 @@ public sealed class TaikoLongNotePresentation
         if (progress.Note.IsBalloon)
         {
             invoke(_balloon.Player, "GekiRendaEnd", progress.IsPopped ? 0 : 1);
-            _don?.SetMotion(new DonMotionRequest(0,
-                progress.IsPopped ? "don_balloon_success" : "don_balloon_failure", null));
+            var kusudama = progress.Note.Kind == PlayableLongNoteKind.Kusudama;
+            _don?.SetMotion(new DonMotionRequest(0, (kusudama, progress.IsPopped) switch
+            {
+                (true, true) => "don_kusu1P_success02",
+                (true, false) => "don_kusu1P_failure",
+                (false, true) => "don_balloon_success",
+                _ => "don_balloon_failure",
+            }, null));
         }
         else
             invoke(_counter.Player, "RendaEnd");
         _active = null;
     }
+
+    private static (string Pump, string Idle) motions(PlayableLongNote note) =>
+        note.Kind == PlayableLongNoteKind.Kusudama
+            ? ("don_kusu1P_loop", "don_kusu1P_nobeat")
+            : ("don_balloon_loop", "don_balloon_nobeat");
 
     private static void invoke(LumenPlayer player, string name, double? argument = null)
     {

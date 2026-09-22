@@ -27,7 +27,10 @@ internal static class GameplaySceneComposition
                 "enso_system/common/packeddata.ddp",
                 "lane/lane.lm",
                 y: 184),
+            // One gauge per clear line; gameplay shows the course's one.
+            layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_easy/gage_don_1p_easy.lm", y: 184),
             layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_normal/gage_don_1p_normal.lm", y: 184),
+            layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_hard/gage_don_1p_hard.lm", y: 184),
             layer("enso_system/common/packeddata.ddp", "lane_hit/lane_hit.lm", y: 184),
             layer("enso_system/common/packeddata.ddp", "lane_hit_effect/lane_hit_effect.lm", y: 184),
             layer("enso_system/common/packeddata.ddp", "lane_obi/lane_obi.lm", y: 184),

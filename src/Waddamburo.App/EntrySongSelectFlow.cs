@@ -152,6 +152,8 @@ internal static class EntrySongSelectFlow
             RenderFrame createFrame(double interpolationFraction)
             {
                 titleTextures.UploadCompleted();
+                if (donRenderer is not null)
+                    donRenderer.Interpolation = (float)interpolationFraction;
                 var frame = LumenRenderFrameAdapter.Compose(
                     active.Id == gameplayId
                         ? gameplayPresentation.CreateSnapshot(chartTime(), (float)interpolationFraction)
@@ -558,6 +560,8 @@ internal static class EntrySongSelectFlow
 
         public void SetMotion(DonMotionRequest request) =>
             _renderer.SetMotion(request.PlayerIndex, request.OneShot, request.Loop);
+
+        public void SetIdle(int playerIndex, string loop) => _renderer.SetIdle(playerIndex, loop);
 
         public RenderTextureId? Resolve(LumenNativeSurfaceKey surface)
         {

@@ -4,14 +4,31 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Gameplay;
 
-/// <summary>Owns gameplay motions and the authored native-model marker.</summary>
+/// <summary>Soul-gauge band that selects Don's calm or cleared idle.</summary>
+public enum TaikoGaugeState
+{
+    BelowClear,
+    Cleared,
+    Full,
+}
+
+/// <summary>
+/// Owns gameplay motions and the authored native-model marker. The idle loop follows the play
+/// state (Go-Go, then a running miss streak, then the gauge band); one-shot reactions play over
+/// it and return to whatever idle is current when they end.
+/// </summary>
 public sealed class TaikoDonPresentation
 {
+    private const int ComboReactionInterval = 10;
+    private const int LongMissStreak = 6;
+
     private readonly IDonPresentationController _controller;
     private readonly LumenSceneLayer _layer;
     private bool _goGo;
     private bool _balloonVisible;
-    private string loop => _goGo ? "don_swing02" : "don_normal";
+    private TaikoGaugeState _gauge;
+    private int _combo;
+    private int _missStreak;
 
     public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer)
     {
@@ -22,14 +39,32 @@ public sealed class TaikoDonPresentation
             LumenNativeSurfacePlacement.Centered(448, 256));
         if (!layer.Player.TryGotoLabel("", "don1p"))
             throw new InvalidDataException("Gameplay Don movie is missing its player-one state.");
-        resume();
+        _controller.SetMotion(new(0, null, idle));
     }
+
+    private string idle => _goGo ? "don_sabi"
+        : _missStreak >= LongMissStreak ? "don_miss6"
+        : _missStreak > 0 ? "don_miss"
+        : _gauge == TaikoGaugeState.BelowClear ? "don_normal"
+        : "don_norm_loop";
 
     public void SetGoGo(bool active)
     {
         if (_goGo == active) return;
         _goGo = active;
-        if (!_balloonVisible) resume();
+        if (active) react("don_sabi_start");
+        else refreshIdle();
+    }
+
+    public void SetGauge(TaikoGaugeState state)
+    {
+        if (_gauge == state) return;
+        var previous = _gauge;
+        _gauge = state;
+        if (state == TaikoGaugeState.Full) react("don_full_gage");
+        else if (state == TaikoGaugeState.BelowClear) react("don_norm_down");
+        else if (previous == TaikoGaugeState.BelowClear) react("don_norm_up");
+        else refreshIdle(); // leaving a full gauge has no reaction
     }
 
     public void SetBalloonVisible(bool visible)
@@ -39,23 +74,43 @@ public sealed class TaikoDonPresentation
         if (wasVisible && !visible)
         {
             _controller.Reset(DonPresentationLayout.Gameplay);
-            resume();
+            _controller.SetMotion(new(0, null, idle));
         }
     }
 
     public void OnJudged(TaikoNoteJudgement judgement)
     {
-        if (!_balloonVisible && judgement.Result == TaikoHitResult.Miss)
-            _controller.SetMotion(new(0, "don_miss", loop));
+        if (judgement.StrongHitCompleted) return;
+        if (judgement.Result == TaikoHitResult.Miss)
+        {
+            _combo = 0;
+            _missStreak++;
+            if (_missStreak is 1 or LongMissStreak) refreshIdle();
+            return;
+        }
+        _combo++;
+        if (_missStreak > 0)
+        {
+            _missStreak = 0;
+            if (!_goGo) react("don_miss_normal");
+            else refreshIdle();
+        }
+        if (_combo % ComboReactionInterval == 0 && !_goGo)
+            react(_gauge == TaikoGaugeState.Full ? "don_full_combo" : "don_combo");
     }
 
-    private void resume() => _controller.SetMotion(new(0, null, loop));
-
-    public LumenRenderSnapshot Compose(LumenRenderSnapshot scene)
+    // ponytail: the long-note presentation owns Don while its overlay is up, so state changes
+    // there only update what the idle will be once the overlay closes.
+    private void react(string motion)
     {
-        if (_balloonVisible) return scene;
-        var character = new LumenScenePlayer(scene.StageWidth, scene.StageHeight, [_layer])
-            .CreateRenderSnapshot();
-        return new(scene.StageWidth, scene.StageHeight, scene.Quads.Concat(character.Quads));
+        if (!_balloonVisible) _controller.SetMotion(new(0, motion, idle));
     }
+
+    private void refreshIdle()
+    {
+        if (!_balloonVisible) _controller.SetIdle(0, idle);
+    }
+
+    /// <summary>The character marker to draw, or null while a long-note overlay owns Don.</summary>
+    public LumenSceneLayer? Layer => _balloonVisible ? null : _layer;
 }

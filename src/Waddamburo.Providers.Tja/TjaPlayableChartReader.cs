@@ -47,6 +47,7 @@ internal static class TjaPlayableChartReader
         var isGoGo = false;
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
+        int? level = null;
 
         for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
@@ -79,6 +80,9 @@ internal static class TjaPlayableChartReader
 
                 var headerSeparator = line.IndexOf(':');
                 var header = headerSeparator < 0 ? string.Empty : line[..headerSeparator].Trim().ToUpperInvariant();
+                if (header == "LEVEL")
+                    level = int.TryParse(line[(headerSeparator + 1)..].Trim(), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out var stars) && stars > 0 ? stars : null;
                 if (header == "COURSE" && course.Length != 0)
                 {
                     balloons.Clear();
@@ -119,7 +123,7 @@ internal static class TjaPlayableChartReader
                     timingPoints.ToImmutable(),
                     scrollPoints.ToImmutable(),
                     effectPoints.ToImmutable(),
-                    barLines.ToImmutable(), longNotes.ToImmutable());
+                    barLines.ToImmutable(), longNotes.ToImmutable()) { Level = level };
             }
 
             var commandName = line.Split([' ', '\t'], 2)[0].ToUpperInvariant();

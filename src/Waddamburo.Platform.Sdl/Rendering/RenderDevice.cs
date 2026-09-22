@@ -162,6 +162,17 @@ internal sealed unsafe class RenderDevice : IDisposable
         return id;
     }
 
+    /// <summary>Points a borrowed id at a new texture, so frames built earlier stay valid.</summary>
+    internal void ReplaceBorrowedTexture(RenderTextureId id, nint texture)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (texture == 0)
+            throw new ArgumentNullException(nameof(texture));
+        if (!_borrowedTextures.Contains(id.Value))
+            throw new ArgumentException($"Texture {id.Value} is not borrowed by this render device.", nameof(id));
+        _textures[id.Value] = texture;
+    }
+
     internal void UnregisterBorrowedTexture(RenderTextureId id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -210,7 +221,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         if (swapchainTexture is not null)
         {
             foreach (var prepass in _prepasses)
-                prepass.Record(commandBuffer);
+                prepass.Record(commandBuffer, width, height);
             var clear = frame.ClearColor;
             var target = new SDL_GPUColorTargetInfo
             {
@@ -677,5 +688,6 @@ internal sealed unsafe class RenderDevice : IDisposable
 
 internal unsafe interface IGpuRenderPrepass
 {
-    void Record(SDL_GPUCommandBuffer* commandBuffer);
+    /// <summary>Records off-screen work; width/height are the swapchain size in pixels.</summary>
+    void Record(SDL_GPUCommandBuffer* commandBuffer, uint width, uint height);
 }

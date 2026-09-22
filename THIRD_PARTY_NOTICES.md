@@ -23,6 +23,7 @@ The test project and isolated osu!lazer provider prototype also restore:
 | osu!lazer Taiko gameplay reference | upstream commit `48c4800e3ae4ee752452cdff83bd3787ccf3105f`; <https://github.com/ppy/osu/tree/48c4800e3ae4ee752452cdff83bd3787ccf3105f>; copyright 2025 ppy Pty Ltd | MIT | Architectural reference for Waddamburo's independently written timestamped hit-object and separate control-point model. Consulted files include `osu.Game/Beatmaps/ControlPoints/ControlPointInfo.cs`, `TimingControlPoint.cs`, `osu.Game/Rulesets/Scoring/HitWindows.cs`, and Taiko `DrawableHit.cs` / `TaikoHitWindows.cs`; no osu! source is packaged or copied verbatim. |
 | Realm .NET | 20.1.0; <https://www.nuget.org/packages/Realm/20.1.0> | Apache-2.0; bundled Realm Core/native notices must be retained | Read-only managed database API and dynamically loaded platform-native wrapper |
 | MongoDB.Bson | 2.21.0; transitive from `Realm` | Apache-2.0 | Realm value support |
+| tja2fumen soul-gauge table | `hp_values.csv` from <https://github.com/vivaria/tja2fumen> as vendored in TaikoRecomp `tools/vendor/tja2fumen` (2026-09-19); SHA-256 `990ccdcf0b6866c39eedd92e444bd16ea01f81129dbc4923badc16a33370557b`; copyright 2023 Vivaria | MIT | Data file embedded unchanged in `Waddamburo.Game` as `Gameplay/Data/soul-gauge-rates.csv` (per-note soul-gauge amounts by course, star band and note count); the MIT text sits beside it as `soul-gauge-rates.LICENSE.txt` and must accompany release notices. |
 | TaikoRecomp / TaikoZucchini title-layout profiles | TaikoRecomp `src/taiko_title_render.c` at `1dc686003e705194b0187c0cb19e84276504645d`; TaikoZucchini `core/title_render.c` at `f3273008d24682f42e089bcf407508390abbc7d7`; copyright 2026 Luca Silva | MIT | Typography constants and Unicode-layout sets adapted into the independently written optional FreeType title rasterizer; no upstream source file or font is packaged. The root `LICENSE` contains the applicable MIT notice. |
 
 `src/Waddamburo.Providers.OsuLazer/packages.lock.json` records the exact full
@@ -50,7 +51,7 @@ dependencies—SkiaSharp 4.152.0 and Microsoft.Data.Sqlite 10.0.12—but no proj
 references them yet. Their full native/transitive notices must be added when the
 references are introduced.
 
-Candidate runtime dependencies include SkiaSharp, SQLite, tja2fumen, and offline
+Candidate runtime dependencies include SkiaSharp, SQLite, the tja2fumen converter, and offline
 shader tools. A component must not be
 linked or packaged until this file records:
 

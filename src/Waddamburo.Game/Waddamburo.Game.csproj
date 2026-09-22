@@ -12,4 +12,8 @@
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Gameplay/Data/soul-gauge-rates.csv" LogicalName="Waddamburo.Game.SoulGaugeRates.csv" />
+  </ItemGroup>
+
 </Project>

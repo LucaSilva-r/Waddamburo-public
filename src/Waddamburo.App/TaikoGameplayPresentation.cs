@@ -43,9 +43,17 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(0)])
             || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
             throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
-        // Present the authored empty gauge; scoring/gauge gain rules are still separate work.
-        if (!layers["gage_don_1p_normal"].Player.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]))
+        // The three gauge movies differ in their authored clear line (60/70/80%).
+        var gaugeName = course switch
+        {
+            TaikoCourse.Easy => "gage_don_1p_easy",
+            TaikoCourse.Normal or TaikoCourse.Hard => "gage_don_1p_normal",
+            _ => "gage_don_1p_hard",
+        };
+        var gaugeMovie = layers[gaugeName].Player;
+        if (!gaugeMovie.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]))
             throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
+        var gauge = new TaikoSoulGauge(course, chart.Level, chart.NoteCount);
         foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai" })
             if (!layers[name].Player.TryGotoLabel("", "level01"))
                 throw new InvalidDataException("Gameplay note movie is missing its initial state.");
@@ -69,10 +77,21 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             or "bg_fever_b_32" or "donbg_b_32_common").Select(pair => pair.Value).ToArray();
         _fixedLayers = layers.Values.Except(_beatLayers).ToArray();
         _feverMovies = [layers["bg_fever_b_32"].Player, layers["donbg_b_32_common"].Player];
-        _session.Judged += judgement => _character?.OnJudged(judgement);
+        _session.Judged += judgement =>
+        {
+            var segments = gauge.FilledSegments;
+            if (gauge.Apply(judgement))
+            {
+                if (gauge.FilledSegments != segments
+                    && !gaugeMovie.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(gauge.FilledSegments)]))
+                    throw new InvalidDataException("Gameplay gauge is missing SetCurrentGauge.");
+                _character?.SetGauge(gauge.State);
+            }
+            _character?.OnJudged(judgement);
+        };
         _presentation = new TaikoLumenPresentation(chart, _session,
             layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
-                or "bg_fever_b_32" or "donbg_b_32_common" or "lane" or "gage_don_1p_normal" or "lane_hit")
+                or "bg_fever_b_32" or "donbg_b_32_common" or "lane" or "lane_hit" || pair.Key == gaugeName)
                 .Select(pair => pair.Value),
             [layers["lane_hit_effect"], layers["lane_obi"]],
             new Dictionary<PlayableNoteKind, LumenSceneLayer>
@@ -158,9 +177,8 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
 
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
     {
-        var snapshot = (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
+        return (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
             .CreateSnapshot(time, interpolation, player => _beatLayers.Any(layer => layer.Player == player)
-                ? _animationClock?.Interpolation ?? 1 : interpolation);
-        return _character?.Compose(snapshot) ?? snapshot;
+                ? _animationClock?.Interpolation ?? 1 : interpolation, _character?.Layer);
     }
 }
