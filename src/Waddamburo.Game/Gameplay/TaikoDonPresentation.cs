@@ -25,10 +25,12 @@ public sealed class TaikoDonPresentation
     private readonly IDonPresentationController _controller;
     private readonly LumenSceneLayer _layer;
     private readonly LumenNativeSurfaceKey _surface;
-    // Full-gauge gold: the character's composite gains this additive colour (measured from a
-    // reference frame: black outlines become (125, 110, 5), lighter colours clamp).
-    // ponytail: constant; the game pulses it slightly. Animate once the pulse is measured.
-    private static readonly LumenRenderColor FullGaugeGlow = new(125 / 255f, 110 / 255f, 5 / 255f, 0);
+    // Composite filters (reference frames). Full gauge: additive gold
+    // (0.430 + 0.352t, 0.391 + 0.234t, 0.117t) with a pulse t in 0..1; it replaces the darkening.
+    // ponytail: t is fixed at the reference frame's 0.173; the pulse's shape and period are unknown.
+    private static readonly LumenRenderColor FullGaugeGlow = new(0.4906f, 0.4312f, 0.0203f, 0);
+    // Lying down after a long miss streak: the character's colours are halved.
+    private static readonly LumenRenderColor MissDarken = new(0.5f, 0.5f, 0.5f, 1);
     private bool _goGo;
     private bool _balloonVisible;
     private TaikoGaugeState _gauge;
@@ -117,11 +119,18 @@ public sealed class TaikoDonPresentation
         if (!_balloonVisible) _controller.SetIdle(0, idle);
     }
 
-    /// <summary>Applies the full-gauge gold to every quad showing this character.</summary>
-    public LumenRenderSnapshot Tint(LumenRenderSnapshot scene) => _gauge != TaikoGaugeState.Full ? scene
-        : new(scene.StageWidth, scene.StageHeight, scene.Quads.Select(quad => quad.NativeSurface == _surface
-            ? quad with { AddColor = FullGaugeGlow }
-            : quad));
+    /// <summary>Applies the full-gauge gold or the long-miss darkening to every quad showing this character.</summary>
+    public LumenRenderSnapshot Tint(LumenRenderSnapshot scene)
+    {
+        Func<LumenRenderQuad, LumenRenderQuad>? filter = _gauge == TaikoGaugeState.Full
+            ? quad => quad with { AddColor = FullGaugeGlow }
+            : _missStreak >= LongMissStreak ? quad => quad with { MultiplyColor = MissDarken }
+            : null;
+        return filter is null ? scene
+            : new(scene.StageWidth, scene.StageHeight, scene.Quads.Select(quad => quad.NativeSurface == _surface
+                ? filter(quad)
+                : quad));
+    }
 
     /// <summary>The character marker to draw, or null while a long-note overlay owns Don.</summary>
     public LumenSceneLayer? Layer => _balloonVisible ? null : _layer;

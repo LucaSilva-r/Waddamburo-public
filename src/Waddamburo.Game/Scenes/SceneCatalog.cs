@@ -6,7 +6,7 @@ namespace Waddamburo.Game.Scenes;
 /// <summary>A composition-owned mapping from authored requests to product scenes.</summary>
 public sealed class SceneCatalog
 {
-    private readonly ImmutableDictionary<SceneId, SceneDefinition> _definitions;
+    private ImmutableDictionary<SceneId, SceneDefinition> _definitions;
     private readonly ImmutableDictionary<SceneRouteKey, SceneId> _routes;
 
     public SceneCatalog(
@@ -40,6 +40,15 @@ public sealed class SceneCatalog
 
         _definitions = definitionBuilder.ToImmutable();
         _routes = routeBuilder.ToImmutable();
+    }
+
+    /// <summary>Replaces an existing scene's definition, e.g. a per-song gameplay composition.</summary>
+    public void Replace(SceneDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        if (!_definitions.ContainsKey(definition.Id))
+            throw new KeyNotFoundException($"Scene '{definition.Id}' is not defined.");
+        _definitions = _definitions.SetItem(definition.Id, definition);
     }
 
     public SceneDefinition GetDefinition(SceneId id)

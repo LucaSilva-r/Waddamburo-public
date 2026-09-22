@@ -24,6 +24,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     private readonly SDL_GPUTextureFormat _stencilFormat;
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUSampler* _linearSampler;
+    private SDL_GPUSampler* _nearestRepeatSampler;
+    private SDL_GPUSampler* _linearRepeatSampler;
     private uint _nextTextureId = 1;
     private bool _disposed;
 
@@ -44,6 +46,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         {
             _nearestSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_NEAREST);
             _linearSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR);
+            _nearestRepeatSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_NEAREST, repeat: true);
+            _linearRepeatSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR, repeat: true);
             _normalQuadPipeline = createQuadPipeline(RenderBlend.Normal);
             _addQuadPipeline = createQuadPipeline(RenderBlend.Add);
             _pushMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Push);
@@ -399,7 +403,11 @@ internal sealed unsafe class RenderDevice : IDisposable
         var binding = new SDL_GPUTextureSamplerBinding
         {
             texture = (SDL_GPUTexture*)textureAddress,
-            sampler = quad.Sampling is RenderSampling.Nearest ? _nearestSampler : _linearSampler,
+            // Authored shapes tile a texture by giving UVs beyond 0..1; everything else clamps so
+            // atlas edges do not bleed.
+            sampler = tiles(quad)
+                ? quad.Sampling is RenderSampling.Nearest ? _nearestRepeatSampler : _linearRepeatSampler
+                : quad.Sampling is RenderSampling.Nearest ? _nearestSampler : _linearSampler,
         };
         SDL_BindGPUFragmentSamplers(renderPass, 0, &binding, 1);
         SDL_DrawGPUPrimitives(renderPass, 6, 1, 0, 0);
@@ -548,16 +556,26 @@ internal sealed unsafe class RenderDevice : IDisposable
         }
     }
 
-    private SDL_GPUSampler* createSampler(SDL_GPUFilter filter)
+    private static bool tiles(RenderQuad quad)
     {
+        static bool outside(RenderVertex vertex) =>
+            vertex.U is < -0.001f or > 1.001f || vertex.V is < -0.001f or > 1.001f;
+        return outside(quad.TopLeft) || outside(quad.TopRight) || outside(quad.BottomRight) || outside(quad.BottomLeft);
+    }
+
+    private SDL_GPUSampler* createSampler(SDL_GPUFilter filter, bool repeat = false)
+    {
+        var address = repeat
+            ? SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_REPEAT
+            : SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
         var samplerInfo = new SDL_GPUSamplerCreateInfo
         {
             min_filter = filter,
             mag_filter = filter,
             mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-            address_mode_u = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            address_mode_v = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            address_mode_w = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            address_mode_u = address,
+            address_mode_v = address,
+            address_mode_w = address,
         };
         var sampler = SDL_CreateGPUSampler(_device, &samplerInfo);
         return sampler is null ? throw sdlFailure($"create a {filter} sampler") : sampler;
@@ -661,6 +679,11 @@ internal sealed unsafe class RenderDevice : IDisposable
             SDL_ReleaseGPUSampler(_device, _linearSampler);
             _linearSampler = null;
         }
+        foreach (var repeat in new[] { (nint)_linearRepeatSampler, (nint)_nearestRepeatSampler })
+            if (repeat != 0)
+                SDL_ReleaseGPUSampler(_device, (SDL_GPUSampler*)repeat);
+        _linearRepeatSampler = null;
+        _nearestRepeatSampler = null;
         if (_nearestSampler is not null)
         {
             SDL_ReleaseGPUSampler(_device, _nearestSampler);

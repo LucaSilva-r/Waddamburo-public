@@ -45,4 +45,19 @@ public sealed class TaikoSoulGaugeTests
         outside.Apply(judgement(TaikoHitResult.Great));
         Assert.Equal(10, outside.Value);
     }
+
+    [Fact]
+    public void DancersJoinPerQuarterOfTheClearLine()
+    {
+        // Hard (clear 7000): one dancer, then one more every 1750 points (trace-confirmed).
+        var gauge = new TaikoSoulGauge(TaikoCourse.Hard, 5, 100);
+        var counts = new List<int> { TaikoSkinPresentation.DancerCount(gauge) };
+        while (gauge.State != TaikoGaugeState.Full)
+        {
+            gauge.Apply(judgement(TaikoHitResult.Great));
+            counts.Add(TaikoSkinPresentation.DancerCount(gauge));
+        }
+        Assert.Equal([1, 2, 3, 4, 5, 6], counts.Distinct());
+        Assert.Equal(TaikoSkinPresentation.DancerCount(gauge), 1 + TaikoSoulGauge.Max * 4 / 7000);
+    }
 }

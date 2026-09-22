@@ -70,10 +70,15 @@ public sealed class TaikoLumenPresentation
         _gogo.Update(time);
     }
 
+    // characterSlot: background index the character is drawn before (it sits on its backdrop,
+    // under the runners, lane, notes and overlays).
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation,
-        Func<LumenPlayer, float>? playerInterpolation = null, LumenSceneLayer? character = null)
+        Func<LumenPlayer, float>? playerInterpolation = null, LumenSceneLayer? character = null,
+        int characterSlot = 0)
     {
         var layers = new List<LumenSceneLayer>(_background);
+        if (character is { } don)
+            layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
         foreach (var bar in _chart.BarLines)
             if (bar.IsVisible)
                 addAt(layers, _bar, bar.Time, time, scroll: false);
@@ -84,9 +89,6 @@ public sealed class TaikoLumenPresentation
             if (!_judgement.IsJudged(index))
                 addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
         layers.AddRange(_foreground);
-        // The character sits under the roll counter, balloon overlay and note flights.
-        if (character is { } don)
-            layers.Add(don);
         if (_longNotes is not null)
             layers.AddRange(_longNotes.OverlayLayers);
         if (_flights is not null)

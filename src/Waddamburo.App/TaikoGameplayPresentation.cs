@@ -16,15 +16,18 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     private TaikoLongNotePresentation? _longNotes;
     private TaikoDonPresentation? _character;
     private TaikoAnimationClock? _animationClock;
+    private int _characterSlot;
     private LumenSceneLayer[] _beatLayers = [];
     private LumenSceneLayer[] _fixedLayers = [];
-    private LumenPlayer[] _feverMovies = [];
 
     public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
     {
+        // Skin parts are addressed by role ("bg_nomal"), whatever variant the composition picked.
         var layers = scene.Layers.Select((layer, index) =>
-            (Name: Path.GetFileNameWithoutExtension(layer.Definition.MovieId), Layer: scene.Player.Layers[index]))
+            (Name: GameplaySceneComposition.Role(Path.GetFileNameWithoutExtension(layer.Definition.MovieId)),
+             Layer: scene.Player.Layers[index]))
             .ToDictionary(pair => pair.Name, pair => pair.Layer);
+        LumenPlayer? skin(string role) => layers.TryGetValue(role, out var layer) ? layer.Player : null;
         var board = layers["lane_obi"].Player;
         var flightTemplate = layers["onp_kiseki_don_1p"];
         var flightContent = scene.Layers.Single(layer =>
@@ -73,10 +76,17 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         }, layers["renda_num"], layers["action_fusen_1p"], _flights, don);
         _character = don is null ? null : new(don, layers["don3d"]);
         _animationClock = new(chart.TimingPoints);
-        _beatLayers = layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
-            or "bg_fever_b_32" or "donbg_b_32_common").Select(pair => pair.Value).ToArray();
+        // ponytail: which skin parts follow the beat is carried over from the first skin
+        // (backgrounds, dancers, backdrop); runners, roll characters and fever run in real time.
+        _beatLayers = layers.Where(pair => pair.Key is "bg_nomal" or "dance" or "dodai"
+            or "bg_fever" or "donbg").Select(pair => pair.Value).ToArray();
         _fixedLayers = layers.Values.Except(_beatLayers).ToArray();
-        _feverMovies = [layers["bg_fever_b_32"].Player, layers["donbg_b_32_common"].Player];
+        var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg"), skin("dance"),
+            skin("bg_fever"), skin("fever"), skin("renda")));
+        _session.LongNoteHit += progress =>
+        {
+            if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
+        };
         _session.Judged += judgement =>
         {
             var segments = gauge.FilledSegments;
@@ -88,11 +98,14 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                 _character?.SetGauge(gauge.State);
             }
             _character?.OnJudged(judgement);
+            skinPresentation.OnJudged(judgement, gauge);
         };
+        var background = layers.Where(pair => pair.Key is "bg_nomal" or "bg_fever" or "dance" or "dodai" or "renda"
+                or "fever" or "donbg" or "chibi" or "lane" or "lane_hit" || pair.Key == gaugeName).ToArray();
+        // Don is drawn right after his backdrop (reference frame order).
+        _characterSlot = Array.FindIndex(background, pair => pair.Key == "donbg") + 1;
         _presentation = new TaikoLumenPresentation(chart, _session,
-            layers.Where(pair => pair.Key is "bg_nomal_b_32" or "dance_b_32"
-                or "bg_fever_b_32" or "donbg_b_32_common" or "lane" or "lane_hit" || pair.Key == gaugeName)
-                .Select(pair => pair.Value),
+            background.Select(pair => pair.Value),
             [layers["lane_hit_effect"], layers["lane_obi"]],
             new Dictionary<PlayableNoteKind, LumenSceneLayer>
             {
@@ -106,9 +119,6 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         {
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
             _character?.SetGoGo(active);
-            foreach (var movie in _feverMovies)
-                if (!movie.TryInvokeCallback("SetFever", [LumenHostValue.FromBoolean(active)]))
-                    throw new InvalidDataException("Gameplay background is missing SetFever.");
             Console.WriteLine($"Gameplay Go-Go: {(active ? "start" : "end")} at {_session.CurrentTime.TotalSeconds:F3}s.");
         };
     }
@@ -123,7 +133,6 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         _animationClock = null;
         _beatLayers = [];
         _fixedLayers = [];
-        _feverMovies = [];
     }
 
     public double AdvanceAnimations(TimeSpan chartTime, LumenInputSnapshot input)
@@ -179,7 +188,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     {
         var snapshot = (_presentation ?? throw new InvalidOperationException("Gameplay is not prepared."))
             .CreateSnapshot(time, interpolation, player => _beatLayers.Any(layer => layer.Player == player)
-                ? _animationClock?.Interpolation ?? 1 : interpolation, _character?.Layer);
+                ? _animationClock?.Interpolation ?? 1 : interpolation, _character?.Layer, _characterSlot);
         return _character?.Tint(snapshot) ?? snapshot;
     }
 }

@@ -58,8 +58,11 @@ public sealed class TaikoDonPresentationTests
         Assert.Equal("don_miss", controller.Idles[^1]);
         judge(TaikoHitResult.Miss, 4);
         Assert.Single(controller.Idles);
+        var frame = new LumenScenePlayer(1280, 720, [Assert.IsType<LumenSceneLayer>(don.Layer)]).CreateRenderSnapshot();
+        Assert.Same(frame, don.Tint(frame));
         judge(TaikoHitResult.Miss);
         Assert.Equal("don_miss6", controller.Idles[^1]);
+        Assert.Equal(new LumenRenderColor(0.5f, 0.5f, 0.5f, 1), Assert.Single(don.Tint(frame).Quads).MultiplyColor);
         judge(TaikoHitResult.Great);
         Assert.Equal(new(0, "don_miss_normal", "don_normal"), controller.Motions[^1]);
 
@@ -71,7 +74,7 @@ public sealed class TaikoDonPresentationTests
         don.SetGauge(TaikoGaugeState.Full);
         Assert.Equal(new(0, "don_full_gage", "don_norm_loop"), controller.Motions[^1]);
         var gold = Assert.Single(don.Tint(plain).Quads).AddColor;
-        Assert.Equal(new LumenRenderColor(125 / 255f, 110 / 255f, 5 / 255f, 0), gold);
+        Assert.Equal(new LumenRenderColor(0.4906f, 0.4312f, 0.0203f, 0), gold);
         judge(TaikoHitResult.Great, 9);
         Assert.Equal(new(0, "don_full_combo", "don_norm_loop"), controller.Motions[^1]);
         don.SetGauge(TaikoGaugeState.Cleared);

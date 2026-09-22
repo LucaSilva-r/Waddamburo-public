@@ -107,9 +107,11 @@ internal static class EntrySongSelectFlow
                         LumenMatrix.Identity,
                         "song-select"),
                 ]),
-                GameplaySceneComposition.Create(gameplayId),
+                GameplaySceneComposition.Create(gameplayId, Random.Shared),
             ],
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
+        var skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
+            Path.GetFullPath(Path.Combine(assetRoot, "..", "..", "config", "S11100-1", "musicinfo.xml")));
         var loader = new LumenGameSceneLoader(
             new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)),
             new CatalogHostFactory(
@@ -266,6 +268,13 @@ internal static class EntrySongSelectFlow
                                     previewController?.StartBackground();
                                     return;
                                 }
+                                // Every song gets its themed skin or a fresh random original mix.
+                                var played = songCatalog.Categories
+                                    .SelectMany(category => category.Songs.Select(song => (category.Name, song)))
+                                    .First(entry => entry.song.Descriptor.Key == pendingRequest.Song);
+                                var theme = skins.Resolve(played.song.Descriptor, played.Name);
+                                Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
+                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, theme));
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                                 var request = playRequests.ActivatePending();
                                 activeGameplayCharts = loadedCharts;
