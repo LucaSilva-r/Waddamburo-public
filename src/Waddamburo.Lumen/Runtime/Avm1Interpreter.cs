@@ -169,9 +169,11 @@ internal static class Avm1Interpreter
                     return Avm1ExecutionStatus.Success;
                 case 0x06: // Play
                     playing = true;
+                    context.PendingPlayback = true;
                     break;
                 case 0x07: // Stop
                     playing = false;
+                    context.PendingPlayback = false;
                     break;
                 case 0x0A: // Add
                     if (!tryBinary(stack, (left, right) => toNumber(left) + toNumber(right)))

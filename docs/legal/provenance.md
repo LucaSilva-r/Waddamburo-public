@@ -1,5 +1,13 @@
 # Implementation provenance
 
+Song Select countdown handling is an original host implementation based on the
+asset-derived start-duration/poll/stop protocol. Monotonic timing, upward rounding
+of displayed seconds, and stopped-timer semantics are explicit product policies.
+Course conversion keeps the authored normal/hidden eight-slot domain separate
+from the catalog's five-course enum; the supported hidden-Oni slot maps to Ura.
+Tests use synthetic calls and an injected clock. No asset script or private
+diagnostic output is included.
+
 The stack-based AVM1 frame-jump instruction is independently implemented from
 Adobe's *SWF File Format Specification*, version 10, ActionGotoFrame2
 ([specification mirror](https://www.flashrealtime.com/content/dam/Adobe/en/devnet/swf/pdf/swf_file_format_spec_v10.pdf)).

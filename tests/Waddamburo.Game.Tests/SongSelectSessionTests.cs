@@ -9,6 +9,24 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class SongSelectSessionTests
 {
+    [Theory]
+    [InlineData(0, TaikoCourse.Easy)]
+    [InlineData(1, TaikoCourse.Normal)]
+    [InlineData(2, TaikoCourse.Hard)]
+    [InlineData(3, TaikoCourse.Oni)]
+    [InlineData(7, TaikoCourse.Ura)]
+    public void AuthoredCourseSlotsAreTranslatedAtTheHostBoundary(int slot, TaikoCourse course)
+        => Assert.Equal((int)course, AuthoredSongSelectionRequest.ToCatalogCourse(slot));
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(8)]
+    public void UnsupportedAuthoredCourseSlotsAreNotSilentlyReinterpreted(int slot)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => AuthoredSongSelectionRequest.ToCatalogCourse(slot));
+
     [Fact]
     public void AuthoredOnePlayerSelectionAcceptsNonFinitePlayerTwoSentinel()
     {
@@ -33,8 +51,10 @@ public sealed class SongSelectSessionTests
             ])));
     }
 
-    [Fact]
-    public void CoursePresentationPublishesLevelsAndRejectsUnavailableCourses()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CourseAvailabilityDoesNotActivateRestrictedSelection(bool hasUra)
     {
         var key = new SongKey(SongSourceKind.Tja, "course-projection");
         var descriptor = new SongDescriptor(
@@ -48,30 +68,23 @@ public sealed class SongSelectSessionTests
                     new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"),
                     TaikoCourse.Oni,
                     8),
-                new SongChartDescriptor(
+                .. hasUra ? new[] { new SongChartDescriptor(
                     new ChartKey(key, "ura"),
                     "Ura",
                     new CatalogAssetKey(new CatalogProviderId("synthetic"), "ura"),
                     TaikoCourse.Ura,
-                    9),
+                    9) } : Array.Empty<SongChartDescriptor>(),
             ]);
         var song = new SongSelectSong(
             descriptor,
-            SongCourseBits.Oni | SongCourseBits.Ura,
-            [null, null, null, 8, 9]);
+            SongCourseBits.Oni | (hasUra ? SongCourseBits.Ura : SongCourseBits.None),
+            [null, null, null, 8, hasUra ? 9 : null]);
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
-        Assert.Equal(
-            AuthoredSongCourseBits.Easy
-                | AuthoredSongCourseBits.Normal
-                | AuthoredSongCourseBits.Hard
-                | AuthoredSongCourseBits.HiddenEasy
-                | AuthoredSongCourseBits.HiddenNormal
-                | AuthoredSongCourseBits.HiddenHard,
-            presentation.InvalidCourses);
+        Assert.Equal(AuthoredSongCourseBits.None, presentation.SelectionRestrictions);
         Assert.Equal(8, presentation.OniStars);
-        Assert.Equal(9, presentation.HiddenOniStars);
+        Assert.Equal(hasUra ? 9 : 0, presentation.HiddenOniStars);
         Assert.Equal(0, presentation.EasyStars);
         Assert.Equal(0, presentation.NormalStars);
         Assert.Equal(0, presentation.HardStars);
@@ -157,7 +170,33 @@ public sealed class SongSelectSessionTests
         Assert.Equal(TaikoCourse.Oni, Assert.Single(pending.Pending!.Players).Course);
     }
 
-    private sealed class SyntheticProvider : ISongCatalogProvider
+    [Fact]
+    public async Task UnrestrictedSongCanLaunchBothOniAndUraButNotMissingCourses()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider(includeUra: true)]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var view = new SongSelectCatalogView(snapshot);
+        var session = new SongSelectSession(view, new RecordingTextureService(),
+            new RecordingPreviewController(), pending);
+        Assert.True(view.TryGetSong(0, 0, out var song));
+        var presentation = SongSelectCoursePresentation.FromSong(song);
+        Assert.Equal(AuthoredSongCourseBits.None, presentation.SelectionRestrictions);
+        Assert.Equal(8, presentation.OniStars);
+        Assert.Equal(9, presentation.HiddenOniStars);
+        foreach (var authoredCourse in new[] { 3, 7 })
+        {
+            var course = AuthoredSongSelectionRequest.ToCatalogCourse(authoredCourse);
+            session.Select(0, 0, course, -1);
+            Assert.Equal((TaikoCourse)course, Assert.Single(pending.ActivatePending().Players).Course);
+            pending.ClearActive();
+        }
+        Assert.Equal(0, presentation.HardStars);
+        Assert.Throws<InvalidOperationException>(() => session.Select(0, 0, (int)TaikoCourse.Hard, -1));
+        Assert.Null(pending.Pending);
+    }
+
+    private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
     {
         public CatalogProviderId Id { get; } = new("synthetic");
 
@@ -186,6 +225,9 @@ public sealed class SongSelectSessionTests
                         new CatalogAssetKey(Id, "oni"),
                         TaikoCourse.Oni,
                         8),
+                    .. includeUra ? new[] { new SongChartDescriptor(
+                        new ChartKey(songKey, "ura"), "Ura", new CatalogAssetKey(Id, "ura"),
+                        TaikoCourse.Ura, 9) } : Array.Empty<SongChartDescriptor>(),
                 ],
                 new CatalogAssetKey(Id, "audio"),
                 TimeSpan.FromSeconds(12));

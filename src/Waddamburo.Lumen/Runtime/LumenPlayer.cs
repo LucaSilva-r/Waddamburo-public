@@ -640,7 +640,9 @@ public sealed class LumenPlayer
                 out var playing);
             if (status == Avm1ExecutionStatus.Success)
             {
-                if (instance.Frame == startingFrame && instance.Playing == startingPlaying)
+                if (context.PendingPlayback is { } requestedPlayback)
+                    instance.Playing = requestedPlayback;
+                else if (instance.Frame == startingFrame && instance.Playing == startingPlaying)
                     instance.Playing = playing;
                 context.Commit();
             }
@@ -842,6 +844,8 @@ public sealed class LumenPlayer
                 }
                 if (target is DisplayInstance targetInstance && name is "play" or "stop")
                 {
+                    if (ReferenceEquals(targetInstance, instance))
+                        context!.PendingPlayback = name == "play";
                     targetInstance.Playing = name == "play";
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
                 }
@@ -850,7 +854,11 @@ public sealed class LumenPlayer
                     && arguments.Count > 0)
                 {
                     if (tryResolveTimelineFrame(jumpTarget, arguments[0], out var targetFrame))
+                    {
+                        if (ReferenceEquals(jumpTarget, instance))
+                            context!.PendingPlayback = name == "gotoAndPlay";
                         jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay");
+                    }
                     else
                         reportOnce(
                             "LUM_AVM_GOTO_INVALID",
@@ -926,7 +934,7 @@ public sealed class LumenPlayer
             {
                 var timeline = _sprites[instance.CharacterId];
                 if (timeline.Labels.TryGetValue(label, out var frame))
-                    jumpInstance(instance, frame, instance.Playing);
+                    jumpInstance(instance, frame, context!.PendingPlayback ?? instance.Playing);
                 else
                     reportOnce(
                         "LUM_AVM_GOTO_INVALID",
@@ -983,7 +991,11 @@ public sealed class LumenPlayer
                 if (_sprites.TryGetValue(target.CharacterId, out var targetTimeline)
                     && tryResolveTimelineFrame(target, value, out var frame)
                     && frame + bias < targetTimeline.Frames.Length)
+                {
+                    if (ReferenceEquals(target, instance))
+                        context!.PendingPlayback = play;
                     jumpInstance(target, frame + bias, play);
+                }
             },
             (command, argument) => HostCommand?.Invoke(command, argument));
         return context;
@@ -1166,9 +1178,14 @@ public sealed class LumenPlayer
                     + (unsupported.Length == 0 ? "." : $": {unsupported}."));
                 return default;
             }
-            if (timelineTarget.Frame == startingFrame && timelineTarget.Playing == startingPlaying)
+            if (context.PendingPlayback is { } requestedPlayback)
+                timelineTarget.Playing = requestedPlayback;
+            else if (timelineTarget.Frame == startingFrame && timelineTarget.Playing == startingPlaying)
                 timelineTarget.Playing = playing;
             context.Commit();
+            if (context.PendingPlayback is { } nestedPlayback
+                && parentContext is not null && ReferenceEquals(parentContext.TimelineTarget, timelineTarget))
+                parentContext.PendingPlayback = nestedPlayback;
             return new Avm1Lookup(true, returnValue);
         }
         finally

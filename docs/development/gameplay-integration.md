@@ -94,6 +94,41 @@ These runs establish execution and presentation, not measured audible/input late
 
 ## Remaining scope
 
+Course availability and selection restrictions are separate contracts. Ordinary
+Song Select sends zero restriction bits, even when some charts are absent. Star
+values describe chart availability (zero for missing charts); the native launch
+boundary additionally rejects unavailable courses. Nonzero restriction bits change
+the authored board into a restricted mode that can prefer the hidden side. They
+must not be derived by inverting catalog availability. Synthetic regressions cover
+Oni-only and Oni+Ura metadata, launch of both supported sides, and missing-course
+rejection. The presentation property is named SelectionRestrictions to distinguish
+it from catalog course availability; the authored callback remains SetInvalidCourse.
+
+Song Select now has a monotonic host countdown implementing StartTimer, StopTimer,
+GetTimeSec (remaining seconds rounded up), and IsTimeup. Stopping freezes the
+remaining value and disables expiry; starting replaces the duration. These are
+explicit host policies, tested using an injected clock rather than render ticks.
+Title-surface pending diagnostics remain unchanged because rendering is asynchronous.
+
+The Song Select host translates the authored eight-slot course domain into catalog
+courses: normal slots 0–3 retain their meaning and hidden Oni slot 7 maps to Ura.
+Hidden Easy/Normal/Hard slots are unsupported and rejected, rather than accidentally
+treated as catalog Ura. This corrects a boundary mismatch; it does not establish
+that every observed selection failure had this cause. Missing script objects,
+folder labels and other unimplemented host calls still require investigation.
+The filtered managed suite passes 278 tests (the existing Realm exclusion still
+applies). A bounded local Song Select navigation run completes without unresolved
+timer methods or host-call exceptions; it does not exercise every course or prove
+the original course-selection failure is eliminated. Script-owned Board2MusicInfo
+and Startup failures remain separate from missing native Lumen methods.
+
+A subsequent playback-order repair tracks explicit play/stop requests across
+frame jumps, including jumps to the current frame and nested calls targeting the
+same timeline. Previously, detecting a changed frame could discard a later stop.
+Six synthetic regressions cover the reproduced failure and mixed command order;
+all 92 Lumen tests pass and the app builds with warnings treated as errors. This
+does not resolve the remaining course/counter initialization warnings.
+
 The next runtime slice adds embedded frame jumps, integer conversion, visual
 Math.random, and in-process FSCommand notifications. General asset-supplied URLs
 remain unsupported and are never opened. Empty standalone stack discard is a

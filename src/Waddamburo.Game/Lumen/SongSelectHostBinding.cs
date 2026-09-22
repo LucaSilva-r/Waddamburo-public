@@ -21,7 +21,7 @@ public enum AuthoredSongCourseBits
 }
 
 public readonly record struct SongSelectCoursePresentation(
-    AuthoredSongCourseBits InvalidCourses,
+    AuthoredSongCourseBits SelectionRestrictions,
     int EasyStars,
     int NormalStars,
     int HardStars,
@@ -35,7 +35,9 @@ public readonly record struct SongSelectCoursePresentation(
     {
         ArgumentNullException.ThrowIfNull(song);
         return new SongSelectCoursePresentation(
-            invalidCourses(song),
+            // Nonzero restrictions activate a different authored selection mode.
+            // Missing charts are represented by zero stars, not restriction bits.
+            AuthoredSongCourseBits.None,
             song.Level(TaikoCourse.Easy) ?? 0,
             song.Level(TaikoCourse.Normal) ?? 0,
             song.Level(TaikoCourse.Hard) ?? 0,
@@ -46,21 +48,6 @@ public readonly record struct SongSelectCoursePresentation(
             song.Level(TaikoCourse.Ura) ?? 0);
     }
 
-    private static AuthoredSongCourseBits invalidCourses(SongSelectSong song)
-    {
-        var available = AuthoredSongCourseBits.None;
-        if (song.HasCourse(TaikoCourse.Easy))
-            available |= AuthoredSongCourseBits.Easy;
-        if (song.HasCourse(TaikoCourse.Normal))
-            available |= AuthoredSongCourseBits.Normal;
-        if (song.HasCourse(TaikoCourse.Hard))
-            available |= AuthoredSongCourseBits.Hard;
-        if (song.HasCourse(TaikoCourse.Oni))
-            available |= AuthoredSongCourseBits.Oni;
-        if (song.HasCourse(TaikoCourse.Ura))
-            available |= AuthoredSongCourseBits.HiddenOni;
-        return AuthoredSongCourseBits.All & ~available;
-    }
 }
 
 public enum SongSelectSoundRequestKind
@@ -87,6 +74,18 @@ public readonly record struct AuthoredSongSelectionRequest(
         requiredInteger(call, 1),
         requiredInteger(call, 2),
         optionalInteger(call, 3));
+
+    /// <summary>Authored courses use eight normal/hidden slots, not the catalog enum.</summary>
+    public static int ToCatalogCourse(int authoredCourse) => authoredCourse switch
+    {
+        0 => (int)TaikoCourse.Easy,
+        1 => (int)TaikoCourse.Normal,
+        2 => (int)TaikoCourse.Hard,
+        3 => (int)TaikoCourse.Oni,
+        7 => (int)TaikoCourse.Ura,
+        _ => throw new ArgumentOutOfRangeException(nameof(authoredCourse), authoredCourse,
+            "The authored course slot has no supported catalog course."),
+    };
 
     private static int requiredInteger(LumenHostCall call, int index)
     {
@@ -131,15 +130,18 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly IDonPresentationController? _don;
     private LumenPlayer? _player;
     private bool _assigned;
+    private readonly SongSelectTimer _timer;
 
     public SongSelectHostBinding(
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
-        IDonPresentationController? don = null)
+        IDonPresentationController? don = null,
+        TimeProvider? timeProvider = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
         _don = don;
+        _timer = new SongSelectTimer(timeProvider);
     }
 
     public void Attach(LumenPlayer player)
@@ -159,6 +161,20 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("GetMusicData", _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("GetPlayerData", _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("IsStart", _ => LumenHostValue.FromBoolean(true));
+            lumen.RegisterMethod("StartTimer", call =>
+            {
+                if (call.Arguments.Length != 1 || call.Arguments[0].Kind != LumenHostValueKind.Number)
+                    throw new ArgumentException("StartTimer requires a duration in seconds.", nameof(call));
+                _timer.Start(call.Arguments[0].AsNumber());
+                return LumenHostValue.Undefined;
+            });
+            lumen.RegisterMethod("StopTimer", _ =>
+            {
+                _timer.Stop();
+                return LumenHostValue.Undefined;
+            });
+            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(Math.Ceiling(_timer.Remaining.TotalSeconds)));
+            lumen.RegisterMethod("IsTimeup", _ => LumenHostValue.FromBoolean(_timer.IsTimeUp));
             lumen.RegisterMethod("IsInitWait", _ => LumenHostValue.FromBoolean(assignInitialData()));
             lumen.RegisterMethod("GetMusicInfo_Basic", publishMusicInfo);
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
@@ -186,6 +202,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     public void Dispose()
     {
+        _timer.Stop();
         _session.StopPreview();
         _sounds?.StopVoice();
     }
@@ -224,7 +241,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (!_session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song))
             return LumenHostValue.Undefined;
         var courses = SongSelectCoursePresentation.FromSong(song);
-        invoke("SetInvalidCourse", LumenHostValue.FromNumber((int)courses.InvalidCourses));
+        invoke("SetInvalidCourse", LumenHostValue.FromNumber((int)courses.SelectionRestrictions));
         invoke(
             "SetStar",
             LumenHostValue.FromNumber(courses.EasyStars),
@@ -312,8 +329,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         _session.Select(
             request.Category,
             request.Song,
-            request.PlayerOneCourse,
-            request.PlayerTwoCourse ?? -1);
+            AuthoredSongSelectionRequest.ToCatalogCourse(request.PlayerOneCourse),
+            request.PlayerTwoCourse is null or < 0 ? -1
+                : AuthoredSongSelectionRequest.ToCatalogCourse(request.PlayerTwoCourse.Value));
         return LumenHostValue.Undefined;
     }
 

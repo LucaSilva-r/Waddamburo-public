@@ -52,6 +52,7 @@ internal sealed class Avm1ExecutionContext(
 
     public object? TimelineTarget { get; } = timelineTarget;
     public int InstructionOffset { get; set; }
+    public bool? PendingPlayback { get; set; }
 
     public Avm1Lookup GetLexicalVariable(string name)
     {

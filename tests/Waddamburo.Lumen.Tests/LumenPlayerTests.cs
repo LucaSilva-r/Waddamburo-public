@@ -390,6 +390,50 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void StopAfterEmbeddedFrameJumpAppliesToDestination()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x81, 0x02, 0, 0x02, 0, 0x07, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.False(player.IsPlaying);
+        player.Advance();
+        Assert.Equal(2, player.CurrentFrame);
+    }
+
+    [Theory]
+    [InlineData(0x07, 1, 0, true)]
+    [InlineData(0x06, 0, 0, false)]
+    [InlineData(0x07, 1, 0x07, false)]
+    [InlineData(0x06, 0, 0x06, true)]
+    public void ExplicitPlaybackAndStackJumpRespectInstructionOrder(byte prefix, byte jumpFlags,
+        byte suffix, bool expectedPlaying)
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            prefix,
+            0x96, 0x05, 0, 0x07, 3, 0, 0, 0,
+            0x9F, 0x01, 0, jumpFlags, suffix, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.Equal(expectedPlaying, player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void PlayingJumpToCurrentFrameOverridesEarlierStop()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x07, 0x96, 0x05, 0, 0x07, 2, 0, 0, 0,
+            0x9F, 0x01, 0, 1, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.Equal(1, player.CurrentFrame);
+        Assert.True(player.IsPlaying);
+    }
+
+    [Fact]
     public void EmptyDiscardAfterGuardDoesNotAbortRemainingActions()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [
