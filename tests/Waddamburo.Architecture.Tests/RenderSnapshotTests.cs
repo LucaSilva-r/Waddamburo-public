@@ -1,4 +1,5 @@
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Platform.Sdl.Timing;
 using Waddamburo.Platform.Sdl;
@@ -54,6 +55,30 @@ public sealed class RenderSnapshotTests
         Assert.True(lumen.IsDown(13));
         Assert.False(lumen.IsDown('D'));
         Assert.False(lumen.IsDown('J'));
+    }
+
+    [Theory]
+    [InlineData(SdlKeyboardKey.D, 'A')]
+    [InlineData(SdlKeyboardKey.F, 'Z')]
+    [InlineData(SdlKeyboardKey.J, 'Z')]
+    [InlineData(SdlKeyboardKey.K, 'S')]
+    [InlineData(SdlKeyboardKey.Escape, (char)27)]
+    public void PresentationOnlyInputDoesNotForwardKeysOrConsumeNativePresses(
+        SdlKeyboardKey key, char authoredKey)
+    {
+        var time = TimeSpan.FromSeconds(1);
+        var press = new SdlKeyPress(key, time);
+        var keyboard = new SdlKeyboardSnapshot([key], [press], time);
+
+        var presentation = LumenInputAdapter.CreateSnapshot(keyboard, LumenInputMode.PresentationOnly);
+
+        Assert.Same(LumenInputSnapshot.Empty, presentation);
+        Assert.False(presentation.IsDown(authoredKey));
+        Assert.True(keyboard.IsDown(key));
+        Assert.Equal(press, Assert.Single(keyboard.Presses));
+        Assert.Equal(time, keyboard.Timestamp);
+        // Reusing the same state for a menu still delivers the authored mapping.
+        Assert.True(LumenInputAdapter.CreateSnapshot(keyboard).IsDown(authoredKey));
     }
 
     [Fact]

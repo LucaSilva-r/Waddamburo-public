@@ -9,6 +9,19 @@ function visibility is a project runtime repair with a synthetic regression.
 Additional gameplay composition layers were identified from user-supplied asset
 relationships; no assets or diagnostic captures are included.
 
+The subsequent gameplay-runtime repairs implement ActionGotoFrame, ActionToInteger,
+and FSCommand-form ActionGetURL from the same public SWF specification. FSCommand
+is exposed only as an in-process notification; general URLs remain unsupported.
+Math.random uses the framework's pseudorandom generator for visual effects, not
+judgement. An empty standalone Pop is treated as a no-op as a narrow compatibility
+decision based on asset-derived class-guard behavior; other stack requirements
+remain checked. No external interpreter source was adapted.
+
+Hit-flight state names and lane placement are asset-derived relationships, also
+consistent with the private viewer's observable hit-to-gauge behavior. The public
+implementation independently owns a bounded pool of animation players sharing
+texture resources; no private implementation, bytecode, or captures were copied.
+
 The gameplay repair in `src/Waddamburo.Game/Gameplay/`, the app gameplay adapter,
 and the platform transport/input additions are independently written. Semantic
 Lumen integration requirements were derived from the private behavioral oracle;

@@ -54,6 +54,19 @@ receives events once per display update, processes them before passive misses,
 and clamps late events to its last adjudicated horizon. Scripted tick pulses
 preserve their existing diagnostic entry point. Focus clears held keys.
 
+Gameplay movies now receive an empty authored-key snapshot: native gameplay owns
+drum input and sends semantic animation callbacks. Entry and Song Select retain
+the authored menu key mapping; movie/scene debug viewers retain keyboard access.
+This prevents drum keys from also activating keyboard handlers embedded in the
+gameplay presentation. Local isolation checks reproduced a player-board animation
+restart with mapped keys, but not with repeated hit/combo callbacks alone. Synthetic
+input-policy regressions verify all four drum keys remain available to native
+gameplay while being withheld from movie scripts, and menu mapping still works.
+The follow-up managed run passes 245 tests with the existing Realm exclusion and
+warnings treated as errors. A bounded local gameplay run pressing all four drum
+buttons retains the 1P board; repeated callback-only probes retain its settled
+player-side frame. These checks do not establish full visual compatibility.
+
 Lumen remains unaware of notes, scores, and audio. It exposes named instance
 bounds and child label playback. The game presentation receives semantic layer
 roles, composes background, barlines, notes, then foreground feedback, and calls
@@ -81,6 +94,26 @@ These runs establish execution and presentation, not measured audible/input late
 
 ## Remaining scope
 
+The next runtime slice adds embedded frame jumps, integer conversion, visual
+Math.random, and in-process FSCommand notifications. General asset-supplied URLs
+remain unsupported and are never opened. Empty standalone stack discard is a
+narrow compatibility policy for already-initialized class guards; other consuming
+instructions still check for underflow, now with an action-offset diagnostic.
+
+Successful judgements trigger authored note-to-gauge flights, with separate Don/Ka
+and normal/large states. A 16-player bounded pool shares scene textures, advances
+on simulation ticks, and retires players when their timelines stop. On saturation
+it restarts a slot; misses and secondary strong-note presses do not create flights.
+This visual feedback does not implement gauge gain or score rules.
+
+The filtered managed suite now passes 257 tests, including flight selection,
+overlap/reuse/retirement and runtime instruction regressions. The app builds with
+warnings treated as errors. Local checks render and complete all four flight
+variants, and a longer gameplay smoke run no longer reports the dancer stack or
+unsupported background/judgement-effect action failures. The two lane-board
+initialization warnings and dropped-tick warning remain unresolved. Asset-backed
+diagnostics and captures are private; no complete compatibility claim is made.
+
 The first visual-runtime follow-up fixes nested calls observing pending timeline
 function definitions and adds AVM1 stack-based frame/label jumps, including scene
 bias. The composition now includes the dancer and a zero-initialized gauge; gauge
@@ -89,12 +122,13 @@ not enabled for ordinary play. Synthetic regressions and the filtered managed
 suite pass (240 tests); the same Realm exclusion above still applies. The app
 builds with warnings treated as errors, and a local asset-backed smoke run reaches
 gameplay. Remaining diagnostics include a dancer action stack underflow and
-unresolved child initialization calls. The player-side board can still display
-the wrong side despite one-player initialization; loading also reports dropped
+unresolved child initialization calls. The player-side switching triggered by
+drum input was subsequently traced to authored keyboard input leaking into gameplay
+movies and isolated as described above. Loading also reports dropped
 simulation ticks. Flickering and full visual compatibility
 are not yet verified as fixed. Captures and diagnostic output remain private.
 
-Long notes, score/gauge rules, hit flights, complete theme composition, two-player
+Long notes, score/gauge rules, complete theme composition, two-player
 play, pause/calibration/device recovery, transactional scene preparation, and
 graceful launch errors are not completed by this slice. Do not describe this as
 full gameplay compatibility. Synthetic tests verify the time mapping, scheduled

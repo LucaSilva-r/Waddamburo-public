@@ -161,6 +161,7 @@ internal static class Avm1Interpreter
                 return Avm1ExecutionStatus.InvalidControlFlow;
 
             var next = checked(pc + instruction.Length);
+            context.InstructionOffset = pc;
             switch (instruction.Opcode)
             {
                 case 0x00: // End
@@ -209,7 +210,13 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x17: // Pop
-                    if (!tryPop(stack, out _))
+                    // Compiler-generated class guards can skip directly to a discard
+                    // after initialization was already performed by package bootstrap.
+                    // Empty discard is harmless; value-consuming operations stay strict.
+                    _ = tryPop(stack, out _);
+                    break;
+                case 0x18: // ToInteger (truncate toward zero)
+                    if (!tryUnary(stack, value => Math.Truncate(toNumber(value))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x1C: // GetVariable
@@ -391,6 +398,13 @@ internal static class Avm1Interpreter
                     var labelOperand = (Avm1StringIndexOperand)instruction.Operand!;
                     context.GotoLabel(getString(strings, labelOperand.StringIndex));
                     break;
+                case 0x81: // GotoFrame uses a zero-based embedded frame index.
+                    context.GotoFrame((double)((Avm1FrameOperand)instruction.Operand!).Frame + 1, playing, 0);
+                    break;
+                case 0x83: // Only explicit host commands; never open asset-provided URLs.
+                    var command = (Avm1GetUrlOperand)instruction.Operand!;
+                    context.SendHostCommand(command.Url[10..], command.Target);
+                    break;
                 case 0x9F: // GotoFrame2 (stack-based frame or label)
                     if (!tryPop(stack, out var frameValue))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -461,7 +475,7 @@ internal static class Avm1Interpreter
         instruction.Opcode switch
         {
             0x00 or 0x06 or 0x07
-                or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17
+                or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17 or 0x18
                 or 0x1C or 0x1D or 0x24 or 0x25 or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
                 or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52
                 or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69
@@ -469,6 +483,9 @@ internal static class Avm1Interpreter
             0x8E or 0x9B => instruction.Operand is Avm1FunctionOperand && instruction.Body is not null,
             0x96 => instruction.Operand is Avm1PushOperand,
             0x9F => instruction.Operand is Avm1GotoFrame2Operand { Flags: <= 3 },
+            0x81 => instruction.Operand is Avm1FrameOperand,
+            0x83 => instruction.Operand is Avm1GetUrlOperand url
+                && url.Url.StartsWith("FSCommand:", StringComparison.OrdinalIgnoreCase),
             _ => false,
         };
 

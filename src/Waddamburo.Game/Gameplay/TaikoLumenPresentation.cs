@@ -20,11 +20,13 @@ public sealed class TaikoLumenPresentation
     private readonly float _hitY;
     private int _combo;
     private bool? _gogo;
+    private readonly TaikoHitFlights? _flights;
 
     public TaikoLumenPresentation(PlayableChart chart, TaikoJudgementSession judgement,
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
-        LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board)
+        LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
+        TaikoHitFlights? flights = null)
     {
         _chart = chart;
         _judgement = judgement;
@@ -35,6 +37,7 @@ public sealed class TaikoLumenPresentation
         _target = target;
         _feedback = feedback;
         _board = board;
+        _flights = flights;
         if (!target.Player.TryGetInstanceBounds("target", out var bounds))
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
@@ -77,6 +80,8 @@ public sealed class TaikoLumenPresentation
             if (!_judgement.IsJudged(index))
                 addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
         layers.AddRange(_foreground);
+        if (_flights is not null)
+            layers.AddRange(_flights.ActiveLayers);
         return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation);
     }
 
@@ -107,6 +112,7 @@ public sealed class TaikoLumenPresentation
 
     private void onJudged(TaikoNoteJudgement result)
     {
+        _flights?.Trigger(result);
         if (result.StrongHitCompleted)
             return;
         _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;

@@ -377,6 +377,93 @@ public sealed class LumenPlayerTests
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
     }
 
+    [Fact]
+    public void EmbeddedFrameJumpUsesZeroBasedFrameIndex()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x81, 0x02, 0x00, 0x02, 0x00, 0x06, 0x00,
+        ], targetActionBytecode: [0x07, 0x00]), 1280, 720);
+        player.Advance();
+        Assert.Equal(2, player.CurrentFrame);
+        Assert.False(player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void EmptyDiscardAfterGuardDoesNotAbortRemainingActions()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x02, 0, 0x05, 1,
+            0x9D, 0x02, 0, 0x05, 0,
+            0x96, 0x02, 0, 0x05, 0,
+            0x17, 0x07, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.False(player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void HostNotificationDoesNotPreventFollowingStop()
+    {
+        var payload = System.Text.Encoding.UTF8.GetBytes("FSCommand:synthetic\0done\0");
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x83, (byte)payload.Length, 0, .. payload, 0x07, 0x00,
+        ]), 1280, 720);
+        var commands = new List<(string, string)>();
+        player.HostCommand += (command, argument) => commands.Add((command, argument));
+        player.Advance();
+        Assert.Equal(("synthetic", "done"), Assert.Single(commands));
+        Assert.False(player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Theory]
+    [InlineData(2.75f, 2f)]
+    [InlineData(-2.75f, -2f)]
+    public void IntegerConversionTruncatesTowardZero(float input, float expected)
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0, 0x09, 9, 0, 0x1C,
+            0x96, 0x03, 0, 0x09, 46, 0,
+            0x96, 0x05, 0, 0x01, .. BitConverter.GetBytes(input),
+            0x18, 0x4F, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.Equal(30 + expected, Assert.Single(player.CreateRenderSnapshot().Quads).TopLeft.X);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void MathRandomReturnsFiniteValuesInUnitInterval()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x03, 0, 0x09, 9, 0, 0x1C,
+            0x96, 0x03, 0, 0x09, 46, 0,
+            0x96, 0x08, 0, 0x07, 0, 0, 0, 0, 0x09, 41, 0, 0x1C,
+            0x96, 0x03, 0, 0x09, 52, 0, 0x52, 0x4F, 0x00,
+        ]), 1280, 720);
+        for (var sample = 0; sample < 20; sample++)
+        {
+            player.GotoFrame(1, false);
+            var x = Assert.Single(player.CreateRenderSnapshot().Quads).TopLeft.X;
+            Assert.InRange(x, 30, 31);
+        }
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void ExternalUrlRemainsUnsupportedWithoutExecutingPrefix()
+    {
+        var payload = System.Text.Encoding.UTF8.GetBytes("https://example.invalid/\0_blank\0");
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x07, 0x83, (byte)payload.Length, 0, .. payload, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.True(player.IsPlaying);
+        Assert.Contains(player.Diagnostics, item => item.Code == "LUM_ACTION_DEFERRED");
+    }
+
     [Theory]
     [InlineData(3, 0, 0, 2, false)]
     [InlineData(3, 1, 0, 2, true)]
@@ -1683,7 +1770,7 @@ public sealed class LumenPlayerTests
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
                 "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x",
-                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3")),
+                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

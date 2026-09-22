@@ -10,6 +10,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
 {
     private TaikoJudgementSession? _session;
     private TaikoLumenPresentation? _presentation;
+    private TaikoHitFlights? _flights;
 
     public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
     {
@@ -17,6 +18,11 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             (Name: Path.GetFileNameWithoutExtension(layer.Definition.MovieId), Layer: scene.Player.Layers[index]))
             .ToDictionary(pair => pair.Name, pair => pair.Layer);
         var board = layers["lane_obi"].Player;
+        var flightTemplate = layers["onp_kiseki_don_1p"];
+        var flightContent = scene.Layers.Single(layer =>
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "onp_kiseki_don_1p").Content;
+        _flights = new TaikoHitFlights(Enumerable.Range(0, 16)
+            .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }));
         var courseLabel = course switch
         {
             TaikoCourse.Easy => "easy",
@@ -49,14 +55,18 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                 [PlayableNoteKind.Ka] = layers["onp_katsu"],
                 [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
                 [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
-            }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player);
+            }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
+            _flights);
     }
 
     public void Stop()
     {
         _session = null;
         _presentation = null;
+        _flights = null;
     }
+
+    public void AdvanceAnimations() => _flights?.Advance();
 
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {

@@ -35,6 +35,7 @@ internal static class GameplaySceneComposition
             layer("enso_system/common/packeddata.ddp", "onp_don_dai/onp_don_dai.lm"),
             layer("enso_system/common/packeddata.ddp", "onp_katsu_dai/onp_katsu_dai.lm"),
             layer("enso_system/common/packeddata.ddp", "lane_syousetsu/lane_syousetsu.lm"),
+            layer("enso_system/don1p/packeddata.ddp", "onp_kiseki_don_1p/onp_kiseki_don_1p.lm", y: 184),
         ]);
 
     private static SceneLayerDefinition layer(string archive, string movie, float y = 0) => new(

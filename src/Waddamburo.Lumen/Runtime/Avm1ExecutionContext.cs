@@ -15,7 +15,8 @@ internal sealed class Avm1ExecutionContext(
     object? timelineTarget,
     Avm1ExecutionContext? transactionParent,
     Action<Action>? commitActionWriter = null,
-    Action<object?, bool, int>? timelineFrameJumper = null)
+    Action<object?, bool, int>? timelineFrameJumper = null,
+    Action<string, string>? hostCommand = null)
 {
     private readonly Dictionary<string, object?> _variableWrites = new(StringComparer.Ordinal);
     private readonly Dictionary<LexicalKey, object?> _lexicalWrites = [];
@@ -50,6 +51,7 @@ internal sealed class Avm1ExecutionContext(
     public Avm1LexicalScope? LexicalScope { get; } = lexicalScope;
 
     public object? TimelineTarget { get; } = timelineTarget;
+    public int InstructionOffset { get; set; }
 
     public Avm1Lookup GetLexicalVariable(string name)
     {
@@ -87,6 +89,9 @@ internal sealed class Avm1ExecutionContext(
 
     public void GotoFrame(object? frame, bool play, int sceneBias) =>
         timelineFrameJumper?.Invoke(frame, play, sceneBias);
+
+    public void SendHostCommand(string command, string argument) =>
+        OnCommit(() => hostCommand?.Invoke(command, argument));
 
     public Avm1Lookup CloneSprite(object? source, string name, int depth)
         => spriteCloner(source, name, depth);

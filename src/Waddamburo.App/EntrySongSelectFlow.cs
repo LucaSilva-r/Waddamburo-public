@@ -182,8 +182,13 @@ internal static class EntrySongSelectFlow
                 {
                     simulationTick++;
                     var keyboardState = inputTimeline.Apply(simulationTick, keyboard);
-                    var input = LumenInputAdapter.CreateSnapshot(keyboardState);
+                    var input = LumenInputAdapter.CreateSnapshot(keyboardState,
+                        active.Id == gameplayId
+                            ? LumenInputMode.PresentationOnly
+                            : LumenInputMode.AuthoredControls);
                     active.Player.Advance(input);
+                    if (active.Id == gameplayId)
+                        gameplayPresentation.AdvanceAnimations();
                     rainbow?.Player.Advance();
                     donRenderer?.Advance();
                     var escapeIsDown = keyboardState.IsDown(SdlKeyboardKey.Escape);

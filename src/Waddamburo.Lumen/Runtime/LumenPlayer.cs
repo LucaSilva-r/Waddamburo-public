@@ -78,6 +78,9 @@ public sealed class LumenPlayer
 
     public float StageWidth { get; }
 
+    /// <summary>Authored host notifications. No browser, process, or network action is performed.</summary>
+    public event Action<string, string>? HostCommand;
+
     public float StageHeight { get; }
 
     public int CurrentFrame => _root.Frame;
@@ -641,6 +644,9 @@ public sealed class LumenPlayer
                     instance.Playing = playing;
                 context.Commit();
             }
+            else if (status == Avm1ExecutionStatus.StackUnderflow)
+                reportOnce("LUM_AVM_STACK_UNDERFLOW", instance.CharacterId, instance.Frame,
+                    $"AVM stack underflow at action offset 0x{context.InstructionOffset:X}.");
             return status;
         }
         finally
@@ -978,7 +984,8 @@ public sealed class LumenPlayer
                     && tryResolveTimelineFrame(target, value, out var frame)
                     && frame + bias < targetTimeline.Frames.Length)
                     jumpInstance(target, frame + bias, play);
-            });
+            },
+            (command, argument) => HostCommand?.Invoke(command, argument));
         return context;
     }
 
@@ -1456,6 +1463,8 @@ public sealed class LumenPlayer
     private void installMathObject()
     {
         var math = new Avm1Object();
+        math.Properties["random"] = new Avm1NativeFunction(
+            "Math.random", _ => LumenHostValue.FromNumber(Random.Shared.NextDouble()));
         math.Properties["floor"] = new Avm1NativeFunction(
             "Math.floor",
             call => LumenHostValue.FromNumber(

@@ -2,11 +2,25 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Platform.Sdl;
 
+public enum LumenInputMode
+{
+    AuthoredControls,
+    PresentationOnly,
+}
+
 public static class LumenInputAdapter
 {
-    public static LumenInputSnapshot CreateSnapshot(SdlKeyboardSnapshot keyboard)
+    public static LumenInputSnapshot CreateSnapshot(
+        SdlKeyboardSnapshot keyboard,
+        LumenInputMode mode = LumenInputMode.AuthoredControls)
     {
         ArgumentNullException.ThrowIfNull(keyboard);
+        // Native gameplay owns input and drives movies through semantic callbacks.
+        // Forwarding menu keys as well can activate authored preview/debug handlers.
+        if (mode == LumenInputMode.PresentationOnly)
+            return LumenInputSnapshot.Empty;
+        if (mode != LumenInputMode.AuthoredControls)
+            throw new ArgumentOutOfRangeException(nameof(mode));
         return new LumenInputSnapshot(keyboard.PressedKeys.SelectMany(mapKey));
     }
 
