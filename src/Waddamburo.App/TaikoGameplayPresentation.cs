@@ -69,11 +69,12 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             {
                 PlayableLongNoteKind.Roll => "onp_renda",
                 PlayableLongNoteKind.BigRoll => "onp_renda_dai",
+                PlayableLongNoteKind.Kusudama => "onp_kusudama",
                 _ => "onp_fusen",
             };
             var content = scene.Layers.Single(layer => Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == name).Content;
             return layers[name] with { Player = content.CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-        }, layers["renda_num"], layers["action_fusen_1p"], _flights, don);
+        }, layers["renda_num"], layers["action_fusen_1p"], _flights, don, layers["action_kusudama"]);
         _character = don is null ? null : new(don, layers["don3d"]);
         _animationClock = new(chart.TimingPoints);
         // ponytail: which skin parts follow the beat is carried over from the first skin
@@ -87,8 +88,15 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         {
             if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
         };
+        var combo = 0;
+        var comboBonus = layers["combo_bonus_don_1p"].Player;
         _session.Judged += judgement =>
         {
+            // Combo bonus popup at every 100 combo (the movie picks its label from the count).
+            combo = judgement.StrongHitCompleted ? combo
+                : judgement.Result == TaikoHitResult.Miss ? 0 : combo + 1;
+            if (!judgement.StrongHitCompleted && combo > 0 && combo % 100 == 0)
+                comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(combo)]);
             var segments = gauge.FilledSegments;
             if (gauge.Apply(judgement))
             {
@@ -101,7 +109,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             skinPresentation.OnJudged(judgement, gauge);
         };
         var background = layers.Where(pair => pair.Key is "bg_nomal" or "bg_fever" or "dance" or "dodai" or "renda"
-                or "fever" or "donbg" or "chibi" or "lane" or "lane_hit" || pair.Key == gaugeName).ToArray();
+                or "fever" or "donbg" or "chibi" or "combo_bonus_don_1p" or "lane" or "lane_hit" || pair.Key == gaugeName).ToArray();
         // Don is drawn right after his backdrop (reference frame order).
         _characterSlot = Array.FindIndex(background, pair => pair.Key == "donbg") + 1;
         _presentation = new TaikoLumenPresentation(chart, _session,

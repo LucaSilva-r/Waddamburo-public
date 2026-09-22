@@ -12,7 +12,8 @@ Output main(Input input) {
     float4 clip = mul(float4(worldPosition, 1), viewProjection);
     float2 projectedNormal = mul(float4(worldNormal, 0), viewProjection).xy;
     if (outlineParameters.x > 0 && dot(projectedNormal, projectedNormal) > 1e-12)
-        clip.xy += normalize(projectedNormal) * outlineParameters.x * input.color.g * clip.w;
+        clip.xy += normalize(projectedNormal / outlineParameters.yz)
+            * outlineParameters.x * outlineParameters.yz * input.color.g * clip.w;
     Output output;
     output.position = clip;
     output.uv = input.uv;

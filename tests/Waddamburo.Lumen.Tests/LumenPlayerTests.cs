@@ -486,6 +486,19 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void TraceDiscardsItsValueAndContinues()
+    {
+        // push true; trace; stop
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x02, 0, 0x05, 1,
+            0x26, 0x07, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.False(player.IsPlaying);
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
     public void EmptyDiscardAfterGuardDoesNotAbortRemainingActions()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [

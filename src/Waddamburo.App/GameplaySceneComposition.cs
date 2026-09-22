@@ -49,6 +49,10 @@ internal static class GameplaySceneComposition
             id,
             [
                 .. SkinRoles.Select(entry => skin(entry.Role, entry.Y)).OfType<SceneLayerDefinition>(),
+                // ponytail: combo bonus and kusudama are placed at the stage origin like the balloon
+                // overlay; unverified against the game.
+                // The player's character version (Don 1P); base1p's generic one is not used in play.
+                layer("enso_system/don1p/packeddata.ddp", "combo_bonus_don_1p/combo_bonus_don_1p.lm"),
                 layer(
                     "enso_system/common/packeddata.ddp",
                     "lane/lane.lm",
@@ -67,8 +71,10 @@ internal static class GameplaySceneComposition
                 layer("enso_system/common/packeddata.ddp", "onp_renda/onp_renda.lm"),
                 layer("enso_system/common/packeddata.ddp", "onp_renda_dai/onp_renda_dai.lm"),
                 layer("enso_system/common/packeddata.ddp", "onp_fusen/onp_fusen.lm"),
+                layer("enso_system/common/packeddata.ddp", "onp_kusudama/onp_kusudama.lm"),
                 layer("enso_system/common/packeddata.ddp", "renda_num/renda_num.lm", x: 190, y: 184),
                 layer("enso_system/base1p/packeddata.ddp", "action_fusen_1p/action_fusen_1p.lm"),
+                layer("enso_system/common/packeddata.ddp", "action_kusudama/action_kusudama.lm"),
                 layer("enso_system/common/packeddata.ddp", "don3d/don3d.lm", x: 200, y: 92),
                 layer("enso_system/common/packeddata.ddp", "lane_syousetsu/lane_syousetsu.lm"),
                 layer("enso_system/don1p/packeddata.ddp", "onp_kiseki_don_1p/onp_kiseki_don_1p.lm", y: 184),

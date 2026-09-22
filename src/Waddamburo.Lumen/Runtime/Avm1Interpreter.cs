@@ -217,6 +217,10 @@ internal static class Avm1Interpreter
                     // Empty discard is harmless; value-consuming operations stay strict.
                     _ = tryPop(stack, out _);
                     break;
+                case 0x26: // Trace: authored debug output; the value is discarded
+                    if (!tryPop(stack, out _))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    break;
                 case 0x18: // ToInteger (truncate toward zero)
                     if (!tryUnary(stack, value => Math.Truncate(toNumber(value))))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -488,7 +492,7 @@ internal static class Avm1Interpreter
         instruction.Opcode switch
         {
             0x00 or 0x06 or 0x07
-                or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17 or 0x18
+                or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17 or 0x18 or 0x26
                 or 0x1C or 0x1D or 0x24 or 0x25 or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
                 or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52 or 0x53
                 or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69

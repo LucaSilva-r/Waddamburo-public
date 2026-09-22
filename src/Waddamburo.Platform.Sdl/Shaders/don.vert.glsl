@@ -22,7 +22,10 @@ void main() {
     if (outline.parameters.x > 0.0) {
         vec2 projectedNormal = (vec4(worldNormal, 0.0) * pose.viewProjection).xy;
         if (dot(projectedNormal, projectedNormal) > 1e-12)
-            clip.xy += normalize(projectedNormal) * outline.parameters.x * color.g * clip.w;
+            // Offset in target pixels (x = width, yz = clip units per pixel) so the hull line
+            // keeps its width on non-square targets.
+            clip.xy += normalize(projectedNormal / outline.parameters.yz)
+                * outline.parameters.x * outline.parameters.yz * color.g * clip.w;
     }
     gl_Position = clip;
     textureCoordinate = uv;

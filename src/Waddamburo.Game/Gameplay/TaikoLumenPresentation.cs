@@ -89,10 +89,11 @@ public sealed class TaikoLumenPresentation
             if (!_judgement.IsJudged(index))
                 addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
         layers.AddRange(_foreground);
-        if (_longNotes is not null)
-            layers.AddRange(_longNotes.OverlayLayers);
+        // Note flights pass under the roll counter and the balloon/kusudama overlays (which hold Don).
         if (_flights is not null)
             layers.AddRange(_flights.ActiveLayers);
+        if (_longNotes is not null)
+            layers.AddRange(_longNotes.OverlayLayers);
         return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, playerInterpolation);
     }
 

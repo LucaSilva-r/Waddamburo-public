@@ -12,8 +12,9 @@ namespace Waddamburo.Platform.Sdl.Rendering;
 /// <summary>Shared-device Don renderer. All methods must run on the owning SDL thread.</summary>
 public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 {
-    private const uint TargetSize = 600; // stage units covered by a target
-    private uint _targetPixels = TargetSize;
+    // Stage units covered by a target: menus use 600x600, gameplay the game's 448x256 slot.
+    private (float Width, float Height) _targetSize = (600, 600);
+    private (uint Width, uint Height) _targetPixels = (600, 600);
     private const int PaletteSize = 40;
     private const string ShaderPrefix = "Waddamburo.Shaders.";
     // Independently reconstructed camera from observed gameplay projection geometry.
@@ -108,6 +109,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ObjectDisposedException.ThrowIf(_disposed, this);
         _mirrorPlayerTwoCamera = mirrorPlayerTwoCamera;
         _gameplayCamera = gameplayCamera;
+        _targetSize = gameplayCamera ? (448, 256) : (600, 600);
         var idle = loadMotion("don_select_loop");
         foreach (var player in _players)
             player.Set(idle, idle);
@@ -150,7 +152,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     {
         // Render at twice the window's stage scale and let the composite's downscale anti-alias.
         var scale = Math.Min(width / 1280f, height / 720f);
-        resizeTargets((uint)Math.Clamp(MathF.Round(TargetSize * scale * 2 / 8) * 8, 256, 4096));
+        uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * scale * 2 / 8) * 8, 64, 4096);
+        resizeTargets((pixels(_targetSize.Width), pixels(_targetSize.Height)));
         for (var index = 0; index < _players.Length; index++)
             recordPlayer(commandBuffer, index);
     }
@@ -232,7 +235,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                     // The silhouette post-pass supplies its visible outer edge.
                     if (kind == 8)
                         continue;
-                    var outline = new Float4(kind is 3 or 8 ? 3f * 2f / TargetSize : 0, 0, 0, 0);
+                    // Hull line: 3 stage pixels, offset per axis (clip units per stage pixel).
+                    var outline = new Float4(kind is 3 or 8 ? 3f : 0, 2f / _targetSize.Width, 2f / _targetSize.Height, 0);
                     SDL_PushGPUVertexUniformData(commandBuffer, 1, (nint)(&outline), (uint)sizeof(Float4));
                     var cull = material.CullMode switch
                     {
@@ -300,7 +304,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         SDL_BindGPUGraphicsPipeline(post, _postPipeline);
         var postBinding = new SDL_GPUTextureSamplerBinding { texture = (SDL_GPUTexture*)target.Color, sampler = _linearSampler };
         SDL_BindGPUFragmentSamplers(post, 0, &postBinding, 1);
-        var postUniform = new Float4(3f * _targetPixels / TargetSize, 1f / _targetPixels, 1f / _targetPixels, 0);
+        var postUniform = new Float4(3f * _targetPixels.Width / _targetSize.Width,
+            1f / _targetPixels.Width, 1f / _targetPixels.Height, 0);
         SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&postUniform), (uint)sizeof(Float4));
         SDL_DrawGPUPrimitives(post, 3, 1, 0, 0);
         SDL_EndGPURenderPass(post);
@@ -421,7 +426,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             reuse ?? _compositor.RegisterBorrowedTexture((nint)finalTexture));
     }
 
-    private void resizeTargets(uint pixels)
+    private void resizeTargets((uint Width, uint Height) pixels)
     {
         if (pixels == _targetPixels) return;
         _targetPixels = pixels;
@@ -441,7 +446,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 
     private SDL_GPUTexture* createTexture(SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage, uint width = 0, uint height = 0)
     {
-        if (width == 0) (width, height) = (_targetPixels, _targetPixels);
+        if (width == 0) (width, height) = _targetPixels;
         var info = new SDL_GPUTextureCreateInfo
         {
             type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
