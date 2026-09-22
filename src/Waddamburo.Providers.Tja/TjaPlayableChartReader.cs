@@ -48,6 +48,8 @@ internal static class TjaPlayableChartReader
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
         int? level = null;
+        int? scoreInit = null;
+        int? scoreDiff = null;
 
         for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
@@ -83,10 +85,21 @@ internal static class TjaPlayableChartReader
                 if (header == "LEVEL")
                     level = int.TryParse(line[(headerSeparator + 1)..].Trim(), NumberStyles.Integer,
                         CultureInfo.InvariantCulture, out var stars) && stars > 0 ? stars : null;
+                if (header is "SCOREINIT" or "SCOREDIFF")
+                {
+                    // SCOREINIT may carry a second Shin-uchi term; Gen 3 uses the first.
+                    var value = line[(headerSeparator + 1)..].Split(',', 2)[0].Trim();
+                    int? parsed = int.TryParse(value, NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out var amount) && amount >= 0 ? amount : null;
+                    if (header == "SCOREINIT") scoreInit = parsed;
+                    else scoreDiff = parsed;
+                }
                 if (header == "COURSE" && course.Length != 0)
                 {
                     balloons.Clear();
                     branchBalloons.Clear();
+                    scoreInit = null;
+                    scoreDiff = null;
                 }
                 if (header is "BALLOON" or "BALLOONNOR" or "BALLOONEXP" or "BALLOONMAS")
                 {
@@ -123,7 +136,8 @@ internal static class TjaPlayableChartReader
                     timingPoints.ToImmutable(),
                     scrollPoints.ToImmutable(),
                     effectPoints.ToImmutable(),
-                    barLines.ToImmutable(), longNotes.ToImmutable()) { Level = level };
+                    barLines.ToImmutable(), longNotes.ToImmutable())
+                { Level = level, ScoreInit = scoreInit, ScoreDiff = scoreDiff };
             }
 
             var commandName = line.Split([' ', '\t'], 2)[0].ToUpperInvariant();

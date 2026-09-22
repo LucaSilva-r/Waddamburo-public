@@ -341,6 +341,30 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task PlayableChartRetainsCourseScoreHeaders()
+    {
+        var chart = await loadSynthetic("1000,", "SCOREINIT:1200,1600\nSCOREDIFF:240\n");
+        Assert.Equal(1200, chart.ScoreInit);
+        Assert.Equal(240, chart.ScoreDiff);
+    }
+
+    [Fact]
+    public async Task ScoreHeadersDoNotLeakBetweenCourses()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("synthetic.tja", "TITLE:Synthetic\nBPM:120\nCOURSE:Easy\nSCOREINIT:900\nSCOREDIFF:90\n#START\n1000,\n#END\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var charts = Assert.Single(contribution.Songs).Charts;
+        var easy = await provider.LoadChartAsync(charts[0].Key, charts[0].ChartAsset);
+        var oni = await provider.LoadChartAsync(charts[1].Key, charts[1].ChartAsset);
+        Assert.Equal(900, easy.ScoreInit);
+        Assert.Equal(90, easy.ScoreDiff);
+        Assert.Null(oni.ScoreInit);
+        Assert.Null(oni.ScoreDiff);
+    }
+
+    [Fact]
     public async Task CommandsWithinMeasuresPreserveSubdivisionsAndTheirExactPositions()
     {
         var chart = await loadSynthetic("10\n#BPMCHANGE 240\n#SCROLL 2\n#GOGOSTART\n1\n#DELAY 0.25\n2,\n#SECTION\n#LEVELHOLD\n#SENOTECHANGE 1\n#LYRIC synthetic\n1,");

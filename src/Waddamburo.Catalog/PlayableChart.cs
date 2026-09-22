@@ -151,6 +151,9 @@ public sealed record PlayableChart
     public int NoteCount => HitObjects.Length;
     /// <summary>Authored star rating, when the source has one.</summary>
     public int? Level { get; init; }
+    /// <summary>Optional TJA base score and ten-combo increment.</summary>
+    public int? ScoreInit { get; init; }
+    public int? ScoreDiff { get; init; }
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(
         IEnumerable<T> values,

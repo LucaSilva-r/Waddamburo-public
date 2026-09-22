@@ -64,6 +64,8 @@ internal static class GameplaySceneComposition
                 layer("enso_system/common/packeddata.ddp", "lane_hit/lane_hit.lm", y: 184),
                 layer("enso_system/common/packeddata.ddp", "lane_hit_effect/lane_hit_effect.lm", y: 184),
                 layer("enso_system/common/packeddata.ddp", "lane_obi/lane_obi.lm", y: 184),
+                // Right-align with the board score and leave the settled award above it.
+                layer("enso_system/don1p/packeddata.ddp", "score_add_don_1p/score_add_don_1p.lm", y: 143, x: 136),
                 layer("enso_system/common/packeddata.ddp", "onp_don/onp_don.lm"),
                 layer("enso_system/common/packeddata.ddp", "onp_katsu/onp_katsu.lm"),
                 layer("enso_system/common/packeddata.ddp", "onp_don_dai/onp_don_dai.lm"),

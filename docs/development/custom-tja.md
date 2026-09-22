@@ -79,7 +79,9 @@ Missing/invalid balloon quotas default to one hit. A new long-note head or chart
 end closes an unterminated long note; stray terminators are harmless. These are
 explicit recovery policies. All long notes count toward the configured note limit.
 Long-note hits do not generate tap judgements or alter combo; unpopped balloons
-expire without a tap miss. Scoring and gauge formulas remain unimplemented.
+expire without a tap miss. Score and gauge use the product policies described in
+[gameplay integration](gameplay-integration.md#score-policy); full arcade parity is
+not established.
 
 Long-note presentation uses user-supplied authored Lumen movies: stretched small/
 big roll bodies, incoming balloon notes, roll counters, and the balloon countdown/

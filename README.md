@@ -202,7 +202,7 @@ then runs the authored rainbow handoff: Song Select remains underneath `in_extra
 the composed gameplay scene loads only once the screen is covered, and chart/audio
 time starts with `out_extra`. The transition displays the selected song title in
 its native fill. Gameplay renders authored Don/Ka note movies above the lane and
-drives drum, judgement, combo, and Go-Go presentation. Chart offsets and pre-roll
+drives drum, judgement, combo, score, and Go-Go presentation. Chart offsets and pre-roll
 are explicit; interactive judgement follows an estimated audio output clock,
 independently of animation ticks. See [gameplay integration](docs/development/gameplay-integration.md)
 for the timing contract, reference sources, and remaining limitations.

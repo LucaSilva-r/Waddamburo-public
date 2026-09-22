@@ -152,7 +152,7 @@ diagnostics and captures are private; no complete compatibility claim is made.
 The first visual-runtime follow-up fixes nested calls observing pending timeline
 function definitions and adds AVM1 stack-based frame/label jumps, including scene
 bias. The composition now includes the dancer and a zero-initialized gauge; gauge
-scoring is still not implemented. A mode-specific support overlay is deliberately
+scoring was still not implemented at that stage. A mode-specific support overlay is deliberately
 not enabled for ordinary play. Synthetic regressions and the filtered managed
 suite pass (240 tests); the same Realm exclusion above still applies. The app
 builds with warnings treated as errors, and a local asset-backed smoke run reaches
@@ -165,12 +165,42 @@ are not yet verified as fixed. Captures and diagnostic output remain private.
 
 Long-note input and authored graphics, plus chart-load error recovery, are now
 implemented; see [TJA compatibility](custom-tja.md#gameplay-compatibility).
-Score/gauge rules, dynamic branching, complete theme composition, two-player
+Dynamic branching, complete theme composition, two-player
 play, pause/calibration/device recovery, transactional scene preparation, and
 recovery from audio/scene-loading failures remain incomplete. Do not describe this as
 full gameplay compatibility. Synthetic tests verify the time mapping, scheduled
 audio, pre-roll judgement, secondary input, and generic Lumen bounds. Asset-backed
 and audible synchronization checks must be reported separately.
+
+## Score policy
+
+The game tracks one-player score independently of Lumen and sends the running
+total through the lane board's `SetScore` callback. Every positive score change
+also calls the authored 1P `score_add_don_1p` movie's `Create`, followed by
+`SetCount` with that award. Its overlapping number animations keep their
+authored local motion. The scene places the movie at x=136, y=143 so its settled
+digits sit above and right-align with the lane board's score digits. This
+alignment was measured from the user-supplied Green movies; the transform is
+owned by the scene composition.
+
+TJA `SCOREINIT` and `SCOREDIFF` supply the first term and difference. When both
+are absent, Waddamburo estimates them from note count, large notes, and Go-Go
+sections for an approximately one-million-point all-Great chart, with a 4:1
+first-term-to-difference ratio. This is a fallback policy, not an original chart
+value. Gen 3 score changes at 10, 30, 50, and 100 combo: the difference is
+multiplied by 0, 1, 2, 4, and 8 respectively. Each base value is truncated to a
+multiple of ten. Great earns the base; Good earns half; Miss earns zero and resets
+combo. A 10000-point bonus arrives at each 100 combo and is unaffected by Go-Go.
+Large notes earn ordinary points on the first hit and the same amount on a valid
+second hand hit. Roll hits earn 100, or 200 for a big roll. Balloon and kusudama
+hits earn 300 each, plus 5000 on completion. Go-Go multiplies hit and completion
+points by 6/5. Non-integer-tens awards round to the nearest ten, with ties up, so
+every score ends in zero. The score progression and combo bonus follow the
+[Gen 3 scoring explanation](https://taikotime.blogspot.com/2018/08/feature-combo-scoring-visualized.html),
+[advanced scoring rules](https://taikotime.blogspot.com/2010/08/advanced-rules.html),
+and [TJA score mode 2 documentation](https://iepiweidieng.github.io/TJAPlayer3/tja/#scoremode).
+The strong-hit window and fallback estimate remain Waddamburo policies pending
+broader parity validation.
 
 
 ## Long-note presentation follow-up

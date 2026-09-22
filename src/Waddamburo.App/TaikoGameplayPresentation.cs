@@ -57,6 +57,19 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         if (!gaugeMovie.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]))
             throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
         var gauge = new TaikoSoulGauge(course, chart.Level, chart.NoteCount);
+        var score = new TaikoScore(chart);
+        var scoreAdd = layers["score_add_don_1p"].Player;
+        if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
+            throw new InvalidDataException("Gameplay board is missing its score initialization callback.");
+        void updateScore(long award)
+        {
+            if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
+                throw new InvalidDataException("Gameplay board is missing SetScore.");
+            if (!scoreAdd.TryInvokeCallback("Create", []))
+                throw new InvalidDataException("Gameplay score-add movie is missing Create.");
+            if (!scoreAdd.TryInvokeCallback("SetCount", [LumenHostValue.FromNumber(award)]))
+                throw new InvalidDataException("Gameplay score-add movie is missing SetCount after Create.");
+        }
         foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai" })
             if (!layers[name].Player.TryGotoLabel("", "level01"))
                 throw new InvalidDataException("Gameplay note movie is missing its initial state.");
@@ -86,17 +99,18 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             skin("bg_fever"), skin("fever"), skin("renda")));
         _session.LongNoteHit += progress =>
         {
+            var previousScore = score.Value;
+            if (score.Apply(progress, _session.CurrentTime)) updateScore(score.Value - previousScore);
             if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
         };
-        var combo = 0;
         var comboBonus = layers["combo_bonus_don_1p"].Player;
         _session.Judged += judgement =>
         {
+            var previousScore = score.Value;
+            if (score.Apply(judgement, _session.CurrentTime)) updateScore(score.Value - previousScore);
             // Combo bonus popup at every 100 combo (the movie picks its label from the count).
-            combo = judgement.StrongHitCompleted ? combo
-                : judgement.Result == TaikoHitResult.Miss ? 0 : combo + 1;
-            if (!judgement.StrongHitCompleted && combo > 0 && combo % 100 == 0)
-                comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(combo)]);
+            if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
+                comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
             var segments = gauge.FilledSegments;
             if (gauge.Apply(judgement))
             {
@@ -114,7 +128,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         _characterSlot = Array.FindIndex(background, pair => pair.Key == "donbg") + 1;
         _presentation = new TaikoLumenPresentation(chart, _session,
             background.Select(pair => pair.Value),
-            [layers["lane_hit_effect"], layers["lane_obi"]],
+            [layers["lane_hit_effect"], layers["lane_obi"], layers["score_add_don_1p"]],
             new Dictionary<PlayableNoteKind, LumenSceneLayer>
             {
                 [PlayableNoteKind.Don] = layers["onp_don"],
