@@ -14,6 +14,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
     private readonly Dictionary<(string Bank, int Cue), AudioClip> _clips = [];
     private readonly HashSet<(string Bank, int Cue)> _reportedFailures = [];
     private AudioClip? _latestVoice;
+    private int _latestVoiceCue = -1;
     private AudioPlaybackHandle? _oneShotVoiceHandle;
     private AudioPlaybackHandle? _loopVoiceHandle;
     private AudioPlaybackHandle? _retryMusicHandle;
@@ -346,6 +347,13 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         playNamedBankCue("VO_SELECT", cue, AudioBus.Voice);
     }
 
+    /// <summary>Stops the current voice only when it is the given cue.</summary>
+    public void StopVoice(int cue)
+    {
+        if (_latestVoice is not null && _latestVoiceCue == cue)
+            StopVoice();
+    }
+
     public void StopVoice()
     {
         stopVoiceImmediately(_oneShotVoiceHandle);
@@ -443,6 +451,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
                 stopVoiceImmediately(_oneShotVoiceHandle);
                 stopVoiceImmediately(_loopVoiceHandle);
                 _latestVoice = clip;
+                _latestVoiceCue = cueId;
                 _oneShotVoiceHandle = null;
                 _loopVoiceHandle = null;
             }
@@ -455,7 +464,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
                     _oneShotVoiceHandle = handle;
             }
             if (trace)
-                Console.WriteLine($"Authored sound {bankName}#{cueId} -> {bus}.");
+                Console.WriteLine($"Authored sound {bankName}#{cueId} -> {bus} ({clip.Duration.TotalSeconds:0.00} s).");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {

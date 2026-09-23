@@ -495,7 +495,7 @@ public sealed class GameFlowSessionTests
         {
         }
 
-        public void StopVoice()
+        public void StopVoice(int? cue = null)
         {
         }
 

@@ -37,9 +37,9 @@ internal sealed class ViewerHostBinding : ILumenHostBinding, ILumenFrontendServi
             $"Lumen.{request.Kind}({string.Join(", ", request.Arguments.Select(formatValue))})");
     }
 
-    public void StopVoice()
+    public void StopVoice(int? cue = null)
     {
-        Console.WriteLine("Lumen.StopVoice()");
+        Console.WriteLine($"Lumen.StopVoice({cue})");
     }
 
     public LumenHostValue CallExternalInterface(LumenHostCall hostCall)

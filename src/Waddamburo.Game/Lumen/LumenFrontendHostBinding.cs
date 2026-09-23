@@ -30,7 +30,8 @@ public interface ILumenFrontendServices
 
     void RequestSound(LumenFrontendSoundRequest request);
 
-    void StopVoice();
+    /// <summary>Stops the named voice cue, or every voice when <paramref name="cue"/> is null.</summary>
+    void StopVoice(int? cue = null);
 
     LumenHostValue CallExternalInterface(LumenHostCall hostCall);
 }
@@ -75,9 +76,12 @@ public sealed class LumenFrontendHostBinding(
             lumen.RegisterMethod("RequestSE", call => requestSound(LumenFrontendSoundRequestKind.Effect, call));
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(LumenFrontendSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(LumenFrontendSoundRequestKind.LoopVoice, call));
-            lumen.RegisterMethod("StopVoice", _ =>
+            // Traced StopVoice(35) right after a mode's voice: it names one voice and must not cut
+            // the others (the enso-mode line plays out before the scene changes).
+            lumen.RegisterMethod("StopVoice", call =>
             {
-                _services.StopVoice();
+                _services.StopVoice(call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number
+                    ? (int)call.Arguments[0].AsNumber() : null);
                 return LumenHostValue.Undefined;
             });
             if (_don is not null)

@@ -1081,11 +1081,14 @@ internal static class EntrySongSelectFlow
                 $"Lumen.{request.Kind}({string.Join(", ", request.Arguments.Select(formatHostValue))})");
         }
 
-        public void StopVoice()
+        public void StopVoice(int? cue = null)
         {
-            _sounds?.StopVoice();
             if (_sounds is null)
-                Console.WriteLine("Lumen.StopVoice()");
+                Console.WriteLine($"Lumen.StopVoice({cue})");
+            else if (cue is { } number)
+                _sounds.StopVoice(number);
+            else
+                _sounds.StopVoice();
         }
 
         public LumenHostValue CallExternalInterface(LumenHostCall hostCall)
