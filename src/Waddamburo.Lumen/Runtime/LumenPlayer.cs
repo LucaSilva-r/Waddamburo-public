@@ -786,6 +786,33 @@ public sealed class LumenPlayer
                     context.SetMember(array, "length", newLength);
                     return new Avm1Lookup(true, newLength);
                 }
+                if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join")
+                {
+                    var lengthLookup = context!.GetMember(listArray, "length");
+                    var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
+                    var count = double.IsFinite(length) && length > 0 ? (int)length : 0;
+                    string key(int index) => index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (name == "join")
+                    {
+                        var separator = arguments.Count > 0 && arguments[0] is not Avm1Undefined ? toAvmString(arguments[0]) : ",";
+                        return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
+                            context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
+                                ? toAvmString(item.Value) : "")));
+                    }
+                    if (count == 0)
+                        return new Avm1Lookup(true, Avm1Undefined.Instance);
+                    object? removed;
+                    if (name == "pop")
+                        removed = context.GetMember(listArray, key(count - 1)).Value;
+                    else
+                    {
+                        removed = context.GetMember(listArray, key(0)).Value;
+                        for (var index = 1; index < count; index++)
+                            context.SetMember(listArray, key(index - 1), context.GetMember(listArray, key(index)).Value);
+                    }
+                    context.SetMember(listArray, "length", (double)(count - 1));
+                    return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
+                }
                 if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
                 {
                     var nextDepth = context!.GetNextHighestDepth(depthTarget, depthTarget.Children.Keys);
@@ -1117,6 +1144,17 @@ public sealed class LumenPlayer
         parent.Children[destination] = instance;
     }
 
+    /// <summary>Diagnostic: WADDAMBURO_HOST_TRACE=1 prints every movie -> host call with its result.</summary>
+    private static readonly bool TraceHostCalls = Environment.GetEnvironmentVariable("WADDAMBURO_HOST_TRACE") == "1";
+
+    private static string describe(LumenHostValue value) => value.Kind switch
+    {
+        LumenHostValueKind.Boolean => value.AsBoolean() ? "true" : "false",
+        LumenHostValueKind.Number => value.AsNumber().ToString(System.Globalization.CultureInfo.InvariantCulture),
+        LumenHostValueKind.Text => $"'{value.AsString()}'",
+        _ => value.Kind.ToString().ToLowerInvariant(),
+    };
+
     private Avm1Lookup invokeHost(
         DisplayInstance instance,
         Avm1NativeFunction function,
@@ -1125,7 +1163,10 @@ public sealed class LumenPlayer
         try
         {
             var converted = arguments.Select(toHostValue).ToImmutableArray();
-            return new Avm1Lookup(true, fromHostValue(function.Callback(new LumenHostCall(converted))));
+            var result = function.Callback(new LumenHostCall(converted));
+            if (TraceHostCalls)
+                Console.Error.WriteLine($"[host] {function.Name}({string.Join(", ", converted.Select(describe))}) -> {describe(result)}");
+            return new Avm1Lookup(true, fromHostValue(result));
         }
         catch (Exception exception)
         {
@@ -1573,6 +1614,33 @@ public sealed class LumenPlayer
             "Math.abs",
             call => LumenHostValue.FromNumber(
                 call.Arguments.IsEmpty ? double.NaN : Math.Abs(toHostNumber(call.Arguments[0]))));
+        // The rest of the ActionScript 2 Math object (round is floor(x + 0.5), as in Flash).
+        void unary(string name, Func<double, double> function) => math.Properties[name] = new Avm1NativeFunction(
+            $"Math.{name}", call => LumenHostValue.FromNumber(
+                call.Arguments.IsEmpty ? double.NaN : function(toHostNumber(call.Arguments[0]))));
+        void binary(string name, Func<double, double, double> function) => math.Properties[name] = new Avm1NativeFunction(
+            $"Math.{name}", call => LumenHostValue.FromNumber(call.Arguments.Length < 2
+                ? double.NaN : function(toHostNumber(call.Arguments[0]), toHostNumber(call.Arguments[1]))));
+        unary("ceil", Math.Ceiling);
+        unary("round", value => Math.Floor(value + 0.5));
+        unary("sqrt", Math.Sqrt);
+        unary("sin", Math.Sin);
+        unary("cos", Math.Cos);
+        unary("tan", Math.Tan);
+        unary("asin", Math.Asin);
+        unary("acos", Math.Acos);
+        unary("atan", Math.Atan);
+        unary("exp", Math.Exp);
+        unary("log", Math.Log);
+        binary("atan2", Math.Atan2);
+        binary("pow", Math.Pow);
+        binary("min", Math.Min);
+        binary("max", Math.Max);
+        math.Properties["PI"] = Math.PI;
+        math.Properties["E"] = Math.E;
+        math.Properties["SQRT2"] = Math.Sqrt(2);
+        math.Properties["LN2"] = Math.Log(2);
+        math.Properties["LN10"] = Math.Log(10);
         _globals["Math"] = math;
     }
 

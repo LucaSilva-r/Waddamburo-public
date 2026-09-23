@@ -5,6 +5,27 @@ namespace Waddamburo.Lumen.Runtime;
 
 internal static class Avm1Interpreter
 {
+    // Flash 4 property indices (GetProperty / SetProperty).
+    private static readonly string[] PropertyNames =
+    [
+        "_x", "_y", "_xscale", "_yscale", "_currentframe", "_totalframes", "_alpha", "_visible",
+        "_width", "_height", "_rotation", "_target", "_framesloaded", "_name", "_droptarget", "_url",
+        "_highquality", "_focusrect", "_soundbuftime", "_quality", "_xmouse", "_ymouse",
+    ];
+
+    private static string? propertyName(double index) =>
+        index >= 0 && index < PropertyNames.Length ? PropertyNames[(int)index] : null;
+
+    // An empty target path is the current timeline (not `this`, which a host-invoked callback lacks).
+    private static object? resolveTarget(Avm1ExecutionContext context, object? target)
+    {
+        var path = toAvmString(target);
+        if (path.Length == 0 && context.TimelineTarget is { } timeline)
+            return timeline;
+        var lookup = context.GetVariable(path.Length == 0 ? "this" : path);
+        return lookup.Found ? lookup.Value : Avm1Undefined.Instance;
+    }
+
     public static string DescribeUnsupported(Avm1CodeBlock code) => string.Join(
         ", ",
         code.Instructions
@@ -316,6 +337,22 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     (stack[^1], stack[^2]) = (stack[^2], stack[^1]);
                     break;
+                case 0x22: // GetProperty (Flash 4): target path, property index
+                    if (!tryPop(stack, out var propertyIndex) || !tryPop(stack, out var propertyTarget))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var property = propertyName(toNumber(propertyIndex)) is { } getName
+                        ? context.GetMember(resolveTarget(context, propertyTarget), getName) : default;
+                    if (!tryPush(stack, property.Found ? property.Value : Avm1Undefined.Instance, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
+                case 0x23: // SetProperty (Flash 4): target path, property index, value
+                    if (!tryPop(stack, out var propertyValue)
+                        || !tryPop(stack, out propertyIndex)
+                        || !tryPop(stack, out propertyTarget))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    if (propertyName(toNumber(propertyIndex)) is { } setName)
+                        context.SetMember(resolveTarget(context, propertyTarget), setName, propertyValue);
+                    break;
                 case 0x4E: // GetMember
                     if (!tryPop(stack, out var memberName) || !tryPop(stack, out var memberTarget))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -492,7 +529,7 @@ internal static class Avm1Interpreter
         instruction.Opcode switch
         {
             0x00 or 0x06 or 0x07
-                or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17 or 0x18 or 0x26
+                or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17 or 0x18 or 0x22 or 0x23 or 0x26
                 or 0x1C or 0x1D or 0x24 or 0x25 or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
                 or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52 or 0x53
                 or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69
