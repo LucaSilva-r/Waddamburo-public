@@ -4,16 +4,18 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
 
 /// <summary>Resolves authored nuSound2 bank/cue requests against a user-supplied sound tree.</summary>
-internal sealed class AuthoredSoundController : ISongSelectSoundController
+internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController
 {
     private readonly AudioEngine _audio;
     private readonly string _bankRoot;
+    private readonly string _musicRoot;
     private readonly NuSoundBankCatalog _catalog;
     private readonly Dictionary<(string Bank, int Cue), AudioClip> _clips = [];
     private readonly HashSet<(string Bank, int Cue)> _reportedFailures = [];
     private AudioClip? _latestVoice;
     private AudioPlaybackHandle? _oneShotVoiceHandle;
     private AudioPlaybackHandle? _loopVoiceHandle;
+    private AudioPlaybackHandle? _retryMusicHandle;
     private bool _categoryVoiceSelected;
 
     public AuthoredSoundController(AudioEngine audio, string soundRoot)
@@ -22,6 +24,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
         ArgumentException.ThrowIfNullOrWhiteSpace(soundRoot);
         var root = Path.GetFullPath(soundRoot);
         _bankRoot = Path.Combine(root, "se");
+        _musicRoot = Path.Combine(root, "bgm", "nub");
         _catalog = NuSoundBankCatalog.Load(Path.Combine(root, "config", "nuSound2BankStr.bin"));
     }
 
@@ -61,6 +64,59 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(request));
+        }
+    }
+
+    public void RequestSound(RetrySoundRequest request)
+    {
+        if (request.Kind == RetrySoundRequestKind.Voice
+            && request.Group == 0
+            && request.Cue is 1 or 2 or 3 or 4 or 6 or 7 or 8)
+        {
+            playNamedBankCue("VO_REVIVAL", request.Cue);
+        }
+        else if (request.Kind == RetrySoundRequestKind.Effect)
+        {
+            if (request.Group == 0 && request.Cue is 0 or 1 or 3 or 5 or 7 or 8 or 12 or 14 or 16)
+                playNamedBankCue("SE_REVIVAL", request.Cue);
+            else if (request.Group == 1 && request.Cue == 100)
+                playNamedBankCue("SE_COM", 0, AudioBus.DrumHit);
+            else if (request.Group == 0 && request.Cue == 101)
+                playNamedBankCue("SE_COM", 13, AudioBus.MenuSound);
+            else
+                traceUnmappedRetry(request);
+        }
+        else
+        {
+            traceUnmappedRetry(request);
+        }
+    }
+
+    public void StopAll()
+    {
+        foreach (var bus in Enum.GetValues<AudioBus>())
+            _audio.Mixer.StopBus(bus);
+        _retryMusicHandle = null;
+        _oneShotVoiceHandle = null;
+        _loopVoiceHandle = null;
+        _latestVoice = null;
+        _categoryVoiceSelected = false;
+    }
+
+    public void StartMusic()
+    {
+        if (_retryMusicHandle is { } handle && _audio.Mixer.IsPlaying(handle))
+            return;
+        var path = Path.Combine(_musicRoot, "JINGLE_RENDA.nub");
+        try
+        {
+            _retryMusicHandle = _audio.PlayLoop(path, AudioBus.Bgm);
+            Console.WriteLine("Revival music JINGLE_RENDA -> Bgm.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            if (_reportedFailures.Add(("JINGLE_RENDA", -1)))
+                Console.Error.WriteLine($"Revival music is unavailable: {exception.Message}");
         }
     }
 
@@ -254,6 +310,9 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController
     {
         Console.WriteLine($"Lumen.{kind}({string.Join(", ", arguments.Select(formatValue))}) [unmapped]");
     }
+
+    private static void traceUnmappedRetry(RetrySoundRequest request) =>
+        Console.WriteLine($"Retry.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");
 
     private static string formatValue(LumenHostValue value) => value.Kind switch
     {

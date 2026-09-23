@@ -46,6 +46,28 @@ folder opens or Song Select releases voice ownership.
 These mappings cover the currently exercised Player Entry and Song Select paths.
 Other common effects and scene-specific banks remain unclassified.
 
+## Revival request routing
+
+Runtime observations of one successful and two failed revivals correlated each
+movie request with the bank and cue played immediately afterward. This verifies
+routing for those requests; it does not identify what each sample sounds like.
+
+| Movie request | Bank | Cue |
+| --- | --- | ---: |
+| `SE_REQUEST(0, 0/1/3/5/7/8/12/14/16)` | `SE_REVIVAL.nub` | Same as second argument |
+| `SE_REQUEST(1, 100)` | `SE_COM.nub` | 0 |
+| `SE_REQUEST(0, 101)` | `SE_COM.nub` | 13 |
+| `VOICE_REQUEST(0, 1/2/3/4/6/7/8)` | `VO_REVIVAL.nub` | Same as second argument |
+
+Other request shapes remain unmapped. The rapid `SE_REQUEST(1, 100)` sequence
+occurs during the drum roll; its cue uses the drum-hit bus. The scene's
+`BGM_START` request starts `bgm/nub/JINGLE_RENDA.nub`; the game loads that music
+before Revival in the observed sessions, then invokes `BGM_START` at the start of
+the roll. `SOUND_STOP_ALL` stops it when the roll ends.
+On both observed failures, the roll ends with `SOUND_STOP_ALL`, then
+`SE_REQUEST(0, 7)`, followed by `SE_REQUEST(0, 12)` alongside
+`VOICE_REQUEST(0, 8)`, and finally `SE_REQUEST(0, 14)`.
+
 ## Identification workflow
 
 Run the VS Code task `Waddamburo: Probe sound effects`, or invoke the app with

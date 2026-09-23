@@ -28,6 +28,8 @@ try
     var audioPath = parseOption(args, "--play-audio=");
     var jinglePath = parseOption(args, "--play-jingle=");
     var soundRoot = parseOption(args, "--sound-root=");
+    var startSceneOption = parseOption(args, "--start-scene=");
+    var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
     // The cabinet's countdown option (chassisinfo disable_countdowntimer); on by default.
@@ -80,7 +82,8 @@ try
             layout.FontPath,
             jinglePath,
             layout.SoundRoot,
-            countdown);
+            countdown,
+            startScene);
         return 0;
     }
     if (soundBankProbe is not null)
@@ -88,7 +91,7 @@ try
         if (archivePath is not null || movieName is not null || scenePath is not null
             || assetRoot is not null || tjaRoot is not null || audioPath is not null
             || jinglePath is not null || soundRoot is not null || donRoot is not null || entrySongSelect
-            || positionalRoots.Length != 0)
+            || positionalRoots.Length != 0 || startSceneOption is not null)
         {
             throw new ArgumentException("--probe-sound-bank cannot be combined with game or content options.");
         }
@@ -120,9 +123,12 @@ try
             fontPath,
             jinglePath,
             soundRoot,
-            countdown);
+            countdown,
+            startScene);
         return 0;
     }
+    if (startSceneOption is not null)
+        throw new ArgumentException("--start-scene requires normal boot or --entry-song-select.");
     if (soundRoot is not null)
         throw new ArgumentException("--sound-root currently requires --entry-song-select.");
     if (donRoot is not null)

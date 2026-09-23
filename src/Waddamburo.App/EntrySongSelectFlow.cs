@@ -31,7 +31,8 @@ internal static class EntrySongSelectFlow
         string fontPath,
         string? jinglePath,
         string? soundRoot,
-        bool countdown = true)
+        bool countdown = true,
+        StartScene startScene = StartScene.Entry)
     {
         var tja = new TjaCatalogProvider(tjaRoot);
         using var globalCatalog = new GlobalSongCatalog([tja]);
@@ -47,7 +48,7 @@ internal static class EntrySongSelectFlow
             Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
 
         using var application = new SdlApplication(
-            "Waddamburo — Entry → Song Select",
+            "Waddamburo",
             windowWidth,
             windowHeight,
             debugGpu: false,
@@ -74,7 +75,7 @@ internal static class EntrySongSelectFlow
             ? null
             : new AuthoredSoundController(audioEngine!, soundRoot);
         AudioPlaybackHandle? sceneBgm = null;
-        if (entryJinglePath is not null)
+        if (startScene == StartScene.Entry && entryJinglePath is not null)
         {
             if (jinglePath is null)
                 sceneBgm = audioEngine!.PlayLoop(entryJinglePath, AudioBus.Bgm);
@@ -108,6 +109,14 @@ internal static class EntrySongSelectFlow
         var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
         var costumeIcons = new CostumeIconTextures(application, Path.GetFullPath(Path.Combine(assetRoot, "..", "..")));
         var songInfo = new TaikoSongInfo(0, 1);
+        TaikoPlayResult? diagnosticResult = startScene switch
+        {
+            StartScene.ResultFail => new TaikoPlayResult(
+                TaikoCourse.Normal, 0, 0, 0, 100, 0, 0, 0, false),
+            StartScene.ResultClear => new TaikoPlayResult(
+                TaikoCourse.Normal, 500_000, 90, 7, 3, 80, 0, 45, true),
+            _ => null,
+        };
         var songsPlayed = 0;
         var flow = new GameFlowSession();
         var playRequests = new PlayRequestState();
@@ -167,11 +176,20 @@ internal static class EntrySongSelectFlow
                 playRequests,
                 () => songInfo,
                 countdown,
-                () => gameplayPresentation.Result);
+                () => gameplayPresentation.Result ?? diagnosticResult);
         var loader = new LumenGameSceneLoader(
             new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), hostFactory);
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
-        coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
+        var initialScene = startScene switch
+        {
+            StartScene.Entry => entryId,
+            StartScene.SongSelect => songSelectId,
+            StartScene.ResultFail or StartScene.ResultClear => resultId,
+            StartScene.Retry => retryId,
+            StartScene.GameOver => gameOverId,
+            _ => throw new ArgumentOutOfRangeException(nameof(startScene)),
+        };
+        coordinator.StartAsync(initialScene).AsTask().GetAwaiter().GetResult();
 
         LumenGameSceneInstance active = null!;
         RenderTextureId[] textureIds = [];
@@ -185,6 +203,9 @@ internal static class EntrySongSelectFlow
         {
             active = requireLumenScene(coordinator);
             textureIds = uploadTextures(application, active);
+            if (active.Id == songSelectId)
+                previewController?.StartBackground();
+            Console.WriteLine($"Showing {active.Id} at launch.");
             indicators = new SystemIndicators((LumenGameSceneInstance)loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
                 .AsTask().GetAwaiter().GetResult());
@@ -211,6 +232,10 @@ internal static class EntrySongSelectFlow
                 textureIds = uploadTextures(application, active);
                 if (scene == songSelectId)
                     previewController?.StartBackground();
+                else if (scene == entryId && entryJinglePath is not null)
+                    sceneBgm = jinglePath is null
+                        ? audioEngine!.PlayLoop(entryJinglePath, AudioBus.Bgm)
+                        : audioEngine!.PlayOneShot(entryJinglePath, AudioBus.Bgm);
                 Console.WriteLine($"Showing {scene} at tick {simulationTick}.");
             }
 
@@ -414,7 +439,7 @@ internal static class EntrySongSelectFlow
                             // ponytail: the game's results end after 15-21 s (traced, no end signal seen).
                             if (escapePressed || simulationTick - resultStartTick >= 21 * 60)
                             {
-                                var play = gameplayPresentation.Result
+                                var play = gameplayPresentation.Result ?? diagnosticResult
                                     ?? throw new InvalidOperationException("Results without a finished play.");
                                 goTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared) switch
                                 {
@@ -745,7 +770,7 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost retryHost()
         {
-            var binding = Retry = new RetryGameHostBinding(_don);
+            var binding = Retry = new RetryGameHostBinding(_don, _sounds as IRetrySoundController);
             return new LumenLayerHost(binding, binding.Attach);
         }
 

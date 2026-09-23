@@ -18,12 +18,31 @@ public static class TaikoCredit
         !cleared && stage == 1 ? 2 : stage >= SongsPerCredit ? 0 : 1;
 }
 
+public enum RetrySoundRequestKind
+{
+    Effect,
+    Voice,
+}
+
+public readonly record struct RetrySoundRequest(RetrySoundRequestKind Kind, int Group, int Cue);
+
+public interface IRetrySoundController
+{
+    void RequestSound(RetrySoundRequest request);
+
+    void StartMusic();
+
+    void StopAll();
+}
+
 /// <summary>
 /// retry_game.lm, the revival drum roll: the game sets the norma and the hands' colours (traced), the
 /// movie counts hits itself, calls ExternalInterface "SetDonCameraSuccess" on a win and sets
 /// _global.isAllEnd when its ending is over.
 /// </summary>
-public sealed class RetryGameHostBinding(IDonPresentationController? don = null) : ILumenHostBinding
+public sealed class RetryGameHostBinding(
+    IDonPresentationController? don = null,
+    IRetrySoundController? sounds = null) : ILumenHostBinding
 {
     // ponytail: the game sent 7, 100 and 40 across three traced revivals with no visible rule.
     private const int Norma = 40;
@@ -46,12 +65,50 @@ public sealed class RetryGameHostBinding(IDonPresentationController? don = null)
             else if (name == "DonMot" && don is not null) applyRetryMotion(context, don, call.Arguments[1..]);
             return LumenHostValue.Undefined;
         });
-        // ponytail: sounds, BGM and cabinet LEDs come with the sound pass.
         context.RegisterObject("LumenMethod", method =>
         {
-            foreach (var name in new[] { "SE_REQUEST", "VOICE_REQUEST", "LED_SET", "BGM_START", "SOUND_STOP_ALL" })
-                method.RegisterMethod(name, static _ => LumenHostValue.Undefined);
+            method.RegisterMethod("SE_REQUEST", call => requestSound(RetrySoundRequestKind.Effect, call));
+            method.RegisterMethod("VOICE_REQUEST", call => requestSound(RetrySoundRequestKind.Voice, call));
+            method.RegisterMethod("SOUND_STOP_ALL", _ =>
+            {
+                sounds?.StopAll();
+                return LumenHostValue.Undefined;
+            });
+            method.RegisterMethod("BGM_START", _ =>
+            {
+                sounds?.StartMusic();
+                return LumenHostValue.Undefined;
+            });
+            // Cabinet LEDs need their own scene-level integration.
+            method.RegisterMethod("LED_SET", static _ => LumenHostValue.Undefined);
         });
+    }
+
+    private LumenHostValue requestSound(RetrySoundRequestKind kind, LumenHostCall call)
+    {
+        if (sounds is not null
+            && tryInteger(call.Arguments, 0, out var group)
+            && tryInteger(call.Arguments, 1, out var cue))
+        {
+            sounds.RequestSound(new RetrySoundRequest(kind, group, cue));
+        }
+        return LumenHostValue.Undefined;
+    }
+
+    private static bool tryInteger(
+        System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments,
+        int index,
+        out int result)
+    {
+        result = 0;
+        if ((uint)index >= (uint)arguments.Length || arguments[index].Kind != LumenHostValueKind.Number)
+            return false;
+        var number = arguments[index].AsNumber();
+        if (!double.IsFinite(number) || number != Math.Truncate(number)
+            || number < int.MinValue || number > int.MaxValue)
+            return false;
+        result = (int)number;
+        return true;
     }
 
     public void Attach(LumenPlayer player)

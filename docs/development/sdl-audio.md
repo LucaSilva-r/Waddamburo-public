@@ -85,6 +85,14 @@ Unknown system and player-effect shapes are traced.
 Player Entry's observed `RequestSystemSE(0, hit)` shape routes hit `0` to the
 common-bank Don cue and hit `1` to Ka. Song Select uses its separate observed
 `RequestPlayerSE(player, hit)` shape for the same samples.
+Revival forwards its observed `SE_REQUEST(group, cue)` and
+`VOICE_REQUEST(group, cue)` calls through a typed scene host contract. The verified
+request pairs select `SE_REVIVAL`, `VO_REVIVAL`, or `SE_COM` on the existing buses;
+the drum-roll hit uses the drum-hit bus. Its `SOUND_STOP_ALL` call stops all mixer
+buses and clears held voice ownership. `BGM_START` loops the user-owned
+`bgm/nub/JINGLE_RENDA.nub` on the BGM bus when the roll begins. The music is
+preloaded in the observed game sessions before Revival, and this file was checked
+through the public decoder.
 When a root category settles, authored `NotifyGenreFolder(category, -1, false)`
 is resolved through the pinned catalog's semantic category name rather than its
 display index. The audio adapter maps the verified `VO_SELECT` cues as Namco

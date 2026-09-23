@@ -165,6 +165,22 @@ installed Japanese-capable system font is used. `--font=/path/to/font` remains t
 highest-priority override. All granular content options below are retained for
 diagnostic runs.
 
+To test a scene without playing through the preceding screens, use
+`--start-scene=entry`, `song-select`, `result-fail`, `result-clear`, `retry`, or
+`gameover` with the normal game-data argument. For example, the Revival drum-roll
+challenge starts directly with:
+
+```sh
+dotnet run --project src/Waddamburo.App -- \
+  --game-data="/path/to/game/USRDIR" --start-scene=retry
+```
+
+`result-fail` and `result-clear` use fixed diagnostic play results; pressing Escape
+on the failed result advances to Revival. With `retry`, leave the drum idle to
+hear its failure sequence, or play to hear its success sequence. The option also
+works with the explicit `--entry-song-select` content arguments below. Normal
+launches still begin at Entry.
+
 ```sh
 dotnet run --project src/Waddamburo.App -- \
   --entry-song-select \
