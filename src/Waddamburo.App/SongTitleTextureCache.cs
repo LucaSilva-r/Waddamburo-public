@@ -52,6 +52,13 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return register(song, TitleTextureKind.Transition, 0U);
     }
 
+    /// <summary>Title for gameplay song_info's 720x64 song_name slot.</summary>
+    public LumenNativeSurfaceKey GetGameplayTitle(SongSelectSong song)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        return register(song, TitleTextureKind.Gameplay, 0U);
+    }
+
     private LumenNativeSurfaceKey register(
         SongSelectSong song,
         TitleTextureKind kind,
@@ -118,6 +125,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 TitleTextureKind.Compact => SongTitleTextProfile.Compact,
                 TitleTextureKind.Expanded => SongTitleTextProfile.Expanded,
                 TitleTextureKind.Transition => SongTitleTextProfile.Transition,
+                TitleTextureKind.Gameplay => SongTitleTextProfile.GameplayTitle,
                 _ => throw new ArgumentOutOfRangeException(nameof(key)),
             };
             if (!_asynchronous)
@@ -218,6 +226,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         Compact,
         Expanded,
         Transition,
+        Gameplay,
     }
     private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale);
     private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<RasterKey> Node);

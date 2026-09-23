@@ -353,12 +353,16 @@ static waddamburo_text_result render_title_row(
     uint8_t *outline,
     uint32_t width,
     uint32_t height,
+    int gameplay,
     waddamburo_text_error *error)
 {
     uint32_t scalars[256];
     uint32_t scalar_count = 0U;
     const uint8_t *cursor = (const uint8_t *)text;
-    float font_px = 62.0f * raster_scale;
+    /* Transition: centred, whole font shrinks to fit. Gameplay: fixed height, right-aligned,
+     * glyphs squeezed horizontally (FreeType transform) when the title is too wide. */
+    float font_px = (gameplay ? 44.0f : 62.0f) * raster_scale;
+    float margin = 6.0f * raster_scale;
     float advance = 0.0f;
     float pen_x;
     int baseline;
@@ -383,7 +387,21 @@ static waddamburo_text_result render_title_row(
             return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a transition-title glyph.");
         advance += (float)face->glyph->advance.x / 64.0f;
     }
-    if (advance > width * 0.94f) {
+    if (gameplay && advance > (float)width - 2.0f * margin) {
+        FT_Matrix squeeze;
+        squeeze.xx = (FT_Fixed)(((float)width - 2.0f * margin) / advance * 65536.0f);
+        squeeze.xy = 0;
+        squeeze.yx = 0;
+        squeeze.yy = 0x10000;
+        FT_Set_Transform(face, &squeeze, NULL); /* advances below are transformed too */
+        advance = 0.0f;
+        for (uint32_t i = 0U; i < scalar_count; ++i) {
+            ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            if (ft_error != 0)
+                return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a gameplay-title glyph.");
+            advance += (float)face->glyph->advance.x / 64.0f;
+        }
+    } else if (!gameplay && advance > width * 0.94f) {
         font_px *= width * 0.94f / advance;
         if (font_px < 6.0f)
             font_px = 6.0f;
@@ -399,7 +417,7 @@ static waddamburo_text_result render_title_row(
         }
     }
 
-    pen_x = ((float)width - advance) * 0.5f;
+    pen_x = gameplay ? (float)width - margin - advance : ((float)width - advance) * 0.5f;
     baseline = (int)(((float)height
         + (float)face->size->metrics.ascender / 64.0f
         + (float)face->size->metrics.descender / 64.0f) * 0.5f);
@@ -449,7 +467,7 @@ static waddamburo_text_result render_title_row(
 
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_3;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_4;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -655,13 +673,15 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         raster_scale == 0U || raster_scale > 4U || outline_rgb > UINT32_C(0x00ffffff) ||
         (profile != WADDAMBURO_TEXT_PROFILE_SONG_COMPACT &&
          profile != WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED &&
-         profile != WADDAMBURO_TEXT_PROFILE_TRANSITION))
+         profile != WADDAMBURO_TEXT_PROFILE_TRANSITION &&
+         profile != WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE))
         return set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "Invalid song-title rasterizer arguments.");
 
     base_width = profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT ? 56U
         : profile == WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED ? 96U : 720U;
     if (width != base_width * raster_scale ||
-        height != (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION ? 103U : 400U) * raster_scale)
+        height != (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION ? 103U
+            : profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE ? 64U : 400U) * raster_scale)
         return set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "Song-title surface dimensions do not match its profile and scale.");
     pixel_count = (uint64_t)width * height;
     if (pixel_count > UINT64_MAX / 4U || rgba8_capacity != pixel_count * 4U || pixel_count > SIZE_MAX)
@@ -680,15 +700,17 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         goto song_font_failure;
     FT_Stroker_Set(
         stroker,
-        (FT_Fixed)(4.5f * raster_scale * 64.0f + 0.5f),
+        /* Gameplay title: 1 px thicker than the other titles, matching the stock art. */
+        (FT_Fixed)((profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE ? 5.5f : 4.5f) * raster_scale * 64.0f + 0.5f),
         FT_STROKER_LINECAP_ROUND,
         FT_STROKER_LINEJOIN_ROUND,
         0);
 
-    if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION) {
+    if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION || profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE) {
         result = render_title_row(
             context->face, stroker, utf8_title, raster_scale,
-            mask, outline, width, height, error);
+            mask, outline, width, height, profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE, error);
+        FT_Set_Transform(context->face, NULL, NULL); /* the face is shared; drop any squeeze */
     } else if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
         result = render_title_column(
             context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,

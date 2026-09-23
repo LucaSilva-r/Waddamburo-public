@@ -287,12 +287,15 @@ internal static class EntrySongSelectFlow
                                 activeGameplayCharts = loadedCharts;
                                 releaseTextures(application, textureIds);
                                 active = requireLumenScene(coordinator);
-                                // song_info's title slot shows the same rendered title as the transition.
-                                // ponytail: transition title style; the gameplay board may use its own.
+                                // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
                                 var songInfoIndex = active.Layers.ToList().FindIndex(layer =>
                                     Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
-                                if (songInfoIndex >= 0 && rainbowTitle is { } gameplayTitle)
+                                if (songInfoIndex >= 0)
+                                {
+                                    var gameplayTitle = titleTextures.GetGameplayTitle(played.song);
+                                    _ = titleTextures.Resolve(gameplayTitle);
                                     active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", gameplayTitle);
+                                }
                                 textureIds = uploadTextures(application, active);
                                 gameplayTimeline = new GameplayTimeline(loadedCharts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
                                 gameplayStartTick = simulationTick;

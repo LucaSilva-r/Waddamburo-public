@@ -20,6 +20,7 @@ extern "C" {
 #endif
 
 #define WADDAMBURO_TEXT_ABI_VERSION_1_3 UINT32_C(0x00010003)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_4 UINT32_C(0x00010004)
 
 typedef struct waddamburo_text_context waddamburo_text_context;
 
@@ -34,6 +35,8 @@ typedef uint32_t waddamburo_text_profile;
 #define WADDAMBURO_TEXT_PROFILE_SONG_COMPACT ((waddamburo_text_profile)0)
 #define WADDAMBURO_TEXT_PROFILE_SONG_EXPANDED ((waddamburo_text_profile)1)
 #define WADDAMBURO_TEXT_PROFILE_TRANSITION ((waddamburo_text_profile)2)
+/* Gameplay song_info title: 720x64, fixed height, right-aligned, squeezed horizontally to fit. */
+#define WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE ((waddamburo_text_profile)3)
 
 typedef struct waddamburo_text_error {
     uint32_t struct_size;
