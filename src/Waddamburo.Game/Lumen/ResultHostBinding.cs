@@ -14,6 +14,7 @@ public sealed class ResultHostBinding(
     Func<TaikoPlayResult> result,
     string playerName,
     int stage,
+    int endMessage,
     IDonPresentationController? don = null) : ILumenHostBinding
 {
     private LumenHostContext? _context;
@@ -49,7 +50,7 @@ public sealed class ResultHostBinding(
         call(player, "SetRunMode", number(0));
         call(player, "SetSongPlayCount", number(stage));
         call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(true), no);
-        call(player, "SetEndMessage", number(0));
+        call(player, "SetEndMessage", number(endMessage));
         call(player, "SetCourse", p, number(play.CourseIndex));
         call(player, "SetScore", p, number(play.Score));
         call(player, "SetBestScore", p, number(-10)); // no previous best

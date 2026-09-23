@@ -212,6 +212,31 @@ public sealed class LumenPlayer
         return true;
     }
 
+    /// <summary>
+    /// Reads a script variable or named clip by dotted path from the root (e.g. "main.isAllEnd"), as the game
+    /// polls movie state. Null when any step is missing.
+    /// </summary>
+    public object? ReadScriptValue(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        var parts = path.Split('.');
+        // "_global.x" starts at the script globals, anything else at the root timeline.
+        object? value = parts[0] == "_global" ? _globals.GetValueOrDefault("_global") : _root;
+        foreach (var part in parts[0] == "_global" ? parts[1..] : parts)
+        {
+            value = value switch
+            {
+                DisplayInstance instance => instance.Variables.GetValueOrDefault(part)
+                    ?? instance.Children.Values.FirstOrDefault(child => child.Name == part),
+                Avm1Object script => script.Properties.GetValueOrDefault(part),
+                Dictionary<string, object?> globals => globals.GetValueOrDefault(part),
+                _ => null,
+            };
+            if (value is null) return null;
+        }
+        return value;
+    }
+
     /// <summary>Whether an explicitly named child path exists and its timeline is playing.</summary>
     public bool IsInstancePlaying(string instancePath)
     {
@@ -1348,7 +1373,7 @@ public sealed class LumenPlayer
         instance.Playing = play;
     }
 
-    private static Avm1Lookup readMember(object? target, string name)
+    private Avm1Lookup readMember(object? target, string name)
     {
         if (target is ClipTransform transform && name == "colorTransform")
             return new Avm1Lookup(true, createColorTransform([
@@ -1384,6 +1409,8 @@ public sealed class LumenPlayer
                 "_rotation" => new Avm1Lookup(true, decompose(instance.Transform).Rotation * 180d / Math.PI),
                 "_alpha" => new Avm1Lookup(true, instance.Color.Multiply.Alpha * 100d),
                 "_currentframe" => new Avm1Lookup(true, (double)instance.Frame + 1),
+                "_totalframes" => new Avm1Lookup(true, (double)(_sprites.TryGetValue(instance.CharacterId, out var sprite)
+                    ? sprite.Frames.Length : 1)),
                 "__proto__" => new Avm1Lookup(instance.ScriptPrototype is not null, instance.ScriptPrototype),
                 _ => default,
             };

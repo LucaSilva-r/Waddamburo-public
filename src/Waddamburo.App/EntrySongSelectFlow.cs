@@ -95,6 +95,8 @@ internal static class EntrySongSelectFlow
         var songSelectId = new SceneId("song-select");
         var gameplayId = new SceneId("gameplay");
         var resultId = new SceneId("result");
+        var retryId = new SceneId("retry");
+        var gameOverId = new SceneId("gameover");
         var rainbowTransitionId = new SceneId("rainbow-transition");
         var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
         // Traced: a finished song closes the intermission shutter (Close(0)), then the results load
@@ -143,13 +145,18 @@ internal static class EntrySongSelectFlow
                     new SceneLayerDefinition("enso_result/packeddata.ddp", "result/result.lm", LumenMatrix.Identity, "result"),
                     new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
                 ]),
+                // Traced end of a credit: the revival drum roll after a failed first song, then game over.
+                new SceneDefinition(SceneDefinition.CurrentVersion, retryId, [
+                    new SceneLayerDefinition("enso_result/packeddata.ddp", "retry_game/retry_game.lm", LumenMatrix.Identity, "retry"),
+                ]),
+                new SceneDefinition(SceneDefinition.CurrentVersion, gameOverId, [
+                    new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
+                ]),
             ],
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
             Path.GetFullPath(Path.Combine(assetRoot, "..", "..", "config", "S11100-1", "musicinfo.xml")));
-        var loader = new LumenGameSceneLoader(
-            new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)),
-            new CatalogHostFactory(
+        var hostFactory = new CatalogHostFactory(
                 flow,
                 songCatalog,
                 titleTextures,
@@ -160,7 +167,9 @@ internal static class EntrySongSelectFlow
                 playRequests,
                 () => songInfo,
                 countdown,
-                () => gameplayPresentation.Result));
+                () => gameplayPresentation.Result);
+        var loader = new LumenGameSceneLoader(
+            new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), hostFactory);
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -194,6 +203,16 @@ internal static class EntrySongSelectFlow
             var traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
             var dumpTreeTick = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
             var simulationTick = 0;
+            void goTo(SceneId scene)
+            {
+                coordinator.TransitionToAsync(scene).AsTask().GetAwaiter().GetResult();
+                releaseTextures(application, textureIds);
+                active = requireLumenScene(coordinator);
+                textureIds = uploadTextures(application, active);
+                if (scene == songSelectId)
+                    previewController?.StartBackground();
+                Console.WriteLine($"Showing {scene} at tick {simulationTick}.");
+            }
 
             TimeSpan chartTime() => gameplayTimeline?.ChartTime(
                 rainbowSequence.State is not (RainbowTransitionState.Revealing or RainbowTransitionState.Complete)
@@ -277,7 +296,7 @@ internal static class EntrySongSelectFlow
                             indicatorScene = active.Id;
                             indicators.SetScene(active.Id == entryId ? IndicatorScene.Entry
                                 : active.Id == gameplayId ? IndicatorScene.Gameplay
-                                : active.Id == resultId ? IndicatorScene.Result
+                                : active.Id == resultId || active.Id == retryId || active.Id == gameOverId ? IndicatorScene.Result
                                 : IndicatorScene.SongSelect);
                         }
                         indicators.Advance();
@@ -392,15 +411,33 @@ internal static class EntrySongSelectFlow
                                 rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
                                 rainbow = null;
                             }
-                            // ponytail: the game's results end after ~21 s (traced); no retry prompt yet.
+                            // ponytail: the game's results end after 15-21 s (traced, no end signal seen).
                             if (escapePressed || simulationTick - resultStartTick >= 21 * 60)
                             {
-                                coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
-                                releaseTextures(application, textureIds);
-                                active = requireLumenScene(coordinator);
-                                textureIds = uploadTextures(application, active);
-                                previewController?.StartBackground();
-                                Console.WriteLine($"Returned to Song Select at tick {simulationTick}.");
+                                var play = gameplayPresentation.Result
+                                    ?? throw new InvalidOperationException("Results without a finished play.");
+                                goTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared) switch
+                                {
+                                    2 => retryId,
+                                    1 => songSelectId,
+                                    _ => gameOverId,
+                                });
+                            }
+                            return;
+                        }
+                        else if (active.Id == retryId)
+                        {
+                            if (RetryGameHostBinding.IsEnd(active.Player.Layers.Single().Player))
+                                goTo(hostFactory.Retry?.Succeeded == true ? songSelectId : gameOverId);
+                            return;
+                        }
+                        else if (active.Id == gameOverId)
+                        {
+                            if (hostFactory.GameOver?.Ended == true)
+                            {
+                                // ponytail: back to entry (no attract loop yet); a new credit starts at stage 1.
+                                songsPlayed = 0;
+                                goTo(entryId);
                             }
                             return;
                         }
@@ -685,15 +722,36 @@ internal static class EntrySongSelectFlow
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
+            "retry" => retryHost(),
+            "gameover" => gameOverHost(),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 
         private LumenLayerHost resultHost()
         {
+            var play = playResult() ?? throw new InvalidOperationException("Results loaded without a finished play.");
+            var stage = songInfo().Stage;
             // ponytail: guest name until profiles exist (traced default どんちゃん).
-            var binding = new ResultHostBinding(
-                () => playResult() ?? throw new InvalidOperationException("Results loaded without a finished play."),
-                "どんちゃん", songInfo().Stage, _don);
+            var binding = new ResultHostBinding(() => play, "どんちゃん", stage,
+                TaikoCredit.EndMessage(stage, play.Cleared), _don);
+            return new LumenLayerHost(binding, binding.Attach);
+        }
+
+        /// <summary>The loaded revival scene's host (the flow polls its outcome).</summary>
+        public RetryGameHostBinding? Retry { get; private set; }
+
+        /// <summary>The loaded game-over scene's host.</summary>
+        public GameOverHostBinding? GameOver { get; private set; }
+
+        private LumenLayerHost retryHost()
+        {
+            var binding = Retry = new RetryGameHostBinding(_don);
+            return new LumenLayerHost(binding, binding.Attach);
+        }
+
+        private LumenLayerHost gameOverHost()
+        {
+            var binding = GameOver = new GameOverHostBinding();
             return new LumenLayerHost(binding, binding.Attach);
         }
 

@@ -60,6 +60,8 @@ internal static class MovieViewer
                 throw new ArgumentException($"Lumen callback '{invocation.Name}' is not registered or could not complete.");
             Console.WriteLine($"Invoked Lumen callback: {invocation.Name}");
         }
+        var readPath = Environment.GetEnvironmentVariable("WADDAMBURO_READ");
+        object? lastRead = null;
         var debugger = frameLimit is null && tickLimit is null
             ? new InteractiveMovieDebugger(player)
             : null;
@@ -77,7 +79,15 @@ internal static class MovieViewer
                 simulationTick++;
                 keyboard = inputTimeline.Apply(simulationTick, keyboard);
                 if (debugger is null)
+                {
                     player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
+                    // Diagnostic: WADDAMBURO_READ=main.isAllEnd prints that script value when it changes.
+                    if (readPath is not null && player.ReadScriptValue(readPath) is var read && !Equals(read, lastRead))
+                    {
+                        Console.WriteLine($"[read] tick {simulationTick}: {readPath} = {read ?? "null"}");
+                        lastRead = read;
+                    }
+                }
                 else
                     debugger.Tick(keyboard);
             },
