@@ -81,7 +81,10 @@ public sealed class LumenFrontendHostBinding(
                 return LumenHostValue.Undefined;
             });
             if (_don is not null)
+            {
                 DonLumenBinding.RegisterMotion(context, lumen, _don);
+                DonLumenBinding.RegisterCostume(lumen, _don);
+            }
             lumen.RegisterMethod("SetNextScene", call =>
             {
                 _transitions.TryRequestTransition(LumenSceneRequest.FromHostCall(call));

@@ -1,3 +1,4 @@
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
@@ -21,6 +22,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
 
     /// <summary>A player joined (the game switches the coin panel to its split state here).</summary>
     public event Action<int>? PlayerJoined;
+
+    /// <summary>Costume picker icon (name: false) or name plate (true) for (ICONTYPE 0 costume / 1 head / 2 body, id).</summary>
+    public Func<int, int, bool, LumenNativeSurfaceKey?>? CostumeIcon { get; init; }
 
     /// <summary>Whether a player may join (the flow supports one local player for now).</summary>
     public Func<int, bool> CanJoin { get; init; } = static player => player == 0;
@@ -86,6 +90,18 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             }
             return LumenHostValue.Undefined;
         });
+        // UpdateFillrect(index, id, iconType): the costume picker fills list slot icon_<index>L (0-4) or the
+        // selected item's name plate name_L (10). ponytail: the left (P1) dialog only.
+        lumen.RegisterMethod("UpdateFillrect", call =>
+        {
+            if (call.Arguments.Length < 3 || _entry is not { } entry || CostumeIcon is null)
+                return LumenHostValue.Undefined;
+            var index = (int)call.Arguments[0].AsNumber();
+            var name = index == 10;
+            if (CostumeIcon((int)call.Arguments[2].AsNumber(), (int)call.Arguments[1].AsNumber(), name) is { } surface)
+                entry.SetNativeFill(name ? "name_L" : $"icon_{index}L", surface);
+            return LumenHostValue.Undefined;
+        });
         lumen.RegisterMethod("NotifyDataSelect", _ =>
         {
             Parts.HideNameBoards(); // traced: the game hides the boards right after
@@ -101,11 +117,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         lumen.RegisterMethod("NotifyRecognizecollabo", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("Terminate", _ => LumenHostValue.FromBoolean(true));
         // Traced calls with no visible effect on the entry movies (card reader, indicator lamps, costume
-        // effects, mode notifications, counter reports). ponytail: costumes are accepted but not applied yet.
+        // effects, mode notifications, counter reports). ponytail: accessories are accepted but not shown yet.
         foreach (var name in new[]
         {
             "SetCardReaderEvent", "Wakeup", "SetTouchMode",
-            "Wait_AccessServer", "EntryData", "ChangeCostume", "ChangeAccessory", "NotifyChangeCostumeEffect",
+            "Wait_AccessServer", "EntryData", "ChangeAccessory", "NotifyChangeCostumeEffect",
             "NotifyDecide", "NotifyModeSelectEnd", "Apply", "SelectCommonSound", "NotifyTimeSec",
         })
             lumen.RegisterMethod(name, static _ => LumenHostValue.Undefined);

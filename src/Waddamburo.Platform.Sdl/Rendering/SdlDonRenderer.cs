@@ -34,8 +34,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private readonly DonSkeleton _skeleton;
     private readonly ImmutableArray<Matrix4x4> _bindWorld;
     private readonly Dictionary<string, DonAnimationFile> _animations = new(StringComparer.Ordinal);
-    private readonly List<GpuMesh> _meshes = [];
+    // Per player: the costume's meshes and face atlas, shared through the caches below.
+    private readonly List<GpuMesh>[] _meshes = [[], []];
     private readonly Dictionary<uint, nint>[] _faceTextures = [[], []];
+    private readonly Dictionary<string, List<GpuMesh>> _modelCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Path, bool Recolor), Dictionary<uint, nint>> _faceCache = [];
     private readonly List<nint> _ownedTextures = [];
     private readonly List<nint> _ownedBuffers = [];
     private readonly Dictionary<(bool Blend, SDL_GPUCullMode Cull), nint> _pipelines = [];
@@ -75,10 +78,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             _fragmentShader = createShader("don.frag", SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
             _postPipeline = createPostPipeline();
             _whiteTexture = uploadRgba(1, 1, [255, 255, 255, 255]);
-            loadModel("parts/body/body_000000.nud");
-            loadModel("parts/head/head_000000.nud");
-            loadFaces(0, "parts/paint/paint_000000.nut", replaceFaceColor: false);
-            loadFaces(1, "parts/paint/paint_000000.nut", replaceFaceColor: true);
+            SetCostume(0, null, 0, 0, 0);
+            SetCostume(1, null, 0, 0, 0);
             for (var index = 0; index < _targets.Length; index++)
                 _targets[index] = createTarget();
             var idle = loadMotion("don_select_loop");
@@ -224,7 +225,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var binding = new SDL_GPUTextureSamplerBinding();
         foreach (var blended in new[] { false, true })
         {
-            foreach (var mesh in _meshes)
+            foreach (var mesh in _meshes[playerIndex])
             {
                 foreach (var material in mesh.Materials)
                 {
@@ -311,8 +312,55 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         SDL_EndGPURenderPass(post);
     }
 
-    private void loadModel(string relativePath)
+    /// <summary>
+    /// Dresses a player: a whole costume (full/cos/cos_NNN000 with its full/face atlas, or the
+    /// default one) or divided parts (parts/head, parts/body, parts/paint). Player 2 uses an "r"
+    /// face variant when one exists, otherwise the Katsu recolour (as the game looks them up).
+    /// </summary>
+    public void SetCostume(int playerIndex, int? whole, int head, int body, int paint)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
+        var meshes = new List<GpuMesh>();
+        string face;
+        if (whole is { } costume)
+        {
+            meshes.AddRange(model($"full/cos/cos_{costume:000}000.nud"));
+            face = assetExists($"full/face/face_{costume:000}000.nut")
+                ? $"full/face/face_{costume:000}000.nut" : "full/face/face_000000.nut";
+        }
+        else
+        {
+            meshes.AddRange(model($"parts/body/body_{body:000}000.nud"));
+            meshes.AddRange(model($"parts/head/head_{head:000}000.nud"));
+            face = $"parts/paint/paint_{paint:000}000.nut";
+        }
+        var mirrored = Path.ChangeExtension(face, null) + "r.nut";
+        var playerTwoVariant = playerIndex == 1 && assetExists(mirrored);
+        _meshes[playerIndex] = meshes;
+        _faceTextures[playerIndex] = faces(playerTwoVariant ? mirrored : face, recolor: playerIndex == 1 && !playerTwoVariant);
+    }
+
+    private bool assetExists(string relativePath) => File.Exists(Path.Combine(_assetRoot, relativePath));
+
+    private List<GpuMesh> model(string relativePath)
+    {
+        if (!_modelCache.TryGetValue(relativePath, out var meshes))
+            _modelCache[relativePath] = meshes = loadModel(relativePath);
+        return meshes;
+    }
+
+    private Dictionary<uint, nint> faces(string relativePath, bool recolor)
+    {
+        if (!_faceCache.TryGetValue((relativePath, recolor), out var textures))
+            _faceCache[(relativePath, recolor)] = textures = loadFaces(relativePath, recolor);
+        return textures;
+    }
+
+    private List<GpuMesh> loadModel(string relativePath)
+    {
+        var meshes = new List<GpuMesh>();
         var path = resolveAsset(relativePath);
         var model = NudFile.Parse(File.ReadAllBytes(path));
         var textures = uploadNut(Path.ChangeExtension(path, ".nut"));
@@ -329,7 +377,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                     vertex.Color,
                     vertex.BoneWeights,
                     vertex.BoneIndices)).ToArray();
-                _meshes.Add(new GpuMesh(
+                meshes.Add(new GpuMesh(
                     (nint)uploadBuffer(MemoryMarshal.AsBytes(vertices.AsSpan()), SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_VERTEX),
                     (nint)uploadBuffer(MemoryMarshal.AsBytes(polygon.TriangleIndices.AsSpan()), SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_INDEX),
                     checked((uint)polygon.TriangleIndices.Length),
@@ -337,10 +385,12 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                     textures));
             }
         }
+        return meshes;
     }
 
-    private void loadFaces(int playerIndex, string relativePath, bool replaceFaceColor)
+    private Dictionary<uint, nint> loadFaces(string relativePath, bool replaceFaceColor)
     {
+        var faces = new Dictionary<uint, nint>();
         var nut = NutFile.Parse(File.ReadAllBytes(resolveAsset(relativePath)));
         foreach (var texture in nut.Textures)
         {
@@ -348,8 +398,9 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             if (replaceFaceColor)
                 replaceRgb(pixels, 0xF9, 0x4C, 0x2C, 0x6C, 0xC3, 0xC6);
             var id = texture.GlobalId ?? checked((uint)texture.Index);
-            _faceTextures[playerIndex][id] = (nint)uploadRgba(texture.Width, texture.Height, pixels);
+            faces[id] = (nint)uploadRgba(texture.Width, texture.Height, pixels);
         }
+        return faces;
     }
 
     private static void replaceRgb(
@@ -594,7 +645,9 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             rasterizer_state = new SDL_GPURasterizerState { cull_mode = cull, front_face = SDL_GPUFrontFace.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE },
             depth_stencil_state = new SDL_GPUDepthStencilState
             {
-                enable_depth_test = !blend,
+                // Blended decals (face disc, costume prints) are tested against the opaque body so the
+                // ones on its far side stay hidden, but do not write depth.
+                enable_depth_test = true,
                 enable_depth_write = !blend,
                 compare_op = SDL_GPUCompareOp.SDL_GPU_COMPAREOP_LESS_OR_EQUAL,
             },

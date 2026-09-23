@@ -56,6 +56,12 @@ internal static class EntrySongSelectFlow
         Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
         using var donRenderer = donRoot is null ? null : application.CreateDonRenderer(donRoot);
         var donPresentation = donRenderer is null ? null : new DonPresentationController(donRenderer);
+        // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
+        if (donPresentation is not null && Environment.GetEnvironmentVariable("WADDAMBURO_DON_COSTUME") is { } costumeSetting)
+        {
+            var ids = costumeSetting.Split(',').Select(int.Parse).ToArray();
+            donPresentation.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
+        }
         var needsAudio = screenshotPath is null || jinglePath is not null || soundRoot is not null;
         using var audioDevice = needsAudio ? new SdlAudioDevice() : null;
         using var audioEngine = audioDevice is null ? null : new AudioEngine(audioDevice);
@@ -91,6 +97,7 @@ internal static class EntrySongSelectFlow
         var rainbowTransitionId = new SceneId("rainbow-transition");
         var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
         var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
+        var costumeIcons = new CostumeIconTextures(application, Path.GetFullPath(Path.Combine(assetRoot, "..", "..")));
         var songInfo = new TaikoSongInfo(0, 1);
         var songsPlayed = 0;
         var flow = new GameFlowSession();
@@ -168,6 +175,7 @@ internal static class EntrySongSelectFlow
             var gameplayClock = new System.Diagnostics.Stopwatch();
             var gameplayStartTick = 0;
             var escapeWasDown = false;
+            var traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
             var dumpTreeTick = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
             var simulationTick = 0;
 
@@ -190,7 +198,7 @@ internal static class EntrySongSelectFlow
                     index => index < textureIds.Length
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
-                    surface => donPresentation?.Resolve(surface) ?? titleTextures.Resolve(surface));
+                    surface => donPresentation?.Resolve(surface) ?? costumeIcons.Resolve(surface) ?? titleTextures.Resolve(surface));
                 IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => indicators is null ? []
                     : LumenRenderFrameAdapter.Compose(
                         indicators.CreateSnapshot(overIntermission, (float)interpolationFraction),
@@ -219,6 +227,10 @@ internal static class EntrySongSelectFlow
                 {
                     simulationTick++;
                     var keyboardState = inputTimeline.Apply(simulationTick, keyboard);
+                    // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
+                    if (traceInput)
+                        foreach (var press in keyboardState.Presses)
+                            Console.WriteLine($"[input] {press.Key}@{simulationTick}");
                     var input = LumenInputAdapter.CreateSnapshot(keyboardState,
                         active.Id == gameplayId
                             ? LumenInputMode.PresentationOnly
@@ -588,7 +600,11 @@ internal static class EntrySongSelectFlow
             if (layer.HostId == "player-entry")
             {
                 _parts = new IndicatorParts(IndicatorPartsScene.Entry, countdown);
-                _entry = new EntrySceneHost(_parts);
+                _entry = new EntrySceneHost(_parts)
+                {
+                    CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
+                        : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
+                };
             }
             else if (layer.HostId == "song-select")
                 _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown);
@@ -679,6 +695,19 @@ internal static class EntrySongSelectFlow
             _renderer.SetMotion(request.PlayerIndex, request.OneShot, request.Loop);
 
         public void SetIdle(int playerIndex, string loop) => _renderer.SetIdle(playerIndex, loop);
+
+        public void SetCostume(int playerIndex, DonCostume costume)
+        {
+            try
+            {
+                _renderer.SetCostume(playerIndex, costume.Whole, costume.Head, costume.Body, costume.Paint);
+            }
+            catch (FileNotFoundException exception)
+            {
+                // A costume the installed data lacks keeps the current look.
+                Console.Error.WriteLine($"Don costume {costume}: {exception.Message}");
+            }
+        }
 
         public RenderTextureId? Resolve(LumenNativeSurfaceKey surface)
         {
