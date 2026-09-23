@@ -38,8 +38,12 @@ public sealed class RetryGameHostBinding(IDonPresentationController? don = null)
         {
             var name = call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Text
                 ? call.Arguments[0].AsString() : null;
-            if (name == "SetDonCameraSuccess") Succeeded = true;
-            else if (name == "DonMot" && don is not null) DonLumenBinding.ApplyMotion(context, don, call.Arguments[1..]);
+            if (name == "SetDonCameraSuccess")
+            {
+                Succeeded = true;
+                don?.SetCameraLayout(DonPresentationLayout.RetrySuccess);
+            }
+            else if (name == "DonMot" && don is not null) applyRetryMotion(context, don, call.Arguments[1..]);
             return LumenHostValue.Undefined;
         });
         // ponytail: sounds, BGM and cabinet LEDs come with the sound pass.
@@ -54,7 +58,12 @@ public sealed class RetryGameHostBinding(IDonPresentationController? don = null)
     {
         ArgumentNullException.ThrowIfNull(player);
         if (don is not null)
-            DonLumenBinding.Attach(player, don);
+        {
+            DonLumenBinding.Attach(player, don, DonPresentationLayout.Retry);
+            // The scene begins in this held pose before its first authored DonMot call.
+            for (var index = 0; index < 2; index++)
+                don.SetMotion(new DonMotionRequest(index, "don_fukkatu_face01", "don_fukkatu_face01"));
+        }
         LumenPlayerCalls.Call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(false));
         LumenPlayerCalls.Call(player, "SetNorma", LumenHostValue.FromNumber(Norma));
         LumenPlayerCalls.Call(player, "SetHandsColor", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(HandsColor));
@@ -62,6 +71,41 @@ public sealed class RetryGameHostBinding(IDonPresentationController? don = null)
 
     // End() is a DefineFunction2 preloading _global into its first register: the flag lives there.
     public static bool IsEnd(LumenPlayer player) => player.ReadScriptValue("_global.isAllEnd") is true;
+
+    private static void applyRetryMotion(
+        LumenHostContext context,
+        IDonPresentationController don,
+        IReadOnlyList<LumenHostValue> arguments)
+    {
+        if (arguments.Count < 3 || arguments[0].Kind != LumenHostValueKind.Number)
+            return;
+        var player = arguments[0].AsNumber();
+        if (player is not (0 or 1))
+            return;
+        string? resolve(LumenHostValue value)
+        {
+            if (value.Kind != LumenHostValueKind.Number)
+                return null;
+            // The revival requests name the displayed pose. Their observed motion mapping
+            // differs from the generic movie constant lookup for this scene.
+            return value.AsNumber() switch
+            {
+                5 => "don_swing01",
+                56 => "don_fukkatu_face01",
+                57 => "don_fukkatu_face02",
+                58 => "don_fukkatu_face03",
+                59 => "don_fukkatu1P_success",
+                60 => "don_fukkatu2P_success",
+                _ => null,
+            };
+        }
+        var oneShot = resolve(arguments[1]);
+        var loop = resolve(arguments[2]);
+        if (oneShot is not null || loop is not null)
+            don.SetMotion(new DonMotionRequest((int)player, oneShot, loop));
+        else
+            DonLumenBinding.ApplyMotion(context, don, arguments);
+    }
 }
 
 /// <summary>

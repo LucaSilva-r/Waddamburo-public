@@ -21,6 +21,8 @@ public enum DonPresentationLayout
     Standard,
     OpposedPlayers,
     Gameplay,
+    Retry,
+    RetrySuccess,
 }
 
 /// <summary>
@@ -30,6 +32,9 @@ public enum DonPresentationLayout
 public interface IDonPresentationController
 {
     void Reset(DonPresentationLayout layout);
+
+    /// <summary>Changes the view while keeping the current motion.</summary>
+    void SetCameraLayout(DonPresentationLayout layout) => Reset(layout);
 
     LumenNativeSurfaceKey GetSurface(int playerIndex);
 

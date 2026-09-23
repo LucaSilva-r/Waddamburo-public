@@ -9,6 +9,8 @@ using static SDL.SDL3;
 
 namespace Waddamburo.Platform.Sdl.Rendering;
 
+public enum DonCameraLayout { Standard, Gameplay, Retry, RetrySuccess }
+
 /// <summary>Shared-device Don renderer. All methods must run on the owning SDL thread.</summary>
 public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 {
@@ -17,15 +19,36 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private (uint Width, uint Height) _targetPixels = (600, 600);
     private const int PaletteSize = 40;
     private const string ShaderPrefix = "Waddamburo.Shaders.";
+    private const float DonNear = 256;
+    private const float DonFar = 4096;
     // Independently reconstructed camera from observed gameplay projection geometry.
     private static readonly Matrix4x4 GameplayCamera =
         Matrix4x4.CreateLookAt(new(-430, 22, 1045), new(6.6f, 15.6f, 0), Vector3.UnitY)
-        * Matrix4x4.CreatePerspectiveFieldOfView(2 * MathF.PI / 180, 448f / 256, 1, 10000);
-    private static readonly Matrix4x4 PlayerOneCamera = new(
+        * Matrix4x4.CreatePerspectiveFieldOfView(2 * MathF.PI / 180, 448f / 256, DonNear, DonFar);
+    // The revival drum is viewed from below and nearly head-on in its square surface.
+    private static readonly Matrix4x4 RetryCamera =
+        Matrix4x4.CreateLookAt(new(178, -643, 2634), new(0, 12, 0), Vector3.UnitY)
+        * Matrix4x4.CreatePerspectiveFieldOfView(2 * MathF.PI / 180, 1, DonNear, DonFar);
+    private static readonly Matrix4x4 RetrySuccessCamera =
+        Matrix4x4.CreateLookAt(new(-839, 43, 1568), new(0, 19, 0), Vector3.UnitY)
+        * Matrix4x4.CreatePerspectiveFieldOfView(2 * MathF.PI / 180, 1, DonNear, DonFar);
+    private static readonly Matrix4x4 PlayerOneCamera = withDonDepth(new Matrix4x4(
         50.5310f, 0.4728f, 0.5763f, 0.4715f,
         0f, 57.2952f, -0.0214f, -0.0175f,
         27.0253f, -0.8839f, -1.0776f, -0.8817f,
-        0.0008f, -866.3033f, 1675.5881f, 2280.0266f);
+        0.0008f, -866.3033f, 1675.5881f, 2280.0266f));
+
+    private static Matrix4x4 withDonDepth(Matrix4x4 camera)
+    {
+        // The menu camera is stored as a combined matrix. Replace only its depth
+        // column; keep its horizontal/vertical projection and clip W unchanged.
+        var scale = DonFar / (DonFar - DonNear);
+        camera.M13 = scale * camera.M14;
+        camera.M23 = scale * camera.M24;
+        camera.M33 = scale * camera.M34;
+        camera.M43 = scale * camera.M44 - DonNear * scale;
+        return camera;
+    }
 
     private readonly SDL_GPUDevice* _device;
     private readonly RenderDevice _compositor;
@@ -56,7 +79,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUTexture* _whiteTexture;
     private bool _mirrorPlayerTwoCamera = true;
-    private bool _gameplayCamera;
+    private DonCameraLayout _layout;
     private bool _disposed;
 
     internal SdlDonRenderer(SDL_GPUDevice* device, RenderDevice compositor, string assetRoot)
@@ -105,15 +128,21 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return _targets[playerIndex].TextureId;
     }
 
-    public void Reset(bool mirrorPlayerTwoCamera, bool gameplayCamera = false)
+    public void Reset(bool mirrorPlayerTwoCamera, DonCameraLayout layout = DonCameraLayout.Standard)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _mirrorPlayerTwoCamera = mirrorPlayerTwoCamera;
-        _gameplayCamera = gameplayCamera;
-        _targetSize = gameplayCamera ? (448, 256) : (600, 600);
+        SetCameraLayout(layout);
         var idle = loadMotion("don_select_loop");
         foreach (var player in _players)
             player.Set(idle, idle);
+    }
+
+    public void SetCameraLayout(DonCameraLayout layout)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _layout = layout;
+        _targetSize = layout == DonCameraLayout.Gameplay ? (448, 256) : (600, 600);
     }
 
     public void SetMotion(int playerIndex, string? oneShot, string? loop)
@@ -180,7 +209,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ReadOnlySpan<float> frame = _pose;
         var animatedWorld = _skeleton.EvaluateWorld(frame);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
-        var camera = _gameplayCamera ? GameplayCamera : PlayerOneCamera;
+        var camera = _layout switch
+        {
+            DonCameraLayout.Gameplay => GameplayCamera,
+            DonCameraLayout.Retry => RetryCamera,
+            DonCameraLayout.RetrySuccess => RetrySuccessCamera,
+            _ => PlayerOneCamera,
+        };
         var reflectedCamera = playerIndex == 1 && _mirrorPlayerTwoCamera;
         if (reflectedCamera)
         {

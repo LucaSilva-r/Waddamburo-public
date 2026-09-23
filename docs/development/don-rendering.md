@@ -73,9 +73,26 @@ gameplay graphics capture. The camera is independently constructed with a look-a
 transform, eye (-430, 22, 1045), target (6.6, 15.6, 0), vertical field of view
 approximately 2 degrees, and aspect ratio 448:256. GPU allocation remains 600 square;
 the camera aspect and composite rectangle together preserve the displayed proportions.
+Every Don view uses the same 256-to-4096 depth range so closely layered face
+polygons retain depth separation. The menu's stored combined camera matrix has
+only its depth column remapped; its screen framing stays unchanged.
 Balloon presentation restores the standard camera and its authored slot; its exit
 restores gameplay framing. Outline rasterization and animation phase are not
 claimed pixel-identical to the reference.
+
+The revival drum uses a separate square 600-by-600 view. A private runtime graphics
+observation showed that the challenge begins with a steep view from below; an
+independent look-at reconstruction uses eye (178, -643, 2634), target (0, 12, 0),
+and a roughly 2-degree field of view. On the movie's success callback, the view
+changes to a closer framing, reconstructed with eye (-839, 43, 1568) and target
+(0, 19, 0). These are approximate rendering choices based on observed framing.
+The original transition timing and unsuccessful ending have not been visually
+compared yet.
+The revival movie's stick hits request matching 3D poses through its Don motion
+callback. The host starts both players in the held revival pose, then sends the
+observed raised-arm and swing motions on the movie's hit calls; the same callback
+selects the failure or success finish. Movie and model advance in the same game
+tick. The exact hand-to-stick contact frame still needs a live comparison.
 The host selects normal, Go-Go, and miss motions. The balloon movie temporarily
 owns placement and animation through its exit, then resumes the current gameplay
 loop. The standalone Don movie has no exported motion callbacks; its marker and

@@ -818,7 +818,17 @@ internal static class EntrySongSelectFlow
 
         public void Reset(DonPresentationLayout layout) =>
             _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers,
-                gameplayCamera: layout == DonPresentationLayout.Gameplay);
+                layout: cameraLayout(layout));
+
+        public void SetCameraLayout(DonPresentationLayout layout) => _renderer.SetCameraLayout(cameraLayout(layout));
+
+        private static DonCameraLayout cameraLayout(DonPresentationLayout layout) => layout switch
+        {
+            DonPresentationLayout.Gameplay => DonCameraLayout.Gameplay,
+            DonPresentationLayout.Retry => DonCameraLayout.Retry,
+            DonPresentationLayout.RetrySuccess => DonCameraLayout.RetrySuccess,
+            _ => DonCameraLayout.Standard,
+        };
 
         public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[playerIndex];
 
