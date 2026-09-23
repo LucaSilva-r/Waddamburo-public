@@ -153,7 +153,7 @@ int main(void)
     waddamburo_media_error error = {0};
     waddamburo_media_io_callbacks callbacks = {0};
 
-    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_2);
+    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_3);
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_0, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_0);
@@ -166,9 +166,23 @@ int main(void)
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_2, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_2);
-    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 3U), &negotiated) ==
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_3, &negotiated) ==
+          WADDAMBURO_MEDIA_OK);
+    CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_3);
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 4U), &negotiated) ==
           WADDAMBURO_MEDIA_ERROR_ABI_MISMATCH);
     CHECK(negotiated == 0U);
+
+    {
+        waddamburo_media_video *video = NULL;
+        waddamburo_media_video_info video_info = {sizeof(video_info), 0U, 0U, 0U, 0};
+        error.struct_size = sizeof(error);
+        CHECK(waddamburo_media_video_open_file("missing-synthetic.pam", &video, &video_info, &error) !=
+              WADDAMBURO_MEDIA_OK);
+        CHECK(video == NULL);
+        CHECK(error.message_length == strlen(error.message));
+        waddamburo_media_video_destroy(NULL);
+    }
 
     error.struct_size = sizeof(error);
 #if !defined(WADDAMBURO_MEDIA_HAS_FFMPEG)

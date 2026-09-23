@@ -6,6 +6,7 @@ using Waddamburo.Lumen.Runtime;
 /// <summary>Which state the always-on indicator overlays show (traced per game scene).</summary>
 internal enum IndicatorScene
 {
+    Boot, // kidou: the card prompt stays off (traced SetOnline(0) until the attract loop)
     Attract,
     AttractPrompt, // caution screen / title: "hit the drum to start"
     Entry,
@@ -29,6 +30,7 @@ internal sealed class SystemIndicators
     private readonly LumenPlayer _coins;
     private bool _cardVisible;
     private bool _coinsVisible;
+    private bool _online;
 
     public SystemIndicators(LumenGameSceneInstance scene)
     {
@@ -49,8 +51,11 @@ internal sealed class SystemIndicators
     public void SetScene(IndicatorScene scene)
     {
         var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt;
+        _online = scene != IndicatorScene.Boot;
         _cardVisible = attract || scene == IndicatorScene.Entry;
-        _coinsVisible = scene != IndicatorScene.Gameplay;
+        // The free-play/coin message first appears with the attract title (traced SetVisible* calls);
+        // during the boot screens it stays off.
+        _coinsVisible = scene is not (IndicatorScene.Gameplay or IndicatorScene.Boot);
         call(_card, "SetScene", LumenHostValue.FromNumber(scene == IndicatorScene.Entry ? 1 : 0));
         // Song Select shows the unjoined player's message; the authored indicator movie
         // positions it on the available side and runs its fade animation.
@@ -103,7 +108,7 @@ internal sealed class SystemIndicators
     {
         // ponytail: no network in the engine; type 2 is what the game shows before it connects.
         call(_network, "SetType", LumenHostValue.FromNumber(2));
-        call(_card, "SetOnline", LumenHostValue.FromNumber(1));
+        call(_card, "SetOnline", LumenHostValue.FromNumber(_online ? 1 : 0));
         call(_card, "SetCamera", LumenHostValue.FromNumber(0));
         call(_card, "SetBncoin", LumenHostValue.FromNumber(0));
         call(_card, "SetBurst", LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(0));

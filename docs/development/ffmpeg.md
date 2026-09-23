@@ -6,9 +6,9 @@ the archive against SHA-256
 before extraction. Downloads, extracted sources, objects, and installed libraries
 remain below ignored `out/` directories.
 
-The configuration builds dynamic `avutil`, `avcodec`, `avformat`, and
-`swresample` libraries. It disables automatic dependency discovery, static
-libraries, programs, devices, filters, scaling, networking, GPL components,
+The configuration builds dynamic `avutil`, `avcodec`, `avformat`, `swresample`,
+and `swscale` libraries. It disables automatic dependency discovery, static
+libraries, programs, devices, filters, networking, GPL components,
 nonfree components, and version-3-only components. No external codec library is
 linked.
 
@@ -16,9 +16,10 @@ The allowlist supports the product's declared inputs:
 
 | Kind | Enabled components |
 | --- | --- |
-| Decoders | ATRAC3plus; MP3; Vorbis; Opus; FLAC; unsigned 8-bit, signed 16/24/32-bit, and float 32-bit little-endian PCM |
-| Demuxers | WAV, MP3, Ogg, FLAC |
-| Parsers | MPEG audio, Vorbis, Opus, FLAC |
+| Decoders | ATRAC3plus; H.264 (attract movies); MP3; Vorbis; Opus; FLAC; unsigned 8-bit, signed 16/24/32-bit, and float 32-bit little-endian PCM |
+| Demuxers | WAV, MP3, Ogg, FLAC; MPEG program stream (PAMF movies) and raw H.264 (its stream probe) |
+| Parsers | MPEG audio, Vorbis, Opus, FLAC, H.264 |
+| Scaling | `swscale` converts decoded YUV movie frames to RGBA |
 | Protocols | Local files only; managed-memory inputs use Waddamburo's AVIO callbacks |
 
 Build the Linux dependency from the repository root with:

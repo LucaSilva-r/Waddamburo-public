@@ -16,6 +16,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     private readonly List<IGpuRenderPrepass> _prepasses = [];
     private SDL_GPUGraphicsPipeline* _normalQuadPipeline;
     private SDL_GPUGraphicsPipeline* _addQuadPipeline;
+    private SDL_GPUGraphicsPipeline* _screenQuadPipeline;
     private SDL_GPUGraphicsPipeline* _pushMaskPipeline;
     private SDL_GPUGraphicsPipeline* _popMaskPipeline;
     private SDL_GPUTexture* _stencil;
@@ -50,6 +51,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             _linearRepeatSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR, repeat: true);
             _normalQuadPipeline = createQuadPipeline(RenderBlend.Normal);
             _addQuadPipeline = createQuadPipeline(RenderBlend.Add);
+            _screenQuadPipeline = createQuadPipeline(RenderBlend.Screen);
             _pushMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Push);
             _popMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Pop);
         }
@@ -85,13 +87,41 @@ internal sealed unsafe class RenderDevice : IDisposable
         if (texture is null)
             throw sdlFailure("create an RGBA texture");
 
+        try
+        {
+            uploadInto(texture, width, height, pixels);
+            var id = new RenderTextureId(_nextTextureId++);
+            _textures.Add(id.Value, (nint)texture);
+            texture = null;
+            return id;
+        }
+        finally
+        {
+            if (texture is not null)
+                SDL_ReleaseGPUTexture(_device, texture);
+        }
+    }
+
+    /// <summary>Replaces the pixels of an owned texture of the same size (streamed video frames).</summary>
+    public void UpdateRgba8(RenderTextureId id, uint width, uint height, ReadOnlySpan<byte> pixels)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_borrowedTextures.Contains(id.Value) || !_textures.TryGetValue(id.Value, out var texture))
+            throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
+        if ((ulong)pixels.Length != checked((ulong)width * height * 4))
+            throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
+        uploadInto((SDL_GPUTexture*)texture, width, height, pixels);
+    }
+
+    private void uploadInto(SDL_GPUTexture* texture, uint width, uint height, ReadOnlySpan<byte> pixels)
+    {
         SDL_GPUTransferBuffer* transferBuffer = null;
         try
         {
             var transferInfo = new SDL_GPUTransferBufferCreateInfo
             {
                 usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                size = (uint)expectedLength,
+                size = (uint)pixels.Length,
             };
             transferBuffer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
             if (transferBuffer is null)
@@ -130,18 +160,11 @@ internal sealed unsafe class RenderDevice : IDisposable
             SDL_EndGPUCopyPass(copyPass);
             if (!SDL_SubmitGPUCommandBuffer(commandBuffer))
                 throw sdlFailure("submit a texture upload");
-
-            var id = new RenderTextureId(_nextTextureId++);
-            _textures.Add(id.Value, (nint)texture);
-            texture = null;
-            return id;
         }
         finally
         {
             if (transferBuffer is not null)
                 SDL_ReleaseGPUTransferBuffer(_device, transferBuffer);
-            if (texture is not null)
-                SDL_ReleaseGPUTexture(_device, texture);
         }
     }
 
@@ -278,7 +301,12 @@ internal sealed unsafe class RenderDevice : IDisposable
                 {
                     RenderMaskOperation.Push => _pushMaskPipeline,
                     RenderMaskOperation.Pop => _popMaskPipeline,
-                    _ => quad.Blend == RenderBlend.Add ? _addQuadPipeline : _normalQuadPipeline,
+                    _ => quad.Blend switch
+                    {
+                        RenderBlend.Add => _addQuadPipeline,
+                        RenderBlend.Screen => _screenQuadPipeline,
+                        _ => _normalQuadPipeline,
+                    },
                 };
                 if (pipeline != boundPipeline)
                 {
@@ -452,9 +480,13 @@ internal sealed unsafe class RenderDevice : IDisposable
             var blendState = new SDL_GPUColorTargetBlendState
             {
                 src_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
-                dst_color_blendfactor = blend == RenderBlend.Add
-                    ? SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE
-                    : SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                // Premultiplied source: screen is s + d(1 - s).
+                dst_color_blendfactor = blend switch
+                {
+                    RenderBlend.Add => SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
+                    RenderBlend.Screen => SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_COLOR,
+                    _ => SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                },
                 color_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
                 src_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
                 dst_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
@@ -668,6 +700,11 @@ internal sealed unsafe class RenderDevice : IDisposable
         {
             SDL_ReleaseGPUGraphicsPipeline(_device, _addQuadPipeline);
             _addQuadPipeline = null;
+        }
+        if (_screenQuadPipeline is not null)
+        {
+            SDL_ReleaseGPUGraphicsPipeline(_device, _screenQuadPipeline);
+            _screenQuadPipeline = null;
         }
         if (_normalQuadPipeline is not null)
         {

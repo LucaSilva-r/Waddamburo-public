@@ -60,6 +60,7 @@ public static class LumenRenderFrameAdapter
     {
         LumenRenderBlend.Normal => RenderBlend.Normal,
         LumenRenderBlend.Add => RenderBlend.Add,
+        LumenRenderBlend.Screen => RenderBlend.Screen,
         _ => throw new ArgumentOutOfRangeException(nameof(blend)),
     };
 }

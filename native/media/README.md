@@ -52,6 +52,13 @@ first, then advance the demuxer until the destination is full or EOF. Seek flush
 codec and resampler state. Cancellation is checked by AVIO and FFmpeg's interrupt
 callback.
 
+ABI 1.3 adds sequential video decoding: `waddamburo_media_video_open_file`,
+`_read_frame` (RGBA8 frames with microsecond timestamps relative to the first frame)
+and `_destroy`. It opens PS3 PAMF movies as MPEG program streams and decodes their
+H.264 track. PAMF audio (ATRAC3plus in private stream 1) is not exposed by FFmpeg's
+demuxer; managed code (`Waddamburo.Formats.Audio.PamfAudio`) rewraps it as an AT3
+RIFF for the ordinary audio decoder.
+
 The .NET mapping is manually audited in
 `src/Waddamburo.Platform.Sdl/Media/NativeMediaMethods.cs`. It maps fixed-width C
 integers directly, opaque pointers and callbacks to `nint`, and the C `float *` to

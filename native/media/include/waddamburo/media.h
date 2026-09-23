@@ -26,7 +26,8 @@ extern "C" {
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_0 WADDAMBURO_MEDIA_ABI_VERSION(1U, 0U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_1 WADDAMBURO_MEDIA_ABI_VERSION(1U, 1U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_2 WADDAMBURO_MEDIA_ABI_VERSION(1U, 2U)
-#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_2
+#define WADDAMBURO_MEDIA_ABI_VERSION_1_3 WADDAMBURO_MEDIA_ABI_VERSION(1U, 3U)
+#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_3
 
 typedef int32_t waddamburo_media_result;
 
@@ -142,6 +143,37 @@ waddamburo_media_decoder_get_error(
 
 WADDAMBURO_MEDIA_API void WADDAMBURO_MEDIA_CALL
 waddamburo_media_decoder_destroy(waddamburo_media_decoder *decoder);
+
+/* ABI 1.3: sequential video decoding to RGBA8 (PS3 PAMF/MPEG program streams with H.264). */
+typedef struct waddamburo_media_video waddamburo_media_video;
+
+typedef struct waddamburo_media_video_info {
+    uint32_t struct_size;
+    uint32_t width;
+    uint32_t height;
+    uint32_t reserved;
+    /* Container duration, or -1 when unknown. */
+    int64_t duration_microseconds;
+} waddamburo_media_video_info;
+
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_open_file(
+    const char *utf8_path,
+    waddamburo_media_video **video,
+    waddamburo_media_video_info *info,
+    waddamburo_media_error *error);
+
+/* Decodes the next frame into width * height * 4 bytes; END_OF_STREAM after the last one.
+   The timestamp is relative to the first frame. */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_read_frame(
+    waddamburo_media_video *video,
+    uint8_t *rgba,
+    uint64_t capacity,
+    int64_t *pts_microseconds);
+
+WADDAMBURO_MEDIA_API void WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_destroy(waddamburo_media_video *video);
 
 #ifdef __cplusplus
 }

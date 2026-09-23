@@ -108,14 +108,16 @@ public sealed class LumenPlayerTests
         Assert.Equal(0, player.CurrentFrame);
     }
 
-    [Fact]
-    public void AddBlendModeFlowsIntoRenderSnapshot()
+    [Theory]
+    [InlineData(8, LumenRenderBlend.Add)]
+    [InlineData(4, LumenRenderBlend.Screen)]
+    public void BlendModeFlowsIntoRenderSnapshot(ushort flashMode, LumenRenderBlend expected)
     {
-        var player = new LumenPlayer(createMovie(firstBlendMode: 8), 1280, 720);
+        var player = new LumenPlayer(createMovie(firstBlendMode: flashMode), 1280, 720);
 
         var quad = Assert.Single(player.CreateRenderSnapshot().Quads);
 
-        Assert.Equal(LumenRenderBlend.Add, quad.Blend);
+        Assert.Equal(expected, quad.Blend);
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_BLEND_MODE_DEFERRED");
     }
 
@@ -1235,6 +1237,21 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void BooleanConvertsItsArgument()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            // value = Boolean(1)
+            0x96, 0x03, 0x00, 0x09, 0x12, 0x00,
+            0x96, 0x0D, 0x00, 0x07, 1, 0, 0, 0, 0x07, 1, 0, 0, 0, 0x09, 0x39, 0x00,
+            0x3D, 0x1D, 0x00,
+        ]), 1280, 720);
+        player.Advance();
+        player.Advance();
+        Assert.Equal(true, player.ReadScriptValue("value"));
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_CALL_UNRESOLVED");
+    }
+
+    [Fact]
     public void AuthoredGotoAndStopUsesOneBasedClipFrames()
     {
         var player = new LumenPlayer(createMovie(removeOnThirdFrame: false, placementNameStringIndex: 31, actionBytecode: [
@@ -1946,7 +1963,7 @@ public sealed class LumenPlayerTests
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
                 "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x",
-                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random", "transform", "colorTransform", "geom", "ColorTransform")),
+                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random", "transform", "colorTransform", "geom", "ColorTransform", "Boolean")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

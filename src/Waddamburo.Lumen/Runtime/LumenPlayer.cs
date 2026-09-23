@@ -753,6 +753,9 @@ public sealed class LumenPlayer
                     return invokeHost(instance, nativeFunction, arguments);
                 if (name == "ASSetPropFlags")
                     return new Avm1Lookup(true, Avm1Undefined.Instance);
+                // Boolean(x) as a conversion function (attract title polls its stream this way).
+                if (name == "Boolean")
+                    return new Avm1Lookup(true, arguments.Count > 0 && toBoolean(arguments[0]));
                 reportOnce(
                     "LUM_AVM_CALL_UNRESOLVED",
                     instance.CharacterId,
@@ -1835,7 +1838,7 @@ public sealed class LumenPlayer
             instance.ClipDepth = placement.ClipDepth == 0 ? null : TimelineDepthBase + placement.ClipDepth;
         if (isNew || placement.BlendMode != 0)
             instance.BlendMode = placement.BlendMode;
-        if (instance.BlendMode > 2 && instance.BlendMode != 8)
+        if (instance.BlendMode > 2 && instance.BlendMode is not (4 or 8))
         {
             reportOnce(
                 "LUM_BLEND_MODE_DEFERRED",
@@ -1908,7 +1911,12 @@ public sealed class LumenPlayer
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
         var color = local.Color.Then(parentColor);
-        var blend = instance.BlendMode == 8 ? LumenRenderBlend.Add : parentBlend;
+        var blend = instance.BlendMode switch
+        {
+            4 => LumenRenderBlend.Screen,
+            8 => LumenRenderBlend.Add,
+            _ => parentBlend,
+        };
         if (_shapes.TryGetValue(instance.CharacterId, out var shape))
         {
             foreach (var geometry in shape.Geometry)

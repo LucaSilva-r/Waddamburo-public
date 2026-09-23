@@ -1,4 +1,4 @@
-add_library(waddamburo_media SHARED src/media.c)
+add_library(waddamburo_media SHARED src/media.c src/video.c)
 add_library(Waddamburo::Media ALIAS waddamburo_media)
 
 waddamburo_configure_native_target(waddamburo_media)
@@ -19,13 +19,14 @@ if(WADDAMBURO_MEDIA_FFMPEG)
     find_library(_avcodec avcodec PATHS "${WADDAMBURO_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
     find_library(_swresample swresample PATHS "${WADDAMBURO_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
     find_library(_avutil avutil PATHS "${WADDAMBURO_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+    find_library(_swscale swscale PATHS "${WADDAMBURO_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
     target_include_directories(waddamburo_media PRIVATE "${_ffmpeg_include}")
     target_link_libraries(waddamburo_media PRIVATE
-      "${_avformat}" "${_avcodec}" "${_swresample}" "${_avutil}")
+      "${_avformat}" "${_avcodec}" "${_swresample}" "${_swscale}" "${_avutil}")
   else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(WADDAMBURO_FFMPEG REQUIRED IMPORTED_TARGET
-      libavformat libavcodec libswresample libavutil)
+      libavformat libavcodec libswresample libswscale libavutil)
     target_link_libraries(waddamburo_media PRIVATE PkgConfig::WADDAMBURO_FFMPEG)
   endif()
   target_compile_definitions(waddamburo_media PRIVATE WADDAMBURO_MEDIA_HAS_FFMPEG=1)

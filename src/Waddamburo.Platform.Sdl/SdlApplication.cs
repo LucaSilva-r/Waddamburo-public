@@ -90,6 +90,13 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.UploadRgba8(width, height, pixels);
     }
 
+    public void UpdateRgba8(RenderTextureId texture, uint width, uint height, ReadOnlySpan<byte> pixels)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _renderer!.UpdateRgba8(texture, width, height, pixels);
+    }
+
     public void ReleaseTexture(RenderTextureId texture)
     {
         ensureOwnerThread();

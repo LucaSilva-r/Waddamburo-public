@@ -151,7 +151,8 @@ handoff using user-owned archives below one explicit asset root:
 
 For normal play, supply only the game's `USRDIR` directory. It resolves
 `data/lumendata/packed`, `custom_songs`, and `data/sound` from that root and boots
-the player Entry scene:
+like the cabinet: the startup notice and logos, then the attract loop (logo, title,
+caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). Hit a drum key (D/F/J/K) during the attract loop to reach player Entry:
 
 ```sh
 dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"
@@ -166,7 +167,7 @@ highest-priority override. All granular content options below are retained for
 diagnostic runs.
 
 To test a scene without playing through the preceding screens, use
-`--start-scene=entry`, `song-select`, `result-fail`, `result-clear`, `retry`, or
+`--start-scene=attract` (skips the startup notice), `entry`, `song-select`, `result-fail`, `result-clear`, `retry`, or
 `gameover` with the normal game-data argument. For example, the Revival drum-roll
 challenge starts directly with:
 

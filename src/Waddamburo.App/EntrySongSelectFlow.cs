@@ -32,7 +32,7 @@ internal static class EntrySongSelectFlow
         string? jinglePath,
         string? soundRoot,
         bool countdown = true,
-        StartScene startScene = StartScene.Entry)
+        StartScene startScene = StartScene.Boot)
     {
         var tja = new TjaCatalogProvider(tjaRoot);
         using var globalCatalog = new GlobalSongCatalog([tja]);
@@ -93,6 +93,16 @@ internal static class EntrySongSelectFlow
             soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
             donPresentation, sound => soundController?.PlayGameplayEvent(sound));
 
+        var bootId = new SceneId("boot");
+        var logoId = new SceneId("attract-logo");
+        var titleId = new SceneId("attract-title");
+        var cautionId = new SceneId("attract-caution");
+        var movieId = new SceneId("attract-movie");
+        var attractMovies = AttractMovie.Discover(Path.GetFullPath(Path.Combine(assetRoot, "..", "..", "movie")));
+        // Shuffled like the cabinet's rotation; refilled when every CM has played once.
+        var attractMovieQueue = new Queue<string>();
+        string? lastAttractMovie = null;
+        AttractMovie? attractMovie = null;
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
         var gameplayId = new SceneId("gameplay");
@@ -130,6 +140,13 @@ internal static class EntrySongSelectFlow
         var playRequests = new PlayRequestState();
         var catalog = new SceneCatalog(
             [
+                // Traced boot and attract loop: kidou (notice, logos) once, then logo_namco -> title ->
+                // keikoku -> attract CM -> logo_namco ..., each full screen at depth 1000.
+                attractScene(bootId, "kidou", "boot"),
+                attractScene(logoId, "logo_namco"),
+                attractScene(titleId, "title"),
+                attractScene(cautionId, "keikoku"),
+                attractScene(movieId, "movie", "boot"),
                 new SceneDefinition(SceneDefinition.CurrentVersion, entryId, [
                     // Traced entry composition: the scene movie, then its indicator parts by depth
                     // (100 .. 50; the game draws them over the scene). entry_info / shop_info (-890)
@@ -192,6 +209,8 @@ internal static class EntrySongSelectFlow
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         var initialScene = startScene switch
         {
+            StartScene.Boot => bootId,
+            StartScene.Attract => logoId,
             StartScene.Entry => entryId,
             StartScene.SongSelect => songSelectId,
             StartScene.ResultFail or StartScene.ResultClear => resultId,
@@ -238,16 +257,50 @@ internal static class EntrySongSelectFlow
             var traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
             var dumpTreeTick = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
             var simulationTick = 0;
+            // Live presses reach only the per-frame callback; ticks see held keys. Latch drum hits
+            // there for the attract loop (scripted --press pulses arrive in the tick instead).
+            var drumHitLatched = false;
+            var skipLatched = false;
+            static bool isDrum(SdlKeyPress press) => press.Key is SdlKeyboardKey.D
+                or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K;
             void goTo(SceneId scene)
             {
                 if (active.Id == resultId)
                     soundController?.StopResultMusic();
                 if (active.Id == gameOverId)
                     soundController?.StopGameOverMusic();
+                if (active.Id == titleId)
+                    soundController?.StopAttractStream();
+                attractMovie?.Dispose();
+                attractMovie = null;
                 coordinator.TransitionToAsync(scene).AsTask().GetAwaiter().GetResult();
                 releaseTextures(application, textureIds);
                 active = requireLumenScene(coordinator);
                 textureIds = uploadTextures(application, active);
+                if (scene == movieId)
+                {
+                    if (attractMovieQueue.Count == 0)
+                    {
+                        var order = attractMovies.ToArray();
+                        Random.Shared.Shuffle(order);
+                        // No CM twice in a row across refills.
+                        if (order.Length > 1 && order[0] == lastAttractMovie)
+                            (order[0], order[^1]) = (order[^1], order[0]);
+                        foreach (var movie in order)
+                            attractMovieQueue.Enqueue(movie);
+                    }
+                    var path = lastAttractMovie = attractMovieQueue.Dequeue();
+                    try
+                    {
+                        attractMovie = new AttractMovie(application, audioEngine, path);
+                        active.Player.Layers.Single().Player.SetNativeFill(AttractMovieFill, AttractMovie.Surface);
+                    }
+                    catch (Exception exception) when (exception is IOException or InvalidDataException
+                        or NotSupportedException or DllNotFoundException or EntryPointNotFoundException)
+                    {
+                        Console.Error.WriteLine($"Attract movie {Path.GetFileName(path)} is unavailable: {exception.Message}");
+                    }
+                }
                 if (scene == songSelectId)
                     previewController?.StartBackground();
                 else if (scene == entryId && entryJinglePath is not null)
@@ -308,7 +361,8 @@ internal static class EntrySongSelectFlow
                     index => index < textureIds.Length
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
-                    surface => donPresentation?.Resolve(surface) ?? costumeIcons.Resolve(surface) ?? titleTextures.Resolve(surface));
+                    surface => attractMovie?.Resolve(surface) ?? donPresentation?.Resolve(surface)
+                        ?? costumeIcons.Resolve(surface) ?? titleTextures.Resolve(surface));
                 IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => indicators is null ? []
                     : LumenRenderFrameAdapter.Compose(
                         indicators.CreateSnapshot(overIntermission, (float)interpolationFraction),
@@ -337,6 +391,10 @@ internal static class EntrySongSelectFlow
                 {
                     simulationTick++;
                     var keyboardState = inputTimeline.Apply(simulationTick, keyboard);
+                    var drumHit = drumHitLatched || keyboardState.Presses.Any(isDrum);
+                    drumHitLatched = false;
+                    var skipPressed = skipLatched || keyboardState.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
+                    skipLatched = false;
                     // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
                     if (traceInput)
                         foreach (var press in keyboardState.Presses)
@@ -369,7 +427,11 @@ internal static class EntrySongSelectFlow
                         if (indicatorScene != active.Id)
                         {
                             indicatorScene = active.Id;
-                            indicators.SetScene(active.Id == entryId ? IndicatorScene.Entry
+                            indicators.SetScene(active.Id == bootId ? IndicatorScene.Boot
+                                : active.Id == logoId ? IndicatorScene.Attract
+                                : active.Id == titleId || active.Id == cautionId || active.Id == movieId
+                                    ? IndicatorScene.AttractPrompt
+                                : active.Id == entryId ? IndicatorScene.Entry
                                 : active.Id == gameplayId ? IndicatorScene.Gameplay
                                 : active.Id == resultId || active.Id == retryId || active.Id == gameOverId ? IndicatorScene.Result
                                 : IndicatorScene.SongSelect);
@@ -513,10 +575,39 @@ internal static class EntrySongSelectFlow
                         {
                             if (hostFactory.GameOver?.Ended == true)
                             {
-                                // ponytail: back to entry (no attract loop yet); a new credit starts at stage 1.
+                                // Traced: the credit's end returns to the attract loop at logo_namco.
                                 songsPlayed = 0;
+                                goTo(logoId);
+                            }
+                            return;
+                        }
+                        else if (active.Id == bootId)
+                        {
+                            // Space skips the boot screens (testing convenience, not cabinet behaviour).
+                            if (skipPressed || AttractHostBinding.IsBootEnd(active.Player.Layers.Single().Player))
+                                goTo(logoId);
+                            return;
+                        }
+                        else if (active.Id == logoId || active.Id == titleId || active.Id == cautionId || active.Id == movieId)
+                        {
+                            attractMovie?.Advance();
+                            // ponytail: any drum key starts (free play); coins and cards are not modelled.
+                            if (drumHit)
+                            {
+                                // The attract's voices, effects and music end with it.
+                                soundController?.StopAll();
+                                soundController?.PlayAttractExit();
                                 goTo(entryId);
                             }
+                            else if (active.Id == movieId)
+                            {
+                                if (attractMovie?.Finished != false)
+                                    goTo(logoId);
+                            }
+                            else if (hostFactory.Attract?.Finished == true)
+                                // Traced: keikoku is followed by one attract CM, then logo_namco again.
+                                goTo(active.Id == logoId ? titleId : active.Id == titleId ? cautionId
+                                    : attractMovies.Length != 0 ? movieId : logoId);
                             return;
                         }
                         else if (active.Id == gameplayId)
@@ -638,6 +729,8 @@ internal static class EntrySongSelectFlow
                 screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture),
                 updateFrame: keyboard =>
                 {
+                    drumHitLatched |= keyboard.Presses.Any(isDrum);
+                    skipLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
                     if (screenshotPath is null && active.Id == gameplayId
                         && rainbowSequence.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete)
                         gameplayPresentation.Advance(keyboard, chartTime());
@@ -654,6 +747,7 @@ internal static class EntrySongSelectFlow
         }
         finally
         {
+            attractMovie?.Dispose();
             releaseTextures(application, rainbowTextureIds);
             if (rainbow is not null)
                 rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -664,6 +758,14 @@ internal static class EntrySongSelectFlow
             coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
     }
+
+    // movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.
+    private const string AttractMovieFill = "movie1280x720";
+
+    private static SceneDefinition attractScene(SceneId id, string movie, string host = "attract") =>
+        new(SceneDefinition.CurrentVersion, id, [
+            new SceneLayerDefinition($"attract/{movie}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, host),
+        ]);
 
     private static SceneLayerDefinition indicatorPart(string movie, float x = 0, float y = 0) => new(
         "indicator/packeddata.ddp",
@@ -806,6 +908,8 @@ internal static class EntrySongSelectFlow
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
             "gameover" => gameOverHost(),
+            "attract" => attractHost(),
+            "boot" => new LumenLayerHost(null),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 
@@ -837,6 +941,15 @@ internal static class EntrySongSelectFlow
             return new LumenLayerHost(binding, binding.Attach);
         }
 
+        /// <summary>The loaded attract movie's host.</summary>
+        public AttractHostBinding? Attract { get; private set; }
+
+        private LumenLayerHost attractHost()
+        {
+            var binding = Attract = new AttractHostBinding(_sounds as IAttractSoundController);
+            return new LumenLayerHost(binding);
+        }
+
         private EntrySceneHost? _entry;
         private IndicatorParts? _parts;
 
@@ -857,7 +970,7 @@ internal static class EntrySongSelectFlow
                 DonLumenBinding.Attach(player, _don, DonPresentationLayout.OpposedPlayers);
             // SetPrevious(scene, trigger): entry starts as if P1 hit the drum in the attract loop
             // (SCENE_TRIGGER_DON_1P = 0), the free-play path; the movie then joins P1 via EntryCoin.
-            // ponytail: no attract loop yet, so the trigger is fixed.
+            // ponytail: the attract loop only leaves on a P1 drum hit, so the trigger is fixed.
             if (!player.TryInvokeCallback("SetPrevious", [
                     LumenHostValue.FromNumber(0),
                     LumenHostValue.FromNumber(0)]))

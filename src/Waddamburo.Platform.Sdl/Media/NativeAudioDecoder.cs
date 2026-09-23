@@ -263,7 +263,7 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
         throw createException(result, error);
     }
 
-    private static Exception createException(MediaResult result, MediaError error)
+    internal static Exception createException(MediaResult result, MediaError error)
     {
         var length = Math.Min(error.MessageLength, 255U);
         string message;

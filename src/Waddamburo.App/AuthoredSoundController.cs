@@ -5,7 +5,7 @@ using Waddamburo.Platform.Sdl.Media;
 
 /// <summary>Resolves authored nuSound2 bank/cue requests against a user-supplied sound tree.</summary>
 internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController,
-    IResultSoundController, IGameOverSoundController
+    IResultSoundController, IGameOverSoundController, IAttractSoundController
 {
     private readonly AudioEngine _audio;
     private readonly string _bankRoot;
@@ -20,6 +20,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
     private AudioPlaybackHandle? _resultMusicHandle;
     private AudioPlaybackHandle? _gameOverMusicHandle;
     private string? _gameOverMusicName;
+    private AudioPlaybackHandle? _attractStreamHandle;
     private bool _categoryVoiceSelected;
 
     public AuthoredSoundController(AudioEngine audio, string soundRoot)
@@ -230,6 +231,35 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
                 Console.Error.WriteLine($"Game Over music {name} is unavailable: {exception.Message}");
         }
     }
+
+    public void PlayAttractStream(string name)
+    {
+        StopAttractStream();
+        try
+        {
+            _attractStreamHandle = _audio.PlayOneShot(Path.Combine(_musicRoot, name + ".nub"), AudioBus.Bgm);
+            Console.WriteLine($"Attract music {name} -> Bgm.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            if (_reportedFailures.Add((name, -1)))
+                Console.Error.WriteLine($"Attract music {name} is unavailable: {exception.Message}");
+        }
+    }
+
+    public bool IsAttractStreamPlaying => isPlaying(_attractStreamHandle);
+
+    public void StopAttractStream()
+    {
+        if (_attractStreamHandle is { } handle)
+            _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+        _attractStreamHandle = null;
+    }
+
+    public void PlayAttractCue(bool voice, int cue) => playNamedBankCue(voice ? "VO_ATTRACT" : "SE_ATTRACT", cue);
+
+    /// <summary>A drum hit leaving the attract loop (traced SE_COM cue 1 at the title).</summary>
+    public void PlayAttractExit() => playNamedBankCue("SE_COM", 1, AudioBus.MenuSound);
 
     public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);
 

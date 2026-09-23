@@ -40,6 +40,16 @@ internal struct MediaStreamInfo
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
+internal struct MediaVideoInfo
+{
+    internal uint StructSize;
+    internal uint Width;
+    internal uint Height;
+    internal uint Reserved;
+    internal long DurationMicroseconds;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
 internal unsafe struct MediaError
 {
     internal uint StructSize;
@@ -62,7 +72,7 @@ internal struct MediaIoCallbacks
 internal static partial class NativeMediaMethods
 {
     internal const string LibraryName = "waddamburo_media";
-    internal const uint AbiVersion = (1U << 16) | 2U;
+    internal const uint AbiVersion = (1U << 16) | 3U;
 
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_get_abi_version")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -115,4 +125,24 @@ internal static partial class NativeMediaMethods
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_decoder_destroy")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void Destroy(nint decoder);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_open_file")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial MediaResult VideoOpenFile(
+        nint utf8Path,
+        out nint video,
+        ref MediaVideoInfo info,
+        ref MediaError error);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_read_frame")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial MediaResult VideoReadFrame(
+        nint video,
+        nint rgba,
+        ulong capacity,
+        out long ptsMicroseconds);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_destroy")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void VideoDestroy(nint video);
 }

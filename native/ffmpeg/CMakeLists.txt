@@ -43,10 +43,10 @@ set(_ffmpeg_common_options
   --enable-swresample
   --disable-avdevice
   --disable-avfilter
-  --disable-swscale
-  --enable-decoder=atrac3p,mp3,mp3float,vorbis,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8
-  --enable-demuxer=wav,mp3,ogg,flac
-  --enable-parser=mpegaudio,vorbis,flac,opus
+  --enable-swscale
+  --enable-decoder=atrac3p,h264,mp3,mp3float,vorbis,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8
+  --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264
+  --enable-parser=mpegaudio,vorbis,flac,opus,h264
   --enable-protocol=file
   --disable-network
   --disable-programs

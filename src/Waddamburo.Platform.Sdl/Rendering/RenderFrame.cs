@@ -60,6 +60,7 @@ public enum RenderBlend
 {
     Normal,
     Add,
+    Screen,
 }
 
 /// <summary>Stencil writes never paint color. Depth is the reference before each operation.</summary>
