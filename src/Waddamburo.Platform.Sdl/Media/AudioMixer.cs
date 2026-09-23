@@ -7,6 +7,8 @@ public enum AudioBus
     MenuSound,
     Voice,
     DrumHit,
+    /// <summary>Coin insertion: the cabinet's separate channel, never stopped with the scene.</summary>
+    Coin,
 }
 
 public readonly record struct AudioPlaybackHandle(long Value);

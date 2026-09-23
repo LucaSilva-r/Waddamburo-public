@@ -31,6 +31,7 @@ internal sealed class SystemIndicators
     private bool _cardVisible;
     private bool _coinsVisible;
     private bool _online;
+    private bool _joined;
 
     public SystemIndicators(LumenGameSceneInstance scene)
     {
@@ -43,6 +44,9 @@ internal sealed class SystemIndicators
     }
 
     public LumenGameSceneInstance Scene { get; }
+
+    /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
+    public CoinBank? Coins { get; init; }
 
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id,
         new[] { "network_icon", "msg_banapass", "msg_coins" }.Select(name => new SceneLayerDefinition(
@@ -69,6 +73,15 @@ internal sealed class SystemIndicators
         }));
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt)); // sic, the movie's spelling
         call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean(!attract || prompt));
+        _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Gameplay or IndicatorScene.Result;
+        if (Coins is not null)
+        {
+            // Coin mode (traced session2-coins): coin type 0, the credit count, and per side the
+            // credits still missing (-1 once joined). The split panel only comes with a join.
+            call(_coins, "SetCoinType", LumenHostValue.FromNumber(0));
+            CoinsChanged();
+            return;
+        }
         // In Song Select the joined P1 has no prompt (-1); the unjoined right drum uses
         // message 2. The indicator movie positions and animates each side itself.
         setMessageNumbers(scene == IndicatorScene.Entry ? -1 : scene == IndicatorScene.SongSelect ? -1 : 0,
@@ -91,9 +104,30 @@ internal sealed class SystemIndicators
     /// <summary>A player joined at entry: the split panel and the start message go away.</summary>
     public void EntryJoined()
     {
+        if (Coins is not null)
+        {
+            // Traced: the split panel opens for the other side, whose message stays up with its price.
+            _joined = true;
+            call(_coins, "SetScene", LumenHostValue.FromNumber(4));
+            call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(true));
+            call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
+            CoinsChanged();
+            return;
+        }
         call(_coins, "SetScene", LumenHostValue.FromNumber(4));
         call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(false));
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(false));
+    }
+
+    /// <summary>Coin mode: shows the current credits and what each side still needs.</summary>
+    public void CoinsChanged()
+    {
+        if (Coins is not { } bank) return;
+        var settings = bank.Settings;
+        call(_coins, "SetCoinNum", LumenHostValue.FromNumber(bank.Credits));
+        // Before anyone joins, P2's number is the full two-player price (traced 2 / 4 at 0 credits).
+        setMessageNumbers(_joined ? -1 : Math.Max(0, settings.CreditsOnePlayer - bank.Credits),
+            _joined ? bank.Missing(1) : Math.Max(0, settings.CreditsTwoPlayers - bank.Credits));
     }
 
     private void setMessageNumbers(int player1, int player2 = 0)

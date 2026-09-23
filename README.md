@@ -152,7 +152,11 @@ handoff using user-owned archives below one explicit asset root:
 For normal play, supply only the game's `USRDIR` directory. It resolves
 `data/lumendata/packed`, `custom_songs`, and `data/sound` from that root and boots
 like the cabinet: the startup notice and logos, then the attract loop (logo, title,
-caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). Hit a drum key (D/F/J/K) during the attract loop to reach player Entry:
+caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). In free play, hit a drum key (D/F/J/K) during the attract loop to reach player Entry.
+Cabinet settings live in `config.cfg` in that root (written with defaults on first run):
+`free_play`, `credits_per_coin`, `credits_1p`, `credits_2p` and `songs_per_session`. In coin
+mode F2 inserts a coin; the first coin opens player Entry, and joining pays the credits. Space
+skips the startup screens.
 
 ```sh
 dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"

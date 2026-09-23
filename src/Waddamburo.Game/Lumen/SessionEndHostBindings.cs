@@ -10,12 +10,12 @@ namespace Waddamburo.Game.Lumen;
 /// </summary>
 public static class TaikoCredit
 {
-    // ponytail: service-menu setting (the traced cabinet: 2 songs per credit); no option until settings exist.
-    public const int SongsPerCredit = 2;
-
-    /// <summary>result.lm SetEndMessage: 0 none (credit over), 1 one more song, 2 revival.</summary>
-    public static int EndMessage(int stage, bool cleared) =>
-        !cleared && stage == 1 ? 2 : stage >= SongsPerCredit ? 0 : 1;
+    /// <summary>
+    /// result.lm SetEndMessage: 0 none (credit over), 1 one more song, 2 revival.
+    /// <paramref name="songsPerSession"/> is the cabinet setting (config.cfg; the traced cabinet used 2).
+    /// </summary>
+    public static int EndMessage(int stage, bool cleared, int songsPerSession) =>
+        !cleared && stage == 1 ? 2 : stage >= songsPerSession ? 0 : 1;
 }
 
 public enum RetrySoundRequestKind

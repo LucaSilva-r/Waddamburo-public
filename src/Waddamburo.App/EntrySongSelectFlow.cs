@@ -32,8 +32,12 @@ internal static class EntrySongSelectFlow
         string? jinglePath,
         string? soundRoot,
         bool countdown = true,
-        StartScene startScene = StartScene.Boot)
+        StartScene startScene = StartScene.Boot,
+        ArcadeSettings? arcade = null)
     {
+        arcade ??= new ArcadeSettings();
+        // The cabinet's credit counter: lives until the process exits (coin mode only).
+        var coins = arcade.FreePlay ? null : new CoinBank(arcade);
         var tja = new TjaCatalogProvider(tjaRoot);
         using var globalCatalog = new GlobalSongCatalog([tja]);
         var snapshot = globalCatalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
@@ -198,12 +202,14 @@ internal static class EntrySongSelectFlow
                 titleTextures,
                 previewController is null ? TracePreviewController.Instance : previewController,
                 soundController is null ? TraceSoundController.Instance : soundController,
-                new ViewerFrontendServices(soundController),
+                new ViewerFrontendServices(soundController, arcade.FreePlay),
                 donPresentation,
                 playRequests,
                 () => songInfo,
                 countdown,
-                () => gameplayPresentation.Result ?? diagnosticResult);
+                () => gameplayPresentation.Result ?? diagnosticResult,
+                arcade,
+                coins);
         var loader = new LumenGameSceneLoader(
             new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), hostFactory);
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
@@ -239,7 +245,9 @@ internal static class EntrySongSelectFlow
             Console.WriteLine($"Showing {active.Id} at launch.");
             indicators = new SystemIndicators((LumenGameSceneInstance)loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
-                .AsTask().GetAwaiter().GetResult());
+                .AsTask().GetAwaiter().GetResult()) { Coins = coins };
+            var indicatorsForJoin = indicators;
+            hostFactory.EntryJoined = () => indicatorsForJoin.EntryJoined();
             indicatorTextureIds = uploadTextures(application, indicators.Scene);
             var rainbowSequence = new RainbowTransitionSequence();
             LumenNativeSurfaceKey? rainbowTitle = null;
@@ -261,6 +269,8 @@ internal static class EntrySongSelectFlow
             // there for the attract loop (scripted --press pulses arrive in the tick instead).
             var drumHitLatched = false;
             var skipLatched = false;
+            var coinLatched = 0;
+            var queuedCoinSounds = 0;
             static bool isDrum(SdlKeyPress press) => press.Key is SdlKeyboardKey.D
                 or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K;
             void goTo(SceneId scene)
@@ -395,6 +405,26 @@ internal static class EntrySongSelectFlow
                     drumHitLatched = false;
                     var skipPressed = skipLatched || keyboardState.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
                     skipLatched = false;
+                    // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit
+                    // counts at once; each coin's sound queues and plays in full, one after another.
+                    var insertedCoins = coinLatched + keyboardState.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
+                    coinLatched = 0;
+                    var coinCredited = coins is not null && insertedCoins > 0;
+                    if (coinCredited)
+                    {
+                        for (var coin = 0; coin < insertedCoins; coin++)
+                            coins!.InsertCoin();
+                        queuedCoinSounds += insertedCoins;
+                        Console.WriteLine($"Coin credited at tick {simulationTick}: {coins!.Credits} credit(s).");
+                        indicators?.CoinsChanged();
+                        if (active.Id == entryId)
+                            hostFactory.EntryCoinsChanged();
+                    }
+                    if (queuedCoinSounds > 0 && soundController?.IsCoinPlaying != true)
+                    {
+                        queuedCoinSounds--;
+                        soundController?.PlayCoin();
+                    }
                     // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
                     if (traceInput)
                         foreach (var press in keyboardState.Presses)
@@ -555,7 +585,7 @@ internal static class EntrySongSelectFlow
                             {
                                 var play = gameplayPresentation.Result ?? diagnosticResult
                                     ?? throw new InvalidOperationException("Results without a finished play.");
-                                fadeTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared) switch
+                                fadeTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared, arcade.SongsPerSession) switch
                                 {
                                     2 => retryId,
                                     1 => songSelectId,
@@ -592,11 +622,18 @@ internal static class EntrySongSelectFlow
                         {
                             attractMovie?.Advance();
                             // ponytail: any drum key starts (free play); coins and cards are not modelled.
-                            if (drumHit)
+                            // Free play: a drum hit starts. Coin mode: any credit does, at once (traced: entry
+                            // loads right after the first coin, even short of a full credit; coins inserted
+                            // during the boot screens start it as soon as the attract is reached). The drum
+                            // does nothing there.
+                            var coinStart = coins is not null && coins.Credits > 0;
+                            if (drumHit && coins is null || coinStart)
                             {
-                                // The attract's voices, effects and music end with it.
+                                // The attract's voices, effects and music end with it (the coin channel plays on).
                                 soundController?.StopAll();
-                                soundController?.PlayAttractExit();
+                                if (!coinStart)
+                                    soundController?.PlayAttractExit();
+                                hostFactory.EntryTrigger = coinStart ? 3 : 0; // SCENE_TRIGGER_COIN / _DON_1P
                                 goTo(entryId);
                             }
                             else if (active.Id == movieId)
@@ -731,6 +768,7 @@ internal static class EntrySongSelectFlow
                 {
                     drumHitLatched |= keyboard.Presses.Any(isDrum);
                     skipLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
+                    coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
                     if (screenshotPath is null && active.Id == gameplayId
                         && rainbowSequence.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete)
                         gameplayPresentation.Advance(keyboard, chartTime());
@@ -866,8 +904,20 @@ internal static class EntrySongSelectFlow
         IPlayRequestSink playRequests,
         Func<TaikoSongInfo> songInfo,
         bool countdown,
-        Func<TaikoPlayResult?> playResult) : ILumenLayerHostFactory
+        Func<TaikoPlayResult?> playResult,
+        ArcadeSettings arcade,
+        CoinBank? coins) : ILumenLayerHostFactory
     {
+        private readonly CoinBank? _coins = coins;
+
+        /// <summary>SetPrevious trigger for the next entry: SCENE_TRIGGER_DON_1P (0) or _COIN (3).</summary>
+        public int EntryTrigger { get; set; }
+
+        /// <summary>Called when a player joins at entry (coin mode updates the indicator panel).</summary>
+        public Action? EntryJoined { get; set; }
+
+        public void EntryCoinsChanged() => _entry?.CoinsChanged();
+
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
         private readonly ISongBoardTextureService _textures = textures;
@@ -885,9 +935,12 @@ internal static class EntrySongSelectFlow
                 _parts = new IndicatorParts(IndicatorPartsScene.Entry, countdown);
                 _entry = new EntrySceneHost(_parts)
                 {
+                    Coins = _coins,
                     CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                         : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 };
+                if (_coins is not null)
+                    _entry.PlayerJoined += _ => EntryJoined?.Invoke();
             }
             else if (layer.HostId == "song-select")
                 _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown);
@@ -919,7 +972,8 @@ internal static class EntrySongSelectFlow
             var stage = songInfo().Stage;
             // ponytail: guest name until profiles exist (traced default どんちゃん).
             var binding = new ResultHostBinding(() => play, "どんちゃん", stage,
-                TaikoCredit.EndMessage(stage, play.Cleared), _don, _sounds as IResultSoundController);
+                TaikoCredit.EndMessage(stage, play.Cleared, arcade.SongsPerSession),
+                _don, _sounds as IResultSoundController);
             return new LumenLayerHost(binding, binding.Attach);
         }
 
@@ -968,12 +1022,12 @@ internal static class EntrySongSelectFlow
         {
             if (_don is not null)
                 DonLumenBinding.Attach(player, _don, DonPresentationLayout.OpposedPlayers);
-            // SetPrevious(scene, trigger): entry starts as if P1 hit the drum in the attract loop
-            // (SCENE_TRIGGER_DON_1P = 0), the free-play path; the movie then joins P1 via EntryCoin.
-            // ponytail: the attract loop only leaves on a P1 drum hit, so the trigger is fixed.
+            // SetPrevious(scene, trigger): entry starts from the attract loop (scene 0) after a P1 drum
+            // hit (SCENE_TRIGGER_DON_1P = 0) or a coin (SCENE_TRIGGER_COIN = 3); the movie then joins
+            // P1 via EntryCoin.
             if (!player.TryInvokeCallback("SetPrevious", [
                     LumenHostValue.FromNumber(0),
-                    LumenHostValue.FromNumber(0)]))
+                    LumenHostValue.FromNumber(EntryTrigger)]))
             {
                 throw new InvalidOperationException("Entry did not export SetPrevious.");
             }
@@ -1054,7 +1108,7 @@ internal static class EntrySongSelectFlow
         }
     }
 
-    private sealed class ViewerFrontendServices(AuthoredSoundController? sounds) : ILumenFrontendServices
+    private sealed class ViewerFrontendServices(AuthoredSoundController? sounds, bool freePlay) : ILumenFrontendServices
     {
         private readonly AuthoredSoundController? _sounds = sounds;
 
@@ -1062,7 +1116,7 @@ internal static class EntrySongSelectFlow
 
         public bool IsStartLumen => true;
 
-        public bool IsFreePlay => true; // traced: the stock setup answers 1
+        public bool IsFreePlay => freePlay; // config.cfg free_play
 
         public void Initialize()
         {

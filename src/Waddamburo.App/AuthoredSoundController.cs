@@ -146,7 +146,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
 
     public void StopAll()
     {
-        foreach (var bus in Enum.GetValues<AudioBus>())
+        foreach (var bus in Enum.GetValues<AudioBus>().Where(static bus => bus != AudioBus.Coin))
             _audio.Mixer.StopBus(bus);
         _retryMusicHandle = null;
         _resultMusicHandle = null;
@@ -258,6 +258,28 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
     }
 
     public void PlayAttractCue(bool voice, int cue) => playNamedBankCue(voice ? "VO_ATTRACT" : "SE_ATTRACT", cue);
+
+    private AudioPlaybackHandle? _coinHandle;
+
+    /// <summary>
+    /// One queued coin's sound (traced SE_COM cue 9 per credited coin), on its own bus. The caller
+    /// credits the next coin only once this has finished, so every coin is heard in full.
+    /// </summary>
+    public void PlayCoin()
+    {
+        try
+        {
+            var clip = loadClip(("SE_COM", 9));
+            _coinHandle = _audio.Mixer.Play(clip, AudioBus.Coin);
+            Console.WriteLine($"Authored sound SE_COM#9 -> Coin ({clip.Duration.TotalSeconds:0.00} s).");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            reportUnavailable(("SE_COM", 9), exception);
+        }
+    }
+
+    public bool IsCoinPlaying => isPlaying(_coinHandle);
 
     /// <summary>A drum hit leaving the attract loop (traced SE_COM cue 1 at the title).</summary>
     public void PlayAttractExit() => playNamedBankCue("SE_COM", 1, AudioBus.MenuSound);

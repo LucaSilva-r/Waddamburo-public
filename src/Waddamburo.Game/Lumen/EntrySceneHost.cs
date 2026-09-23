@@ -1,3 +1,4 @@
+using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
@@ -29,10 +30,25 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Whether a player may join (the flow supports one local player for now).</summary>
     public Func<int, bool> CanJoin { get; init; } = static player => player == 0;
 
+    /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
+    public CoinBank? Coins { get; init; }
+
     public void AttachEntry(LumenPlayer entry)
     {
         _entry = entry;
-        call(entry, "UpdateCoins", number(-1), number(-1));
+        CoinsChanged();
+    }
+
+    /// <summary>
+    /// UpdateCoins(p1, p2): per side, 1 while the next join is not affordable ("insert coins"), -1 once
+    /// it is ("hit the drum"). Traced with 2 credits a player: (1, 1) at 1 credit, (-1, -1) at 2, and
+    /// (1, 1) again after P1 paid.
+    /// </summary>
+    public void CoinsChanged()
+    {
+        if (_entry is not { } entry) return;
+        var flag = number(Coins is null || Coins.Missing(_joined.Count) == 0 ? -1 : 1);
+        call(entry, "UpdateCoins", flag, flag);
     }
 
     /// <summary>InitInfo: the game resets both players' entry panels and the coin state (traced).</summary>
@@ -107,7 +123,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             Parts.HideNameBoards(); // traced: the game hides the boards right after
             return LumenHostValue.Undefined;
         });
-        lumen.RegisterMethod("GetCoinNum", _ => number(0));
+        lumen.RegisterMethod("GetCoinNum", _ => number(Coins?.Credits ?? 0));
         lumen.RegisterMethod("IsCardReaderError", _ => LumenHostValue.FromBoolean(false));
         // ponytail: modes without a scene yet (AI battle, shop, Waiwai) are reported unavailable.
         lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(false));
@@ -128,17 +144,17 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     }
 
     /// <summary>
-    /// What the game does inside EntryCoin when a player joins, before answering 1: free-play coin
-    /// state, then the player's costume lists (traced guest defaults).
+    /// What the game does inside EntryCoin when a player joins, before answering 1: pay the credits
+    /// (coin mode), coin state, then the player's costume lists (traced guest defaults).
     /// </summary>
     public bool TryJoin(int player)
     {
-        if (!CanJoin(player) || _entry is not { } entry)
+        if (!CanJoin(player) || _entry is not { } entry || Coins?.TryJoin(_joined.Count) == false)
             return false;
         var p = number(player);
         _joined.Add(player);
         call(entry, "BnCoinSetFree", LumenHostValue.FromBoolean(false));
-        call(entry, "UpdateCoins", number(-1), number(-1));
+        CoinsChanged();
         PlayerJoined?.Invoke(player);
         // ponytail: traced guest costume set; real ownership comes with the costume step.
         call(entry, "ReleaseCostume", p);

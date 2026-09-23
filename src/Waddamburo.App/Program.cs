@@ -69,6 +69,11 @@ try
         var layout = GameDataLayout.Resolve(gameDataRoot ?? Directory.GetCurrentDirectory(), fontPath);
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
+        // Cabinet settings (free play, credits, songs per session) beside the game data.
+        var arcadePath = Path.Combine(layout.Root, Waddamburo.Game.Flow.ArcadeSettings.FileName);
+        var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
+        Console.WriteLine($"Cabinet settings: {arcadePath} ({(arcade.FreePlay ? "free play" : "coin mode")}, "
+            + $"{arcade.SongsPerSession} songs per session).");
         EntrySongSelectFlow.Run(
             layout.LumenRoot,
             layout.DonRoot,
@@ -83,7 +88,8 @@ try
             jinglePath,
             layout.SoundRoot,
             countdown,
-            startScene);
+            startScene,
+            arcade);
         return 0;
     }
     if (soundBankProbe is not null)
