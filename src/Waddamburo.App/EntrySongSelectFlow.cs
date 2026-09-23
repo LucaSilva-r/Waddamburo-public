@@ -94,8 +94,15 @@ internal static class EntrySongSelectFlow
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
         var gameplayId = new SceneId("gameplay");
+        var resultId = new SceneId("result");
         var rainbowTransitionId = new SceneId("rainbow-transition");
         var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
+        // Traced: a finished song closes the intermission shutter (Close(0)), then the results load
+        // under it; result.lm opens on the same closed-shutter art, so the shutter is just dropped.
+        var shutterDefinition = new SceneDefinition(SceneDefinition.CurrentVersion, new SceneId("shutter"), [
+            new SceneLayerDefinition("intermission/packeddata.ddp", "shutter/shutter.lm", LumenMatrix.Identity,
+                RainbowTransitionComposition.StaticHostId),
+        ]);
         var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
         var costumeIcons = new CostumeIconTextures(application, Path.GetFullPath(Path.Combine(assetRoot, "..", "..")));
         var songInfo = new TaikoSongInfo(0, 1);
@@ -131,6 +138,11 @@ internal static class EntrySongSelectFlow
                     indicatorPart("time_counter"),
                 ]),
                 GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout),
+                // Traced 1P results: the results movie and its "press to continue" overlay, full screen.
+                new SceneDefinition(SceneDefinition.CurrentVersion, resultId, [
+                    new SceneLayerDefinition("enso_result/packeddata.ddp", "result/result.lm", LumenMatrix.Identity, "result"),
+                    new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
+                ]),
             ],
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
@@ -147,7 +159,8 @@ internal static class EntrySongSelectFlow
                 donPresentation,
                 playRequests,
                 () => songInfo,
-                countdown));
+                countdown,
+                () => gameplayPresentation.Result));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -174,6 +187,9 @@ internal static class EntrySongSelectFlow
             GameplayTimeline? gameplayTimeline = null;
             var gameplayClock = new System.Diagnostics.Stopwatch();
             var gameplayStartTick = 0;
+            var resultStartTick = 0;
+            var shutterStartTick = -1;
+            var shutterClosing = false;
             var escapeWasDown = false;
             var traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
             var dumpTreeTick = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
@@ -261,6 +277,7 @@ internal static class EntrySongSelectFlow
                             indicatorScene = active.Id;
                             indicators.SetScene(active.Id == entryId ? IndicatorScene.Entry
                                 : active.Id == gameplayId ? IndicatorScene.Gameplay
+                                : active.Id == resultId ? IndicatorScene.Result
                                 : IndicatorScene.SongSelect);
                         }
                         indicators.Advance();
@@ -366,6 +383,27 @@ internal static class EntrySongSelectFlow
                                     + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
                             }
                         }
+                        else if (active.Id == resultId)
+                        {
+                            if (rainbow is not null && simulationTick - resultStartTick >= 2)
+                            {
+                                releaseTextures(application, rainbowTextureIds);
+                                rainbowTextureIds = [];
+                                rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                                rainbow = null;
+                            }
+                            // ponytail: the game's results end after ~21 s (traced); no retry prompt yet.
+                            if (escapePressed || simulationTick - resultStartTick >= 21 * 60)
+                            {
+                                coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
+                                releaseTextures(application, textureIds);
+                                active = requireLumenScene(coordinator);
+                                textureIds = uploadTextures(application, active);
+                                previewController?.StartBackground();
+                                Console.WriteLine($"Returned to Song Select at tick {simulationTick}.");
+                            }
+                            return;
+                        }
                         else if (active.Id == gameplayId)
                         {
                             if (rainbow is not null && rainbowSequence.ShouldStartReveal(simulationTick))
@@ -407,28 +445,51 @@ internal static class EntrySongSelectFlow
                             var musicFinished = gameplayMusic is not { } music
                                 || audioEngine is null
                                 || !audioEngine.Mixer.IsPlaying(music.Handle);
-                            if (escapePressed || chartFinished && musicFinished && !gameplayPresentation.OverlayActive)
+                            if (!escapePressed && shutterStartTick < 0
+                                && chartFinished && musicFinished && !gameplayPresentation.OverlayActive)
                             {
+                                releaseTextures(application, rainbowTextureIds);
+                                rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                                rainbow = (LumenGameSceneInstance)loader.LoadAsync(shutterDefinition, CancellationToken.None)
+                                    .AsTask().GetAwaiter().GetResult();
+                                rainbowTextureIds = uploadTextures(application, rainbow);
+                                shutterStartTick = simulationTick;
+                                shutterClosing = false;
+                            }
+                            // Close registers on the shutter's first frame; retry until it exists.
+                            if (shutterStartTick >= 0 && !shutterClosing && rainbow is not null)
+                                shutterClosing = rainbow.Player.Layers.Single().Player.TryInvokeCallback("Close", [LumenHostValue.FromNumber(0)]);
+                            // ponytail: 70 ticks = traced Close → results load (1.17 s); the close itself takes ~1 s.
+                            if (escapePressed || shutterStartTick >= 0 && simulationTick - shutterStartTick >= 70)
+                            {
+                                shutterStartTick = -1;
                                 if (gameplayMusic is { } currentMusic)
                                     audioEngine?.Mixer.Stop(currentMusic.Handle, TimeSpan.FromMilliseconds(20));
                                 gameplayMusic = null;
                                 gameplayClock.Reset();
-                                releaseTextures(application, rainbowTextureIds);
-                                rainbowTextureIds = [];
-                                rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                                rainbow = null;
+                                // The shutter stays over the results until their first frames are drawn.
+                                if (escapePressed)
+                                {
+                                    releaseTextures(application, rainbowTextureIds);
+                                    rainbowTextureIds = [];
+                                    rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                                    rainbow = null;
+                                }
                                 rainbowSequence = new RainbowTransitionSequence();
                                 reportDiagnostics(active);
                                 gameplayPresentation.ReportDiagnostics();
                                 gameplayPresentation.Stop();
                                 playRequests.ClearActive();
-                                coordinator.TransitionToAsync(songSelectId).AsTask().GetAwaiter().GetResult();
+                                // Escape skips straight back; a finished song shows its results first.
+                                coordinator.TransitionToAsync(escapePressed ? songSelectId : resultId).AsTask().GetAwaiter().GetResult();
                                 activeGameplayCharts = [];
                                 releaseTextures(application, textureIds);
                                 active = requireLumenScene(coordinator);
                                 textureIds = uploadTextures(application, active);
-                                previewController?.StartBackground();
-                                Console.WriteLine($"Returned to Song Select at tick {simulationTick}.");
+                                resultStartTick = simulationTick;
+                                if (active.Id == songSelectId)
+                                    previewController?.StartBackground();
+                                Console.WriteLine($"Gameplay ended at tick {simulationTick}; showing {active.Id}.");
                             }
                         }
                         return;
@@ -583,7 +644,8 @@ internal static class EntrySongSelectFlow
         IDonPresentationController? don,
         IPlayRequestSink playRequests,
         Func<TaikoSongInfo> songInfo,
-        bool countdown) : ILumenLayerHostFactory
+        bool countdown,
+        Func<TaikoPlayResult?> playResult) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
@@ -621,8 +683,19 @@ internal static class EntrySongSelectFlow
             GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
+            "result" => resultHost(),
+            "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
+
+        private LumenLayerHost resultHost()
+        {
+            // ponytail: guest name until profiles exist (traced default どんちゃん).
+            var binding = new ResultHostBinding(
+                () => playResult() ?? throw new InvalidOperationException("Results loaded without a finished play."),
+                "どんちゃん", songInfo().Stage, _don);
+            return new LumenLayerHost(binding, binding.Attach);
+        }
 
         private EntrySceneHost? _entry;
         private IndicatorParts? _parts;

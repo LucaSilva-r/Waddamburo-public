@@ -68,24 +68,34 @@ public static class DonLumenBinding
     public static void RegisterMotion(
         LumenHostContext context,
         LumenHostObject lumen,
-        IDonPresentationController presentation)
+        IDonPresentationController presentation,
+        string methodName = "SetMotion")
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(lumen);
         ArgumentNullException.ThrowIfNull(presentation);
-        lumen.RegisterMethod("SetMotion", call =>
+        lumen.RegisterMethod(methodName, call =>
         {
-            if (call.Arguments.Length < 3)
-                return LumenHostValue.Undefined;
-            var player = integer(call.Arguments[0]);
-            if (player is not (0 or 1))
-                return LumenHostValue.Undefined;
-            presentation.SetMotion(new DonMotionRequest(
-                player,
-                motionName(context, call.Arguments[1]),
-                motionName(context, call.Arguments[2])));
+            ApplyMotion(context, presentation, call.Arguments);
             return LumenHostValue.Undefined;
         });
+    }
+
+    /// <summary>(player, one-shot DON_* id, loop DON_* id), resolved through the movie's DON_ constants.</summary>
+    public static void ApplyMotion(
+        LumenHostContext context,
+        IDonPresentationController presentation,
+        IReadOnlyList<LumenHostValue> arguments)
+    {
+        if (arguments.Count < 3)
+            return;
+        var player = integer(arguments[0]);
+        if (player is not (0 or 1))
+            return;
+        presentation.SetMotion(new DonMotionRequest(
+            player,
+            motionName(context, arguments[1]),
+            motionName(context, arguments[2])));
     }
 
     /// <summary>Entry costume picker: ChangeCostume(player, id) / ChangeDivideCostume(player, head, body, paint).</summary>

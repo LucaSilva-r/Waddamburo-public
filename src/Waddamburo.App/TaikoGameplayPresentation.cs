@@ -20,6 +20,10 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     private LumenSceneLayer[] _beatLayers = [];
     private LumenSceneLayer[] _fixedLayers = [];
     private Action<TimeSpan>? _onChartTime; // end-of-song banner check
+    private Func<TaikoPlayResult>? _result;
+
+    /// <summary>The play's numbers for the results screen (null before a song).</summary>
+    public TaikoPlayResult? Result => _result?.Invoke();
 
     // ponytail: guest name until player entry provides one (traced default: どんちゃん, no title).
     private const string PlayerName = "どんちゃん";
@@ -129,6 +133,9 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         var banner = layers["action_result"].Player;
         var full = false;
         var missed = false;
+        int great = 0, good = 0, miss = 0, maxCombo = 0;
+        _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
+            score.RollHits + score.BalloonHits, gauge.FilledSegments, gauge.State != TaikoGaugeState.BelowClear);
         var bannerTime = TaikoResultBanner.Time(chart);
         var bannerShown = false;
         _onChartTime = time =>
@@ -154,7 +161,13 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                     throw new InvalidDataException("Gameplay gauge is missing SetCurrentGauge.");
                 _character?.SetGauge(gauge.State);
             }
-            if (!judgement.StrongHitCompleted && judgement.Result == TaikoHitResult.Miss) missed = true;
+            if (!judgement.StrongHitCompleted && judgement.Result is { } hit)
+            {
+                if (hit == TaikoHitResult.Great) great++;
+                else if (hit == TaikoHitResult.Good) good++;
+                else { miss++; missed = true; }
+                maxCombo = Math.Max(maxCombo, score.Combo);
+            }
             if (gauge.State == TaikoGaugeState.Full != full)
             {
                 full = !full;

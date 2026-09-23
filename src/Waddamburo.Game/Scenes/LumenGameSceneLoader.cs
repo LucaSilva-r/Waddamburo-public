@@ -119,7 +119,7 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
                     ?? throw new InvalidOperationException($"Host factory returned null for '{layer.HostId}'.");
                 if (host.Binding is IDisposable or IAsyncDisposable)
                     lifetimes.Add(host.Binding);
-                var player = content.CreatePlayer(_stageWidth, _stageHeight, host.Binding);
+                var player = content.CreatePlayer(_stageWidth, _stageHeight, new InGameBinding(host.Binding));
                 host.Initialize?.Invoke(player);
                 var textureCount = checked((uint)content.Textures.Length);
                 loaded.Add(new LoadedLumenLayer(layer, content, textureOffset, textureCount));
@@ -145,5 +145,19 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
             }
             throw;
         }
+    }
+}
+
+/// <summary>
+/// The game gives every movie a global Lumen object; movies without one run their developer mode
+/// (sample data, self-start). Unregistered methods on the default object return undefined.
+/// </summary>
+internal sealed class InGameBinding(ILumenHostBinding? inner) : ILumenHostBinding
+{
+    public void Install(LumenHostContext context)
+    {
+        inner?.Install(context);
+        if (!context.IsRegistered("Lumen"))
+            context.RegisterObject("Lumen", static _ => { });
     }
 }

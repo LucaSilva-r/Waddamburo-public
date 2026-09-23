@@ -102,6 +102,8 @@ public sealed class LumenHostContext
         addGlobal(name, new Avm1NativeFunction(name, callback));
     }
 
+    public bool IsRegistered(string name) => _globals.ContainsKey(name);
+
     public void RegisterObject(string name, Action<LumenHostObject> configure)
     {
         validateName(name);
