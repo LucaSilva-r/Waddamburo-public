@@ -15,6 +15,8 @@ public sealed class TaikoLongNotePresentation
     private readonly LumenSceneLayer _balloon;
     private readonly IDonPresentationController? _don;
     private readonly TaikoHitFlights? _flights;
+    private readonly Action<PlayableLongNoteKind, bool>? _onBalloonCompleted;
+    private readonly Action<PlayableLongNoteKind>? _onNoteStarted;
     private int? _active;
     private bool _balloonVisible;
     private readonly LumenSceneLayer? _kusudama;
@@ -23,7 +25,8 @@ public sealed class TaikoLongNotePresentation
     public TaikoLongNotePresentation(PlayableChart chart, TaikoJudgementSession session,
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
-        LumenSceneLayer? kusudama = null)
+        LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
+        Action<PlayableLongNoteKind>? onNoteStarted = null)
     {
         _chart = chart;
         _session = session;
@@ -33,6 +36,8 @@ public sealed class TaikoLongNotePresentation
         _overlay = balloon;
         _kusudama = kusudama;
         _flights = flights;
+        _onBalloonCompleted = onBalloonCompleted;
+        _onNoteStarted = onNoteStarted;
         _don = don;
         if (don is not null)
             DonLumenBinding.Attach(balloon.Player, don);
@@ -151,6 +156,7 @@ public sealed class TaikoLongNotePresentation
             _don?.SetMotion(new DonMotionRequest(0, null, "don_balloon_nobeat"));
         }
         // Rolls: the game sends nothing at the start; the counter appears with SetRendaCount(1) on the first hit.
+        _onNoteStarted?.Invoke(note.Kind);
     }
 
     private void hit(TaikoLongNoteProgress progress)
@@ -202,6 +208,7 @@ public sealed class TaikoLongNotePresentation
                 (false, true) => "don_balloon_success",
                 _ => "don_balloon_failure",
             }, null));
+            _onBalloonCompleted?.Invoke(progress.Note.Kind, progress.IsPopped);
         }
         else
             invoke(_counter.Player, "RendaEnd");

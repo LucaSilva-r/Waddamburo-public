@@ -4,7 +4,7 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
 
 /// <summary>Resolves authored nuSound2 bank/cue requests against a user-supplied sound tree.</summary>
-internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController
+internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController, IResultSoundController
 {
     private readonly AudioEngine _audio;
     private readonly string _bankRoot;
@@ -16,6 +16,7 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
     private AudioPlaybackHandle? _oneShotVoiceHandle;
     private AudioPlaybackHandle? _loopVoiceHandle;
     private AudioPlaybackHandle? _retryMusicHandle;
+    private AudioPlaybackHandle? _resultMusicHandle;
     private bool _categoryVoiceSelected;
 
     public AuthoredSoundController(AudioEngine audio, string soundRoot)
@@ -92,11 +93,42 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         }
     }
 
+    public void RequestSound(ResultSoundRequest request)
+    {
+        var sound = (request.Kind, request.Group, request.Cue) switch
+        {
+            (ResultSoundRequestKind.Voice, 1, 1) => (Bank: "VO_RESULT", Cue: 1),
+            (ResultSoundRequestKind.Voice, 1, 5) => (Bank: "VO_RESULT", Cue: 9),
+            (ResultSoundRequestKind.Voice, 1, 6) => (Bank: "VO_RESULT", Cue: 11),
+            (ResultSoundRequestKind.Voice, 1, 7) => (Bank: "VO_RESULT", Cue: 13),
+            (ResultSoundRequestKind.Voice, 1, 8) => (Bank: "VO_RESULT", Cue: 15),
+            (ResultSoundRequestKind.Voice, 0, 9) => (Bank: "VO_RESULT", Cue: 17),
+            (ResultSoundRequestKind.Voice, 0, 10) => (Bank: "VO_RESULT", Cue: 18),
+            (ResultSoundRequestKind.Effect, 1, 0) => (Bank: "SE_RESULT", Cue: 0),
+            (ResultSoundRequestKind.Effect, 1, 1) => (Bank: "SE_RESULT", Cue: 3),
+            (ResultSoundRequestKind.Effect, 1, 2) => (Bank: "SE_RESULT", Cue: 6),
+            (ResultSoundRequestKind.Effect, 1, 5) => (Bank: "SE_RESULT", Cue: 15),
+            (ResultSoundRequestKind.Effect, 0, 6) => (Bank: "SE_RESULT",
+                Cue: request.FullCombo ? 22 : request.Cleared ? 18 : 20),
+            (ResultSoundRequestKind.Effect, 0, 7) => (Bank: "SE_RESULT", Cue: 24),
+            _ => default,
+        };
+        if (sound.Bank is not null)
+        {
+            playNamedBankCue(sound.Bank, sound.Cue,
+                request.Kind == ResultSoundRequestKind.Voice ? AudioBus.Voice : null,
+                trace: request.Cue != 1 || request.Kind != ResultSoundRequestKind.Effect);
+        }
+        else
+            Console.WriteLine($"Result.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");
+    }
+
     public void StopAll()
     {
         foreach (var bus in Enum.GetValues<AudioBus>())
             _audio.Mixer.StopBus(bus);
         _retryMusicHandle = null;
+        _resultMusicHandle = null;
         _oneShotVoiceHandle = null;
         _loopVoiceHandle = null;
         _latestVoice = null;
@@ -120,9 +152,89 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         }
     }
 
+    public void StartResultMusic()
+    {
+        if (_resultMusicHandle is { } handle && _audio.Mixer.IsPlaying(handle))
+            return;
+        var path = Path.Combine(_musicRoot, "JINGLE_SEISEKI.nub");
+        try
+        {
+            _resultMusicHandle = _audio.PlayLoop(path, AudioBus.Bgm);
+            Console.WriteLine("Result music JINGLE_SEISEKI -> Bgm.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            if (_reportedFailures.Add(("JINGLE_SEISEKI", -1)))
+                Console.Error.WriteLine($"Result music is unavailable: {exception.Message}");
+        }
+    }
+
+    public void StopResultMusic()
+    {
+        if (_resultMusicHandle is { } handle)
+            _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+        _resultMusicHandle = null;
+    }
+
     public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);
 
-    public void PlayDrum(bool don) => playNamedBankCue("SE_COM", don ? 0 : 3, AudioBus.DrumHit);
+    public void PrepareGameplayDrums()
+    {
+        foreach (var cue in new[] { 0, 1 })
+        {
+            var key = (Bank: "SE_GAME_NEIRO_000_C", Cue: cue);
+            try { _ = loadClip(key); }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+            {
+                reportUnavailable(key, exception);
+            }
+        }
+    }
+
+    public void PlayDrum(bool don) =>
+        playNamedBankCue("SE_GAME_NEIRO_000_C", don ? 0 : 1, AudioBus.DrumHit, trace: false);
+
+    public void PlayGameplayEvent(GameplaySoundEvent sound)
+    {
+        switch (sound)
+        {
+            case GameplaySoundEvent.LongNoteStarted:
+                playNamedBankCue("VO_GAME", 156);
+                break;
+            case GameplaySoundEvent.BalloonPopped:
+                playNamedBankCue("SE_GAME", 0);
+                break;
+            case GameplaySoundEvent.KusudamaPopped:
+                playNamedBankCue("SE_GAME", 3);
+                break;
+            case GameplaySoundEvent.KusudamaFailed:
+                playNamedBankCue("SE_GAME", 5);
+                playNamedBankCue("VO_GAME", 159);
+                break;
+            case GameplaySoundEvent.FiftyCombo:
+                playNamedBankCue("VO_GAME", 0);
+                break;
+            case GameplaySoundEvent.HundredCombo:
+                playNamedBankCue("VO_GAME", 3);
+                break;
+            case GameplaySoundEvent.FailBanner:
+                playNamedBankCue("SE_GAME", 9);
+                break;
+            case GameplaySoundEvent.ClearBanner:
+                playNamedBankCue("SE_GAME", 6);
+                break;
+            case GameplaySoundEvent.FullComboBanner:
+                playNamedBankCue("SE_GAME", 12);
+                playNamedBankCue("VO_GAME", 153);
+                break;
+            case GameplaySoundEvent.SongFinished:
+                playNamedBankCue("VO_RESULT", 0);
+                playNamedBankCue("SE_GAME", 15);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(sound));
+        }
+    }
 
     public void SelectCategoryVoice(string category)
     {
@@ -231,20 +343,13 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         string bankName,
         int cueId,
         AudioBus? busOverride = null,
-        bool loop = false)
+        bool loop = false,
+        bool trace = true)
     {
         var key = (bankName, cueId);
         try
         {
-            if (!_clips.TryGetValue(key, out var clip))
-            {
-                var path = Path.Combine(_bankRoot, bankName + ".nub");
-                clip = AudioClip.Load(
-                    path,
-                    _audio.Mixer.Format,
-                    sourceStreamIndex: checked((uint)cueId + 1U));
-                _clips.Add(key, clip);
-            }
+            var clip = loadClip(key);
             var bus = busOverride
                 ?? (bankName.StartsWith("VO_", StringComparison.Ordinal) ? AudioBus.Voice : AudioBus.MenuSound);
             if (bus == AudioBus.Voice)
@@ -263,13 +368,29 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
                 else
                     _oneShotVoiceHandle = handle;
             }
-            Console.WriteLine($"Authored sound {bankName}#{cueId} -> {bus}.");
+            if (trace)
+                Console.WriteLine($"Authored sound {bankName}#{cueId} -> {bus}.");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
-            if (_reportedFailures.Add(key))
-                Console.Error.WriteLine($"Authored sound {bankName}#{cueId} is unavailable: {exception.Message}");
+            reportUnavailable(key, exception);
         }
+    }
+
+    private AudioClip loadClip((string Bank, int Cue) key)
+    {
+        if (_clips.TryGetValue(key, out var clip))
+            return clip;
+        var path = Path.Combine(_bankRoot, key.Bank + ".nub");
+        clip = AudioClip.Load(path, _audio.Mixer.Format, sourceStreamIndex: checked((uint)key.Cue + 1U));
+        _clips.Add(key, clip);
+        return clip;
+    }
+
+    private void reportUnavailable((string Bank, int Cue) key, Exception exception)
+    {
+        if (_reportedFailures.Add(key))
+            Console.Error.WriteLine($"Authored sound {key.Bank}#{key.Cue} is unavailable: {exception.Message}");
     }
 
     private void replayLatestVoiceOnce()

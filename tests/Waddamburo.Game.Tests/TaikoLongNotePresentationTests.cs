@@ -19,7 +19,11 @@ public sealed class TaikoLongNotePresentationTests
         var session = sessionFor(chart);
         var layer = movie(calls);
         var don = new DonController();
-        var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer, don: don);
+        var completed = new List<(PlayableLongNoteKind Kind, bool Succeeded)>();
+        var started = new List<PlayableLongNoteKind>();
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer,
+            don: don, onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
+            onNoteStarted: started.Add);
         Assert.False(presentation.BalloonVisible);
         presentation.Update(TimeSpan.FromSeconds(1));
         Assert.True(presentation.BalloonVisible);
@@ -34,12 +38,35 @@ public sealed class TaikoLongNotePresentationTests
         Assert.Empty(layer.Player.Diagnostics);
         Assert.True(presentation.BalloonVisible);
         Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
+        Assert.Equal([(PlayableLongNoteKind.Balloon, pop)], completed);
         presentation.AdvanceAnimations();
         Assert.False(presentation.BalloonVisible);
         Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
         var motionCount = don.Motions.Count;
         presentation.AdvanceAnimations();
         Assert.Equal(motionCount, don.Motions.Count);
+        Assert.Single(completed);
+        Assert.Equal([PlayableLongNoteKind.Balloon], started);
+    }
+
+    [Fact]
+    public void KusudamaCompletionReportsItsOwnKind()
+    {
+        var calls = new List<(string, double)>();
+        var chart = chartFor(PlayableLongNoteKind.Kusudama, 1);
+        var session = sessionFor(chart);
+        var layer = movie(calls);
+        var completed = new List<(PlayableLongNoteKind Kind, bool Succeeded)>();
+        var started = new List<PlayableLongNoteKind>();
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer,
+            kusudama: layer, onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
+            onNoteStarted: started.Add);
+        presentation.Update(TimeSpan.FromSeconds(1));
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.1));
+        presentation.Update(TimeSpan.FromSeconds(3));
+        Assert.Equal([(PlayableLongNoteKind.Kusudama, true)], completed);
+        Assert.Contains(("EndResult", 0d), calls);
+        Assert.Equal([PlayableLongNoteKind.Kusudama], started);
     }
 
     [Fact]
@@ -49,7 +76,9 @@ public sealed class TaikoLongNotePresentationTests
         var chart = chartFor(PlayableLongNoteKind.Roll);
         var session = sessionFor(chart);
         var layer = movie(calls);
-        var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer);
+        var started = new List<PlayableLongNoteKind>();
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer,
+            onNoteStarted: started.Add);
         var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _) => 400 + (float)time.TotalSeconds * 100, 400, 250)).Layer;
         Assert.NotSame(layer.Player, noteLayer.Player);
         Assert.Contains(("SetWidth", 100d), calls);
@@ -63,6 +92,7 @@ public sealed class TaikoLongNotePresentationTests
         Assert.Equal(2, calls.Count(c => c.Item1 == "HitAction"));
         Assert.Single(calls, c => c.Item1 == "RendaEnd");
         Assert.Contains(calls, c => c.Item1 == "OnUpdate");
+        Assert.Equal([PlayableLongNoteKind.Roll], started);
     }
 
     private static PlayableChart chartFor(PlayableLongNoteKind kind, int quota = 0) => new(
@@ -77,7 +107,8 @@ public sealed class TaikoLongNotePresentationTests
     private static LumenSceneLayer movie(List<(string, double)> calls)
     {
         var names = new[] { "level01", "n", "Record", "flash", "external", "ExternalInterface", "addCallback",
-            "Reset", "SetGekiRendaCount", "GekiRendaEnd", "SetRendaCount", "RendaEnd", "SetWidth", "HitAction", "OnUpdate" };
+            "Reset", "SetGekiRendaCount", "GekiRendaEnd", "SetRendaCount", "RendaEnd", "SetWidth", "HitAction", "OnUpdate",
+            "AddNorma", "SetGogoTime", "SetCount", "EndResult", "SetPlayerNum", "SetWaiWai" };
         var code = new List<Avm1Instruction>();
         var offset = 0;
         Avm1Instruction op(byte opcode, Avm1Operand? operand = null, Avm1CodeBlock? body = null) =>

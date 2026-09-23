@@ -93,6 +93,14 @@ buses and clears held voice ownership. `BGM_START` loops the user-owned
 `bgm/nub/JINGLE_RENDA.nub` on the BGM bus when the roll begins. The music is
 preloaded in the observed game sessions before Revival, and this file was checked
 through the public decoder.
+Gameplay input plays the default `SE_GAME_NEIRO_000_C` Don/Ka samples on the
+drum-hit bus. They are decoded during the covered scene transition. Judgement
+and long-note events trigger the verified combo, balloon and kusudama cues, while
+the end banner and finished-song handoff trigger their observed effects and
+voices. Result movie sound requests also route the traced effects and Don-chan
+voices for clear, fail and full combo. Results loop `JINGLE_SEISEKI` on the BGM
+bus until leaving the scene. The cue table is in
+[`green-sound-inventory.md`](green-sound-inventory.md).
 When a root category settles, authored `NotifyGenreFolder(category, -1, false)`
 is resolved through the pinned catalog's semantic category name rather than its
 display index. The audio adapter maps the verified `VO_SELECT` cues as Namco

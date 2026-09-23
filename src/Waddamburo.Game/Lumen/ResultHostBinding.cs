@@ -4,6 +4,16 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
 
+public enum ResultSoundRequestKind { Effect, Voice }
+
+public readonly record struct ResultSoundRequest(
+    ResultSoundRequestKind Kind, int Group, int Cue, bool Cleared, bool FullCombo);
+
+public interface IResultSoundController
+{
+    void RequestSound(ResultSoundRequest request);
+}
+
 /// <summary>
 /// The 1P results screen (enso_result/result.lm) as the game drives it (traced, research/traces):
 /// the play's numbers and the player name at load; the movie then animates on its own, asking the
@@ -15,7 +25,8 @@ public sealed class ResultHostBinding(
     string playerName,
     int stage,
     int endMessage,
-    IDonPresentationController? don = null) : ILumenHostBinding
+    IDonPresentationController? don = null,
+    IResultSoundController? sounds = null) : ILumenHostBinding
 {
     private LumenHostContext? _context;
 
@@ -30,12 +41,37 @@ public sealed class ResultHostBinding(
                 DonLumenBinding.ApplyMotion(context, don, call.Arguments[1..]);
             return LumenHostValue.Undefined;
         });
-        // ponytail: sounds come with the sound pass.
         context.RegisterObject("LumenMethod", method =>
         {
-            method.RegisterMethod("SE_REQUEST", static _ => LumenHostValue.Undefined);
-            method.RegisterMethod("VOICE_REQUEST", static _ => LumenHostValue.Undefined);
+            method.RegisterMethod("SE_REQUEST", call => requestSound(ResultSoundRequestKind.Effect, call));
+            method.RegisterMethod("VOICE_REQUEST", call => requestSound(ResultSoundRequestKind.Voice, call));
         });
+    }
+
+    private LumenHostValue requestSound(ResultSoundRequestKind kind, LumenHostCall call)
+    {
+        if (sounds is not null
+            && tryInteger(call.Arguments, 0, out var group)
+            && tryInteger(call.Arguments, 1, out var cue))
+        {
+            var play = result();
+            sounds.RequestSound(new ResultSoundRequest(kind, group, cue, play.Cleared, play.FullCombo));
+        }
+        return LumenHostValue.Undefined;
+    }
+
+    private static bool tryInteger(
+        System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments, int index, out int result)
+    {
+        result = 0;
+        if ((uint)index >= (uint)arguments.Length || arguments[index].Kind != LumenHostValueKind.Number)
+            return false;
+        var value = arguments[index].AsNumber();
+        if (!double.IsFinite(value) || value != Math.Truncate(value)
+            || value < int.MinValue || value > int.MaxValue)
+            return false;
+        result = (int)value;
+        return true;
     }
 
     /// <summary>The calls the game makes when the results load (P1, free-play guest).</summary>
@@ -86,4 +122,3 @@ public sealed class ResultHostBinding(
             throw new InvalidDataException($"Result movie is missing callback '{name}'.");
     }
 }
-

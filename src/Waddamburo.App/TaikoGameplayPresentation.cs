@@ -7,8 +7,23 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 
 /// <summary>Maps platform input and composition roles to platform-neutral gameplay.</summary>
+internal enum GameplaySoundEvent
+{
+    LongNoteStarted,
+    BalloonPopped,
+    KusudamaPopped,
+    KusudamaFailed,
+    FiftyCombo,
+    HundredCombo,
+    FailBanner,
+    ClearBanner,
+    FullComboBanner,
+    SongFinished,
+}
+
 internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHitSound = null,
-    IDonPresentationController? don = null)
+    IDonPresentationController? don = null,
+    Action<GameplaySoundEvent>? playEventSound = null)
 {
     private TaikoJudgementSession? _session;
     private TaikoLumenPresentation? _presentation;
@@ -95,7 +110,18 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             };
             var content = scene.Layers.Single(layer => Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == name).Content;
             return layers[name] with { Player = content.CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-        }, layers["renda_num"], layers["action_fusen_1p"], _flights, don, layers["action_kusudama"]);
+        }, layers["renda_num"], layers["action_fusen_1p"], _flights, don, layers["action_kusudama"],
+            (kind, succeeded) =>
+            {
+                var sound = (kind, succeeded) switch
+                {
+                    (PlayableLongNoteKind.Balloon, true) => GameplaySoundEvent.BalloonPopped,
+                    (PlayableLongNoteKind.Kusudama, true) => GameplaySoundEvent.KusudamaPopped,
+                    (PlayableLongNoteKind.Kusudama, false) => GameplaySoundEvent.KusudamaFailed,
+                    _ => (GameplaySoundEvent?)null,
+                };
+                if (sound is { } cue) playEventSound?.Invoke(cue);
+            }, _ => playEventSound?.Invoke(GameplaySoundEvent.LongNoteStarted));
         _character = don is null ? null : new(don, layers["don3d"]);
         _animationClock = new(chart.TimingPoints);
         // ponytail: which skin parts follow the beat is carried over from the first skin
@@ -144,6 +170,8 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             bannerShown = true;
             var cleared = gauge.State != TaikoGaugeState.BelowClear;
             label(banner, TaikoResultBanner.Label(cleared, !missed));
+            playEventSound?.Invoke(!cleared ? GameplaySoundEvent.FailBanner
+                : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
             if (cleared && !missed) _character?.React("don_full_combo");
         };
         _session.Judged += judgement =>
@@ -153,6 +181,11 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             // Combo bonus popup at every 100 combo (the movie picks its label from the count).
             if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
                 comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
+            if (!judgement.StrongHitCompleted && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good)
+            {
+                if (score.Combo == 50) playEventSound?.Invoke(GameplaySoundEvent.FiftyCombo);
+                else if (score.Combo == 100) playEventSound?.Invoke(GameplaySoundEvent.HundredCombo);
+            }
             var segments = gauge.FilledSegments;
             if (gauge.Apply(judgement))
             {

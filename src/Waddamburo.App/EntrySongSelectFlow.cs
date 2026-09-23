@@ -90,7 +90,8 @@ internal static class EntrySongSelectFlow
             fontPath,
             asynchronous: screenshotPath is null);
         var gameplayPresentation = new TaikoGameplayPresentation(action =>
-            soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon), donPresentation);
+            soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
+            donPresentation, sound => soundController?.PlayGameplayEvent(sound));
 
         var entryId = new SceneId("entry");
         var songSelectId = new SceneId("song-select");
@@ -205,6 +206,8 @@ internal static class EntrySongSelectFlow
             textureIds = uploadTextures(application, active);
             if (active.Id == songSelectId)
                 previewController?.StartBackground();
+            else if (active.Id == resultId)
+                soundController?.StartResultMusic();
             Console.WriteLine($"Showing {active.Id} at launch.");
             indicators = new SystemIndicators((LumenGameSceneInstance)loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
@@ -226,6 +229,8 @@ internal static class EntrySongSelectFlow
             var simulationTick = 0;
             void goTo(SceneId scene)
             {
+                if (active.Id == resultId)
+                    soundController?.StopResultMusic();
                 coordinator.TransitionToAsync(scene).AsTask().GetAwaiter().GetResult();
                 releaseTextures(application, textureIds);
                 active = requireLumenScene(coordinator);
@@ -398,6 +403,7 @@ internal static class EntrySongSelectFlow
                                     .SelectMany(category => category.Songs.Select(song => (category.Name, song)))
                                     .First(entry => entry.song.Descriptor.Key == pendingRequest.Song);
                                 var theme = skins.Resolve(played.song.Descriptor, played.Name);
+                                soundController?.PrepareGameplayDrums();
                                 // ponytail: the stage counts every song since launch (no credits yet); 8 stage frames.
                                 songInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(played.Name),
                                     Math.Min(++songsPlayed, 8));
@@ -543,6 +549,8 @@ internal static class EntrySongSelectFlow
                                 gameplayPresentation.Stop();
                                 playRequests.ClearActive();
                                 // Escape skips straight back; a finished song shows its results first.
+                                if (!escapePressed)
+                                    soundController?.PlayGameplayEvent(GameplaySoundEvent.SongFinished);
                                 coordinator.TransitionToAsync(escapePressed ? songSelectId : resultId).AsTask().GetAwaiter().GetResult();
                                 activeGameplayCharts = [];
                                 releaseTextures(application, textureIds);
@@ -551,6 +559,8 @@ internal static class EntrySongSelectFlow
                                 resultStartTick = simulationTick;
                                 if (active.Id == songSelectId)
                                     previewController?.StartBackground();
+                                else if (active.Id == resultId)
+                                    soundController?.StartResultMusic();
                                 Console.WriteLine($"Gameplay ended at tick {simulationTick}; showing {active.Id}.");
                             }
                         }
@@ -758,7 +768,7 @@ internal static class EntrySongSelectFlow
             var stage = songInfo().Stage;
             // ponytail: guest name until profiles exist (traced default どんちゃん).
             var binding = new ResultHostBinding(() => play, "どんちゃん", stage,
-                TaikoCredit.EndMessage(stage, play.Cleared), _don);
+                TaikoCredit.EndMessage(stage, play.Cleared), _don, _sounds as IResultSoundController);
             return new LumenLayerHost(binding, binding.Attach);
         }
 

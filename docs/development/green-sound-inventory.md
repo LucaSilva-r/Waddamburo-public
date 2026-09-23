@@ -46,6 +46,47 @@ folder opens or Song Select releases voice ownership.
 These mappings cover the currently exercised Player Entry and Song Select paths.
 Other common effects and scene-specific banks remain unclassified.
 
+## Gameplay cues
+
+Gameplay input uses the traced default tone bank `SE_GAME_NEIRO_000_C.nub` on the
+drum-hit bus. Its cue 0 is Don and cue 1 is Ka, including free hits. Both samples
+are decoded while the gameplay scene is covered, before input begins. The common
+`SE_COM` hits above remain browser and Player Entry feedback.
+
+The following game events were correlated with cue plays in observed sessions:
+
+| Event | Bank | Cue |
+| --- | --- | ---: |
+| Roll, balloon, or kusudama begins | `VO_GAME.nub` | 156 |
+| Ordinary balloon popped | `SE_GAME.nub` | 0 |
+| Kusudama succeeded | `SE_GAME.nub` | 3 |
+| Kusudama failed | `SE_GAME.nub`, `VO_GAME.nub` | 5, 159 |
+| 50 combo | `VO_GAME.nub` | 0 |
+| 100 combo | `VO_GAME.nub` | 3 |
+| Failed end banner | `SE_GAME.nub` | 9 |
+| Cleared end banner | `SE_GAME.nub` | 6 |
+| Full-combo end banner | `SE_GAME.nub`, `VO_GAME.nub` | 12, 153 |
+| Finished-song results handoff | `VO_RESULT.nub`, `SE_GAME.nub` | 0, 15 |
+
+In a custom chart trace, an ordinary balloon failure had no separate sound cue.
+The results handoff cues do not play when Escape skips a song. These observations
+do not establish higher combo milestones, Go-Go transition cues, or alternate tone selections.
+
+## Result movie requests
+
+The result movie requests its effects and Don-chan voices after gameplay ends.
+The observed clear and fail voices are `VOICE_REQUEST(1, 5)` → `VO_RESULT` cue 9
+and `VOICE_REQUEST(1, 8)` → cue 15. The low-score fail request `(1, 7)` uses
+cue 13; its bank choice is inferred from adjacent result voices and confirmed to
+decode locally. The full-combo request
+`VOICE_REQUEST(1, 1)` selects cue 1. Other traced voice requests map
+`(1, 6)` to cue 11, `(0, 9)` to cue 17, and `(0, 10)` to cue 18.
+Verified result effects route `(1, 0/1/2)` to `SE_RESULT` cues `0/3/6`,
+and `(1, 5)` to cue 15. `SE_REQUEST(0, 6)` selects cue 20 on fail, 18 on
+clear, and 22 on full combo. `(0, 7)` selects cue 24. Other request pairs
+remain unmapped. The result scene loops `bgm/nub/JINGLE_SEISEKI.nub` until it
+closes.
+
 ## Revival request routing
 
 Runtime observations of one successful and two failed revivals correlated each
