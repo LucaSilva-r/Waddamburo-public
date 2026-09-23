@@ -89,6 +89,7 @@ internal static class EntrySongSelectFlow
         var gameplayId = new SceneId("gameplay");
         var rainbowTransitionId = new SceneId("rainbow-transition");
         var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
+        var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
         var flow = new GameFlowSession();
         var playRequests = new PlayRequestState();
         var catalog = new SceneCatalog(
@@ -107,7 +108,7 @@ internal static class EntrySongSelectFlow
                         LumenMatrix.Identity,
                         "song-select"),
                 ]),
-                GameplaySceneComposition.Create(gameplayId, Random.Shared),
+                GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout),
             ],
             [new SceneTransitionRoute(entryId, new LumenSceneRequest(1, 0, 0), songSelectId)]);
         var skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
@@ -274,7 +275,7 @@ internal static class EntrySongSelectFlow
                                     .First(entry => entry.song.Descriptor.Key == pendingRequest.Song);
                                 var theme = skins.Resolve(played.song.Descriptor, played.Name);
                                 Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
-                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, theme));
+                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme));
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                                 var request = playRequests.ActivatePending();
                                 activeGameplayCharts = loadedCharts;

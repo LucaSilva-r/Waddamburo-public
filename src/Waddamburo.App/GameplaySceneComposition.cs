@@ -1,3 +1,4 @@
+using Waddamburo.Formats.Layout;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
@@ -10,77 +11,91 @@ internal static class GameplaySceneComposition
 {
     public const string StaticHostId = "gameplay-static";
 
-    // enso_original part families and their variant counts (Green data). The game picks each
-    // part independently per song; songs with a themed skin use that skin instead.
+    // enso_original part families and their variant counts (Green data). The game picks the parts
+    // at every load (traced: same song, different mix); songs with a themed skin use that skin instead.
+    // ponytail: independent random per part; bg_nomal/donbg may form sets (research/ensolayout.md).
     private static readonly (string Part, int Variants, string Suffix)[] OriginalParts =
     [
         ("bg_nomal", 5, ""), ("bg_fever", 4, ""), ("dance", 22, ""), ("dodai", 3, ""),
         ("fever", 4, ""), ("donbg", 6, "_1p"), ("chibi", 14, ""), ("renda", 3, ""),
     ];
 
-    // Skin roles bottom to top, with their stage offsets. ponytail: dodai/renda/chibi offsets
-    // come from the movies' authored bounds, not from a verified layout.
-    private static readonly (string Role, float Y)[] SkinRoles =
+    // Placement observed in the game (research/ensolayout.md): each movie sits at ensolayout[Index] and is
+    // drawn by Depth, larger further back. Index null = the host positions it (notes, bar lines).
+    // The game adds ensolayout[1] (-640,-360) to reach its centre-origin stage; ours is top-left.
+    private static readonly (string Role, int Index, int Depth)[] SkinRoles =
     [
-        ("bg_nomal", 360), ("bg_fever", 360), ("dance", 360), ("dodai", 656),
-        ("renda", 0),
-        // Full-gauge jumpers rise from below the screen (reference frame: y 750+).
-        ("fever", 360),
-        ("donbg", 0), ("chibi", 0),
+        ("bg_nomal", 4, 3500), ("bg_fever", 4, 3007), ("donbg", 2, 3006), ("renda", 9, 3005),
+        ("dance", 5, 3004), ("dodai", 6, 3003), ("fever", 4, 3002), ("chibi", 7, 3000),
+    ];
+
+    private static readonly (string Archive, string Movie, int? Index, int Depth)[] SystemLayers =
+    [
+        ("enso_system/common", "don3d", 22, 3001),
+        ("enso_system/common", "lane", 14, 2003),
+        // One gauge per clear line; gameplay shows the course's one.
+        ("enso_system/don1p", "gage_don_1p_easy", 14, 2002),
+        ("enso_system/don1p", "gage_don_1p_normal", 14, 2002),
+        ("enso_system/don1p", "gage_don_1p_hard", 14, 2002),
+        ("enso_system/common", "lane_hit", 14, 2001),
+        ("enso_system/common", "lane_syousetsu", null, 2000),
+        // Note templates: the game gives each note its own depth from 1002 up.
+        ("enso_system/common", "onp_don", null, 1002),
+        ("enso_system/common", "onp_katsu", null, 1002),
+        ("enso_system/common", "onp_don_dai", null, 1002),
+        ("enso_system/common", "onp_katsu_dai", null, 1002),
+        ("enso_system/common", "onp_renda", null, 1002),
+        ("enso_system/common", "onp_renda_dai", null, 1002),
+        ("enso_system/common", "onp_fusen", null, 1002),
+        ("enso_system/common", "onp_kusudama", null, 1002),
+        ("enso_system/common", "lane_obi", 14, 507),
+        ("enso_system/don1p", "score_add_don_1p", 24, 502),
+        ("enso_system/don1p", "combo_bonus_don_1p", 20, 502),
+        ("enso_system/common", "renda_num", 18, 502),
+        ("enso_system/common", "lane_hit_effect", 14, 502),
+        ("enso_system/don1p", "onp_kiseki_don_1p", 14, 502),
+        ("enso_system/base1p", "action_fusen_1p", 0, 500),
+        ("enso_system/common", "action_kusudama", 0, 500),
     ];
 
     /// <summary>
     /// Gameplay scene with either a themed skin (one archive holding every part, given with its
     /// movie list) or, without one, a random enso_original mix.
     /// </summary>
-    public static SceneDefinition Create(SceneId id, Random random, ThemedSkin? theme = null)
+    public static SceneDefinition Create(SceneId id, Random random, EnsoLayout layout, ThemedSkin? theme = null)
     {
-        SceneLayerDefinition? skin(string role, float y)
+        (SceneLayerDefinition Layer, int Depth)? skin(string role, int index, int depth)
         {
+            var at = layout[index];
             if (theme is not null)
                 return theme.Movies.FirstOrDefault(movie => Role(Path.GetFileNameWithoutExtension(movie)) == role)
-                    is { } movie ? layer(theme.Archive, movie, y) : null;
+                    is { } movie ? (layer(theme.Archive, movie, at.X, at.Y), depth) : null;
             var entry = OriginalParts.Single(entry => entry.Part == role);
             var name = $"{role}_a_{random.Next(1, entry.Variants + 1):00}{entry.Suffix}";
-            return layer($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm", y);
+            return (layer($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm", at.X, at.Y), depth);
         }
-        return new(
-            SceneDefinition.CurrentVersion,
-            id,
-            [
-                .. SkinRoles.Select(entry => skin(entry.Role, entry.Y)).OfType<SceneLayerDefinition>(),
-                // ponytail: combo bonus and kusudama are placed at the stage origin like the balloon
-                // overlay; unverified against the game.
-                // The player's character version (Don 1P); base1p's generic one is not used in play.
-                layer("enso_system/don1p/packeddata.ddp", "combo_bonus_don_1p/combo_bonus_don_1p.lm"),
-                layer(
-                    "enso_system/common/packeddata.ddp",
-                    "lane/lane.lm",
-                    y: 184),
-                // One gauge per clear line; gameplay shows the course's one.
-                layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_easy/gage_don_1p_easy.lm", y: 184),
-                layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_normal/gage_don_1p_normal.lm", y: 184),
-                layer("enso_system/don1p/packeddata.ddp", "gage_don_1p_hard/gage_don_1p_hard.lm", y: 184),
-                layer("enso_system/common/packeddata.ddp", "lane_hit/lane_hit.lm", y: 184),
-                layer("enso_system/common/packeddata.ddp", "lane_hit_effect/lane_hit_effect.lm", y: 184),
-                layer("enso_system/common/packeddata.ddp", "lane_obi/lane_obi.lm", y: 184),
-                // Right-align with the board score and leave the settled award above it.
-                layer("enso_system/don1p/packeddata.ddp", "score_add_don_1p/score_add_don_1p.lm", y: 143, x: 136),
-                layer("enso_system/common/packeddata.ddp", "onp_don/onp_don.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_katsu/onp_katsu.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_don_dai/onp_don_dai.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_katsu_dai/onp_katsu_dai.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_renda/onp_renda.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_renda_dai/onp_renda_dai.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_fusen/onp_fusen.lm"),
-                layer("enso_system/common/packeddata.ddp", "onp_kusudama/onp_kusudama.lm"),
-                layer("enso_system/common/packeddata.ddp", "renda_num/renda_num.lm", x: 190, y: 184),
-                layer("enso_system/base1p/packeddata.ddp", "action_fusen_1p/action_fusen_1p.lm"),
-                layer("enso_system/common/packeddata.ddp", "action_kusudama/action_kusudama.lm"),
-                layer("enso_system/common/packeddata.ddp", "don3d/don3d.lm", x: 200, y: 92),
-                layer("enso_system/common/packeddata.ddp", "lane_syousetsu/lane_syousetsu.lm"),
-                layer("enso_system/don1p/packeddata.ddp", "onp_kiseki_don_1p/onp_kiseki_don_1p.lm", y: 184),
-            ]);
+        var layers = SkinRoles
+            .Select(entry => skin(entry.Role, entry.Index, entry.Depth))
+            .OfType<(SceneLayerDefinition Layer, int Depth)>()
+            .Concat(SystemLayers.Select(entry =>
+            {
+                var at = entry.Index is { } index ? layout[index] : default;
+                return (Layer: layer($"{entry.Archive}/packeddata.ddp", $"{entry.Movie}/{entry.Movie}.lm", at.X, at.Y),
+                    entry.Depth);
+            }))
+            .OrderByDescending(entry => entry.Depth) // stable: equal depths keep list order
+            .Select(entry => entry.Layer);
+        return new(SceneDefinition.CurrentVersion, id, layers);
+    }
+
+    /// <summary>Loads the title's stage offsets (config/common first, as Green reads them).</summary>
+    public static EnsoLayout LoadLayout(string assetRoot)
+    {
+        var data = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
+        var path = new[] { Path.Combine(data, "config", "common", "ensolayout.bin"), Path.Combine(data, "ensolayout.bin") }
+            .FirstOrDefault(File.Exists)
+            ?? throw new FileNotFoundException($"ensolayout.bin not found under {data}.");
+        return EnsoLayout.Load(path);
     }
 
     /// <summary>A themed gameplay skin: its archive and the movies it contains.</summary>
@@ -92,7 +107,7 @@ internal static class GameplaySceneComposition
             ? match.Groups[1].Value
             : layerName;
 
-    private static SceneLayerDefinition layer(string archive, string movie, float y = 0, float x = 0) => new(
+    private static SceneLayerDefinition layer(string archive, string movie, float x, float y) => new(
         archive,
         movie,
         LumenMatrix.Identity with { X = x, Y = y },
