@@ -50,7 +50,7 @@ public sealed class TaikoLongNotePresentationTests
         var session = sessionFor(chart);
         var layer = movie(calls);
         var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer);
-        var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _) => 400 + (float)time.TotalSeconds * 100, 400, 250));
+        var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _) => 400 + (float)time.TotalSeconds * 100, 400, 250)).Layer;
         Assert.NotSame(layer.Player, noteLayer.Player);
         Assert.Contains(("SetWidth", 100d), calls);
         presentation.Update(TimeSpan.FromSeconds(1));

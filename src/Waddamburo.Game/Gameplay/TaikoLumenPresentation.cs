@@ -11,6 +11,7 @@ public sealed class TaikoLumenPresentation
     private readonly TaikoJudgementSession _judgement;
     private readonly LumenSceneLayer[] _background;
     private readonly LumenSceneLayer[] _foreground;
+    private readonly int _flightsAt; // foreground index the hit flights are drawn at
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> _notes;
     private readonly LumenSceneLayer _bar;
     private readonly LumenSceneLayer _target;
@@ -27,12 +28,13 @@ public sealed class TaikoLumenPresentation
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
-        TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null)
+        TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null)
     {
         _chart = chart;
         _judgement = judgement;
         _background = background.ToArray();
         _foreground = foreground.ToArray();
+        _flightsAt = Math.Clamp(flightsAt ?? _foreground.Length, 0, _foreground.Length);
         _notes = notes;
         _bar = bar;
         _target = target;
@@ -82,18 +84,27 @@ public sealed class TaikoLumenPresentation
         foreach (var bar in _chart.BarLines)
             if (bar.IsVisible)
                 addAt(layers, _bar, bar.Time, time, scroll: false);
+        // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
+        // deeper depth), so an earlier roll body covers the notes that follow it.
+        var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
         if (_longNotes is not null)
-            layers.AddRange(_longNotes.NoteLayers(time,
+            notes.AddRange(_longNotes.NoteLayers(time,
                 (noteTime, controlTime) => position(noteTime, time, controlTime, scroll: true), _hitX, _hitY));
+        var hitNotes = new List<LumenSceneLayer>(1);
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
-            if (!_judgement.IsJudged(index))
-                addAt(layers, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
-        layers.AddRange(_foreground);
-        // Note flights pass under the roll counter and the balloon/kusudama overlays (which hold Don).
+        {
+            if (_judgement.IsJudged(index)) continue;
+            hitNotes.Clear();
+            addAt(hitNotes, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
+            if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
+        }
+        layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
+        // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit
+        // flights sit at their template's depth.
+        layers.AddRange(_foreground.Take(_flightsAt));
         if (_flights is not null)
             layers.AddRange(_flights.ActiveLayers);
-        if (_longNotes is not null)
-            layers.AddRange(_longNotes.OverlayLayers);
+        layers.AddRange(_foreground.Skip(_flightsAt));
         return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, playerInterpolation);
     }
 

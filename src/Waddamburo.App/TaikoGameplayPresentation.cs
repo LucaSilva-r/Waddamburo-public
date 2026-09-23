@@ -19,6 +19,10 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     private int _characterSlot;
     private LumenSceneLayer[] _beatLayers = [];
     private LumenSceneLayer[] _fixedLayers = [];
+    private Action<TimeSpan>? _onChartTime; // end-of-song banner check
+
+    // ponytail: guest name until player entry provides one (traced default: どんちゃん, no title).
+    private const string PlayerName = "どんちゃん";
 
     public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
     {
@@ -104,6 +108,37 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
         };
         var comboBonus = layers["combo_bonus_don_1p"].Player;
+        // Player name board (traced call sequence; one SetChar per character).
+        var nameBoard = layers["player_name"].Player;
+        var characters = System.Globalization.StringInfo.GetTextElementEnumerator(PlayerName);
+        var nameLength = new System.Globalization.StringInfo(PlayerName).LengthInTextElements;
+        call(nameBoard, "SetPlayer", LumenHostValue.FromNumber(0));
+        call(nameBoard, "SetKinotake", LumenHostValue.FromNumber(-1));
+        call(nameBoard, "SetTitleName", LumenHostValue.FromString(""));
+        call(nameBoard, "SetTitlePanelID", LumenHostValue.FromNumber(0));
+        call(nameBoard, "SetDani", LumenHostValue.FromNumber(0), LumenHostValue.FromBoolean(false));
+        call(nameBoard, "SetCover", LumenHostValue.FromBoolean(false));
+        call(nameBoard, "SetNameSize", LumenHostValue.FromNumber(nameLength));
+        for (var index = 0; characters.MoveNext(); index++)
+            call(nameBoard, "SetChar", LumenHostValue.FromNumber(index), LumenHostValue.FromString(characters.GetTextElement()));
+        call(nameBoard, "Apply");
+        // Host label jumps traced in the game: gauge fire on full gauge, splash at Go-Go start, and
+        // the end-of-song banner.
+        var gaugeFire = layers["gage_fire_1p"].Player;
+        var goGoSplash = layers["action_gogotime"].Player;
+        var banner = layers["action_result"].Player;
+        var full = false;
+        var missed = false;
+        var bannerTime = TaikoResultBanner.Time(chart);
+        var bannerShown = false;
+        _onChartTime = time =>
+        {
+            if (bannerShown || time < bannerTime) return;
+            bannerShown = true;
+            var cleared = gauge.State != TaikoGaugeState.BelowClear;
+            label(banner, TaikoResultBanner.Label(cleared, !missed));
+            if (cleared && !missed) _character?.React("don_full_combo");
+        };
         _session.Judged += judgement =>
         {
             var previousScore = score.Value;
@@ -119,16 +154,29 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                     throw new InvalidDataException("Gameplay gauge is missing SetCurrentGauge.");
                 _character?.SetGauge(gauge.State);
             }
+            if (!judgement.StrongHitCompleted && judgement.Result == TaikoHitResult.Miss) missed = true;
+            if (gauge.State == TaikoGaugeState.Full != full)
+            {
+                full = !full;
+                label(gaugeFire, full ? "fever_start" : "fever_end");
+            }
             _character?.OnJudged(judgement);
             skinPresentation.OnJudged(judgement, gauge);
         };
-        var background = layers.Where(pair => pair.Key is "bg_nomal" or "bg_fever" or "dance" or "dodai" or "renda"
-                or "fever" or "donbg" or "chibi" or "combo_bonus_don_1p" or "lane" or "lane_hit" || pair.Key == gaugeName).ToArray();
+        // Static layers in the scene's traced depth order: behind the bar lines (2000) and notes (1002+),
+        // or in front of them. Host-placed templates, Don (drawn by his presentation) and the other
+        // courses' gauges are left out; so are skin movies without a traced depth.
+        bool drawn(string name) => name != "don3d" && name != "lane_syousetsu" && !name.StartsWith("onp_")
+            && !(name.StartsWith("gage_don_1p_") && name != gaugeName);
+        var background = layers.Where(pair => drawn(pair.Key) && GameplaySceneComposition.Depth(pair.Key) > 2000).ToArray();
+        var foreground = layers.Where(pair => GameplaySceneComposition.Depth(pair.Key) <= 1000
+            && (drawn(pair.Key) || pair.Key == "onp_kiseki_don_1p")).ToArray();
+        var flightsAt = Array.FindIndex(foreground, pair => pair.Key == "onp_kiseki_don_1p");
         // Don is drawn right after his backdrop (reference frame order).
         _characterSlot = Array.FindIndex(background, pair => pair.Key == "donbg") + 1;
         _presentation = new TaikoLumenPresentation(chart, _session,
             background.Select(pair => pair.Value),
-            [layers["lane_hit_effect"], layers["lane_obi"], layers["score_add_don_1p"]],
+            foreground.Where(pair => pair.Key != "onp_kiseki_don_1p").Select(pair => pair.Value),
             new Dictionary<PlayableNoteKind, LumenSceneLayer>
             {
                 [PlayableNoteKind.Don] = layers["onp_don"],
@@ -136,9 +184,10 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
                 [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
                 [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
             }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
-            _flights, _longNotes);
+            _flights, _longNotes, flightsAt < 0 ? null : flightsAt);
         _presentation.GoGoChanged += active =>
         {
+            if (active) label(goGoSplash, "splash");
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
             _character?.SetGoGo(active);
             Console.WriteLine($"Gameplay Go-Go: {(active ? "start" : "end")} at {_session.CurrentTime.TotalSeconds:F3}s.");
@@ -158,6 +207,19 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         _animationClock = null;
         _beatLayers = [];
         _fixedLayers = [];
+        _onChartTime = null;
+    }
+
+    private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
+    {
+        if (!player.TryInvokeCallback(name, arguments))
+            throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
+    }
+
+    private static void label(LumenPlayer player, string name)
+    {
+        if (!player.TryGotoLabel("", name))
+            throw new InvalidDataException($"Gameplay movie has no '{name}' label.");
     }
 
     public double AdvanceAnimations(TimeSpan chartTime, LumenInputSnapshot input)
@@ -206,6 +268,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         }
         _session.AdvanceTo(chartTime);
         _presentation.Update(chartTime);
+        _onChartTime?.Invoke(chartTime);
         _character?.SetBalloonVisible(_longNotes?.BalloonVisible == true);
     }
 

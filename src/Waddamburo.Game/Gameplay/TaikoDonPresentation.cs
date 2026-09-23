@@ -107,6 +107,9 @@ public sealed class TaikoDonPresentation
             react(_gauge == TaikoGaugeState.Full ? "don_full_combo" : "don_combo");
     }
 
+    /// <summary>A one-shot motion that returns to the current idle (e.g. the end-of-song full combo).</summary>
+    public void React(string motion) => react(motion);
+
     // ponytail: the long-note presentation owns Don while its overlay is up, so state changes
     // there only update what the idle will be once the overlay closes.
     private void react(string motion)

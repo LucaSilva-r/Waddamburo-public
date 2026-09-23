@@ -90,6 +90,8 @@ internal static class EntrySongSelectFlow
         var rainbowTransitionId = new SceneId("rainbow-transition");
         var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
         var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
+        var songInfo = new TaikoSongInfo(0, 1);
+        var songsPlayed = 0;
         var flow = new GameFlowSession();
         var playRequests = new PlayRequestState();
         var catalog = new SceneCatalog(
@@ -123,7 +125,8 @@ internal static class EntrySongSelectFlow
                 soundController is null ? TraceSoundController.Instance : soundController,
                 new ViewerFrontendServices(soundController),
                 donPresentation,
-                playRequests));
+                playRequests,
+                () => songInfo));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -274,6 +277,9 @@ internal static class EntrySongSelectFlow
                                     .SelectMany(category => category.Songs.Select(song => (category.Name, song)))
                                     .First(entry => entry.song.Descriptor.Key == pendingRequest.Song);
                                 var theme = skins.Resolve(played.song.Descriptor, played.Name);
+                                // ponytail: the stage counts every song since launch (no credits yet); 8 stage frames.
+                                songInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(played.Name),
+                                    Math.Min(++songsPlayed, 8));
                                 Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
                                 catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme));
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
@@ -281,6 +287,12 @@ internal static class EntrySongSelectFlow
                                 activeGameplayCharts = loadedCharts;
                                 releaseTextures(application, textureIds);
                                 active = requireLumenScene(coordinator);
+                                // song_info's title slot shows the same rendered title as the transition.
+                                // ponytail: transition title style; the gameplay board may use its own.
+                                var songInfoIndex = active.Layers.ToList().FindIndex(layer =>
+                                    Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
+                                if (songInfoIndex >= 0 && rainbowTitle is { } gameplayTitle)
+                                    active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", gameplayTitle);
                                 textureIds = uploadTextures(application, active);
                                 gameplayTimeline = new GameplayTimeline(loadedCharts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
                                 gameplayStartTick = simulationTick;
@@ -497,7 +509,8 @@ internal static class EntrySongSelectFlow
         ISongSelectSoundController sounds,
         ILumenFrontendServices frontend,
         IDonPresentationController? don,
-        IPlayRequestSink playRequests) : ILumenLayerHostFactory
+        IPlayRequestSink playRequests,
+        Func<TaikoSongInfo> songInfo) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
@@ -514,7 +527,7 @@ internal static class EntrySongSelectFlow
                 new LumenFrontendHostBinding(_frontend, _flow, _don),
                 initializeEntry),
             "song-select" => createSongSelectHost(),
-            GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding()),
+            GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };

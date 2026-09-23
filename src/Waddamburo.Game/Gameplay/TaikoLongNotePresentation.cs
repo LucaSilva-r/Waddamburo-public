@@ -84,7 +84,8 @@ public sealed class TaikoLongNotePresentation
         }
     }
 
-    public IEnumerable<LumenSceneLayer> NoteLayers(TimeSpan time,
+    /// <summary>Visible long notes with their start times (for chart-order drawing).</summary>
+    public IEnumerable<(TimeSpan Start, LumenSceneLayer Layer)> NoteLayers(TimeSpan time,
         Func<TimeSpan, TimeSpan, float> position, float hitX, float hitY)
     {
         var retained = new HashSet<int>();
@@ -106,30 +107,16 @@ public sealed class TaikoLongNotePresentation
             }
             if (!note.IsBalloon)
                 invoke(layer.Player, "SetWidth", Math.Abs(tail - head));
-            yield return layer with
+            yield return (note.StartTime, layer with
             {
                 Transform = LumenMatrix.Identity with { X = head, Y = hitY, M11 = tail < head ? -1 : 1 },
-            };
+            });
         }
         foreach (var index in _visible.Keys.Where(index => !retained.Contains(index)).ToArray())
             _visible.Remove(index);
     }
 
     public bool BalloonVisible => _balloonVisible;
-
-    /// <summary>
-    /// The roll counter and balloon/kusudama overlays are always drawn, as in the game (traced: their
-    /// wrappers never change visibility); each movie's idle and finished states are empty.
-    /// </summary>
-    public IEnumerable<LumenSceneLayer> OverlayLayers
-    {
-        get
-        {
-            yield return _counter;
-            yield return _balloon;
-            if (_kusudama is not null) yield return _kusudama;
-        }
-    }
 
     public IEnumerable<LumenPlayer> Players => _visible.Values.Select(layer => layer.Player)
         .Append(_counter.Player).Append(_balloon.Player)

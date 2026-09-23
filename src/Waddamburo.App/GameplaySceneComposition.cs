@@ -48,7 +48,11 @@ internal static class GameplaySceneComposition
         ("enso_system/common", "onp_renda_dai", null, 1002),
         ("enso_system/common", "onp_fusen", null, 1002),
         ("enso_system/common", "onp_kusudama", null, 1002),
+        ("enso_system/common", "action_result", 14, 1000),
         ("enso_system/common", "lane_obi", 14, 507),
+        ("enso_system/base1p", "gage_fire_1p", 14, 506),
+        ("enso_system/common", "song_info", 13, 505),
+        ("indicator", "player_name", 11, 505),
         ("enso_system/don1p", "score_add_don_1p", 24, 502),
         ("enso_system/don1p", "combo_bonus_don_1p", 20, 502),
         ("enso_system/common", "renda_num", 18, 502),
@@ -56,7 +60,14 @@ internal static class GameplaySceneComposition
         ("enso_system/don1p", "onp_kiseki_don_1p", 14, 502),
         ("enso_system/base1p", "action_fusen_1p", 0, 500),
         ("enso_system/common", "action_kusudama", 0, 500),
+        ("enso_system/base1p", "action_gogotime", 0, 500),
     ];
+
+    /// <summary>Traced draw depth of a gameplay layer role (larger = further back); null if unknown.</summary>
+    public static int? Depth(string role) =>
+        SkinRoles.FirstOrDefault(entry => entry.Role == role) is { Role: not null } skin ? skin.Depth
+        : SystemLayers.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } system ? system.Depth
+        : null;
 
     /// <summary>
     /// Gameplay scene with either a themed skin (one archive holding every part, given with its
@@ -96,6 +107,24 @@ internal static class GameplaySceneComposition
             .FirstOrDefault(File.Exists)
             ?? throw new FileNotFoundException($"ensolayout.bin not found under {data}.");
         return EnsoLayout.Load(path);
+    }
+
+    /// <summary>
+    /// song_info genre index (jpop, anime, vocaloid, doyo, variety, classic, game, namco) for a
+    /// catalog category name.
+    /// </summary>
+    // ponytail: matched on the TJA library's English folder names; anything else shows as variety.
+    public static int GenreIndex(string category)
+    {
+        var name = category.ToLowerInvariant();
+        return name.Contains("pop") ? 0
+            : name.Contains("anime") ? 1
+            : name.Contains("vocaloid") ? 2
+            : name.Contains("children") || name.Contains("folk") ? 3
+            : name.Contains("classic") ? 5
+            : name.Contains("game") ? 6
+            : name.Contains("namco") ? 7
+            : 4;
     }
 
     /// <summary>A themed gameplay skin: its archive and the movies it contains.</summary>
