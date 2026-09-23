@@ -258,15 +258,16 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         }
 
         _categoryVoiceSelected = true;
-        playNamedBankCue("VO_SELECT", cue, AudioBus.Voice, loop: true);
+        playNamedBankCue("VO_SELECT", cue, AudioBus.Voice);
     }
 
     public void StopVoice()
     {
-        if (_loopVoiceHandle is not { } handle)
-            return;
-        _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+        stopVoiceImmediately(_oneShotVoiceHandle);
+        stopVoiceImmediately(_loopVoiceHandle);
+        _oneShotVoiceHandle = null;
         _loopVoiceHandle = null;
+        _latestVoice = null;
     }
 
     private void playBankCue(System.Collections.Immutable.ImmutableArray<LumenHostValue> arguments)

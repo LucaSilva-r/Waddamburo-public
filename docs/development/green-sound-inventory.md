@@ -31,9 +31,8 @@ silent rather than borrowing an unrelated announcement.
 
 The root browser reports a settled category through
 `NotifyGenreFolder(category, -1, false)`. The host resolves that category index
-against the pinned catalog, then requests the cue by semantic category name. The
-selected announcement repeats while the category remains active and stops when a
-folder opens or Song Select releases voice ownership.
+against the pinned catalog, then plays its cue once. Opening a folder does not
+cut off the announcement; an explicit `StopVoice` or leaving Song Select does.
 
 ## Common effects
 

@@ -318,7 +318,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue openFolder()
     {
-        _sounds?.StopVoice();
         return clearSelectionSurfaces();
     }
 

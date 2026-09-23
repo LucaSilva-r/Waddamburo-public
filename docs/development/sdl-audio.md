@@ -58,11 +58,9 @@ superseded scene. The authored `NotifyStopBGM(category, song)` call selects one
 logical browser-music slot: valid song coordinates fade the previous voice out,
 leave the debounce/decode interval silent, then fade the preview in over 300 ms.
 The movie sends `song = -1` for Return and other non-song boards. Leaving a preview
-fades it immediately, then restarts `JINGLE_GENRE` from its intro only after the
-cursor remains on a non-song board for 250 ms. Moving among non-song boards leaves
-an already playing jingle untouched, including a Return confirmation that closes a
-category. The jingle and previews therefore never play concurrently, and scrolling
-cannot expose fragments of the background between successive previews.
+fades it immediately and restarts `JINGLE_GENRE`. Moving among non-song boards
+leaves an already playing jingle untouched, including a Return confirmation that
+closes a category. The jingle and previews therefore never play concurrently.
 
 Entry and Song Select now forward their authored `RequestSE`, `RequestSystemSE`,
 `RequestPlayerSE`, `NotifyPlayLoopVO`, and `StopVoice` calls across typed host
@@ -72,8 +70,9 @@ The bounded table parser maps authored numeric bank IDs to sanitized bank names;
 `RequestSE(bank, cue)` selects the one-based NUB substream `cue + 1`. `VO_` banks
 play exclusively on the voice bus, while other banks play on the menu-sound bus.
 An authored loop notification replays the latest voice once only when it is no
-longer active; it does not create an unbounded PCM loop. `StopVoice` stops only
-that replay, not an ordinary spoken one-shot. Entry keeps an accepted scene
+longer active; it does not create an unbounded PCM loop. Category announcements
+also play once and continue when their folder opens. `StopVoice` stops any active
+voice. Entry keeps an accepted scene
 transition pending until the ordinary or replayed voice completes.
 Song Select's observed player-effect protocol carries a drum-tone ID and a semantic
 hit kind. Browser feedback uses the common `SE_COM` bank: cue 0 for Don (centre)
