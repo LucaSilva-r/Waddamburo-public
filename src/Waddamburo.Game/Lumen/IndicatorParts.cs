@@ -1,3 +1,4 @@
+using System.Globalization;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
@@ -69,6 +70,29 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
             call(board, "SetVisible", LumenHostValue.FromBoolean(false));
     }
 
+    /// <summary>Populate and show the guest P1 name board when Song Select starts.</summary>
+    public void ShowGuestName(string name)
+    {
+        if (scene != IndicatorPartsScene.SongSelect || _nameBoards.Count == 0)
+            return;
+        var board = _nameBoards[0];
+        var characters = StringInfo.GetTextElementEnumerator(name);
+        var length = new StringInfo(name).LengthInTextElements;
+        call(board, "SetPlayer", number(0));
+        call(board, "SetKinotake", number(-1));
+        call(board, "SetTitleName", LumenHostValue.FromString(""));
+        call(board, "SetTitlePanelID", number(0));
+        call(board, "SetDani", number(0), LumenHostValue.FromBoolean(false));
+        call(board, "SetCover", LumenHostValue.FromBoolean(false));
+        call(board, "SetNameSize", number(length));
+        for (var index = 0; characters.MoveNext(); index++)
+            call(board, "SetChar", number(index), LumenHostValue.FromString(characters.GetTextElement()));
+        call(board, "Apply");
+        call(board, "SetVisible", LumenHostValue.FromBoolean(true));
+        for (var index = 1; index < _nameBoards.Count; index++)
+            call(_nameBoards[index], "SetVisible", LumenHostValue.FromBoolean(false));
+    }
+
     public void PauseCountdown() => callCounter("Pause");
 
     public void ResumeCountdown() => callCounter("Resume");
@@ -88,7 +112,7 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                     call(player, "SetType", number(0), number(2));
                 break;
             case "player_name":
-                // ponytail: boards stay hidden until the card / name flow exists.
+                // The Song Select guest board is populated after all parts have registered callbacks.
                 _nameBoards.Add(player);
                 call(player, "SetVisible", LumenHostValue.FromBoolean(false));
                 break;

@@ -236,8 +236,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             "SetPlayer",
             LumenHostValue.FromNumber(0),
             LumenHostValue.FromBoolean(true),
-            LumenHostValue.FromBoolean(true),
-            LumenHostValue.FromNumber(30));
+            LumenHostValue.FromBoolean(false),
+            LumenHostValue.FromNumber(-1));
+        invoke("SetScoreType", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0),
+            LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
+        invoke("SetPlayer", LumenHostValue.FromNumber(1), LumenHostValue.FromBoolean(false),
+            LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(-1));
+        invoke("SetScoreType", LumenHostValue.FromNumber(1), LumenHostValue.FromNumber(0),
+            LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
+        _parts?.ShowGuestName("どんちゃん");
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[0].Name);
         return true;
     }

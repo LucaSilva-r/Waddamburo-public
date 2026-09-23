@@ -98,15 +98,17 @@ and long-note events trigger the verified combo, balloon and kusudama cues, whil
 the end banner and finished-song handoff trigger their observed effects and
 voices. Result movie sound requests also route the traced effects and Don-chan
 voices for clear, fail and full combo. Results loop `JINGLE_SEISEKI` on the BGM
-bus until leaving the scene. The cue table is in
+bus until leaving the scene. The end-of-credit screen starts `JINGLE_CARDRECOM`,
+switches to `JINGLE_GOVER` on its movie request, and plays the traced
+`SE_GAMEOVER` and `VO_HOWTOPLAY` cues. The cue table is in
 [`green-sound-inventory.md`](green-sound-inventory.md).
 When a root category settles, authored `NotifyGenreFolder(category, -1, false)`
 is resolved through the pinned catalog's semantic category name rather than its
 display index. The audio adapter maps the verified `VO_SELECT` cues as Namco
 Original (0), J-POP (1), Game Music (2), Classical (3), Variety (4), Anime (5),
 and Vocaloid (7). Kids and Medley remain unresolved. The
-active category announcement repeats on the voice bus until another category
-replaces it, a folder opens, or the scene releases its voice ownership. The
+category announcement plays once on the voice bus and can finish after its
+folder opens. The
 verified mappings and intentionally unresolved ranges are maintained in
 [`green-sound-inventory.md`](green-sound-inventory.md).
 

@@ -108,6 +108,15 @@ On both observed failures, the roll ends with `SOUND_STOP_ALL`, then
 `SE_REQUEST(0, 7)`, followed by `SE_REQUEST(0, 12)` alongside
 `VOICE_REQUEST(0, 8)`, and finally `SE_REQUEST(0, 14)`.
 
+## End-of-credit screen
+
+The `shop_gameover` scene starts `bgm/nub/JINGLE_CARDRECOM.nub`. Its
+`RequestBGMGOver` call switches to a one-shot `bgm/nub/JINGLE_GOVER.nub`.
+The traced `RequestSE(0, 100)` plays `SE_GAMEOVER.nub` cue 0, and the movie's
+`RequestVoice(0, 100)` plays `VO_HOWTOPLAY.nub` cue 0. Any music still active
+stops when the scene ends, before
+Player Entry starts its own jingle.
+
 ## Identification workflow
 
 Run the VS Code task `Waddamburo: Probe sound effects`, or invoke the app with

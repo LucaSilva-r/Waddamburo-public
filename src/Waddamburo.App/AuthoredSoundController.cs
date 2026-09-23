@@ -4,7 +4,8 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
 
 /// <summary>Resolves authored nuSound2 bank/cue requests against a user-supplied sound tree.</summary>
-internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController, IResultSoundController
+internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController,
+    IResultSoundController, IGameOverSoundController
 {
     private readonly AudioEngine _audio;
     private readonly string _bankRoot;
@@ -17,6 +18,8 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
     private AudioPlaybackHandle? _loopVoiceHandle;
     private AudioPlaybackHandle? _retryMusicHandle;
     private AudioPlaybackHandle? _resultMusicHandle;
+    private AudioPlaybackHandle? _gameOverMusicHandle;
+    private string? _gameOverMusicName;
     private bool _categoryVoiceSelected;
 
     public AuthoredSoundController(AudioEngine audio, string soundRoot)
@@ -123,12 +126,30 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
             Console.WriteLine($"Result.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");
     }
 
+    public void RequestSound(GameOverSoundRequest request)
+    {
+        switch (request.Kind, request.Group, request.Cue)
+        {
+            case (GameOverSoundRequestKind.Effect, 0, 100):
+                playNamedBankCue("SE_GAMEOVER", 0);
+                break;
+            case (GameOverSoundRequestKind.Voice, 0, 100):
+                playNamedBankCue("VO_HOWTOPLAY", 0);
+                break;
+            default:
+                Console.WriteLine($"GameOver.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");
+                break;
+        }
+    }
+
     public void StopAll()
     {
         foreach (var bus in Enum.GetValues<AudioBus>())
             _audio.Mixer.StopBus(bus);
         _retryMusicHandle = null;
         _resultMusicHandle = null;
+        _gameOverMusicHandle = null;
+        _gameOverMusicName = null;
         _oneShotVoiceHandle = null;
         _loopVoiceHandle = null;
         _latestVoice = null;
@@ -174,6 +195,40 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         if (_resultMusicHandle is { } handle)
             _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
         _resultMusicHandle = null;
+    }
+
+    public void StartGameOverMusic() => startGameOverMusic("JINGLE_CARDRECOM");
+
+    public void StartGameOverOutro() => startGameOverMusic("JINGLE_GOVER");
+
+    public void StopGameOverMusic()
+    {
+        if (_gameOverMusicHandle is { } handle)
+            _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+        _gameOverMusicHandle = null;
+        _gameOverMusicName = null;
+    }
+
+    private void startGameOverMusic(string name)
+    {
+        if (_gameOverMusicName == name && _gameOverMusicHandle is { } current
+            && _audio.Mixer.IsPlaying(current))
+            return;
+        StopGameOverMusic();
+        var path = Path.Combine(_musicRoot, name + ".nub");
+        try
+        {
+            _gameOverMusicHandle = name == "JINGLE_GOVER"
+                ? _audio.PlayOneShot(path, AudioBus.Bgm)
+                : _audio.PlayLoop(path, AudioBus.Bgm);
+            _gameOverMusicName = name;
+            Console.WriteLine($"Game Over music {name} -> Bgm.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            if (_reportedFailures.Add((name, -1)))
+                Console.Error.WriteLine($"Game Over music {name} is unavailable: {exception.Message}");
+        }
     }
 
     public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);

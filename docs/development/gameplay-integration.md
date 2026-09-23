@@ -94,6 +94,12 @@ These runs establish execution and presentation, not measured audible/input late
 
 ## Remaining scope
 
+The Song Select guest setup populates the P1 name board with どんちゃん and places it
+at the observed lower-left position. Its player callback marks P1 as joined without
+a Banapass profile and P2 as unjoined. The persistent coin indicator uses the
+observed Song Select message numbers (-1 for P1, 2 for P2) so its authored movie
+shows the right-side join prompt with its fade animation.
+
 Course availability and selection restrictions are separate contracts. Ordinary
 Song Select sends zero restriction bits, even when some charts are absent. Star
 values describe chart availability (zero for missing charts); the native launch

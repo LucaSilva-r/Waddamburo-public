@@ -107,6 +107,13 @@ internal static class EntrySongSelectFlow
             new SceneLayerDefinition("intermission/packeddata.ddp", "shutter/shutter.lm", LumenMatrix.Identity,
                 RainbowTransitionComposition.StaticHostId),
         ]);
+        // Traced: leaving the results or the revival (except results -> revival, which opens on its own
+        // shutter) plays the intermission fade's "in" (1 s to black), swaps scenes under it, then
+        // resets the fade to "wait" (transparent).
+        var fadeDefinition = new SceneDefinition(SceneDefinition.CurrentVersion, new SceneId("fade"), [
+            new SceneLayerDefinition("intermission/packeddata.ddp", "scene_change_fade/scene_change_fade.lm",
+                LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
+        ]);
         var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
         var costumeIcons = new CostumeIconTextures(application, Path.GetFullPath(Path.Combine(assetRoot, "..", "..")));
         var songInfo = new TaikoSongInfo(0, 1);
@@ -145,7 +152,9 @@ internal static class EntrySongSelectFlow
                         LumenMatrix.Identity,
                         "song-select"),
                     indicatorPart("indicator"),
-                    indicatorPart("player_name", 640, 360),
+                    // Traced final P1 name-board position is (-580, 278) in the cabinet's
+                    // centered coordinates, or (60, 638) in our top-left scene coordinates.
+                    indicatorPart("player_name", 60, 638),
                     indicatorPart("player_name", 640, 360),
                     indicatorPart("time_counter"),
                 ]),
@@ -223,6 +232,8 @@ internal static class EntrySongSelectFlow
             var resultStartTick = 0;
             var shutterStartTick = -1;
             var shutterClosing = false;
+            SceneId? fadeTarget = null;
+            var fadeStartTick = 0;
             var escapeWasDown = false;
             var traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
             var dumpTreeTick = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
@@ -231,6 +242,8 @@ internal static class EntrySongSelectFlow
             {
                 if (active.Id == resultId)
                     soundController?.StopResultMusic();
+                if (active.Id == gameOverId)
+                    soundController?.StopGameOverMusic();
                 coordinator.TransitionToAsync(scene).AsTask().GetAwaiter().GetResult();
                 releaseTextures(application, textureIds);
                 active = requireLumenScene(coordinator);
@@ -242,6 +255,38 @@ internal static class EntrySongSelectFlow
                         ? audioEngine!.PlayLoop(entryJinglePath, AudioBus.Bgm)
                         : audioEngine!.PlayOneShot(entryJinglePath, AudioBus.Bgm);
                 Console.WriteLine($"Showing {scene} at tick {simulationTick}.");
+            }
+
+            void fadeTo(SceneId scene)
+            {
+                if (fadeTarget is not null) return;
+                if (scene == retryId)
+                {
+                    goTo(scene);
+                    return;
+                }
+                releaseTextures(application, rainbowTextureIds);
+                rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                rainbow = (LumenGameSceneInstance)loader.LoadAsync(fadeDefinition, CancellationToken.None)
+                    .AsTask().GetAwaiter().GetResult();
+                rainbowTextureIds = uploadTextures(application, rainbow);
+                rainbow.Player.Layers.Single().Player.GotoLabel("in", play: true);
+                fadeTarget = scene;
+                fadeStartTick = simulationTick;
+            }
+
+            // True once a pending fade to black has finished and its scene is shown.
+            bool finishFade()
+            {
+                if (fadeTarget is not { } target) return false;
+                if (simulationTick - fadeStartTick < 60) return true;
+                fadeTarget = null;
+                goTo(target);
+                releaseTextures(application, rainbowTextureIds);
+                rainbowTextureIds = [];
+                rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                rainbow = null;
+                return true;
             }
 
             TimeSpan chartTime() => gameplayTimeline?.ChartTime(
@@ -435,19 +480,20 @@ internal static class EntrySongSelectFlow
                         }
                         else if (active.Id == resultId)
                         {
-                            if (rainbow is not null && simulationTick - resultStartTick >= 2)
+                            if (rainbow is not null && fadeTarget is null && simulationTick - resultStartTick >= 2)
                             {
                                 releaseTextures(application, rainbowTextureIds);
                                 rainbowTextureIds = [];
                                 rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
                                 rainbow = null;
                             }
-                            // ponytail: the game's results end after 15-21 s (traced, no end signal seen).
-                            if (escapePressed || simulationTick - resultStartTick >= 21 * 60)
+                            if (finishFade()) return;
+                            // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message).
+                            if (escapePressed || RetryGameHostBinding.IsEnd(active.Player.Layers[0].Player))
                             {
                                 var play = gameplayPresentation.Result ?? diagnosticResult
                                     ?? throw new InvalidOperationException("Results without a finished play.");
-                                goTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared) switch
+                                fadeTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared) switch
                                 {
                                     2 => retryId,
                                     1 => songSelectId,
@@ -458,8 +504,9 @@ internal static class EntrySongSelectFlow
                         }
                         else if (active.Id == retryId)
                         {
+                            if (finishFade()) return;
                             if (RetryGameHostBinding.IsEnd(active.Player.Layers.Single().Player))
-                                goTo(hostFactory.Retry?.Succeeded == true ? songSelectId : gameOverId);
+                                fadeTo(hostFactory.Retry?.Succeeded == true ? songSelectId : gameOverId);
                             return;
                         }
                         else if (active.Id == gameOverId)
@@ -786,7 +833,7 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost gameOverHost()
         {
-            var binding = GameOver = new GameOverHostBinding();
+            var binding = GameOver = new GameOverHostBinding(_sounds as IGameOverSoundController);
             return new LumenLayerHost(binding, binding.Attach);
         }
 

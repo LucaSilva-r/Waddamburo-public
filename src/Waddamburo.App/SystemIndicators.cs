@@ -52,7 +52,9 @@ internal sealed class SystemIndicators
         _cardVisible = attract || scene == IndicatorScene.Entry;
         _coinsVisible = scene != IndicatorScene.Gameplay;
         call(_card, "SetScene", LumenHostValue.FromNumber(scene == IndicatorScene.Entry ? 1 : 0));
-        var prompt = scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry;
+        // Song Select shows the unjoined player's message; the authored indicator movie
+        // positions it on the available side and runs its fade animation.
+        var prompt = scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry or IndicatorScene.SongSelect;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {
             IndicatorScene.Entry => 1,
@@ -62,8 +64,10 @@ internal sealed class SystemIndicators
         }));
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt)); // sic, the movie's spelling
         call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean(!attract || prompt));
-        // Free play (traced): player 1 has "enough" (-1 = hit the drum to start) at entry, player 2 needs 0.
-        setMessageNumbers(scene == IndicatorScene.Entry ? -1 : 0);
+        // In Song Select the joined P1 has no prompt (-1); the unjoined right drum uses
+        // message 2. The indicator movie positions and animates each side itself.
+        setMessageNumbers(scene == IndicatorScene.Entry ? -1 : scene == IndicatorScene.SongSelect ? -1 : 0,
+            scene == IndicatorScene.SongSelect ? 2 : 0);
         if (scene == IndicatorScene.Entry)
         {
             // The entry then switches the panel to its split (per-player) scene.
@@ -74,6 +78,9 @@ internal sealed class SystemIndicators
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
             setMessageNumbers(-1);
         }
+        // SetCoinType seeks the authored movie to its scene label. Repeating it every
+        // frame restarts the join message before its fade timeline can advance.
+        call(_coins, "SetCoinType", LumenHostValue.FromNumber(2)); // free play
     }
 
     /// <summary>A player joined at entry: the split panel and the start message go away.</summary>
@@ -84,11 +91,11 @@ internal sealed class SystemIndicators
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(false));
     }
 
-    private void setMessageNumbers(int player1)
+    private void setMessageNumbers(int player1, int player2 = 0)
     {
         // SetMsgNum(player, coins still needed); -1 = enough.
         call(_coins, "SetMsgNum", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(player1));
-        call(_coins, "SetMsgNum", LumenHostValue.FromNumber(1), LumenHostValue.FromNumber(0));
+        call(_coins, "SetMsgNum", LumenHostValue.FromNumber(1), LumenHostValue.FromNumber(player2));
     }
 
     /// <summary>Per-frame state push, as the game does every tick.</summary>
@@ -100,7 +107,6 @@ internal sealed class SystemIndicators
         call(_card, "SetCamera", LumenHostValue.FromNumber(0));
         call(_card, "SetBncoin", LumenHostValue.FromNumber(0));
         call(_card, "SetBurst", LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(0));
-        call(_coins, "SetCoinType", LumenHostValue.FromNumber(2)); // free play
         _network.Advance();
         _card.Advance();
         _coins.Advance();
