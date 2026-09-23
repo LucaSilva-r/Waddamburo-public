@@ -16,7 +16,6 @@ public sealed class TaikoLongNotePresentation
     private readonly IDonPresentationController? _don;
     private readonly TaikoHitFlights? _flights;
     private int? _active;
-    private bool _counterVisible;
     private bool _balloonVisible;
     private readonly LumenSceneLayer? _kusudama;
     private LumenSceneLayer _overlay; // the balloon or kusudama overlay in use
@@ -57,8 +56,10 @@ public sealed class TaikoLongNotePresentation
         // Counter movies belong to the scene and are advanced exactly once by its player.
         if (_active is null)
         {
-            if (!_counter.Player.IsPlaying) _counterVisible = false;
-            if (_balloonVisible && !_overlay.Player.IsPlaying)
+            // The kusudama root stops right after EndResult; its 'kusudama' clip then plays the break
+            // (ResultHigh/Low/Miss) and stops once the ball has faded out.
+            if (_balloonVisible && !_overlay.Player.IsPlaying
+                && !(_overlay == _kusudama && _overlay.Player.IsInstancePlaying("kusudama")))
             {
                 _balloonVisible = false;
             }
@@ -116,12 +117,17 @@ public sealed class TaikoLongNotePresentation
 
     public bool BalloonVisible => _balloonVisible;
 
+    /// <summary>
+    /// The roll counter and balloon/kusudama overlays are always drawn, as in the game (traced: their
+    /// wrappers never change visibility); each movie's idle and finished states are empty.
+    /// </summary>
     public IEnumerable<LumenSceneLayer> OverlayLayers
     {
         get
         {
-            if (_counterVisible) yield return _counter;
-            if (_balloonVisible) yield return _overlay;
+            yield return _counter;
+            yield return _balloon;
+            if (_kusudama is not null) yield return _kusudama;
         }
     }
 
@@ -157,11 +163,7 @@ public sealed class TaikoLongNotePresentation
             _balloonVisible = true;
             _don?.SetMotion(new DonMotionRequest(0, null, "don_balloon_nobeat"));
         }
-        else
-        {
-            invoke(_counter.Player, "SetRendaCount", 0);
-            _counterVisible = true;
-        }
+        // Rolls: the game sends nothing at the start; the counter appears with SetRendaCount(1) on the first hit.
     }
 
     private void hit(TaikoLongNoteProgress progress)

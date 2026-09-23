@@ -59,7 +59,7 @@ public sealed class TaikoLongNotePresentationTests
         presentation.AdvanceAnimations();
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
-        Assert.Equal([0d, 1d, 2d], calls.Where(c => c.Item1 == "SetRendaCount").Select(c => c.Item2));
+        Assert.Equal([1d, 2d], calls.Where(c => c.Item1 == "SetRendaCount").Select(c => c.Item2));
         Assert.Equal(2, calls.Count(c => c.Item1 == "HitAction"));
         Assert.Single(calls, c => c.Item1 == "RendaEnd");
         Assert.Contains(calls, c => c.Item1 == "OnUpdate");

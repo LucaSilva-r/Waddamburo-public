@@ -145,6 +145,9 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         };
     }
 
+    /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
+    public bool OverlayActive => _longNotes?.BalloonVisible == true;
+
     public void Stop()
     {
         _session = null;

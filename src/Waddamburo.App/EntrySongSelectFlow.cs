@@ -332,7 +332,7 @@ internal static class EntrySongSelectFlow
                             var musicFinished = gameplayMusic is not { } music
                                 || audioEngine is null
                                 || !audioEngine.Mixer.IsPlaying(music.Handle);
-                            if (escapePressed || chartFinished && musicFinished)
+                            if (escapePressed || chartFinished && musicFinished && !gameplayPresentation.OverlayActive)
                             {
                                 if (gameplayMusic is { } currentMusic)
                                     audioEngine?.Mixer.Stop(currentMusic.Handle, TimeSpan.FromMilliseconds(20));

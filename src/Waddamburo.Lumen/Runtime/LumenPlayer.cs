@@ -212,6 +212,13 @@ public sealed class LumenPlayer
         return true;
     }
 
+    /// <summary>Whether an explicitly named child path exists and its timeline is playing.</summary>
+    public bool IsInstancePlaying(string instancePath)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        return findInstance(instancePath)?.Playing == true;
+    }
+
     /// <summary>Returns the rendered bounds of a named clip in movie coordinates.</summary>
     public bool TryGetInstanceBounds(string instancePath, out LumenNativeSurfacePlacement bounds)
     {
