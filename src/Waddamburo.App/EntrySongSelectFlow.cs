@@ -134,11 +134,18 @@ internal static class EntrySongSelectFlow
         RenderTextureId[] textureIds = [];
         LumenGameSceneInstance? rainbow = null;
         RenderTextureId[] rainbowTextureIds = [];
+        SystemIndicators? indicators = null;
+        RenderTextureId[] indicatorTextureIds = [];
+        SceneId? indicatorScene = null;
 
         try
         {
             active = requireLumenScene(coordinator);
             textureIds = uploadTextures(application, active);
+            indicators = new SystemIndicators((LumenGameSceneInstance)loader
+                .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
+                .AsTask().GetAwaiter().GetResult());
+            indicatorTextureIds = uploadTextures(application, indicators.Scene);
             var rainbowSequence = new RainbowTransitionSequence();
             LumenNativeSurfaceKey? rainbowTitle = null;
             PlayableChart[] activeGameplayCharts = [];
@@ -169,18 +176,25 @@ internal static class EntrySongSelectFlow
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
                     surface => donPresentation?.Resolve(surface) ?? titleTextures.Resolve(surface));
-                if (rainbow is null)
-                    return frame;
-                var overlay = LumenRenderFrameAdapter.Compose(
+                IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => indicators is null ? []
+                    : LumenRenderFrameAdapter.Compose(
+                        indicators.CreateSnapshot(overIntermission, (float)interpolationFraction),
+                        RenderColor.WaddamburoBlue,
+                        index => index < indicatorTextureIds.Length
+                            ? indicatorTextureIds[index]
+                            : throw new InvalidDataException($"Indicator snapshot references missing texture {index}."),
+                        titleTextures.Resolve).Quads;
+                // Depth order (traced): scene, msg_coins (-950), intermission (-2000), network/card (-3000).
+                IEnumerable<RenderQuad> rainbowQuads = rainbow is null ? [] : LumenRenderFrameAdapter.Compose(
                     rainbow.Player.CreateRenderSnapshot((float)interpolationFraction),
                     RenderColor.WaddamburoBlue,
                     index => index < rainbowTextureIds.Length
                         ? rainbowTextureIds[index]
                         : throw new InvalidDataException($"Rainbow snapshot references missing texture {index}."),
-                    titleTextures.Resolve);
+                    titleTextures.Resolve).Quads;
                 return new RenderFrame(
                     frame.ClearColor,
-                    frame.Quads.Concat(overlay.Quads),
+                    frame.Quads.Concat(indicatorQuads(false)).Concat(rainbowQuads).Concat(indicatorQuads(true)).ToArray(),
                     frame.ContentAspectRatio);
             }
 
@@ -205,6 +219,17 @@ internal static class EntrySongSelectFlow
                         donRenderer?.Advance();
                     }
                     rainbow?.Player.Advance();
+                    if (indicators is not null)
+                    {
+                        if (indicatorScene != active.Id)
+                        {
+                            indicatorScene = active.Id;
+                            indicators.SetScene(active.Id == entryId ? IndicatorScene.Entry
+                                : active.Id == gameplayId ? IndicatorScene.Gameplay
+                                : IndicatorScene.SongSelect);
+                        }
+                        indicators.Advance();
+                    }
                     var escapeIsDown = keyboardState.IsDown(SdlKeyboardKey.Escape);
                     var escapePressed = escapeIsDown && !escapeWasDown;
                     escapeWasDown = escapeIsDown;
@@ -418,6 +443,9 @@ internal static class EntrySongSelectFlow
             if (rainbow is not null)
                 rainbow.DisposeAsync().AsTask().GetAwaiter().GetResult();
             releaseTextures(application, textureIds);
+            releaseTextures(application, indicatorTextureIds);
+            if (indicators is not null)
+                indicators.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
     }
@@ -532,6 +560,7 @@ internal static class EntrySongSelectFlow
             "song-select" => createSongSelectHost(),
             GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
+            SystemIndicators.HostId => new LumenLayerHost(null),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 

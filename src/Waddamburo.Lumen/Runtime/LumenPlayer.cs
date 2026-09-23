@@ -219,6 +219,25 @@ public sealed class LumenPlayer
         return findInstance(instancePath)?.Playing == true;
     }
 
+    /// <summary>Diagnostic dump of the display list (name, character, frame/label, playing, visible).</summary>
+    public IEnumerable<string> DescribeDisplayList()
+    {
+        var lines = new List<string>();
+        void visit(DisplayInstance instance, int level)
+        {
+            var label = _sprites.TryGetValue(instance.CharacterId, out var timeline)
+                ? timeline.Labels.Where(pair => pair.Value <= instance.Frame).OrderByDescending(pair => pair.Value)
+                    .Select(pair => pair.Key).FirstOrDefault() : null;
+            lines.Add($"{new string(' ', 2 * level)}{(instance.Name.Length > 0 ? instance.Name : "-")} ch={instance.CharacterId} "
+                + $"frame={instance.Frame}{(label is null ? "" : $"({label})")}{(instance.Playing ? " playing" : "")}"
+                + $"{(instance.Visible ? "" : " HIDDEN")} a={instance.Color.Multiply.Alpha:0.##}");
+            foreach (var child in instance.Children.Values)
+                visit(child, level + 1);
+        }
+        visit(_root, 0);
+        return lines;
+    }
+
     /// <summary>Returns the rendered bounds of a named clip in movie coordinates.</summary>
     public bool TryGetInstanceBounds(string instancePath, out LumenNativeSurfacePlacement bounds)
     {
