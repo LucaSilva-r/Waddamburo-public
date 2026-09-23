@@ -131,13 +131,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private LumenPlayer? _player;
     private bool _assigned;
     private readonly SongSelectTimer _timer;
+    private readonly IndicatorParts? _parts;
 
     public SongSelectHostBinding(
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
         IDonPresentationController? don = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IndicatorParts? parts = null)
     {
+        _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
         _don = don;
@@ -166,16 +169,21 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if (call.Arguments.Length != 1 || call.Arguments[0].Kind != LumenHostValueKind.Number)
                     throw new ArgumentException("StartTimer requires a duration in seconds.", nameof(call));
                 _timer.Start(call.Arguments[0].AsNumber());
+                _parts?.StartCountdown(call.Arguments[0].AsNumber());
                 return LumenHostValue.Undefined;
             });
             lumen.RegisterMethod("StopTimer", _ =>
             {
                 _timer.Stop();
+                _parts?.StopCountdown();
                 return LumenHostValue.Undefined;
             });
             lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(Math.Ceiling(_timer.Remaining.TotalSeconds)));
-            lumen.RegisterMethod("IsTimeup", _ => LumenHostValue.FromBoolean(_timer.IsTimeUp));
-            lumen.RegisterMethod("IsInitWait", _ => LumenHostValue.FromBoolean(assignInitialData()));
+            // With the cabinet countdown off the timer never runs out (the counter still shows).
+            lumen.RegisterMethod("IsTimeup", _ => LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _timer.IsTimeUp));
+            lumen.RegisterMethod("IsInitWait", _ =>
+                LumenHostValue.FromBoolean((_parts?.PollReady() ?? true) && assignInitialData()));
+            lumen.RegisterMethod("NotifyTimeSec", static _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("GetMusicInfo_Basic", publishMusicInfo);
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
             lumen.RegisterMethod("RequestSongBoardTexture_Long", call => publishBoard(call, SongBoardTextureKind.Expanded));

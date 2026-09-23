@@ -30,6 +30,8 @@ try
     var soundRoot = parseOption(args, "--sound-root=");
     var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
+    // The cabinet's countdown option (chassisinfo disable_countdowntimer); on by default.
+    var countdown = !args.Contains("--no-countdown", StringComparer.Ordinal);
     var positionalRoots = args.Where(static argument => !argument.StartsWith("--", StringComparison.Ordinal)).ToArray();
     if (positionalRoots.Length > 1)
         throw new ArgumentException("Normal boot accepts at most one positional game-data directory.");
@@ -77,7 +79,8 @@ try
             layout.TjaRoot,
             layout.FontPath,
             jinglePath,
-            layout.SoundRoot);
+            layout.SoundRoot,
+            countdown);
         return 0;
     }
     if (soundBankProbe is not null)
@@ -116,7 +119,8 @@ try
             tjaRoot,
             fontPath,
             jinglePath,
-            soundRoot);
+            soundRoot,
+            countdown);
         return 0;
     }
     if (soundRoot is not null)

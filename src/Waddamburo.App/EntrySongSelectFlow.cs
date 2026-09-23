@@ -30,7 +30,8 @@ internal static class EntrySongSelectFlow
         string tjaRoot,
         string fontPath,
         string? jinglePath,
-        string? soundRoot)
+        string? soundRoot,
+        bool countdown = true)
     {
         var tja = new TjaCatalogProvider(tjaRoot);
         using var globalCatalog = new GlobalSongCatalog([tja]);
@@ -97,11 +98,19 @@ internal static class EntrySongSelectFlow
         var catalog = new SceneCatalog(
             [
                 new SceneDefinition(SceneDefinition.CurrentVersion, entryId, [
+                    // Traced entry composition: the scene movie, then its indicator parts by depth
+                    // (100 .. 50; the game draws them over the scene). entry_info / shop_info (-890)
+                    // start hidden and are left out until something shows them.
                     new SceneLayerDefinition(
                         "entry/packeddata.ddp",
                         "entry/entry.lm",
                         LumenMatrix.Identity,
                         "player-entry"),
+                    indicatorPart("indicator"),
+                    indicatorPart("player_name", 640, 360),
+                    indicatorPart("player_name", 640, 360),
+                    indicatorPart("time_counter"),
+                    indicatorPart("over_msg"),
                 ]),
                 new SceneDefinition(SceneDefinition.CurrentVersion, songSelectId, [
                     new SceneLayerDefinition(
@@ -109,6 +118,10 @@ internal static class EntrySongSelectFlow
                         "song_select/song_select.lm",
                         LumenMatrix.Identity,
                         "song-select"),
+                    indicatorPart("indicator"),
+                    indicatorPart("player_name", 640, 360),
+                    indicatorPart("player_name", 640, 360),
+                    indicatorPart("time_counter"),
                 ]),
                 GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout),
             ],
@@ -126,7 +139,8 @@ internal static class EntrySongSelectFlow
                 new ViewerFrontendServices(soundController),
                 donPresentation,
                 playRequests,
-                () => songInfo));
+                () => songInfo,
+                countdown));
         var coordinator = new GameFlowCoordinator(catalog, loader, flow);
         coordinator.StartAsync(entryId).AsTask().GetAwaiter().GetResult();
 
@@ -154,6 +168,7 @@ internal static class EntrySongSelectFlow
             var gameplayClock = new System.Diagnostics.Stopwatch();
             var gameplayStartTick = 0;
             var escapeWasDown = false;
+            var dumpTreeTick = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
             var simulationTick = 0;
 
             TimeSpan chartTime() => gameplayTimeline?.ChartTime(
@@ -219,6 +234,14 @@ internal static class EntrySongSelectFlow
                         donRenderer?.Advance();
                     }
                     rainbow?.Player.Advance();
+                    // Diagnostic: WADDAMBURO_DUMP_TREE=<tick> prints the active scene's display lists.
+                    if (dumpTreeTick == simulationTick)
+                        foreach (var (layer, index) in active.Layers.Select((layer, index) => (layer, index)))
+                        {
+                            Console.WriteLine($"== layer {index} {layer.Definition.MovieId}");
+                            foreach (var line in active.Player.Layers[index].Player.DescribeDisplayList())
+                                Console.WriteLine(line);
+                        }
                     if (indicators is not null)
                     {
                         if (indicatorScene != active.Id)
@@ -450,6 +473,12 @@ internal static class EntrySongSelectFlow
         }
     }
 
+    private static SceneLayerDefinition indicatorPart(string movie, float x = 0, float y = 0) => new(
+        "indicator/packeddata.ddp",
+        $"{movie}/{movie}.lm",
+        LumenMatrix.Identity with { X = x, Y = y },
+        IndicatorParts.HostId);
+
     private static AudioStreamTransport? startGameplayAudio(
         AudioEngine? audioEngine,
         TjaCatalogProvider tja,
@@ -541,7 +570,8 @@ internal static class EntrySongSelectFlow
         ILumenFrontendServices frontend,
         IDonPresentationController? don,
         IPlayRequestSink playRequests,
-        Func<TaikoSongInfo> songInfo) : ILumenLayerHostFactory
+        Func<TaikoSongInfo> songInfo,
+        bool countdown) : ILumenLayerHostFactory
     {
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
@@ -552,11 +582,25 @@ internal static class EntrySongSelectFlow
         private readonly IDonPresentationController? _don = don;
         private readonly IPlayRequestSink _playRequests = playRequests;
 
-        public LumenLayerHost Create(SceneLayerDefinition layer) => layer.HostId switch
+        public LumenLayerHost Create(SceneLayerDefinition layer)
         {
-            "player-entry" => new LumenLayerHost(
-                new LumenFrontendHostBinding(_frontend, _flow, _don),
-                initializeEntry),
+            // A front-end scene movie starts the indicator parts its following layers attach to.
+            if (layer.HostId == "player-entry")
+            {
+                _parts = new IndicatorParts(IndicatorPartsScene.Entry, countdown);
+                _entry = new EntrySceneHost(_parts);
+            }
+            else if (layer.HostId == "song-select")
+                _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown);
+            return createHost(layer);
+        }
+
+        private LumenLayerHost createHost(SceneLayerDefinition layer) => layer.HostId switch
+        {
+            "player-entry" => entryHost(_entry!),
+            IndicatorParts.HostId => partHost(_parts
+                ?? throw new InvalidOperationException("Indicator part loaded without its scene movie."),
+                Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => createSongSelectHost(),
             GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
@@ -564,13 +608,30 @@ internal static class EntrySongSelectFlow
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
 
+        private EntrySceneHost? _entry;
+        private IndicatorParts? _parts;
+
+        private LumenLayerHost entryHost(EntrySceneHost entry) => new(
+            new LumenFrontendHostBinding(_frontend, _flow, _don, entry),
+            player =>
+            {
+                initializeEntry(player);
+                entry.AttachEntry(player);
+            });
+
+        private static LumenLayerHost partHost(IndicatorParts parts, string movie) =>
+            new(null, player => parts.Attach(movie, player));
+
         private void initializeEntry(LumenPlayer player)
         {
             if (_don is not null)
                 DonLumenBinding.Attach(player, _don, DonPresentationLayout.OpposedPlayers);
+            // SetPrevious(scene, trigger): entry starts as if P1 hit the drum in the attract loop
+            // (SCENE_TRIGGER_DON_1P = 0), the free-play path; the movie then joins P1 via EntryCoin.
+            // ponytail: no attract loop yet, so the trigger is fixed.
             if (!player.TryInvokeCallback("SetPrevious", [
                     LumenHostValue.FromNumber(0),
-                    LumenHostValue.FromNumber(-1)]))
+                    LumenHostValue.FromNumber(0)]))
             {
                 throw new InvalidOperationException("Entry did not export SetPrevious.");
             }
@@ -593,7 +654,8 @@ internal static class EntrySongSelectFlow
                     _previews,
                     _playRequests),
                 _sounds,
-                _don);
+                _don,
+                parts: _parts);
             return new LumenLayerHost(binding, binding.Attach);
         }
     }
@@ -635,7 +697,7 @@ internal static class EntrySongSelectFlow
 
         public bool IsStartLumen => true;
 
-        public bool IsFreePlay => false;
+        public bool IsFreePlay => true; // traced: the stock setup answers 1
 
         public void Initialize()
         {

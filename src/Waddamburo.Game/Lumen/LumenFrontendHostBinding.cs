@@ -43,11 +43,13 @@ public interface ILumenFrontendServices
 public sealed class LumenFrontendHostBinding(
     ILumenFrontendServices services,
     ISceneTransitionSink transitions,
-    IDonPresentationController? don = null) : ILumenHostBinding, IDisposable
+    IDonPresentationController? don = null,
+    EntrySceneHost? entry = null) : ILumenHostBinding, IDisposable
 {
     private readonly ILumenFrontendServices _services = services ?? throw new ArgumentNullException(nameof(services));
     private readonly ISceneTransitionSink _transitions = transitions ?? throw new ArgumentNullException(nameof(transitions));
     private readonly IDonPresentationController? _don = don;
+    private readonly EntrySceneHost? _entry = entry;
 
     public void Install(LumenHostContext context)
     {
@@ -55,14 +57,20 @@ public sealed class LumenFrontendHostBinding(
         context.RegisterExternalInterfaceCall(_services.CallExternalInterface);
         context.RegisterObject("Lumen", lumen =>
         {
-            lumen.RegisterMethod("IsReady", _ => LumenHostValue.FromBoolean(_services.IsReady));
+            lumen.RegisterMethod("IsReady", _ =>
+                LumenHostValue.FromBoolean(_services.IsReady && (_entry?.PollReady() ?? true)));
             lumen.RegisterMethod("InitInfo", _ =>
             {
                 _services.Initialize();
+                _entry?.InitInfo();
                 return LumenHostValue.Undefined;
             });
             lumen.RegisterMethod("IsStartLumen", _ => LumenHostValue.FromBoolean(_services.IsStartLumen));
-            lumen.RegisterMethod("EntryCoin", _ => LumenHostValue.FromBoolean(_services.TryEnterPlayer()));
+            // EntryCoin(player, side): the entry scene host performs the join (coins, costume lists).
+            lumen.RegisterMethod("EntryCoin", call => LumenHostValue.FromBoolean(_entry is not null
+                ? _entry.TryJoin(call.Arguments.Length > 0 ? (int)call.Arguments[0].AsNumber() : 0)
+                : _services.TryEnterPlayer()));
+            _entry?.Register(lumen);
             lumen.RegisterMethod("IsFreePlay", _ => LumenHostValue.FromBoolean(_services.IsFreePlay));
             lumen.RegisterMethod("RequestSE", call => requestSound(LumenFrontendSoundRequestKind.Effect, call));
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(LumenFrontendSoundRequestKind.SystemEffect, call));
