@@ -23,6 +23,8 @@ public enum DonPresentationLayout
     Gameplay,
     Retry,
     RetrySuccess,
+    /// <summary>The kusudama overlay: the menu view, both Dons facing the centre.</summary>
+    Kusudama,
 }
 
 /// <summary>

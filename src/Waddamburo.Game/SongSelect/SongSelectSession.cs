@@ -111,10 +111,12 @@ public sealed class SongSelectSession
             selected.Descriptor.Key,
             playerOne?.Key,
             playerTwo?.Key);
+        // Two players play the courses' duet charts when the song has them (left drum's, right drum's).
+        var duet = playerOne is not null && playerTwo is not null;
         var players = new[]
         {
-            playerOne is null ? null : request(LocalPlayerSlot.PlayerOne, playerOne),
-            playerTwo is null ? null : request(LocalPlayerSlot.PlayerTwo, playerTwo),
+            playerOne is null ? null : request(LocalPlayerSlot.PlayerOne, playerOne, duet),
+            playerTwo is null ? null : request(LocalPlayerSlot.PlayerTwo, playerTwo, duet),
         }.OfType<PlayerChartRequest>();
         var playRequest = new PlayRequest(
             Catalog.Revision,
@@ -139,9 +141,11 @@ public sealed class SongSelectSession
             ?? throw new InvalidOperationException($"Song '{song.Descriptor.Key}' does not provide {course}.");
     }
 
-    private static PlayerChartRequest request(LocalPlayerSlot player, SongChartDescriptor chart) => new(
+    private static PlayerChartRequest request(LocalPlayerSlot player, SongChartDescriptor chart, bool duet) => new(
         player,
         chart.Key,
-        chart.ChartAsset,
+        duet && !chart.DuetChartAssets.IsEmpty
+            ? chart.DuetChartAssets[player == LocalPlayerSlot.PlayerOne ? 0 : 1]
+            : chart.ChartAsset,
         chart.Course ?? throw new InvalidOperationException($"Chart '{chart.Key}' has no Taiko course."));
 }

@@ -58,6 +58,9 @@ internal static class GameplaySceneComposition
         ("enso_system/common", "onp_renda_dai", null, 1002),
         ("enso_system/common", "onp_fusen", null, 1002),
         ("enso_system/common", "onp_kusudama", null, 1002),
+        // Hand notes with feet: two-player gameplay only.
+        ("enso_system/base1p", "onp_tetunagidon_1p", null, 1002),
+        ("enso_system/base1p", "onp_tetunagikatsu_1p", null, 1002),
         ("enso_system/common", "action_result", 14, 1000),
         ("enso_system/common", "lane_obi", 14, 507),
         ("enso_system/base1p", "gage_fire_1p", 14, 506),
@@ -119,6 +122,7 @@ internal static class GameplaySceneComposition
                 .OfType<(SceneLayerDefinition Layer, int Depth)>();
             var systemLayers = SystemLayers
                 .Where(entry => !(twoPlayers && entry.Movie == "action_gogotime"))
+                .Where(entry => twoPlayers || !entry.Movie.StartsWith("onp_tetunagi", StringComparison.Ordinal))
                 .Where(entry => lane == 0 || !SharedRoles.Contains(entry.Movie))
                 .Select(entry =>
                 {

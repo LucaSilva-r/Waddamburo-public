@@ -1202,8 +1202,13 @@ internal static class EntrySongSelectFlow
 
         public void SetCameraLayout(DonPresentationLayout layout) => _renderer.SetCameraLayout(cameraLayout(layout));
 
-        public void SetCameraLayout(int playerIndex, DonPresentationLayout layout) =>
+        // Gameplay overlays: the shared kusudama shows both Dons facing the centre, so Katsu-chan takes
+        // the reflected camera; each lane's balloon shows its Don unreflected (user-confirmed).
+        public void SetCameraLayout(int playerIndex, DonPresentationLayout layout)
+        {
+            _renderer.MirrorPlayerTwoCamera = layout == DonPresentationLayout.Kusudama && GameplaySide != 1;
             _renderer.SetCameraLayout(slot(playerIndex), cameraLayout(layout));
+        }
 
         private static DonCameraLayout cameraLayout(DonPresentationLayout layout) => layout switch
         {

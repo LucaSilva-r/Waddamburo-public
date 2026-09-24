@@ -144,6 +144,23 @@ public sealed class SongSelectSessionTests
         Assert.Equal(LocalPlayerSlot.PlayerTwo, player.Player);
     }
 
+    [Theory]
+    [InlineData(TaikoCourse.Oni, "oni:1", "oni:2")]
+    [InlineData(TaikoCourse.Easy, "oni:1", "easy")] // a course without duet charts keeps its solo chart
+    public async Task TwoPlayersPlayTheDuetCharts(TaikoCourse right, string leftAsset, string rightAsset)
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var playRequests = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
+            new RecordingPreviewController(), playRequests);
+
+        session.Select(0, 0, (int)TaikoCourse.Oni, (int)right);
+
+        Assert.Equal([leftAsset, rightAsset],
+            Assert.IsType<PlayRequest>(playRequests.Pending).Players.Select(static player => player.ChartAsset.StableId));
+    }
+
     [Fact]
     public async Task SessionRoutesBoardPreviewAndSelectionByPinnedCatalogIdentity()
     {
@@ -274,7 +291,8 @@ public sealed class SongSelectSessionTests
                         "Oni",
                         new CatalogAssetKey(Id, "oni"),
                         TaikoCourse.Oni,
-                        8),
+                        8,
+                        [new CatalogAssetKey(Id, "oni:1"), new CatalogAssetKey(Id, "oni:2")]),
                     .. includeUra ? new[] { new SongChartDescriptor(
                         new ChartKey(songKey, "ura"), "Ura", new CatalogAssetKey(Id, "ura"),
                         TaikoCourse.Ura, 9) } : Array.Empty<SongChartDescriptor>(),

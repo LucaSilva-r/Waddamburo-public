@@ -33,7 +33,7 @@ internal static class FumenChartReader
 
         // Audio time (ms) of every event; shifted to non-negative chart time at the end.
         var measures = new List<(double Time, double Bpm, double Speed, bool GoGo, bool Barline)>(measureCount);
-        var notes = new List<(double Time, PlayableNoteKind Kind)>();
+        var notes = new List<(double Time, PlayableNoteKind Kind, bool Hand)>();
         var longNotes = new List<(double Start, double End, PlayableLongNoteKind Kind, int Hits)>();
         int? scoreInit = null, scoreDiff = null;
         for (var measure = 0; measure < measureCount; measure++)
@@ -81,7 +81,7 @@ internal static class FumenChartReader
                     if (isRoll)
                         longNotes.Add((noteMs, noteMs + Math.Max(0, duration), type == 0x9 ? PlayableLongNoteKind.BigRoll : PlayableLongNoteKind.Roll, 0));
                     else if (kind(type) is { } noteKind)
-                        notes.Add((noteMs, noteKind));
+                        notes.Add((noteMs, noteKind, type is 0xB or 0xD));
                     if (notes.Count + longNotes.Count > maximumNotes)
                         throw new InvalidDataException("The fumen exceeds the note limit.");
                 }
@@ -125,7 +125,7 @@ internal static class FumenChartReader
             key,
             TimeSpan.FromMilliseconds(shiftMs),
             chartTime(endMs),
-            notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind)),
+            notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind, note.Hand)),
             timing.ToImmutable(),
             scroll.ToImmutable(),
             effects.ToImmutable(),
@@ -134,7 +134,7 @@ internal static class FumenChartReader
         { ScoreInit = scoreInit, ScoreDiff = scoreDiff };
     }
 
-    // Note types per tja2fumen: 1-3 don, 4-5 ka, 7/8 big don/ka, 0xB/0xD big don/ka (hands).
+    // Note types per tja2fumen: 1-3 don, 4-5 ka, 7/8 big don/ka, 0xB/0xD big don/ka (hand notes).
     private static PlayableNoteKind? kind(int type) => type switch
     {
         0x1 or 0x2 or 0x3 => PlayableNoteKind.Don,

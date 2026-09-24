@@ -192,7 +192,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!scoreAdd.TryInvokeCallback("SetCount", [LumenHostValue.FromNumber(award)]))
                     throw new InvalidDataException("Gameplay score-add movie is missing SetCount after Create.");
             }
-            foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai" })
+            foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai",
+                "onp_tetunagidon_1p", "onp_tetunagikatsu_1p" }.Where(layers.ContainsKey))
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
                     throw new InvalidDataException("Gameplay note movie is missing its initial state.");
             _session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(
@@ -332,7 +333,14 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
                     [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
                 }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
-                _flights, _longNotes, flightsAt < 0 ? null : flightsAt);
+                _flights, _longNotes, flightsAt < 0 ? null : flightsAt,
+                layers.ContainsKey("onp_tetunagidon_1p")
+                    ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
+                    {
+                        [PlayableNoteKind.BigDon] = layers["onp_tetunagidon_1p"],
+                        [PlayableNoteKind.BigKa] = layers["onp_tetunagikatsu_1p"],
+                    }
+                    : null);
             _presentation.GoGoChanged += active =>
             {
                 if (active && goGoSplash is not null) label(goGoSplash, "splash");

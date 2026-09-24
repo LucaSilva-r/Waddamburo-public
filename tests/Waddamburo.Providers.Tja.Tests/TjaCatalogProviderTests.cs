@@ -161,6 +161,19 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task HiddenFoldersAreNotPartOfTheLibrary()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("Pop/song.tja", "TITLE:Song\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        library.WriteText(".cache/tool/generated.tja", "TITLE:Generated\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
+
+        var contribution = await new TjaCatalogProvider(library.Path).ScanAsync(null, CancellationToken.None);
+
+        Assert.Equal("Song", Assert.Single(contribution.Songs).Title.Primary);
+        Assert.Equal("Pop", Assert.Single(contribution.Categories).Name);
+    }
+
+    [Fact]
     public async Task MovingLibraryDoesNotChangeStableIdentities()
     {
         using var first = new TemporaryLibrary();

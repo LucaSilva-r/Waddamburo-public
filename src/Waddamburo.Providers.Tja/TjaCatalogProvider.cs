@@ -228,6 +228,10 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             cancellationToken.ThrowIfCancellationRequested();
             if (!string.Equals(Path.GetExtension(path), ".tja", StringComparison.OrdinalIgnoreCase))
                 continue;
+            // Hidden folders (e.g. another program's ".cache") are not part of the library.
+            if (Path.GetRelativePath(_root, path).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(static segment => segment.StartsWith('.')))
+                continue;
             paths.Add(path);
             if (paths.Count > _options.MaximumFileCount)
                 throw new InvalidDataException("The custom TJA library exceeds the configured file-count limit.");

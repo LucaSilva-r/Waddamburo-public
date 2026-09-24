@@ -262,7 +262,7 @@ internal static class TjaPlayableChartReader
                         if (kind is { } value)
                         {
                             checkNoteLimit();
-                            hitObjects.Add(new PlayableHitObject(time, value));
+                            hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B'));
                         }
                     }
                     cursorSeconds = checked(cursorSeconds + 60m / bpm * 4m * numerator / denominator / count);

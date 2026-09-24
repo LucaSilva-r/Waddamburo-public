@@ -144,6 +144,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             SetCameraLayout(index, layout);
     }
 
+    /// <summary>Whether the second player's menu-style views use the reflected camera.</summary>
+    public bool MirrorPlayerTwoCamera
+    {
+        get => _mirrorPlayerTwoCamera;
+        set => _mirrorPlayerTwoCamera = value;
+    }
+
     public void SetCameraLayout(int playerIndex, DonCameraLayout layout)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

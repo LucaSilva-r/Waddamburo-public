@@ -78,7 +78,33 @@ public sealed class StockCatalogProviderTests
         Assert.Equal(1000, Assert.Single(playable.HitObjects).StartTime.TotalMilliseconds);
     }
 
+    [Fact]
+    public async Task DuetChartsAreOfferedPerDrumWithHandNotes()
+    {
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "曲", "J-POP"));
+        data.WriteBytes("fumen/song/solo/song_n.bin", Fumen(new Measure(120, 0, [N(7, 0)])));
+        data.WriteBytes("fumen/song/solo/song_e.bin", Fumen(new Measure(120, 0, [N(1, 0)])));
+        data.WriteBytes("fumen/song/duet/song_n_1.bin", Fumen(new Measure(120, 0, [N(0xB, 0)])));
+        data.WriteBytes("fumen/song/duet/song_n_2.bin", Fumen(new Measure(120, 0, [N(0xD, 0), N(1, 500)])));
+        data.WriteBytes("fumen/song/duet/song_e_1.bin", Fumen(new Measure(120, 0, [N(1, 0)]))); // no right-drum file
+        var provider = new StockCatalogProvider(data.Path);
+        var charts = (await provider.ScanAsync(null, CancellationToken.None)).Songs[0].Charts;
+
+        Assert.Empty(charts.Single(static chart => chart.Course == TaikoCourse.Easy).DuetChartAssets);
+        var normal = charts.Single(static chart => chart.Course == TaikoCourse.Normal);
+        var left = await provider.LoadChartAsync(normal.Key, normal.DuetChartAssets[0]);
+        var right = await provider.LoadChartAsync(normal.Key, normal.DuetChartAssets[1]);
+        var solo = await provider.LoadChartAsync(normal.Key, normal.ChartAsset);
+
+        Assert.True(Assert.Single(left.HitObjects).IsHand);
+        Assert.Equal([PlayableNoteKind.BigKa, PlayableNoteKind.Don], right.HitObjects.Select(static note => note.Kind));
+        Assert.True(right.HitObjects[0].IsHand);
+        Assert.False(Assert.Single(solo.HitObjects).IsHand);
+    }
+
     [Theory]
+    [InlineData("duet:song:n:3")]
     [InlineData("chart:../x:m")]
     [InlineData("chart:song:q")]
     [InlineData("audio:song/../../etc")]

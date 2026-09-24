@@ -37,7 +37,8 @@ public sealed record SongChartDescriptor
         string difficultyName,
         CatalogAssetKey chartAsset,
         TaikoCourse? course = null,
-        int? level = null)
+        int? level = null,
+        IEnumerable<CatalogAssetKey>? duetChartAssets = null)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(difficultyName);
@@ -49,6 +50,9 @@ public sealed record SongChartDescriptor
         ChartAsset = chartAsset;
         Course = course;
         Level = level;
+        DuetChartAssets = duetChartAssets?.ToImmutableArray() ?? [];
+        if (DuetChartAssets.Length is not (0 or 2) || DuetChartAssets.Any(static asset => asset is null))
+            throw new ArgumentException("Duet charts come as one per player, left then right.", nameof(duetChartAssets));
     }
 
     public ChartKey Key { get; }
@@ -60,6 +64,12 @@ public sealed record SongChartDescriptor
     public TaikoCourse? Course { get; }
 
     public int? Level { get; }
+
+    /// <summary>
+    /// The course's two-player charts (left drum, right drum), empty when the course has none. The
+    /// game's own songs author them apart from the solo chart (different parts, hand notes).
+    /// </summary>
+    public ImmutableArray<CatalogAssetKey> DuetChartAssets { get; }
 }
 
 public sealed record SongDescriptor

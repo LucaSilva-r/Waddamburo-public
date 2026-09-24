@@ -164,6 +164,7 @@ public sealed unsafe class SdlApplication : IDisposable
         var previousTimestamp = Stopwatch.GetTimestamp();
         var running = true;
         var pendingPresses = new List<SdlKeyPress>();
+        var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
         while (running && (frameLimit is null || renderedFrames < frameLimit))
         {
             SDL_Event currentEvent;
@@ -206,6 +207,7 @@ public sealed unsafe class SdlApplication : IDisposable
             var keyboard = new SdlKeyboardSnapshot(_pressedKeys, pendingPresses, eventTime);
             updateFrame?.Invoke(keyboard);
             var delivered = updateFrame is not null;
+            var updateStart = Stopwatch.GetTimestamp();
             var update = clock.AddElapsed(elapsed, () =>
             {
                 simulationTick(delivered ? new SdlKeyboardSnapshot(_pressedKeys, timestamp: eventTime) : keyboard);
@@ -220,7 +222,14 @@ public sealed unsafe class SdlApplication : IDisposable
             var reachedFrameLimit = frameLimit is int requestedFrames && renderedFrames + 1 >= requestedFrames;
             var shouldCapture = captureFinalFrame is not null && (reachedTickLimit || reachedFrameLimit);
             var interpolationFraction = reachedTickLimit ? 1d : clock.InterpolationFraction;
+            var renderStart = Stopwatch.GetTimestamp();
             var capture = _renderer!.Present(createFrame(interpolationFraction), shouldCapture);
+            // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
+            var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
+            var renderTime = Stopwatch.GetElapsedTime(renderStart);
+            if (hitchTrace && updateTime + renderTime > TimeSpan.FromMilliseconds(40))
+                Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
+                    + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms.");
             if (capture is not null)
                 captureFinalFrame!(capture);
             renderedFrames++;

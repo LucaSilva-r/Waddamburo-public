@@ -13,6 +13,7 @@ public sealed class TaikoLumenPresentation
     private readonly LumenSceneLayer[] _foreground;
     private readonly int _flightsAt; // foreground index the hit flights are drawn at
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> _notes;
+    private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _handNotes;
     private readonly LumenSceneLayer _bar;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
@@ -28,8 +29,10 @@ public sealed class TaikoLumenPresentation
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
-        TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null)
+        TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
+        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null)
     {
+        _handNotes = handNotes;
         _chart = chart;
         _judgement = judgement;
         _background = background.ToArray();
@@ -106,7 +109,10 @@ public sealed class TaikoLumenPresentation
         {
             if (_judgement.IsJudged(index)) continue;
             hitNotes.Clear();
-            addAt(hitNotes, _notes[_chart.HitObjects[index].Kind], _chart.HitObjects[index].StartTime, time, scroll: true);
+            var note = _chart.HitObjects[index];
+            // Hand notes get their own movie when the scene has one (two players), else the big note's.
+            var template = note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand : _notes[note.Kind];
+            addAt(hitNotes, template, note.StartTime, time, scroll: true);
             if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
         }
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));

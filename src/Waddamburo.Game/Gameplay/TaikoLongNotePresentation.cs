@@ -14,8 +14,32 @@ public sealed class TaikoSharedKusudama(LumenSceneLayer layer, int players)
 
     public int Players { get; } = players;
 
+    private int _lanes; // lanes inside the current ball
+
     /// <summary>Hits still needed, summed over the players whose kusudama is running.</summary>
-    public int Remaining { get; set; }
+    public int Remaining { get; private set; }
+
+    /// <summary>The combined quota was reached: the ball breaks for both players.</summary>
+    public bool Popped { get; private set; }
+
+    /// <summary>A lane's kusudama starts. The first lane in opens a fresh ball (an expired ball keeps its count).</summary>
+    public void Enter(int requiredHits)
+    {
+        if (_lanes++ == 0)
+            (Popped, Remaining) = (false, 0);
+        Remaining += requiredHits;
+    }
+
+    /// <summary>One hit from either player; returns the hits still needed.</summary>
+    public int Hit()
+    {
+        Remaining = Math.Max(0, Remaining - 1);
+        Popped |= Remaining == 0;
+        return Remaining;
+    }
+
+    /// <summary>A lane's kusudama ended (popped or expired).</summary>
+    public void Leave() => _lanes = Math.Max(0, _lanes - 1);
 }
 
 /// <summary>Owns isolated authored roll movies and the active long-note counters.</summary>
@@ -32,6 +56,7 @@ public sealed class TaikoLongNotePresentation
     private readonly Action<PlayableLongNoteKind, bool>? _onBalloonCompleted;
     private readonly Action<PlayableLongNoteKind>? _onNoteStarted;
     private int? _active;
+    private readonly HashSet<int> _finished = []; // a shared ball can end before the lane's own quota
     private bool _balloonVisible;
     private readonly LumenSceneLayer? _kusudama;
     private readonly TaikoSharedKusudama? _sharedKusudama;
@@ -97,14 +122,14 @@ public sealed class TaikoLongNotePresentation
     public void Update(TimeSpan time)
     {
         if (_active is { } current && (time >= _chart.LongNotes[current].EndTime
-            || _session.GetLongNoteProgress(current).IsPopped))
+            || (shared(current) ? _sharedKusudama!.Popped : _session.GetLongNoteProgress(current).IsPopped)))
             finish(current);
         if (_active is not null) return;
         for (var index = 0; index < _chart.LongNotes.Length; index++)
         {
             var note = _chart.LongNotes[index];
             if (note.StartTime > time) break;
-            if (time < note.EndTime && !_session.GetLongNoteProgress(index).IsPopped)
+            if (time < note.EndTime && !_session.GetLongNoteProgress(index).IsPopped && !_finished.Contains(index))
             {
                 begin(index);
                 break;
@@ -156,10 +181,10 @@ public sealed class TaikoLongNotePresentation
         var note = _chart.LongNotes[index];
         if (note.Kind == PlayableLongNoteKind.Kusudama && _kusudama is not null)
         {
-            _don?.SetCameraLayout(_player, DonPresentationLayout.Standard);
+            _don?.SetCameraLayout(_player, DonPresentationLayout.Kusudama);
             _overlay = _kusudama;
             // Kusudama overlay (reference trace): the quota, then whether Go-Go is on.
-            if (_sharedKusudama is not null) _sharedKusudama.Remaining += note.RequiredHits;
+            _sharedKusudama?.Enter(note.RequiredHits);
             call(_kusudama.Player, "AddNorma", LumenHostValue.FromNumber(note.RequiredHits));
             call(_kusudama.Player, "SetGogoTime", LumenHostValue.FromBoolean(isGoGo(note.StartTime)));
             _balloonVisible = true;
@@ -185,6 +210,8 @@ public sealed class TaikoLongNotePresentation
 
     private void hit(TaikoLongNoteProgress progress)
     {
+        if (_finished.Contains(progress.NoteIndex))
+            return;
         if (_active != progress.NoteIndex)
         {
             if (_active is { } previous) finish(previous);
@@ -193,13 +220,20 @@ public sealed class TaikoLongNotePresentation
         _flights?.Trigger(progress);
         if (progress.Note.IsBalloon)
         {
-            if (progress.IsPopped)
+            if (shared(progress.NoteIndex))
+            {
+                // Both players' hits count down one ball; it breaks for both at zero (Update finishes it).
+                var left = _sharedKusudama!.Hit();
+                if (left != 0)
+                    call(_kusudama!.Player, "SetCount", LumenHostValue.FromNumber(left));
+                var (pump, rest) = motions(progress.Note);
+                if (left != 0) _don?.SetMotion(new DonMotionRequest(_player, pump, rest));
+            }
+            else if (progress.IsPopped)
                 finish(progress.NoteIndex);
             else
             {
                 var remaining = progress.Note.RequiredHits - progress.Hits;
-                if (_overlay == _kusudama && _sharedKusudama is not null)
-                    remaining = _sharedKusudama.Remaining = Math.Max(0, _sharedKusudama.Remaining - 1);
                 if (_overlay == _kusudama)
                     call(_overlay.Player, "SetCount", LumenHostValue.FromNumber(remaining));
                 else
@@ -222,26 +256,32 @@ public sealed class TaikoLongNotePresentation
         var progress = _session.GetLongNoteProgress(index);
         if (progress.Note.IsBalloon)
         {
-            if (_overlay == _kusudama && _sharedKusudama is not null)
-                _sharedKusudama.Remaining = Math.Max(0, _sharedKusudama.Remaining - (progress.Note.RequiredHits - progress.Hits));
+            // A shared ball succeeds for both players or neither.
+            var popped = shared(index) ? _sharedKusudama!.Popped : progress.IsPopped;
+            if (shared(index)) _sharedKusudama!.Leave();
             if (_overlay == _kusudama)
-                call(_overlay.Player, "EndResult", LumenHostValue.FromNumber(progress.IsPopped ? 0 : 2)); // high / miss
+                call(_overlay.Player, "EndResult", LumenHostValue.FromNumber(popped ? 0 : 2)); // high / miss
             else
                 invoke(_balloon.Player, "GekiRendaEnd", progress.IsPopped ? 0 : 1);
             var kusudama = progress.Note.Kind == PlayableLongNoteKind.Kusudama;
-            _don?.SetMotion(new DonMotionRequest(_player, (kusudama, progress.IsPopped) switch
+            _don?.SetMotion(new DonMotionRequest(_player, (kusudama, popped) switch
             {
                 (true, true) => $"{_kusu}_success02",
                 (true, false) => $"{_kusu}_failure",
                 (false, true) => "don_balloon_success",
                 _ => "don_balloon_failure",
             }, null));
-            _onBalloonCompleted?.Invoke(progress.Note.Kind, progress.IsPopped);
+            _onBalloonCompleted?.Invoke(progress.Note.Kind, popped);
         }
         else
             invoke(_counter.Player, "RendaEnd");
+        _finished.Add(index);
         _active = null;
     }
+
+    // A kusudama both players share (two-player gameplay).
+    private bool shared(int index) =>
+        _sharedKusudama is not null && _chart.LongNotes[index].Kind == PlayableLongNoteKind.Kusudama;
 
     private (string Pump, string Idle) motions(PlayableLongNote note) =>
         note.Kind == PlayableLongNoteKind.Kusudama

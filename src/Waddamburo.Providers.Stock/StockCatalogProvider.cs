@@ -76,7 +76,11 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                     course.ToString(),
                     new CatalogAssetKey(Id, $"chart:{entry.Id}:{Courses[(int)course]}"),
                     course,
-                    level(stars, entry.Id, course)))
+                    level(stars, entry.Id, course),
+                    hasDuet(entry.Id, Courses[(int)course])
+                        ? [new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:1"),
+                           new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:2")]
+                        : null))
                 .ToArray();
             if (charts.Length == 0)
                 continue;
@@ -133,20 +137,22 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
         ArgumentNullException.ThrowIfNull(asset);
         if (chart.Song.Source != Source)
             throw new ArgumentException("The chart does not belong to the stock source.", nameof(chart));
-        if (asset.Provider != Id || !asset.StableId.StartsWith("chart:", StringComparison.Ordinal))
+        if (asset.Provider != Id || !(asset.StableId.StartsWith("chart:", StringComparison.Ordinal)
+                || asset.StableId.StartsWith("duet:", StringComparison.Ordinal)))
             throw new ArgumentException("The asset is not a stock chart of this provider.", nameof(asset));
         var path = assetPath(asset);
         if (new FileInfo(path).Length > MaximumChartBytes)
             throw new InvalidDataException("The selected fumen exceeds the chart-size limit.");
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-        var course = (TaikoCourse)Courses.IndexOf(asset.StableId[^1], StringComparison.Ordinal);
+        var course = (TaikoCourse)Courses.IndexOf(asset.StableId.Split(':')[2][0], StringComparison.Ordinal);
         return FumenChartReader.Read(bytes, chart, MaximumMeasures, MaximumNotes) with
         {
             Level = level(_stars, asset.StableId.Split(':')[1], course),
         };
     }
 
-    // "chart:<id>:<course letter>" or "audio:<id>"; ids are validated so a key cannot leave the root.
+    // "chart:<id>:<course letter>", "duet:<id>:<course letter>:<1|2>" or "audio:<id>"; ids are validated
+    // so a key cannot leave the root.
     private string assetPath(CatalogAssetKey asset)
     {
         var fields = asset.StableId.Split(':');
@@ -155,6 +161,8 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
             var id = fields[1];
             if (fields is ["chart", _, [var course]] && Courses.Contains(course, StringComparison.Ordinal))
                 return chartPath(id, course);
+            if (fields is ["duet", _, [var duetCourse], "1" or "2"] && Courses.Contains(duetCourse, StringComparison.Ordinal))
+                return duetPath(id, duetCourse, fields[3]);
             if (fields.Length == 2 && fields[0] == "audio")
                 return Path.Combine(_root, "sound", "bgm", "nub", $"SONG_{id.ToUpperInvariant()}.nub");
         }
@@ -162,6 +170,13 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
     }
 
     private string chartPath(string id, char course) => Path.Combine(_root, "fumen", id, "solo", $"{id}_{course}.bin");
+
+    // Two-player charts: fumen/<id>/duet/<id>_<course>_<1|2>.bin, one per drum.
+    private string duetPath(string id, char course, string player) =>
+        Path.Combine(_root, "fumen", id, "duet", $"{id}_{course}_{player}.bin");
+
+    private bool hasDuet(string id, char course) =>
+        File.Exists(duetPath(id, course, "1")) && File.Exists(duetPath(id, course, "2"));
 
     private IEnumerable<TaikoCourse> installedCourses(string id) =>
         Enumerable.Range(0, Courses.Length)

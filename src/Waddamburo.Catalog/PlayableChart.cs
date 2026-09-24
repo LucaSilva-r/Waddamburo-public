@@ -12,15 +12,24 @@ public enum PlayableNoteKind
 
 public readonly record struct PlayableHitObject
 {
-    public PlayableHitObject(TimeSpan startTime, PlayableNoteKind kind)
+    public PlayableHitObject(TimeSpan startTime, PlayableNoteKind kind, bool isHand = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(startTime, TimeSpan.Zero);
+        if (isHand && kind is not (PlayableNoteKind.BigDon or PlayableNoteKind.BigKa))
+            throw new ArgumentException("Only big notes can be hand notes.", nameof(isHand));
         StartTime = startTime;
         Kind = kind;
+        IsHand = isHand;
     }
 
     public TimeSpan StartTime { get; }
     public PlayableNoteKind Kind { get; }
+
+    /// <summary>
+    /// A hand-in-hand big note (fumen 0xB/0xD, TJA A/B): played like a big note; with two players
+    /// the game draws it with feet.
+    /// </summary>
+    public bool IsHand { get; }
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }
 
