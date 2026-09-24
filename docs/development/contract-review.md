@@ -39,7 +39,7 @@ eight new classes or a general-purpose framework.
 
 **Evidence.** [PlayableChart](../../src/Waddamburo.Catalog/PlayableChart.cs) stores
 `AuthoredOffset`; the TJA reader and its tests preserve it. Neither gameplay nor
-the app consumes it. [EntrySongSelectFlow](../../src/Waddamburo.App/EntrySongSelectFlow.cs)
+the app consumes it. [EntrySongSelectFlow](../../src/Waddamburo.App/Flow/GameplayFlow.cs) (now `GameplayFlow`)
 starts audio at reveal and derives judgement and rendering time from simulation
 tick count. [FixedStepAccumulator](../../src/Waddamburo.Platform.Sdl/Timing/FixedStepAccumulator.cs)
 discards excess catch-up ticks, while audio continues on its own producer.
@@ -68,7 +68,7 @@ Specify a numerical error budget before calling device synchronization verified.
 
 **Evidence.** [SdlApplication](../../src/Waddamburo.Platform.Sdl/SdlApplication.cs)
 folds all polled key events into a held-key set and supplies the same snapshot to
-catch-up ticks. [TaikoGameplayPresentation](../../src/Waddamburo.App/TaikoGameplayPresentation.cs)
+catch-up ticks. [TaikoGameplayPresentation](../../src/Waddamburo.App/Gameplay/TaikoGameplayPresentation.cs)
 reconstructs presses from successive snapshots and submits keys in fixed F/J/D/K
 order. It advances miss detection before submitting those presses.
 
@@ -121,7 +121,7 @@ shutdown mid-transition. Assert state consistency and exact resource disposal.
 ## C4 — Preview stop and scene audio ownership
 
 **Evidence.** [SongSelectSession.StopPreview](../../src/Waddamburo.Game/SongSelect/SongSelectSession.cs)
-calls `SetPreview(null)`. [SongPreviewController](../../src/Waddamburo.App/SongPreviewController.cs)
+calls `SetPreview(null)`. [SongPreviewController](../../src/Waddamburo.App/Audio/SongPreviewController.cs)
 interprets null as a request to play background music after a delay.
 [SongSelectHostBinding.Dispose](../../src/Waddamburo.Game/Lumen/SongSelectHostBinding.cs)
 calls `StopPreview`. The app stops the Preview/Bgm buses during cover, but that

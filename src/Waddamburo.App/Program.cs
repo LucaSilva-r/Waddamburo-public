@@ -77,7 +77,7 @@ try
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         Console.WriteLine($"Cabinet settings: {arcadePath} ({(arcade.FreePlay ? "free play" : "coin mode")}, "
             + $"{arcade.SongsPerSession} songs per session).");
-        EntrySongSelectFlow.Run(
+        GameShell.Run(new GameOptions(
             layout.LumenRoot,
             layout.DonRoot,
             windowSize.Width,
@@ -92,7 +92,7 @@ try
             layout.SoundRoot,
             countdown,
             startScene,
-            arcade);
+            arcade));
         return 0;
     }
     if (soundBankProbe is not null)
@@ -119,7 +119,7 @@ try
             throw new ArgumentException("--entry-song-select cannot be combined with movie or scene inputs.");
         if (seekFrame is not null || !callbackInvocations.IsEmpty)
             throw new ArgumentException("--seek-frame and --invoke are unavailable for --entry-song-select.");
-        EntrySongSelectFlow.Run(
+        GameShell.Run(new GameOptions(
             assetRoot,
             donRoot,
             windowSize.Width,
@@ -133,7 +133,7 @@ try
             jinglePath,
             soundRoot,
             countdown,
-            startScene);
+            startScene));
         return 0;
     }
     if (startSceneOption is not null)

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Waddamburo.Formats.Nut;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
@@ -15,7 +16,7 @@ internal sealed class WaiwaiResultTextures(SdlApplication application, string da
     // ponytail: the stock collabo (00_taiko) only; the licensed collabos (01_A3 ...) sit next to it.
     private readonly string _folder = Path.Combine(dataRoot, "nutdata", "S11100-1", "waiwaicollabo", "00_taiko");
     private readonly Dictionary<LumenNativeSurfaceKey, RenderTextureId> _uploaded = [];
-    private IReadOnlyList<NutTexture>? _sentences;
+    private ImmutableArray<NutTexture>? _sentences;
 
     public static LumenNativeSurfaceKey Sentence(int index) => new($"waiwai-result:text:{index}");
 
@@ -31,14 +32,14 @@ internal sealed class WaiwaiResultTextures(SdlApplication application, string da
         else if (key == RareNote)
             source = load("rareonp.nut") is [var rare, ..] ? rare : null;
         else if (int.TryParse(key.Value["waiwai-result:text:".Length..], out var index)
-                 && (_sentences ??= load("text.nut")) is { } sentences && (uint)index < (uint)sentences.Count)
+                 && (_sentences ??= load("text.nut")) is { } sentences && (uint)index < (uint)sentences.Length)
             source = sentences[index];
         if (source is null)
             return null;
         return _uploaded[key] = application.UploadRgba8(source.Width, source.Height, NutTextureDecoder.DecodeRgba8(source));
     }
 
-    private IReadOnlyList<NutTexture> load(string name)
+    private ImmutableArray<NutTexture> load(string name)
     {
         var file = Path.Combine(_folder, name);
         return File.Exists(file) ? NutFile.Parse(File.ReadAllBytes(file)).Textures : [];
