@@ -49,7 +49,7 @@ public interface IDonPresentationController
     /// Changes the loop without interrupting a running one-shot: the one-shot finishes into the
     /// new loop, and an idle that is already looping switches at once.
     /// </summary>
-    void SetIdle(int playerIndex, string loop) => SetMotion(new(playerIndex, null, loop));
+    void SetIdle(int playerIndex, string motionLoop) => SetMotion(new(playerIndex, null, motionLoop));
 
     /// <summary>Dresses a player's Don; kept across scenes.</summary>
     void SetCostume(int playerIndex, DonCostume costume)
@@ -63,6 +63,9 @@ public static class DonLumenBinding
     private static readonly LumenNativeSurfacePlacement Placement =
         LumenNativeSurfacePlacement.Centered(600, 600);
 
+    /// <param name="player">The movie receiving the native fill markers.</param>
+    /// <param name="presentation">The Don presentation supplying render targets.</param>
+    /// <param name="layout">The view to use when resetting the presentation.</param>
     /// <param name="reset">False binds the markers without resetting the view and motions (a movie
     /// joining a scene whose Dons are already playing).</param>
     public static void Attach(

@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,9 @@
 #endif
 
 #if defined(WADDAMBURO_MEDIA_HAS_FFMPEG)
+#if !defined(_WIN32)
 #include <stdatomic.h>
+#endif
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -137,9 +140,40 @@ struct waddamburo_media_decoder {
 #if defined(WADDAMBURO_MEDIA_HAS_VGMSTREAM)
     libvgmstream_t *vgmstream;
 #endif
+#if defined(_WIN32)
+    volatile LONG cancelled;
+#else
     atomic_bool cancelled;
+#endif
     waddamburo_media_error error;
 };
+
+static void decoder_initialize_cancellation(waddamburo_media_decoder *decoder)
+{
+#if defined(_WIN32)
+    decoder->cancelled = 0;
+#else
+    atomic_init(&decoder->cancelled, false);
+#endif
+}
+
+static void decoder_set_cancelled(waddamburo_media_decoder *decoder, int cancelled)
+{
+#if defined(_WIN32)
+    (void)InterlockedExchange(&decoder->cancelled, cancelled);
+#else
+    atomic_store_explicit(&decoder->cancelled, cancelled != 0, memory_order_relaxed);
+#endif
+}
+
+static int decoder_is_cancelled(waddamburo_media_decoder *decoder)
+{
+#if defined(_WIN32)
+    return InterlockedCompareExchange(&decoder->cancelled, 0, 0) != 0;
+#else
+    return atomic_load_explicit(&decoder->cancelled, memory_order_relaxed);
+#endif
+}
 
 static void decoder_set_error(
     waddamburo_media_decoder *decoder,
@@ -158,9 +192,9 @@ static void decoder_set_error(
     }
 }
 
-static int input_cancelled(const waddamburo_media_decoder *decoder)
+static int input_cancelled(waddamburo_media_decoder *decoder)
 {
-    return atomic_load_explicit(&decoder->cancelled, memory_order_relaxed) ||
+    return decoder_is_cancelled(decoder) ||
            (decoder->input.uses_callbacks && decoder->input.callbacks.should_cancel != NULL &&
             decoder->input.callbacks.should_cancel(decoder->input.callbacks.user_data) != 0);
 }
@@ -426,7 +460,7 @@ static int discover_riff_view(waddamburo_media_decoder *decoder)
 
 static int ffmpeg_interrupt(void *opaque)
 {
-    return input_cancelled((const waddamburo_media_decoder *)opaque);
+    return input_cancelled((waddamburo_media_decoder *)opaque);
 }
 
 static void decoder_destroy_internal(waddamburo_media_decoder *decoder)
@@ -469,7 +503,7 @@ static waddamburo_media_result decoder_open(
     decoder->total_frames = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
     decoder->loop_start_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
     decoder->loop_end_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
-    atomic_init(&decoder->cancelled, false);
+    decoder_initialize_cancellation(decoder);
 
     native_result = discover_riff_view(decoder);
     if (native_result < 0) {
@@ -634,7 +668,7 @@ static waddamburo_media_result vgmstream_open_file(
     decoder->total_frames = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
     decoder->loop_start_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
     decoder->loop_end_frame = WADDAMBURO_MEDIA_UNKNOWN_FRAME_COUNT;
-    atomic_init(&decoder->cancelled, false);
+    decoder_initialize_cancellation(decoder);
     if ((libvgmstream_get_version() >> 24U) != LIBVGMSTREAM_API_VERSION_MAJOR) {
         decoder_set_error(decoder, WADDAMBURO_MEDIA_ERROR_BACKEND_UNAVAILABLE, 0,
                           "The vgmstream runtime ABI is incompatible");
@@ -718,7 +752,7 @@ static FILE *open_utf8_file(const char *path)
 #if defined(_WIN32)
     int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
     wchar_t *wide_path;
-    FILE *file;
+    FILE *file = NULL;
     if (length <= 0)
         return NULL;
     wide_path = malloc((size_t)length * sizeof(*wide_path));
@@ -728,7 +762,8 @@ static FILE *open_utf8_file(const char *path)
         free(wide_path);
         return NULL;
     }
-    file = _wfopen(wide_path, L"rb");
+    if (_wfopen_s(&file, wide_path, L"rb") != 0)
+        file = NULL;
     free(wide_path);
     return file;
 #else
@@ -1098,7 +1133,7 @@ waddamburo_media_decoder_seek(waddamburo_media_decoder *decoder, uint64_t frame_
         int64_t input_frame;
         if (frame_index > INT64_MAX)
             return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
-        atomic_store_explicit(&decoder->cancelled, false, memory_order_relaxed);
+        decoder_set_cancelled(decoder, false);
         input_frame = av_rescale((int64_t)frame_index, decoder->input_sample_rate,
                                  decoder->output_sample_rate);
         libvgmstream_seek(decoder->vgmstream, input_frame);
@@ -1121,7 +1156,7 @@ waddamburo_media_decoder_seek(waddamburo_media_decoder *decoder, uint64_t frame_
         return WADDAMBURO_MEDIA_ERROR_UNSUPPORTED;
     if (frame_index > INT64_MAX)
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
-    atomic_store_explicit(&decoder->cancelled, false, memory_order_relaxed);
+    decoder_set_cancelled(decoder, false);
     stream = decoder->format->streams[decoder->audio_stream];
     timestamp = av_rescale_q((int64_t)frame_index,
                              (AVRational){1, (int)decoder->output_sample_rate}, stream->time_base);
@@ -1154,7 +1189,7 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_cancel(
 {
     if (decoder == NULL)
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
-    atomic_store_explicit(&decoder->cancelled, true, memory_order_relaxed);
+    decoder_set_cancelled(decoder, true);
     return WADDAMBURO_MEDIA_OK;
 }
 

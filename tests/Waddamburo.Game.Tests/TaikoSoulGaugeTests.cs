@@ -58,6 +58,6 @@ public sealed class TaikoSoulGaugeTests
             counts.Add(TaikoSkinPresentation.DancerCount(gauge));
         }
         Assert.Equal([1, 2, 3, 4, 5, 6], counts.Distinct());
-        Assert.Equal(TaikoSkinPresentation.DancerCount(gauge), 1 + TaikoSoulGauge.Max * 4 / 7000);
+        Assert.Equal(1 + TaikoSoulGauge.Max * 4 / 7000, TaikoSkinPresentation.DancerCount(gauge));
     }
 }

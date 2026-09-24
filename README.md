@@ -44,16 +44,16 @@ Build and test the current scaffold with the developer bootstrap:
 On Windows x64, run `./eng/bootstrap.ps1 -Configuration Debug` from a Visual
 Studio x64 developer PowerShell.
 
-Run the current SDL_GPU visual smoke test until the window is closed:
+Run the synthetic SDL_GPU visual smoke test until the window is closed:
 
 ```sh
-dotnet run --project src/Waddamburo.App
+dotnet run --project src/Waddamburo.App -- --smoke
 ```
 
 For a bounded automated smoke test, pass `--frames=N`. Use `--ticks=N` to stop on
 an exact authored 60 Hz simulation tick; display frames and simulation ticks are
-independent. With no asset options the app renders a synthetic nearest-sampled
-checkerboard. `--window-size=WIDTHxHEIGHT` selects a diagnostic startup size; Lumen
+independent. `--smoke` renders a synthetic nearest-sampled checkerboard without game
+assets. `--window-size=WIDTHxHEIGHT` selects a diagnostic startup size; Lumen
 frames preserve their logical-stage aspect ratio in the drawable pixel surface.
 
 Capture the final bounded frame directly from the SDL_GPU swapchain with

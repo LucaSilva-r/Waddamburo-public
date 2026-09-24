@@ -104,8 +104,8 @@ decoded without extracting them. Callback-backed inputs continue through FFmpeg
 and therefore do not support these formats yet. The ABI regression constructs a
 silent synthetic BNSF/IS22 file; no commercial audio is stored in the repository.
 
-The Windows preset expects a Visual Studio x64 developer environment plus Bash
-and Make from MSYS2. It selects FFmpeg's MSVC toolchain and produces DLLs rather
+The Windows preset expects a Visual Studio x64 developer environment plus Bash,
+Make, and `cmp` (from `diffutils`) from MSYS2. It selects FFmpeg's MSVC toolchain and produces DLLs rather
 than MinGW static archives:
 
 ```sh

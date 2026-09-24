@@ -115,6 +115,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
     private sealed class Lane
     {
+        private static readonly string[] NoteMovieNames = ["onp_don", "onp_katsu", "onp_don_dai",
+            "onp_katsu_dai", "onp_tetunagidon_1p", "onp_tetunagikatsu_1p"];
         private readonly TaikoJudgementSession _session;
         private readonly TaikoLumenPresentation _presentation;
         private readonly TaikoHitFlights _flights;
@@ -198,8 +200,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!scoreAdd.TryInvokeCallback("SetCount", [LumenHostValue.FromNumber(award)]))
                     throw new InvalidDataException("Gameplay score-add movie is missing SetCount after Create.");
             }
-            foreach (var name in new[] { "onp_don", "onp_katsu", "onp_don_dai", "onp_katsu_dai",
-                "onp_tetunagidon_1p", "onp_tetunagikatsu_1p" }.Where(layers.ContainsKey))
+            foreach (var name in NoteMovieNames.Where(layers.ContainsKey))
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
                     throw new InvalidDataException("Gameplay note movie is missing its initial state.");
             _session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(
@@ -320,8 +321,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // or in front of them. Host-placed templates, Don (drawn by his presentation), the other
             // courses' gauges and the movies both players share are left out; so are skin movies
             // without a traced depth.
-            bool drawn(string name) => name != "don3d" && name != "lane_syousetsu" && !name.StartsWith("onp_")
-                && !(name.StartsWith("gage_don_1p_") && name != gaugeName)
+            bool drawn(string name) => name != "don3d" && name != "lane_syousetsu" && !name.StartsWith("onp_", StringComparison.Ordinal)
+                && !(name.StartsWith("gage_don_1p_", StringComparison.Ordinal) && name != gaugeName)
                 && !(players == 2 && GameplaySceneComposition.SharedRoles.Contains(name));
             var background = layers.Where(pair => drawn(pair.Key) && GameplaySceneComposition.Depth(pair.Key) > 2000).ToArray();
             var foreground = layers.Where(pair => GameplaySceneComposition.Depth(pair.Key) <= 1000
@@ -340,10 +341,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
                 }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
                 _flights, _longNotes, flightsAt < 0 ? null : flightsAt,
-                layers.ContainsKey("onp_tetunagidon_1p")
+                layers.TryGetValue("onp_tetunagidon_1p", out var handDonLayer)
                     ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
                     {
-                        [PlayableNoteKind.BigDon] = layers["onp_tetunagidon_1p"],
+                        [PlayableNoteKind.BigDon] = handDonLayer,
                         [PlayableNoteKind.BigKa] = layers["onp_tetunagikatsu_1p"],
                     }
                     : null);

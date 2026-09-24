@@ -1,4 +1,3 @@
-using Waddamburo.Catalog;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
 

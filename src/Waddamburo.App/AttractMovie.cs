@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Waddamburo.Formats.Audio;
 using Waddamburo.Lumen.Rendering;
@@ -137,7 +138,7 @@ internal sealed partial class AttractMovie : IDisposable
         var movies = Directory.EnumerateFiles(movieDirectory, "attract_cm_*.pam")
             .Select(path => (path, match: CmName().Match(Path.GetFileName(path))))
             .Where(entry => entry.match.Success)
-            .OrderBy(entry => int.Parse(entry.match.Groups[1].Value))
+            .OrderBy(entry => int.Parse(entry.match.Groups[1].Value, CultureInfo.InvariantCulture))
             .ToArray();
         var permitted = movies.Where(entry => entry.match.Groups[1].Value != "000").Select(entry => entry.path).ToArray();
         return permitted.Length != 0 ? permitted : movies.Select(entry => entry.path).ToArray();

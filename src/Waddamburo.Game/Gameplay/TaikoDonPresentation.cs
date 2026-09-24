@@ -38,6 +38,8 @@ public sealed class TaikoDonPresentation
     private int _combo;
     private int _missStreak;
 
+    /// <param name="controller">The Don motion and render target controller.</param>
+    /// <param name="layer">The gameplay movie layer receiving the native fill.</param>
     /// <param name="player">The lane: 0 top (don3d's don1p state), 1 the second player's lower lane (don2p).</param>
     public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer, int player = 0)
     {

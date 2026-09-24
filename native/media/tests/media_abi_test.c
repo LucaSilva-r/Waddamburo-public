@@ -119,7 +119,7 @@ static void write_u32be(uint8_t *destination, uint32_t value)
 static int write_synthetic_bnsf(const char *path)
 {
     uint8_t bytes[288] = {0};
-    FILE *file;
+    FILE *file = NULL;
     memcpy(bytes + 0, "BNSF", 4U);
     write_u32be(bytes + 4, sizeof(bytes));
     memcpy(bytes + 8, "IS22", 4U);
@@ -134,7 +134,12 @@ static int write_synthetic_bnsf(const char *path)
     write_u16be(bytes + 38, 960U);
     memcpy(bytes + 40, "sdat", 4U);
     write_u32be(bytes + 44, 240U);
+#if defined(_WIN32)
+    if (fopen_s(&file, path, "wb") != 0)
+        return 0;
+#else
     file = fopen(path, "wb");
+#endif
     if (file == NULL)
         return 0;
     if (fwrite(bytes, 1U, sizeof(bytes), file) != sizeof(bytes)) {

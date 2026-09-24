@@ -24,6 +24,7 @@ internal enum IndicatorScene
 internal sealed class SystemIndicators
 {
     public const string HostId = "system-indicators";
+    private static readonly string[] IndicatorMovies = ["network_icon", "msg_banapass", "msg_coins"];
 
     private readonly LumenPlayer _network;
     private readonly LumenPlayer _card;
@@ -57,7 +58,7 @@ internal sealed class SystemIndicators
     public bool TwoPlayers { get; set; }
 
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id,
-        new[] { "network_icon", "msg_banapass", "msg_coins" }.Select(name => new SceneLayerDefinition(
+        IndicatorMovies.Select(name => new SceneLayerDefinition(
             "indicator/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity, HostId)));
 
     public void SetScene(IndicatorScene scene)

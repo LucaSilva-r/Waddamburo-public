@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
 using Waddamburo.Catalog;

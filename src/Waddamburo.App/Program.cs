@@ -32,6 +32,7 @@ try
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
+    var syntheticSmoke = args.Contains("--smoke", StringComparer.Ordinal);
     // The cabinet's countdown option (chassisinfo disable_countdowntimer); on by default.
     var countdown = !args.Contains("--no-countdown", StringComparer.Ordinal);
     var positionalRoots = args.Where(static argument => !argument.StartsWith("--", StringComparison.Ordinal)).ToArray();
@@ -54,7 +55,9 @@ try
         || soundRoot is not null
         || donRoot is not null
         || soundBankProbe is not null;
-    var normalBoot = gameDataRoot is not null || !hasDiagnosticContent;
+    if (syntheticSmoke && (gameDataRoot is not null || hasDiagnosticContent))
+        throw new ArgumentException("--smoke cannot be combined with game data or diagnostic content.");
+    var normalBoot = !syntheticSmoke && (gameDataRoot is not null || !hasDiagnosticContent);
     if (normalBoot)
     {
         if (archivePath is not null || movieName is not null || scenePath is not null

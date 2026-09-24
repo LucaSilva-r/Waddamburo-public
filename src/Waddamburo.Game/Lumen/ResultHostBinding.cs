@@ -23,6 +23,11 @@ public interface IResultSoundController
 /// (LumenMethod.SE_REQUEST / VOICE_REQUEST, group 1/2 = the left/right player, 0 = both).
 /// </summary>
 /// <param name="results">One play (the player on <paramref name="side"/>), or two (left, right).</param>
+/// <param name="stage">The song play count sent to the results movie.</param>
+/// <param name="endMessage">The end message selected for the results movie.</param>
+/// <param name="don">Optional Don presentation for movie motion requests.</param>
+/// <param name="sounds">Optional controller for movie sound requests.</param>
+/// <param name="side">The side of a solo player: 0 left, 1 right.</param>
 public sealed class ResultHostBinding(
     Func<IReadOnlyList<TaikoPlayResult>> results,
     int stage,

@@ -19,7 +19,8 @@ if ($WithFFmpeg -and $ManagedOnly) {
     throw '-WithFFmpeg cannot be combined with -ManagedOnly.'
 }
 
-if (-not $IsWindows) {
+if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [System.Runtime.InteropServices.OSPlatform]::Windows)) {
     throw 'bootstrap.ps1 supports Windows; use bootstrap.sh on Linux.'
 }
 
@@ -40,6 +41,9 @@ function Assert-Command {
 
 try {
     if (-not $NativeOnly) {
+        # The Visual Studio developer shell sets Platform=x64, but the managed
+        # solution uses Any CPU. Keep its compiler paths and clear that override.
+        Remove-Item Env:Platform -ErrorAction SilentlyContinue
         Assert-Command dotnet
         $dotnetVersion = (& dotnet --version).Trim()
         if (-not $dotnetVersion.StartsWith('10.', [StringComparison]::Ordinal)) {
@@ -82,6 +86,7 @@ try {
             if ($WithFFmpeg) {
                 Assert-Command bash
                 Assert-Command make
+                Assert-Command cmp
                 & cmake --preset windows-ffmpeg
                 if ($LASTEXITCODE -ne 0) { throw 'FFmpeg configure failed.' }
 

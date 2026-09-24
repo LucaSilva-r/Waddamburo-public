@@ -93,6 +93,9 @@ public sealed class TaikoJudgementSession
     /// <summary>A hand note was hit (not missed), with the input time (two-player partner matching).</summary>
     public event Action<int, TimeSpan>? HandNoteHit;
 
+    /// <param name="chart">The playable chart whose notes are judged.</param>
+    /// <param name="windows">The timing windows for Great, Good, and Miss results.</param>
+    /// <param name="strongSecondHitWindow">Maximum time between hits for a strong note.</param>
     /// <param name="partnerHandNotes">Two players: a hand note's strong bonus comes from the partner
     /// (<see cref="TaikoHandNoteLink"/>), not from this player's second hit.</param>
     public TaikoJudgementSession(

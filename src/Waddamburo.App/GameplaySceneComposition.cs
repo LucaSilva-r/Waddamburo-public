@@ -102,8 +102,8 @@ internal static class GameplaySceneComposition
             {
                 // A part with per-side variants (the Don backdrop) takes the player's side.
                 var movies = theme.Movies.Where(movie => Role(Path.GetFileNameWithoutExtension(movie)) == role).ToArray();
-                var movie = movies.FirstOrDefault(movie => Path.GetFileNameWithoutExtension(movie).EndsWith(sideSuffix))
-                    ?? movies.FirstOrDefault(movie => !Path.GetFileNameWithoutExtension(movie).EndsWith("_2p"));
+                var movie = movies.FirstOrDefault(movie => Path.GetFileNameWithoutExtension(movie).EndsWith(sideSuffix, StringComparison.Ordinal))
+                    ?? movies.FirstOrDefault(movie => !Path.GetFileNameWithoutExtension(movie).EndsWith("_2p", StringComparison.Ordinal));
                 return movie is null ? null : (layer(theme.Archive, movie, at.X, at.Y, host), depth);
             }
             var entry = OriginalParts.Single(entry => entry.Part == role);

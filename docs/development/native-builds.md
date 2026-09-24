@@ -33,7 +33,7 @@ The required tools are:
 | --- | --- |
 | Linux x64 | .NET 10 SDK, CMake 3.25 or newer, Ninja, and a C17/C++20 GCC or Clang toolchain |
 | Windows x64 | .NET 10 SDK, CMake 3.25 or newer, Ninja, and Visual Studio 2022 C/C++ build tools in an x64 developer shell |
-| FFmpeg opt-in | `make`; Windows additionally requires MSYS2 `bash` |
+| FFmpeg opt-in | `make`; Windows additionally requires MSYS2 `bash` and `cmp` (from `diffutils`) |
 | Text rasterizer opt-in | FreeType 2.13 or newer development package discoverable by CMake |
 
 The scripts fail immediately for unsupported hosts or missing tools. They do not
