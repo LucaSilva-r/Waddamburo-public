@@ -52,7 +52,34 @@ categories, and resolves relative chart/audio assets beneath its configured root
 Its details and current limits are described in
 [custom-tja.md](custom-tja.md).
 
-Stock and Nijiiro adapters remain to be implemented against the same interface.
+The stock adapter (`Waddamburo.Providers.Stock`) reads the game's own songs from
+the user's `data` folder (the one holding `lumendata/packed`):
+
+- Metadata: `musicinfo.xml` (boost XML; `Data` entries with `musicid`,
+  `musicname`, `genrename`). Installs carry one per revision (`data/musicinfo.xml`,
+  `data/config/<revision>/musicinfo.xml`); the one listing the most installed charts
+  is used. Song order is the file's order; categories are its genres in order of first
+  appearance, named J-POP, Anime, Vocaloid, Kids, Variety, Classical, Game Music,
+  Namco Original, Medley.
+- Charts: `fumen/<id>/solo/<id>_<e|n|h|m|x>.bin` (x = Ura). A song is listed when
+  at least one exists. Charts are read as the normal branch; note times are audio
+  times, and a chart whose first event precedes audio zero is shifted through
+  `AuthoredOffset`.
+- Music: `sound/bgm/nub/SONG_<ID>.nub` (ATRAC3plus RIFF inside, decoded by the
+  native media layer). Preview start: the `.nsh` of the same name, big-endian: magic
+  `0x00020100`, table offset at `0x18`, its first word points to the `at3` stream
+  entry, whose 20-byte user data (length at `+0x90`) ends with the cue in
+  milliseconds at `+0xB0`.
+
+- Stars: `fumen/tuning.bin`, big-endian: record count, 0x90C-byte records, then a
+  string pool addressed by offsets. A record begins with the offsets of its id, bank
+  name and title; 0x80-byte course entries follow from `+0x0C` (name offset, stars),
+  named `<record>1p_<e|n|h|m|x>`. Ura is the `ex_<id>` record's `ex_<id>1p_m` entry.
+  The rating is published on the chart descriptor and on the playable chart.
+
+Not yet read: duet charts, branches other than normal, English titles.
+
+The Nijiiro adapter remains to be implemented against the same interface.
 Source-specific parsing and asset resolution stay in their provider assemblies
 rather than entering Song Select or the Lumen runtime.
 

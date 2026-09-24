@@ -13,14 +13,14 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
 
     private readonly object _gate = new();
     private readonly AudioEngine _audio;
-    private readonly ICatalogAssetResolver _resolver;
+    private readonly CatalogAssetRouter _resolver;
     private readonly AudioClip? _background;
     private Operation? _current;
     private bool _disposed;
 
     public SongPreviewController(
         AudioEngine audio,
-        ICatalogAssetResolver resolver,
+        CatalogAssetRouter resolver,
         string? backgroundPath = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
@@ -41,7 +41,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (request is not null && request.Audio.Provider != _resolver.Id)
+            if (request is not null && !_resolver.Resolves(request.Audio))
                 throw new ArgumentException("The preview asset belongs to another catalog provider.", nameof(request));
             if (request is null
                 && _current is { Request: null } background

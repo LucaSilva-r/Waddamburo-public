@@ -30,6 +30,12 @@
           "ppy.SDL3-CS": "[2026.722.0, )"
         }
       },
+      "waddamburo.providers.stock": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Catalog": "[1.0.0, )"
+        }
+      },
       "waddamburo.providers.tja": {
         "type": "Project",
         "dependencies": {

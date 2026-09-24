@@ -10,6 +10,7 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.Providers.Stock;
 using Waddamburo.Providers.Tja;
 
 /// <summary>
@@ -38,16 +39,25 @@ internal static class EntrySongSelectFlow
         arcade ??= new ArcadeSettings();
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         var coins = arcade.FreePlay ? null : new CoinBank(arcade);
-        var tja = new TjaCatalogProvider(tjaRoot);
-        using var globalCatalog = new GlobalSongCatalog([tja]);
+        // The game's own songs live beside the Lumen data (<data>/lumendata/packed).
+        var stockRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
+        // Either source may be absent: a stock install without custom songs, or custom songs alone.
+        ISongCatalogProvider[] providers = [
+            .. StockCatalogProvider.IsStockData(stockRoot) ? [new StockCatalogProvider(stockRoot)] : Array.Empty<ISongCatalogProvider>(),
+            .. Directory.Exists(tjaRoot) ? [new TjaCatalogProvider(tjaRoot)] : Array.Empty<ISongCatalogProvider>(),
+        ];
+        var catalogAssets = new CatalogAssetRouter(providers);
+        using var globalCatalog = new GlobalSongCatalog(providers);
         var snapshot = globalCatalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
-        var status = snapshot.Providers.Single(provider => provider.Provider == tja.Id);
-        if (!status.Succeeded)
-            throw new InvalidOperationException(snapshot.Diagnostics.First(diagnostic => diagnostic.Provider == tja.Id).Message);
+        foreach (var status in snapshot.Providers)
+            Console.WriteLine(status.Succeeded
+                ? $"Catalog provider {status.Provider}: {status.SongCount} songs in {status.CategoryCount} categories."
+                : $"Catalog provider {status.Provider} failed.");
         var songCatalog = new SongSelectCatalogView(snapshot);
         if (songCatalog.Categories.IsEmpty)
-            throw new InvalidOperationException("The custom TJA provider did not discover any browsable categories.");
-        Console.WriteLine($"Catalog revision {snapshot.Revision}: {status.SongCount} songs in {status.CategoryCount} categories.");
+            throw new InvalidOperationException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
+                ?? "No song provider discovered any browsable categories.");
+        Console.WriteLine($"Catalog revision {snapshot.Revision}: {songCatalog.Categories.Length} categories.");
         foreach (var diagnostic in snapshot.Diagnostics)
             Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
 
@@ -74,7 +84,7 @@ internal static class EntrySongSelectFlow
         var songSelectJinglePath = findJingle(soundRoot, "JINGLE_GENRE.nub");
         using var previewController = audioEngine is null
             ? null
-            : new SongPreviewController(audioEngine, tja, songSelectJinglePath);
+            : new SongPreviewController(audioEngine, catalogAssets, songSelectJinglePath);
         var soundController = soundRoot is null
             ? null
             : new AuthoredSoundController(audioEngine!, soundRoot);
@@ -551,7 +561,7 @@ internal static class EntrySongSelectFlow
                                 try
                                 {
                                     loadedCharts = pendingRequest.Players
-                                        .Select(player => tja.LoadChartAsync(player.Chart, player.ChartAsset)
+                                        .Select(player => catalogAssets.LoadChartAsync(player.Chart, player.ChartAsset)
                                             .AsTask().GetAwaiter().GetResult())
                                         .ToArray();
                                 }
@@ -695,7 +705,7 @@ internal static class EntrySongSelectFlow
                                 var request = playRequests.Active
                                     ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
                                 gameplayStartTick = simulationTick;
-                                gameplayMusic = startGameplayAudio(audioEngine, tja, request, gameplayTimeline!, activeGameplayCharts[0].Duration);
+                                gameplayMusic = startGameplayAudio(audioEngine, catalogAssets, request, gameplayTimeline!, activeGameplayCharts[0].Duration);
                                 gameplayClock.Restart();
                                 rainbow.Player.Layers.Single().Player.GotoLabel(
                                     RainbowTransitionComposition.RevealLabel,
@@ -871,14 +881,14 @@ internal static class EntrySongSelectFlow
 
     private static AudioStreamTransport? startGameplayAudio(
         AudioEngine? audioEngine,
-        TjaCatalogProvider tja,
+        CatalogAssetRouter assets,
         PlayRequest request,
         GameplayTimeline timeline,
         TimeSpan duration)
     {
         if (audioEngine is null || request.AudioAsset is not { } audioAsset)
             return null;
-        var inputStream = tja.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
+        var inputStream = assets.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
         BufferedAudioSource? source = null;
         try
         {

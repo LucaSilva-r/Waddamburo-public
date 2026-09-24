@@ -17,8 +17,9 @@ public sealed class DependencyRulesTests
             ["Waddamburo.Game"] = ["Waddamburo.Catalog", "Waddamburo.Formats", "Waddamburo.Lumen"],
             ["Waddamburo.Platform.Sdl"] = ["Waddamburo.Formats", "Waddamburo.Lumen"],
             ["Waddamburo.Providers.OsuLazer"] = ["Waddamburo.Catalog"],
+            ["Waddamburo.Providers.Stock"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Tja"] = ["Waddamburo.Catalog"],
-            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.Tja"],
+            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja"],
             ["Waddamburo.Tool"] = ["Waddamburo.Formats", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
         };
 

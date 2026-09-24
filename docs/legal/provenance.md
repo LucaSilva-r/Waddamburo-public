@@ -121,6 +121,20 @@ expresses metadata/course normalization, encoding fallback, relative-audio, and
 source-identity behavior behind Waddamburo's catalog contracts; synthetic public
 tests were authored specifically for this repository.
 
+`src/Waddamburo.Providers.Stock/` is an original managed catalog implementation.
+Its fumen layout (header size, measure count offset, measure/branch/note records,
+note types, roll padding, big-endian arcade order) follows the MIT-licensed
+tja2fumen parser's documentation (`tools/vendor/tja2fumen` in TaikoRecomp revision
+`874c5b4751cce16cd63e2f34d678568b980a95e6`). The `musicinfo.xml`, chart/audio path conventions and the `.nsh`
+preview cue are asset-derived observations of user-supplied Green data, checked
+against the documented host catalog and audio loader descriptions in that TaikoRecomp
+revision (`docs/song_select_reversing.md`, `src/taiko_catalog.cpp`,
+`src/taiko_audio_decoder.cpp`, `docs/host_song_browser.md`, and the `tuning.bin`
+star-rating description in `src/taiko_catalog_tuning.h`), each re-verified against
+the user's asset files. The implementation is written independently; no address or
+TaikoRecomp source is copied.
+Public tests use synthetic XML, fumen and `.nsh` fixtures.
+
 `src/Waddamburo.Catalog/PlayableChart.cs` and the playable-chart conversion in
 `src/Waddamburo.Providers.Tja/` are original Waddamburo implementations. Their
 separation of absolute-time hit objects from timing, scroll, and effect control

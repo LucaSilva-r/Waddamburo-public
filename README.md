@@ -150,7 +150,8 @@ The game-flow diagnostic can exercise the configured Green Entry-to-Song-Select
 handoff using user-owned archives below one explicit asset root:
 
 For normal play, supply only the game's `USRDIR` directory. It resolves
-`data/lumendata/packed`, `custom_songs`, and `data/sound` from that root and boots
+`data/lumendata/packed`, the game's own songs under `data`, the optional
+`custom_songs` TJA library, and `data/sound` from that root and boots
 like the cabinet: the startup notice and logos, then the attract loop (logo, title,
 caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). In free play, hit a drum key (D/F/J/K) during the attract loop to reach player Entry.
 Cabinet settings live in `config.cfg` in that root (written with defaults on first run):

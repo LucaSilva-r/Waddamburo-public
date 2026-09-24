@@ -19,7 +19,6 @@ internal sealed record GameDataLayout(
         var sound = Path.Combine(fullRoot, "data", "sound");
         requireDirectory(lumen, "Lumen asset root");
         requireDirectory(don, "Don asset root");
-        requireDirectory(tja, "custom-song root");
         requireDirectory(sound, "sound root");
 
         var font = fontOverride is null ? findTitleFont(fullRoot) : Path.GetFullPath(fontOverride);
