@@ -103,9 +103,9 @@ internal static class EntrySongSelectFlow
             application,
             fontPath,
             asynchronous: screenshotPath is null);
-        var gameplayPresentation = new TaikoGameplayPresentation(action =>
-            soundController?.PlayDrum(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
-            donPresentation, sound => soundController?.PlayGameplayEvent(sound));
+        var gameplayPresentation = new TaikoGameplayPresentation((lane, action) =>
+            soundController?.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
+            donPresentation, (lane, sound) => soundController?.PlayGameplayEvent(lane, sound));
 
         var bootId = new SceneId("boot");
         var logoId = new SceneId("attract-logo");
@@ -176,7 +176,7 @@ internal static class EntrySongSelectFlow
                     indicatorPart("time_counter"),
                     indicatorPart("over_msg"),
                 ]),
-                songSelectScene(songSelectId, 0),
+                songSelectScene(songSelectId, [0]),
                 GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout),
                 // Traced 1P results: the results movie and its "press to continue" overlay, full screen.
                 new SceneDefinition(SceneDefinition.CurrentVersion, resultId, [
@@ -205,7 +205,8 @@ internal static class EntrySongSelectFlow
                 playRequests,
                 () => songInfo,
                 countdown,
-                () => gameplayPresentation.Result ?? diagnosticResult,
+                () => gameplayPresentation.Results is { Count: > 0 } results ? results
+                    : diagnosticResult is { } diagnostic ? [diagnostic] : [],
                 arcade,
                 coins);
         var loader = new LumenGameSceneLoader(
@@ -231,6 +232,7 @@ internal static class EntrySongSelectFlow
         SystemIndicators? indicators = null;
         RenderTextureId[] indicatorTextureIds = [];
         SceneId? indicatorScene = null;
+        var joinedSides = new SortedSet<int>(); // the credit's joined drums
 
         try
         {
@@ -255,7 +257,7 @@ internal static class EntrySongSelectFlow
             var indicatorsForJoin = indicators;
             hostFactory.EntryJoined = side =>
             {
-                setPlayerSide(side);
+                joinPlayer(side);
                 if (coins is not null)
                     indicatorsForJoin.EntryJoined();
             };
@@ -288,14 +290,31 @@ internal static class EntrySongSelectFlow
                 SdlKeyboardKey.Z or SdlKeyboardKey.X or SdlKeyboardKey.C or SdlKeyboardKey.V => 1,
                 _ => (int?)null,
             }).FirstOrDefault(static side => side is not null);
-            // The player's drum (0 left, 1 right): panels, Song Select's name board and the gameplay
-            // Don slot follow it, and the later scenes' hosts read it.
-            void setPlayerSide(int side)
+            // The joined drums (0 left, 1 right): panels, Song Select's name boards and the gameplay
+            // Don slots follow them, and the later scenes' hosts read them. A credit starts empty.
+            void joinPlayer(int side)
             {
-                hostFactory.PlayerSide = side;
-                if (indicators is not null) indicators.Side = side;
-                if (donPresentation is not null) donPresentation.GameplaySide = side;
-                catalog.Replace(songSelectScene(songSelectId, side));
+                joinedSides.Add(side);
+                applyPlayers();
+            }
+            void resetPlayers()
+            {
+                joinedSides.Clear();
+                applyPlayers();
+            }
+            void applyPlayers()
+            {
+                var two = joinedSides.Count == 2;
+                var first = joinedSides.Count == 0 ? 0 : joinedSides.Min;
+                hostFactory.PlayerSide = first;
+                hostFactory.TwoPlayers = two;
+                if (indicators is not null)
+                {
+                    indicators.Side = first;
+                    indicators.TwoPlayers = two;
+                }
+                if (donPresentation is not null) donPresentation.GameplaySide = first;
+                catalog.Replace(songSelectScene(songSelectId, joinedSides.Count == 0 ? [0] : [.. joinedSides]));
             }
 
             void goTo(SceneId scene)
@@ -524,8 +543,6 @@ internal static class EntrySongSelectFlow
                         {
                             if (rainbowSequence.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete)
                             {
-                                if (pendingRequest.Players.Length != 1)
-                                    throw new NotSupportedException("Gameplay supports one local player.");
                                 reportDiagnostics(active);
                                 var selected = songCatalog.Categories
                                     .SelectMany(category => category.Songs)
@@ -587,13 +604,14 @@ internal static class EntrySongSelectFlow
                                     .SelectMany(category => category.Songs.Select(song => (category.Name, song)))
                                     .First(entry => entry.song.Descriptor.Key == pendingRequest.Song);
                                 var theme = skins.Resolve(played.song.Descriptor, played.Name);
-                                soundController?.PrepareGameplayDrums();
+                                soundController?.PrepareGameplayDrums(pendingRequest.Players.Length == 2);
                                 // ponytail: the stage counts every song since launch (no credits yet); 8 stage frames.
                                 songInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(played.Name),
                                     Math.Min(++songsPlayed, 8));
                                 Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
                                 var side = pendingRequest.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
-                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme, side));
+                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme, side,
+                                    twoPlayers: pendingRequest.Players.Length == 2));
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                                 var request = playRequests.ActivatePending();
                                 activeGameplayCharts = loadedCharts;
@@ -612,7 +630,7 @@ internal static class EntrySongSelectFlow
                                 gameplayTimeline = new GameplayTimeline(loadedCharts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
                                 gameplayStartTick = simulationTick;
                                 gameplayClock.Reset();
-                                gameplayPresentation.Start(loadedCharts[0], active, request.Players[0].Course, side);
+                                gameplayPresentation.Start(loadedCharts, active, [.. request.Players.Select(player => player.Course)], side);
                                 Console.WriteLine(
                                     $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
                                     + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
@@ -631,12 +649,10 @@ internal static class EntrySongSelectFlow
                             // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message).
                             if (escapePressed || RetryGameHostBinding.IsEnd(active.Player.Layers[0].Player))
                             {
-                                var play = gameplayPresentation.Result ?? diagnosticResult
-                                    ?? throw new InvalidOperationException("Results without a finished play.");
-                                fadeTo(TaikoCredit.EndMessage(songInfo.Stage, play.Cleared, arcade.SongsPerSession) switch
+                                fadeTo(hostFactory.CreditNext switch
                                 {
-                                    2 => retryId,
-                                    1 => songSelectId,
+                                    TaikoCreditNext.Revival => retryId,
+                                    TaikoCreditNext.NextSong => songSelectId,
                                     _ => gameOverId,
                                 });
                             }
@@ -683,8 +699,9 @@ internal static class EntrySongSelectFlow
                                 // SCENE_TRIGGER_COIN (3), or _DON_1P (0) / _DON_2P (1) for the drum hit: the
                                 // entry then joins that drum's player (the right one plays as P2).
                                 hostFactory.EntryTrigger = coinStart ? 3 : hitSide ?? 0;
+                                resetPlayers();
                                 if (!coinStart)
-                                    setPlayerSide(hitSide ?? 0);
+                                    joinPlayer(hitSide ?? 0);
                                 goTo(entryId);
                             }
                             else if (active.Id == movieId)
@@ -752,9 +769,10 @@ internal static class EntrySongSelectFlow
                             }
                             // Close registers on the shutter's first frame; retry until it exists.
                             if (shutterStartTick >= 0 && !shutterClosing && rainbow is not null)
-                                // Close(side): the shutter takes the player's colour (traced Close(1) for the right drum's player).
+                                // Close(side): the shutter takes the player's colour (traced Close(1) for the right drum's
+                                // player, Close(2) for two players).
                                 shutterClosing = rainbow.Player.Layers.Single().Player.TryInvokeCallback("Close",
-                                    [LumenHostValue.FromNumber(hostFactory.PlayerSide)]);
+                                    [LumenHostValue.FromNumber(hostFactory.TwoPlayers ? 2 : hostFactory.PlayerSide)]);
                             // ponytail: 70 ticks = traced Close → results load (1.17 s); the close itself takes ~1 s.
                             if (escapePressed || shutterStartTick >= 0 && simulationTick - shutterStartTick >= 70)
                             {
@@ -778,7 +796,7 @@ internal static class EntrySongSelectFlow
                                 playRequests.ClearActive();
                                 // Escape skips straight back; a finished song shows its results first.
                                 if (!escapePressed)
-                                    soundController?.PlayGameplayEvent(GameplaySoundEvent.SongFinished);
+                                    soundController?.PlayGameplayEvent(null, GameplaySoundEvent.SongFinished);
                                 coordinator.TransitionToAsync(escapePressed ? songSelectId : resultId).AsTask().GetAwaiter().GetResult();
                                 activeGameplayCharts = [];
                                 releaseTextures(application, textureIds);
@@ -853,20 +871,26 @@ internal static class EntrySongSelectFlow
     // movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.
     private const string AttractMovieFill = "movie1280x720";
 
-    // Traced final P1 name-board position is (-580, 278) in the cabinet's centered coordinates, or
-    // (60, 638) in our top-left scene coordinates. ponytail: the right player's board is mirrored.
-    private static SceneDefinition songSelectScene(SceneId id, int side) =>
-        new(SceneDefinition.CurrentVersion, id, [
+    // Traced final name-board positions are (-580, 278) for the left drum's player and (308, 278) for
+    // the right one's in the cabinet's centered coordinates, or (60, 638) / (948, 638) in our top-left
+    // scene coordinates (session8, session9). Board n shows the player on sides[n].
+    private static SceneDefinition songSelectScene(SceneId id, IReadOnlyList<int> sides)
+    {
+        SceneLayerDefinition board(int index) => index < sides.Count
+            ? indicatorPart("player_name", sides[index] == 1 ? 948 : 60, 638)
+            : indicatorPart("player_name", 640, 360);
+        return new(SceneDefinition.CurrentVersion, id, [
             new SceneLayerDefinition(
                 "song_select/packeddata.ddp",
                 "song_select/song_select.lm",
                 LumenMatrix.Identity,
                 "song-select"),
             indicatorPart("indicator"),
-            indicatorPart("player_name", side == 1 ? 960 : 60, 638),
-            indicatorPart("player_name", 640, 360),
+            board(0),
+            board(1),
             indicatorPart("time_counter"),
         ]);
+    }
 
     private static SceneDefinition attractScene(SceneId id, string movie, string host = "attract") =>
         new(SceneDefinition.CurrentVersion, id, [
@@ -972,7 +996,7 @@ internal static class EntrySongSelectFlow
         IPlayRequestSink playRequests,
         Func<TaikoSongInfo> songInfo,
         bool countdown,
-        Func<TaikoPlayResult?> playResult,
+        Func<IReadOnlyList<TaikoPlayResult>> playResults,
         ArcadeSettings arcade,
         CoinBank? coins) : ILumenLayerHostFactory
     {
@@ -984,8 +1008,18 @@ internal static class EntrySongSelectFlow
         /// <summary>Called when a player joins at entry (coin mode updates the indicator panel).</summary>
         public Action<int>? EntryJoined { get; set; }
 
-        /// <summary>The joined player's drum (0 left, 1 right); scenes after entry follow it.</summary>
+        /// <summary>The joined player's drum (0 left, 1 right; 0 for two players); scenes after entry follow it.</summary>
         public int PlayerSide { get; set; }
+
+        /// <summary>Both drums joined.</summary>
+        public bool TwoPlayers { get; set; }
+
+        /// <summary>What follows the results (see <see cref="TaikoCredit"/>).</summary>
+        public TaikoCreditNext CreditNext => TaikoCredit.Next(songInfo().Stage,
+            [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
+
+        private int EndMessage => TaikoCredit.EndMessage(songInfo().Stage,
+            [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
         public void EntryCoinsChanged() => _entry?.CoinsChanged();
 
@@ -1031,7 +1065,8 @@ internal static class EntrySongSelectFlow
                 ?? throw new InvalidOperationException("Indicator part loaded without its scene movie."),
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => createSongSelectHost(),
-            GameplaySceneComposition.StaticHostId => new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
+            GameplaySceneComposition.StaticHostId or GameplaySceneComposition.PlayerTwoHostId =>
+                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
@@ -1045,10 +1080,10 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost resultHost()
         {
-            var play = playResult() ?? throw new InvalidOperationException("Results loaded without a finished play.");
-            var stage = songInfo().Stage;
-            var binding = new ResultHostBinding(() => play, TaikoGuest.Name(PlayerSide), stage,
-                TaikoCredit.EndMessage(stage, play.Cleared, arcade.SongsPerSession),
+            var plays = playResults();
+            if (plays.Count == 0)
+                throw new InvalidOperationException("Results loaded without a finished play.");
+            var binding = new ResultHostBinding(() => plays, songInfo().Stage, EndMessage,
                 _don, _sounds as IResultSoundController, PlayerSide);
             return new LumenLayerHost(binding, binding.Attach);
         }
@@ -1067,7 +1102,7 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost gameOverHost()
         {
-            var binding = GameOver = new GameOverHostBinding(_sounds as IGameOverSoundController, PlayerSide);
+            var binding = GameOver = new GameOverHostBinding(_sounds as IGameOverSoundController, PlayerSide, TwoPlayers);
             return new LumenLayerHost(binding, binding.Attach);
         }
 
@@ -1128,7 +1163,8 @@ internal static class EntrySongSelectFlow
                 _sounds,
                 _don,
                 parts: _parts,
-                side: PlayerSide);
+                side: PlayerSide,
+                twoPlayers: TwoPlayers);
             return new LumenLayerHost(binding, binding.Attach);
         }
     }
@@ -1165,6 +1201,9 @@ internal static class EntrySongSelectFlow
         }
 
         public void SetCameraLayout(DonPresentationLayout layout) => _renderer.SetCameraLayout(cameraLayout(layout));
+
+        public void SetCameraLayout(int playerIndex, DonPresentationLayout layout) =>
+            _renderer.SetCameraLayout(slot(playerIndex), cameraLayout(layout));
 
         private static DonCameraLayout cameraLayout(DonPresentationLayout layout) => layout switch
         {

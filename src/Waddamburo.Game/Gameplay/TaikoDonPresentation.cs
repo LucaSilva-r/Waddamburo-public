@@ -23,6 +23,7 @@ public sealed class TaikoDonPresentation
     private const int LongMissStreak = 6;
 
     private readonly IDonPresentationController _controller;
+    private readonly int _player;
     private readonly LumenSceneLayer _layer;
     private readonly LumenNativeSurfaceKey _surface;
     // Composite filters (reference frames). Full gauge: additive gold
@@ -37,17 +38,20 @@ public sealed class TaikoDonPresentation
     private int _combo;
     private int _missStreak;
 
-    public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer)
+    /// <param name="player">The lane: 0 top (don3d's don1p state), 1 the second player's lower lane (don2p).</param>
+    public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer, int player = 0)
     {
         _controller = controller;
+        _player = player;
         _layer = layer;
-        _surface = controller.GetSurface(0);
-        controller.Reset(DonPresentationLayout.Gameplay);
-        layer.Player.SetNativeFill("don1p", _surface,
+        _surface = controller.GetSurface(player);
+        controller.SetCameraLayout(player, DonPresentationLayout.Gameplay);
+        var state = player == 1 ? "don2p" : "don1p";
+        layer.Player.SetNativeFill(state, _surface,
             LumenNativeSurfacePlacement.Centered(448, 256));
-        if (!layer.Player.TryGotoLabel("", "don1p"))
-            throw new InvalidDataException("Gameplay Don movie is missing its player-one state.");
-        _controller.SetMotion(new(0, null, idle));
+        if (!layer.Player.TryGotoLabel("", state))
+            throw new InvalidDataException($"Gameplay Don movie is missing its '{state}' state.");
+        _controller.SetMotion(new(player, null, idle));
     }
 
     private string idle => _goGo ? "don_sabi"
@@ -81,8 +85,8 @@ public sealed class TaikoDonPresentation
         _balloonVisible = visible;
         if (wasVisible && !visible)
         {
-            _controller.Reset(DonPresentationLayout.Gameplay);
-            _controller.SetMotion(new(0, null, idle));
+            _controller.SetCameraLayout(_player, DonPresentationLayout.Gameplay);
+            _controller.SetMotion(new(_player, null, idle));
         }
     }
 
@@ -114,12 +118,12 @@ public sealed class TaikoDonPresentation
     // there only update what the idle will be once the overlay closes.
     private void react(string motion)
     {
-        if (!_balloonVisible) _controller.SetMotion(new(0, motion, idle));
+        if (!_balloonVisible) _controller.SetMotion(new(_player, motion, idle));
     }
 
     private void refreshIdle()
     {
-        if (!_balloonVisible) _controller.SetIdle(0, idle);
+        if (!_balloonVisible) _controller.SetIdle(_player, idle);
     }
 
     /// <summary>Applies the full-gauge gold or the long-miss darkening to every quad showing this character.</summary>

@@ -53,6 +53,9 @@ internal sealed class SystemIndicators
     /// <summary>The (expected) player's drum: 0 left, 1 right. The panels mirror for the right one (traced).</summary>
     public int Side { get; set; }
 
+    /// <summary>Both drums have a player: nobody is left to prompt (traced session9-2p).</summary>
+    public bool TwoPlayers { get; set; }
+
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id,
         new[] { "network_icon", "msg_banapass", "msg_coins" }.Select(name => new SceneLayerDefinition(
             "indicator/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity, HostId)));
@@ -69,7 +72,8 @@ internal sealed class SystemIndicators
         call(_card, "SetScene", LumenHostValue.FromNumber(scene == IndicatorScene.Entry ? 1 : 0));
         // Song Select shows the unjoined player's message; the authored indicator movie
         // positions it on the available side and runs its fade animation.
-        var prompt = scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry or IndicatorScene.SongSelect;
+        var prompt = scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry
+            || scene == IndicatorScene.SongSelect && !TwoPlayers;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {
             IndicatorScene.Entry => 1,
@@ -110,7 +114,7 @@ internal sealed class SystemIndicators
     /// <summary>A player joined at entry: the split panel and the start message go away.</summary>
     public void EntryJoined()
     {
-        if (Coins is not null)
+        if (Coins is not null && !TwoPlayers)
         {
             // Traced: the split panel opens for the other side, whose message stays up with its price.
             _joined = true;
@@ -121,6 +125,8 @@ internal sealed class SystemIndicators
             _messageDelay = 51;
             return;
         }
+        // Free play, or the second player: the panel closes on both sides.
+        _messageDelay = -1;
         call(_coins, "SetScene", LumenHostValue.FromNumber(4));
         call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(false));
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(false));

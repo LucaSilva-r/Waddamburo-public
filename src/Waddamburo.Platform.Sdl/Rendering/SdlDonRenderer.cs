@@ -14,9 +14,8 @@ public enum DonCameraLayout { Standard, Gameplay, Retry, RetrySuccess }
 /// <summary>Shared-device Don renderer. All methods must run on the owning SDL thread.</summary>
 public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 {
-    // Stage units covered by a target: menus use 600x600, gameplay the game's 448x256 slot.
-    private (float Width, float Height) _targetSize = (600, 600);
-    private (uint Width, uint Height) _targetPixels = (600, 600);
+    // Stage units covered by each player's target: menus use 600x600, gameplay the game's 448x256 slot.
+    private readonly (float Width, float Height)[] _targetSizes = [(600, 600), (600, 600)];
     private const int PaletteSize = 40;
     private const string ShaderPrefix = "Waddamburo.Shaders.";
     private const float DonNear = 256;
@@ -79,7 +78,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private SDL_GPUSampler* _nearestSampler;
     private SDL_GPUTexture* _whiteTexture;
     private bool _mirrorPlayerTwoCamera = true;
-    private DonCameraLayout _layout;
+    // Per player: in two-player gameplay one Don can be in a balloon while the other plays on.
+    private readonly DonCameraLayout[] _layouts = new DonCameraLayout[2];
     private bool _disposed;
 
     internal SdlDonRenderer(SDL_GPUDevice* device, RenderDevice compositor, string assetRoot)
@@ -104,7 +104,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             SetCostume(0, null, 0, 0, 0);
             SetCostume(1, null, 0, 0, 0);
             for (var index = 0; index < _targets.Length; index++)
-                _targets[index] = createTarget();
+                _targets[index] = createTarget((600, 600));
             var idle = loadMotion("don_select_loop");
             foreach (var player in _players)
                 player.Set(idle, idle);
@@ -140,9 +140,17 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 
     public void SetCameraLayout(DonCameraLayout layout)
     {
+        for (var index = 0; index < _players.Length; index++)
+            SetCameraLayout(index, layout);
+    }
+
+    public void SetCameraLayout(int playerIndex, DonCameraLayout layout)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _layout = layout;
-        _targetSize = layout == DonCameraLayout.Gameplay ? (448, 256) : (600, 600);
+        ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
+        _layouts[playerIndex] = layout;
+        _targetSizes[playerIndex] = layout == DonCameraLayout.Gameplay ? (448, 256) : (600, 600);
     }
 
     public void SetMotion(int playerIndex, string? oneShot, string? loop)
@@ -183,9 +191,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         // Render at twice the window's stage scale and let the composite's downscale anti-alias.
         var scale = Math.Min(width / 1280f, height / 720f);
         uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * scale * 2 / 8) * 8, 64, 4096);
-        resizeTargets((pixels(_targetSize.Width), pixels(_targetSize.Height)));
         for (var index = 0; index < _players.Length; index++)
+        {
+            resizeTarget(index, (pixels(_targetSizes[index].Width), pixels(_targetSizes[index].Height)));
             recordPlayer(commandBuffer, index);
+        }
     }
 
     public void Dispose()
@@ -209,14 +219,16 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ReadOnlySpan<float> frame = _pose;
         var animatedWorld = _skeleton.EvaluateWorld(frame);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
-        var camera = _layout switch
+        var targetSize = _targetSizes[playerIndex];
+        var camera = _layouts[playerIndex] switch
         {
             DonCameraLayout.Gameplay => GameplayCamera,
             DonCameraLayout.Retry => RetryCamera,
             DonCameraLayout.RetrySuccess => RetrySuccessCamera,
             _ => PlayerOneCamera,
         };
-        var reflectedCamera = playerIndex == 1 && _mirrorPlayerTwoCamera;
+        // Both gameplay lanes face the same way; only menu scenes stand the second player opposite.
+        var reflectedCamera = playerIndex == 1 && _mirrorPlayerTwoCamera && _layouts[playerIndex] != DonCameraLayout.Gameplay;
         if (reflectedCamera)
         {
             camera.M11 = -camera.M11;
@@ -272,7 +284,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                     if (kind == 8)
                         continue;
                     // Hull line: 3 stage pixels, offset per axis (clip units per stage pixel).
-                    var outline = new Float4(kind is 3 or 8 ? 3f : 0, 2f / _targetSize.Width, 2f / _targetSize.Height, 0);
+                    var outline = new Float4(kind is 3 or 8 ? 3f : 0, 2f / targetSize.Width, 2f / targetSize.Height, 0);
                     SDL_PushGPUVertexUniformData(commandBuffer, 1, (nint)(&outline), (uint)sizeof(Float4));
                     var cull = material.CullMode switch
                     {
@@ -340,8 +352,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         SDL_BindGPUGraphicsPipeline(post, _postPipeline);
         var postBinding = new SDL_GPUTextureSamplerBinding { texture = (SDL_GPUTexture*)target.Color, sampler = _linearSampler };
         SDL_BindGPUFragmentSamplers(post, 0, &postBinding, 1);
-        var postUniform = new Float4(3f * _targetPixels.Width / _targetSize.Width,
-            1f / _targetPixels.Width, 1f / _targetPixels.Height, 0);
+        var postUniform = new Float4(3f * target.Pixels.Width / targetSize.Width,
+            1f / target.Pixels.Width, 1f / target.Pixels.Height, 0);
         SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&postUniform), (uint)sizeof(Float4));
         SDL_DrawGPUPrimitives(post, 3, 1, 0, 0);
         SDL_EndGPURenderPass(post);
@@ -498,41 +510,37 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return path;
     }
 
-    private Target createTarget(RenderTextureId? reuse = null)
+    private Target createTarget((uint Width, uint Height) pixels, RenderTextureId? reuse = null)
     {
         var colorTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            pixels.Width, pixels.Height);
         var depthTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
+            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, pixels.Width, pixels.Height);
         var finalTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            pixels.Width, pixels.Height);
         if (reuse is { } id)
             _compositor.ReplaceBorrowedTexture(id, (nint)finalTexture);
         return new Target((nint)colorTexture, (nint)depthTexture, (nint)finalTexture,
-            reuse ?? _compositor.RegisterBorrowedTexture((nint)finalTexture));
+            reuse ?? _compositor.RegisterBorrowedTexture((nint)finalTexture), pixels);
     }
 
-    private void resizeTargets((uint Width, uint Height) pixels)
+    private void resizeTarget(int index, (uint Width, uint Height) pixels)
     {
-        if (pixels == _targetPixels) return;
-        _targetPixels = pixels;
-        for (var index = 0; index < _targets.Length; index++)
+        var old = _targets[index];
+        if (pixels == old.Pixels) return;
+        _targets[index] = createTarget(pixels, old.TextureId);
+        // SDL defers the release until submitted work no longer uses the textures.
+        foreach (var texture in new[] { old.Color, old.Depth, old.Final })
         {
-            var old = _targets[index];
-            var fresh = createTarget(old.TextureId);
-            _targets[index] = fresh;
-            // SDL defers the release until submitted work no longer uses the textures.
-            foreach (var texture in new[] { old.Color, old.Depth, old.Final })
-            {
-                _ownedTextures.Remove(texture);
-                SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
-            }
+            _ownedTextures.Remove(texture);
+            SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
         }
     }
 
-    private SDL_GPUTexture* createTexture(SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage, uint width = 0, uint height = 0)
+    private SDL_GPUTexture* createTexture(SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage, uint width, uint height)
     {
-        if (width == 0) (width, height) = _targetPixels;
         var info = new SDL_GPUTextureCreateInfo
         {
             type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
@@ -882,7 +890,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         public Dictionary<uint, nint> Textures { get; } = textures;
     }
 
-    private readonly record struct Target(nint Color, nint Depth, nint Final, RenderTextureId TextureId);
+    private readonly record struct Target(nint Color, nint Depth, nint Final, RenderTextureId TextureId,
+        (uint Width, uint Height) Pixels);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct GpuVertex(

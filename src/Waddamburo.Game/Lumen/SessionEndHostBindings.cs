@@ -8,14 +8,32 @@ namespace Waddamburo.Game.Lumen;
 /// a fixed number of songs; failing the first one offers the drum-roll revival (retry_game), whose
 /// loss ends the credit; later failures just move on.
 /// </summary>
+public enum TaikoCreditNext { NextSong, Revival, End }
+
 public static class TaikoCredit
 {
     /// <summary>
-    /// result.lm SetEndMessage: 0 none (credit over), 1 one more song, 2 revival.
-    /// <paramref name="songsPerSession"/> is the cabinet setting (config.cfg; the traced cabinet used 2).
+    /// What follows a song's results, per player cleared (one or two players). One player: a failed
+    /// first song earns the revival drum roll. Two players have no revival: the credit ends only when
+    /// both failed the first song (user-confirmed cabinet rule). Otherwise the credit plays
+    /// <paramref name="songsPerSession"/> songs (config.cfg; the traced cabinet used 2).
     /// </summary>
-    public static int EndMessage(int stage, bool cleared, int songsPerSession) =>
-        !cleared && stage == 1 ? 2 : stage >= songsPerSession ? 0 : 1;
+    public static TaikoCreditNext Next(int stage, IReadOnlyList<bool> cleared, int songsPerSession) =>
+        stage == 1 && !cleared.Any(static value => value)
+            ? cleared.Count == 1 ? TaikoCreditNext.Revival : TaikoCreditNext.End
+            : stage >= songsPerSession ? TaikoCreditNext.End : TaikoCreditNext.NextSong;
+
+    /// <summary>
+    /// result.lm SetEndMessage: 2 revival; 1 when two players carry on although one failed (traced
+    /// session9-2p); otherwise 0 (traced after a cleared song and at the credit's end).
+    /// </summary>
+    public static int EndMessage(int stage, IReadOnlyList<bool> cleared, int songsPerSession) =>
+        Next(stage, cleared, songsPerSession) switch
+        {
+            TaikoCreditNext.Revival => 2,
+            TaikoCreditNext.NextSong when cleared.Count == 2 && cleared.Contains(false) => 1,
+            _ => 0,
+        };
 }
 
 public enum RetrySoundRequestKind
@@ -187,7 +205,8 @@ public interface IGameOverSoundController
 /// shop_gameover.lm, the end-of-credit screen: the movie asks for the players (answered with
 /// SetPlayerBasicData), waits for IsReady_Gameover and reports LumenTerminate_Gameover when done.
 /// </summary>
-public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null, int side = 0) : ILumenHostBinding
+public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null, int side = 0, bool twoPlayers = false)
+    : ILumenHostBinding
 {
     private LumenPlayer? _player;
     private bool _infoRequested;
@@ -251,12 +270,12 @@ public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null,
         return true;
     }
 
-    // ponytail: one guest (no card data) on its drum, the other side not joined.
+    // ponytail: guests (no card data) on their drums.
     private void sendPlayers(LumenPlayer player)
     {
         LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(0),
-            LumenHostValue.FromBoolean(side == 0), LumenHostValue.FromBoolean(false));
+            LumenHostValue.FromBoolean(twoPlayers || side == 0), LumenHostValue.FromBoolean(false));
         LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(1),
-            LumenHostValue.FromBoolean(side == 1), LumenHostValue.FromBoolean(false));
+            LumenHostValue.FromBoolean(twoPlayers || side == 1), LumenHostValue.FromBoolean(false));
     }
 }

@@ -143,7 +143,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private bool _assigned;
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
-    private readonly int _side; // the joined player's drum: 0 left, 1 right
+    private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
 
     public SongSelectHostBinding(
         SongSelectSession session,
@@ -151,9 +151,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         IDonPresentationController? don = null,
         TimeProvider? timeProvider = null,
         IndicatorParts? parts = null,
-        int side = 0)
+        int side = 0,
+        bool twoPlayers = false)
     {
-        _side = side;
+        _sides = twoPlayers ? [0, 1] : [side];
         _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
@@ -166,7 +167,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         _player = player ?? throw new ArgumentNullException(nameof(player));
         if (_don is null)
             return;
-        DonLumenBinding.Attach(player, _don);
+        // Like entry, the movie's 2P slot already turns Katsu-chan inward (user-confirmed: the
+        // mirrored camera faced him the wrong way).
+        DonLumenBinding.Attach(player, _don, DonPresentationLayout.OpposedPlayers);
     }
 
     public void Install(LumenHostContext context)
@@ -246,20 +249,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber(-1));
         }
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(-1));
-        // SetPlayer(player, joined, ...): traced (1, true, ...) for a right-drum player alone.
-        invoke(
-            "SetPlayer",
-            LumenHostValue.FromNumber(0),
-            LumenHostValue.FromBoolean(_side == 0),
-            LumenHostValue.FromBoolean(false),
-            LumenHostValue.FromNumber(-1));
-        invoke("SetScoreType", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0),
-            LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-        invoke("SetPlayer", LumenHostValue.FromNumber(1), LumenHostValue.FromBoolean(_side == 1),
-            LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(-1));
-        invoke("SetScoreType", LumenHostValue.FromNumber(1), LumenHostValue.FromNumber(0),
-            LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-        _parts?.ShowGuestName(Gameplay.TaikoGuest.Name(_side), _side);
+        // SetPlayer(player, joined, ...): traced (1, true, ...) for a right-drum player alone, both
+        // joined for two players.
+        foreach (var player in new[] { 0, 1 })
+        {
+            invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
+                LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(-1));
+            invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
+        }
+        _parts?.ShowGuestNames(_sides);
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[0].Name);
         return true;
     }

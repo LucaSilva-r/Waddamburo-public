@@ -11,6 +11,16 @@ internal static class GameplaySceneComposition
 {
     public const string StaticHostId = "gameplay-static";
 
+    /// <summary>Host id of the second player's lane movies in two-player gameplay.</summary>
+    public const string PlayerTwoHostId = "gameplay-static-2p";
+
+    // Movies both players share in two-player gameplay (one instance; the kusudama counts for both).
+    public static readonly string[] SharedRoles = ["song_info", "action_kusudama"];
+
+    // ensolayout pairs: the second player's lane movie sits at the next index (research/ensolayout.md,
+    // traced session9-2p). Index 0 (overlays), 13 (song_info) and the backgrounds have no pair.
+    private static readonly int[] PairedIndices = [2, 7, 9, 11, 14, 16, 18, 20, 22, 24];
+
     // enso_original part families and their variant counts (Green data). The game picks the parts
     // at every load (traced: same song, different mix); songs with a themed skin use that skin instead.
     // ponytail: independent random per part; bg_nomal/donbg may form sets (research/ensolayout.md).
@@ -73,12 +83,16 @@ internal static class GameplaySceneComposition
     /// Gameplay scene with either a themed skin (one archive holding every part, given with its
     /// movie list) or, without one, a random enso_original mix. <paramref name="side"/> 1 = the right
     /// drum's player alone: the same top lane, with Katsu-chan's katsu1p parts and the 2P Don
-    /// backdrop (traced session8-p2-solo).
+    /// backdrop (traced session8-p2-solo). <paramref name="twoPlayers"/>: a second lane below for
+    /// Katsu-chan (katsu2p/base2p movies at the paired layout index, host <see cref="PlayerTwoHostId"/>);
+    /// the lower half's backgrounds, dancers and Go-Go splash are not loaded (traced session9-2p).
     /// </summary>
-    public static SceneDefinition Create(SceneId id, Random random, EnsoLayout layout, ThemedSkin? theme = null, int side = 0)
+    public static SceneDefinition Create(SceneId id, Random random, EnsoLayout layout, ThemedSkin? theme = null,
+        int side = 0, bool twoPlayers = false)
     {
-        var sideSuffix = side == 1 ? "_2p" : "_1p";
-        (SceneLayerDefinition Layer, int Depth)? skin(string role, int index, int depth)
+        // Random original parts are picked once; both lanes use the same variants (traced).
+        var variants = OriginalParts.ToDictionary(entry => entry.Part, entry => random.Next(1, entry.Variants + 1));
+        (SceneLayerDefinition Layer, int Depth)? skin(string role, int index, int depth, string sideSuffix, string host)
         {
             var at = layout[index];
             if (theme is not null)
@@ -87,24 +101,40 @@ internal static class GameplaySceneComposition
                 var movies = theme.Movies.Where(movie => Role(Path.GetFileNameWithoutExtension(movie)) == role).ToArray();
                 var movie = movies.FirstOrDefault(movie => Path.GetFileNameWithoutExtension(movie).EndsWith(sideSuffix))
                     ?? movies.FirstOrDefault(movie => !Path.GetFileNameWithoutExtension(movie).EndsWith("_2p"));
-                return movie is null ? null : (layer(theme.Archive, movie, at.X, at.Y), depth);
+                return movie is null ? null : (layer(theme.Archive, movie, at.X, at.Y, host), depth);
             }
             var entry = OriginalParts.Single(entry => entry.Part == role);
             var suffix = entry.Suffix.Length == 0 ? "" : sideSuffix;
-            var name = $"{role}_a_{random.Next(1, entry.Variants + 1):00}{suffix}";
-            return (layer($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm", at.X, at.Y), depth);
+            var name = $"{role}_a_{variants[role]:00}{suffix}";
+            return (layer($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm", at.X, at.Y, host), depth);
         }
-        var layers = SkinRoles
-            .Select(entry => skin(entry.Role, entry.Index, entry.Depth))
-            .OfType<(SceneLayerDefinition Layer, int Depth)>()
-            .Concat(SystemLayers.Select(entry =>
-            {
-                var at = entry.Index is { } index ? layout[index] : default;
-                var (archive, movie) = side == 1 && entry.Archive == "enso_system/don1p"
-                    ? ("enso_system/katsu1p", entry.Movie.Replace("_don_1p", "_katsu_1p"))
-                    : (entry.Archive, entry.Movie);
-                return (Layer: layer($"{archive}/packeddata.ddp", $"{movie}/{movie}.lm", at.X, at.Y), entry.Depth);
-            }))
+        // One player's lane: lane 1 = the second player below the first.
+        IEnumerable<(SceneLayerDefinition Layer, int Depth)> lane(int lane, int side)
+        {
+            var host = lane == 1 ? PlayerTwoHostId : StaticHostId;
+            int index(int at) => lane == 1 && PairedIndices.Contains(at) ? at + 1 : at;
+            var skinLayers = SkinRoles
+                .Where(entry => !twoPlayers || entry.Role is "donbg" or "chibi" or "renda")
+                .Select(entry => skin(entry.Role, index(entry.Index), entry.Depth, side == 1 ? "_2p" : "_1p", host))
+                .OfType<(SceneLayerDefinition Layer, int Depth)>();
+            var systemLayers = SystemLayers
+                .Where(entry => !(twoPlayers && entry.Movie == "action_gogotime"))
+                .Where(entry => lane == 0 || !SharedRoles.Contains(entry.Movie))
+                .Select(entry =>
+                {
+                    var at = entry.Index is { } i ? layout[index(i)] : default;
+                    var (archive, movie) = (lane, side, entry.Archive) switch
+                    {
+                        (1, _, "enso_system/don1p") => ("enso_system/katsu2p", entry.Movie.Replace("_don_1p", "_katsu_2p")),
+                        (1, _, "enso_system/base1p") => ("enso_system/base2p", entry.Movie.Replace("_1p", "_2p")),
+                        (0, 1, "enso_system/don1p") => ("enso_system/katsu1p", entry.Movie.Replace("_don_1p", "_katsu_1p")),
+                        _ => (entry.Archive, entry.Movie),
+                    };
+                    return (Layer: layer($"{archive}/packeddata.ddp", $"{movie}/{movie}.lm", at.X, at.Y, host), entry.Depth);
+                });
+            return skinLayers.Concat(systemLayers);
+        }
+        var layers = (twoPlayers ? lane(0, 0).Concat(lane(1, 1)) : lane(0, side))
             .OrderByDescending(entry => entry.Depth) // stable: equal depths keep list order
             .Select(entry => entry.Layer);
         return new(SceneDefinition.CurrentVersion, id, layers);
@@ -143,19 +173,21 @@ internal static class GameplaySceneComposition
 
     /// <summary>
     /// Gameplay role of a layer name: skin parts lose their variant ("bg_nomal_a_02", "donbg_b_01_2p" ->
-    /// role), and Katsu-chan's player parts share Don-chan's roles ("gage_katsu_1p_easy" -> "gage_don_1p_easy").
+    /// role), and Katsu-chan's and the second player's parts share Don-chan's first-player roles
+    /// ("gage_katsu_1p_easy", "gage_katsu_2p_easy" -> "gage_don_1p_easy"; "gage_fire_2p" -> "gage_fire_1p").
     /// </summary>
     public static string Role(string layerName)
     {
-        var name = layerName.Replace("_katsu_1p", "_don_1p", StringComparison.Ordinal);
-        return System.Text.RegularExpressions.Regex.Match(name, "^(.+?)_[ab]_[0-9]+(?:_1p|_2p|_common)?$") is { Success: true } match
-            ? match.Groups[1].Value
-            : name;
+        if (System.Text.RegularExpressions.Regex.Match(layerName, "^(.+?)_[ab]_[0-9]+(?:_1p|_2p|_common)?$") is { Success: true } match)
+            return match.Groups[1].Value;
+        var name = layerName.Replace("_katsu_1p", "_don_1p", StringComparison.Ordinal)
+            .Replace("_katsu_2p", "_don_1p", StringComparison.Ordinal);
+        return name.EndsWith("_2p", StringComparison.Ordinal) ? name[..^3] + "_1p" : name;
     }
 
-    private static SceneLayerDefinition layer(string archive, string movie, float x, float y) => new(
+    private static SceneLayerDefinition layer(string archive, string movie, float x, float y, string host) => new(
         archive,
         movie,
         LumenMatrix.Identity with { X = x, Y = y },
-        StaticHostId);
+        host);
 }

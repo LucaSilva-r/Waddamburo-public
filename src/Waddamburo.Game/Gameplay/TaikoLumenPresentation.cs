@@ -78,6 +78,17 @@ public sealed class TaikoLumenPresentation
         Func<LumenPlayer, float>? playerInterpolation = null, LumenSceneLayer? character = null,
         int characterSlot = 0)
     {
+        var (back, front) = CreateLayers(time, character, characterSlot);
+        return new LumenScenePlayer(1280, 720, [.. back, .. front]).CreateRenderSnapshot(interpolation, playerInterpolation);
+    }
+
+    /// <summary>
+    /// The lane's layers in draw order, split at the notes: backgrounds, lane, bar lines and notes;
+    /// then the overlays in front (two lanes are merged back, back, front, front).
+    /// </summary>
+    public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time,
+        LumenSceneLayer? character = null, int characterSlot = 0)
+    {
         var layers = new List<LumenSceneLayer>(_background);
         if (character is { } don)
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
@@ -101,11 +112,11 @@ public sealed class TaikoLumenPresentation
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
         // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit
         // flights sit at their template's depth.
-        layers.AddRange(_foreground.Take(_flightsAt));
+        var front = new List<LumenSceneLayer>(_foreground.Take(_flightsAt));
         if (_flights is not null)
-            layers.AddRange(_flights.ActiveLayers);
-        layers.AddRange(_foreground.Skip(_flightsAt));
-        return new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, playerInterpolation);
+            front.AddRange(_flights.ActiveLayers);
+        front.AddRange(_foreground.Skip(_flightsAt));
+        return (layers, front);
     }
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,

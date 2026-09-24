@@ -36,6 +36,9 @@ public interface IDonPresentationController
     /// <summary>Changes the view while keeping the current motion.</summary>
     void SetCameraLayout(DonPresentationLayout layout) => Reset(layout);
 
+    /// <summary>Changes one player's view (two-player gameplay: one Don in a balloon, the other playing).</summary>
+    void SetCameraLayout(int playerIndex, DonPresentationLayout layout) => SetCameraLayout(layout);
+
     LumenNativeSurfaceKey GetSurface(int playerIndex);
 
     void SetMotion(DonMotionRequest request);
@@ -58,14 +61,18 @@ public static class DonLumenBinding
     private static readonly LumenNativeSurfacePlacement Placement =
         LumenNativeSurfacePlacement.Centered(600, 600);
 
+    /// <param name="reset">False binds the markers without resetting the view and motions (a movie
+    /// joining a scene whose Dons are already playing).</param>
     public static void Attach(
         LumenPlayer player,
         IDonPresentationController presentation,
-        DonPresentationLayout layout = DonPresentationLayout.Standard)
+        DonPresentationLayout layout = DonPresentationLayout.Standard,
+        bool reset = true)
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(presentation);
-        presentation.Reset(layout);
+        if (reset)
+            presentation.Reset(layout);
         player.SetNativeFill("don1pM", presentation.GetSurface(0), Placement);
         player.SetNativeFill("don2pM", presentation.GetSurface(1), Placement);
     }

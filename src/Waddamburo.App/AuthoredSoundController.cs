@@ -107,6 +107,8 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         var sound = (request.Kind, group, request.Cue) switch
         {
             (ResultSoundRequestKind.Voice, 1, 1) => (Bank: "VO_RESULT", Cue: 1),
+            (ResultSoundRequestKind.Voice, 1, 3) => (Bank: "VO_RESULT", Cue: 5), // Katsu (2, 3) -> 6 traced
+            (ResultSoundRequestKind.Voice, 1, 4) => (Bank: "VO_RESULT", Cue: 7), // Katsu (2, 4) -> 8 traced
             (ResultSoundRequestKind.Voice, 1, 5) => (Bank: "VO_RESULT", Cue: 9),
             (ResultSoundRequestKind.Voice, 1, 6) => (Bank: "VO_RESULT", Cue: 11),
             (ResultSoundRequestKind.Voice, 1, 7) => (Bank: "VO_RESULT", Cue: 13),
@@ -117,13 +119,21 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
             (ResultSoundRequestKind.Effect, 1, 1) => (Bank: "SE_RESULT", Cue: 3),
             (ResultSoundRequestKind.Effect, 1, 2) => (Bank: "SE_RESULT", Cue: 6),
             (ResultSoundRequestKind.Effect, 1, 5) => (Bank: "SE_RESULT", Cue: 15),
+            // Two players: 22 whenever either cleared (traced one failed + one cleared, and both full
+            // combo); both failed takes the one-player failure cue (user-confirmed: no applause).
             (ResultSoundRequestKind.Effect, 0, 6) => (Bank: "SE_RESULT",
-                Cue: request.FullCombo ? 22 : request.Cleared ? 18 : 20),
+                Cue: request.TwoPlayers ? request.Cleared ? 22 : 20
+                    : request.FullCombo ? 22 : request.Cleared ? 18 : 20),
             (ResultSoundRequestKind.Effect, 0, 7) => (Bank: "SE_RESULT", Cue: 24),
             _ => default,
         };
         if (katsu && request.Kind == ResultSoundRequestKind.Voice && sound.Bank is not null)
             sound.Cue++;
+        // Two players: each player's counting effects are their own, one and two after the one-player
+        // cue (traced (1|2, 0/1/2) -> SE_RESULT 1/2, 4/5, 7/8; ponytail: cue 5 follows untraced).
+        else if (request.TwoPlayers && request.Kind == ResultSoundRequestKind.Effect && request.Group is 1 or 2
+            && sound.Bank is not null)
+            sound.Cue += request.Group;
         if (sound.Bank is not null)
         {
             playNamedBankCue(sound.Bank, sound.Cue,
@@ -294,54 +304,71 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
 
     public bool IsVoicePlaying => isPlaying(_oneShotVoiceHandle) || isPlaying(_loopVoiceHandle);
 
-    public void PrepareGameplayDrums()
+    // A drum's hit sounds: centred for one player; in two-player play the left drum's pan left and
+    // the right drum's right (traced session9-2p).
+    private static string drumBank(int? lane) => lane switch
     {
-        foreach (var cue in new[] { 0, 1 })
-        {
-            var key = (Bank: "SE_GAME_NEIRO_000_C", Cue: cue);
-            try { _ = loadClip(key); }
-            catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        0 => "SE_GAME_NEIRO_000_L",
+        1 => "SE_GAME_NEIRO_000_R",
+        _ => "SE_GAME_NEIRO_000_C",
+    };
+
+    public void PrepareGameplayDrums(bool twoPlayers = false)
+    {
+        foreach (var lane in twoPlayers ? new int?[] { 0, 1 } : [null])
+            foreach (var cue in new[] { 0, 1 })
             {
-                reportUnavailable(key, exception);
+                var key = (Bank: drumBank(lane), Cue: cue);
+                try { _ = loadClip(key); }
+                catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+                {
+                    reportUnavailable(key, exception);
+                }
             }
-        }
     }
 
-    public void PlayDrum(bool don) =>
-        playNamedBankCue("SE_GAME_NEIRO_000_C", don ? 0 : 1, AudioBus.DrumHit, trace: false);
+    public void PlayDrum(int? lane, bool don) =>
+        playNamedBankCue(drumBank(lane), don ? 0 : 1, AudioBus.DrumHit, trace: false);
 
-    public void PlayGameplayEvent(GameplaySoundEvent sound)
+    /// <summary>
+    /// <paramref name="lane"/> is null for one player. Two players: 0 left, 1 right; a player's own
+    /// cues follow the one-player cue as +1 / +2 (traced session9-2p: combo voice 1/2, banners
+    /// 10/11 · 7/8 · 13/14, full-combo voice 154/155, balloon 2, roll voice 158, kusudama miss voice 160/161).
+    /// </summary>
+    public void PlayGameplayEvent(int? lane, GameplaySoundEvent sound)
     {
+        // ponytail: the hundred-combo voice follows the same rule untraced.
+        int own(int cue) => lane is { } player ? cue + 1 + player : cue;
         switch (sound)
         {
             case GameplaySoundEvent.LongNoteStarted:
-                playNamedBankCue("VO_GAME", 156);
+                playNamedBankCue("VO_GAME", own(156));
                 break;
             case GameplaySoundEvent.BalloonPopped:
-                playNamedBankCue("SE_GAME", 0);
+                playNamedBankCue("SE_GAME", own(0));
                 break;
             case GameplaySoundEvent.KusudamaPopped:
                 playNamedBankCue("SE_GAME", 3);
                 break;
             case GameplaySoundEvent.KusudamaFailed:
                 playNamedBankCue("SE_GAME", 5);
-                playNamedBankCue("VO_GAME", 159);
+                playNamedBankCue("VO_GAME", own(159));
                 break;
             case GameplaySoundEvent.FiftyCombo:
-                playNamedBankCue("VO_GAME", 0);
+                playNamedBankCue("VO_GAME", own(0));
                 break;
             case GameplaySoundEvent.HundredCombo:
-                playNamedBankCue("VO_GAME", 3);
+                playNamedBankCue("VO_GAME", own(3));
                 break;
             case GameplaySoundEvent.FailBanner:
-                playNamedBankCue("SE_GAME", 9);
+                playNamedBankCue("SE_GAME", own(9));
                 break;
             case GameplaySoundEvent.ClearBanner:
-                playNamedBankCue("SE_GAME", 6);
+                playNamedBankCue("SE_GAME", own(6));
                 break;
             case GameplaySoundEvent.FullComboBanner:
-                playNamedBankCue("SE_GAME", 12);
-                playNamedBankCue("VO_GAME", 153);
+                playNamedBankCue("SE_GAME", own(12));
+                playNamedBankCue("VO_GAME", own(153));
                 break;
             case GameplaySoundEvent.SongFinished:
                 playNamedBankCue("VO_RESULT", 0);

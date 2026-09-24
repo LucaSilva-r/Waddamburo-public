@@ -6,8 +6,10 @@ namespace Waddamburo.Game.Lumen;
 
 public enum ResultSoundRequestKind { Effect, Voice }
 
+/// <summary>A results sound request; Cleared / FullCombo are the requesting player's (any player's for
+/// shared group 0). TwoPlayers: the movie runs its two-player presentation.</summary>
 public readonly record struct ResultSoundRequest(
-    ResultSoundRequestKind Kind, int Group, int Cue, bool Cleared, bool FullCombo);
+    ResultSoundRequestKind Kind, int Group, int Cue, bool Cleared, bool FullCombo, bool TwoPlayers = false);
 
 public interface IResultSoundController
 {
@@ -15,14 +17,14 @@ public interface IResultSoundController
 }
 
 /// <summary>
-/// The 1P results screen (enso_result/result.lm) as the game drives it (traced, research/traces):
-/// the play's numbers and the player name at load; the movie then animates on its own, asking the
-/// host for Don-chan's motions (ExternalInterface.call("DonMot", player, in, loop)) and sounds
-/// (LumenMethod.SE_REQUEST / VOICE_REQUEST).
+/// The results screen (enso_result/result.lm) as the game drives it (traced, research/traces): each
+/// player's numbers and name board at load; the movie then animates on its own, asking the host for
+/// Don-chan's motions (ExternalInterface.call("DonMot", player, in, loop)) and sounds
+/// (LumenMethod.SE_REQUEST / VOICE_REQUEST, group 1/2 = the left/right player, 0 = both).
 /// </summary>
+/// <param name="results">One play (the player on <paramref name="side"/>), or two (left, right).</param>
 public sealed class ResultHostBinding(
-    Func<TaikoPlayResult> result,
-    string playerName,
+    Func<IReadOnlyList<TaikoPlayResult>> results,
     int stage,
     int endMessage,
     IDonPresentationController? don = null,
@@ -55,8 +57,10 @@ public sealed class ResultHostBinding(
             && tryInteger(call.Arguments, 0, out var group)
             && tryInteger(call.Arguments, 1, out var cue))
         {
-            var play = result();
-            sounds.RequestSound(new ResultSoundRequest(kind, group, cue, play.Cleared, play.FullCombo));
+            var plays = results();
+            var own = group is 1 or 2 && plays.Count == 2 ? [plays[group - 1]] : plays;
+            sounds.RequestSound(new ResultSoundRequest(kind, group, cue, own.Any(play => play.Cleared),
+                own.Any(play => play.FullCombo), plays.Count == 2));
         }
         return LumenHostValue.Undefined;
     }
@@ -76,23 +80,32 @@ public sealed class ResultHostBinding(
     }
 
     /// <summary>
-    /// The calls the game makes when the results load (one guest player). <c>side</c> 1 = the right
+    /// The calls the game makes when the results load (guest players). <c>side</c> 1 = the right
     /// drum's player alone (traced session8-p2-solo): its status flag and player index, and an end
-    /// message of 0 whatever follows.
+    /// message of 0 whatever follows. Two players (session9-2p): both flags, each player's numbers,
+    /// then each name board (board = player).
     /// </summary>
     public void Attach(LumenPlayer player)
     {
         ArgumentNullException.ThrowIfNull(player);
         if (don is not null)
             DonLumenBinding.Attach(player, don);
-        var play = result();
-        var p = number(side);
-        var no = LumenHostValue.FromBoolean(false);
+        var plays = results();
+        var two = plays.Count == 2;
         call(player, "SetRunMode", number(0));
         call(player, "SetSongPlayCount", number(stage));
-        call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(side == 0), LumenHostValue.FromBoolean(side == 1));
-        // ponytail: a failed first song on the right drum (revival) was not traced; its message is kept.
-        call(player, "SetEndMessage", number(side == 1 && endMessage != 2 ? 0 : endMessage));
+        call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(two || side == 0), LumenHostValue.FromBoolean(two || side == 1));
+        call(player, "SetEndMessage", number(endMessage));
+        for (var index = 0; index < plays.Count; index++)
+            sendPlay(player, plays[index], two ? index : side);
+        for (var index = 0; index < plays.Count; index++)
+            sendName(player, two ? index : side, boardIndex: two ? index : 0);
+    }
+
+    private static void sendPlay(LumenPlayer player, TaikoPlayResult play, int side)
+    {
+        var p = number(side);
+        var no = LumenHostValue.FromBoolean(false);
         call(player, "SetCourse", p, number(play.CourseIndex));
         call(player, "SetScore", p, number(play.Score));
         call(player, "SetBestScore", p, number(-10)); // no previous best
@@ -109,8 +122,15 @@ public sealed class ResultHostBinding(
         call(player, "SetOptionAbekobe", p, no);
         call(player, "SetOptionRandomLevel", p, number(0));
         call(player, "SetOptionShinuchi", p, no);
-        // The name board calls end with the board index (0), not the player.
-        var board = number(0);
+    }
+
+    // The name board calls end with the board index (0 for one player), not the player.
+    private static void sendName(LumenPlayer player, int side, int boardIndex)
+    {
+        var playerName = TaikoGuest.Name(side);
+        var board = number(boardIndex);
+        var p = number(side);
+        var no = LumenHostValue.FromBoolean(false);
         call(player, "SetPlayerForPlayerName", p, board);
         call(player, "SetTitleForPlayerName", LumenHostValue.FromString(""), board);
         call(player, "SetTitlePanelForPlayerName", number(0), board);

@@ -70,27 +70,36 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
             call(board, "SetVisible", LumenHostValue.FromBoolean(false));
     }
 
-    /// <summary>Populate and show the guest P1 name board when Song Select starts.</summary>
-    public void ShowGuestName(string name, int side = 0)
+    /// <summary>
+    /// Populate and show the guest name boards when Song Select starts: board n shows the player on
+    /// sides[n]; boards beyond the players stay hidden (traced two boards for two players).
+    /// </summary>
+    public void ShowGuestNames(IReadOnlyList<int> sides)
     {
-        if (scene != IndicatorPartsScene.SongSelect || _nameBoards.Count == 0)
+        if (scene != IndicatorPartsScene.SongSelect)
             return;
-        var board = _nameBoards[0];
-        var characters = StringInfo.GetTextElementEnumerator(name);
-        var length = new StringInfo(name).LengthInTextElements;
-        call(board, "SetPlayer", number(side));
-        call(board, "SetKinotake", number(-1));
-        call(board, "SetTitleName", LumenHostValue.FromString(""));
-        call(board, "SetTitlePanelID", number(0));
-        call(board, "SetDani", number(0), LumenHostValue.FromBoolean(false));
-        call(board, "SetCover", LumenHostValue.FromBoolean(false));
-        call(board, "SetNameSize", number(length));
-        for (var index = 0; characters.MoveNext(); index++)
-            call(board, "SetChar", number(index), LumenHostValue.FromString(characters.GetTextElement()));
-        call(board, "Apply");
-        call(board, "SetVisible", LumenHostValue.FromBoolean(true));
-        for (var index = 1; index < _nameBoards.Count; index++)
-            call(_nameBoards[index], "SetVisible", LumenHostValue.FromBoolean(false));
+        for (var index = 0; index < _nameBoards.Count; index++)
+        {
+            var board = _nameBoards[index];
+            if (index >= sides.Count)
+            {
+                call(board, "SetVisible", LumenHostValue.FromBoolean(false));
+                continue;
+            }
+            var name = Gameplay.TaikoGuest.Name(sides[index]);
+            var characters = StringInfo.GetTextElementEnumerator(name);
+            call(board, "SetPlayer", number(sides[index]));
+            call(board, "SetKinotake", number(-1));
+            call(board, "SetTitleName", LumenHostValue.FromString(""));
+            call(board, "SetTitlePanelID", number(0));
+            call(board, "SetDani", number(0), LumenHostValue.FromBoolean(false));
+            call(board, "SetCover", LumenHostValue.FromBoolean(false));
+            call(board, "SetNameSize", number(new StringInfo(name).LengthInTextElements));
+            for (var character = 0; characters.MoveNext(); character++)
+                call(board, "SetChar", number(character), LumenHostValue.FromString(characters.GetTextElement()));
+            call(board, "Apply");
+            call(board, "SetVisible", LumenHostValue.FromBoolean(true));
+        }
     }
 
     public void PauseCountdown() => callCounter("Pause");

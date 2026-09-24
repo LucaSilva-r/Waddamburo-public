@@ -27,10 +27,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Costume picker icon (name: false) or name plate (true) for (ICONTYPE 0 costume / 1 head / 2 body, id).</summary>
     public Func<int, int, bool, LumenNativeSurfaceKey?>? CostumeIcon { get; init; }
 
-    /// <summary>Whether a player may join. One local player, on either drum (the right one is P2).</summary>
+    /// <summary>Whether a player may join, on either drum (the right one is P2); both may.</summary>
     public Func<int, bool> CanJoin { get; init; } = static _ => true;
 
-    /// <summary>The joined player's drum (0 left, 1 right); null before a join.</summary>
+    /// <summary>The first joined player's drum (0 left, 1 right); null before a join.</summary>
     public int? JoinedPlayer => _joined.Count == 0 ? null : _joined.First();
 
     /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
@@ -172,11 +172,13 @@ public sealed class EntrySceneHost(IndicatorParts parts)
 
     /// <summary>
     /// What the game does inside EntryCoin when a player joins, before answering 1: pay the credits
-    /// (coin mode), coin state, then the player's costume lists (traced guest defaults).
+    /// (coin mode), coin state, then the player's costume lists (traced guest defaults). The other
+    /// drum may join later (traced session9-2p: EntryCoin(1, 1) answers 0 until paid, then 1).
     /// </summary>
     public bool TryJoin(int player)
     {
-        if (_joined.Count != 0 || !CanJoin(player) || _entry is not { } entry || Coins?.TryJoin(_joined.Count) == false)
+        if (player is not (0 or 1) || _joined.Contains(player) || !CanJoin(player) || _entry is not { } entry
+            || Coins?.TryJoin(_joined.Count) == false)
             return false;
         var p = number(player);
         _joined.Add(player);

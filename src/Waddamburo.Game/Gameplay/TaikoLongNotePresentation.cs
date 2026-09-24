@@ -4,6 +4,20 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Gameplay;
 
+/// <summary>
+/// The kusudama both players hit in two-player gameplay (traced session9-2p): each player's quota is
+/// added to the one movie (AddNorma per player) and it counts down the hits both still need.
+/// </summary>
+public sealed class TaikoSharedKusudama(LumenSceneLayer layer, int players)
+{
+    public LumenSceneLayer Layer { get; } = layer;
+
+    public int Players { get; } = players;
+
+    /// <summary>Hits still needed, summed over the players whose kusudama is running.</summary>
+    public int Remaining { get; set; }
+}
+
 /// <summary>Owns isolated authored roll movies and the active long-note counters.</summary>
 public sealed class TaikoLongNotePresentation
 {
@@ -20,14 +34,21 @@ public sealed class TaikoLongNotePresentation
     private int? _active;
     private bool _balloonVisible;
     private readonly LumenSceneLayer? _kusudama;
+    private readonly TaikoSharedKusudama? _sharedKusudama;
     private LumenSceneLayer _overlay; // the balloon or kusudama overlay in use
+    private readonly int _player; // Don slot; the second player's kusudama motions are don_kusu2P_*
+    private readonly string _kusu;
 
     public TaikoLongNotePresentation(PlayableChart chart, TaikoJudgementSession session,
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
-        Action<PlayableLongNoteKind>? onNoteStarted = null)
+        Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null)
     {
+        _player = player;
+        _kusu = player == 1 ? "don_kusu2P" : "don_kusu1P";
+        _sharedKusudama = sharedKusudama;
+        kusudama ??= sharedKusudama?.Layer;
         _chart = chart;
         _session = session;
         _createNote = createNote;
@@ -39,12 +60,14 @@ public sealed class TaikoLongNotePresentation
         _onBalloonCompleted = onBalloonCompleted;
         _onNoteStarted = onNoteStarted;
         _don = don;
+        // The Dons are already playing (another lane may have started first): bind without a reset.
         if (don is not null)
-            DonLumenBinding.Attach(balloon.Player, don);
+            DonLumenBinding.Attach(balloon.Player, don, reset: false);
         if (kusudama is not null)
         {
-            if (don is not null) DonLumenBinding.Attach(kusudama.Player, don);
-            call(kusudama.Player, "SetPlayerNum", LumenHostValue.FromNumber(1));
+            if (don is not null) DonLumenBinding.Attach(kusudama.Player, don, reset: false);
+            // Traced once per player, with the player count.
+            call(kusudama.Player, "SetPlayerNum", LumenHostValue.FromNumber(sharedKusudama?.Players ?? 1));
             call(kusudama.Player, "SetWaiWai", LumenHostValue.FromBoolean(false));
         }
         session.LongNoteHit += hit;
@@ -133,17 +156,18 @@ public sealed class TaikoLongNotePresentation
         var note = _chart.LongNotes[index];
         if (note.Kind == PlayableLongNoteKind.Kusudama && _kusudama is not null)
         {
-            _don?.Reset(DonPresentationLayout.Standard);
+            _don?.SetCameraLayout(_player, DonPresentationLayout.Standard);
             _overlay = _kusudama;
             // Kusudama overlay (reference trace): the quota, then whether Go-Go is on.
+            if (_sharedKusudama is not null) _sharedKusudama.Remaining += note.RequiredHits;
             call(_kusudama.Player, "AddNorma", LumenHostValue.FromNumber(note.RequiredHits));
             call(_kusudama.Player, "SetGogoTime", LumenHostValue.FromBoolean(isGoGo(note.StartTime)));
             _balloonVisible = true;
-            _don?.SetMotion(new DonMotionRequest(0, "don_kusu1P_in", "don_kusu1P_nobeat"));
+            _don?.SetMotion(new DonMotionRequest(_player, $"{_kusu}_in", $"{_kusu}_nobeat"));
         }
         else if (note.IsBalloon)
         {
-            _don?.Reset(DonPresentationLayout.Standard);
+            _don?.SetCameraLayout(_player, DonPresentationLayout.Standard);
             _overlay = _balloon;
             invoke(_balloon.Player, "Reset");
             // The opening timeline creates the balloon child two ticks after 'start'.
@@ -153,7 +177,7 @@ public sealed class TaikoLongNotePresentation
             _balloon.Player.Advance();
             invoke(_balloon.Player, "SetGekiRendaCount", note.RequiredHits);
             _balloonVisible = true;
-            _don?.SetMotion(new DonMotionRequest(0, null, "don_balloon_nobeat"));
+            _don?.SetMotion(new DonMotionRequest(_player, null, "don_balloon_nobeat"));
         }
         // Rolls: the game sends nothing at the start; the counter appears with SetRendaCount(1) on the first hit.
         _onNoteStarted?.Invoke(note.Kind);
@@ -174,13 +198,15 @@ public sealed class TaikoLongNotePresentation
             else
             {
                 var remaining = progress.Note.RequiredHits - progress.Hits;
+                if (_overlay == _kusudama && _sharedKusudama is not null)
+                    remaining = _sharedKusudama.Remaining = Math.Max(0, _sharedKusudama.Remaining - 1);
                 if (_overlay == _kusudama)
                     call(_overlay.Player, "SetCount", LumenHostValue.FromNumber(remaining));
                 else
                     invoke(_balloon.Player, "SetGekiRendaCount", remaining);
                 // Every hit restarts the pumping motion, which settles back to the no-beat idle.
                 var (pump, rest) = motions(progress.Note);
-                _don?.SetMotion(new DonMotionRequest(0, pump, rest));
+                _don?.SetMotion(new DonMotionRequest(_player, pump, rest));
             }
         }
         else
@@ -196,15 +222,17 @@ public sealed class TaikoLongNotePresentation
         var progress = _session.GetLongNoteProgress(index);
         if (progress.Note.IsBalloon)
         {
+            if (_overlay == _kusudama && _sharedKusudama is not null)
+                _sharedKusudama.Remaining = Math.Max(0, _sharedKusudama.Remaining - (progress.Note.RequiredHits - progress.Hits));
             if (_overlay == _kusudama)
                 call(_overlay.Player, "EndResult", LumenHostValue.FromNumber(progress.IsPopped ? 0 : 2)); // high / miss
             else
                 invoke(_balloon.Player, "GekiRendaEnd", progress.IsPopped ? 0 : 1);
             var kusudama = progress.Note.Kind == PlayableLongNoteKind.Kusudama;
-            _don?.SetMotion(new DonMotionRequest(0, (kusudama, progress.IsPopped) switch
+            _don?.SetMotion(new DonMotionRequest(_player, (kusudama, progress.IsPopped) switch
             {
-                (true, true) => "don_kusu1P_success02",
-                (true, false) => "don_kusu1P_failure",
+                (true, true) => $"{_kusu}_success02",
+                (true, false) => $"{_kusu}_failure",
                 (false, true) => "don_balloon_success",
                 _ => "don_balloon_failure",
             }, null));
@@ -215,9 +243,9 @@ public sealed class TaikoLongNotePresentation
         _active = null;
     }
 
-    private static (string Pump, string Idle) motions(PlayableLongNote note) =>
+    private (string Pump, string Idle) motions(PlayableLongNote note) =>
         note.Kind == PlayableLongNoteKind.Kusudama
-            ? ("don_kusu1P_loop", "don_kusu1P_nobeat")
+            ? ($"{_kusu}_loop", $"{_kusu}_nobeat")
             : ("don_balloon_loop", "don_balloon_nobeat");
 
     private bool isGoGo(TimeSpan time)
