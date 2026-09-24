@@ -14,6 +14,7 @@ public sealed class TaikoLumenPresentation
     private readonly int _flightsAt; // foreground index the hit flights are drawn at
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> _notes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _handNotes;
+    private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _synchroNotes;
     private readonly LumenSceneLayer _bar;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
@@ -30,9 +31,11 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
         TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
-        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null)
+        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
+        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null)
     {
         _handNotes = handNotes;
+        _synchroNotes = synchroNotes;
         _chart = chart;
         _judgement = judgement;
         _background = background.ToArray();
@@ -111,7 +114,9 @@ public sealed class TaikoLumenPresentation
             hitNotes.Clear();
             var note = _chart.HitObjects[index];
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
-            var template = note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand : _notes[note.Kind];
+            var template = note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
+                : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
+                : _notes[note.Kind];
             addAt(hitNotes, template, note.StartTime, time, scroll: true);
             if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
         }

@@ -30,6 +30,9 @@ public readonly record struct PlayableHitObject
     /// the game draws it with feet.
     /// </summary>
     public bool IsHand { get; }
+
+    /// <summary>A Waiwai synchro note: both players play it in a together section (drawn as onp_synchro_*).</summary>
+    public bool IsSynchro { get; init; }
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }
 

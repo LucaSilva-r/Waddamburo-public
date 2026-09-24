@@ -162,6 +162,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         _timer = new SongSelectTimer(timeProvider);
     }
 
+    /// <summary>The players decided the mode-switch folder (to the other song select).</summary>
+    public bool ModeSwitchRequested { get; private set; }
+
     public void Attach(LumenPlayer player)
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
@@ -208,6 +211,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyOpenFolder", _ => openFolder());
             lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
+            // SetSelectedMusic(genre, song): the movie's final pick; genre = the mode-switch folder with
+            // song -1 moves to the other song select (traced SetSelectedMusic(7|8, -1), then Terminate).
+            lumen.RegisterMethod("SetSelectedMusic", call =>
+            {
+                if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number
+                    && (int)call.Arguments[0].AsNumber() == _session.Catalog.ModeSwitchCategory)
+                    ModeSwitchRequested = true;
+                return LumenHostValue.FromBoolean(true);
+            });
             lumen.RegisterMethod(
                 "NotifyGenreFolder",
                 notifyGenreFolder);
@@ -244,7 +256,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             invoke(
                 "AssignMusic",
                 LumenHostValue.FromString(category.AuthoredLabel),
-                LumenHostValue.FromNumber(category.Songs.Length),
+                // A folder that decides at once still counts one item (traced 1 for the mode switch).
+                LumenHostValue.FromNumber((category.Presentation & SongCategoryPresentation.FolderEnd) != 0
+                    ? 1 : category.Songs.Length),
                 LumenHostValue.FromNumber((int)category.Presentation),
                 LumenHostValue.FromNumber(-1));
         }

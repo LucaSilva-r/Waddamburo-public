@@ -13,23 +13,39 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     private readonly object _gate = new();
     private readonly AudioEngine _audio;
     private readonly CatalogAssetRouter _resolver;
-    private readonly AudioClip? _background;
+    private readonly AudioClip? _normalBackground;
+    private readonly AudioClip? _waiwaiBackground;
+    private bool _waiwai; // which song select's music is the background
+    private AudioClip? _background => _waiwai ? _waiwaiBackground : _normalBackground;
     private Operation? _current;
     private bool _disposed;
 
     public SongPreviewController(
         AudioEngine audio,
         CatalogAssetRouter resolver,
-        string? backgroundPath = null)
+        string? backgroundPath = null,
+        string? waiwaiBackgroundPath = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
-        _background = backgroundPath is null
-            ? null
-            : AudioClip.Load(backgroundPath, audio.Mixer.Format);
+        _normalBackground = backgroundPath is null ? null : AudioClip.Load(backgroundPath, audio.Mixer.Format);
+        _waiwaiBackground = waiwaiBackgroundPath is null ? null : AudioClip.Load(waiwaiBackgroundPath, audio.Mixer.Format);
     }
 
-    public void StartBackground() => replace(null, TimeSpan.Zero);
+    /// <summary>Song Select's music: JINGLE_GENRE, or JINGLE_WAIGENRE in Waiwai's song select.</summary>
+    public void StartBackground(bool waiwai = false)
+    {
+        lock (_gate)
+        {
+            if (_waiwai != waiwai)
+            {
+                _waiwai = waiwai;
+                stopCurrent(); // the other select's music must not keep playing
+                _current = null;
+            }
+        }
+        replace(null, TimeSpan.Zero);
+    }
 
     public void SetPreview(SongPreviewRequest? request) =>
         replace(request, request is null ? TimeSpan.Zero : HoverDebounce);

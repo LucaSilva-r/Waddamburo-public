@@ -94,7 +94,12 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                 null,
                 charts,
                 hasAudio ? new CatalogAssetKey(Id, $"audio:{entry.Id}") : null,
-                hasAudio ? previewStart(Path.Combine(_root, "sound", "bgm", "nsh", bank + ".nsh")) : null));
+                hasAudio ? previewStart(Path.Combine(_root, "sound", "bgm", "nsh", bank + ".nsh")) : null)
+            {
+                // Waiwai songs are the ones with a section layout (all of Green's 182 match the traced list).
+                WaiwaiComposition = File.Exists(compositionPath(entry.Id))
+                    ? new CatalogAssetKey(Id, $"composition:{entry.Id}") : null,
+            });
             var genre = entry.Genre ?? "";
             var category = categories.FindIndex(category => category.Genre == genre);
             if (category < 0)
@@ -165,11 +170,15 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                 return duetPath(id, duetCourse, fields[3]);
             if (fields.Length == 2 && fields[0] == "audio")
                 return Path.Combine(_root, "sound", "bgm", "nub", $"SONG_{id.ToUpperInvariant()}.nub");
+            if (fields.Length == 2 && fields[0] == "composition")
+                return compositionPath(id);
         }
         throw new ArgumentException("The stock asset key is malformed.", nameof(asset));
     }
 
     private string chartPath(string id, char course) => Path.Combine(_root, "fumen", id, "solo", $"{id}_{course}.bin");
+
+    private string compositionPath(string id) => Path.Combine(_root, "fumen", id, "composition.xml");
 
     // Two-player charts: fumen/<id>/duet/<id>_<course>_<1|2>.bin, one per drum.
     private string duetPath(string id, char course, string player) =>

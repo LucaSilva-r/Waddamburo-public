@@ -44,7 +44,10 @@ internal static class EntrySongSelectFlow
         // Either source may be absent: a stock install without custom songs, or custom songs alone.
         ISongCatalogProvider[] providers = [
             .. StockCatalogProvider.IsStockData(stockRoot) ? [new StockCatalogProvider(stockRoot)] : Array.Empty<ISongCatalogProvider>(),
-            .. Directory.Exists(tjaRoot) ? [new TjaCatalogProvider(tjaRoot)] : Array.Empty<ISongCatalogProvider>(),
+            // ponytail: custom TJA is off while the engine matches the game 1:1 (Waiwai has its own
+            // charts TJA cannot supply); set WADDAMBURO_CUSTOM_TJA=1 to list them anyway.
+            .. Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1" && Directory.Exists(tjaRoot)
+                ? [new TjaCatalogProvider(tjaRoot)] : Array.Empty<ISongCatalogProvider>(),
         ];
         var catalogAssets = new CatalogAssetRouter(providers);
         using var globalCatalog = new GlobalSongCatalog(providers);
@@ -84,7 +87,8 @@ internal static class EntrySongSelectFlow
         var songSelectJinglePath = findJingle(soundRoot, "JINGLE_GENRE.nub");
         using var previewController = audioEngine is null
             ? null
-            : new SongPreviewController(audioEngine, catalogAssets, songSelectJinglePath);
+            : new SongPreviewController(audioEngine, catalogAssets, songSelectJinglePath,
+                findJingle(soundRoot, "JINGLE_WAIGENRE.nub"));
         var soundController = soundRoot is null
             ? null
             : new AuthoredSoundController(audioEngine!, soundRoot);
@@ -196,7 +200,7 @@ internal static class EntrySongSelectFlow
             Path.GetFullPath(Path.Combine(assetRoot, "..", "..", "config", "S11100-1", "musicinfo.xml")));
         var hostFactory = new CatalogHostFactory(
                 flow,
-                songCatalog,
+                snapshot,
                 titleTextures,
                 previewController is null ? TracePreviewController.Instance : previewController,
                 soundController is null ? TraceSoundController.Instance : soundController,
@@ -239,7 +243,7 @@ internal static class EntrySongSelectFlow
             active = requireLumenScene(coordinator);
             textureIds = uploadTextures(application, active);
             if (active.Id == songSelectId)
-                previewController?.StartBackground();
+                previewController?.StartBackground(hostFactory.Waiwai);
             else if (active.Id == resultId)
                 soundController?.StartResultMusic();
             Console.WriteLine($"Showing {active.Id} at launch.");
@@ -308,13 +312,15 @@ internal static class EntrySongSelectFlow
                 var first = joinedSides.Count == 0 ? 0 : joinedSides.Min;
                 hostFactory.PlayerSide = first;
                 hostFactory.TwoPlayers = two;
+                // Two players start in Waiwai's song select (traced); one player only has the normal one.
+                hostFactory.Waiwai = two;
                 if (indicators is not null)
                 {
                     indicators.Side = first;
                     indicators.TwoPlayers = two;
                 }
                 if (donPresentation is not null) donPresentation.GameplaySide = first;
-                catalog.Replace(songSelectScene(songSelectId, joinedSides.Count == 0 ? [0] : [.. joinedSides]));
+                catalog.Replace(songSelectScene(songSelectId, joinedSides.Count == 0 ? [0] : [.. joinedSides], hostFactory.Waiwai));
             }
 
             void goTo(SceneId scene)
@@ -356,7 +362,7 @@ internal static class EntrySongSelectFlow
                     }
                 }
                 if (scene == songSelectId)
-                    previewController?.StartBackground();
+                    previewController?.StartBackground(hostFactory.Waiwai);
                 else if (scene == entryId && entryJinglePath is not null)
                     sceneBgm = jinglePath is null
                         ? audioEngine!.PlayLoop(entryJinglePath, AudioBus.Bgm)
@@ -539,6 +545,14 @@ internal static class EntrySongSelectFlow
                     escapeWasDown = escapeIsDown;
                     if (coordinator.Flow.State != GameFlowState.TransitionPending)
                     {
+                        // The mode-switch folder: reload as the other song select (normal <-> Waiwai).
+                        if (active.Id == songSelectId && hostFactory.SongSelect?.ModeSwitchRequested == true)
+                        {
+                            hostFactory.Waiwai = !hostFactory.Waiwai;
+                            catalog.Replace(songSelectScene(songSelectId, [.. joinedSides], hostFactory.Waiwai));
+                            goTo(songSelectId);
+                            return;
+                        }
                         if (active.Id == songSelectId && playRequests.Pending is { } pendingRequest)
                         {
                             if (rainbowSequence.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete)
@@ -596,7 +610,7 @@ internal static class EntrySongSelectFlow
                                     releaseTextures(application, textureIds);
                                     active = requireLumenScene(coordinator);
                                     textureIds = uploadTextures(application, active);
-                                    previewController?.StartBackground();
+                                    previewController?.StartBackground(hostFactory.Waiwai);
                                     return;
                                 }
                                 // Every song gets its themed skin or a fresh random original mix.
@@ -604,14 +618,27 @@ internal static class EntrySongSelectFlow
                                     .SelectMany(category => category.Songs.Select(song => (category.Name, song)))
                                     .First(entry => entry.song.Descriptor.Key == pendingRequest.Song);
                                 var theme = skins.Resolve(played.song.Descriptor, played.Name);
+                                // Waiwai: both players on the song's Waiwai layout (its duet charts reshaped by section).
+                                WaiwaiComposition? waiwai = null;
+                                if (hostFactory.Waiwai && loadedCharts.Length == 2
+                                    && played.song.Descriptor.WaiwaiComposition is { } compositionAsset)
+                                {
+                                    using var compositionStream = catalogAssets.OpenReadAsync(compositionAsset).AsTask().GetAwaiter().GetResult();
+                                    waiwai = WaiwaiComposition.Parse(compositionStream);
+                                    var (left, right) = waiwai.Apply(loadedCharts[0], loadedCharts[1]);
+                                    loadedCharts = [left, right];
+                                }
+                                if (soundController is not null) soundController.Waiwai = waiwai is not null;
                                 soundController?.PrepareGameplayDrums(pendingRequest.Players.Length == 2);
                                 // ponytail: the stage counts every song since launch (no credits yet); 8 stage frames.
                                 songInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(played.Name),
                                     Math.Min(++songsPlayed, 8));
                                 Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
                                 var side = pendingRequest.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
-                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme, side,
-                                    twoPlayers: pendingRequest.Players.Length == 2));
+                                catalog.Replace(waiwai is not null
+                                    ? GameplaySceneComposition.CreateWaiwai(gameplayId, ensoLayout)
+                                    : GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme, side,
+                                        twoPlayers: pendingRequest.Players.Length == 2));
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                                 var request = playRequests.ActivatePending();
                                 activeGameplayCharts = loadedCharts;
@@ -630,7 +657,8 @@ internal static class EntrySongSelectFlow
                                 gameplayTimeline = new GameplayTimeline(loadedCharts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
                                 gameplayStartTick = simulationTick;
                                 gameplayClock.Reset();
-                                gameplayPresentation.Start(loadedCharts, active, [.. request.Players.Select(player => player.Course)], side);
+                                gameplayPresentation.Start(loadedCharts, active, [.. request.Players.Select(player => player.Course)], side,
+                                    waiwai);
                                 Console.WriteLine(
                                     $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
                                     + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
@@ -804,7 +832,7 @@ internal static class EntrySongSelectFlow
                                 textureIds = uploadTextures(application, active);
                                 resultStartTick = simulationTick;
                                 if (active.Id == songSelectId)
-                                    previewController?.StartBackground();
+                                    previewController?.StartBackground(hostFactory.Waiwai);
                                 else if (active.Id == resultId)
                                     soundController?.StartResultMusic();
                                 Console.WriteLine($"Gameplay ended at tick {simulationTick}; showing {active.Id}.");
@@ -826,7 +854,7 @@ internal static class EntrySongSelectFlow
                         if (sceneBgm is { } previousBgm)
                             audioEngine?.Mixer.Stop(previousBgm, TimeSpan.FromMilliseconds(20));
                         sceneBgm = null;
-                        previewController?.StartBackground();
+                        previewController?.StartBackground(hostFactory.Waiwai);
                         if (songSelectJinglePath is not null)
                             Console.WriteLine($"Song Select jingle: {Path.GetFileName(songSelectJinglePath)}.");
                     }
@@ -874,15 +902,16 @@ internal static class EntrySongSelectFlow
     // Traced final name-board positions are (-580, 278) for the left drum's player and (308, 278) for
     // the right one's in the cabinet's centered coordinates, or (60, 638) / (948, 638) in our top-left
     // scene coordinates (session8, session9). Board n shows the player on sides[n].
-    private static SceneDefinition songSelectScene(SceneId id, IReadOnlyList<int> sides)
+    private static SceneDefinition songSelectScene(SceneId id, IReadOnlyList<int> sides, bool waiwai = false)
     {
+        var movie = waiwai ? "waiwai_song_select" : "song_select";
         SceneLayerDefinition board(int index) => index < sides.Count
             ? indicatorPart("player_name", sides[index] == 1 ? 948 : 60, 638)
             : indicatorPart("player_name", 640, 360);
         return new(SceneDefinition.CurrentVersion, id, [
             new SceneLayerDefinition(
-                "song_select/packeddata.ddp",
-                "song_select/song_select.lm",
+                $"{movie}/packeddata.ddp",
+                $"{movie}/{movie}.lm",
                 LumenMatrix.Identity,
                 "song-select"),
             indicatorPart("indicator"),
@@ -987,7 +1016,7 @@ internal static class EntrySongSelectFlow
 
     private sealed class CatalogHostFactory(
         GameFlowSession flow,
-        SongSelectCatalogView catalog,
+        SongCatalogSnapshot catalog,
         ISongBoardTextureService textures,
         ISongPreviewController previews,
         ISongSelectSoundController sounds,
@@ -1026,7 +1055,13 @@ internal static class EntrySongSelectFlow
         public void AdvanceEntry() => _entry?.Advance();
 
         private readonly GameFlowSession _flow = flow;
-        private readonly SongSelectCatalogView _catalog = catalog;
+        private readonly SongCatalogSnapshot _catalog = catalog;
+
+        /// <summary>Two players browse Waiwai's song select (and may switch to the normal one).</summary>
+        public bool Waiwai { get; set; }
+
+        /// <summary>The loaded song select's host (the flow polls its mode switch).</summary>
+        public SongSelectHostBinding? SongSelect { get; private set; }
         private readonly ISongBoardTextureService _textures = textures;
         private readonly ISongPreviewController _previews = previews;
         private readonly ISongSelectSoundController _sounds = sounds;
@@ -1156,7 +1191,8 @@ internal static class EntrySongSelectFlow
         {
             var binding = new SongSelectHostBinding(
                 new SongSelectSession(
-                    _catalog,
+                    new SongSelectCatalogView(_catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
+                        modeSwitch: TwoPlayers),
                     _textures,
                     _previews,
                     _playRequests),
@@ -1165,6 +1201,7 @@ internal static class EntrySongSelectFlow
                 parts: _parts,
                 side: PlayerSide,
                 twoPlayers: TwoPlayers);
+            SongSelect = binding;
             return new LumenLayerHost(binding, binding.Attach);
         }
     }

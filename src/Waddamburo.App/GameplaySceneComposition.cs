@@ -14,8 +14,90 @@ internal static class GameplaySceneComposition
     /// <summary>Host id of the second player's lane movies in two-player gameplay.</summary>
     public const string PlayerTwoHostId = "gameplay-static-2p";
 
-    // Movies both players share in two-player gameplay (one instance; the kusudama counts for both).
-    public static readonly string[] SharedRoles = ["song_info", "action_kusudama"];
+    // Movies both players share in two-player gameplay (one instance, drawn over both lanes; the
+    // kusudama counts for both). Waiwai adds its effect overlays.
+    public static readonly string[] SharedRoles = ["song_info", "action_kusudama", "cut_in", "title_waiwai",
+        "action_synchro_start", "action_solo_above_lane", "clear_effects"];
+
+    // Waiwai gameplay (traced session11-waiwai): one voltage gauge and backdrop for both, the effect
+    // overlays, and per lane the common movies with Waiwai's roll art, flights and synchro notes.
+    private static readonly (string Archive, string Movie, int Index, int Depth)[] WaiwaiShared =
+    [
+        ("enso_system/common", "song_info", 13, 505),
+        ("enso_system/common", "action_kusudama", 0, 500),
+        ("enso_waiwai", "gage_w_normal", 14, 2002),
+        ("waiwaicollabo/00_taiko", "donbg_w_00", 2, 3006),
+        ("enso_waiwai_effect", "title_waiwai", 0, 505),
+        ("enso_waiwai_effect", "cut_in", 0, 501),
+        ("enso_waiwai_effect", "action_synchro_start", 0, 502),
+        ("enso_waiwai_effect", "action_synchro_time", 0, 3000),
+        ("enso_waiwai_effect", "action_solo_above_lane", 0, 502),
+        ("enso_waiwai_effect", "action_solo_under_don", 0, 3002),
+        ("enso_waiwai_effect", "clear_effects", 0, 502),
+    ];
+
+    // Per lane; index is the first lane's (the second takes the pair's next, except the listed ones).
+    private static readonly (string Archive, string Movie, int? Index, int Depth)[] WaiwaiLane =
+    [
+        ("enso_system/common", "don3d", 26, 3001),
+        ("waiwaicollabo/00_taiko", "renda_w_00", 10, 3005),
+        ("enso_system/common", "lane", 14, 2003),
+        ("enso_system/common", "lane_hit", 14, 2001),
+        ("enso_system/common", "lane_syousetsu", null, 2000),
+        ("enso_system/common", "onp_don", null, 1002),
+        ("enso_system/common", "onp_katsu", null, 1002),
+        ("enso_system/common", "onp_don_dai", null, 1002),
+        ("enso_system/common", "onp_katsu_dai", null, 1002),
+        ("enso_system/common", "onp_renda", null, 1002),
+        ("enso_system/common", "onp_renda_dai", null, 1002),
+        ("enso_system/common", "onp_fusen", null, 1002),
+        ("enso_system/common", "onp_kusudama", null, 1002),
+        ("enso_waiwai", "onp_synchro_don_1p", null, 1002),
+        ("enso_waiwai", "onp_synchro_katsu_1p", null, 1002),
+        ("enso_waiwai", "onp_synchro_daidon_1p", null, 1002),
+        ("enso_waiwai", "onp_synchro_daikatsu_1p", null, 1002),
+        ("enso_system/common", "lane_obi", 14, 507),
+        ("indicator", "player_name", 11, 505),
+        ("enso_system/don1p", "sinuchi_combo_bonus_don_1p", 20, 502),
+        ("enso_system/common", "renda_num", 18, 502),
+        ("enso_system/common", "lane_hit_effect", 14, 502),
+        ("waiwaicollabo/00_taiko", "onp_kiseki_w_00_1p", 14, 502),
+        ("enso_system/base1p", "action_fusen_1p", 0, 500),
+    ];
+
+    /// <summary>
+    /// Waiwai gameplay for two players (traced session11-waiwai): both Dons side by side at the bottom
+    /// (ensolayout 26 / 27), both lanes on the shared voltage gauge. The second lane's movies are the
+    /// katsu2p / base2p / _2p variants under <see cref="PlayerTwoHostId"/>.
+    /// </summary>
+    // ponytail: collabo skin 00_taiko only (waiwaicollabo/NN_* per song are untraced).
+    public static SceneDefinition CreateWaiwai(SceneId id, EnsoLayout layout)
+    {
+        IEnumerable<(SceneLayerDefinition Layer, int Depth)> lane(int lane) => WaiwaiLane.Select(entry =>
+        {
+            var index = entry.Index switch
+            {
+                null => (int?)null,
+                10 => 10, // both lanes' roll art sit at 10 (traced)
+                { } first => lane == 1 && (PairedIndices.Contains(first) || first == 26) ? first + 1 : first,
+            };
+            var at = index is { } i ? layout[i] : default;
+            var (archive, movie) = (lane, entry.Archive) switch
+            {
+                (1, "enso_system/don1p") => ("enso_system/katsu2p", entry.Movie.Replace("_don_1p", "_katsu_2p")),
+                (1, "enso_system/base1p") => ("enso_system/base2p", entry.Movie.Replace("_1p", "_2p")),
+                (1, _) when entry.Movie.EndsWith("_1p", StringComparison.Ordinal) => (entry.Archive, entry.Movie[..^3] + "_2p"),
+                _ => (entry.Archive, entry.Movie),
+            };
+            return (Layer: layer($"{archive}/packeddata.ddp", $"{movie}/{movie}.lm", at.X, at.Y,
+                lane == 1 ? PlayerTwoHostId : StaticHostId), entry.Depth);
+        });
+        var shared = WaiwaiShared.Select(entry => (Layer: layer($"{entry.Archive}/packeddata.ddp", $"{entry.Movie}/{entry.Movie}.lm",
+            layout[entry.Index].X, layout[entry.Index].Y, StaticHostId), entry.Depth));
+        return new(SceneDefinition.CurrentVersion, id, shared.Concat(lane(0)).Concat(lane(1))
+            .OrderByDescending(entry => entry.Depth)
+            .Select(entry => entry.Layer));
+    }
 
     // ensolayout pairs: the second player's lane movie sits at the next index (research/ensolayout.md,
     // traced session9-2p). Index 0 (overlays), 13 (song_info) and the backgrounds have no pair.
@@ -80,6 +162,8 @@ internal static class GameplaySceneComposition
     public static int? Depth(string role) =>
         SkinRoles.FirstOrDefault(entry => entry.Role == role) is { Role: not null } skin ? skin.Depth
         : SystemLayers.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } system ? system.Depth
+        : WaiwaiShared.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } shared ? shared.Depth
+        : WaiwaiLane.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } waiwai ? waiwai.Depth
         : null;
 
     /// <summary>
@@ -184,8 +268,10 @@ internal static class GameplaySceneComposition
     {
         if (System.Text.RegularExpressions.Regex.Match(layerName, "^(.+?)_[ab]_[0-9]+(?:_1p|_2p|_common)?$") is { Success: true } match)
             return match.Groups[1].Value;
-        var name = layerName.Replace("_katsu_1p", "_don_1p", StringComparison.Ordinal)
-            .Replace("_katsu_2p", "_don_1p", StringComparison.Ordinal);
+        // Synchro notes name the note (don / katsu), not the character.
+        var name = layerName.StartsWith("onp_synchro_", StringComparison.Ordinal) ? layerName
+            : layerName.Replace("_katsu_1p", "_don_1p", StringComparison.Ordinal)
+                .Replace("_katsu_2p", "_don_1p", StringComparison.Ordinal);
         return name.EndsWith("_2p", StringComparison.Ordinal) ? name[..^3] + "_1p" : name;
     }
 

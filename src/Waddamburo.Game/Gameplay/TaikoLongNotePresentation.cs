@@ -68,7 +68,8 @@ public sealed class TaikoLongNotePresentation
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
-        Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null)
+        Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null,
+        bool waiwai = false)
     {
         _player = player;
         _kusu = player == 1 ? "don_kusu2P" : "don_kusu1P";
@@ -93,7 +94,7 @@ public sealed class TaikoLongNotePresentation
             if (don is not null) DonLumenBinding.Attach(kusudama.Player, don, reset: false);
             // Traced once per player, with the player count.
             call(kusudama.Player, "SetPlayerNum", LumenHostValue.FromNumber(sharedKusudama?.Players ?? 1));
-            call(kusudama.Player, "SetWaiWai", LumenHostValue.FromBoolean(false));
+            call(kusudama.Player, "SetWaiWai", LumenHostValue.FromBoolean(waiwai));
         }
         session.LongNoteHit += hit;
     }

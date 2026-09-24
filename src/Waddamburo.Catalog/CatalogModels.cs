@@ -118,6 +118,12 @@ public sealed record SongDescriptor
     public TimeSpan? PreviewStart { get; }
 
     public string? Subtitle { get; }
+
+    /// <summary>
+    /// The song's Waiwai (party mode) section layout, when the song can be played in Waiwai; the
+    /// game's own songs author it (fumen/&lt;id&gt;/composition.xml).
+    /// </summary>
+    public CatalogAssetKey? WaiwaiComposition { get; init; }
 }
 
 public sealed record SongCategoryDescriptor

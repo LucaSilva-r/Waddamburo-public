@@ -306,12 +306,16 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
 
     // A drum's hit sounds: centred for one player; in two-player play the left drum's pan left and
     // the right drum's right (traced session9-2p).
-    private static string drumBank(int? lane) => lane switch
+    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100" : "SE_GAME_NEIRO_000") + lane switch
     {
-        0 => "SE_GAME_NEIRO_000_L",
-        1 => "SE_GAME_NEIRO_000_R",
-        _ => "SE_GAME_NEIRO_000_C",
+        0 => "_L",
+        1 => "_R",
+        _ => "_C",
     };
+
+    /// <summary>Waiwai gameplay plays its own drum tone (traced SE_GAME_NEIRO_100_L/R).</summary>
+    // ponytail: Waiwai song select's tone choice (AssignTone / RequestToneSE) is not offered yet.
+    public bool Waiwai { get; set; }
 
     public void PrepareGameplayDrums(bool twoPlayers = false)
     {
@@ -370,6 +374,17 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
                 playNamedBankCue("SE_GAME", own(12));
                 playNamedBankCue("VO_GAME", own(153));
                 break;
+            // Waiwai (traced session11-waiwai): SE_WAIENSO 0 as the song starts, 4 per together
+            // section, 2 per solo section.
+            case GameplaySoundEvent.WaiwaiStart:
+                playNamedBankCue("SE_WAIENSO", 0);
+                break;
+            case GameplaySoundEvent.SynchroCutIn:
+                playNamedBankCue("SE_WAIENSO", 4);
+                break;
+            case GameplaySoundEvent.SoloCutIn:
+                playNamedBankCue("SE_WAIENSO", 2);
+                break;
             case GameplaySoundEvent.SongFinished:
                 playNamedBankCue("VO_RESULT", 0);
                 playNamedBankCue("SE_GAME", 15);
@@ -391,6 +406,9 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
             "Variety" => 4,
             "Anime" => 5,
             "Vocaloid" => 7,
+            // The mode-switch folder (traced 65 in normal Song Select, 66 in Waiwai's).
+            "To Waiwai" => 65,
+            "To Normal" => 66,
             _ => -1,
         };
         if (cue < 0)

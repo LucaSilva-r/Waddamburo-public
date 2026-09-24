@@ -152,10 +152,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         });
         lumen.RegisterMethod("GetCoinNum", _ => number(Coins?.Credits ?? 0));
         lumen.RegisterMethod("IsCardReaderError", _ => LumenHostValue.FromBoolean(false));
-        // ponytail: modes without a scene yet (AI battle, shop, Waiwai) are reported unavailable.
+        // ponytail: modes without a scene yet (AI battle, shop) are reported unavailable. Waiwai is on:
+        // the game enables it while online (traced 0 online, 1 offline); this engine has no network gate.
         lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("IsAvailableBattle", _ => LumenHostValue.FromBoolean(false));
-        lumen.RegisterMethod("IsWaiwaiDisable", _ => LumenHostValue.FromBoolean(true));
+        lumen.RegisterMethod("IsWaiwaiDisable", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyMaccollabo", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyRecognizecollabo", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("Terminate", _ => LumenHostValue.FromBoolean(true));

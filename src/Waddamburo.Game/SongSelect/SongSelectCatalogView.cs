@@ -21,7 +21,12 @@ public enum SongCategoryPresentation
     None = 0,
     AlwaysVisible = 1 << 0,
     HideSongCount = 1 << 1,
+    /// <summary>GenreResource.FLAG_FOLDER_END: a folder without songs that decides at once (the mode switch).</summary>
+    FolderEnd = 1 << 2,
 }
+
+/// <summary>Which authored song select the view feeds.</summary>
+public enum SongSelectMode { Normal, Waiwai }
 
 public sealed record SongSelectSong(
     SongDescriptor Descriptor,
@@ -46,18 +51,42 @@ public sealed record SongSelectCategory(
 /// <summary>Source-neutral, revision-pinned data consumed by the authored Song Select host.</summary>
 public sealed class SongSelectCatalogView
 {
-    public SongSelectCatalogView(SongCatalogSnapshot snapshot)
+    /// <summary>The label of the folder that moves between normal and Waiwai song select (GenreResource id 20).</summary>
+    public const string ModeSwitchLabel = "通常とワイワイ移動";
+
+    /// <summary>
+    /// <paramref name="mode"/> Waiwai lists only the songs with a Waiwai layout (empty genres dropped).
+    /// <paramref name="modeSwitch"/> appends the folder to the other song select, which the game shows
+    /// with two players (traced last in both selects).
+    /// </summary>
+    // ponytail: Waiwai's "how to play" folder (id 21, before the switch) is left out until tutorials exist.
+    public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
+        bool modeSwitch = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
-        Categories = [.. snapshot.Categories.Select(category => new SongSelectCategory(
+        Mode = mode;
+        var categories = snapshot.Categories.Select(category => new SongSelectCategory(
             category.Key,
             category.Name,
             authoredLabel(category.Name),
             SongCategoryPresentation.AlwaysVisible,
             boardStyle(category.Name),
-            [.. category.Songs.Select(key => createSong(snapshot.Songs[key]))]))];
+            [.. category.Songs.Select(key => snapshot.Songs[key])
+                .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
+                .Select(createSong)]))
+            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty);
+        if (modeSwitch)
+            categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "mode-switch"),
+                mode == SongSelectMode.Waiwai ? "To Normal" : "To Waiwai", ModeSwitchLabel,
+                SongCategoryPresentation.FolderEnd, boardStyle(""), []));
+        Categories = [.. categories];
     }
+
+    public SongSelectMode Mode { get; }
+
+    /// <summary>Index of the mode-switch folder, or -1.</summary>
+    public int ModeSwitchCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == ModeSwitchLabel);
 
     public long Revision { get; }
 
