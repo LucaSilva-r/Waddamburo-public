@@ -88,12 +88,20 @@ public sealed class TaikoJudgementSession
     private int _nextNoteIndex;
     private PendingStrongHit? _pendingStrong;
     private TimeSpan? _lastJudgedInputTime;
+    private readonly bool _partnerHandNotes;
 
+    /// <summary>A hand note was hit (not missed), with the input time (two-player partner matching).</summary>
+    public event Action<int, TimeSpan>? HandNoteHit;
+
+    /// <param name="partnerHandNotes">Two players: a hand note's strong bonus comes from the partner
+    /// (<see cref="TaikoHandNoteLink"/>), not from this player's second hit.</param>
     public TaikoJudgementSession(
         PlayableChart chart,
         TaikoJudgementWindows windows,
-        TimeSpan strongSecondHitWindow)
+        TimeSpan strongSecondHitWindow,
+        bool partnerHandNotes = false)
     {
+        _partnerHandNotes = partnerHandNotes;
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentOutOfRangeException.ThrowIfLessThan(strongSecondHitWindow, TimeSpan.Zero);
         _chart = chart;
@@ -160,9 +168,21 @@ public sealed class TaikoJudgementSession
         var judgedIndex = _nextNoteIndex++;
         _lastJudgedInputTime = time;
         judge(judgedIndex, result.Value, offset);
-        if (result != TaikoHitResult.Miss && hitObject.IsStrong)
+        if (result != TaikoHitResult.Miss && hitObject.IsHand && _partnerHandNotes)
+            HandNoteHit?.Invoke(judgedIndex, time);
+        else if (result != TaikoHitResult.Miss && hitObject.IsStrong)
             _pendingStrong = new PendingStrongHit(judgedIndex, action, time);
         return TaikoInputResult.Judged;
+    }
+
+    /// <summary>Completes a hit note's strong bonus from outside (the partner hit the same hand note).</summary>
+    public void CompleteStrongHit(int noteIndex)
+    {
+        if (_strongHits[noteIndex] || _results[noteIndex] is null or TaikoHitResult.Miss)
+            return;
+        _strongHits[noteIndex] = true;
+        Judged?.Invoke(new TaikoNoteJudgement(noteIndex, _chart.HitObjects[noteIndex],
+            _results[noteIndex], _offsets[noteIndex], true));
     }
 
     private TaikoInputResult hitLongNote(TaikoInputAction action, TimeSpan time)

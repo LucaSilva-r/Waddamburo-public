@@ -30,6 +30,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     IDonPresentationController? don = null,
     Action<int?, GameplaySoundEvent>? playEventSound = null)
 {
+    private static readonly TimeSpan GreatWindow = TimeSpan.FromMilliseconds(35);
     private Lane[] _lanes = [];
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
 
@@ -63,6 +64,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
             courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound))];
+        var handNotes = new TaikoHandNoteLink(GreatWindow);
+        for (var lane = 0; lane < 2; lane++)
+            handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
     }
 
     private static string role(SceneLayerDefinition definition) =>
@@ -128,6 +132,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private bool _stopped;
 
         public TaikoPlayResult Result => _result();
+
+        public TaikoJudgementSession Session => _session;
 
         /// <summary>
         /// <paramref name="lane"/> 0 = the top lane, 1 = the second player's lower lane;
@@ -197,8 +203,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
                     throw new InvalidDataException("Gameplay note movie is missing its initial state.");
             _session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(
-                TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)),
-                TimeSpan.FromMilliseconds(30));
+                GreatWindow, TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)),
+                TimeSpan.FromMilliseconds(30), partnerHandNotes: players == 2);
             _longNotes = new TaikoLongNotePresentation(chart, _session, kind =>
             {
                 var name = kind switch

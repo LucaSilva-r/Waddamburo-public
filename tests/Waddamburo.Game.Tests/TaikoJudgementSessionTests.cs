@@ -116,7 +116,33 @@ public sealed class TaikoJudgementSessionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => session.AdvanceTo(TimeSpan.FromSeconds(0.4)));
     }
 
-    private static TaikoJudgementSession createSession(params PlayableHitObject[] notes)
+    [Theory]
+    [InlineData(1, true)]   // together: doubles for both
+    [InlineData(30, true)]  // within the great window
+    [InlineData(40, false)] // outside it: plain hits
+    public void TwoPlayersDoubleAHandNoteOnlyWhenBothHitItTogether(int apartMs, bool doubled)
+    {
+        var note = new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon, isHand: true);
+        var left = createSession(partner: true, note);
+        var right = createSession(partner: true, note);
+        var link = new TaikoHandNoteLink(TimeSpan.FromMilliseconds(35));
+        link.Add(left, [note]);
+        link.Add(right, [note]);
+        var strong = new List<string>();
+        left.Judged += judgement => { if (judgement.StrongHitCompleted) strong.Add("left"); };
+        right.Judged += judgement => { if (judgement.StrongHitCompleted) strong.Add("right"); };
+
+        // One player's second hit on the same drum no longer completes it.
+        left.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        left.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.005));
+        right.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1) + TimeSpan.FromMilliseconds(apartMs));
+
+        Assert.Equal(doubled ? ["left", "right"] : [], strong.Order());
+    }
+
+    private static TaikoJudgementSession createSession(params PlayableHitObject[] notes) => createSession(false, notes);
+
+    private static TaikoJudgementSession createSession(bool partner, params PlayableHitObject[] notes)
     {
         var song = new SongKey(SongSourceKind.Tja, "song");
         var chart = new PlayableChart(
@@ -128,6 +154,6 @@ public sealed class TaikoJudgementSessionTests
             [new ChartScrollPoint(TimeSpan.Zero, 1)],
             [new ChartEffectPoint(TimeSpan.Zero, false)],
             [new ChartBarLine(TimeSpan.Zero, true)]);
-        return new TaikoJudgementSession(chart, Windows, TimeSpan.FromMilliseconds(30));
+        return new TaikoJudgementSession(chart, Windows, TimeSpan.FromMilliseconds(30), partner);
     }
 }
