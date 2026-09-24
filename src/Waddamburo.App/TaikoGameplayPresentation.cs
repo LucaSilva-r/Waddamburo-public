@@ -42,6 +42,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>The first lane's numbers for the results screen (null before a song).</summary>
     public TaikoPlayResult? Result => _lanes.Length == 0 ? null : _lanes[0].Result;
 
+    /// <summary>The Waiwai results' numbers (null outside Waiwai).</summary>
+    public WaiwaiOutcome? WaiwaiOutcome => _stage?.Outcome;
+
     /// <summary>Every lane's numbers, in lane order (the second is the right drum's player).</summary>
     public IReadOnlyList<TaikoPlayResult> Results => [.. _lanes.Select(lane => lane.Result)];
 
@@ -54,6 +57,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     {
         var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: scene.Player.Layers[index],
             layer.Content)).ToArray();
+        _stage = null;
         if (charts.Count == 1)
         {
             _shared = [];

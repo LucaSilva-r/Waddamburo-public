@@ -5,7 +5,7 @@ using Waddamburo.Platform.Sdl.Media;
 
 /// <summary>Resolves authored nuSound2 bank/cue requests against a user-supplied sound tree.</summary>
 internal sealed class AuthoredSoundController : ISongSelectSoundController, IRetrySoundController,
-    IResultSoundController, IGameOverSoundController, IAttractSoundController
+    IResultSoundController, IGameOverSoundController, IAttractSoundController, IWaiwaiResultSoundController
 {
     private readonly AudioEngine _audio;
     private readonly string _bankRoot;
@@ -144,6 +144,27 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
             Console.WriteLine($"Result.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");
     }
 
+    // Waiwai results (traced session9/11/13): PlaySE(id) -> SE_WAIRSLT_COLLABO_00, PlayVO(id) ->
+    // VO_WAIRSLT_COLLABO_00; the comment voice (PlayVO 9) is 14 + its text.nut sentence.
+    private static readonly Dictionary<int, int> WaiwaiResultEffects = new()
+    {
+        [2] = 0, [3] = 1, [4] = 3, [5] = 4, [6] = 6, [8] = 10, [9] = 12, [10] = 13, [11] = 17, [12] = 18,
+    };
+
+    public void RequestSound(WaiwaiResultSoundRequest request)
+    {
+        int? cue = request.Kind == WaiwaiResultSoundKind.Effect
+            ? WaiwaiResultEffects.TryGetValue(request.Id, out var effect) ? effect : null
+            : request.Id switch { 1 => 2, 2 => 4, 6 => 13, 9 => 14 + request.Sentence, _ => null };
+        if (cue is not { } value)
+        {
+            Console.WriteLine($"WaiwaiResult.{request.Kind}({request.Id}) [unmapped]");
+            return;
+        }
+        playNamedBankCue(request.Kind == WaiwaiResultSoundKind.Effect ? "SE_WAIRSLT_COLLABO_00" : "VO_WAIRSLT_COLLABO_00",
+            value, request.Kind == WaiwaiResultSoundKind.Voice ? AudioBus.Voice : null, trace: request.Id != 2);
+    }
+
     public void RequestSound(GameOverSoundRequest request)
     {
         switch (request.Kind, request.Group, request.Cue)
@@ -191,19 +212,21 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
         }
     }
 
-    public void StartResultMusic()
+    /// <summary>The results music: JINGLE_SEISEKI, or JINGLE_WAIRSLT after a Waiwai song.</summary>
+    public void StartResultMusic(bool waiwai = false)
     {
         if (_resultMusicHandle is { } handle && _audio.Mixer.IsPlaying(handle))
             return;
-        var path = Path.Combine(_musicRoot, "JINGLE_SEISEKI.nub");
+        var jingle = waiwai ? "JINGLE_WAIRSLT" : "JINGLE_SEISEKI";
+        var path = Path.Combine(_musicRoot, jingle + ".nub");
         try
         {
             _resultMusicHandle = _audio.PlayLoop(path, AudioBus.Bgm);
-            Console.WriteLine("Result music JINGLE_SEISEKI -> Bgm.");
+            Console.WriteLine($"Result music {jingle} -> Bgm.");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
-            if (_reportedFailures.Add(("JINGLE_SEISEKI", -1)))
+            if (_reportedFailures.Add((jingle, -1)))
                 Console.Error.WriteLine($"Result music is unavailable: {exception.Message}");
         }
     }

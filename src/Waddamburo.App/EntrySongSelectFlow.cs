@@ -129,6 +129,20 @@ internal static class EntrySongSelectFlow
         var gameOverId = new SceneId("gameover");
         var rainbowTransitionId = new SceneId("rainbow-transition");
         var rainbowDefinition = RainbowTransitionComposition.Create(rainbowTransitionId);
+        // Traced 1P results: the results movie and its "press to continue" overlay, full screen.
+        var resultDefinition = new SceneDefinition(SceneDefinition.CurrentVersion, resultId, [
+            new SceneLayerDefinition("enso_result/packeddata.ddp", "result/result.lm", LumenMatrix.Identity, "result"),
+            new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
+        ]);
+        // Waiwai's results (traced): its movie full screen, the two name boards at (-580|308, 220) centred.
+        var waiwaiResultDefinition = new SceneDefinition(SceneDefinition.CurrentVersion, resultId, [
+            new SceneLayerDefinition("waiwai_result/packeddata.ddp", "waiwai_result/waiwai_result.lm", LumenMatrix.Identity,
+                "waiwai-result"),
+            new SceneLayerDefinition("indicator/packeddata.ddp", "player_name/player_name.lm",
+                LumenMatrix.Identity with { X = 60, Y = 580 }, "waiwai-result-board-0"),
+            new SceneLayerDefinition("indicator/packeddata.ddp", "player_name/player_name.lm",
+                LumenMatrix.Identity with { X = 948, Y = 580 }, "waiwai-result-board-1"),
+        ]);
         // Traced: a finished song closes the intermission shutter (Close(0)), then the results load
         // under it; result.lm opens on the same closed-shutter art, so the shutter is just dropped.
         var shutterDefinition = new SceneDefinition(SceneDefinition.CurrentVersion, new SceneId("shutter"), [
@@ -144,6 +158,7 @@ internal static class EntrySongSelectFlow
         ]);
         var ensoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
         var costumeIcons = new CostumeIconTextures(application, Path.GetFullPath(Path.Combine(assetRoot, "..", "..")));
+        var waiwaiResultTextures = new WaiwaiResultTextures(application, Path.GetFullPath(Path.Combine(assetRoot, "..", "..")));
         var songInfo = new TaikoSongInfo(0, 1);
         TaikoPlayResult? diagnosticResult = startScene switch
         {
@@ -153,6 +168,12 @@ internal static class EntrySongSelectFlow
                 TaikoCourse.Normal, 500_000, 90, 7, 3, 80, 0, 45, true),
             _ => null,
         };
+        // --start-scene=waiwai-result; WADDAMBURO_WAIWAI_RESULT=segments,duet%,rare hits (e.g. 30,70,10).
+        WaiwaiOutcome? diagnosticWaiwai = startScene == StartScene.WaiwaiResult
+            ? Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RESULT")?.Split(',') is [var segments, var duet, .. var rest]
+                ? new(int.Parse(segments), int.Parse(duet), [.. string.Concat(rest).Select(static hit => hit == '1')])
+                : new(50, 90, [true])
+            : null;
         var songsPlayed = 0;
         var flow = new GameFlowSession();
         var playRequests = new PlayRequestState();
@@ -182,11 +203,7 @@ internal static class EntrySongSelectFlow
                 ]),
                 songSelectScene(songSelectId, [0]),
                 GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout),
-                // Traced 1P results: the results movie and its "press to continue" overlay, full screen.
-                new SceneDefinition(SceneDefinition.CurrentVersion, resultId, [
-                    new SceneLayerDefinition("enso_result/packeddata.ddp", "result/result.lm", LumenMatrix.Identity, "result"),
-                    new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
-                ]),
+                diagnosticWaiwai is null ? resultDefinition : waiwaiResultDefinition,
                 // Traced end of a credit: the revival drum roll after a failed first song, then game over.
                 new SceneDefinition(SceneDefinition.CurrentVersion, retryId, [
                     new SceneLayerDefinition("enso_result/packeddata.ddp", "retry_game/retry_game.lm", LumenMatrix.Identity, "retry"),
@@ -222,11 +239,12 @@ internal static class EntrySongSelectFlow
             StartScene.Attract => logoId,
             StartScene.Entry => entryId,
             StartScene.SongSelect => songSelectId,
-            StartScene.ResultFail or StartScene.ResultClear => resultId,
+            StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult => resultId,
             StartScene.Retry => retryId,
             StartScene.GameOver => gameOverId,
             _ => throw new ArgumentOutOfRangeException(nameof(startScene)),
         };
+        hostFactory.WaiwaiOutcome = () => gameplayPresentation.WaiwaiOutcome ?? diagnosticWaiwai;
         coordinator.StartAsync(initialScene).AsTask().GetAwaiter().GetResult();
 
         LumenGameSceneInstance active = null!;
@@ -245,7 +263,7 @@ internal static class EntrySongSelectFlow
             if (active.Id == songSelectId)
                 previewController?.StartBackground(hostFactory.Waiwai);
             else if (active.Id == resultId)
-                soundController?.StartResultMusic();
+                soundController?.StartResultMusic(diagnosticWaiwai is not null);
             Console.WriteLine($"Showing {active.Id} at launch.");
             indicators = new SystemIndicators((LumenGameSceneInstance)loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
@@ -422,7 +440,7 @@ internal static class EntrySongSelectFlow
                         ? textureIds[index]
                         : throw new InvalidDataException($"Scene snapshot references missing texture {index}."),
                     surface => attractMovie?.Resolve(surface) ?? donPresentation?.Resolve(surface)
-                        ?? costumeIcons.Resolve(surface) ?? titleTextures.Resolve(surface));
+                        ?? costumeIcons.Resolve(surface) ?? waiwaiResultTextures.Resolve(surface) ?? titleTextures.Resolve(surface));
                 IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => indicators is null ? []
                     : LumenRenderFrameAdapter.Compose(
                         indicators.CreateSnapshot(overIntermission, (float)interpolationFraction),
@@ -678,8 +696,11 @@ internal static class EntrySongSelectFlow
                                 rainbow = null;
                             }
                             if (finishFade()) return;
-                            // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message).
-                            if (escapePressed || RetryGameHostBinding.IsEnd(active.Player.Layers[0].Player))
+                            // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message; Waiwai's
+                            // reports AllFinish).
+                            if (escapePressed || (hostFactory.WaiwaiResult is { } waiwaiResult
+                                    ? waiwaiResult.Ended
+                                    : RetryGameHostBinding.IsEnd(active.Player.Layers[0].Player)))
                             {
                                 fadeTo(hostFactory.CreditNext switch
                                 {
@@ -792,10 +813,16 @@ internal static class EntrySongSelectFlow
                                 && chartFinished && musicFinished && !gameplayPresentation.OverlayActive)
                             {
                                 releaseTextures(application, rainbowTextureIds);
+                                rainbowTextureIds = [];
                                 rainbow?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                                rainbow = (LumenGameSceneInstance)loader.LoadAsync(shutterDefinition, CancellationToken.None)
-                                    .AsTask().GetAwaiter().GetResult();
-                                rainbowTextureIds = uploadTextures(application, rainbow);
+                                rainbow = null;
+                                // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
+                                if (gameplayPresentation.WaiwaiOutcome is null)
+                                {
+                                    rainbow = (LumenGameSceneInstance)loader.LoadAsync(shutterDefinition, CancellationToken.None)
+                                        .AsTask().GetAwaiter().GetResult();
+                                    rainbowTextureIds = uploadTextures(application, rainbow);
+                                }
                                 shutterStartTick = simulationTick;
                                 shutterClosing = false;
                             }
@@ -829,6 +856,8 @@ internal static class EntrySongSelectFlow
                                 // Escape skips straight back; a finished song shows its results first.
                                 if (!escapePressed)
                                     soundController?.PlayGameplayEvent(null, GameplaySoundEvent.SongFinished);
+                                var waiwaiResults = gameplayPresentation.WaiwaiOutcome is not null;
+                                catalog.Replace(waiwaiResults ? waiwaiResultDefinition : resultDefinition);
                                 coordinator.TransitionToAsync(escapePressed ? songSelectId : resultId).AsTask().GetAwaiter().GetResult();
                                 activeGameplayCharts = [];
                                 releaseTextures(application, textureIds);
@@ -838,7 +867,7 @@ internal static class EntrySongSelectFlow
                                 if (active.Id == songSelectId)
                                     previewController?.StartBackground(hostFactory.Waiwai);
                                 else if (active.Id == resultId)
-                                    soundController?.StartResultMusic();
+                                    soundController?.StartResultMusic(waiwaiResults);
                                 Console.WriteLine($"Gameplay ended at tick {simulationTick}; showing {active.Id}.");
                             }
                         }
@@ -1109,6 +1138,9 @@ internal static class EntrySongSelectFlow
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
+            "waiwai-result" => waiwaiResultHost(),
+            "waiwai-result-board-0" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 0)),
+            "waiwai-result-board-1" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 1)),
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
             "gameover" => gameOverHost(),
@@ -1119,12 +1151,35 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost resultHost()
         {
+            WaiwaiResult = null;
             var plays = playResults();
             if (plays.Count == 0)
                 throw new InvalidOperationException("Results loaded without a finished play.");
             var binding = new ResultHostBinding(() => plays, songInfo().Stage, EndMessage,
                 _don, _sounds as IResultSoundController, PlayerSide);
             return new LumenLayerHost(binding, binding.Attach);
+        }
+
+        /// <summary>The loaded Waiwai results' host (null for normal results).</summary>
+        public WaiwaiResultHostBinding? WaiwaiResult { get; private set; }
+
+        /// <summary>Waiwai's numbers for its results screen, from the finished song.</summary>
+        public Func<WaiwaiOutcome?>? WaiwaiOutcome { get; set; }
+
+        private LumenLayerHost waiwaiResultHost()
+        {
+            var outcome = WaiwaiOutcome?.Invoke() ?? throw new InvalidOperationException("Waiwai results without a Waiwai song.");
+            var binding = WaiwaiResult = new WaiwaiResultHostBinding(outcome.GaugeSegments, outcome.DuetPercent,
+                outcome.RareNotesHit, _don, _sounds as IWaiwaiResultSoundController);
+            return new LumenLayerHost(binding, player =>
+            {
+                binding.Attach(player);
+                player.SetNativeFill("dummy_bg", WaiwaiResultTextures.Background);
+                player.SetNativeFill("dummy_sentence", WaiwaiResultTextures.Sentence(binding.Sentence));
+                // ponytail: 00_taiko has one rare note kind; every slot shows it.
+                for (var slot = 1; slot <= 5; slot++)
+                    player.SetNativeFill($"dummy_rare_onp_0{slot}", WaiwaiResultTextures.RareNote);
+            });
         }
 
         /// <summary>The loaded revival scene's host (the flow polls its outcome).</summary>

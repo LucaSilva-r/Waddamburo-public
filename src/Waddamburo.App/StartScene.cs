@@ -8,6 +8,7 @@ internal enum StartScene
     ResultClear,
     Retry,
     GameOver,
+    WaiwaiResult,
 }
 
 internal static class StartSceneParser
@@ -22,7 +23,8 @@ internal static class StartSceneParser
         "result-clear" => StartScene.ResultClear,
         "retry" => StartScene.Retry,
         "gameover" => StartScene.GameOver,
+        "waiwai-result" => StartScene.WaiwaiResult,
         _ => throw new ArgumentException(
-            "--start-scene must be boot, attract, entry, song-select, result-fail, result-clear, retry, or gameover."),
+            "--start-scene must be boot, attract, entry, song-select, result-fail, result-clear, retry, gameover, or waiwai-result."),
     };
 }
