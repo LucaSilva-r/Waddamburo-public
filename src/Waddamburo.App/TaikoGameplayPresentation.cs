@@ -21,6 +21,7 @@ internal enum GameplaySoundEvent
     FullComboBanner,
     SongFinished,
     WaiwaiStart,
+    RareHit,
     SynchroCutIn,
     SoloCutIn,
 }
@@ -128,7 +129,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     {
         private static readonly string[] NoteMovieNames = ["onp_don", "onp_katsu", "onp_don_dai",
             "onp_katsu_dai", "onp_tetunagidon_1p", "onp_tetunagikatsu_1p", "onp_synchro_don_1p", "onp_synchro_katsu_1p",
-            "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p"];
+            "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p", "onp_rare_0_w_00"];
         private readonly TaikoJudgementSession _session;
         private readonly TaikoLumenPresentation _presentation;
         private readonly TaikoHitFlights _flights;
@@ -312,6 +313,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
                 if (!judgement.StrongHitCompleted && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good)
                 {
+                    if (judgement.HitObject.IsRare) sound(GameplaySoundEvent.RareHit);
                     if (score.Combo == 50) sound(GameplaySoundEvent.FiftyCombo);
                     else if (score.Combo == 100) sound(GameplaySoundEvent.HundredCombo);
                 }
@@ -350,7 +352,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 && (drawn(pair.Key) || pair.Key == flightKey)).ToArray();
             var flightsAt = Array.FindIndex(foreground, pair => pair.Key == flightKey);
             // Don is drawn right after his backdrop (reference frame order).
-            _characterSlot = Array.FindIndex(background, pair => pair.Key is "donbg" or "donbg_w_00") + 1;
+            // Waiwai: both Dons stand in front of the stage lights and projectors (user-confirmed: the
+            // second lane's Don, drawn after them, looked right).
+            _characterSlot = stage is not null
+                ? background.Count(pair => GameplaySceneComposition.Depth(pair.Key) >= 3000)
+                : Array.FindIndex(background, pair => pair.Key is "donbg" or "donbg_w_00") + 1;
             _presentation = new TaikoLumenPresentation(chart, _session,
                 background.Select(pair => pair.Value),
                 foreground.Where(pair => pair.Key != flightKey).Select(pair => pair.Value),
@@ -377,7 +383,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         [PlayableNoteKind.BigDon] = layers["onp_synchro_daidon_1p"],
                         [PlayableNoteKind.BigKa] = layers["onp_synchro_daikatsu_1p"],
                     }
-                    : null);
+                    : null,
+                layers.GetValueOrDefault("onp_rare_0_w_00"));
             _presentation.GoGoChanged += active =>
             {
                 if (active && goGoSplash is not null) label(goGoSplash, "splash");

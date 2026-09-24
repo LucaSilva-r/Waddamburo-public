@@ -33,6 +33,15 @@ public readonly record struct PlayableHitObject
 
     /// <summary>A Waiwai synchro note: both players play it in a together section (drawn as onp_synchro_*).</summary>
     public bool IsSynchro { get; init; }
+
+    /// <summary>
+    /// A note inside a quick run, sung do / ko / katsu rather than don / ka (fumen types 2, 3, 5).
+    /// Waiwai never makes these synchro notes (traced session12-notes).
+    /// </summary>
+    public bool InRun { get; init; }
+
+    /// <summary>A Waiwai rare (heart) note: played as its note, drawn with the collabo's rare art.</summary>
+    public bool IsRare { get; init; }
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }
 

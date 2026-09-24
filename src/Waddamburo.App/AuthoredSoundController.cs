@@ -376,6 +376,10 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
                 break;
             // Waiwai (traced session11-waiwai): SE_WAIENSO 0 as the song starts, 4 per together
             // section, 2 per solo section.
+            // Traced SE_GAME_COLLABO_00 cue 0 / 1 with the rare note: taken as the player who hit it.
+            case GameplaySoundEvent.RareHit:
+                playNamedBankCue("SE_GAME_COLLABO_00", lane ?? 0);
+                break;
             case GameplaySoundEvent.WaiwaiStart:
                 playNamedBankCue("SE_WAIENSO", 0);
                 break;

@@ -50,15 +50,34 @@ public sealed class WaiwaiComposition
     /// in a together section both play the left chart's notes as synchro notes; in a solo section the
     /// soloist keeps their notes and the other player only each measure's first note; outside the
     /// sections each plays their own. Big and hand notes are synchro big notes everywhere (all 31 of
-    /// linda hard's were).
+    /// linda hard's were); other notes only when the next note is a beat or more away, never inside a run.
     /// </summary>
     // ponytail: the adaptive support (waiwaiconfig.xml thinning / dondarake, which removed and changed
-    // notes live in the traces, notably in the first section) and the rare note are not modelled.
-    public (PlayableChart Left, PlayableChart Right) Apply(PlayableChart left, PlayableChart right)
+    // notes live in the traces), the few plain don / ka of the first together section (different
+    // between two runs, likely live) and the rare note are not modelled.
+    public (PlayableChart Left, PlayableChart Right) Apply(PlayableChart left, PlayableChart right, bool rareNote = false)
     {
         var timeline = Timeline(left);
         WaiwaiSectionTime? at(TimeSpan time) => timeline.Cast<WaiwaiSectionTime?>()
             .FirstOrDefault(section => time >= section!.Value.Start && time < section.Value.End);
+        // The rare (heart) note: both traced ones were the last do/ko note of the first together section.
+        // ponytail: two samples on one song; the game's choice is unknown.
+        TimeSpan? rare = null;
+        if (rareNote && timeline.Cast<WaiwaiSectionTime?>().FirstOrDefault(static section => section!.Value.Soloist is null)
+                is { } together)
+            rare = left.HitObjects.Where(note => note.InRun && note.StartTime >= together.Start && note.StartTime < together.End)
+                .Select(static note => (TimeSpan?)note.StartTime).LastOrDefault();
+        // A together note glows (synchro) when it is big, or a don / ka whose next note is at least a beat
+        // later; notes followed closely and run notes stay plain (traced on every intro measure of linda).
+        bool synchro(int index)
+        {
+            var note = left.HitObjects[index];
+            if (note.IsStrong) return true;
+            if (note.InRun) return false;
+            if (index + 1 >= left.HitObjects.Length) return true;
+            var bpm = left.TimingPoints.Last(point => point.Time <= note.StartTime).BeatsPerMinute;
+            return (left.HitObjects[index + 1].StartTime - note.StartTime).TotalMinutes * bpm >= 0.99;
+        }
         int measure(TimeSpan time)
         {
             var index = 0;
@@ -78,8 +97,9 @@ public sealed class WaiwaiComposition
                     continue;
                 notes.Add(note with { IsSynchro = note.IsStrong });
             }
-            notes.AddRange(left.HitObjects.Where(note => at(note.StartTime) is { Soloist: null })
-                .Select(note => note with { IsSynchro = true }));
+            notes.AddRange(left.HitObjects.Select((note, index) => (note, index))
+                .Where(pair => at(pair.note.StartTime) is { Soloist: null })
+                .Select(pair => pair.note with { IsSynchro = synchro(pair.index), IsRare = pair.note.StartTime == rare }));
             var longNotes = own.LongNotes.Where(note => at(note.StartTime) is not { Soloist: null })
                 .Concat(left.LongNotes.Where(note => at(note.StartTime) is { Soloist: null }))
                 .OrderBy(static note => note.StartTime);

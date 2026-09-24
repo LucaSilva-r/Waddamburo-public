@@ -625,7 +625,11 @@ internal static class EntrySongSelectFlow
                                 {
                                     using var compositionStream = catalogAssets.OpenReadAsync(compositionAsset).AsTask().GetAwaiter().GetResult();
                                     waiwai = WaiwaiComposition.Parse(compositionStream);
-                                    var (left, right) = waiwai.Apply(loadedCharts[0], loadedCharts[1]);
+                                    // A song gets its rare (heart) note by chance (traced 1 of 4 runs, and 2 of 2 earlier).
+                                    // ponytail: waiwaicollabo/00_taiko.xml prob_rare_0 = 16 read as a percent per song.
+                                    var (left, right) = waiwai.Apply(loadedCharts[0], loadedCharts[1],
+                                        rareNote: Random.Shared.Next(100) < 16
+                                            || Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RARE") == "1"); // diagnostic: force it
                                     loadedCharts = [left, right];
                                 }
                                 if (soundController is not null) soundController.Waiwai = waiwai is not null;

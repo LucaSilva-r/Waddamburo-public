@@ -15,6 +15,7 @@ public sealed class TaikoLumenPresentation
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> _notes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _handNotes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _synchroNotes;
+    private readonly LumenSceneLayer? _rareNote;
     private readonly LumenSceneLayer _bar;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
@@ -32,8 +33,10 @@ public sealed class TaikoLumenPresentation
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
         TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
-        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null)
+        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
+        LumenSceneLayer? rareNote = null)
     {
+        _rareNote = rareNote;
         _handNotes = handNotes;
         _synchroNotes = synchroNotes;
         _chart = chart;
@@ -114,7 +117,8 @@ public sealed class TaikoLumenPresentation
             hitNotes.Clear();
             var note = _chart.HitObjects[index];
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
-            var template = note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
+            var template = note.IsRare && _rareNote is { } rare ? rare
+                : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
             addAt(hitNotes, template, note.StartTime, time, scroll: true);

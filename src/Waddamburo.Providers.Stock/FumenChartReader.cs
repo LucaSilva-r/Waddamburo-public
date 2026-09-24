@@ -33,7 +33,7 @@ internal static class FumenChartReader
 
         // Audio time (ms) of every event; shifted to non-negative chart time at the end.
         var measures = new List<(double Time, double Bpm, double Speed, bool GoGo, bool Barline)>(measureCount);
-        var notes = new List<(double Time, PlayableNoteKind Kind, bool Hand)>();
+        var notes = new List<(double Time, PlayableNoteKind Kind, bool Hand, bool InRun)>();
         var longNotes = new List<(double Start, double End, PlayableLongNoteKind Kind, int Hits)>();
         int? scoreInit = null, scoreDiff = null;
         for (var measure = 0; measure < measureCount; measure++)
@@ -81,7 +81,7 @@ internal static class FumenChartReader
                     if (isRoll)
                         longNotes.Add((noteMs, noteMs + Math.Max(0, duration), type == 0x9 ? PlayableLongNoteKind.BigRoll : PlayableLongNoteKind.Roll, 0));
                     else if (kind(type) is { } noteKind)
-                        notes.Add((noteMs, noteKind, type is 0xB or 0xD));
+                        notes.Add((noteMs, noteKind, type is 0xB or 0xD, type is 0x2 or 0x3 or 0x5));
                     if (notes.Count + longNotes.Count > maximumNotes)
                         throw new InvalidDataException("The fumen exceeds the note limit.");
                 }
@@ -125,7 +125,8 @@ internal static class FumenChartReader
             key,
             TimeSpan.FromMilliseconds(shiftMs),
             chartTime(endMs),
-            notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind, note.Hand)),
+            notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind, note.Hand)
+                { InRun = note.InRun }),
             timing.ToImmutable(),
             scroll.ToImmutable(),
             effects.ToImmutable(),

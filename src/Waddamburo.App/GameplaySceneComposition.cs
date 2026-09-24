@@ -56,6 +56,7 @@ internal static class GameplaySceneComposition
         ("enso_waiwai", "onp_synchro_katsu_1p", null, 1002),
         ("enso_waiwai", "onp_synchro_daidon_1p", null, 1002),
         ("enso_waiwai", "onp_synchro_daikatsu_1p", null, 1002),
+        ("waiwaicollabo/00_taiko", "onp_rare_0_w_00", null, 1002),
         ("enso_system/common", "lane_obi", 14, 507),
         ("indicator", "player_name", 11, 505),
         ("enso_system/don1p", "sinuchi_combo_bonus_don_1p", 20, 502),

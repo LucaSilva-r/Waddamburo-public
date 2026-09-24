@@ -82,24 +82,42 @@ internal sealed class WaiwaiStage
                 section = index;
         if (section == _section)
             return;
-        if (_section >= 0) cut(_sections[_section].Soloist, on: false);
+        int? before = _section >= 0 ? _sections[_section].Soloist : null;
+        int? after = section >= 0 ? _sections[section].Soloist : null;
+        var wasSolo = _section >= 0 && before is not null;
+        var isSolo = section >= 0 && after is not null;
+        // Traced order: the ending section's cut-in goes off; a solo light only goes off when the solo
+        // run ends (a solo handing to the other player's solo just lights the other side), then the
+        // new section's light and cut-in come on.
+        if (_section >= 0)
+        {
+            if (before is { } previous)
+                call(_cutIn, "SetCutinSolo", number(previous), LumenHostValue.FromBoolean(false));
+            else
+                call(_cutIn, "SetCutinSynchro", LumenHostValue.FromBoolean(false));
+        }
+        if (wasSolo && !isSolo)
+            light(before!.Value, on: false);
         _section = section;
-        if (section >= 0) cut(_sections[section].Soloist, on: true);
+        if (section < 0)
+            return;
+        if (after is { } player)
+        {
+            light(player, on: true);
+            call(_cutIn, "SetCutinSolo", number(player), LumenHostValue.FromBoolean(true));
+            _sound(GameplaySoundEvent.SoloCutIn);
+        }
+        else
+        {
+            call(_cutIn, "SetCutinSynchro", LumenHostValue.FromBoolean(true));
+            _sound(GameplaySoundEvent.SynchroCutIn);
+        }
     }
 
-    private void cut(int? soloist, bool on)
+    private void light(int player, bool on)
     {
-        var flag = LumenHostValue.FromBoolean(on);
-        if (soloist is not { } player)
-        {
-            call(_cutIn, "SetCutinSynchro", flag);
-            if (on) _sound(GameplaySoundEvent.SynchroCutIn);
-            return;
-        }
-        call(_soloAbove, "SetLight", number(player), flag);
-        call(_soloUnder, "SetLight", number(player), flag);
-        call(_cutIn, "SetCutinSolo", number(player), flag);
-        if (on) _sound(GameplaySoundEvent.SoloCutIn);
+        call(_soloAbove, "SetLight", number(player), LumenHostValue.FromBoolean(on));
+        call(_soloUnder, "SetLight", number(player), LumenHostValue.FromBoolean(on));
     }
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
