@@ -24,14 +24,15 @@ public static class TaikoCredit
             : stage >= songsPerSession ? TaikoCreditNext.End : TaikoCreditNext.NextSong;
 
     /// <summary>
-    /// result.lm SetEndMessage: 2 revival; 1 when two players carry on although one failed (traced
-    /// session9-2p); otherwise 0 (traced after a cleared song and at the credit's end).
+    /// result.lm SetEndMessage: 2 revival; 1 ("another chance") when one of two players failed the
+    /// first song (traced session9-2p; first song only, user-confirmed); otherwise 0 (traced after a
+    /// cleared song and at the credit's end).
     /// </summary>
     public static int EndMessage(int stage, IReadOnlyList<bool> cleared, int songsPerSession) =>
         Next(stage, cleared, songsPerSession) switch
         {
             TaikoCreditNext.Revival => 2,
-            TaikoCreditNext.NextSong when cleared.Count == 2 && cleared.Contains(false) => 1,
+            TaikoCreditNext.NextSong when stage == 1 && cleared.Count == 2 && cleared.Contains(false) => 1,
             _ => 0,
         };
 }

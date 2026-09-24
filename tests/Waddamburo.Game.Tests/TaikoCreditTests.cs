@@ -14,6 +14,7 @@ public sealed class TaikoCreditTests
     [InlineData(1, "CC", 2, TaikoCreditNext.NextSong, 0)]
     [InlineData(1, "FF", 2, TaikoCreditNext.End, 0)]      // two players: no revival
     [InlineData(2, "CC", 2, TaikoCreditNext.End, 0)]      // traced 0 at the credit's end
+    [InlineData(2, "FC", 3, TaikoCreditNext.NextSong, 0)] // "another chance" is for the first song only
     public void PicksWhatFollowsTheResults(int stage, string players, int songs, TaikoCreditNext next, int message)
     {
         bool[] cleared = [.. players.Select(static player => player == 'C')];
