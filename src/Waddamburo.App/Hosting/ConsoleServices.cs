@@ -1,12 +1,15 @@
+using Waddamburo.App.Audio;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Hosting;
+
 // The front-end services the hosts call: the authored sounds when a sound root is given, else console traces.
 
-internal sealed class ViewerFrontendServices(AuthoredSoundController? sounds, bool freePlay) : ILumenFrontendServices
+internal sealed class ViewerFrontendServices(FrontendSounds? sounds, bool freePlay) : ILumenFrontendServices
 {
-    private readonly AuthoredSoundController? _sounds = sounds;
+    private readonly FrontendSounds? _sounds = sounds;
 
     public bool IsReady => true;
 

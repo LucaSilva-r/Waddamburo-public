@@ -4,6 +4,8 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Platform.Sdl.Text;
 
+namespace Waddamburo.App.Presentation;
+
 internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposable
 {
     private const int MaximumResidentTextures = 64;

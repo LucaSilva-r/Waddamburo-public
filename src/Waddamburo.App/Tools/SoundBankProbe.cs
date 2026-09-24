@@ -2,6 +2,8 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 
+namespace Waddamburo.App.Tools;
+
 internal static class SoundBankProbe
 {
     private const int MaximumCueCount = 256;

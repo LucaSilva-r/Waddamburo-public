@@ -1,3 +1,7 @@
+
+
+namespace Waddamburo.App.Cli;
+
 internal enum StartScene
 {
     Boot,

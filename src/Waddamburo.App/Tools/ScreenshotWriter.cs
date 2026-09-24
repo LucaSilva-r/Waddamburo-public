@@ -2,6 +2,8 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using Waddamburo.Platform.Sdl.Rendering;
 
+namespace Waddamburo.App.Tools;
+
 internal static class ScreenshotWriter
 {
     public static void Write(string path, RenderCapture capture)

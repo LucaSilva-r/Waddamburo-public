@@ -1,5 +1,9 @@
+using Waddamburo.App.Presentation;
+using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>
 /// The boot screens and the attract loop (traced): kidou once, then logo_namco -> title -> keikoku ->
@@ -31,7 +35,7 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
     public override void Exit(SceneId scene)
     {
         if (scene == FlowScenes.Title)
-            Shell.Sounds?.StopAttractStream();
+            Shell.Sounds?.Attract.StopAttractStream();
         Movie?.Dispose();
         Movie = null;
     }
@@ -55,7 +59,7 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
             // The attract's voices, effects and music end with it (the coin channel plays on).
             Shell.Sounds?.StopAll();
             if (!coinStart)
-                Shell.Sounds?.PlayAttractExit();
+                Shell.Sounds?.Attract.PlayExit();
             // SCENE_TRIGGER_COIN (3), or _DON_1P (0) / _DON_2P (1) for the drum hit: the entry then
             // joins that drum's player (the right one plays as P2).
             Shell.Hosts.EntryTrigger = coinStart ? 3 : input.DrumSide ?? 0;

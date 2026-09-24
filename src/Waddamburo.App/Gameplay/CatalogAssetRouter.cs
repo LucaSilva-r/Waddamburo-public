@@ -1,5 +1,7 @@
 using Waddamburo.Catalog;
 
+namespace Waddamburo.App.Gameplay;
+
 /// <summary>Sends each asset and chart request to the provider that owns it.</summary>
 internal sealed class CatalogAssetRouter(IEnumerable<object> providers) : ICatalogAssetResolver, IPlayableChartProvider
 {

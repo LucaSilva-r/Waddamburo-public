@@ -1,5 +1,7 @@
 using Waddamburo.Platform.Sdl;
 
+namespace Waddamburo.App.Cli;
+
 internal static class InputPulseParser
 {
     private const string Prefix = "--press=";

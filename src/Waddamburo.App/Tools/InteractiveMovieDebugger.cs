@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using Waddamburo.App.Cli;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
+
+namespace Waddamburo.App.Tools;
 
 internal sealed class InteractiveMovieDebugger
 {

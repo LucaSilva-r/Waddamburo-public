@@ -1,7 +1,10 @@
 using System.Text;
 using System.Xml.Linq;
+using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Ddp;
+
+namespace Waddamburo.App.Gameplay;
 
 /// <summary>
 /// Chooses a song's themed gameplay skin. The game names it per song (musicinfo.xml

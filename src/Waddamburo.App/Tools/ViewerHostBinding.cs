@@ -2,6 +2,8 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Tools;
+
 /// <summary>
 /// Selects movies' native-host path while keeping unimplemented game services
 /// explicit. Concrete native methods belong in product host bindings, not AVM.

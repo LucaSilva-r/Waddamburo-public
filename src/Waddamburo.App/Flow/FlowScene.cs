@@ -1,7 +1,10 @@
+using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>One tick's input as the scenes see it.</summary>
 /// <param name="Keys">The keyboard after scene remapping.</param>

@@ -59,8 +59,8 @@ public sealed class WaiwaiResultHostBinding(
             });
             if (don is not null)
                 DonLumenBinding.RegisterMotion(context, lumen, don);
-            foreach (var name in new[] { "Apply", "SelectCommonSound" })
-                lumen.RegisterMethod(name, static _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("Apply", static _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("SelectCommonSound", static _ => LumenHostValue.Undefined);
         });
     }
 

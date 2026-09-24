@@ -8,6 +8,8 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 
+namespace Waddamburo.App.Presentation;
+
 /// <summary>
 /// One attract CM (data/movie/attract_cm_###.pam) played into attract/movie.lm's video fill.
 /// Frames decode on a worker thread and are shown by the CM's own audio clock.

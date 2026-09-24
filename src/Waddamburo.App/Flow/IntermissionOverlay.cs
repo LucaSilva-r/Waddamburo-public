@@ -4,6 +4,8 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
+namespace Waddamburo.App.Flow;
+
 /// <summary>
 /// The one intermission movie drawn over the scene (traced depth -2000): the rainbow before a song,
 /// the shutter after it, the fade between the credit's closing scenes. Showing one replaces the last.

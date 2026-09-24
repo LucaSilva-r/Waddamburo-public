@@ -2,6 +2,8 @@ using System.Collections.Immutable;
 using System.Globalization;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Cli;
+
 /// <summary>A probe callback; <see cref="Tick"/> set = invoke just before that one-based tick (suffix @N).</summary>
 internal sealed record CallbackInvocation(
     string Name,

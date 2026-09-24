@@ -1,10 +1,13 @@
+using System.Collections.Immutable;
+using Waddamburo.App.Cli;
+using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Diagnostics;
-using Waddamburo.Formats;
 using Waddamburo.Game;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
-using System.Collections.Immutable;
+
+namespace Waddamburo.App.Tools;
 
 internal static class MovieViewer
 {

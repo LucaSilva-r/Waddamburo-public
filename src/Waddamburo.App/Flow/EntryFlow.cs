@@ -1,6 +1,9 @@
+using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>
 /// The entry (player join): plays its jingle; the movie itself requests Song Select, which the shell

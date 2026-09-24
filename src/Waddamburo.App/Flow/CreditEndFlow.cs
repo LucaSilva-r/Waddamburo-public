@@ -1,6 +1,9 @@
+using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Platform.Sdl;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>
 /// After a song: the results (normal or Waiwai), then per the credit's rules the next song, the
@@ -18,15 +21,15 @@ internal sealed class CreditEndFlow(GameShell shell) : FlowScene(shell)
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
-        Shell.Sounds?.StartResultMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
+        Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
     }
 
     public override void Exit(SceneId scene)
     {
         if (scene == FlowScenes.Result)
-            Shell.Sounds?.StopResultMusic();
+            Shell.Sounds?.Results.StopMusic();
         else if (scene == FlowScenes.GameOver)
-            Shell.Sounds?.StopGameOverMusic();
+            Shell.Sounds?.GameOver.StopGameOverMusic();
     }
 
     // The revival keeps the left player's movie setup (see RetryGameHostBinding), so a right-drum

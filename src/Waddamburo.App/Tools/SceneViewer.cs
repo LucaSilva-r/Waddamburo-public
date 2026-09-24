@@ -8,6 +8,8 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
+namespace Waddamburo.App.Tools;
+
 internal static class SceneViewer
 {
     private const int MaxSceneLayers = 256;

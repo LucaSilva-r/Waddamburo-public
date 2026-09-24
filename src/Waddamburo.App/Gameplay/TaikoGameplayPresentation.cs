@@ -1,11 +1,14 @@
+using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game;
-using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Don;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
-using Waddamburo.Lumen.Runtime;
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
+
+namespace Waddamburo.App.Gameplay;
 
 /// <summary>Maps platform input and composition roles to platform-neutral gameplay.</summary>
 internal enum GameplaySoundEvent

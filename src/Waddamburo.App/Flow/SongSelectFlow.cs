@@ -1,9 +1,12 @@
+using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>
 /// Song Select (normal or Waiwai): the mode-switch folder, and a chosen song's handoff: the rainbow
@@ -91,8 +94,11 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
                     || Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RARE") == "1"); // diagnostic: force it
             charts = [left, right];
         }
-        if (Shell.Sounds is not null) Shell.Sounds.Waiwai = waiwai is not null;
-        Shell.Sounds?.PrepareGameplayDrums(request.Players.Length == 2);
+        if (Shell.Sounds?.Gameplay is { } sounds)
+        {
+            sounds.Waiwai = waiwai is not null;
+            sounds.PrepareDrums(request.Players.Length == 2);
+        }
         // ponytail: the stage counts every song since launch (no credits yet); 8 stage frames.
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), Math.Min(++Shell.SongsPlayed, 8));
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");

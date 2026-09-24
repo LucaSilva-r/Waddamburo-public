@@ -3,6 +3,8 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Scenes;
+
 /// <summary>Which state the always-on indicator overlays show (traced per game scene).</summary>
 internal enum IndicatorScene
 {

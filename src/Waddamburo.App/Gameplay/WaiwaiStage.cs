@@ -2,6 +2,8 @@ using System.Collections.Immutable;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Gameplay;
+
 /// <summary>What the Waiwai results show.</summary>
 internal sealed record WaiwaiOutcome(int GaugeSegments, int DuetPercent, IReadOnlyList<bool> RareNotesHit);
 

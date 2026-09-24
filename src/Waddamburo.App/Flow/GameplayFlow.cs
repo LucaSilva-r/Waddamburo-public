@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Waddamburo.App.Gameplay;
+using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -8,6 +10,8 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>
 /// A song being played: the rainbow opens on it and the music starts; when chart and music are over,
@@ -159,7 +163,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Stop();
         Shell.PlayRequests.ClearActive();
         if (finished)
-            Shell.Sounds?.PlayGameplayEvent(null, GameplaySoundEvent.SongFinished);
+            Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
         Shell.Catalog.Replace(Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         _charts = [];
         Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);

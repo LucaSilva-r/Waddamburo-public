@@ -1,4 +1,11 @@
 using System.Globalization;
+using Waddamburo.App.Audio;
+using Waddamburo.App.Cli;
+using Waddamburo.App.Gameplay;
+using Waddamburo.App.Hosting;
+using Waddamburo.App.Presentation;
+using Waddamburo.App.Scenes;
+using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
 using Waddamburo.Game.Don;
@@ -12,6 +19,8 @@ using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Providers.Stock;
 using Waddamburo.Providers.Tja;
+
+namespace Waddamburo.App.Flow;
 
 /// <summary>How the game is launched (command line).</summary>
 internal sealed record GameOptions(
@@ -45,7 +54,7 @@ internal sealed class GameShell : IDisposable
     public SdlDonRenderer? DonRenderer { get; }
     public DonPresentationController? Don { get; }
     public AudioEngine? Audio { get; }
-    public AuthoredSoundController? Sounds { get; }
+    public GameSounds? Sounds { get; }
     public SongPreviewController? Previews { get; }
     public SongTitleTextureCache Titles { get; }
     public CoinBank? Coins { get; }
@@ -162,11 +171,11 @@ internal sealed class GameShell : IDisposable
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
-        Sounds = options.SoundRoot is null ? null : new AuthoredSoundController(Audio!, options.SoundRoot);
+        Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
-            Sounds?.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
-            Don, (lane, sound) => Sounds?.PlayGameplayEvent(lane, sound));
+            Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
+            Don, (lane, sound) => Sounds?.Gameplay.Play(lane, sound));
         _costumeIcons = new CostumeIconTextures(Application, dataRoot);
         _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
         Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
@@ -198,8 +207,9 @@ internal sealed class GameShell : IDisposable
             snapshot,
             Titles,
             Previews is null ? TracePreviewController.Instance : Previews,
-            Sounds is null ? TraceSoundController.Instance : Sounds,
-            new ViewerFrontendServices(Sounds, Arcade.FreePlay),
+            Sounds is null ? TraceSoundController.Instance : Sounds.Frontend,
+            Sounds,
+            new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
             Don,
             PlayRequests,
             () => SongInfo,
@@ -365,7 +375,7 @@ internal sealed class GameShell : IDisposable
             return;
         }
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
-        if (Sounds?.IsVoicePlaying == true)
+        if (Sounds?.Bank.IsVoicePlaying == true)
             return;
         ReportDiagnostics();
         switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
@@ -388,10 +398,10 @@ internal sealed class GameShell : IDisposable
             if (Active.Id == FlowScenes.Entry)
                 Hosts.EntryCoinsChanged();
         }
-        if (_queuedCoinSounds > 0 && Sounds?.IsCoinPlaying != true)
+        if (_queuedCoinSounds > 0 && Sounds?.Bank.IsCoinPlaying != true)
         {
             _queuedCoinSounds--;
-            Sounds?.PlayCoin();
+            Sounds?.Bank.PlayCoin();
         }
     }
 

@@ -1,7 +1,7 @@
 # App layout and scene flow
 
 `src/Waddamburo.App` is the executable: it wires the engine libraries to SDL and drives the
-front end scene by scene.
+front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, ...).
 
 | Folder | Contents |
 |---|---|
@@ -10,7 +10,7 @@ front end scene by scene.
 | `Scenes/` | Scene ids and traced compositions (`FlowScenes`), gameplay layout, intermission, system indicators. |
 | `Hosting/` | `LayerHostFactory` (a Lumen host per layer, by host id) and the console fallbacks for services. |
 | `Gameplay/` | Gameplay presentation (notes, judgement, Don slots), Waiwai's shared stage, skins, catalog asset routing. |
-| `Audio/` | Authored sound cues and song previews. |
+| `Audio/` | `SoundBank` (the user's sound tree: cues, voices, music, coin) and one cue map per scene (`AttractSounds`, `FrontendSounds`, `GameplaySounds`, `ResultSounds`, `WaiwaiResultSounds`, `RetrySounds`, `GameOverSounds`), gathered in `GameSounds`; song previews. |
 | `Presentation/` | Native surfaces drawn into movies: Don renderer bridge, song titles, costume icons, attract CMs, Waiwai results art. |
 | `Tools/` | Movie/scene viewers, sound bank probe, screenshots. |
 

@@ -1,11 +1,17 @@
+using Waddamburo.App.Audio;
+using Waddamburo.App.Gameplay;
+using Waddamburo.App.Presentation;
+using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Don;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
+
+namespace Waddamburo.App.Hosting;
 
 /// <summary>
 /// Creates each scene layer's game-side host by its host id. The flow sets the credit's state here
@@ -16,7 +22,8 @@ internal sealed class LayerHostFactory(
     SongCatalogSnapshot catalog,
     ISongBoardTextureService textures,
     ISongPreviewController previews,
-    ISongSelectSoundController sounds,
+    ISongSelectSoundController songSelectSounds,
+    GameSounds? sounds,
     ILumenFrontendServices frontend,
     IDonPresentationController? don,
     IPlayRequestSink playRequests,
@@ -92,7 +99,7 @@ internal sealed class LayerHostFactory(
             _entry = new EntrySceneHost(_parts)
             {
                 Coins = coins,
-                PlayVoice = (sounds as AuthoredSoundController) is { } authored ? authored.PlayEntryVoice : null,
+                PlayVoice = sounds is null ? null : sounds.Frontend.PlayEntryVoice,
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
             };
@@ -167,7 +174,7 @@ internal sealed class LayerHostFactory(
                 textures,
                 previews,
                 playRequests),
-            sounds,
+            songSelectSounds,
             don,
             parts: _parts,
             side: PlayerSide,
@@ -182,7 +189,7 @@ internal sealed class LayerHostFactory(
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
         var binding = new ResultHostBinding(() => plays, songInfo().Stage, endMessage,
-            don, sounds as IResultSoundController, PlayerSide);
+            don, sounds?.Results, PlayerSide);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
@@ -190,7 +197,7 @@ internal sealed class LayerHostFactory(
     {
         var outcome = WaiwaiOutcome?.Invoke() ?? throw new InvalidOperationException("Waiwai results without a Waiwai song.");
         var binding = WaiwaiResult = new WaiwaiResultHostBinding(outcome.GaugeSegments, outcome.DuetPercent,
-            outcome.RareNotesHit, don, sounds as IWaiwaiResultSoundController);
+            outcome.RareNotesHit, don, sounds?.WaiwaiResults);
         return new LumenLayerHost(binding, player =>
         {
             binding.Attach(player);
@@ -204,19 +211,19 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost retryHost()
     {
-        var binding = Retry = new RetryGameHostBinding(don, sounds as IRetrySoundController);
+        var binding = Retry = new RetryGameHostBinding(don, sounds?.Retry);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost gameOverHost()
     {
-        var binding = GameOver = new GameOverHostBinding(sounds as IGameOverSoundController, PlayerSide, TwoPlayers);
+        var binding = GameOver = new GameOverHostBinding(sounds?.GameOver, PlayerSide, TwoPlayers);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost attractHost()
     {
-        var binding = Attract = new AttractHostBinding(sounds as IAttractSoundController);
+        var binding = Attract = new AttractHostBinding(sounds?.Attract);
         return new LumenLayerHost(binding);
     }
 }

@@ -2,6 +2,8 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Scenes;
+
 internal static class RainbowTransitionComposition
 {
     public const string StaticHostId = "rainbow-transition";

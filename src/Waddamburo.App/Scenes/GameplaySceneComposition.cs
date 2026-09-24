@@ -3,6 +3,8 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Scenes;
+
 /// <summary>
 /// Product-owned composition for the initial one-player gameplay presentation.
 /// Asset choices and layout are composition data; gameplay uses semantic movie roles.

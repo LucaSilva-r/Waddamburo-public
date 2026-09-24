@@ -1,3 +1,7 @@
+
+
+namespace Waddamburo.App.Cli;
+
 /// <summary>Resolves the stable paths used by a normal game boot from one USRDIR root.</summary>
 internal sealed record GameDataLayout(
     string Root,

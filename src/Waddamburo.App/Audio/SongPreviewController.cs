@@ -1,5 +1,8 @@
+using Waddamburo.App.Gameplay;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
+
+namespace Waddamburo.App.Audio;
 
 /// <summary>Owns the single Song Select music slot selected by the authored movie.</summary>
 internal sealed class SongPreviewController : ISongPreviewController, IDisposable

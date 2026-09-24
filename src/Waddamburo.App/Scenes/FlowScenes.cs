@@ -3,6 +3,8 @@ using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
+namespace Waddamburo.App.Scenes;
+
 /// <summary>The front end's scene ids and their traced compositions.</summary>
 internal static class FlowScenes
 {

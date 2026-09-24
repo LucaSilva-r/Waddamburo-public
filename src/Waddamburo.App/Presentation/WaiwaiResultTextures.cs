@@ -4,6 +4,8 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
+namespace Waddamburo.App.Presentation;
+
 /// <summary>
 /// waiwai_result's native fills: dummy_bg (the collabo's bg.nut) and dummy_sentence (one of text.nut's
 /// 70 comments), dummy_rare_onp_0N (rareonp.nut, the collabo's rare note). Decoded and uploaded on first use.

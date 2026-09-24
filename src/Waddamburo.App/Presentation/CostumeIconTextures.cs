@@ -1,7 +1,9 @@
-using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Formats.Nut;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
+using Waddamburo.Platform.Sdl.Rendering;
+
+namespace Waddamburo.App.Presentation;
 
 /// <summary>
 /// Costume picker icons (entry UpdateFillrect): Green's nutdata/S11100-1/appendable/NN/costume*_icon
