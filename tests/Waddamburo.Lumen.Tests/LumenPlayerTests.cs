@@ -330,6 +330,34 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void OneFrameTimelineDoesNotLoopOrRerunItsFrameScript()
+    {
+        // Root: one frame whose script does n = n + "x" (Flash leaves a one-frame timeline alone).
+        var file = createLmb(
+            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
+            record(LmbTags.StringPool, stringPool("n", "x")),
+            record(LmbTags.ActionPool, actionPool(
+            [
+                0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+                0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
+                0x1C,
+                0x96, 0x03, 0x00, 0x09, 0x01, 0x00,
+                0x47,
+                0x1D,
+                0x00,
+            ])),
+            words(LmbTags.DefineSprite, 7, 0, 0, 0, 1, 0, 0),
+            words(LmbTags.ShowFrame, 0, 1),
+            words(LmbTags.DoAction, 0, 0));
+        var player = new LumenPlayer(LmbSemanticReader.Read(file).Value, 1280, 720);
+
+        for (var tick = 0; tick < 3; tick++)
+            player.Advance();
+
+        Assert.Equal("undefinedx", player.ReadScriptValue("n"));
+    }
+
+    [Fact]
     public void TimelineUpdatesDoNotOverwriteAScriptOwnedTransform()
     {
         var player = new LumenPlayer(createMovie(

@@ -474,6 +474,10 @@ public sealed class LumenPlayer
         var timeline = _sprites[instance.CharacterId];
         if (timeline.Frames.Length == 0)
             return;
+        // Flash: a one-frame timeline has nowhere to go, so playing it neither loops nor re-runs its
+        // frame script (cut_in's frame-0 setup would reset its state every tick).
+        if (timeline.Frames.Length == 1)
+            return;
         var nextFrame = instance.Frame + 1;
         if (nextFrame >= timeline.Frames.Length)
         {

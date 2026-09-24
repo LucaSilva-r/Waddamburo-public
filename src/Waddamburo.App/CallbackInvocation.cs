@@ -2,9 +2,11 @@ using System.Collections.Immutable;
 using System.Globalization;
 using Waddamburo.Lumen.Runtime;
 
+/// <summary>A probe callback; <see cref="Tick"/> set = invoke just before that one-based tick (suffix @N).</summary>
 internal sealed record CallbackInvocation(
     string Name,
-    ImmutableArray<LumenHostValue> Arguments)
+    ImmutableArray<LumenHostValue> Arguments,
+    int? Tick = null)
 {
     private const string Prefix = "--invoke=";
 
@@ -21,12 +23,17 @@ internal sealed record CallbackInvocation(
 
     private static CallbackInvocation parseOne(string option)
     {
-        var fields = option[Prefix.Length..].Split('|');
+        var text = option[Prefix.Length..];
+        int? tick = null;
+        var at = text.LastIndexOf('@');
+        if (at > 0 && int.TryParse(text.AsSpan(at + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
+            (text, tick) = (text[..at], parsed);
+        var fields = text.Split('|');
         if (fields.Length == 0 || string.IsNullOrWhiteSpace(fields[0]))
             throw new ArgumentException("--invoke requires a callback name.");
         return new CallbackInvocation(
             fields[0],
-            [.. fields.Skip(1).Select(parseValue)]);
+            [.. fields.Skip(1).Select(parseValue)], tick);
     }
 
     private static LumenHostValue parseValue(string value)

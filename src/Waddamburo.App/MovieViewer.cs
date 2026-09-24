@@ -54,12 +54,14 @@ internal static class MovieViewer
         var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
         if (seekFrame is int requestedFrame)
             player.Seek(requestedFrame);
-        foreach (var invocation in callbackInvocations)
+        void invoke(CallbackInvocation invocation)
         {
             if (!player.TryInvokeCallback(invocation.Name, invocation.Arguments))
                 throw new ArgumentException($"Lumen callback '{invocation.Name}' is not registered or could not complete.");
             Console.WriteLine($"Invoked Lumen callback: {invocation.Name}");
         }
+        foreach (var invocation in callbackInvocations.Where(static invocation => invocation.Tick is null))
+            invoke(invocation);
         var readPath = Environment.GetEnvironmentVariable("WADDAMBURO_READ");
         object? lastRead = null;
         var debugger = frameLimit is null && tickLimit is null
@@ -78,6 +80,8 @@ internal static class MovieViewer
             {
                 simulationTick++;
                 keyboard = inputTimeline.Apply(simulationTick, keyboard);
+                foreach (var invocation in callbackInvocations.Where(invocation => invocation.Tick == simulationTick))
+                    invoke(invocation);
                 if (debugger is null)
                 {
                     player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
