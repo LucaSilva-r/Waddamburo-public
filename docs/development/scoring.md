@@ -13,8 +13,10 @@ they help avoid confusion.
 | W1 | 太鼓の達人 譜面とかWiki, [システム/配点](https://wikiwiki.jp/taiko-fumen/%E3%82%B7%E3%82%B9%E3%83%86%E3%83%A0/%E9%85%8D%E7%82%B9) (last modified 2026-09-07) | Public community documentation |
 | W2 | 太鼓の達人 譜面とかWiki, [システム/基本システム](https://wikiwiki.jp/taiko-fumen/%E3%82%B7%E3%82%B9%E3%83%86%E3%83%A0/%E5%9F%BA%E6%9C%AC%E3%82%B7%E3%82%B9%E3%83%86%E3%83%A0) | Public community documentation |
 | W3 | 太鼓の達人 譜面とかWiki, [システム/魂ゲージの伸び率](https://wikiwiki.jp/taiko-fumen/%E3%82%B7%E3%82%B9%E3%83%86%E3%83%A0/%E9%AD%82%E3%82%B2%E3%83%BC%E3%82%B8%E3%81%AE%E4%BC%B8%E3%81%B3%E7%8E%87) | Public community documentation |
+| O1 | [Official Yellow Ver. update announcement](https://taiko-ch.net/blog/?p=1784) (2017-08-03), introducing いっしょにワイワイ演奏 | First-party description of the AC15 mode retained through Green |
 | F | Fumen chart headers and notes of user-supplied charts (see below) | Asset-derived observation |
 | T | tja2fumen (MIT, vendored table in `Data/`) | Public implementation (for TJA charts) |
+| R | Green controlled-play observations (aggregate findings summarized below) | Local behavioral observation; raw traces stay private |
 
 The wiki's facts are community measurements (autoplay captures, full-Great videos, arithmetic on
 displayed scores). They are the behaviour to match; where it says a value is approximate, so is
@@ -29,15 +31,18 @@ Offsets from the note's time, in ms (they are frame multiples at 59.94 Hz: 1.5, 
 
 | Course | 良 Great | 可 Good | 不可 Bad |
 |---|---|---|---|
-| Oni (and ura) | ±25.025 | ±75.075 | ±108.442 |
-| Hard, Normal, Easy | ±41.708 | ±108.442 | ±125.125 |
+| Oni (and ura), Hard | ±25.025 | ±75.075 | ±108.442 |
+| Normal, Easy | ±41.708 | ±108.442 | ±125.125 |
 | Easy with parent-and-child support (パパママサポート) | ±41.708 | ±125.125 | ±125.125 |
 
 A hit between the Good and Bad windows is a Bad. A note never hit is a Bad at the end of its
 window. Hitting the wrong colour shows no judgement but counts as a Bad in the results (W2).
 
 **Status: wrong.** The engine uses 35 / 80 / 95 ms for every course
-(`TaikoGameplayPresentation`). These are placeholders that predate this research.
+(`TaikoGameplayPresentation`), including Waiwai's two lanes. In particular, Hard needs the Oni
+profile, not the Normal one. These are placeholders that predate this research. The wiki gives
+nominal symmetric bounds; the exact Green frame-boundary inclusion and calibration offset have not
+been measured locally.
 
 ### Big notes (W2)
 
@@ -64,9 +69,9 @@ All values are for one player and a Great unless stated.
 Every chart (per course) has a **base** (初項) and a **step** (公差). The score for a Great
 depends on the current combo:
 
-| Combo before the hit | Great score |
+| Combo displayed by this hit | Great score |
 |---|---|
-| 0-9 | base |
+| 1-9 | base |
 | 10-29 | base + step |
 | 30-49 | base + 2 × step |
 | 50-99 | base + 4 × step |
@@ -78,21 +83,32 @@ The sum drops the ones digit. Example (W1, Red Rose Evangel, base 420, step 98):
 Stock charts carry base and step in their note records (F: a scoring note's two 16-bit fields:
 base, and step × 4). TJA charts give `SCOREINIT` / `SCOREDIFF`.
 
-**Status: implemented** (`TaikoScore`, `FumenChartReader`). Charts without either value get an
+**Status: partial** (`TaikoScore`, `FumenChartReader`; tier boundaries need verification below).
+Charts without either value get an
 estimate aiming at a ~1,000,000 ceiling with base = 4 × step (Waddamburo's choice, not a game rule;
 W1 notes base is "about 4× step" for all songs since AC10).
+
+**Boundary mismatch to verify:** W1 labels the tiers by the combo *reached* (1–9, 10–29, etc.),
+while `TaikoScore` chooses the tier from the combo *before* the hit. On that reading, the 10th,
+30th, 50th and 100th hits earn the previous tier in Waddamburo. A controlled Green score trace at
+these four hits should settle whether the wiki's labels describe the awarded hit or the state
+before it; do not silently shift the thresholds from this wording alone.
 
 ### Good (可)
 
 Half the Great score, ones digit dropped (W1, W2): Great 330 → Good 160.
 
-**Status: wrong.** The engine rounds half up (330 → 170).
+**Status: implemented.** `TaikoScore` truncates the half award to tens (330 → 160).
 
 ### Go-Go Time
 
 Notes in Go-Go Time score ×1.2, ones digit dropped (W1): 330 → 390, Good 160 → 190.
 
-**Status: wrong.** The engine rounds instead of dropping the digit (330 → 400).
+**Status: implemented for the multiplier.** `TaikoScore` truncates after applying ×1.2
+(330 → 390).
+It also tests Go-Go at the input timestamp; a note struck across a Go-Go boundary may therefore
+receive a different factor than a note whose authored position is inside that section. The latter
+boundary rule needs a controlled Green check for regular notes. Balloons have an explicit rule below.
 
 ### Big notes (特良 / 特可)
 
@@ -100,15 +116,18 @@ From AC15 KATSU-DON to Green, a big Great is **twice the Great score after the G
 (W1): 660, or 780 in Go-Go (390 × 2, not 330 × 2.4 = 790). A big Good is **the Great halved with
 the ones digit dropped, then doubled**: 320, or 380 in Go-Go. This can be 10 below twice the Good.
 
-**Status: implemented** as "the second hit adds the note's points again", which gives both
-values once Good and Go-Go round correctly.
+**Status: implemented for score arithmetic.** The second hit adds the first hit's truncated points
+again. The keyboard's 30 ms second-hit threshold remains a product approximation of the arcade's
+strength-based big-note rule.
 
 ### Hand notes (手つなぎ音符)
 
 Scored as big notes (AC9 onwards, W1).
 
-**Status: implemented** (each player's hand note is a big note with its partner's hit as the
-second one).
+**Status: partial.** Each player's hand note can receive a big-note bonus when the partner hits.
+In local Green observations, hits 12–15 ms apart stayed at normal value while a 1 ms separation
+earned the bonus (R). `TaikoHandNoteLink` currently accepts partners up to 35 ms apart, so it
+awards bonuses that Green did not in those trials. The exact cutoff still needs measurement.
 
 ### 100-combo bonus
 
@@ -128,8 +147,8 @@ Small roll 100 per hit, big roll 200 per hit, ×1.2 in Go-Go (120 / 240) (W1).
 it counts as Go-Go is decided by **where the balloon starts**, for every hit (W1, example
 恋はみずいろ). In Go-Go: 360 and 6000. An unpopped balloon scores its hits × 300 only.
 
-**Status: wrong on both points.** The engine adds 300 for the popping hit too, and applies
-Go-Go per hit time.
+**Status: implemented.** The popping hit replaces the 300-point hit with 5000, and every balloon
+hit uses the Go-Go state at the balloon's start.
 
 ### Kusudama
 
@@ -202,8 +221,65 @@ Branch ratios are unused (only the normal branch is played).
 
 **Status:** callouts implemented. The note-face tiers are not in the public engine yet.
 
+## Waiwai cooperative play (AC15 Yellow through Green; O1, R)
+
+Waiwai changes the **result being pursued**. Bandai Namco describes two players filling one gauge
+on specially arranged charts with solo and together sections. The result reports a duet percentage.
+It does **not** award or record a score,
+crown or certain titles (O1). Do not compare Waiwai's hidden lane totals to a normal chart's
+all-Great ceiling or save them as best scores. Score values are still sent to the lane displays in
+Green (R); a distinct Waiwai score formula has not been established.
+
+### Shared voltage and clear
+
+Green's observed gameplay feeds a shared voltage on a 0–10,000 scale to one 50-segment gauge.
+The stage is given thresholds 3,000 (level change) and 7,000 (clear). A clear effect fires when
+voltage crosses 7,000. One traced Hard song showed alternating gains of 36/37 for successful notes
+and losses of 64 for missed notes. Those are **observations for that chart**, not a general formula:
+the rate's relation to course, note count, solo/together sections and adaptive support remains
+unresolved (R). Rolls, balloons, kusudama, synchronized hits and rare notes need separate controlled
+measurements before assigning them a voltage rule.
+
+**Status: approximate.** `WaiwaiStage` uses +36.5 for every Great or Good and −64 for every Bad,
+regardless of song, course or note type. It clamps to 0–10,000, displays voltage / 200 segments,
+and uses 7,000 for clear. It does not model the observed possibility of adaptive note support (R).
+The gameplay presentation also runs `TaikoScore` per lane and sends a running value to each lane board, matching
+traced score callbacks, but Waiwai's result screen has no score. The gameplay value should remain
+ephemeral and must not be treated as a normal play record.
+
+### Judgement, synchronization and results
+
+Both players' lanes currently use the same per-course-independent 35 / 80 / 95 ms windows noted
+above. There is no evidence of a separate Waiwai timing profile, so the AC15 Green course windows
+are the working target for ordinary and synchronized notes. This is an inference, pending a
+controlled Waiwai boundary trace.
+
+Together sections show synchronized notes on both lanes; solo sections emphasize one player.
+Green reports a duet percentage (`SetDuetPercent`), shared gauge segments and optional rare-note
+hits on its Waiwai result screen (R). The percentage's denominator, timing tolerance and handling
+of one-sided hits have **not** been established. A missed-note run reported 82%; a clean run
+reported 99%, so even apparently clean play cannot justify an exact 100% rule from the available
+traces. The message category thresholds also remain unknown.
+
+**Status: approximate.** `WaiwaiStage` computes the percentage as synchronized note times at
+which both lanes scored a non-Bad judgement divided by synchronized note times judged by both.
+It ignores the two hits' timing difference and any grade distinction. `WaiwaiResultHostBinding`
+guesses the message categories from gauge segments (20, 35, 50). These are presentation estimates,
+not verified Green formulas. The result binding correctly supplies one gauge, duet percentage and
+rare-note flags; no ranked score or crown is shown.
+
+### Research needed to close the Green gaps
+
+1. Replay synthetic or user-driven charts with a single input stepped across each course window,
+   including Hard, late misses and wrong-colour hits; record the Green result, not only the movie.
+2. Measure score deltas at hits 9/10, 29/30, 49/50 and 99/100, plus Great/Good and Go-Go boundary
+   examples. This resolves the tier-label ambiguity and rounding independently.
+3. In Waiwai, vary only one factor per run: a Great versus Good, one missed note, a roll hit, a
+   balloon pop, solo versus together, synchronized hit offset, and a rare-note hit. Record voltage
+   after each event and the final duet percentage. Repeat on another course and chart before
+   generalizing the voltage rate.
+
 ## Not covered here
 
-- Waiwai (party mode): its voltage and results are not ranked, and Waddamburo keeps them approximate.
 - Branch conditions (only the normal branch is played).
 - Dan dojo and AI battle rules.

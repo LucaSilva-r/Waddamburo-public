@@ -199,9 +199,10 @@ multiple of ten. Great earns the base; Good earns half; Miss earns zero and rese
 combo. A 10000-point bonus arrives at each 100 combo and is unaffected by Go-Go.
 Large notes earn ordinary points on the first hit and the same amount on a valid
 second hand hit. Roll hits earn 100, or 200 for a big roll. Balloon and kusudama
-hits earn 300 each, plus 5000 on completion. Go-Go multiplies hit and completion
-points by 6/5. Non-integer-tens awards round to the nearest ten, with ties up, so
-every score ends in zero. The score progression and combo bonus follow the
+hits earn 300 each except that the popping hit earns 5000 instead; a late kusudama
+pop is not distinguished yet. Go-Go multiplies awards by 6/5. For balloons and
+kusudama, the Go-Go state at the note's start controls every hit. Good and Go-Go
+awards truncate to tens, so every score ends in zero. The score progression and combo bonus follow the
 [Gen 3 scoring explanation](https://taikotime.blogspot.com/2018/08/feature-combo-scoring-visualized.html),
 [advanced scoring rules](https://taikotime.blogspot.com/2010/08/advanced-rules.html),
 and [TJA score mode 2 documentation](https://iepiweidieng.github.io/TJAPlayer3/tja/#scoremode).

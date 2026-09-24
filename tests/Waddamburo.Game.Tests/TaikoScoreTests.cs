@@ -25,7 +25,7 @@ public sealed class TaikoScoreTests
     }
 
     [Fact]
-    public void LongNotesAndGoGoAwardEachAcceptedHitAndPopBonus()
+    public void BalloonPopReplacesFinalHitAndUsesGoGoAtNoteStart()
     {
         var score = new TaikoScore(chart(goGo: true));
         var roll = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(3), PlayableLongNoteKind.BigRoll);
@@ -34,7 +34,7 @@ public sealed class TaikoScoreTests
         score.Apply(new TaikoLongNoteProgress(0, roll, 2, false), TimeSpan.FromSeconds(2));
         score.Apply(new TaikoLongNoteProgress(1, balloon, 1, false), TimeSpan.FromSeconds(2));
         score.Apply(new TaikoLongNoteProgress(1, balloon, 2, true), TimeSpan.FromSeconds(2));
-        Assert.Equal(7160, score.Value);
+        Assert.Equal(5740, score.Value); // 200 + 240 roll; 300 + 5000 balloon.
         Assert.Equal(2, score.RollHits);
         Assert.Equal(2, score.BalloonHits);
         Assert.Equal(0, score.Combo);
@@ -53,7 +53,7 @@ public sealed class TaikoScoreTests
     }
 
     [Fact]
-    public void GenThreeStepsAndRoundingKeepEveryAwardOnTens()
+    public void GenThreeStepsAndTruncationKeepEveryAwardOnTens()
     {
         var score = new TaikoScore(chart(goGo: true) with { ScoreInit = 420, ScoreDiff = 98 });
         var expected = new (int Combo, long Award)[]
@@ -70,7 +70,7 @@ public sealed class TaikoScoreTests
             Assert.Equal(award, test.Value - before);
         }
         score.Apply(judgement(0, TaikoHitResult.Good), TimeSpan.FromSeconds(2));
-        Assert.Equal(250, score.Value); // 420 / 2 = 210, Go-Go makes 252, rounded to 250.
+        Assert.Equal(250, score.Value); // 420 / 2 = 210, Go-Go makes 252, truncated to 250.
         Assert.Equal(0, score.Value % 10);
     }
 
@@ -93,14 +93,42 @@ public sealed class TaikoScoreTests
     }
 
     [Fact]
-    public void GoodAndGoGoAwardsRoundToTensButComboBonusDoesNotGrow()
+    public void GoodAndGoGoAwardsTruncateToTensButComboBonusDoesNotGrow()
     {
         var score = new TaikoScore(chart(goGo: true) with { ScoreInit = 510, ScoreDiff = 0 });
         for (var i = 0; i < 100; i++)
             score.Apply(judgement(i, TaikoHitResult.Great), TimeSpan.FromSeconds(2));
         Assert.Equal(71000, score.Value); // 100 * 610 + fixed 10000.
         score.Apply(judgement(100, TaikoHitResult.Good), TimeSpan.Zero);
-        Assert.Equal(71260, score.Value); // 510 / 2 rounds to 260.
+        Assert.Equal(71250, score.Value); // 510 / 2 truncates to 250.
+    }
+
+    [Fact]
+    public void GreenGoodGoGoAndStrongGoodUseTruncatedIntermediateAwards()
+    {
+        var normal = new TaikoScore(chart(goGo: true) with { ScoreInit = 330, ScoreDiff = 0 });
+        normal.Apply(judgement(0, TaikoHitResult.Great), TimeSpan.FromSeconds(2));
+        normal.Apply(judgement(1, TaikoHitResult.Good), TimeSpan.FromSeconds(2));
+        Assert.Equal(580, normal.Value); // 390 + 190, not 400 + 200.
+
+        var strong = new TaikoScore(chart(goGo: true) with { ScoreInit = 330, ScoreDiff = 0 });
+        strong.Apply(judgement(0, TaikoHitResult.Good, big: true), TimeSpan.FromSeconds(2));
+        strong.Apply(judgement(0, TaikoHitResult.Good, big: true, completed: true), TimeSpan.FromSeconds(2));
+        Assert.Equal(380, strong.Value); // (floor10(330 / 2) then floor10(×1.2)) × 2.
+    }
+
+    [Fact]
+    public void BalloonKeepsItsStartingGoGoFactorAcrossTheBoundary()
+    {
+        var timed = chart(goGo: true, goGoEnd: true);
+        var score = new TaikoScore(timed);
+        var before = new PlayableLongNote(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), PlayableLongNoteKind.Balloon, 2);
+        var during = new PlayableLongNote(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), PlayableLongNoteKind.Balloon, 2);
+        score.Apply(new TaikoLongNoteProgress(0, before, 1, false), TimeSpan.FromSeconds(2.5));
+        score.Apply(new TaikoLongNoteProgress(0, before, 2, true), TimeSpan.FromSeconds(2.6));
+        score.Apply(new TaikoLongNoteProgress(1, during, 1, false), TimeSpan.FromSeconds(3.1));
+        score.Apply(new TaikoLongNoteProgress(1, during, 2, true), TimeSpan.FromSeconds(3.2));
+        Assert.Equal(11660, score.Value); // (300 + 5000) + (360 + 6000).
     }
 
     private static TaikoNoteJudgement judgement(int index, TaikoHitResult result,
@@ -108,13 +136,17 @@ public sealed class TaikoScoreTests
         new(index, new PlayableHitObject(TimeSpan.Zero, big ? PlayableNoteKind.BigDon : PlayableNoteKind.Don),
             result, TimeSpan.Zero, completed);
 
-    private static PlayableChart chart(bool goGo = false) => new(
+    private static PlayableChart chart(bool goGo = false, bool goGoEnd = false) => new(
         new ChartKey(new SongKey(SongSourceKind.Tja, "synthetic"), "score"),
         TimeSpan.Zero, TimeSpan.FromSeconds(4), [],
         [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4)],
         [new ChartScrollPoint(TimeSpan.Zero, 1)],
-        goGo ? [new ChartEffectPoint(TimeSpan.Zero, false),
-            new ChartEffectPoint(TimeSpan.FromSeconds(2), true)]
+        goGo ? goGoEnd
+            ? [new ChartEffectPoint(TimeSpan.Zero, false),
+                new ChartEffectPoint(TimeSpan.FromSeconds(2), true),
+                new ChartEffectPoint(TimeSpan.FromSeconds(3), false)]
+            : [new ChartEffectPoint(TimeSpan.Zero, false),
+                new ChartEffectPoint(TimeSpan.FromSeconds(2), true)]
             : [new ChartEffectPoint(TimeSpan.Zero, false)], []);
 
     private static PlayableChart chartWithNotes(int count) => new(

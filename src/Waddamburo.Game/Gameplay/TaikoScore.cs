@@ -51,8 +51,8 @@ public sealed class TaikoScore
         // Gen 3 uses four score steps after 10, 30, 50 and 100 combo.
         var step = Combo >= 100 ? 8 : Combo >= 50 ? 4 : Combo >= 30 ? 2 : Combo >= 10 ? 1 : 0;
         var basic = ((long)_base + (long)_step * step) / 10 * 10;
-        var points = result == TaikoHitResult.Good ? roundToTen(basic, 2) : basic;
-        if (isGoGo(time)) points = roundToTen(points * 6, 5);
+        var points = result == TaikoHitResult.Good ? basic / 20 * 10 : basic;
+        if (isGoGo(time)) points = truncateToTen(points * 6, 5);
         Value += points;
         if (judgement.HitObject.IsStrong)
         {
@@ -70,12 +70,11 @@ public sealed class TaikoScore
         var previous = Value;
         if (progress.Note.IsBalloon) BalloonHits++;
         else RollHits++;
-        var points = progress.Note.Kind == PlayableLongNoteKind.BigRoll ? 200L : 100L;
-        if (progress.Note.IsBalloon) points = 300;
-        if (isGoGo(time)) points = points * 6 / 5;
-        Value += points;
-        if (progress.IsPopped)
-            Value += isGoGo(time) ? 6000 : 5000;
+        var goGo = isGoGo(progress.Note.IsBalloon ? progress.Note.StartTime : time);
+        var points = progress.Note.IsBalloon
+            ? progress.IsPopped ? 5000L : 300L
+            : progress.Note.Kind == PlayableLongNoteKind.BigRoll ? 200L : 100L;
+        Value += goGo ? points * 6 / 5 : points;
         return Value != previous;
     }
 
@@ -90,8 +89,8 @@ public sealed class TaikoScore
         return active;
     }
 
-    private static long roundToTen(long numerator, long denominator) =>
-        (numerator + denominator * 5) / (denominator * 10) * 10;
+    private static long truncateToTen(long numerator, long denominator) =>
+        numerator / (denominator * 10) * 10;
 
     private static (int Init, int Diff) estimateRates(PlayableChart chart)
     {
