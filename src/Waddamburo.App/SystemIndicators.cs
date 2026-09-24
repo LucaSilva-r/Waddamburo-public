@@ -32,6 +32,8 @@ internal sealed class SystemIndicators
     private bool _coinsVisible;
     private bool _online;
     private bool _joined;
+    private IndicatorScene _scene;
+    private int _messageDelay = -1;
 
     public SystemIndicators(LumenGameSceneInstance scene)
     {
@@ -48,6 +50,9 @@ internal sealed class SystemIndicators
     /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
     public CoinBank? Coins { get; init; }
 
+    /// <summary>The (expected) player's drum: 0 left, 1 right. The panels mirror for the right one (traced).</summary>
+    public int Side { get; set; }
+
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id,
         new[] { "network_icon", "msg_banapass", "msg_coins" }.Select(name => new SceneLayerDefinition(
             "indicator/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity, HostId)));
@@ -55,6 +60,7 @@ internal sealed class SystemIndicators
     public void SetScene(IndicatorScene scene)
     {
         var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt;
+        _scene = scene;
         _online = scene != IndicatorScene.Boot;
         _cardVisible = attract || scene == IndicatorScene.Entry;
         // The free-play/coin message first appears with the attract title (traced SetVisible* calls);
@@ -82,19 +88,19 @@ internal sealed class SystemIndicators
             CoinsChanged();
             return;
         }
-        // In Song Select the joined P1 has no prompt (-1); the unjoined right drum uses
+        // In Song Select the joined player has no prompt (-1); the unjoined drum uses
         // message 2. The indicator movie positions and animates each side itself.
-        setMessageNumbers(scene == IndicatorScene.Entry ? -1 : scene == IndicatorScene.SongSelect ? -1 : 0,
-            scene == IndicatorScene.SongSelect ? 2 : 0);
+        var joinedMessage = scene is IndicatorScene.Entry or IndicatorScene.SongSelect ? -1 : 0;
+        var otherMessage = scene == IndicatorScene.SongSelect ? 2 : 0;
+        setSideNumbers(joinedMessage, otherMessage);
         if (scene == IndicatorScene.Entry)
         {
-            // The entry then switches the panel to its split (per-player) scene.
-            call(_coins, "SetScene", LumenHostValue.FromNumber(4));
-            call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(true));
+            // The entry then switches the panel to its split (per-player) scene, open on the other side.
+            splitPanel();
             // SetScene(4) hides both messages (isMSGVisible off); the game turns them back on before
             // the numbers (traced ~0.9 s later, after Don-chan's entry motion).
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
-            setMessageNumbers(-1);
+            setSideNumbers(-1, 0);
         }
         // SetCoinType seeks the authored movie to its scene label. Repeating it every
         // frame restarts the join message before its fade timeline can advance.
@@ -108,10 +114,11 @@ internal sealed class SystemIndicators
         {
             // Traced: the split panel opens for the other side, whose message stays up with its price.
             _joined = true;
-            call(_coins, "SetScene", LumenHostValue.FromNumber(4));
-            call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(true));
-            call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
+            splitPanel();
             CoinsChanged();
+            // SetScene(4) fades both messages out; the game shows the other drum's again after
+            // Don-chan's entry motion (traced 0.85 s later), which Advance does.
+            _messageDelay = 51;
             return;
         }
         call(_coins, "SetScene", LumenHostValue.FromNumber(4));
@@ -126,8 +133,30 @@ internal sealed class SystemIndicators
         var settings = bank.Settings;
         call(_coins, "SetCoinNum", LumenHostValue.FromNumber(bank.Credits));
         // Before anyone joins, P2's number is the full two-player price (traced 2 / 4 at 0 credits).
-        setMessageNumbers(_joined ? -1 : Math.Max(0, settings.CreditsOnePlayer - bank.Credits),
-            _joined ? bank.Missing(1) : Math.Max(0, settings.CreditsTwoPlayers - bank.Credits));
+        if (_joined)
+            setSideNumbers(-1, bank.Missing(1));
+        else
+            setMessageNumbers(Math.Max(0, settings.CreditsOnePlayer - bank.Credits),
+                Math.Max(0, settings.CreditsTwoPlayers - bank.Credits));
+    }
+
+    // SetScene(4) + SetVisibleSplitPanel(left, right): the panel opens on the drum without a player
+    // (traced (false, true) for a left player, (true, false) for a right one).
+    private void splitPanel()
+    {
+        call(_coins, "SetScene", LumenHostValue.FromNumber(4));
+        call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(Side == 1), LumenHostValue.FromBoolean(Side == 0));
+    }
+
+    /// <summary>
+    /// Message numbers for the joined player's drum and the other one. SetMsgNum indexes the drum
+    /// (traced Song Select: (0, -1), (1, 2) for a left player, (0, 2), (1, -1) for a right one), except
+    /// on entry's split panel, which gets the left player's numbers whichever drum joined.
+    /// </summary>
+    private void setSideNumbers(int own, int other)
+    {
+        if (Side == 1 && _scene != IndicatorScene.Entry) setMessageNumbers(other, own);
+        else setMessageNumbers(own, other);
     }
 
     private void setMessageNumbers(int player1, int player2 = 0)
@@ -140,6 +169,11 @@ internal sealed class SystemIndicators
     /// <summary>Per-frame state push, as the game does every tick.</summary>
     public void Advance()
     {
+        if (_messageDelay >= 0 && _messageDelay-- == 0)
+        {
+            call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
+            CoinsChanged();
+        }
         // ponytail: no network in the engine; type 2 is what the game shows before it connects.
         call(_network, "SetType", LumenHostValue.FromNumber(2));
         call(_card, "SetOnline", LumenHostValue.FromNumber(_online ? 1 : 0));

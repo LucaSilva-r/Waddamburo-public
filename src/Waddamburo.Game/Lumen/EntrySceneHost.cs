@@ -27,11 +27,38 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Costume picker icon (name: false) or name plate (true) for (ICONTYPE 0 costume / 1 head / 2 body, id).</summary>
     public Func<int, int, bool, LumenNativeSurfaceKey?>? CostumeIcon { get; init; }
 
-    /// <summary>Whether a player may join (the flow supports one local player for now).</summary>
-    public Func<int, bool> CanJoin { get; init; } = static player => player == 0;
+    /// <summary>Whether a player may join. One local player, on either drum (the right one is P2).</summary>
+    public Func<int, bool> CanJoin { get; init; } = static _ => true;
+
+    /// <summary>The joined player's drum (0 left, 1 right); null before a join.</summary>
+    public int? JoinedPlayer => _joined.Count == 0 ? null : _joined.First();
 
     /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
     public CoinBank? Coins { get; init; }
+
+    /// <summary>Plays a VO_ENTRY cue the game itself requests (join and coin-mode prompts).</summary>
+    public Action<int>? PlayVoice { get; init; }
+
+    private const int PromptDelayTicks = 50;     // traced 0.83 s after entry loads
+    private const int PromptRepeatTicks = 300;   // traced 5.0 s between "insert coins" prompts
+    private int _ticks;
+
+    /// <summary>
+    /// Per-tick coin-mode prompts before anyone joins: VO_ENTRY cue 0 when the credits already pay
+    /// for a player, else cue 1 ("insert coins"), which repeats (traced session2-coins, session8).
+    /// </summary>
+    public void Advance()
+    {
+        if (Coins is null || _entry is null || _joined.Count != 0)
+            return;
+        _ticks++;
+        var affordable = Coins.Missing(0) == 0;
+        if (_ticks == PromptDelayTicks)
+            PlayVoice?.Invoke(affordable ? 0 : 1);
+        // ponytail: only the unaffordable prompt was seen repeating; the affordable one plays once.
+        else if (_ticks > PromptDelayTicks && !affordable && (_ticks - PromptDelayTicks) % PromptRepeatTicks == 0)
+            PlayVoice?.Invoke(1);
+    }
 
     public void AttachEntry(LumenPlayer entry)
     {
@@ -149,10 +176,13 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// </summary>
     public bool TryJoin(int player)
     {
-        if (!CanJoin(player) || _entry is not { } entry || Coins?.TryJoin(_joined.Count) == false)
+        if (_joined.Count != 0 || !CanJoin(player) || _entry is not { } entry || Coins?.TryJoin(_joined.Count) == false)
             return false;
         var p = number(player);
         _joined.Add(player);
+        // The game's own join voice inside EntryCoin: cue 2 for the left drum, 3 for the right (traced;
+        // in free play the movie also requests cue 2).
+        PlayVoice?.Invoke(player == 1 ? 3 : 2);
         call(entry, "BnCoinSetFree", LumenHostValue.FromBoolean(false));
         CoinsChanged();
         PlayerJoined?.Invoke(player);

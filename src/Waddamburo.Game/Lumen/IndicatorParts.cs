@@ -71,14 +71,14 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     }
 
     /// <summary>Populate and show the guest P1 name board when Song Select starts.</summary>
-    public void ShowGuestName(string name)
+    public void ShowGuestName(string name, int side = 0)
     {
         if (scene != IndicatorPartsScene.SongSelect || _nameBoards.Count == 0)
             return;
         var board = _nameBoards[0];
         var characters = StringInfo.GetTextElementEnumerator(name);
         var length = new StringInfo(name).LengthInTextElements;
-        call(board, "SetPlayer", number(0));
+        call(board, "SetPlayer", number(side));
         call(board, "SetKinotake", number(-1));
         call(board, "SetTitleName", LumenHostValue.FromString(""));
         call(board, "SetTitlePanelID", number(0));

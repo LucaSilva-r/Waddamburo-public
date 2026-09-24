@@ -121,6 +121,8 @@ public sealed class RetryGameHostBinding(
             for (var index = 0; index < 2; index++)
                 don.SetMotion(new DonMotionRequest(index, "don_fukkatu_face01", "don_fukkatu_face01"));
         }
+        // ponytail: the right drum's revival is untraced; it keeps the traced P1 calls (the 2P status
+        // draws mirrored hands) and the host shows Katsu-chan in the player's slot.
         LumenPlayerCalls.Call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(false));
         LumenPlayerCalls.Call(player, "SetNorma", LumenHostValue.FromNumber(Norma));
         LumenPlayerCalls.Call(player, "SetHandsColor", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(HandsColor));
@@ -185,7 +187,7 @@ public interface IGameOverSoundController
 /// shop_gameover.lm, the end-of-credit screen: the movie asks for the players (answered with
 /// SetPlayerBasicData), waits for IsReady_Gameover and reports LumenTerminate_Gameover when done.
 /// </summary>
-public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null) : ILumenHostBinding
+public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null, int side = 0) : ILumenHostBinding
 {
     private LumenPlayer? _player;
     private bool _infoRequested;
@@ -249,12 +251,12 @@ public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null)
         return true;
     }
 
-    // ponytail: P1 guest (no card data), P2 not joined.
-    private static void sendPlayers(LumenPlayer player)
+    // ponytail: one guest (no card data) on its drum, the other side not joined.
+    private void sendPlayers(LumenPlayer player)
     {
         LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(0),
-            LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(false));
+            LumenHostValue.FromBoolean(side == 0), LumenHostValue.FromBoolean(false));
         LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(1),
-            LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(false));
+            LumenHostValue.FromBoolean(side == 1), LumenHostValue.FromBoolean(false));
     }
 }

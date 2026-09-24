@@ -41,6 +41,20 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
+    public void AuthoredSoloRightDrumSelectionHasAnEmptyPlayerOneCourse()
+    {
+        // Traced NotifyEndCourseSelect(2, 1, '', 3) for a player on the right drum alone.
+        var request = AuthoredSongSelectionRequest.FromHostCall(new LumenHostCall([
+            LumenHostValue.FromNumber(2),
+            LumenHostValue.FromNumber(1),
+            LumenHostValue.FromString(""),
+            LumenHostValue.FromNumber(3),
+        ]));
+
+        Assert.Equal(new AuthoredSongSelectionRequest(2, 1, null, 3), request);
+    }
+
+    [Fact]
     public void AuthoredSelectionKeepsRequiredFieldsStrict()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -114,6 +128,23 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
+    public async Task RightDrumPlayerAloneSelectsAsPlayerTwo()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var playRequests = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
+            new RecordingPreviewController(), playRequests);
+
+        var selection = session.Select(0, 0, -1, (int)TaikoCourse.Oni);
+
+        Assert.Null(selection.PlayerOneChart);
+        Assert.Equal("oni", selection.PlayerTwoChart!.StableId);
+        var player = Assert.Single(Assert.IsType<PlayRequest>(playRequests.Pending).Players);
+        Assert.Equal(LocalPlayerSlot.PlayerTwo, player.Player);
+    }
+
+    [Fact]
     public async Task SessionRoutesBoardPreviewAndSelectionByPinnedCatalogIdentity()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
@@ -132,7 +163,7 @@ public sealed class SongSelectSessionTests
         Assert.Equal("Synthetic", textures.LastSong!.Descriptor.Title.Primary);
         Assert.Equal(TimeSpan.FromSeconds(12), preview!.Start);
         Assert.Equal(snapshot.Revision, selection.CatalogRevision);
-        Assert.Equal("oni", selection.PlayerOneChart.StableId);
+        Assert.Equal("oni", selection.PlayerOneChart!.StableId);
         Assert.Null(selection.PlayerTwoChart);
         Assert.Null(previews.Current);
         var request = Assert.IsType<PlayRequest>(playRequests.Pending);

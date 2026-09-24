@@ -9,6 +9,13 @@ public enum LocalPlayerSlot
     PlayerTwo,
 }
 
+/// <summary>A cardless guest's name board text (traced: どんちゃん on the left drum, かっちゃん on the right).</summary>
+public static class TaikoGuest
+{
+    // ponytail: guest names until player profiles exist.
+    public static string Name(int side) => side == 1 ? "かっちゃん" : "どんちゃん";
+}
+
 public sealed record PlayerChartRequest
 {
     public PlayerChartRequest(
@@ -56,8 +63,9 @@ public sealed record PlayRequest
             throw new ArgumentException("A play request cannot contain a null player.", nameof(players));
         if (materialized.Select(static player => player.Player).Distinct().Count() != materialized.Length)
             throw new ArgumentException("A local player slot can appear only once.", nameof(players));
-        if (materialized[0].Player != LocalPlayerSlot.PlayerOne
-            || (materialized.Length == 2 && materialized[1].Player != LocalPlayerSlot.PlayerTwo))
+        // One player may be either drum (a solo right-drum player is Player Two); two are ordered.
+        if (materialized.Length == 2
+            && (materialized[0].Player != LocalPlayerSlot.PlayerOne || materialized[1].Player != LocalPlayerSlot.PlayerTwo))
         {
             throw new ArgumentException("Local players must be ordered Player One, then Player Two.", nameof(players));
         }

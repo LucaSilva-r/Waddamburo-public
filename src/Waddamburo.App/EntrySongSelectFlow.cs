@@ -166,19 +166,7 @@ internal static class EntrySongSelectFlow
                     indicatorPart("time_counter"),
                     indicatorPart("over_msg"),
                 ]),
-                new SceneDefinition(SceneDefinition.CurrentVersion, songSelectId, [
-                    new SceneLayerDefinition(
-                        "song_select/packeddata.ddp",
-                        "song_select/song_select.lm",
-                        LumenMatrix.Identity,
-                        "song-select"),
-                    indicatorPart("indicator"),
-                    // Traced final P1 name-board position is (-580, 278) in the cabinet's
-                    // centered coordinates, or (60, 638) in our top-left scene coordinates.
-                    indicatorPart("player_name", 60, 638),
-                    indicatorPart("player_name", 640, 360),
-                    indicatorPart("time_counter"),
-                ]),
+                songSelectScene(songSelectId, 0),
                 GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout),
                 // Traced 1P results: the results movie and its "press to continue" overlay, full screen.
                 new SceneDefinition(SceneDefinition.CurrentVersion, resultId, [
@@ -246,8 +234,21 @@ internal static class EntrySongSelectFlow
             indicators = new SystemIndicators((LumenGameSceneInstance)loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
                 .AsTask().GetAwaiter().GetResult()) { Coins = coins };
+            hostFactory.LayerLoading = host =>
+            {
+                if (donPresentation is null) return;
+                if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
+                    donPresentation.MapPlayerZero = hostFactory.PlayerSide == 1;
+                else if (host is "player-entry" or "song-select" or "gameover")
+                    donPresentation.MapPlayerZero = false;
+            };
             var indicatorsForJoin = indicators;
-            hostFactory.EntryJoined = () => indicatorsForJoin.EntryJoined();
+            hostFactory.EntryJoined = side =>
+            {
+                setPlayerSide(side);
+                if (coins is not null)
+                    indicatorsForJoin.EntryJoined();
+            };
             indicatorTextureIds = uploadTextures(application, indicators.Scene);
             var rainbowSequence = new RainbowTransitionSequence();
             LumenNativeSurfaceKey? rainbowTitle = null;
@@ -267,12 +268,26 @@ internal static class EntrySongSelectFlow
             var simulationTick = 0;
             // Live presses reach only the per-frame callback; ticks see held keys. Latch drum hits
             // there for the attract loop (scripted --press pulses arrive in the tick instead).
-            var drumHitLatched = false;
+            int? drumSideLatched = null; // 0 = left drum (D/F/J/K), 1 = right drum (Z/X/C/V)
             var skipLatched = false;
             var coinLatched = 0;
             var queuedCoinSounds = 0;
-            static bool isDrum(SdlKeyPress press) => press.Key is SdlKeyboardKey.D
-                or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K;
+            static int? drumSide(IEnumerable<SdlKeyPress> presses) => presses.Select(static press => press.Key switch
+            {
+                SdlKeyboardKey.D or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K => 0,
+                SdlKeyboardKey.Z or SdlKeyboardKey.X or SdlKeyboardKey.C or SdlKeyboardKey.V => 1,
+                _ => (int?)null,
+            }).FirstOrDefault(static side => side is not null);
+            // The player's drum (0 left, 1 right): panels, Song Select's name board and the gameplay
+            // Don slot follow it, and the later scenes' hosts read it.
+            void setPlayerSide(int side)
+            {
+                hostFactory.PlayerSide = side;
+                if (indicators is not null) indicators.Side = side;
+                if (donPresentation is not null) donPresentation.GameplaySide = side;
+                catalog.Replace(songSelectScene(songSelectId, side));
+            }
+
             void goTo(SceneId scene)
             {
                 if (active.Id == resultId)
@@ -401,8 +416,9 @@ internal static class EntrySongSelectFlow
                 {
                     simulationTick++;
                     var keyboardState = inputTimeline.Apply(simulationTick, keyboard);
-                    var drumHit = drumHitLatched || keyboardState.Presses.Any(isDrum);
-                    drumHitLatched = false;
+                    var hitSide = drumSideLatched ?? drumSide(keyboardState.Presses);
+                    var drumHit = hitSide is not null;
+                    drumSideLatched = null;
                     var skipPressed = skipLatched || keyboardState.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
                     skipLatched = false;
                     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit
@@ -429,6 +445,25 @@ internal static class EntrySongSelectFlow
                     if (traceInput)
                         foreach (var press in keyboardState.Presses)
                             Console.WriteLine($"[input] {press.Key}@{simulationTick}");
+                    // The revival keeps the left player's movie setup (see RetryGameHostBinding), so a right-drum
+                    // player's Z/X/C/V drive it as D/F/J/K; the left drum is not theirs.
+                    if (active.Id == retryId && hostFactory.PlayerSide == 1)
+                    {
+                        static SdlKeyboardKey? toLeftDrum(SdlKeyboardKey key) => key switch
+                        {
+                            SdlKeyboardKey.Z => SdlKeyboardKey.D,
+                            SdlKeyboardKey.X => SdlKeyboardKey.F,
+                            SdlKeyboardKey.C => SdlKeyboardKey.J,
+                            SdlKeyboardKey.V => SdlKeyboardKey.K,
+                            SdlKeyboardKey.D or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K => null,
+                            _ => key,
+                        };
+                        keyboardState = new SdlKeyboardSnapshot(
+                            keyboardState.PressedKeys.Select(toLeftDrum).OfType<SdlKeyboardKey>(),
+                            keyboardState.Presses.Where(press => toLeftDrum(press.Key) is not null)
+                                .Select(press => press with { Key = toLeftDrum(press.Key)!.Value }),
+                            keyboardState.Timestamp);
+                    }
                     var input = LumenInputAdapter.CreateSnapshot(keyboardState,
                         active.Id == gameplayId
                             ? LumenInputMode.PresentationOnly
@@ -441,6 +476,8 @@ internal static class EntrySongSelectFlow
                     else
                     {
                         active.Player.Advance(input);
+                        if (active.Id == entryId)
+                            hostFactory.AdvanceEntry();
                         donRenderer?.Advance();
                     }
                     rainbow?.Player.Advance();
@@ -545,7 +582,8 @@ internal static class EntrySongSelectFlow
                                 songInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(played.Name),
                                     Math.Min(++songsPlayed, 8));
                                 Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
-                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme));
+                                var side = pendingRequest.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
+                                catalog.Replace(GameplaySceneComposition.Create(gameplayId, Random.Shared, ensoLayout, theme, side));
                                 coordinator.TransitionToAsync(gameplayId).AsTask().GetAwaiter().GetResult();
                                 var request = playRequests.ActivatePending();
                                 activeGameplayCharts = loadedCharts;
@@ -564,7 +602,7 @@ internal static class EntrySongSelectFlow
                                 gameplayTimeline = new GameplayTimeline(loadedCharts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
                                 gameplayStartTick = simulationTick;
                                 gameplayClock.Reset();
-                                gameplayPresentation.Start(loadedCharts[0], active, request.Players[0].Course);
+                                gameplayPresentation.Start(loadedCharts[0], active, request.Players[0].Course, side);
                                 Console.WriteLine(
                                     $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
                                     + $"{activeGameplayCharts.Sum(static chart => chart.NoteCount)} notes at tick {simulationTick}.");
@@ -621,7 +659,6 @@ internal static class EntrySongSelectFlow
                         else if (active.Id == logoId || active.Id == titleId || active.Id == cautionId || active.Id == movieId)
                         {
                             attractMovie?.Advance();
-                            // ponytail: any drum key starts (free play); coins and cards are not modelled.
                             // Free play: a drum hit starts. Coin mode: any credit does, at once (traced: entry
                             // loads right after the first coin, even short of a full credit; coins inserted
                             // during the boot screens start it as soon as the attract is reached). The drum
@@ -633,7 +670,11 @@ internal static class EntrySongSelectFlow
                                 soundController?.StopAll();
                                 if (!coinStart)
                                     soundController?.PlayAttractExit();
-                                hostFactory.EntryTrigger = coinStart ? 3 : 0; // SCENE_TRIGGER_COIN / _DON_1P
+                                // SCENE_TRIGGER_COIN (3), or _DON_1P (0) / _DON_2P (1) for the drum hit: the
+                                // entry then joins that drum's player (the right one plays as P2).
+                                hostFactory.EntryTrigger = coinStart ? 3 : hitSide ?? 0;
+                                if (!coinStart)
+                                    setPlayerSide(hitSide ?? 0);
                                 goTo(entryId);
                             }
                             else if (active.Id == movieId)
@@ -701,7 +742,9 @@ internal static class EntrySongSelectFlow
                             }
                             // Close registers on the shutter's first frame; retry until it exists.
                             if (shutterStartTick >= 0 && !shutterClosing && rainbow is not null)
-                                shutterClosing = rainbow.Player.Layers.Single().Player.TryInvokeCallback("Close", [LumenHostValue.FromNumber(0)]);
+                                // Close(side): the shutter takes the player's colour (traced Close(1) for the right drum's player).
+                                shutterClosing = rainbow.Player.Layers.Single().Player.TryInvokeCallback("Close",
+                                    [LumenHostValue.FromNumber(hostFactory.PlayerSide)]);
                             // ponytail: 70 ticks = traced Close → results load (1.17 s); the close itself takes ~1 s.
                             if (escapePressed || shutterStartTick >= 0 && simulationTick - shutterStartTick >= 70)
                             {
@@ -766,7 +809,7 @@ internal static class EntrySongSelectFlow
                 screenshotPath is null ? null : capture => ScreenshotWriter.Write(screenshotPath, capture),
                 updateFrame: keyboard =>
                 {
-                    drumHitLatched |= keyboard.Presses.Any(isDrum);
+                    drumSideLatched ??= drumSide(keyboard.Presses);
                     skipLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
                     coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
                     if (screenshotPath is null && active.Id == gameplayId
@@ -799,6 +842,21 @@ internal static class EntrySongSelectFlow
 
     // movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.
     private const string AttractMovieFill = "movie1280x720";
+
+    // Traced final P1 name-board position is (-580, 278) in the cabinet's centered coordinates, or
+    // (60, 638) in our top-left scene coordinates. ponytail: the right player's board is mirrored.
+    private static SceneDefinition songSelectScene(SceneId id, int side) =>
+        new(SceneDefinition.CurrentVersion, id, [
+            new SceneLayerDefinition(
+                "song_select/packeddata.ddp",
+                "song_select/song_select.lm",
+                LumenMatrix.Identity,
+                "song-select"),
+            indicatorPart("indicator"),
+            indicatorPart("player_name", side == 1 ? 960 : 60, 638),
+            indicatorPart("player_name", 640, 360),
+            indicatorPart("time_counter"),
+        ]);
 
     private static SceneDefinition attractScene(SceneId id, string movie, string host = "attract") =>
         new(SceneDefinition.CurrentVersion, id, [
@@ -914,9 +972,14 @@ internal static class EntrySongSelectFlow
         public int EntryTrigger { get; set; }
 
         /// <summary>Called when a player joins at entry (coin mode updates the indicator panel).</summary>
-        public Action? EntryJoined { get; set; }
+        public Action<int>? EntryJoined { get; set; }
+
+        /// <summary>The joined player's drum (0 left, 1 right); scenes after entry follow it.</summary>
+        public int PlayerSide { get; set; }
 
         public void EntryCoinsChanged() => _entry?.CoinsChanged();
+
+        public void AdvanceEntry() => _entry?.Advance();
 
         private readonly GameFlowSession _flow = flow;
         private readonly SongSelectCatalogView _catalog = catalog;
@@ -927,8 +990,12 @@ internal static class EntrySongSelectFlow
         private readonly IDonPresentationController? _don = don;
         private readonly IPlayRequestSink _playRequests = playRequests;
 
+        /// <summary>Called with each layer's host id as a scene loads (the flow scopes per-scene state).</summary>
+        public Action<string>? LayerLoading { get; set; }
+
         public LumenLayerHost Create(SceneLayerDefinition layer)
         {
+            LayerLoading?.Invoke(layer.HostId);
             // A front-end scene movie starts the indicator parts its following layers attach to.
             if (layer.HostId == "player-entry")
             {
@@ -936,11 +1003,11 @@ internal static class EntrySongSelectFlow
                 _entry = new EntrySceneHost(_parts)
                 {
                     Coins = _coins,
+                    PlayVoice = (_sounds as AuthoredSoundController) is { } sounds ? sounds.PlayEntryVoice : null,
                     CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                         : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 };
-                if (_coins is not null)
-                    _entry.PlayerJoined += _ => EntryJoined?.Invoke();
+                _entry.PlayerJoined += player => EntryJoined?.Invoke(player);
             }
             else if (layer.HostId == "song-select")
                 _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown);
@@ -970,10 +1037,9 @@ internal static class EntrySongSelectFlow
         {
             var play = playResult() ?? throw new InvalidOperationException("Results loaded without a finished play.");
             var stage = songInfo().Stage;
-            // ponytail: guest name until profiles exist (traced default どんちゃん).
-            var binding = new ResultHostBinding(() => play, "どんちゃん", stage,
+            var binding = new ResultHostBinding(() => play, TaikoGuest.Name(PlayerSide), stage,
                 TaikoCredit.EndMessage(stage, play.Cleared, arcade.SongsPerSession),
-                _don, _sounds as IResultSoundController);
+                _don, _sounds as IResultSoundController, PlayerSide);
             return new LumenLayerHost(binding, binding.Attach);
         }
 
@@ -991,7 +1057,7 @@ internal static class EntrySongSelectFlow
 
         private LumenLayerHost gameOverHost()
         {
-            var binding = GameOver = new GameOverHostBinding(_sounds as IGameOverSoundController);
+            var binding = GameOver = new GameOverHostBinding(_sounds as IGameOverSoundController, PlayerSide);
             return new LumenLayerHost(binding, binding.Attach);
         }
 
@@ -1051,7 +1117,8 @@ internal static class EntrySongSelectFlow
                     _playRequests),
                 _sounds,
                 _don,
-                parts: _parts);
+                parts: _parts,
+                side: PlayerSide);
             return new LumenLayerHost(binding, binding.Attach);
         }
     }
@@ -1065,9 +1132,27 @@ internal static class EntrySongSelectFlow
             new("don:1"),
         ];
 
-        public void Reset(DonPresentationLayout layout) =>
-            _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers,
+        /// <summary>
+        /// The player's drum. The right drum's player alone is drawn as Katsu-chan (the renderer's
+        /// second slot) and never with the mirrored second-player camera.
+        /// </summary>
+        public int GameplaySide { get; set; }
+
+        /// <summary>
+        /// Scenes that draw the one player in their first Don slot (gameplay, results, revival): with a
+        /// right-drum player, slot 0 is Katsu-chan's. Entry and Song Select address him as player 1.
+        /// </summary>
+        public bool MapPlayerZero { get; set; }
+
+        private int slot(int playerIndex) => MapPlayerZero && playerIndex == 0 ? 1 : playerIndex;
+
+        public void Reset(DonPresentationLayout layout)
+        {
+            // A right-drum player's Katsu-chan is never mirrored: he faces the centre as in entry
+            // (the mirrored camera only suits a second player standing beside a first).
+            _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers && GameplaySide != 1,
                 layout: cameraLayout(layout));
+        }
 
         public void SetCameraLayout(DonPresentationLayout layout) => _renderer.SetCameraLayout(cameraLayout(layout));
 
@@ -1079,12 +1164,12 @@ internal static class EntrySongSelectFlow
             _ => DonCameraLayout.Standard,
         };
 
-        public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[playerIndex];
+        public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[slot(playerIndex)];
 
         public void SetMotion(DonMotionRequest request) =>
-            _renderer.SetMotion(request.PlayerIndex, request.OneShot, request.Loop);
+            _renderer.SetMotion(slot(request.PlayerIndex), request.OneShot, request.Loop);
 
-        public void SetIdle(int playerIndex, string loop) => _renderer.SetIdle(playerIndex, loop);
+        public void SetIdle(int playerIndex, string loop) => _renderer.SetIdle(slot(playerIndex), loop);
 
         public void SetCostume(int playerIndex, DonCostume costume)
         {

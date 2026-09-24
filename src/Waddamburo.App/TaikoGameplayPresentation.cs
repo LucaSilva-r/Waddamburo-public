@@ -32,6 +32,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     private TaikoDonPresentation? _character;
     private TaikoAnimationClock? _animationClock;
     private int _characterSlot;
+    private int _side;
     private LumenSceneLayer[] _beatLayers = [];
     private LumenSceneLayer[] _fixedLayers = [];
     private Action<TimeSpan>? _onChartTime; // end-of-song banner check
@@ -40,11 +41,12 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
     /// <summary>The play's numbers for the results screen (null before a song).</summary>
     public TaikoPlayResult? Result => _result?.Invoke();
 
-    // ponytail: guest name until player entry provides one (traced default: どんちゃん, no title).
-    private const string PlayerName = "どんちゃん";
 
-    public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course)
+    /// <param name="side">The player's drum: 0 left (P1), 1 right (P2) playing alone on the same lane.</param>
+    public void Start(PlayableChart chart, LumenGameSceneInstance scene, TaikoCourse course, int side = 0)
     {
+        _side = side;
+        var PlayerName = TaikoGuest.Name(side); // no title (traced)
         // Skin parts are addressed by role ("bg_nomal"), whatever variant the composition picked.
         var layers = scene.Layers.Select((layer, index) =>
             (Name: GameplaySceneComposition.Role(Path.GetFileNameWithoutExtension(layer.Definition.MovieId)),
@@ -53,8 +55,8 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         LumenPlayer? skin(string role) => layers.TryGetValue(role, out var layer) ? layer.Player : null;
         var board = layers["lane_obi"].Player;
         var flightTemplate = layers["onp_kiseki_don_1p"];
-        var flightContent = scene.Layers.Single(layer =>
-            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "onp_kiseki_don_1p").Content;
+        var flightContent = scene.Layers.Single(layer => GameplaySceneComposition.Role(
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId)) == "onp_kiseki_don_1p").Content;
         _flights = new TaikoHitFlights(Enumerable.Range(0, 16)
             .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }));
         var courseLabel = course switch
@@ -66,7 +68,9 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             TaikoCourse.Ura => "extreme",
             _ => throw new ArgumentOutOfRangeException(nameof(course)),
         };
-        if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(0)])
+        // Traced SetEntryType 1 / SetPlaySide 0 for the left player, 2 / 1 for the right one alone.
+        board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(side + 1)]);
+        if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
             || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
             throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
         // The three gauge movies differ in their authored clear line (60/70/80%).
@@ -142,7 +146,7 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
         var nameBoard = layers["player_name"].Player;
         var characters = System.Globalization.StringInfo.GetTextElementEnumerator(PlayerName);
         var nameLength = new System.Globalization.StringInfo(PlayerName).LengthInTextElements;
-        call(nameBoard, "SetPlayer", LumenHostValue.FromNumber(0));
+        call(nameBoard, "SetPlayer", LumenHostValue.FromNumber(side));
         call(nameBoard, "SetKinotake", LumenHostValue.FromNumber(-1));
         call(nameBoard, "SetTitleName", LumenHostValue.FromString(""));
         call(nameBoard, "SetTitlePanelID", LumenHostValue.FromNumber(0));
@@ -295,12 +299,13 @@ internal sealed class TaikoGameplayPresentation(Action<TaikoInputAction>? playHi
             return;
         foreach (var press in keyboard.Presses)
         {
-            TaikoInputAction? action = press.Key switch
+            // The player's own drum only: D/F/J/K on the left, Z/X/C/V on the right (ka, don, don, ka).
+            TaikoInputAction? action = (_side, press.Key) switch
             {
-                SdlKeyboardKey.F => TaikoInputAction.LeftDon,
-                SdlKeyboardKey.J => TaikoInputAction.RightDon,
-                SdlKeyboardKey.D => TaikoInputAction.LeftKa,
-                SdlKeyboardKey.K => TaikoInputAction.RightKa,
+                (0, SdlKeyboardKey.F) or (1, SdlKeyboardKey.X) => TaikoInputAction.LeftDon,
+                (0, SdlKeyboardKey.J) or (1, SdlKeyboardKey.C) => TaikoInputAction.RightDon,
+                (0, SdlKeyboardKey.D) or (1, SdlKeyboardKey.Z) => TaikoInputAction.LeftKa,
+                (0, SdlKeyboardKey.K) or (1, SdlKeyboardKey.V) => TaikoInputAction.RightKa,
                 _ => null,
             };
             if (action is not { } hit)

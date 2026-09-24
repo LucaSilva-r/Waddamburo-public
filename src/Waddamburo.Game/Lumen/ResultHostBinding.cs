@@ -26,7 +26,8 @@ public sealed class ResultHostBinding(
     int stage,
     int endMessage,
     IDonPresentationController? don = null,
-    IResultSoundController? sounds = null) : ILumenHostBinding
+    IResultSoundController? sounds = null,
+    int side = 0) : ILumenHostBinding
 {
     private LumenHostContext? _context;
 
@@ -74,19 +75,24 @@ public sealed class ResultHostBinding(
         return true;
     }
 
-    /// <summary>The calls the game makes when the results load (P1, free-play guest).</summary>
+    /// <summary>
+    /// The calls the game makes when the results load (one guest player). <c>side</c> 1 = the right
+    /// drum's player alone (traced session8-p2-solo): its status flag and player index, and an end
+    /// message of 0 whatever follows.
+    /// </summary>
     public void Attach(LumenPlayer player)
     {
         ArgumentNullException.ThrowIfNull(player);
         if (don is not null)
             DonLumenBinding.Attach(player, don);
         var play = result();
-        var p = number(0);
+        var p = number(side);
         var no = LumenHostValue.FromBoolean(false);
         call(player, "SetRunMode", number(0));
         call(player, "SetSongPlayCount", number(stage));
-        call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(true), no);
-        call(player, "SetEndMessage", number(endMessage));
+        call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(side == 0), LumenHostValue.FromBoolean(side == 1));
+        // ponytail: a failed first song on the right drum (revival) was not traced; its message is kept.
+        call(player, "SetEndMessage", number(side == 1 && endMessage != 2 ? 0 : endMessage));
         call(player, "SetCourse", p, number(play.CourseIndex));
         call(player, "SetScore", p, number(play.Score));
         call(player, "SetBestScore", p, number(-10)); // no previous best
@@ -103,14 +109,16 @@ public sealed class ResultHostBinding(
         call(player, "SetOptionAbekobe", p, no);
         call(player, "SetOptionRandomLevel", p, number(0));
         call(player, "SetOptionShinuchi", p, no);
-        call(player, "SetPlayerForPlayerName", number(0), p);
-        call(player, "SetTitleForPlayerName", LumenHostValue.FromString(""), p);
-        call(player, "SetTitlePanelForPlayerName", number(0), p);
-        call(player, "SetDaniForPlayerName", number(0), no, p);
+        // The name board calls end with the board index (0), not the player.
+        var board = number(0);
+        call(player, "SetPlayerForPlayerName", p, board);
+        call(player, "SetTitleForPlayerName", LumenHostValue.FromString(""), board);
+        call(player, "SetTitlePanelForPlayerName", number(0), board);
+        call(player, "SetDaniForPlayerName", number(0), no, board);
         var characters = System.Globalization.StringInfo.GetTextElementEnumerator(playerName);
-        call(player, "SetNameSizeForPlayerName", number(new System.Globalization.StringInfo(playerName).LengthInTextElements), p);
+        call(player, "SetNameSizeForPlayerName", number(new System.Globalization.StringInfo(playerName).LengthInTextElements), board);
         for (var index = 0; characters.MoveNext(); index++)
-            call(player, "SetCharForPlayerName", number(index), LumenHostValue.FromString(characters.GetTextElement()), p);
+            call(player, "SetCharForPlayerName", number(index), LumenHostValue.FromString(characters.GetTextElement()), board);
         call(player, "ApplyForPlayerName");
     }
 

@@ -100,7 +100,11 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
 
     public void RequestSound(ResultSoundRequest request)
     {
-        var sound = (request.Kind, request.Group, request.Cue) switch
+        // Group 1/2 = the left/right player's request. The right player's voices are Katsu-chan's,
+        // one cue after Don-chan's (traced (2, 1/6/8) -> VO_RESULT 2/12/16); effects are shared.
+        var katsu = request.Group == 2;
+        var group = katsu ? 1 : request.Group;
+        var sound = (request.Kind, group, request.Cue) switch
         {
             (ResultSoundRequestKind.Voice, 1, 1) => (Bank: "VO_RESULT", Cue: 1),
             (ResultSoundRequestKind.Voice, 1, 5) => (Bank: "VO_RESULT", Cue: 9),
@@ -118,6 +122,8 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
             (ResultSoundRequestKind.Effect, 0, 7) => (Bank: "SE_RESULT", Cue: 24),
             _ => default,
         };
+        if (katsu && request.Kind == ResultSoundRequestKind.Voice && sound.Bank is not null)
+            sound.Cue++;
         if (sound.Bank is not null)
         {
             playNamedBankCue(sound.Bank, sound.Cue,
@@ -281,6 +287,8 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
 
     public bool IsCoinPlaying => isPlaying(_coinHandle);
 
+    public void PlayEntryVoice(int cue) => playNamedBankCue("VO_ENTRY", cue);
+
     /// <summary>A drum hit leaving the attract loop (traced SE_COM cue 1 at the title).</summary>
     public void PlayAttractExit() => playNamedBankCue("SE_COM", 1, AudioBus.MenuSound);
 
@@ -435,15 +443,17 @@ internal sealed class AuthoredSoundController : ISongSelectSoundController, IRet
     {
         if (!tryInteger(arguments, 0, out var group)
             || !tryInteger(arguments, 1, out var hitKind)
-            || group != 0)
+            || group is not (0 or 1))
         {
             traceUnmapped("SystemEffect", arguments);
             return;
         }
 
+        // Group = the drum: the right one's Don played SE_COM cue 2 (traced session8-p2-solo); its Ka
+        // shares the left drum's cue.
         var cueId = hitKind switch
         {
-            0 => 0, // Don / confirm
+            0 => group == 0 ? 0 : 2, // Don / confirm
             1 => 3, // Ka / navigation
             _ => -1,
         };

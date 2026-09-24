@@ -66,14 +66,24 @@ public readonly record struct SongSelectSoundRequest(
 public readonly record struct AuthoredSongSelectionRequest(
     int Category,
     int Song,
-    int PlayerOneCourse,
+    int? PlayerOneCourse,
     int? PlayerTwoCourse)
 {
-    public static AuthoredSongSelectionRequest FromHostCall(LumenHostCall call) => new(
-        requiredInteger(call, 0),
-        requiredInteger(call, 1),
-        requiredInteger(call, 2),
-        optionalInteger(call, 3));
+    /// <summary>
+    /// NotifyEndCourseSelect(category, song, course1P, course2P). An absent side's course is ''
+    /// (traced: a solo right-drum player sends (2, 1, '', 3)).
+    /// </summary>
+    public static AuthoredSongSelectionRequest FromHostCall(LumenHostCall call)
+    {
+        var request = new AuthoredSongSelectionRequest(
+            requiredInteger(call, 0),
+            requiredInteger(call, 1),
+            optionalInteger(call, 2),
+            optionalInteger(call, 3));
+        if (request.PlayerOneCourse is null && request.PlayerTwoCourse is null)
+            throw new ArgumentOutOfRangeException(nameof(call), "Song selection names no player's course.");
+        return request;
+    }
 
     /// <summary>Authored courses use eight normal/hidden slots, not the catalog enum.</summary>
     public static int ToCatalogCourse(int authoredCourse) => authoredCourse switch
@@ -100,7 +110,8 @@ public readonly record struct AuthoredSongSelectionRequest(
     private static int? optionalInteger(LumenHostCall call, int index)
     {
         if ((uint)index >= (uint)call.Arguments.Length
-            || call.Arguments[index].Kind is LumenHostValueKind.Undefined or LumenHostValueKind.Null)
+            || call.Arguments[index].Kind is LumenHostValueKind.Undefined or LumenHostValueKind.Null
+            || call.Arguments[index].Kind == LumenHostValueKind.Text && call.Arguments[index].AsString().Length == 0)
         {
             return null;
         }
@@ -132,14 +143,17 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private bool _assigned;
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
+    private readonly int _side; // the joined player's drum: 0 left, 1 right
 
     public SongSelectHostBinding(
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
         IDonPresentationController? don = null,
         TimeProvider? timeProvider = null,
-        IndicatorParts? parts = null)
+        IndicatorParts? parts = null,
+        int side = 0)
     {
+        _side = side;
         _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
@@ -232,19 +246,20 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber(-1));
         }
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(-1));
+        // SetPlayer(player, joined, ...): traced (1, true, ...) for a right-drum player alone.
         invoke(
             "SetPlayer",
             LumenHostValue.FromNumber(0),
-            LumenHostValue.FromBoolean(true),
+            LumenHostValue.FromBoolean(_side == 0),
             LumenHostValue.FromBoolean(false),
             LumenHostValue.FromNumber(-1));
         invoke("SetScoreType", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0),
             LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-        invoke("SetPlayer", LumenHostValue.FromNumber(1), LumenHostValue.FromBoolean(false),
+        invoke("SetPlayer", LumenHostValue.FromNumber(1), LumenHostValue.FromBoolean(_side == 1),
             LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(-1));
         invoke("SetScoreType", LumenHostValue.FromNumber(1), LumenHostValue.FromNumber(0),
             LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-        _parts?.ShowGuestName("どんちゃん");
+        _parts?.ShowGuestName(Gameplay.TaikoGuest.Name(_side), _side);
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[0].Name);
         return true;
     }
@@ -340,12 +355,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private LumenHostValue notifySelection(LumenHostCall call)
     {
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
-        _session.Select(
-            request.Category,
-            request.Song,
-            AuthoredSongSelectionRequest.ToCatalogCourse(request.PlayerOneCourse),
-            request.PlayerTwoCourse is null or < 0 ? -1
-                : AuthoredSongSelectionRequest.ToCatalogCourse(request.PlayerTwoCourse.Value));
+        static int course(int? authored) => authored is null or < 0 ? -1
+            : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
+        _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse));
         return LumenHostValue.Undefined;
     }
 

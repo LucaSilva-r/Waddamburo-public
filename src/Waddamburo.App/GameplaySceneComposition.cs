@@ -71,18 +71,27 @@ internal static class GameplaySceneComposition
 
     /// <summary>
     /// Gameplay scene with either a themed skin (one archive holding every part, given with its
-    /// movie list) or, without one, a random enso_original mix.
+    /// movie list) or, without one, a random enso_original mix. <paramref name="side"/> 1 = the right
+    /// drum's player alone: the same top lane, with Katsu-chan's katsu1p parts and the 2P Don
+    /// backdrop (traced session8-p2-solo).
     /// </summary>
-    public static SceneDefinition Create(SceneId id, Random random, EnsoLayout layout, ThemedSkin? theme = null)
+    public static SceneDefinition Create(SceneId id, Random random, EnsoLayout layout, ThemedSkin? theme = null, int side = 0)
     {
+        var sideSuffix = side == 1 ? "_2p" : "_1p";
         (SceneLayerDefinition Layer, int Depth)? skin(string role, int index, int depth)
         {
             var at = layout[index];
             if (theme is not null)
-                return theme.Movies.FirstOrDefault(movie => Role(Path.GetFileNameWithoutExtension(movie)) == role)
-                    is { } movie ? (layer(theme.Archive, movie, at.X, at.Y), depth) : null;
+            {
+                // A part with per-side variants (the Don backdrop) takes the player's side.
+                var movies = theme.Movies.Where(movie => Role(Path.GetFileNameWithoutExtension(movie)) == role).ToArray();
+                var movie = movies.FirstOrDefault(movie => Path.GetFileNameWithoutExtension(movie).EndsWith(sideSuffix))
+                    ?? movies.FirstOrDefault(movie => !Path.GetFileNameWithoutExtension(movie).EndsWith("_2p"));
+                return movie is null ? null : (layer(theme.Archive, movie, at.X, at.Y), depth);
+            }
             var entry = OriginalParts.Single(entry => entry.Part == role);
-            var name = $"{role}_a_{random.Next(1, entry.Variants + 1):00}{entry.Suffix}";
+            var suffix = entry.Suffix.Length == 0 ? "" : sideSuffix;
+            var name = $"{role}_a_{random.Next(1, entry.Variants + 1):00}{suffix}";
             return (layer($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm", at.X, at.Y), depth);
         }
         var layers = SkinRoles
@@ -91,8 +100,10 @@ internal static class GameplaySceneComposition
             .Concat(SystemLayers.Select(entry =>
             {
                 var at = entry.Index is { } index ? layout[index] : default;
-                return (Layer: layer($"{entry.Archive}/packeddata.ddp", $"{entry.Movie}/{entry.Movie}.lm", at.X, at.Y),
-                    entry.Depth);
+                var (archive, movie) = side == 1 && entry.Archive == "enso_system/don1p"
+                    ? ("enso_system/katsu1p", entry.Movie.Replace("_don_1p", "_katsu_1p"))
+                    : (entry.Archive, entry.Movie);
+                return (Layer: layer($"{archive}/packeddata.ddp", $"{movie}/{movie}.lm", at.X, at.Y), entry.Depth);
             }))
             .OrderByDescending(entry => entry.Depth) // stable: equal depths keep list order
             .Select(entry => entry.Layer);
@@ -130,11 +141,17 @@ internal static class GameplaySceneComposition
     /// <summary>A themed gameplay skin: its archive and the movies it contains.</summary>
     public sealed record ThemedSkin(string Archive, IReadOnlyList<string> Movies);
 
-    /// <summary>Skin role of a gameplay layer name ("bg_nomal_a_02", "donbg_b_01_1p" -> role); 2P parts keep their name.</summary>
-    public static string Role(string layerName) =>
-        System.Text.RegularExpressions.Regex.Match(layerName, "^(.+?)_[ab]_[0-9]+(?:_1p|_common)?$") is { Success: true } match
+    /// <summary>
+    /// Gameplay role of a layer name: skin parts lose their variant ("bg_nomal_a_02", "donbg_b_01_2p" ->
+    /// role), and Katsu-chan's player parts share Don-chan's roles ("gage_katsu_1p_easy" -> "gage_don_1p_easy").
+    /// </summary>
+    public static string Role(string layerName)
+    {
+        var name = layerName.Replace("_katsu_1p", "_don_1p", StringComparison.Ordinal);
+        return System.Text.RegularExpressions.Regex.Match(name, "^(.+?)_[ab]_[0-9]+(?:_1p|_2p|_common)?$") is { Success: true } match
             ? match.Groups[1].Value
-            : layerName;
+            : name;
+    }
 
     private static SceneLayerDefinition layer(string archive, string movie, float x, float y) => new(
         archive,

@@ -42,7 +42,7 @@ public interface ISongPreviewController
 public sealed record SongSelection(
     long CatalogRevision,
     SongKey Song,
-    ChartKey PlayerOneChart,
+    ChartKey? PlayerOneChart,
     ChartKey? PlayerTwoChart);
 
 /// <summary>Owns browser requests while remaining independent of Lumen and content sources.</summary>
@@ -101,19 +101,21 @@ public sealed class SongSelectSession
     {
         if (!Catalog.TryGetSong(category, song, out var selected))
             throw new ArgumentOutOfRangeException(nameof(song));
-        var playerOne = chart(selected, playerOneCourse, required: true)!;
+        // Either side may play alone; -1 = that drum has no player.
+        if (playerOneCourse < 0 && playerTwoCourse < 0)
+            throw new ArgumentOutOfRangeException(nameof(playerOneCourse), "Song Select selected no player's course.");
+        var playerOne = chart(selected, playerOneCourse, required: false);
         var playerTwo = chart(selected, playerTwoCourse, required: false);
         var selection = new SongSelection(
             Catalog.Revision,
             selected.Descriptor.Key,
-            playerOne.Key,
+            playerOne?.Key,
             playerTwo?.Key);
-        var players = playerTwo is null
-            ? new[] { request(LocalPlayerSlot.PlayerOne, playerOne) }
-            : [
-                request(LocalPlayerSlot.PlayerOne, playerOne),
-                request(LocalPlayerSlot.PlayerTwo, playerTwo),
-            ];
+        var players = new[]
+        {
+            playerOne is null ? null : request(LocalPlayerSlot.PlayerOne, playerOne),
+            playerTwo is null ? null : request(LocalPlayerSlot.PlayerTwo, playerTwo),
+        }.OfType<PlayerChartRequest>();
         var playRequest = new PlayRequest(
             Catalog.Revision,
             selected.Descriptor.Key,
