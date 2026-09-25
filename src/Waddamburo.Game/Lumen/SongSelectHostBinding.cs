@@ -1,5 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
+using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 
@@ -144,6 +145,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
+    private readonly IReadOnlyDictionary<string, TaikoCrown>? _crowns;
 
     public SongSelectHostBinding(
         SongSelectSession session,
@@ -152,8 +154,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         TimeProvider? timeProvider = null,
         IndicatorParts? parts = null,
         int side = 0,
-        bool twoPlayers = false)
+        bool twoPlayers = false,
+        IReadOnlyDictionary<string, TaikoCrown>? crowns = null)
     {
+        _crowns = crowns;
         _sides = twoPlayers ? [0, 1] : [side];
         _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
@@ -263,12 +267,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber(-1));
         }
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(-1));
-        // SetPlayer(player, joined, ...): traced (1, true, ...) for a right-drum player alone, both
-        // joined for two players.
+        // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
+        // drum alone, both joined for two players. hasData (a profile) lets the boards show crowns.
         foreach (var player in new[] { 0, 1 })
         {
             invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
-                LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(-1));
+                LumenHostValue.FromBoolean(_crowns is not null && _sides.Contains(player)), LumenHostValue.FromNumber(-1));
             invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0),
                 LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
         }
@@ -297,7 +301,29 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             LumenHostValue.FromNumber(courses.HiddenNormalStars),
             LumenHostValue.FromNumber(courses.HiddenHardStars),
             LumenHostValue.FromNumber(courses.HiddenOniStars));
+        publishCrowns(song);
         return LumenHostValue.Undefined;
+    }
+
+    // SetClearBits(player, silver, gold): one bit per authored course slot (ura = hidden oni, 7);
+    // the movie shows a gold crown for a full combo, silver for a clear.
+    private void publishCrowns(SongSelectSong song)
+    {
+        if (_crowns is null)
+            return;
+        int silver = 0, gold = 0;
+        foreach (var chart in song.Descriptor.Charts)
+        {
+            if (chart.Course is not { } course || !_crowns.TryGetValue(chart.Key.ToString(), out var crown))
+                continue;
+            var bit = 1 << (course == TaikoCourse.Ura ? 7 : (int)course);
+            silver |= bit;
+            if (crown == TaikoCrown.FullCombo)
+                gold |= bit;
+        }
+        foreach (var player in _sides)
+            invoke("SetClearBits", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(silver),
+                LumenHostValue.FromNumber(gold));
     }
 
     private LumenHostValue publishBoard(LumenHostCall call, SongBoardTextureKind kind)

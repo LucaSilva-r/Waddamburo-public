@@ -5,6 +5,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -161,6 +162,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
         Shell.Gameplay.Stop();
+        if (finished && Shell.PlayRequests.Active is { } played)
+            saveScore(played);
         Shell.PlayRequests.ClearActive();
         if (finished)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
@@ -168,6 +171,26 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _charts = [];
         Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
+    }
+
+    // ponytail: saves one solo player under --baid; two players and Waiwai wait for per-side profiles.
+    private void saveScore(PlayRequest request)
+    {
+        if (Shell.Scores is not { } scores || Shell.Options.Baid is not { } baid
+            || _charts.Length != 1 || Shell.Gameplay.WaiwaiOutcome is not null)
+            return;
+        var player = request.Players[0];
+        try
+        {
+            scores.Save(new PlayRecord(Guid.NewGuid(), baid, ChartHash.Compute(_charts[0], player.Course),
+                player.Chart, "normal", Shell.Gameplay.Results[0], DateTimeOffset.UtcNow,
+                Shell.Gameplay.Replays[0].Encode()));
+        }
+        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
+        {
+            // A lost score must not end the credit.
+            Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
+        }
     }
 
     private AudioStreamTransport? startAudio(PlayRequest request)

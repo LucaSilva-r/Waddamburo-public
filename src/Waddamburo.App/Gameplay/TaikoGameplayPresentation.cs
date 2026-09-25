@@ -51,6 +51,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Every lane's numbers, in lane order (the second is the right drum's player).</summary>
     public IReadOnlyList<TaikoPlayResult> Results => [.. _lanes.Select(lane => lane.Result)];
 
+    /// <summary>Every lane's drum inputs, in lane order.</summary>
+    public IReadOnlyList<TaikoReplay> Replays => [.. _lanes.Select(lane => lane.Replay)];
+
     /// <summary>
     /// One chart: one player on <paramref name="side"/> (0 left, 1 right playing alone on the same
     /// lane). Two charts: two players, the left drum on the top lane.
@@ -156,6 +159,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public TaikoPlayResult Result => _result();
 
         public TaikoJudgementSession Session => _session;
+
+        public TaikoReplay Replay { get; } = new();
 
         /// <summary>
         /// <paramref name="lane"/> 0 = the top lane, 1 = the second player's lower lane;
@@ -448,6 +453,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 eventTime = eventTime > chartTime ? chartTime : eventTime;
                 _presentation.Hit(hit);
                 _playHitSound?.Invoke(_soundLane, hit);
+                Replay.Add(hit, eventTime);
                 _session.SubmitInput(hit, eventTime);
             }
             _session.AdvanceTo(chartTime);

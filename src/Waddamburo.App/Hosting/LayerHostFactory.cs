@@ -8,6 +8,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 
@@ -34,6 +35,9 @@ internal sealed class LayerHostFactory(
     CoinBank? coins) : ILumenLayerHostFactory
 {
     private EntrySceneHost? _entry;
+
+    /// <summary>The playing profile's crowns by chart key, read as Song Select loads (null: no profile).</summary>
+    public Func<IReadOnlyDictionary<string, TaikoCrown>>? Crowns { get; init; }
     private IndicatorParts? _parts;
 
     // --- The credit's state, set by the flow ---
@@ -178,7 +182,9 @@ internal sealed class LayerHostFactory(
             don,
             parts: _parts,
             side: PlayerSide,
-            twoPlayers: TwoPlayers);
+            twoPlayers: TwoPlayers,
+            // ponytail: one profile (--baid) until login; two players get per-side crowns with it.
+            crowns: TwoPlayers ? null : Crowns?.Invoke());
         return new LumenLayerHost(binding, binding.Attach);
     }
 

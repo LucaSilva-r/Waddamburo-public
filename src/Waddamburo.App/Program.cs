@@ -32,6 +32,7 @@ try
     var jinglePath = parseOption(args, "--play-jingle=");
     var soundRoot = parseOption(args, "--sound-root=");
     var startSceneOption = parseOption(args, "--start-scene=");
+    var baidOption = parseOption(args, "--baid=");
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
@@ -95,7 +96,9 @@ try
             layout.SoundRoot,
             countdown,
             startScene,
-            arcade));
+            arcade,
+            baidOption is null ? null : long.Parse(baidOption, System.Globalization.CultureInfo.InvariantCulture),
+            Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName)));
         return 0;
     }
     if (soundBankProbe is not null)
