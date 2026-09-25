@@ -173,18 +173,21 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
     }
 
-    // ponytail: saves one solo player under --baid; two players and Waiwai wait for per-side profiles.
+    // ponytail: saves one solo player under the logged-in account; two players and Waiwai wait for
+    // per-side profiles (cabinet pairing).
     private void saveScore(PlayRequest request)
     {
-        if (Shell.Scores is not { } scores || Shell.Options.Baid is not { } baid
+        if (Shell.Scores is not { } scores || Shell.Options.Account is not { } account
             || _charts.Length != 1 || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var player = request.Players[0];
         try
         {
-            scores.Save(new PlayRecord(Guid.NewGuid(), baid, ChartHash.Compute(_charts[0], player.Course),
+            scores.Save(new PlayRecord(Guid.NewGuid(), account.Baid, ChartHash.Compute(_charts[0], player.Course),
                 player.Chart, "normal", Shell.Gameplay.Results[0], DateTimeOffset.UtcNow,
-                Shell.Gameplay.Replays[0].Encode()));
+                Shell.Gameplay.Replays[0].Encode()),
+                ChartUpload.From(_charts[0], player.Course, _song?.Descriptor.Title.Primary, _song?.Descriptor.Subtitle));
+            Shell.ScoreServer?.SyncInBackground(scores, account.Baid);
         }
         catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
         {

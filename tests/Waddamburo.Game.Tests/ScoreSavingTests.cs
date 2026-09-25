@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.Json;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scores;
@@ -58,6 +60,63 @@ public sealed class ScoreSavingTests
     }
 
     [Fact]
+    public async Task SyncUploadsPendingPlaysAndRequestedChartsOnce()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new ScoreStore(path);
+            var sha = ChartHash.Compute(chart(), TaikoCourse.Oni);
+            store.Save(new PlayRecord(Guid.NewGuid(), 42, sha, chart().Key, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
+                new TaikoReplay().Encode()), ChartUpload.From(chart(), TaikoCourse.Oni, "Song", null));
+            var server = new StubServer(sha);
+            using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
+            var client = new ScoreClient(http);
+
+            Assert.Equal(1, await client.SyncAsync(store, 42));
+            Assert.Equal(0, await client.SyncAsync(store, 42));
+            Assert.Contains("\"chart_sha256\":\"" + sha, server.Plays);
+            Assert.Contains("\"max_combo\":3", server.Plays);
+            // The imported notes are the hashed canonical bytes.
+            using var gzip = new System.IO.Compression.GZipStream(
+                new MemoryStream(Convert.FromBase64String(JsonDocument.Parse(server.Chart!).RootElement.GetProperty("notes").GetString()!)),
+                System.IO.Compression.CompressionMode.Decompress);
+            using var notes = new MemoryStream();
+            gzip.CopyTo(notes);
+            Assert.Equal(ChartHash.Serialize(chart(), TaikoCourse.Oni), notes.ToArray());
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    private sealed class StubServer(string missingChart) : HttpMessageHandler
+    {
+        public string Plays { get; private set; } = "";
+        public string? Chart { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            if (request.Method == HttpMethod.Put && request.RequestUri!.AbsolutePath == $"/api/wdb/charts/{missingChart}")
+            {
+                Chart = body;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            Plays += body;
+            var id = JsonDocument.Parse(body).RootElement.GetProperty("plays")[0].GetProperty("id").GetString();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent($"{{\"accepted\":[\"{id}\"],\"missing_charts\":[\"{missingChart}\"]}}",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    [Fact]
     public void StoreKeepsEveryPlayAndDerivesTheBestCrown()
     {
         var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
@@ -67,12 +126,13 @@ public sealed class ScoreSavingTests
             PlayRecord play(bool cleared, int miss) => new(Guid.NewGuid(), 42, "sha", key, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 1000, 3 - miss, 0, miss, 3 - miss, 0, 50, cleared),
                 DateTimeOffset.UtcNow, new TaikoReplay().Encode());
+            var upload = ChartUpload.From(chart(), TaikoCourse.Oni, "Song", null);
             using (var store = new ScoreStore(path))
             {
-                store.Save(play(cleared: true, miss: 1));
+                store.Save(play(cleared: true, miss: 1), upload);
                 Assert.Equal(TaikoCrown.Clear, store.Crowns(42)[key.ToString()]);
-                store.Save(play(cleared: true, miss: 0));
-                store.Save(play(cleared: false, miss: 3));
+                store.Save(play(cleared: true, miss: 0), upload);
+                store.Save(play(cleared: false, miss: 3), upload);
                 Assert.Empty(store.Crowns(7));
             }
             using var reopened = new ScoreStore(path); // migrations run once

@@ -8,6 +8,25 @@ namespace Waddamburo.Game.Scores;
 
 public enum TaikoCrown { None, Clear, FullCombo }
 
+/// <summary>A play as the server takes it (snake_case JSON); the replay is base64.</summary>
+public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string Mode, int Course, long Score,
+    int Great, int Good, int Miss, int MaxCombo, int Rolls, int Gauge, bool Cleared, int ScoringVersion,
+    string EngineVersion, DateTimeOffset PlayedAt, string Replay);
+
+/// <summary>A chart import: gzipped canonical notes (<see cref="ChartHash.Serialize"/>), base64, plus display metadata.</summary>
+public sealed record ChartUpload(string Notes, string? Title, string? Subtitle, string? Source, int Course, int? Level)
+{
+    public static ChartUpload From(PlayableChart chart, TaikoCourse course, string? title, string? subtitle)
+    {
+        ArgumentNullException.ThrowIfNull(chart);
+        using var output = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal))
+            gzip.Write(ChartHash.Serialize(chart, course));
+        return new ChartUpload(Convert.ToBase64String(output.ToArray()), title, subtitle,
+            chart.Key.Song.Source.ToString(), (int)course, chart.Level);
+    }
+}
+
 /// <summary>
 /// One finished play of one player. Every play is kept (bests are derived), with its replay so it
 /// can be rescored when the scoring rules change.
@@ -67,6 +86,18 @@ public sealed class ScoreStore : IDisposable
         CREATE INDEX plays_player_chart ON plays (baid, chart_key);
         CREATE INDEX plays_chart ON plays (chart_sha256);
         """,
+        // The canonical notes of every chart played, for the server to import on request.
+        """
+        CREATE TABLE charts (
+            sha256 TEXT PRIMARY KEY,
+            notes BLOB NOT NULL,
+            title TEXT,
+            subtitle TEXT,
+            source TEXT,
+            course INTEGER NOT NULL,
+            level INTEGER
+        );
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -79,11 +110,99 @@ public sealed class ScoreStore : IDisposable
         migrate();
     }
 
-    public void Save(PlayRecord play)
+    // ponytail: one connection behind a lock (game thread saves, uploader reads); fine at a few plays a minute.
+    public void Save(PlayRecord play, ChartUpload chart)
     {
         ArgumentNullException.ThrowIfNull(play);
+        ArgumentNullException.ThrowIfNull(chart);
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            insertPlay(play, transaction);
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT OR IGNORE INTO charts (sha256, notes, title, subtitle, source, course, level)
+                VALUES ($sha, $notes, $title, $subtitle, $source, $course, $level)
+                """;
+            command.Parameters.AddWithValue("$sha", play.ChartSha256);
+            command.Parameters.AddWithValue("$notes", Convert.FromBase64String(chart.Notes));
+            command.Parameters.AddWithValue("$title", (object?)chart.Title ?? DBNull.Value);
+            command.Parameters.AddWithValue("$subtitle", (object?)chart.Subtitle ?? DBNull.Value);
+            command.Parameters.AddWithValue("$source", (object?)chart.Source ?? DBNull.Value);
+            command.Parameters.AddWithValue("$course", chart.Course);
+            command.Parameters.AddWithValue("$level", (object?)chart.Level ?? DBNull.Value);
+            command.ExecuteNonQuery();
+            transaction.Commit();
+        }
+    }
+
+    /// <summary>The player's plays not yet on the server, oldest first.</summary>
+    public List<UploadPlay> PendingPlays(long baid, int limit)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
+                    cleared, scoring_version, engine_version, played_at, replay
+                FROM plays WHERE baid = $baid AND uploaded_at IS NULL ORDER BY played_at LIMIT $limit
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var plays = new List<UploadPlay>();
+            while (reader.Read())
+                plays.Add(new UploadPlay(Guid.Parse(reader.GetString(0)), reader.GetInt64(1), reader.GetString(2),
+                    reader.GetString(3), reader.GetInt32(4), reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7),
+                    reader.GetInt32(8), reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11), reader.GetBoolean(12),
+                    reader.GetInt32(13), reader.GetString(14),
+                    DateTimeOffset.Parse(reader.GetString(15), CultureInfo.InvariantCulture),
+                    Convert.ToBase64String((byte[])reader[16])));
+            return plays;
+        }
+    }
+
+    public ChartUpload? Chart(string sha256)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT notes, title, subtitle, source, course, level FROM charts WHERE sha256 = $sha";
+            command.Parameters.AddWithValue("$sha", sha256);
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
+                return null;
+            string? text(int column) => reader.IsDBNull(column) ? null : reader.GetString(column);
+            return new ChartUpload(Convert.ToBase64String((byte[])reader[0]), text(1), text(2), text(3),
+                reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5));
+        }
+    }
+
+    public void MarkUploaded(IEnumerable<Guid> ids)
+    {
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE plays SET uploaded_at = $at WHERE id = $id";
+            var at = command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            var id = command.Parameters.Add("$id", SqliteType.Text);
+            foreach (var value in ids)
+            {
+                id.Value = value.ToString();
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+
+    private void insertPlay(PlayRecord play, SqliteTransaction transaction)
+    {
         var result = play.Result;
         using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay)
@@ -116,6 +235,12 @@ public sealed class ScoreStore : IDisposable
     /// them). ponytail: an edited chart keeps its old crown until played; a key-to-hash cache fixes that.
     /// </summary>
     public Dictionary<string, TaikoCrown> Crowns(long baid)
+    {
+        lock (_connection)
+            return crowns(baid);
+    }
+
+    private Dictionary<string, TaikoCrown> crowns(long baid)
     {
         var crowns = new Dictionary<string, TaikoCrown>();
         using var command = _connection.CreateCommand();

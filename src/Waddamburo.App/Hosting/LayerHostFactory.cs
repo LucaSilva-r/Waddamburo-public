@@ -183,7 +183,7 @@ internal sealed class LayerHostFactory(
             parts: _parts,
             side: PlayerSide,
             twoPlayers: TwoPlayers,
-            // ponytail: one profile (--baid) until login; two players get per-side crowns with it.
+            // ponytail: one profile (the logged-in account); two players get per-side crowns with pairing.
             crowns: TwoPlayers ? null : Crowns?.Invoke());
         return new LumenLayerHost(binding, binding.Attach);
     }

@@ -32,7 +32,8 @@ try
     var jinglePath = parseOption(args, "--play-jingle=");
     var soundRoot = parseOption(args, "--sound-root=");
     var startSceneOption = parseOption(args, "--start-scene=");
-    var baidOption = parseOption(args, "--baid=");
+    var login = args.Contains("--login", StringComparer.Ordinal);
+    var logout = args.Contains("--logout", StringComparer.Ordinal);
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
@@ -81,6 +82,12 @@ try
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         Console.WriteLine($"Cabinet settings: {arcadePath} ({(arcade.FreePlay ? "free play" : "coin mode")}, "
             + $"{arcade.SongsPerSession} songs per session).");
+        var accountPath = Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreAccount.FileName);
+        if (login || logout)
+            return AccountCommands.Run(arcade, accountPath, login);
+        var account = Waddamburo.Game.Scores.ScoreAccount.Load(accountPath);
+        Console.WriteLine(account is null ? "Scores: guest (not saved; --login to save them)."
+            : $"Scores: saved for {account.Name} (baid {account.Baid}), {(arcade.Server is null ? "offline" : $"uploaded to {arcade.Server}")}.");
         GameShell.Run(new GameOptions(
             layout.LumenRoot,
             layout.DonRoot,
@@ -97,7 +104,7 @@ try
             countdown,
             startScene,
             arcade,
-            baidOption is null ? null : long.Parse(baidOption, System.Globalization.CultureInfo.InvariantCulture),
+            account,
             Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName)));
         return 0;
     }

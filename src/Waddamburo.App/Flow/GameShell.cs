@@ -40,8 +40,7 @@ internal sealed record GameOptions(
     bool Countdown = true,
     StartScene StartScene = StartScene.Boot,
     ArcadeSettings? Arcade = null,
-    // ponytail: the profile plays are saved under until login exists (stage 2 of score saving).
-    long? Baid = null,
+    ScoreAccount? Account = null,
     string? ScoresPath = null);
 
 /// <summary>
@@ -65,6 +64,9 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>The local score database, open when a profile plays (null: guests, nothing saved).</summary>
     public ScoreStore? Scores { get; }
+
+    /// <summary>The server scores upload to (null: offline or a guest).</summary>
+    public ScoreClient? ScoreServer { get; }
 
     public CatalogAssetRouter Assets { get; }
     public SongSelectCatalogView SongCatalog { get; }
@@ -131,7 +133,12 @@ internal sealed class GameShell : IDisposable
         var assetRoot = options.AssetRoot;
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
-        Scores = options is { Baid: not null, ScoresPath: { } scoresPath } ? new ScoreStore(scoresPath) : null;
+        Scores = options is { Account: not null, ScoresPath: { } scoresPath } ? new ScoreStore(scoresPath) : null;
+        if (Scores is not null && Arcade.Server is { } server)
+        {
+            ScoreServer = new ScoreClient(ScoreClient.CreateHttp(server, Arcade.ServerInsecure, options.Account!.Token));
+            ScoreServer.SyncInBackground(Scores, options.Account.Baid); // plays left over from offline runs
+        }
         // The game's own songs live beside the Lumen data (<data>/lumendata/packed).
         var dataRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
         // Either source may be absent: a stock install without custom songs, or custom songs alone.
@@ -228,7 +235,7 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            Crowns = Scores is null ? null : () => Scores.Crowns(options.Baid!.Value),
+            Crowns = Scores is null ? null : () => Scores.Crowns(options.Account!.Baid),
         };
         _loader = new LumenGameSceneLoader(new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);

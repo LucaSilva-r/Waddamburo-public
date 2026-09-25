@@ -22,6 +22,12 @@ public sealed record ArcadeSettings
 
     public int SongsPerSession { get; init; } = 2;
 
+    /// <summary>The TaikOnline server scores go to (null: offline, scores stay local).</summary>
+    public Uri? Server { get; init; }
+
+    /// <summary>Accept any server certificate (a local server's self-signed one). Exposes the login to the network.</summary>
+    public bool ServerInsecure { get; init; }
+
     public static string DefaultFileText => """
         # Waddamburo cabinet settings. Restart the game after editing.
         # free_play: true = a drum hit starts; false = coins (F2) buy credits.
@@ -33,6 +39,10 @@ public sealed record ArcadeSettings
         credits_2p = 2
         # Songs in one session.
         songs_per_session = 2
+        # TaikOnline server for scores (log in with --login). Leave out to play offline.
+        # server = https://taikonline.example
+        # server_insecure: true accepts a self-signed certificate (local servers only).
+        # server_insecure = false
 
         """;
 
@@ -66,6 +76,8 @@ public sealed record ArcadeSettings
                 "credits_1p" => settings with { CreditsOnePlayer = count(value, index, 1) },
                 "credits_2p" => settings with { CreditsTwoPlayers = count(value, index, 1) },
                 "songs_per_session" => settings with { SongsPerSession = count(value, index, 1) },
+                "server" => settings with { Server = server(value, index) },
+                "server_insecure" => settings with { ServerInsecure = boolean(value, index) },
                 _ => throw new InvalidDataException($"{FileName} line {index}: unknown setting '{key}'."),
             };
         }
@@ -80,6 +92,12 @@ public sealed record ArcadeSettings
         "false" or "0" or "no" or "off" => false,
         _ => throw new InvalidDataException($"{FileName} line {line}: '{value}' is not true or false."),
     };
+
+    private static Uri server(string value, int line) =>
+        Uri.TryCreate(value.EndsWith('/') ? value : value + "/", UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https"
+            ? uri
+            : throw new InvalidDataException($"{FileName} line {line}: '{value}' is not an http(s) address.");
 
     private static int count(string value, int line, int minimum) =>
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= minimum
