@@ -135,6 +135,16 @@ internal sealed class SystemIndicators
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(false));
     }
 
+    /// <summary>
+    /// A card is being read at entry: the game hides the coin message until a drum takes the card
+    /// (traced session14-card-entry: SetVisibieMsg false at the read, true after EntryData).
+    /// </summary>
+    public void CardDialog(bool open)
+    {
+        _messageDelay = -1;
+        call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(!open));
+    }
+
     /// <summary>Coin mode: shows the current credits and what each side still needs.</summary>
     public void CoinsChanged()
     {

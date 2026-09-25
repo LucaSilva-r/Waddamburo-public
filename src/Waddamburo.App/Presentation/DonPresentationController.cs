@@ -12,6 +12,7 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
     [
         new("don:0"),
         new("don:1"),
+        new("don:2"),
     ];
 
     /// <summary>
@@ -72,6 +73,13 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
             // A costume the installed data lacks keeps the current look.
             Console.Error.WriteLine($"Don costume {costume}: {exception.Message}");
         }
+    }
+
+    public void SetDialogDon(bool visible)
+    {
+        _renderer.DialogVisible = visible;
+        if (visible)
+            _renderer.SetMotion(2, null, "don_entry_loop"); // traced p2 don_entry_loop
     }
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey surface)

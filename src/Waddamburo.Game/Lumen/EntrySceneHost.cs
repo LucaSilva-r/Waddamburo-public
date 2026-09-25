@@ -1,4 +1,6 @@
+using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
+using Waddamburo.Game.Scores;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
@@ -39,6 +41,51 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Plays a VO_ENTRY cue the game itself requests (join and coin-mode prompts).</summary>
     public Action<int>? PlayVoice { get; init; }
 
+    /// <summary>A card being read or waiting for a drum (from the attract loop or read during entry).</summary>
+    public ScoreProfile? Card { get; set; }
+
+    /// <summary>
+    /// A card read while the entry runs (traced session14-card-entry): InputCardReader at once, then the
+    /// same sequence as one read in the attract loop. One card at a time; false while one is pending.
+    /// </summary>
+    public bool InsertCard(ScoreProfile card)
+    {
+        if (Card is not null || _entry is not { } entry)
+            return false;
+        Card = card;
+        call(entry, "InputCardReader");
+        return true;
+    }
+
+    /// <summary>EntryData(side): the drum that took the card.</summary>
+    public Action<int, ScoreProfile>? CardClaimed { get; init; }
+
+    /// <summary>
+    /// The side a card was just given to, when it has not joined yet: the dialog's pick joins that
+    /// player at once (user-confirmed), which the shell does by feeding that side one decide hit.
+    /// ponytail: a synthetic hit through the movie's own join; the game's exact mechanism is untraced.
+    /// </summary>
+    public int? TakeJoinRequest()
+    {
+        // The movie joins the left side itself in the same frame (traced EntryData(0) + EntryCoin(0, 0)).
+        var side = _joinRequest is { } request && !_joined.Contains(request) ? request : (int?)null;
+        _joinRequest = null;
+        return side;
+    }
+
+    private int? _joinRequest;
+
+    /// <summary>A card is being read (true) until a drum takes it or the dialog closes (false).</summary>
+    public Action<bool>? CardDialog { get; init; }
+
+    /// <summary>The dialog's Don (slot 2) and the players' costume-loaded Dons.</summary>
+    public IDonPresentationController? Don { get; init; }
+
+    // Traced after Wait_AccessServer: the dialog Don's costume loads at 0.3 s, the band turns green at
+    // 0.7 s, ReplyServer(true) at 1.1-1.3 s (the player data round trip).
+    private const int DialogDonTicks = 18, BandOkTicks = 42, ServerReplyTicks = 68;
+    private int _cardReadAt = -1;
+
     private const int PromptDelayTicks = 50;     // traced 0.83 s after entry loads
     private const int PromptRepeatTicks = 300;   // traced 5.0 s between "insert coins" prompts
     private int _ticks;
@@ -49,9 +96,28 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// </summary>
     public void Advance()
     {
-        if (Coins is null || _entry is null || _joined.Count != 0)
+        if (_entry is null)
             return;
         _ticks++;
+        if (_cardReadAt >= 0)
+        {
+            var since = _ticks - _cardReadAt;
+            if (since == DialogDonTicks)
+            {
+                Don?.SetDialogDon(true);
+                call(_entry, "FinishCostumeLoad", number(2));
+            }
+            else if (since == BandOkTicks)
+                Parts.ShowCardBand(IndicatorParts.CardBand.ReadOk);
+            else if (since == ServerReplyTicks)
+            {
+                _cardReadAt = -1;
+                Parts.HideCardBand();
+                call(_entry, "ReplyServer", LumenHostValue.FromBoolean(true));
+            }
+        }
+        if (Coins is null || _joined.Count != 0)
+            return;
         var affordable = Coins.Missing(0) == 0;
         if (_ticks == PromptDelayTicks)
             PlayVoice?.Invoke(affordable ? 0 : 1);
@@ -73,7 +139,8 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// </summary>
     public void CoinsChanged()
     {
-        if (_entry is not { } entry) return;
+        // Both drums joined: nothing left to pay for; the game sends no more (traced session9, session13).
+        if (_entry is not { } entry || _joined.Count >= 2) return;
         var flag = number(Coins is null || Coins.Missing(_joined.Count) == 0 ? -1 : 1);
         call(entry, "UpdateCoins", flag, flag);
     }
@@ -83,6 +150,8 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     {
         if (_entry is not { } entry) return;
         var no = LumenHostValue.FromBoolean(false);
+        if (Card is not null)
+            call(entry, "InputCardReader");
         call(entry, "SetPlayer", number(0), no, no, no);
         call(entry, "SetPlayer", number(1), no, no, no);
         call(entry, "BnCoinInit", number(0), no, no, no);
@@ -145,9 +214,57 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 entry.SetNativeFill(name ? "name_L" : $"icon_{index}L", surface);
             return LumenHostValue.Undefined;
         });
-        lumen.RegisterMethod("NotifyDataSelect", _ =>
+        // NotifyDataSelect(1): a read card waits for a drum (its board fades in); 0: the game hides the
+        // boards right after (traced).
+        lumen.RegisterMethod("NotifyDataSelect", call =>
         {
-            Parts.HideNameBoards(); // traced: the game hides the boards right after
+            if (Card is not null && call.Arguments.Length > 0 && call.Arguments[0] is var waiting
+                && (waiting.Kind == LumenHostValueKind.Boolean ? waiting.AsBoolean() : waiting.AsNumber() != 0))
+                Parts.FadeInCardName();
+            else
+            {
+                // The dialog closed without a drum taking the card (つかわない or its countdown): it leaves.
+                if (Card is not null)
+                    closeCardDialog();
+                Card = null;
+                Parts.HideNameBoards();
+            }
+            return LumenHostValue.Undefined;
+        });
+        // Card sequence (traced session13-card): Wait_AccessServer -> SetCardInfo(2 = no drum yet,
+        // media 0, not new) with the name centre-top -> ReplyServer(true); EntryData(side) = the drum
+        // hit that takes the card, before that player's EntryCoin. ponytail: a side that already
+        // joined as a guest takes the card as it is (the movie offers it; the replace is untraced).
+        lumen.RegisterMethod("Wait_AccessServer", _ =>
+        {
+            if (Card is { } card && _entry is { } entry)
+            {
+                var no = LumenHostValue.FromBoolean(false);
+                CardDialog?.Invoke(true);
+                Parts.ShowCardBand(IndicatorParts.CardBand.Reading);
+                call(entry, "SetCardInfo", number(2), number(0), no, no);
+                Parts.ShowCardName(TaikoPlayerName(card));
+                _cardReadAt = _ticks; // Advance: dialog Don, green band, ReplyServer
+            }
+            return LumenHostValue.Undefined;
+        });
+        lumen.RegisterMethod("EntryData", request =>
+        {
+            if (Card is { } card && request.Arguments.Length > 0 && (int)request.Arguments[0].AsNumber() is var side and (0 or 1))
+            {
+                Card = null;
+                CardClaimed?.Invoke(side, card);
+                Parts.ShowEntryName(side, TaikoPlayerName(card));
+                closeCardDialog();
+                if (!_joined.Contains(side))
+                    _joinRequest = side;
+                // The drum's Don takes the card player's costume (traced ReleaseCostume then FinishCostumeLoad).
+                if (_entry is { } entry)
+                {
+                    call(entry, "ReleaseCostume", number(side));
+                    call(entry, "FinishCostumeLoad", number(side));
+                }
+            }
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("GetCoinNum", _ => number(Coins?.Credits ?? 0));
@@ -165,7 +282,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         foreach (var name in new[]
         {
             "SetCardReaderEvent", "Wakeup", "SetTouchMode",
-            "Wait_AccessServer", "EntryData", "ChangeAccessory", "NotifyChangeCostumeEffect",
+            "ChangeAccessory", "NotifyChangeCostumeEffect",
             "NotifyDecide", "NotifyModeSelectEnd", "Apply", "SelectCommonSound", "NotifyTimeSec",
         })
             lumen.RegisterMethod(name, static _ => LumenHostValue.Undefined);
@@ -206,6 +323,14 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         call(entry, "InitCostumeList", p);
         return true;
     }
+
+    private void closeCardDialog()
+    {
+        Don?.SetDialogDon(false);
+        CardDialog?.Invoke(false);
+    }
+
+    private static string TaikoPlayerName(ScoreProfile card) => card.Name.Length > 0 ? card.Name : $"#{card.Baid}";
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
 

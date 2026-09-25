@@ -117,6 +117,19 @@ public sealed class ScoreSavingTests
     }
 
     [Fact]
+    public void PairingShowsTheCodeTakesAClaimedCardOnceAndResetsWhenClosed()
+    {
+        var pairing = new PairingClient(new HttpClient(), "0123abcd");
+        Assert.Equal(new PairingState.Active("661722", TimeSpan.FromSeconds(30)),
+            pairing.Apply("status=active\nsession=s1\ncode=661722\nexpires_in=30\n"));
+        var claim = "status=claimed\nsession=s1\ncommand_id=c1\naccess_code=30800000000000000001\n";
+        Assert.Equal(new PairingState.Claimed("30800000000000000001"), pairing.Apply(claim));
+        Assert.IsType<PairingState.Closed>(pairing.Apply(claim)); // re-sent until acknowledged: taken once
+        Assert.IsType<PairingState.Closed>(pairing.Apply("status=closed\n"));
+        Assert.IsType<PairingState.Closed>(pairing.Apply("status=active\ncode=12345\nexpires_in=30\n"));
+    }
+
+    [Fact]
     public void StoreKeepsEveryPlayAndDerivesTheBestCrown()
     {
         var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");

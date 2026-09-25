@@ -54,7 +54,17 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
         // after the first coin, even short of a full credit; coins inserted during the boot screens
         // start it as soon as the attract is reached). The drum does nothing there.
         var coinStart = Shell.Coins is { Credits: > 0 };
-        if (input.DrumSide is not null && Shell.Coins is null || coinStart)
+        // A card (paired from the website) starts the entry like a coin, in either mode (traced
+        // session13-card): SCENE_TRIGGER_CARD = 4, nobody joined yet; the entry asks which drum takes it.
+        if (Shell.TakeCard() is { } card)
+        {
+            Shell.Sounds?.StopAll();
+            Shell.Hosts.EntryTrigger = 4;
+            Shell.ResetPlayers();
+            Shell.Hosts.EntryCard = card;
+            Shell.Show(FlowScenes.Entry);
+        }
+        else if (input.DrumSide is not null && Shell.Coins is null || coinStart)
         {
             // The attract's voices, effects and music end with it (the coin channel plays on).
             Shell.Sounds?.StopAll();

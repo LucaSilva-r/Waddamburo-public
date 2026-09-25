@@ -55,12 +55,17 @@ public interface IDonPresentationController
     void SetCostume(int playerIndex, DonCostume costume)
     {
     }
+
+    /// <summary>The entry's card dialog Don (the donExM marker, slot 2): shown while a read card waits for a drum.</summary>
+    void SetDialogDon(bool visible)
+    {
+    }
 }
 
 /// <summary>Connects the authored Don fill markers in a Lumen movie to native render targets.</summary>
 public static class DonLumenBinding
 {
-    private static readonly LumenNativeSurfacePlacement Placement =
+    public static readonly LumenNativeSurfacePlacement Placement =
         LumenNativeSurfacePlacement.Centered(600, 600);
 
     /// <param name="player">The movie receiving the native fill markers.</param>

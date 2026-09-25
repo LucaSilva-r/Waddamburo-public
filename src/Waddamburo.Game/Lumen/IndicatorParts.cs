@@ -1,4 +1,3 @@
-using System.Globalization;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
@@ -63,11 +62,69 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
             call(indicator, "SetType", number(player), number(bits));
     }
 
-    /// <summary>The game re-hides the name boards whenever the entry reports its data select state.</summary>
+    /// <summary>
+    /// The game re-hides the name boards whenever the entry reports its data select state; a board a
+    /// card was given to stays (traced session13-card).
+    /// </summary>
     public void HideNameBoards()
     {
-        foreach (var board in _nameBoards)
-            call(board, "SetVisible", LumenHostValue.FromBoolean(false));
+        for (var index = 0; index < _nameBoards.Count; index++)
+            if (!_claimedBoards.Contains(index))
+                call(_nameBoards[index], "SetVisible", LumenHostValue.FromBoolean(false));
+    }
+
+    private LumenPlayer? _overMessage;
+
+    /// <summary>over_msg messages (its LABEL table): the card band while reading, then its result.</summary>
+    public enum CardBand { Reading = 0, ReadOk = 2, ReadNg = 7 }
+
+    /// <summary>
+    /// The card band (traced session15-card-band): over_msg SetType(clear_reading) and TweenVisible(true,
+    /// 15, 0) when the card is read, SetType(clear_reading_ok) green 0.7 s later (error_reading_ng red on
+    /// a failure), faded out at ReplyServer.
+    /// </summary>
+    public void ShowCardBand(CardBand band)
+    {
+        if (_overMessage is not { } overMessage)
+            return;
+        call(overMessage, "SetType", number((int)band));
+        if (band == CardBand.Reading)
+            call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(true), number(15), number(0));
+    }
+
+    public void HideCardBand()
+    {
+        if (_overMessage is { } overMessage)
+            call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(false), number(15), number(0));
+    }
+
+    // Entry boards (FlowScenes): 0 the card's centre board, 1 the left drum's, 2 the right drum's.
+    private readonly HashSet<int> _claimedBoards = [];
+
+    /// <summary>A card was read: its name goes on the centre board (SetPlayer 2), shown by <see cref="FadeInCardName"/>.</summary>
+    public void ShowCardName(string name)
+    {
+        if (_nameBoards.Count > 0)
+            GuestNameBoard.Show(_nameBoards[0], 2, name, visible: false);
+    }
+
+    /// <summary>NotifyDataSelect(1): the card waits for a drum; its board fades in.</summary>
+    public void FadeInCardName()
+    {
+        if (_nameBoards.Count > 0)
+            call(_nameBoards[0], "Fadein");
+    }
+
+    /// <summary>EntryData(side): the card's name moves to that drum's board.</summary>
+    public void ShowEntryName(int side, string name)
+    {
+        if (_nameBoards.Count < 3)
+            return;
+        var board = _nameBoards[1 + side];
+        GuestNameBoard.Show(board, side, name, visible: false);
+        call(board, "Fadein");
+        _claimedBoards.Add(1 + side);
+        call(_nameBoards[0], "SetVisible", LumenHostValue.FromBoolean(false));
     }
 
     /// <summary>
@@ -86,19 +143,7 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                 call(board, "SetVisible", LumenHostValue.FromBoolean(false));
                 continue;
             }
-            var name = Gameplay.TaikoGuest.Name(sides[index]);
-            var characters = StringInfo.GetTextElementEnumerator(name);
-            call(board, "SetPlayer", number(sides[index]));
-            call(board, "SetKinotake", number(-1));
-            call(board, "SetTitleName", LumenHostValue.FromString(""));
-            call(board, "SetTitlePanelID", number(0));
-            call(board, "SetDani", number(0), LumenHostValue.FromBoolean(false));
-            call(board, "SetCover", LumenHostValue.FromBoolean(false));
-            call(board, "SetNameSize", number(new StringInfo(name).LengthInTextElements));
-            for (var character = 0; characters.MoveNext(); character++)
-                call(board, "SetChar", number(character), LumenHostValue.FromString(characters.GetTextElement()));
-            call(board, "Apply");
-            call(board, "SetVisible", LumenHostValue.FromBoolean(true));
+            GuestNameBoard.Show(board, sides[index]);
         }
     }
 
@@ -139,6 +184,7 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                 }
                 break;
             case "over_msg":
+                _overMessage = player;
                 call(player, "TweenVisible", LumenHostValue.FromBoolean(false), number(0), number(0));
                 break;
         }

@@ -3,13 +3,17 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
 
-/// <summary>The player_name board calls the game makes for a cardless guest (traced call sequence).</summary>
+/// <summary>The player_name board calls the game makes for a player (traced call sequence).</summary>
 public static class GuestNameBoard
 {
-    public static void Show(LumenPlayer board, int side)
+    /// <summary>
+    /// Fills the board for <paramref name="side"/> (2: a card not yet taken by a drum) with the side's
+    /// name or <paramref name="name"/>, then shows it (<paramref name="visible"/> false: left for a Fadein).
+    /// </summary>
+    public static void Show(LumenPlayer board, int side, string? name = null, bool visible = true)
     {
         ArgumentNullException.ThrowIfNull(board);
-        var name = Gameplay.TaikoGuest.Name(side);
+        name ??= Gameplay.TaikoGuest.Name(side);
         var characters = StringInfo.GetTextElementEnumerator(name);
         call(board, "SetPlayer", number(side));
         call(board, "SetKinotake", number(-1));
@@ -21,7 +25,8 @@ public static class GuestNameBoard
         for (var index = 0; characters.MoveNext(); index++)
             call(board, "SetChar", number(index), LumenHostValue.FromString(characters.GetTextElement()));
         call(board, "Apply");
-        call(board, "SetVisible", LumenHostValue.FromBoolean(true));
+        if (visible)
+            call(board, "SetVisible", LumenHostValue.FromBoolean(true));
     }
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);

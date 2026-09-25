@@ -173,27 +173,34 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
     }
 
-    // ponytail: saves one solo player under the logged-in account; two players and Waiwai wait for
-    // per-side profiles (cabinet pairing).
+    // Each lane whose drum has a profile saves its play. ponytail: Waiwai (shared voltage, its own
+    // results) is not saved until its mode is worked out.
     private void saveScore(PlayRequest request)
     {
-        if (Shell.Scores is not { } scores || Shell.Options.Account is not { } account
-            || _charts.Length != 1 || Shell.Gameplay.WaiwaiOutcome is not null)
+        if (Shell.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
-        var player = request.Players[0];
-        try
+        var saved = false;
+        for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
         {
-            scores.Save(new PlayRecord(Guid.NewGuid(), account.Baid, ChartHash.Compute(_charts[0], player.Course),
-                player.Chart, "normal", Shell.Gameplay.Results[0], DateTimeOffset.UtcNow,
-                Shell.Gameplay.Replays[0].Encode()),
-                ChartUpload.From(_charts[0], player.Course, _song?.Descriptor.Title.Primary, _song?.Descriptor.Subtitle));
-            Shell.ScoreServer?.SyncInBackground(scores, account.Baid);
+            var player = request.Players[lane];
+            if (TaikoGuest.Profiles[(int)player.Player] is not { } profile)
+                continue;
+            try
+            {
+                scores.Save(new PlayRecord(Guid.NewGuid(), profile.Baid, ChartHash.Compute(_charts[lane], player.Course),
+                    player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
+                    Shell.Gameplay.Replays[lane].Encode()),
+                    ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor.Title.Primary, _song?.Descriptor.Subtitle));
+                saved = true;
+            }
+            catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
+            {
+                // A lost score must not end the credit.
+                Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
+            }
         }
-        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
-        {
-            // A lost score must not end the credit.
-            Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
-        }
+        if (saved)
+            Shell.ScoreServer?.SyncInBackground(scores, Shell.Options.Account?.Baid);
     }
 
     private AudioStreamTransport? startAudio(PlayRequest request)

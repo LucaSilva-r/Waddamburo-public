@@ -15,7 +15,7 @@ public enum DonCameraLayout { Standard, Gameplay, Retry, RetrySuccess }
 public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 {
     // Stage units covered by each player's target: menus use 600x600, gameplay the game's 448x256 slot.
-    private readonly (float Width, float Height)[] _targetSizes = [(600, 600), (600, 600)];
+    private readonly (float Width, float Height)[] _targetSizes = [(600, 600), (600, 600), (600, 600)];
     private const int PaletteSize = 40;
     private const string ShaderPrefix = "Waddamburo.Shaders.";
     private const float DonNear = 256;
@@ -57,19 +57,20 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private readonly ImmutableArray<Matrix4x4> _bindWorld;
     private readonly Dictionary<string, DonAnimationFile> _animations = new(StringComparer.Ordinal);
     // Per player: the costume's meshes and face atlas, shared through the caches below.
-    private readonly List<GpuMesh>[] _meshes = [[], []];
-    private readonly Dictionary<uint, nint>[] _faceTextures = [[], []];
+    private readonly List<GpuMesh>[] _meshes = [[], [], []];
+    private readonly Dictionary<uint, nint>[] _faceTextures = [[], [], []];
     private readonly Dictionary<string, List<GpuMesh>> _modelCache = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Path, bool Recolor), Dictionary<uint, nint>> _faceCache = [];
     private readonly List<nint> _ownedTextures = [];
     private readonly List<nint> _ownedBuffers = [];
     private readonly Dictionary<(bool Blend, SDL_GPUCullMode Cull), nint> _pipelines = [];
-    private readonly Player[] _players = [new(), new()];
+    // Slots 0 and 1: the players; 2: the entry's card dialog Don (donExM), drawn only while shown.
+    private readonly Player[] _players = [new(), new(), new()];
     private readonly float[] _pose = new float[DonSkeleton.CharacterValuesPerFrame];
 
     /// <summary>Display-rate position between the last two ticks (0 = previous, 1 = latest).</summary>
     public float Interpolation { get; set; } = 1;
-    private readonly Target[] _targets = new Target[2];
+    private readonly Target[] _targets = new Target[3];
     private readonly float[] _poseUniforms = new float[16 * (PaletteSize + 1)];
     private SDL_GPUShader* _vertexShader;
     private SDL_GPUShader* _fragmentShader;
@@ -79,7 +80,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private SDL_GPUTexture* _whiteTexture;
     private bool _mirrorPlayerTwoCamera = true;
     // Per player: in two-player gameplay one Don can be in a balloon while the other plays on.
-    private readonly DonCameraLayout[] _layouts = new DonCameraLayout[2];
+    private readonly DonCameraLayout[] _layouts = new DonCameraLayout[3];
+
+    /// <summary>Draw slot 2 (the entry's card dialog Don).</summary>
+    public bool DialogVisible { get; set; }
     private bool _disposed;
 
     internal SdlDonRenderer(SDL_GPUDevice* device, RenderDevice compositor, string assetRoot)
@@ -103,6 +107,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             _whiteTexture = uploadRgba(1, 1, [255, 255, 255, 255]);
             SetCostume(0, null, 0, 0, 0);
             SetCostume(1, null, 0, 0, 0);
+            SetCostume(2, null, 0, 0, 0);
             for (var index = 0; index < _targets.Length; index++)
                 _targets[index] = createTarget((600, 600));
             var idle = loadMotion("don_select_loop");
@@ -200,6 +205,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * scale * 2 / 8) * 8, 64, 4096);
         for (var index = 0; index < _players.Length; index++)
         {
+            if (index == 2 && !DialogVisible)
+                continue;
             resizeTarget(index, (pixels(_targetSizes[index].Width), pixels(_targetSizes[index].Height)));
             recordPlayer(commandBuffer, index);
         }

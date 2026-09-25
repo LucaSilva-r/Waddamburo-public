@@ -9,11 +9,17 @@ public enum LocalPlayerSlot
     PlayerTwo,
 }
 
-/// <summary>A cardless guest's name board text (traced: どんちゃん on the left drum, かっちゃん on the right).</summary>
+/// <summary>
+/// The credit's players by drum (0 left, 1 right): a profile (home account or paired card) or a
+/// cardless guest, whose name board reads どんちゃん on the left drum and かっちゃん on the right (traced).
+/// </summary>
 public static class TaikoGuest
 {
-    // ponytail: guest names until player profiles exist.
-    public static string Name(int side) => side == 1 ? "かっちゃん" : "どんちゃん";
+    // ponytail: process-wide, set by the shell per credit; every name board and save reads it.
+    public static Scores.ScoreProfile?[] Profiles { get; } = new Scores.ScoreProfile?[2];
+
+    public static string Name(int side) => Profiles[side] is { Name.Length: > 0 } profile ? profile.Name
+        : side == 1 ? "かっちゃん" : "どんちゃん";
 }
 
 public sealed record PlayerChartRequest

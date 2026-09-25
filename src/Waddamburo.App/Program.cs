@@ -86,7 +86,9 @@ try
         if (login || logout)
             return AccountCommands.Run(arcade, accountPath, login);
         var account = Waddamburo.Game.Scores.ScoreAccount.Load(accountPath);
-        Console.WriteLine(account is null ? "Scores: guest (not saved; --login to save them)."
+        Console.WriteLine(account is null ? arcade is { Server: not null, CabinetToken: not null }
+                ? $"Scores: cabinet mode, players log in with a code from {arcade.Server} (cabinet {Waddamburo.App.Flow.CabinetPairing.CabinetId})."
+                : "Scores: guest (not saved; --login to save them)."
             : $"Scores: saved for {account.Name} (baid {account.Baid}), {(arcade.Server is null ? "offline" : $"uploaded to {arcade.Server}")}.");
         GameShell.Run(new GameOptions(
             layout.LumenRoot,

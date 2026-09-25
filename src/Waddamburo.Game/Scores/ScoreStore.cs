@@ -137,8 +137,8 @@ public sealed class ScoreStore : IDisposable
         }
     }
 
-    /// <summary>The player's plays not yet on the server, oldest first.</summary>
-    public List<UploadPlay> PendingPlays(long baid, int limit)
+    /// <summary>Plays not yet on the server, oldest first: one player's, or everyone's (null: a cabinet).</summary>
+    public List<UploadPlay> PendingPlays(long? baid, int limit)
     {
         lock (_connection)
         {
@@ -146,9 +146,9 @@ public sealed class ScoreStore : IDisposable
             command.CommandText = """
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
                     cleared, scoring_version, engine_version, played_at, replay
-                FROM plays WHERE baid = $baid AND uploaded_at IS NULL ORDER BY played_at LIMIT $limit
+                FROM plays WHERE ($baid IS NULL OR baid = $baid) AND uploaded_at IS NULL ORDER BY played_at LIMIT $limit
                 """;
-            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
             command.Parameters.AddWithValue("$limit", limit);
             using var reader = command.ExecuteReader();
             var plays = new List<UploadPlay>();

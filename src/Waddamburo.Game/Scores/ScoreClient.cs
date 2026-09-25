@@ -10,6 +10,8 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
 {
     public const string FileName = "account.json";
 
+    public ScoreProfile Profile => new(Baid, Name);
+
     public static ScoreAccount? Load(string path) =>
         File.Exists(path) ? JsonSerializer.Deserialize<ScoreAccount>(File.ReadAllText(path), ScoreClient.Json) : null;
 
@@ -83,7 +85,7 @@ public sealed class ScoreClient(HttpClient http)
     /// answered for are marked uploaded (rejected ones too: retrying would not change the answer).
     /// Returns the number of plays sent; throws on network/server errors, leaving the rest pending.
     /// </summary>
-    public async Task<int> SyncAsync(ScoreStore store, long baid, CancellationToken cancellationToken = default)
+    public async Task<int> SyncAsync(ScoreStore store, long? baid, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         var sent = 0;
@@ -110,7 +112,7 @@ public sealed class ScoreClient(HttpClient http)
     }
 
     /// <summary>Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.</summary>
-    public void SyncInBackground(ScoreStore store, long baid)
+    public void SyncInBackground(ScoreStore store, long? baid)
     {
         if (Interlocked.Exchange(ref _syncing, 1) == 1)
             return;

@@ -145,7 +145,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
-    private readonly IReadOnlyDictionary<string, TaikoCrown>? _crowns;
+    private readonly IReadOnlyDictionary<string, TaikoCrown>?[] _crowns; // per drum; null: a guest
 
     public SongSelectHostBinding(
         SongSelectSession session,
@@ -155,9 +155,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         IndicatorParts? parts = null,
         int side = 0,
         bool twoPlayers = false,
-        IReadOnlyDictionary<string, TaikoCrown>? crowns = null)
+        IReadOnlyDictionary<string, TaikoCrown>?[]? crowns = null)
     {
-        _crowns = crowns;
+        _crowns = crowns ?? [null, null];
         _sides = twoPlayers ? [0, 1] : [side];
         _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
@@ -272,7 +272,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         foreach (var player in new[] { 0, 1 })
         {
             invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
-                LumenHostValue.FromBoolean(_crowns is not null && _sides.Contains(player)), LumenHostValue.FromNumber(-1));
+                LumenHostValue.FromBoolean(_crowns[player] is not null && _sides.Contains(player)),
+                // ponytail: jukuLevel -1 (none); the game sent 12 for a carded player (session13-card), from
+                // player data we do not keep yet.
+                LumenHostValue.FromNumber(-1));
             invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0),
                 LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
         }
@@ -309,21 +312,23 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     // the movie shows a gold crown for a full combo, silver for a clear.
     private void publishCrowns(SongSelectSong song)
     {
-        if (_crowns is null)
-            return;
-        int silver = 0, gold = 0;
-        foreach (var chart in song.Descriptor.Charts)
-        {
-            if (chart.Course is not { } course || !_crowns.TryGetValue(chart.Key.ToString(), out var crown))
-                continue;
-            var bit = 1 << (course == TaikoCourse.Ura ? 7 : (int)course);
-            silver |= bit;
-            if (crown == TaikoCrown.FullCombo)
-                gold |= bit;
-        }
         foreach (var player in _sides)
+        {
+            if (_crowns[player] is not { } crowns)
+                continue;
+            int silver = 0, gold = 0;
+            foreach (var chart in song.Descriptor.Charts)
+            {
+                if (chart.Course is not { } course || !crowns.TryGetValue(chart.Key.ToString(), out var crown))
+                    continue;
+                var bit = 1 << (course == TaikoCourse.Ura ? 7 : (int)course);
+                silver |= bit;
+                if (crown == TaikoCrown.FullCombo)
+                    gold |= bit;
+            }
             invoke("SetClearBits", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(silver),
                 LumenHostValue.FromNumber(gold));
+        }
     }
 
     private LumenHostValue publishBoard(LumenHostCall call, SongBoardTextureKind kind)

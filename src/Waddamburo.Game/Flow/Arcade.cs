@@ -28,6 +28,9 @@ public sealed record ArcadeSettings
     /// <summary>Accept any server certificate (a local server's self-signed one). Exposes the login to the network.</summary>
     public bool ServerInsecure { get; init; }
 
+    /// <summary>The cabinet's TaikOnline token: enables 6-digit pairing login and uploads for every player.</summary>
+    public string? CabinetToken { get; init; }
+
     public static string DefaultFileText => """
         # Waddamburo cabinet settings. Restart the game after editing.
         # free_play: true = a drum hit starts; false = coins (F2) buy credits.
@@ -43,6 +46,8 @@ public sealed record ArcadeSettings
         # server = https://taikonline.example
         # server_insecure: true accepts a self-signed certificate (local servers only).
         # server_insecure = false
+        # cabinet_token: a cabinet token from the server admin; players then log in with a 6-digit code.
+        # cabinet_token =
 
         """;
 
@@ -78,6 +83,7 @@ public sealed record ArcadeSettings
                 "songs_per_session" => settings with { SongsPerSession = count(value, index, 1) },
                 "server" => settings with { Server = server(value, index) },
                 "server_insecure" => settings with { ServerInsecure = boolean(value, index) },
+                "cabinet_token" => settings with { CabinetToken = value.Length == 0 ? null : value },
                 _ => throw new InvalidDataException($"{FileName} line {index}: unknown setting '{key}'."),
             };
         }

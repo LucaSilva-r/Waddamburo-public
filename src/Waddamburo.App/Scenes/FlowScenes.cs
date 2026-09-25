@@ -69,8 +69,11 @@ internal static class FlowScenes
             // start hidden and are left out until something shows them.
             new SceneLayerDefinition("entry/packeddata.ddp", "entry/entry.lm", LumenMatrix.Identity, "player-entry"),
             indicatorPart("indicator"),
-            indicatorPart("player_name", 640, 360),
-            indicatorPart("player_name", 640, 360),
+            // Three boards (traced session13-card): a read card's name centre-top, (-136, -175)
+            // centred, then the left and right drums' boards it moves to (-580 / 308, 278).
+            indicatorPart("player_name", 504, 185),
+            indicatorPart("player_name", 60, 638),
+            indicatorPart("player_name", 948, 638),
             indicatorPart("time_counter"),
             indicatorPart("over_msg"),
         ]),

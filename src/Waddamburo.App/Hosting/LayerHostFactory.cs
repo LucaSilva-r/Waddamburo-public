@@ -36,8 +36,26 @@ internal sealed class LayerHostFactory(
 {
     private EntrySceneHost? _entry;
 
-    /// <summary>The playing profile's crowns by chart key, read as Song Select loads (null: no profile).</summary>
-    public Func<IReadOnlyDictionary<string, TaikoCrown>>? Crowns { get; init; }
+    /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
+    public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
+
+    /// <summary>A card read in the attract loop, for the entry about to load.</summary>
+    public ScoreProfile? EntryCard { get; set; }
+
+    /// <summary>A card read during entry; false when no entry runs or one is already pending.</summary>
+    public bool InsertEntryCard(ScoreProfile card) => _entry?.InsertCard(card) == true;
+
+    /// <summary>A side the card dialog just picked that still has to join (see EntrySceneHost).</summary>
+    public int? TakeEntryJoinRequest() => _entry?.TakeJoinRequest();
+
+    /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
+    public bool EntryCardPending => _entry?.Card is not null;
+
+    /// <summary>A card is being read at entry (the coin message hides meanwhile).</summary>
+    public Action<bool>? CardDialog { get; set; }
+
+    /// <summary>The entry gave the card to a drum (EntryData).</summary>
+    public Action<int, ScoreProfile>? CardClaimed { get; init; }
     private IndicatorParts? _parts;
 
     // --- The credit's state, set by the flow ---
@@ -106,7 +124,12 @@ internal sealed class LayerHostFactory(
                 PlayVoice = sounds is null ? null : sounds.Frontend.PlayEntryVoice,
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
+                Card = EntryCard,
+                Don = don,
+                CardDialog = open => CardDialog?.Invoke(open),
+                CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
             };
+            EntryCard = null;
             _entry.PlayerJoined += player => EntryJoined?.Invoke(player);
         }
         else if (layer.HostId == "song-select")
@@ -146,7 +169,10 @@ internal sealed class LayerHostFactory(
     private void initializeEntry(LumenPlayer player)
     {
         if (don is not null)
+        {
             DonLumenBinding.Attach(player, don, DonPresentationLayout.OpposedPlayers);
+            player.SetNativeFill("donExM", don.GetSurface(2), DonLumenBinding.Placement);
+        }
         // SetPrevious(scene, trigger): entry starts from the attract loop (scene 0) after a P1 drum
         // hit (SCENE_TRIGGER_DON_1P = 0) or a coin (SCENE_TRIGGER_COIN = 3); the movie then joins
         // P1 via EntryCoin.
@@ -183,8 +209,7 @@ internal sealed class LayerHostFactory(
             parts: _parts,
             side: PlayerSide,
             twoPlayers: TwoPlayers,
-            // ponytail: one profile (the logged-in account); two players get per-side crowns with pairing.
-            crowns: TwoPlayers ? null : Crowns?.Invoke());
+            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)]);
         return new LumenLayerHost(binding, binding.Attach);
     }
 

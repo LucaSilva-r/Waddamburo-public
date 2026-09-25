@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using Waddamburo.App.Audio;
 using Waddamburo.App.Cli;
@@ -68,6 +69,10 @@ internal sealed class GameShell : IDisposable
     /// <summary>The server scores upload to (null: offline or a guest).</summary>
     public ScoreClient? ScoreServer { get; }
 
+    // Cabinet mode only (cabinet_token set, no home account).
+    private readonly CabinetPairing? _pairing;
+    private readonly PairingPill _pill;
+
     public CatalogAssetRouter Assets { get; }
     public SongSelectCatalogView SongCatalog { get; }
     public TaikoGameplayPresentation Gameplay { get; }
@@ -133,11 +138,16 @@ internal sealed class GameShell : IDisposable
         var assetRoot = options.AssetRoot;
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
-        Scores = options is { Account: not null, ScoresPath: { } scoresPath } ? new ScoreStore(scoresPath) : null;
+        var cabinet = options.Account is null && Arcade is { Server: not null, CabinetToken: not null };
+        Scores = (options.Account is not null || cabinet) && options.ScoresPath is { } scoresPath ? new ScoreStore(scoresPath) : null;
         if (Scores is not null && Arcade.Server is { } server)
         {
-            ScoreServer = new ScoreClient(ScoreClient.CreateHttp(server, Arcade.ServerInsecure, options.Account!.Token));
-            ScoreServer.SyncInBackground(Scores, options.Account.Baid); // plays left over from offline runs
+            var http = ScoreClient.CreateHttp(server, Arcade.ServerInsecure, options.Account?.Token ?? Arcade.CabinetToken);
+            ScoreServer = new ScoreClient(http);
+            // Plays left over from offline runs: the account's, or (a cabinet) everyone's.
+            ScoreServer.SyncInBackground(Scores, options.Account?.Baid);
+            if (cabinet)
+                _pairing = new CabinetPairing(http);
         }
         // The game's own songs live beside the Lumen data (<data>/lumendata/packed).
         var dataRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
@@ -188,6 +198,7 @@ internal sealed class GameShell : IDisposable
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless);
+        _pill = new PairingPill(Application, options.FontPath);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
             Don, (lane, sound) => Sounds?.Gameplay.Play(lane, sound));
@@ -235,7 +246,8 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            Crowns = Scores is null ? null : () => Scores.Crowns(options.Account!.Baid),
+            Crowns = side => Scores is not null && TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid) : null,
+            CardClaimed = (side, card) => TaikoGuest.Profiles[side] = card,
         };
         _loader = new LumenGameSceneLoader(new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
@@ -300,6 +312,7 @@ internal sealed class GameShell : IDisposable
                 else if (host is "player-entry" or "song-select" or "gameover")
                     Don.MapPlayerZero = false;
             };
+            Hosts.CardDialog = open => _indicators.CardDialog(open);
             Hosts.EntryJoined = side =>
             {
                 JoinPlayer(side);
@@ -318,6 +331,7 @@ internal sealed class GameShell : IDisposable
                 {
                     _drumSideLatched ??= drumSide(keyboard.Presses);
                     _skipLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
+                    _pressLatch.UnionWith(keyboard.Presses.Select(static press => press.Key));
                     _coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
                     flowOf(Active.Id).UpdateFrame(keyboard);
                 });
@@ -338,6 +352,23 @@ internal sealed class GameShell : IDisposable
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
+    }
+
+    private readonly HashSet<SdlKeyboardKey> _pressLatch = [];
+    private ImmutableHashSet<SdlKeyboardKey> _heldLastTick = [];
+
+    /// <summary>
+    /// Movies see a key for one tick per press, as a drum hit is a pulse: a held key would read as a
+    /// new hit in every panel that starts polling while it is still down (the entry's card dialog
+    /// closing under a decide hit joined P1 as well). Taps between ticks count too.
+    /// </summary>
+    private SdlKeyboardSnapshot drumPulses(SdlKeyboardSnapshot keys)
+    {
+        var held = keys.PressedKeys.ToImmutableHashSet();
+        var pulses = held.Except(_heldLastTick).Union(_pressLatch).Union(keys.Presses.Select(static press => press.Key));
+        _heldLastTick = held;
+        _pressLatch.Clear();
+        return new SdlKeyboardSnapshot(pulses, keys.Presses, keys.Timestamp);
     }
 
     private static int? drumSide(IEnumerable<SdlKeyPress> presses) => presses.Select(static press => press.Key switch
@@ -361,7 +392,10 @@ internal sealed class GameShell : IDisposable
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
-        keys = scene.MapKeys(keys);
+        // The card dialog's pick joins that side: its decide drum (F left, X right) for one tick.
+        if (Hosts.TakeEntryJoinRequest() is { } joinSide)
+            _pressLatch.Add(joinSide == 1 ? SdlKeyboardKey.X : SdlKeyboardKey.F);
+        keys = scene.MapKeys(drumPulses(keys));
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
             Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
         Overlay.Advance();
@@ -476,12 +510,17 @@ internal sealed class GameShell : IDisposable
     // follow them, and the later scenes' hosts read them. A credit starts empty.
     public void JoinPlayer(int side)
     {
+        // Home: the logged-in account is the first player to join (a second one plays as a guest).
+        if (Options.Account is { } account && !TaikoGuest.Profiles.Any(static profile => profile is not null))
+            TaikoGuest.Profiles[side] = account.Profile;
         JoinedSides.Add(side);
         applyPlayers();
     }
 
     public void ResetPlayers()
     {
+        // A credit starts with guests; cards and the home account attach as players join.
+        Array.Clear(TaikoGuest.Profiles);
         JoinedSides.Clear();
         applyPlayers();
     }
@@ -530,12 +569,31 @@ internal sealed class GameShell : IDisposable
         return new RenderFrame(
             frame.ClearColor,
             frame.Quads.Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
-                .Concat(indicatorQuads(true)).ToArray(),
+                .Concat(indicatorQuads(true)).Concat(pill()).ToArray(),
             frame.ContentAspectRatio);
+    }
+
+    /// <summary>A card was paired during the attract loop: it starts the credit (SCENE_TRIGGER_CARD).</summary>
+    public ScoreProfile? TakeCard() => _pairing?.TakeCard();
+
+    private IEnumerable<RenderQuad> pill()
+    {
+        if (_pairing is null)
+            return [];
+        // The game takes cards in the attract loop and in entry (not from song select on), one at a time.
+        var entry = flowOf(Active.Id) is EntryFlow;
+        _pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow
+            || entry && !Hosts.EntryCardPending;
+        if (entry && _pairing.TakeCard() is { } card && !Hosts.InsertEntryCard(card))
+            Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
+        _pairing.UpdatePill(_pill);
+        return _pill.Quads();
     }
 
     public void Dispose()
     {
+        _pairing?.Dispose();
+        _pill.Dispose();
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();
