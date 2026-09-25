@@ -88,6 +88,8 @@ public sealed class TaikoJudgementSessionTests
         Assert.Equal(1, missed);
         Assert.Equal(TaikoHitResult.Miss, session.CreateSnapshot()[0].Result);
         Assert.Null(session.CreateSnapshot()[1].Result);
+        Assert.True(session.IsMissed(0));
+        Assert.False(session.IsMissed(1));
     }
 
     [Fact]

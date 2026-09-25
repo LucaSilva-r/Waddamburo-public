@@ -95,6 +95,25 @@ public sealed class TaikoLongNotePresentationTests
         Assert.Equal([PlayableLongNoteKind.Roll], started);
     }
 
+    [Theory]
+    [InlineData(PlayableLongNoteKind.Roll)]
+    [InlineData(PlayableLongNoteKind.BigRoll)]
+    public void RollTailRemainsVisibleAfterEndUntilItLeavesTheScreen(PlayableLongNoteKind kind)
+    {
+        var calls = new List<(string, double)>();
+        var chart = chartFor(kind);
+        var layer = movie(calls);
+        var presentation = new TaikoLongNotePresentation(chart, sessionFor(chart), _ => movie(calls), layer, layer);
+
+        float position(TimeSpan noteTime, TimeSpan _) => 400 + (float)(noteTime - TimeSpan.FromSeconds(6.1)).TotalSeconds * 100;
+        var visible = Assert.Single(presentation.NoteLayers(TimeSpan.FromSeconds(6.1), position, 400, 250));
+        Assert.Equal(-110, visible.Layer.Transform.X);
+        Assert.Equal(100, calls.Last(call => call.Item1 == "SetWidth").Item2);
+
+        float offscreen(TimeSpan noteTime, TimeSpan _) => 400 + (float)(noteTime - TimeSpan.FromSeconds(7.1)).TotalSeconds * 100;
+        Assert.Empty(presentation.NoteLayers(TimeSpan.FromSeconds(7.1), offscreen, 400, 250));
+    }
+
     private static PlayableChart chartFor(PlayableLongNoteKind kind, int quota = 0) => new(
         new(new(SongSourceKind.Tja, "synthetic"), "presentation"), TimeSpan.Zero, TimeSpan.FromSeconds(3), [],
         [new(TimeSpan.Zero, 120, 4, 4)], [new(TimeSpan.Zero, 1)], [new(TimeSpan.Zero, false)], [],

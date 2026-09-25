@@ -131,6 +131,8 @@ public sealed class TaikoJudgementSession
 
     public bool IsJudged(int index) => _results[index] is not null;
 
+    public bool IsMissed(int index) => _results[index] == TaikoHitResult.Miss;
+
     public int AdvanceTo(TimeSpan time)
     {
         ensureMonotonic(time);

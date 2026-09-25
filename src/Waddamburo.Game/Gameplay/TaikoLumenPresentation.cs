@@ -113,7 +113,8 @@ public sealed class TaikoLumenPresentation
         var hitNotes = new List<LumenSceneLayer>(1);
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
-            if (_judgement.IsJudged(index)) continue;
+            // A miss is judged at the timing window, but its note keeps scrolling out of view.
+            if (_judgement.IsJudged(index) && !_judgement.IsMissed(index)) continue;
             hitNotes.Clear();
             var note = _chart.HitObjects[index];
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
@@ -138,7 +139,7 @@ public sealed class TaikoLumenPresentation
         TimeSpan noteTime, TimeSpan time, bool scroll)
     {
         var x = position(noteTime, time, noteTime, scroll);
-        if (x < _hitX - 100 || x > 1380)
+        if (x < -100 || x > 1380)
             return;
         layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY } });
     }

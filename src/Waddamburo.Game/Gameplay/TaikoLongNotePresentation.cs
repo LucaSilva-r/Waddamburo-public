@@ -146,11 +146,12 @@ public sealed class TaikoLongNotePresentation
         for (var index = _chart.LongNotes.Length - 1; index >= 0; index--)
         {
             var note = _chart.LongNotes[index];
-            if (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped) continue;
+            // Rolls remain on screen after their scoring window closes until the tail passes left.
+            if (note.IsBalloon && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
             if (note.IsBalloon && time >= note.StartTime) continue;
             var head = position(note.StartTime, note.StartTime);
             var tail = note.IsBalloon ? head : position(note.EndTime, note.StartTime);
-            if (Math.Max(head, tail) < hitX - 100 || Math.Min(head, tail) > 1380) continue;
+            if (Math.Max(head, tail) < -100 || Math.Min(head, tail) > 1380) continue;
             retained.Add(index);
             if (!_visible.TryGetValue(index, out var layer))
             {
