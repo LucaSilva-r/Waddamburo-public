@@ -60,6 +60,23 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!SDL_ClaimWindowForGPUDevice(_device, _window))
                 throw sdlFailure("claim the window for the GPU device");
             _windowClaimed = true;
+            // Diagnostic: WADDAMBURO_PRESENT_MODE=mailbox (uncapped, no tearing) or immediate
+            // (uncapped, tearing); the default and any unsupported mode stay on vsync.
+            var presentMode = Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") switch
+            {
+                "mailbox" => SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_MAILBOX,
+                "immediate" => SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_IMMEDIATE,
+                _ => SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_VSYNC,
+            };
+            if (presentMode != SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_VSYNC)
+            {
+                if (SDL_WindowSupportsGPUPresentMode(_device, _window, presentMode)
+                    && SDL_SetGPUSwapchainParameters(_device, _window,
+                        SDL_GPUSwapchainComposition.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode))
+                    Console.WriteLine($"Present mode: {presentMode}.");
+                else
+                    Console.Error.WriteLine($"Present mode {presentMode} is not supported here; using vsync.");
+            }
             _renderer = new RenderDevice(_device, _window);
             GpuDriver = SDL_GetGPUDeviceDriver(_device) ?? "unknown";
         }
