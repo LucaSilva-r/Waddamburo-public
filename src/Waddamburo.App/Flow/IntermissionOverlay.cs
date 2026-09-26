@@ -52,13 +52,14 @@ internal static class SceneTextures
 {
     public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene)
     {
-        var start = Stopwatch.GetTimestamp();
+        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+        var start = profile ? Stopwatch.GetTimestamp() : 0;
         var uploads = scene.Textures.Select(static texture => new RgbaTextureUpload(
             checked((uint)texture.Width), checked((uint)texture.Height),
             ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
                 ?? throw new InvalidDataException("Texture pixels are unavailable."))).ToArray();
         var uploaded = application.UploadRgba8Batch(uploads);
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+        if (profile)
         {
             var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length);
             using var process = Process.GetCurrentProcess();

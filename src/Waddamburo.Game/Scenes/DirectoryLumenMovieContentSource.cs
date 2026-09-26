@@ -48,7 +48,8 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)
                 throw new InvalidDataException($"Archive '{archiveId}' exceeds the configured {owner._limits.MaxFileBytes}-byte limit.");
-            var start = Stopwatch.GetTimestamp();
+            var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+            var start = profile ? Stopwatch.GetTimestamp() : 0;
             var reused = _archives.TryGetValue(archivePath, out var archive);
             if (!reused)
             {
@@ -56,9 +57,9 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                 archive = DdpArchive.Open(bytes, owner._limits);
                 _archives.Add(archivePath, archive);
             }
-            var read = Stopwatch.GetTimestamp();
+            var read = profile ? Stopwatch.GetTimestamp() : 0;
             var content = LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits);
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+            if (profile)
             {
                 var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length);
                 Console.Error.WriteLine($"Profile movie {movieId}: archive {length / 1048576d:F1} MiB{(reused ? " reused" : "")}, "

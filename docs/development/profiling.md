@@ -14,6 +14,17 @@ WADDAMBURO_PROFILE=1 WADDAMBURO_HITCH_TRACE=1 \
 `WADDAMBURO_PROFILE` reports each movie's archive size, read and parse/decode
 time, decoded RGBA bytes, scene texture upload time, managed memory and process
 resident memory.
+
+Press **F5** in the running app to toggle the on-screen performance pill.
+Hover it to expand poll, audio, update and draw rates and average work times.
+POLL is the main-loop SDL event drain and input callback, once per rendered
+frame; it is not the keyboard's hardware polling rate. Key events retain their
+SDL timestamps for sub-frame judgement. UPDATE is fixed simulation ticks per
+second (normally 60), DRAW is rendered frames per second, and AUDIO is mixer
+blocks per second (normally around 375 for 128-frame blocks at 48 kHz).
+The audio work time measures the software mixer and queue call, not
+input-to-speaker latency. Values refresh
+every half-second; the overlay does not upload a new texture for each refresh.
 Repeated movies in one scene report `reused` when the archive buffer came from
 that scene's load scope. `WADDAMBURO_HITCH_TRACE` reports update
 and render portions of frames over 40 ms. Both are diagnostic environment flags.

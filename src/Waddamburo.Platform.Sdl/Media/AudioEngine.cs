@@ -1,4 +1,8 @@
+using System.Diagnostics;
+
 namespace Waddamburo.Platform.Sdl.Media;
+
+public readonly record struct AudioPerformanceCounters(long Blocks, long WorkTicks);
 
 /// <summary>Feeds mixed PCM to one SDL device from a bounded background producer.</summary>
 public sealed class AudioEngine : IDisposable
@@ -10,6 +14,9 @@ public sealed class AudioEngine : IDisposable
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Task _producer;
     private readonly object _outputGate = new();
+    private volatile bool _performanceMonitoring;
+    private long _performanceBlocks;
+    private long _performanceWorkTicks;
     private bool _disposed;
 
     public AudioEngine(SdlAudioDevice device)
@@ -24,6 +31,11 @@ public sealed class AudioEngine : IDisposable
     public AudioMixer Mixer { get; }
 
     public Exception? Failure { get; private set; }
+
+    public void SetPerformanceMonitoring(bool enabled) => _performanceMonitoring = enabled;
+
+    public AudioPerformanceCounters GetPerformanceCounters() =>
+        new(Interlocked.Read(ref _performanceBlocks), Interlocked.Read(ref _performanceWorkTicks));
 
     public AudioStreamTransport PlayTransport(ScheduledAudioSource source)
     {
@@ -83,8 +95,15 @@ public sealed class AudioEngine : IDisposable
                 }
                 lock (_outputGate)
                 {
+                    var monitoring = _performanceMonitoring;
+                    var start = monitoring ? Stopwatch.GetTimestamp() : 0;
                     Mixer.Render(samples);
                     _device.Queue(samples);
+                    if (monitoring)
+                    {
+                        Interlocked.Add(ref _performanceWorkTicks, Stopwatch.GetTimestamp() - start);
+                        Interlocked.Increment(ref _performanceBlocks);
+                    }
                 }
             }
         }

@@ -76,6 +76,7 @@ internal sealed class GameShell : IDisposable
     // Cabinet mode only (cabinet_token set, no home account).
     private readonly CabinetPairing? _pairing;
     private readonly PairingPill _pill;
+    private readonly PerformanceOverlay _performance;
 
     public CatalogAssetRouter Assets { get; }
     public SongSelectCatalogView SongCatalog { get; }
@@ -210,6 +211,7 @@ internal sealed class GameShell : IDisposable
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless);
         _pill = new PairingPill(Application, options.FontPath);
+        _performance = new PerformanceOverlay(Application, () => Audio);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
             Don, (lane, sound) => Sounds?.Gameplay.Play(lane, sound));
@@ -357,7 +359,11 @@ internal sealed class GameShell : IDisposable
                     _coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
                     flowOf(Active.Id).UpdateFrame(keyboard);
                 },
-                profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown);
+                profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown,
+                togglePerformanceOverlay: _performance.Toggle,
+                pointerMoved: _performance.SetPointer,
+                performanceVisible: () => _performance.Visible,
+                performanceSample: _performance.Record);
 
             Console.WriteLine($"Active scene: {Active.Id}");
             _gameplay.ReportFinal(Active.Id);
@@ -619,7 +625,7 @@ internal sealed class GameShell : IDisposable
         return new RenderFrame(
             frame.ClearColor,
             frame.Quads.Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
-                .Concat(indicatorQuads(true)).Concat(pill()).ToArray(),
+                .Concat(indicatorQuads(true)).Concat(pill()).Concat(_performance.Quads()).ToArray(),
             frame.ContentAspectRatio);
     }
 
@@ -650,6 +656,7 @@ internal sealed class GameShell : IDisposable
         _pairing?.Dispose();
         _health?.Dispose();
         _pill.Dispose();
+        _performance.Dispose();
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();

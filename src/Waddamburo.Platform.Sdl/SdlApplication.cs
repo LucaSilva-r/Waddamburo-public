@@ -152,7 +152,11 @@ public sealed unsafe class SdlApplication : IDisposable
         int? tickLimit = null,
         Action<RenderCapture>? captureFinalFrame = null,
         Action<SdlKeyboardSnapshot>? updateFrame = null,
-        Func<bool>? profileFrame = null)
+        Func<bool>? profileFrame = null,
+        Action? togglePerformanceOverlay = null,
+        Action<float, float>? pointerMoved = null,
+        Func<bool>? performanceVisible = null,
+        Action<SdlFrameMetrics>? performanceSample = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -179,6 +183,8 @@ public sealed unsafe class SdlApplication : IDisposable
         var windowFocused = true;
         while (running && (frameLimit is null || renderedFrames < frameLimit))
         {
+            var performanceActive = performanceVisible?.Invoke() == true;
+            var inputStart = performanceActive ? Stopwatch.GetTimestamp() : 0;
             SDL_Event currentEvent;
             while (SDL_PollEvent(&currentEvent))
             {
@@ -194,12 +200,26 @@ public sealed unsafe class SdlApplication : IDisposable
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED)
                     windowFocused = true;
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION && pointerMoved is not null)
+                {
+                    int width, height;
+                    if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
+                        pointerMoved(currentEvent.motion.x / width, currentEvent.motion.y / height);
+                }
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     or (uint)SDL_EventType.SDL_EVENT_KEY_UP)
                 {
                     var key = mapKey(currentEvent.key.key);
                     if (key is SdlKeyboardKey mapped)
                     {
+                        if (mapped == SdlKeyboardKey.F5)
+                        {
+                            if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && _pressedKeys.Add(mapped))
+                                togglePerformanceOverlay?.Invoke();
+                            else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
+                                _pressedKeys.Remove(mapped);
+                            continue;
+                        }
                         if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
                         {
                             if (!_pressedKeys.Contains(mapped))
@@ -216,7 +236,7 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!running)
                 break;
 
-            var profileEligibleAtStart = windowFocused && (profileFrame?.Invoke() ?? true);
+            var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
             previousTimestamp = timestamp;
@@ -224,6 +244,7 @@ public sealed unsafe class SdlApplication : IDisposable
             var eventTime = TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)));
             var keyboard = new SdlKeyboardSnapshot(_pressedKeys, pendingPresses, eventTime);
             updateFrame?.Invoke(keyboard);
+            var inputTime = performanceActive ? Stopwatch.GetElapsedTime(inputStart) : TimeSpan.Zero;
             var delivered = updateFrame is not null;
             var updateStart = Stopwatch.GetTimestamp();
             var update = clock.AddElapsed(elapsed, () =>
@@ -245,7 +266,9 @@ public sealed unsafe class SdlApplication : IDisposable
             // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
             var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
             var renderTime = Stopwatch.GetElapsedTime(renderStart);
-            var profileEligibleAtEnd = windowFocused && (profileFrame?.Invoke() ?? true);
+            var profileEligibleAtEnd = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
+            if (performanceActive)
+                performanceSample?.Invoke(new SdlFrameMetrics(elapsed, inputTime, updateTime, renderTime, update.ExecutedTicks));
             if (frameProfile is not null)
             {
                 if (previousProfileEligible && profileEligibleAtStart && profileEligibleAtEnd)
@@ -355,6 +378,7 @@ public sealed unsafe class SdlApplication : IDisposable
         SDL_Keycode.SDLK_SPACE => SdlKeyboardKey.Space,
         SDL_Keycode.SDLK_F1 => SdlKeyboardKey.F1,
         SDL_Keycode.SDLK_F2 => SdlKeyboardKey.F2,
+        SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,
         SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,
         SDL_Keycode.SDLK_UP => SdlKeyboardKey.Up,
         SDL_Keycode.SDLK_RIGHT => SdlKeyboardKey.Right,
