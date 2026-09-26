@@ -16,6 +16,24 @@ public readonly record struct DonCostume(int? Whole, int Head, int Body, int Pai
     public static DonCostume FromWhole(int id) => id <= 0 ? Default : new(id, 0, 0, 0);
 }
 
+/// <summary>
+/// A player's Don as their profile has it: costume parts (kigurumi, head, body, face, puchi; 0 = none)
+/// and face/body/limb colours as #rrggbb.
+/// </summary>
+public sealed record DonLook(int[] Costume, string Face, string Body, string Limb)
+{
+    public DonCostume ToCostume() => Costume switch
+    {
+        [> 0 and var whole, ..] => DonCostume.FromWhole(whole),
+        [_, var head, var body, var paint, ..] => new DonCostume(null, head, body, paint),
+        _ => DonCostume.Default,
+    };
+
+    public (uint Face, uint Body, uint Limb) Colors => (rgb(Face), rgb(Body), rgb(Limb));
+
+    private static uint rgb(string hex) => Convert.ToUInt32(hex.TrimStart('#'), 16);
+}
+
 public enum DonPresentationLayout
 {
     Standard,
@@ -54,6 +72,12 @@ public interface IDonPresentationController
     /// <summary>Dresses a player's Don; kept across scenes.</summary>
     void SetCostume(int playerIndex, DonCostume costume)
     {
+    }
+
+    /// <summary>Dresses and colours a player's Don as their profile has it (null: the default Don).</summary>
+    void SetLook(int playerIndex, DonLook? look)
+    {
+        SetCostume(playerIndex, look?.ToCostume() ?? DonCostume.Default);
     }
 
     /// <summary>The entry's card dialog Don (the donExM marker, slot 2): shown while a read card waits for a drum.</summary>

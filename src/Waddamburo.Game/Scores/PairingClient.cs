@@ -2,8 +2,11 @@ using System.Net.Http.Json;
 
 namespace Waddamburo.Game.Scores;
 
-/// <summary>A player's Banapass profile: whose plays are saved.</summary>
-public sealed record ScoreProfile(long Baid, string Name);
+/// <summary>A player's Banapass profile: whose plays are saved, and their Don.</summary>
+public sealed record ScoreProfile(long Baid, string Name)
+{
+    public Don.DonLook? Look { get; init; }
+}
 
 /// <summary>What the cabinet should show after a pairing poll.</summary>
 public abstract record PairingState

@@ -101,6 +101,13 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     // Entry boards (FlowScenes): 0 the card's centre board, 1 the left drum's, 2 the right drum's.
     private readonly HashSet<int> _claimedBoards = [];
 
+    /// <summary>The drum holding a card joined: its board comes out of grey (traced SetCover(false), no Fadein).</summary>
+    public void UncoverEntryName(int side, string name)
+    {
+        if (_nameBoards.Count >= 3)
+            GuestNameBoard.Show(_nameBoards[1 + side], side, name, visible: false);
+    }
+
     /// <summary>A card was read: its name goes on the centre board (SetPlayer 2), shown by <see cref="FadeInCardName"/>.</summary>
     public void ShowCardName(string name)
     {
@@ -115,13 +122,16 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
             call(_nameBoards[0], "Fadein");
     }
 
-    /// <summary>EntryData(side): the card's name moves to that drum's board.</summary>
-    public void ShowEntryName(int side, string name)
+    /// <summary>
+    /// EntryData(side): the card's name moves to that drum's board, greyed until that player joins
+    /// (<see cref="UncoverEntryName"/>).
+    /// </summary>
+    public void ShowEntryName(int side, string name, bool joined)
     {
         if (_nameBoards.Count < 3)
             return;
         var board = _nameBoards[1 + side];
-        GuestNameBoard.Show(board, side, name, visible: false);
+        GuestNameBoard.Show(board, side, name, visible: false, cover: !joined);
         call(board, "Fadein");
         _claimedBoards.Add(1 + side);
         call(_nameBoards[0], "SetVisible", LumenHostValue.FromBoolean(false));

@@ -119,6 +119,7 @@ internal sealed class GameShell : IDisposable
     // the attract loop (scripted --press pulses arrive in the tick instead).
     private int? _drumSideLatched;
     private bool _skipLatched;
+    private bool _attractLatched;
     private int _coinLatched;
     private int _queuedCoinSounds;
     private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
@@ -227,7 +228,12 @@ internal sealed class GameShell : IDisposable
                 GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
                 _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
             ]),
-            [new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect)]);
+            [
+                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
+                // The entry gives up (a card declined, or its dialog timed out, with nobody joined and no
+                // credits: TerminateEntry -> SetNextScene(0)): back to the attract loop.
+                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(0, 0, 0), FlowScenes.Logo),
+            ]);
         Hosts = new LayerHostFactory(
             flow,
             snapshot,
@@ -248,6 +254,9 @@ internal sealed class GameShell : IDisposable
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
             Crowns = side => Scores is not null && TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid) : null,
             CardClaimed = (side, card) => TaikoGuest.Profiles[side] = card,
+            // A card given to the drum, else the home account for the credit's first player.
+            PlayerLook = side => TaikoGuest.Profiles[side]?.Look
+                ?? (options.Account is { } home && TaikoGuest.Profiles.All(static profile => profile is null) ? home.Look : null),
         };
         _loader = new LumenGameSceneLoader(new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
@@ -331,6 +340,7 @@ internal sealed class GameShell : IDisposable
                 {
                     _drumSideLatched ??= drumSide(keyboard.Presses);
                     _skipLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
+                    _attractLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
                     _pressLatch.UnionWith(keyboard.Presses.Select(static press => press.Key));
                     _coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
                     flowOf(Active.Id).UpdateFrame(keyboard);
@@ -386,15 +396,26 @@ internal sealed class GameShell : IDisposable
         _drumSideLatched = null;
         var skip = _skipLatched || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
         _skipLatched = false;
+        // Testing convenience (not cabinet behaviour): F1 drops the credit and returns to the attract
+        // loop from any menu scene (not mid-song, whose music the gameplay flow owns).
+        var toAttract = _attractLatched || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
+        _attractLatched = false;
+        if (toAttract && Active.Id != FlowScenes.Gameplay && Active.Id != FlowScenes.Boot)
+        {
+            Sounds?.StopAll();
+            Overlay.Clear();
+            PlayRequests.CancelPending();
+            Don?.SetDialogDon(false);
+            ResetPlayers();
+            Show(FlowScenes.Logo);
+            return;
+        }
         coins(keys);
         // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
         if (_traceInput)
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
-        // The card dialog's pick joins that side: its decide drum (F left, X right) for one tick.
-        if (Hosts.TakeEntryJoinRequest() is { } joinSide)
-            _pressLatch.Add(joinSide == 1 ? SdlKeyboardKey.X : SdlKeyboardKey.F);
         keys = scene.MapKeys(drumPulses(keys));
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
             Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
@@ -512,15 +533,20 @@ internal sealed class GameShell : IDisposable
     {
         // Home: the logged-in account is the first player to join (a second one plays as a guest).
         if (Options.Account is { } account && !TaikoGuest.Profiles.Any(static profile => profile is not null))
+        {
             TaikoGuest.Profiles[side] = account.Profile;
+            Don?.SetLook(side, account.Look);
+        }
         JoinedSides.Add(side);
         applyPlayers();
     }
 
     public void ResetPlayers()
     {
-        // A credit starts with guests; cards and the home account attach as players join.
+        // A credit starts with guests (default Dons); cards and the home account attach as players join.
         Array.Clear(TaikoGuest.Profiles);
+        for (var slot = 0; slot < 3; slot++)
+            Don?.SetLook(slot, null);
         JoinedSides.Clear();
         applyPlayers();
     }

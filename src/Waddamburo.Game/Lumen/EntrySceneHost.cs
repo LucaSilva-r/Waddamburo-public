@@ -41,6 +41,20 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Plays a VO_ENTRY cue the game itself requests (join and coin-mode prompts).</summary>
     public Action<int>? PlayVoice { get; init; }
 
+    /// <summary>Plays a cue the game itself plays (countdown ticks and voices, the card band).</summary>
+    public Action<string, int>? PlayCue { get; init; }
+
+    // The entry countdown and the card dialog's own 20 s count (the movie shows it; the game plays its cues).
+    private const int CardDialogSeconds = 20;
+    private readonly CountdownCues _timerCues = new(), _dialogCues = new();
+    private int _dialogAt = -1;
+
+    private void play(IEnumerable<(string Bank, int Cue)> cues)
+    {
+        foreach (var (bank, cue) in cues)
+            PlayCue?.Invoke(bank, cue);
+    }
+
     /// <summary>A card being read or waiting for a drum (from the attract loop or read during entry).</summary>
     public ScoreProfile? Card { get; set; }
 
@@ -60,23 +74,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>EntryData(side): the drum that took the card.</summary>
     public Action<int, ScoreProfile>? CardClaimed { get; init; }
 
-    /// <summary>
-    /// The side a card was just given to, when it has not joined yet: the dialog's pick joins that
-    /// player at once (user-confirmed), which the shell does by feeding that side one decide hit.
-    /// ponytail: a synthetic hit through the movie's own join; the game's exact mechanism is untraced.
-    /// </summary>
-    public int? TakeJoinRequest()
-    {
-        // The movie joins the left side itself in the same frame (traced EntryData(0) + EntryCoin(0, 0)).
-        var side = _joinRequest is { } request && !_joined.Contains(request) ? request : (int?)null;
-        _joinRequest = null;
-        return side;
-    }
-
-    private int? _joinRequest;
-
     /// <summary>A card is being read (true) until a drum takes it or the dialog closes (false).</summary>
     public Action<bool>? CardDialog { get; init; }
+
+    /// <summary>The look of the player about to join a drum (a card or the home account); null: a guest.</summary>
+    public Func<int, DonLook?>? PlayerLook { get; init; }
 
     /// <summary>The dialog's Don (slot 2) and the players' costume-loaded Dons.</summary>
     public IDonPresentationController? Don { get; init; }
@@ -99,6 +101,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         if (_entry is null)
             return;
         _ticks++;
+        if (_timerStarted && Parts.Countdown)
+            play(_timerCues.Advance(RemainingSeconds));
+        if (_dialogAt >= 0)
+            play(_dialogCues.Advance((int)Math.Ceiling(Math.Max(0, CardDialogSeconds - (_ticks - _dialogAt) / 60d))));
         if (_cardReadAt >= 0)
         {
             var since = _ticks - _cardReadAt;
@@ -108,7 +114,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 call(_entry, "FinishCostumeLoad", number(2));
             }
             else if (since == BandOkTicks)
+            {
                 Parts.ShowCardBand(IndicatorParts.CardBand.ReadOk);
+                PlayCue?.Invoke("SE_COM", 16); // traced with the green band
+            }
             else if (since == ServerReplyTicks)
             {
                 _cardReadAt = -1;
@@ -173,6 +182,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             var seconds = call.Arguments.Length > 0 ? call.Arguments[0].AsNumber() : EntrySeconds;
             _timerLimit = TimeSpan.FromSeconds(seconds);
             _timerStarted = true;
+            _timerCues.Reset();
             _timer.Reset(); // runs from ResumeTimer, as the counter does
             Parts.StartCountdown(seconds);
             return LumenHostValue.Undefined;
@@ -220,7 +230,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         {
             if (Card is not null && call.Arguments.Length > 0 && call.Arguments[0] is var waiting
                 && (waiting.Kind == LumenHostValueKind.Boolean ? waiting.AsBoolean() : waiting.AsNumber() != 0))
+            {
                 Parts.FadeInCardName();
+                _dialogAt = _ticks;
+                _dialogCues.Reset();
+            }
             else
             {
                 // The dialog closed without a drum taking the card (つかわない or its countdown): it leaves.
@@ -244,6 +258,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 Parts.ShowCardBand(IndicatorParts.CardBand.Reading);
                 call(entry, "SetCardInfo", number(2), number(0), no, no);
                 Parts.ShowCardName(TaikoPlayerName(card));
+                Don?.SetLook(2, card.Look); // the dialog's Don, before its costume "loads"
                 _cardReadAt = _ticks; // Advance: dialog Don, green band, ReplyServer
             }
             return LumenHostValue.Undefined;
@@ -254,20 +269,24 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             {
                 Card = null;
                 CardClaimed?.Invoke(side, card);
-                Parts.ShowEntryName(side, TaikoPlayerName(card));
+                Parts.ShowEntryName(side, TaikoPlayerName(card), _joined.Contains(side));
+                _cardNames[side] = TaikoPlayerName(card);
                 closeCardDialog();
-                if (!_joined.Contains(side))
-                    _joinRequest = side;
-                // The drum's Don takes the card player's costume (traced ReleaseCostume then FinishCostumeLoad).
+                // The drum's Don takes the card player's look: costume slots, then FinishCostumeLoad (traced).
+                Don?.SetLook(side, card.Look);
                 if (_entry is { } entry)
                 {
-                    call(entry, "ReleaseCostume", number(side));
+                    assignCostumes(entry, side, card.Look);
                     call(entry, "FinishCostumeLoad", number(side));
                 }
             }
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("GetCoinNum", _ => number(Coins?.Credits ?? 0));
+        // Whether the next player can join now (free play, or the credits cover it): the card dialog's
+        // pick then joins that side at once through EntryCoin (traced 1 when affordable, 0 when not).
+        lumen.RegisterMethod("IsPlayerbleCoinOrFree", _ => LumenHostValue.FromBoolean(canPay()));
+        lumen.RegisterMethod("IsPlayerbleCoin", _ => LumenHostValue.FromBoolean(canPay()));
         lumen.RegisterMethod("IsCardReaderError", _ => LumenHostValue.FromBoolean(false));
         // ponytail: modes without a scene yet (AI battle, shop) are reported unavailable. Waiwai is on:
         // the game enables it while online (traced 0 online, 1 offline); this engine has no network gate.
@@ -300,37 +319,59 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             return false;
         var p = number(player);
         _joined.Add(player);
+        if (_cardNames.Remove(player, out var cardName))
+            Parts.UncoverEntryName(player, cardName);
         // The game's own join voice inside EntryCoin: cue 2 for the left drum, 3 for the right (traced;
         // in free play the movie also requests cue 2).
         PlayVoice?.Invoke(player == 1 ? 3 : 2);
         call(entry, "BnCoinSetFree", LumenHostValue.FromBoolean(false));
         CoinsChanged();
         PlayerJoined?.Invoke(player);
-        // ponytail: traced guest costume set; real ownership comes with the costume step.
-        call(entry, "ReleaseCostume", p);
-        foreach (var id in new[] { 0, 4, 7, 14 }) call(entry, "AssignCostume", p, number(id));
-        foreach (var id in new[] { 0, 10, 21, 22 }) call(entry, "AssignCosHead", p, number(id));
-        foreach (var id in new[] { 0, 2, 20, 21 }) call(entry, "AssignCosBody", p, number(id));
-        foreach (var (slot, head, body) in new[] { (0, 22, 21), (1, 21, 20), (2, 10, 2) })
-        {
-            call(entry, "AssignSlotCostume", p, number(slot), number(0));
-            call(entry, "AssignSlotHeadBody", p, number(slot), number(head), number(body));
-            call(entry, "AssignSlotPaintAcce", p, number(slot), number(0), number(0));
-        }
-        call(entry, "AssignRandomCostume", p, number(0));
-        call(entry, "AssignRandomHeadBody", p, number(5), number(21));
-        call(entry, "AssignRandomPaintAcce", p, number(7), number(0));
-        call(entry, "InitCostumeList", p);
+        assignCostumes(entry, player, PlayerLook?.Invoke(player));
         return true;
     }
 
     private void closeCardDialog()
     {
+        _dialogAt = -1;
         Don?.SetDialogDon(false);
         CardDialog?.Invoke(false);
     }
 
+    private readonly Dictionary<int, string> _cardNames = []; // drums holding a card, until they join
+
+    private bool canPay() => Coins is null || Coins.Missing(_joined.Count) == 0;
+
     private static string TaikoPlayerName(ScoreProfile card) => card.Name.Length > 0 ? card.Name : $"#{card.Baid}";
+
+    /// <summary>
+    /// The costume lists and slots of a drum's player; the movie then puts on slot 0. The game does it
+    /// when a card is given to a drum (EntryData, before the movie dresses its Don) and at the join
+    /// (traced session13-card).
+    /// </summary>
+    private static void assignCostumes(LumenPlayer entry, int player, DonLook? look)
+    {
+        var p = number(player);
+        // ponytail: traced guest costume set; a profile player gets their current look in slot 0, which
+        // the movie then puts on (traced carded join: slot 0 = kigurumi 32, then ChangeCostume(0, 32)).
+        // Their owned lists and presets (slots 1-2) are not served yet.
+        int[] worn = look?.Costume is [var wornWhole, var wornHead, var wornBody, var wornPaint, ..] ? [wornWhole, wornHead, wornBody, wornPaint] : [0, 0, 0, 0];
+        call(entry, "ReleaseCostume", p);
+        foreach (var id in new[] { 0, 4, 7, 14, worn[0] }.Distinct()) call(entry, "AssignCostume", p, number(id));
+        foreach (var id in new[] { 0, 10, 21, 22, worn[1] }.Distinct()) call(entry, "AssignCosHead", p, number(id));
+        foreach (var id in new[] { 0, 2, 20, 21, worn[2] }.Distinct()) call(entry, "AssignCosBody", p, number(id));
+        foreach (var (slot, head, body) in new[] { (0, 22, 21), (1, 21, 20), (2, 10, 2) })
+        {
+            var current = slot == 0 && look is not null;
+            call(entry, "AssignSlotCostume", p, number(slot), number(current ? worn[0] : 0));
+            call(entry, "AssignSlotHeadBody", p, number(slot), number(current ? worn[1] : head), number(current ? worn[2] : body));
+            call(entry, "AssignSlotPaintAcce", p, number(slot), number(current ? worn[3] : 0), number(0));
+        }
+        call(entry, "AssignRandomCostume", p, number(0));
+        call(entry, "AssignRandomHeadBody", p, number(5), number(21));
+        call(entry, "AssignRandomPaintAcce", p, number(7), number(0));
+        call(entry, "InitCostumeList", p);
+    }
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
 

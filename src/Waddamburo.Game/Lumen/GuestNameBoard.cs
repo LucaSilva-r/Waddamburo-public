@@ -10,7 +10,7 @@ public static class GuestNameBoard
     /// Fills the board for <paramref name="side"/> (2: a card not yet taken by a drum) with the side's
     /// name or <paramref name="name"/>, then shows it (<paramref name="visible"/> false: left for a Fadein).
     /// </summary>
-    public static void Show(LumenPlayer board, int side, string? name = null, bool visible = true)
+    public static void Show(LumenPlayer board, int side, string? name = null, bool visible = true, bool cover = false)
     {
         ArgumentNullException.ThrowIfNull(board);
         name ??= Gameplay.TaikoGuest.Name(side);
@@ -20,7 +20,8 @@ public static class GuestNameBoard
         call(board, "SetTitleName", LumenHostValue.FromString(""));
         call(board, "SetTitlePanelID", number(0));
         call(board, "SetDani", number(0), LumenHostValue.FromBoolean(false));
-        call(board, "SetCover", LumenHostValue.FromBoolean(false));
+        // Cover: greyed, a card given to a drum that has not joined yet (traced session13-card).
+        call(board, "SetCover", LumenHostValue.FromBoolean(cover));
         call(board, "SetNameSize", number(new StringInfo(name).LengthInTextElements));
         for (var index = 0; characters.MoveNext(); index++)
             call(board, "SetChar", number(index), LumenHostValue.FromString(characters.GetTextElement()));

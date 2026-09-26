@@ -67,6 +67,8 @@ internal sealed class SystemIndicators
     {
         var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt;
         _scene = scene;
+        if (scene != IndicatorScene.Entry)
+            _cardDialog = false; // left the entry mid-dialog (F1)
         _online = scene != IndicatorScene.Boot;
         _cardVisible = attract || scene == IndicatorScene.Entry;
         // The free-play/coin message first appears with the attract title (traced SetVisible* calls);
@@ -84,7 +86,8 @@ internal sealed class SystemIndicators
             IndicatorScene.Result => 3,
             _ => 0,
         }));
-        call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt)); // sic, the movie's spelling
+        // sic, the movie's spelling. A card read as the entry loads opens its dialog before this runs.
+        call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt && !_cardDialog));
         call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean(!attract || prompt));
         _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Gameplay or IndicatorScene.Result;
         if (Coins is not null)
@@ -106,7 +109,8 @@ internal sealed class SystemIndicators
             splitPanel();
             // SetScene(4) hides both messages (isMSGVisible off); the game turns them back on before
             // the numbers (traced ~0.9 s later, after Don-chan's entry motion).
-            call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
+            if (!_cardDialog)
+                call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
             setSideNumbers(-1, 0);
         }
         // SetCoinType seeks the authored movie to its scene label. Repeating it every
@@ -141,9 +145,16 @@ internal sealed class SystemIndicators
     /// </summary>
     public void CardDialog(bool open)
     {
+        _cardDialog = open;
         _messageDelay = -1;
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(!open));
+        if (!open)
+            CoinsChanged();
     }
+
+    // A card dialog is open: nothing may bring the coin message back over it (user-confirmed: the
+    // game shows none while the dialog is up, even when coins are inserted meanwhile).
+    private bool _cardDialog;
 
     /// <summary>Coin mode: shows the current credits and what each side still needs.</summary>
     public void CoinsChanged()
@@ -151,6 +162,8 @@ internal sealed class SystemIndicators
         if (Coins is not { } bank) return;
         var settings = bank.Settings;
         call(_coins, "SetCoinNum", LumenHostValue.FromNumber(bank.Credits));
+        if (_cardDialog)
+            return;
         // Before anyone joins, P2's number is the full two-player price (traced 2 / 4 at 0 credits).
         if (_joined)
             setSideNumbers(-1, bank.Missing(1));
@@ -188,7 +201,7 @@ internal sealed class SystemIndicators
     /// <summary>Per-frame state push, as the game does every tick.</summary>
     public void Advance()
     {
-        if (_messageDelay >= 0 && _messageDelay-- == 0)
+        if (_messageDelay >= 0 && _messageDelay-- == 0 && !_cardDialog)
         {
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
             CoinsChanged();

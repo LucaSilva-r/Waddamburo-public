@@ -45,11 +45,11 @@ internal sealed class LayerHostFactory(
     /// <summary>A card read during entry; false when no entry runs or one is already pending.</summary>
     public bool InsertEntryCard(ScoreProfile card) => _entry?.InsertCard(card) == true;
 
-    /// <summary>A side the card dialog just picked that still has to join (see EntrySceneHost).</summary>
-    public int? TakeEntryJoinRequest() => _entry?.TakeJoinRequest();
-
     /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
     public bool EntryCardPending => _entry?.Card is not null;
+
+    /// <summary>The look of the player about to join a drum (see EntrySceneHost.PlayerLook).</summary>
+    public Func<int, DonLook?>? PlayerLook { get; init; }
 
     /// <summary>A card is being read at entry (the coin message hides meanwhile).</summary>
     public Action<bool>? CardDialog { get; set; }
@@ -122,10 +122,12 @@ internal sealed class LayerHostFactory(
             {
                 Coins = coins,
                 PlayVoice = sounds is null ? null : sounds.Frontend.PlayEntryVoice,
+                PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 Card = EntryCard,
                 Don = don,
+                PlayerLook = side => PlayerLook?.Invoke(side),
                 CardDialog = open => CardDialog?.Invoke(open),
                 CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
             };
@@ -209,7 +211,10 @@ internal sealed class LayerHostFactory(
             parts: _parts,
             side: PlayerSide,
             twoPlayers: TwoPlayers,
-            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)]);
+            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)])
+        {
+            PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
+        };
         return new LumenLayerHost(binding, binding.Attach);
     }
 

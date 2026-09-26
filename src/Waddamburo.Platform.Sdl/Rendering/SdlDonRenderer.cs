@@ -82,6 +82,17 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     // Per player: in two-player gameplay one Don can be in a balloon while the other plays on.
     private readonly DonCameraLayout[] _layouts = new DonCameraLayout[3];
 
+    // A player's own colours (face, body, limb as 0xRRGGBB); null: Don-chan's, or Katsu-chan's in slot 1.
+    private readonly (uint Face, uint Body, uint Limb)?[] _colors = new (uint, uint, uint)?[3];
+
+    /// <summary>Colours a Don: the texture's green channel is the face, red the body, blue the limbs.</summary>
+    public void SetColors(int playerIndex, (uint Face, uint Body, uint Limb)? colors)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _colors.Length);
+        _colors[playerIndex] = colors;
+    }
+
     /// <summary>Draw slot 2 (the entry's card dialog Don).</summary>
     public bool DialogVisible { get; set; }
     private bool _disposed;
@@ -333,13 +344,15 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                         Parameters = new Float4(material.AlphaFunction != 0 || kind == 8
                             ? Math.Max(material.AlphaReference, (byte)6) / 255f
                             : 0, kind, 0, 0),
-                        ReplaceRed = playerIndex == 0
+                        ReplaceRed = _colors[playerIndex] is { } own ? rgb(own.Body)
+                            : playerIndex != 1
                             ? color(0x6C, 0xC3, 0xC6)
                             : color(0xF9, 0x4C, 0x2C),
-                        ReplaceGreen = playerIndex == 0
+                        ReplaceGreen = _colors[playerIndex] is { } ownFace ? rgb(ownFace.Face)
+                            : playerIndex != 1
                             ? color(0xF9, 0x4C, 0x2C)
                             : color(0x6C, 0xC3, 0xC6),
-                        ReplaceBlue = color(0xF8, 0xF0, 0xDC),
+                        ReplaceBlue = _colors[playerIndex] is { } ownLimb ? rgb(ownLimb.Limb) : color(0xF8, 0xF0, 0xDC),
                     };
                     SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&materialUniforms), (uint)sizeof(MaterialUniforms));
                     binding = new SDL_GPUTextureSamplerBinding
@@ -820,6 +833,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     }
 
     private static Float4 color(byte red, byte green, byte blue) => new(red / 255f, green / 255f, blue / 255f, 1);
+
+    private static Float4 rgb(uint value) => color((byte)(value >> 16), (byte)(value >> 8), (byte)value);
 
     private static InvalidOperationException sdlFailure(string operation) => new($"Failed to {operation}: {SDL_GetError()}");
 

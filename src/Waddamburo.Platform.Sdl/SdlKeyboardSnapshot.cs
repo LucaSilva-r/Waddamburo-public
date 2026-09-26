@@ -74,5 +74,6 @@ public enum SdlKeyboardKey
     X = 88,
     Y = 89,
     Z = 90,
+    F1 = 112,
     F2 = 113,
 }

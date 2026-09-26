@@ -1,5 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
+using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
@@ -146,6 +147,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
     private readonly IReadOnlyDictionary<string, TaikoCrown>?[] _crowns; // per drum; null: a guest
+    private readonly CountdownCues _countdownCues = new();
+
+    /// <summary>Plays a cue the game itself plays (the countdown's ticks and voices).</summary>
+    public Action<string, int>? PlayCue { get; init; }
 
     public SongSelectHostBinding(
         SongSelectSession session,
@@ -193,6 +198,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if (call.Arguments.Length != 1 || call.Arguments[0].Kind != LumenHostValueKind.Number)
                     throw new ArgumentException("StartTimer requires a duration in seconds.", nameof(call));
                 _timer.Start(call.Arguments[0].AsNumber());
+                _countdownCues.Reset();
                 _parts?.StartCountdown(call.Arguments[0].AsNumber());
                 return LumenHostValue.Undefined;
             });
@@ -204,7 +210,14 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             });
             lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(Math.Ceiling(_timer.Remaining.TotalSeconds)));
             // With the cabinet countdown off the timer never runs out (the counter still shows).
-            lumen.RegisterMethod("IsTimeup", _ => LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _timer.IsTimeUp));
+            lumen.RegisterMethod("IsTimeup", _ =>
+            {
+                // Polled every frame: the countdown's cues follow the seconds left.
+                if ((_parts?.Countdown ?? true) && _timer.IsRunning)
+                    foreach (var (bank, cue) in _countdownCues.Advance((int)Math.Ceiling(_timer.Remaining.TotalSeconds)))
+                        PlayCue?.Invoke(bank, cue);
+                return LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _timer.IsTimeUp);
+            });
             lumen.RegisterMethod("IsInitWait", _ =>
                 LumenHostValue.FromBoolean((_parts?.PollReady() ?? true) && assignInitialData()));
             lumen.RegisterMethod("NotifyTimeSec", static _ => LumenHostValue.Undefined);

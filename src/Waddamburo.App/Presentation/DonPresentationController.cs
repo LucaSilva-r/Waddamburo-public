@@ -75,6 +75,12 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
         }
     }
 
+    public void SetLook(int playerIndex, DonLook? look)
+    {
+        SetCostume(playerIndex, look?.ToCostume() ?? DonCostume.Default);
+        _renderer.SetColors(playerIndex, look?.Colors);
+    }
+
     public void SetDialogDon(bool visible)
     {
         _renderer.DialogVisible = visible;

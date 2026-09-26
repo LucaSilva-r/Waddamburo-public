@@ -10,7 +10,10 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
 {
     public const string FileName = "account.json";
 
-    public ScoreProfile Profile => new(Baid, Name);
+    /// <summary>The Don's look as of login. ponytail: refreshed only by logging in again.</summary>
+    public Don.DonLook? Look { get; init; }
+
+    public ScoreProfile Profile => new(Baid, Name) { Look = Look };
 
     public static ScoreAccount? Load(string path) =>
         File.Exists(path) ? JsonSerializer.Deserialize<ScoreAccount>(File.ReadAllText(path), ScoreClient.Json) : null;

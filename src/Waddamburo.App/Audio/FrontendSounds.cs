@@ -55,6 +55,9 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
 
     public void PlayEntryVoice(int cue) => bank.Play("VO_ENTRY", cue);
 
+    /// <summary>A cue the game plays itself (countdowns, the card band).</summary>
+    public void PlayCue(string bankName, int cue) => bank.Play(bankName, cue);
+
     public void SelectCategoryVoice(string category)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(category);
