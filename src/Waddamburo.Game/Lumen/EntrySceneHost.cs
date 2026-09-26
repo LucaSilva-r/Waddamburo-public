@@ -71,6 +71,12 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _rejectUntil = _ticks + 120;
     }
 
+    /// <summary>
+    /// Leave the entry for the attract loop: a rejected card with nobody joined and no credits would
+    /// otherwise leave it waiting for coins (user-requested).
+    /// </summary>
+    public Action? ReturnToAttract { get; init; }
+
     private bool _rejectOnLoad;
     private int _rejectUntil = -1;
 
@@ -126,7 +132,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             RejectCard();
         }
         if (_ticks == _rejectUntil)
+        {
             Parts.HideCardBand();
+            if (_joined.Count == 0 && Card is null && !canPay())
+                ReturnToAttract?.Invoke();
+        }
         if (_timerStarted && Parts.Countdown)
             play(_timerCues.Advance(RemainingSeconds));
         if (_dialogAt >= 0)

@@ -45,6 +45,9 @@ internal sealed class LayerHostFactory(
     /// <summary>A card read during entry; false when no entry runs or one is already pending.</summary>
     public bool InsertEntryCard(ScoreProfile card) => _entry?.InsertCard(card) == true;
 
+    /// <summary>The entry gives up (see EntrySceneHost.ReturnToAttract).</summary>
+    public Action? ReturnToAttract { get; set; }
+
     /// <summary>A card rejected during entry: the red band.</summary>
     public void RejectEntryCard() => _entry?.RejectCard();
 
@@ -133,6 +136,7 @@ internal sealed class LayerHostFactory(
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 Card = EntryCard,
                 Don = don,
+                ReturnToAttract = () => ReturnToAttract?.Invoke(),
                 PlayerLook = side => PlayerLook?.Invoke(side),
                 CardDialog = open => CardDialog?.Invoke(open),
                 CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),

@@ -122,6 +122,7 @@ internal sealed class GameShell : IDisposable
     private int? _drumSideLatched;
     private bool _skipLatched;
     private bool _attractLatched;
+    private bool _returnToAttract; // the entry gave up (applied on the next tick, outside its callbacks)
     private int _coinLatched;
     private int _queuedCoinSounds;
     private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
@@ -325,6 +326,7 @@ internal sealed class GameShell : IDisposable
                     Don.MapPlayerZero = false;
             };
             Hosts.CardDialog = open => _indicators.CardDialog(open);
+            Hosts.ReturnToAttract = () => _returnToAttract = true;
             _indicators.NetworkIcon = _health is null ? null : () => _health.IconType;
             Hosts.EntryJoined = side =>
             {
@@ -400,10 +402,11 @@ internal sealed class GameShell : IDisposable
         _drumSideLatched = null;
         var skip = _skipLatched || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
         _skipLatched = false;
-        // Testing convenience (not cabinet behaviour): F1 drops the credit and returns to the attract
-        // loop from any menu scene (not mid-song, whose music the gameplay flow owns).
-        var toAttract = _attractLatched || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
-        _attractLatched = false;
+        // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
+        // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
+        var toAttract = _attractLatched || _returnToAttract
+            || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
+        _attractLatched = _returnToAttract = false;
         if (toAttract && Active.Id != FlowScenes.Gameplay && Active.Id != FlowScenes.Boot)
         {
             Sounds?.StopAll();
