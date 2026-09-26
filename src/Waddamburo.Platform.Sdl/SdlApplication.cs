@@ -236,6 +236,24 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!running)
                 break;
 
+            // Input runs apart from presentation, like osu!'s 1 kHz input thread: while vsync still
+            // holds every swapchain image, drum presses are delivered (judged, hit sound played) at
+            // once and SDL is polled again ~1 ms later, instead of waiting for the next frame.
+            // Screenshot runs and minimised/hidden windows keep the blocking present.
+            if (captureFinalFrame is null
+                && (SDL_GetWindowFlags(_window) & (SDL_WindowFlags.SDL_WINDOW_MINIMIZED | SDL_WindowFlags.SDL_WINDOW_HIDDEN)) == 0
+                && !_renderer!.TryAcquireSwapchain())
+            {
+                if (updateFrame is not null && pendingPresses.Count > 0)
+                {
+                    updateFrame(new SdlKeyboardSnapshot(_pressedKeys, pendingPresses,
+                        TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)))));
+                    pendingPresses.Clear();
+                }
+                Thread.Sleep(1);
+                continue;
+            }
+
             var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);

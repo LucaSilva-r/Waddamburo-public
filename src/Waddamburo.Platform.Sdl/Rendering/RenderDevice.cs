@@ -31,6 +31,10 @@ internal sealed unsafe class RenderDevice : IDisposable
     private SDL_GPUSampler* _linearRepeatSampler;
     private uint _nextTextureId = 1;
     private bool _disposed;
+    private SDL_GPUCommandBuffer* _readyCommandBuffer;
+    private SDL_GPUTexture* _readySwapchainTexture;
+    private uint _readyWidth;
+    private uint _readyHeight;
 
     public RenderDevice(SDL_GPUDevice* device, SDL_Window* window)
     {
@@ -326,23 +330,60 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new ArgumentException("Render prepass is not registered.", nameof(prepass));
     }
 
+    /// <summary>
+    /// Without blocking, takes a free swapchain image for the next <see cref="Present"/>; false while
+    /// every image is still in flight (vsync), so the caller can keep polling input meanwhile.
+    /// </summary>
+    public bool TryAcquireSwapchain()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_readyCommandBuffer is not null)
+            return true;
+        var commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
+        if (commandBuffer is null)
+            throw sdlFailure("acquire a GPU command buffer");
+        SDL_GPUTexture* swapchainTexture = null;
+        uint width = 0;
+        uint height = 0;
+        if (!SDL_AcquireGPUSwapchainTexture(commandBuffer, _window, &swapchainTexture, &width, &height))
+        {
+            SDL_CancelGPUCommandBuffer(commandBuffer);
+            throw sdlFailure("acquire the swapchain texture");
+        }
+        if (swapchainTexture is null)
+        {
+            SDL_CancelGPUCommandBuffer(commandBuffer);
+            return false;
+        }
+        _readyCommandBuffer = commandBuffer;
+        _readySwapchainTexture = swapchainTexture;
+        _readyWidth = width;
+        _readyHeight = height;
+        return true;
+    }
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
         validateFrame(frame);
 
-        var commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
+        var commandBuffer = _readyCommandBuffer;
+        SDL_GPUTexture* swapchainTexture = _readySwapchainTexture;
+        uint width = _readyWidth;
+        uint height = _readyHeight;
+        _readyCommandBuffer = null;
+        _readySwapchainTexture = null;
         if (commandBuffer is null)
-            throw sdlFailure("acquire a GPU command buffer");
-
-        SDL_GPUTexture* swapchainTexture = null;
-        uint width = 0;
-        uint height = 0;
-        if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, _window, &swapchainTexture, &width, &height))
         {
-            SDL_CancelGPUCommandBuffer(commandBuffer);
-            throw sdlFailure("acquire the swapchain texture");
+            commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
+            if (commandBuffer is null)
+                throw sdlFailure("acquire a GPU command buffer");
+            if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, _window, &swapchainTexture, &width, &height))
+            {
+                SDL_CancelGPUCommandBuffer(commandBuffer);
+                throw sdlFailure("acquire the swapchain texture");
+            }
         }
 
         SDL_GPUTransferBuffer* captureBuffer = null;
@@ -513,6 +554,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     {
         if (_disposed)
             return;
+        if (_readyCommandBuffer is not null)
+            SDL_SubmitGPUCommandBuffer(_readyCommandBuffer); // holds a swapchain image, so it cannot be cancelled
         SDL_WaitForGPUIdle(_device);
         releaseResources();
         _disposed = true;
