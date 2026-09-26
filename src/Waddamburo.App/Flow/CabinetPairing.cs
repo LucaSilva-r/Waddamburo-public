@@ -42,6 +42,19 @@ internal sealed class CabinetPairing : IDisposable
         set => _accepting = value;
     }
 
+    /// <summary>A card was read but not accepted (unknown card, or the lookup failed): shown once as the red band.</summary>
+    public bool TakeCardFailure()
+    {
+        lock (_sync)
+        {
+            var failed = _cardFailed;
+            _cardFailed = false;
+            return failed;
+        }
+    }
+
+    private bool _cardFailed;
+
     /// <summary>The paired card for a credit that is starting (null: a guest).</summary>
     public ScoreProfile? TakeCard()
     {
@@ -115,13 +128,24 @@ internal sealed class CabinetPairing : IDisposable
                 }
                 break;
             case PairingState.Claimed claimed:
-                var profile = await _client.ResolveCardAsync(claimed.AccessCode, _stop.Token).ConfigureAwait(false);
-                Console.WriteLine(profile is null ? "Pairing: the card has no TaikOnline player."
+                ScoreProfile? profile = null;
+                try
+                {
+                    // Diagnostic: WADDAMBURO_REJECT_CARDS=1 treats every card as unregistered (the red band).
+                    profile = Environment.GetEnvironmentVariable("WADDAMBURO_REJECT_CARDS") == "1" ? null
+                        : await _client.ResolveCardAsync(claimed.AccessCode, _stop.Token).ConfigureAwait(false);
+                }
+                catch (HttpRequestException exception)
+                {
+                    Console.Error.WriteLine($"Warning PAIRING: the card could not be looked up ({exception.Message}).");
+                }
+                Console.WriteLine(profile is null ? "Pairing: the card was rejected (no TaikOnline player)."
                     : $"Pairing: {profile.Name} (baid {profile.Baid}) is ready for the next credit.");
                 lock (_sync)
                 {
                     _code = null;
                     _card = profile;
+                    _cardFailed = profile is null;
                     _cardDeadline = DateTime.UtcNow + CardLifetime;
                 }
                 break;

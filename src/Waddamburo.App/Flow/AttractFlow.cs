@@ -56,7 +56,17 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
         var coinStart = Shell.Coins is { Credits: > 0 };
         // A card (paired from the website) starts the entry like a coin, in either mode (traced
         // session13-card): SCENE_TRIGGER_CARD = 4, nobody joined yet; the entry asks which drum takes it.
-        if (Shell.TakeCard() is { } card)
+        // A rejected card still opens the entry, like a coin, to show the red band there.
+        // ponytail: untraced; the game's reaction to an unregistered card at the attract is unknown.
+        if (Shell.TakeCardFailure())
+        {
+            Shell.Sounds?.StopAll();
+            Shell.Hosts.EntryTrigger = 3;
+            Shell.ResetPlayers();
+            Shell.Hosts.EntryCardRejected = true;
+            Shell.Show(FlowScenes.Entry);
+        }
+        else if (Shell.TakeCard() is { } card)
         {
             Shell.Sounds?.StopAll();
             Shell.Hosts.EntryTrigger = 4;

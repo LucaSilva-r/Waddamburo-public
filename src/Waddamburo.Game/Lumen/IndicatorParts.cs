@@ -88,7 +88,7 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         if (_overMessage is not { } overMessage)
             return;
         call(overMessage, "SetType", number((int)band));
-        if (band == CardBand.Reading)
+        if (band != CardBand.ReadOk) // green replaces the reading band in place; the others appear
             call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(true), number(15), number(0));
     }
 

@@ -45,6 +45,12 @@ internal sealed class LayerHostFactory(
     /// <summary>A card read during entry; false when no entry runs or one is already pending.</summary>
     public bool InsertEntryCard(ScoreProfile card) => _entry?.InsertCard(card) == true;
 
+    /// <summary>A card rejected during entry: the red band.</summary>
+    public void RejectEntryCard() => _entry?.RejectCard();
+
+    /// <summary>A card rejected in the attract loop: the entry about to load shows the red band.</summary>
+    public bool EntryCardRejected { get; set; }
+
     /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
     public bool EntryCardPending => _entry?.Card is not null;
 
@@ -132,6 +138,9 @@ internal sealed class LayerHostFactory(
                 CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
             };
             EntryCard = null;
+            if (EntryCardRejected)
+                _entry.RejectCard();
+            EntryCardRejected = false;
             _entry.PlayerJoined += player => EntryJoined?.Invoke(player);
         }
         else if (layer.HostId == "song-select")

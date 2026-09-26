@@ -50,6 +50,9 @@ internal sealed class SystemIndicators
 
     public LumenGameSceneInstance Scene { get; }
 
+    /// <summary>The server connection for the network indicator (see ServerHealth); null: none configured.</summary>
+    public Func<int>? NetworkIcon { get; set; }
+
     /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
     public CoinBank? Coins { get; init; }
 
@@ -206,8 +209,8 @@ internal sealed class SystemIndicators
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
             CoinsChanged();
         }
-        // ponytail: no network in the engine; type 2 is what the game shows before it connects.
-        call(_network, "SetType", LumenHostValue.FromNumber(2));
+        // 0 good, 1 warning, 2 disconnected (network_icon LABEL); no server configured: disconnected.
+        call(_network, "SetType", LumenHostValue.FromNumber(NetworkIcon?.Invoke() ?? 2));
         call(_card, "SetOnline", LumenHostValue.FromNumber(_online ? 1 : 0));
         call(_card, "SetCamera", LumenHostValue.FromNumber(0));
         call(_card, "SetBncoin", LumenHostValue.FromNumber(0));

@@ -125,6 +125,9 @@ public sealed class ScoreSavingTests
         var claim = "status=claimed\nsession=s1\ncommand_id=c1\naccess_code=30800000000000000001\n";
         Assert.Equal(new PairingState.Claimed("30800000000000000001"), pairing.Apply(claim));
         Assert.IsType<PairingState.Closed>(pairing.Apply(claim)); // re-sent until acknowledged: taken once
+        Assert.IsType<PairingState.Closed>(pairing.Apply("status=complete\nsession=s1\n"));
+        Assert.Equal(new PairingState.Active("123456", TimeSpan.FromSeconds(30)), // a fresh session after complete
+            pairing.Apply("status=active\nsession=s2\ncode=123456\nexpires_in=30\n"));
         Assert.IsType<PairingState.Closed>(pairing.Apply("status=closed\n"));
         Assert.IsType<PairingState.Closed>(pairing.Apply("status=active\ncode=12345\nexpires_in=30\n"));
     }

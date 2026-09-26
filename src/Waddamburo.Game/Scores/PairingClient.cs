@@ -61,7 +61,9 @@ public sealed class PairingClient(HttpClient http, string cabinetId)
 
         if (field("session") is { } session)
             _session = session;
-        if (field("status") == "closed")
+        // complete: the claimed card was acknowledged. The server keeps a polled session complete, so
+        // start a new one (a rejected card goes straight back to showing a code).
+        if (field("status") is "closed" or "complete")
         {
             _session = _ack = _lastCommand = null;
             return new PairingState.Closed();

@@ -69,6 +69,8 @@ internal sealed class GameShell : IDisposable
     /// <summary>The server scores upload to (null: offline or a guest).</summary>
     public ScoreClient? ScoreServer { get; }
 
+    private readonly ServerHealth? _health;
+
     // Cabinet mode only (cabinet_token set, no home account).
     private readonly CabinetPairing? _pairing;
     private readonly PairingPill _pill;
@@ -140,6 +142,7 @@ internal sealed class GameShell : IDisposable
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
         var cabinet = options.Account is null && Arcade is { Server: not null, CabinetToken: not null };
+        _health = Arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, Arcade.ServerInsecure)) : null;
         Scores = (options.Account is not null || cabinet) && options.ScoresPath is { } scoresPath ? new ScoreStore(scoresPath) : null;
         if (Scores is not null && Arcade.Server is { } server)
         {
@@ -322,6 +325,7 @@ internal sealed class GameShell : IDisposable
                     Don.MapPlayerZero = false;
             };
             Hosts.CardDialog = open => _indicators.CardDialog(open);
+            _indicators.NetworkIcon = _health is null ? null : () => _health.IconType;
             Hosts.EntryJoined = side =>
             {
                 JoinPlayer(side);
@@ -599,6 +603,9 @@ internal sealed class GameShell : IDisposable
             frame.ContentAspectRatio);
     }
 
+    /// <summary>A paired card was rejected by the server (shown once).</summary>
+    public bool TakeCardFailure() => _pairing?.TakeCardFailure() == true;
+
     /// <summary>A card was paired during the attract loop: it starts the credit (SCENE_TRIGGER_CARD).</summary>
     public ScoreProfile? TakeCard() => _pairing?.TakeCard();
 
@@ -610,6 +617,8 @@ internal sealed class GameShell : IDisposable
         var entry = flowOf(Active.Id) is EntryFlow;
         _pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow
             || entry && !Hosts.EntryCardPending;
+        if (entry && _pairing.TakeCardFailure())
+            Hosts.RejectEntryCard();
         if (entry && _pairing.TakeCard() is { } card && !Hosts.InsertEntryCard(card))
             Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
         _pairing.UpdatePill(_pill);
@@ -619,6 +628,7 @@ internal sealed class GameShell : IDisposable
     public void Dispose()
     {
         _pairing?.Dispose();
+        _health?.Dispose();
         _pill.Dispose();
         Titles.Dispose();
         Previews?.Dispose();

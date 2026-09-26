@@ -55,6 +55,25 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             PlayCue?.Invoke(bank, cue);
     }
 
+    /// <summary>
+    /// A card the server rejected: the red band (error_reading_ng) with the card error sound (SE_COM 12,
+    /// SE_COM_COM_CARD_ERROR), for 2 s. ponytail: the game's handling of an unregistered card is untraced.
+    /// </summary>
+    public void RejectCard()
+    {
+        if (_entry is null)
+        {
+            _rejectOnLoad = true;
+            return;
+        }
+        Parts.ShowCardBand(IndicatorParts.CardBand.ReadNg);
+        PlayCue?.Invoke("SE_COM", 12);
+        _rejectUntil = _ticks + 120;
+    }
+
+    private bool _rejectOnLoad;
+    private int _rejectUntil = -1;
+
     /// <summary>A card being read or waiting for a drum (from the attract loop or read during entry).</summary>
     public ScoreProfile? Card { get; set; }
 
@@ -101,6 +120,13 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         if (_entry is null)
             return;
         _ticks++;
+        if (_rejectOnLoad && Parts.PollReady())
+        {
+            _rejectOnLoad = false;
+            RejectCard();
+        }
+        if (_ticks == _rejectUntil)
+            Parts.HideCardBand();
         if (_timerStarted && Parts.Countdown)
             play(_timerCues.Advance(RemainingSeconds));
         if (_dialogAt >= 0)
