@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Diagnostics;
@@ -28,7 +29,7 @@ public sealed class LumenMovieContent
 
     public LmbMovieDefinition Definition { get; }
 
-    public ImmutableArray<LumenTextureContent> Textures { get; }
+    public ImmutableArray<LumenTextureContent> Textures { get; private set; }
 
     public ImmutableArray<ParseDiagnostic> Diagnostics { get; }
 
@@ -51,7 +52,7 @@ public sealed class LumenMovieContent
                 view.Entry.Index - movie.Entry.TextureBegin,
                 texture.Width,
                 texture.Height,
-                ImmutableArray.CreateRange(NutTextureDecoder.DecodeRgba8(texture, parserLimits))));
+                ImmutableCollectionsMarshal.AsImmutableArray(NutTextureDecoder.DecodeRgba8(texture, parserLimits))));
         }
 
         var file = LmbFile.Parse(movie.Data, parserLimits);
@@ -71,6 +72,10 @@ public sealed class LumenMovieContent
         float stageHeight = 720,
         ILumenHostBinding? hostBinding = null) =>
         new(Definition, stageWidth, stageHeight, hostBinding: hostBinding);
+
+    /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>
+    public void ReleaseDecodedTexturePixels() =>
+        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [] })];
 }
 
 public sealed record LumenTextureContent(

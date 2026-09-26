@@ -26,6 +26,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private WaiwaiComposition? _waiwai;
     private AudioStreamTransport? _music;
     private GameplayTimeline? _timeline;
+    private GameplayAutoplay? _autoplay;
     private readonly Stopwatch _clock = new();
     private int _startTick;
     private int _shutterStartTick = -1;
@@ -66,6 +67,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
         }
         _timeline = new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
+        _autoplay = Shell.Options.Autoplay ? new GameplayAutoplay(_charts, _side) : null;
         _startTick = Shell.Tick;
         _clock.Reset();
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai);
@@ -94,7 +96,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
         if (!Shell.Headless && revealed)
-            Shell.Gameplay.Advance(keys, chartTime());
+        {
+            var time = chartTime();
+            Shell.Gameplay.Advance(_autoplay?.Apply(keys, time) ?? keys, time);
+        }
     }
 
     public override void Tick(FlowInput input)
@@ -121,7 +126,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             return;
         var elapsed = chartTime();
         if (Shell.Headless)
-            Shell.Gameplay.Advance(input.Keys, elapsed);
+            Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed) ?? input.Keys, elapsed);
         if (_music?.Failure is not null || Shell.Audio?.Failure is not null)
             throw new IOException("Gameplay audio failed.", _music?.Failure ?? Shell.Audio?.Failure);
         var chartFinished = _charts.Length != 0
@@ -169,6 +174,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
         Shell.Catalog.Replace(Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         _charts = [];
+        _autoplay = null;
         Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
     }
@@ -177,7 +183,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // results) is not saved until its mode is worked out.
     private void saveScore(PlayRequest request)
     {
-        if (Shell.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        if (Shell.Options.Autoplay || Shell.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = false;
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)

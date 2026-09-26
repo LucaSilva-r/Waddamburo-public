@@ -13,6 +13,13 @@ public interface ILumenMovieContentSource
         CancellationToken cancellationToken);
 }
 
+public interface ILumenMovieContentScope : ILumenMovieContentSource, IDisposable;
+
+public interface IScopedLumenMovieContentSource : ILumenMovieContentSource
+{
+    ILumenMovieContentScope CreateSceneScope();
+}
+
 /// <summary>Creates a fresh host and optional post-construction initializer for one layer.</summary>
 public interface ILumenLayerHostFactory
 {
@@ -54,7 +61,15 @@ public sealed class LumenGameSceneInstance : IGameSceneInstance
 
     public ImmutableArray<LoadedLumenLayer> Layers { get; }
 
-    public ImmutableArray<LumenTextureContent> Textures { get; }
+    public ImmutableArray<LumenTextureContent> Textures { get; private set; }
+
+    /// <summary>Keeps texture dimensions and indices while dropping uploaded CPU pixels.</summary>
+    public void ReleaseUploadedTexturePixels()
+    {
+        foreach (var layer in Layers)
+            layer.Content.ReleaseDecodedTexturePixels();
+        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [] })];
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -104,12 +119,14 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
         var players = ImmutableArray.CreateBuilder<LumenSceneLayer>(definition.Layers.Length);
         var lifetimes = ImmutableArray.CreateBuilder<object>(definition.Layers.Length);
         uint textureOffset = 0;
+        using var scope = (_contentSource as IScopedLumenMovieContentSource)?.CreateSceneScope();
+        var contentSource = (ILumenMovieContentSource?)scope ?? _contentSource;
         try
         {
             foreach (var layer in definition.Layers)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var content = await _contentSource
+                var content = await contentSource
                     .LoadAsync(layer.ArchiveId, layer.MovieId, cancellationToken)
                     .ConfigureAwait(false);
                 if (content.Diagnostics.Any(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error))

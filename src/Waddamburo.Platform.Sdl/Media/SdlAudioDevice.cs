@@ -31,6 +31,10 @@ public sealed unsafe class SdlAudioDevice : IDisposable
             throw new ArgumentOutOfRangeException(nameof(channels), "At most eight output channels are supported.");
 
         Format = new SdlAudioFormat(sampleRate, channels);
+        // Request a smaller device period before opening it. SDL and the backend may
+        // choose another size; an explicit user setting takes precedence.
+        if (Environment.GetEnvironmentVariable("SDL_AUDIO_DEVICE_SAMPLE_FRAMES") is null)
+            SDL_SetHint("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", "256");
         if (!SDL_InitSubSystem(SDL_InitFlags.SDL_INIT_AUDIO))
             throw sdlFailure("initialize SDL audio");
         _audioInitialized = true;

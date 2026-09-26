@@ -3,8 +3,8 @@ namespace Waddamburo.Platform.Sdl.Media;
 /// <summary>Feeds mixed PCM to one SDL device from a bounded background producer.</summary>
 public sealed class AudioEngine : IDisposable
 {
-    private const int RenderFrames = 256;
-    private const int TargetQueuedFrames = 1024;
+    private const int RenderFrames = 128;
+    private const int TargetQueuedFrames = 512;
 
     private readonly SdlAudioDevice _device;
     private readonly CancellationTokenSource _cancellation = new();
@@ -78,7 +78,7 @@ public sealed class AudioEngine : IDisposable
             {
                 if (_device.QueuedFrames >= TargetQueuedFrames)
                 {
-                    await Task.Delay(2, _cancellation.Token).ConfigureAwait(false);
+                    await Task.Delay(1, _cancellation.Token).ConfigureAwait(false);
                     continue;
                 }
                 lock (_outputGate)

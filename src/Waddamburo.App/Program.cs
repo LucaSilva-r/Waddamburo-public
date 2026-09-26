@@ -34,6 +34,7 @@ try
     var startSceneOption = parseOption(args, "--start-scene=");
     var login = args.Contains("--login", StringComparer.Ordinal);
     var logout = args.Contains("--logout", StringComparer.Ordinal);
+    var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
@@ -107,7 +108,8 @@ try
             startScene,
             arcade,
             account,
-            Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName)));
+            Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName),
+            autoplay));
         return 0;
     }
     if (soundBankProbe is not null)
@@ -148,7 +150,8 @@ try
             jinglePath,
             soundRoot,
             countdown,
-            startScene));
+            startScene,
+            Autoplay: autoplay));
         return 0;
     }
     if (startSceneOption is not null)

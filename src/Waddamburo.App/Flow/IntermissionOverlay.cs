@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -50,19 +52,24 @@ internal static class SceneTextures
 {
     public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene)
     {
-        var uploaded = new List<RenderTextureId>();
-        try
+        var start = Stopwatch.GetTimestamp();
+        var uploads = scene.Textures.Select(static texture => new RgbaTextureUpload(
+            checked((uint)texture.Width), checked((uint)texture.Height),
+            ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
+                ?? throw new InvalidDataException("Texture pixels are unavailable."))).ToArray();
+        var uploaded = application.UploadRgba8Batch(uploads);
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
         {
-            foreach (var texture in scene.Textures)
-                uploaded.Add(application.UploadRgba8(checked((uint)texture.Width),
-                    checked((uint)texture.Height), texture.Rgba8.AsSpan()));
-            return [.. uploaded];
+            var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length);
+            using var process = Process.GetCurrentProcess();
+            Console.Error.WriteLine($"Profile scene {scene.Id}: {uploaded.Length} textures, "
+                + $"RGBA {rgbaBytes / 1048576d:F1} MiB, "
+                + $"upload {Stopwatch.GetElapsedTime(start).TotalMilliseconds:F0} ms, "
+                + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
+                + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB.");
         }
-        catch
-        {
-            Release(application, uploaded);
-            throw;
-        }
+        scene.ReleaseUploadedTexturePixels();
+        return uploaded;
     }
 
     public static void Release(SdlApplication application, IEnumerable<RenderTextureId> textures)

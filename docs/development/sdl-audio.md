@@ -21,7 +21,10 @@ application-side queue. It borrows the device rather than opening or closing one
 itself.
 
 `AudioEngine` is the first software-mixed path. Its background producer renders
-256-frame blocks and bounds SDL's queue to 1,024 application frames. `AudioMixer`
+128-frame blocks and targets 512 queued application frames. The device
+requests a 256-frame hardware period unless the user sets
+`SDL_AUDIO_DEVICE_SAMPLE_FRAMES`; the actual period is backend-dependent.
+`AudioMixer`
 provides BGM, preview, menu-sound, voice, and drum-hit buses, master/per-bus volume,
 bus mute, concurrent voices, looping, immediate stop, and sample-counted fade-out.
 Mixing is additive float with final saturation to `[-1, 1]`.

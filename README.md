@@ -256,6 +256,8 @@ The initial display-list runtime is documented in
 [docs/development/lumen-runtime.md](docs/development/lumen-runtime.md).
 The current SDL and SDL_GPU lifecycle is documented in
 [docs/development/sdl-gpu.md](docs/development/sdl-gpu.md).
+For memory, frame time and audio-buffer measurements, see
+[docs/development/profiling.md](docs/development/profiling.md).
 
 ## Legal
 

@@ -4,6 +4,8 @@ using static SDL.SDL3;
 
 namespace Waddamburo.Platform.Sdl.Rendering;
 
+public readonly record struct RgbaTextureUpload(uint Width, uint Height, ReadOnlyMemory<byte> Pixels);
+
 /// <summary>Owns SDL_GPU resources and command submission for one claimed window.</summary>
 internal sealed unsafe class RenderDevice : IDisposable
 {
@@ -99,6 +101,111 @@ internal sealed unsafe class RenderDevice : IDisposable
         {
             if (texture is not null)
                 SDL_ReleaseGPUTexture(_device, texture);
+        }
+    }
+
+    /// <summary>Uploads scene textures in bounded GPU copy passes.</summary>
+    public RenderTextureId[] UploadRgba8Batch(IReadOnlyList<RgbaTextureUpload> uploads)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(uploads);
+        var created = new List<nint>();
+        try
+        {
+            for (var first = 0; first < uploads.Count; first += 32)
+            {
+                var end = Math.Min(first + 32, uploads.Count);
+                var transfers = new List<nint>();
+                SDL_GPUCommandBuffer* command = null;
+                SDL_GPUCopyPass* pass = null;
+                try
+                {
+                    command = SDL_AcquireGPUCommandBuffer(_device);
+                    if (command is null)
+                        throw sdlFailure("acquire a texture upload command buffer");
+                    pass = SDL_BeginGPUCopyPass(command);
+                    if (pass is null)
+                        throw sdlFailure("begin a texture upload pass");
+                    for (var index = first; index < end; index++)
+                    {
+                        var upload = uploads[index];
+                        if (upload.Width == 0 || upload.Height == 0 ||
+                            (ulong)upload.Pixels.Length != checked((ulong)upload.Width * upload.Height * 4))
+                            throw new ArgumentException("RGBA8 uploads must contain width * height * 4 bytes.", nameof(uploads));
+                        var info = new SDL_GPUTextureCreateInfo
+                        {
+                            type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
+                            format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                            usage = SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                            width = upload.Width,
+                            height = upload.Height,
+                            layer_count_or_depth = 1,
+                            num_levels = 1,
+                            sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
+                        };
+                        var texture = SDL_CreateGPUTexture(_device, &info);
+                        if (texture is null)
+                            throw sdlFailure("create an RGBA texture");
+                        created.Add((nint)texture);
+                        var transferInfo = new SDL_GPUTransferBufferCreateInfo
+                        {
+                            usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                            size = checked((uint)upload.Pixels.Length),
+                        };
+                        var transfer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
+                        if (transfer is null)
+                            throw sdlFailure("create a texture upload buffer");
+                        transfers.Add((nint)transfer);
+                        var mapped = SDL_MapGPUTransferBuffer(_device, transfer, false);
+                        if (mapped == 0)
+                            throw sdlFailure("map a texture upload buffer");
+                        upload.Pixels.Span.CopyTo(new Span<byte>((void*)mapped, upload.Pixels.Length));
+                        SDL_UnmapGPUTransferBuffer(_device, transfer);
+                        var source = new SDL_GPUTextureTransferInfo
+                        {
+                            transfer_buffer = transfer,
+                            pixels_per_row = upload.Width,
+                            rows_per_layer = upload.Height,
+                        };
+                        var destination = new SDL_GPUTextureRegion
+                        {
+                            texture = texture,
+                            w = upload.Width,
+                            h = upload.Height,
+                            d = 1,
+                        };
+                        SDL_UploadToGPUTexture(pass, &source, &destination, false);
+                    }
+                    SDL_EndGPUCopyPass(pass);
+                    pass = null;
+                    if (!SDL_SubmitGPUCommandBuffer(command))
+                        throw sdlFailure("submit a texture upload batch");
+                    command = null;
+                }
+                finally
+                {
+                    if (pass is not null)
+                        SDL_EndGPUCopyPass(pass);
+                    if (command is not null)
+                        SDL_CancelGPUCommandBuffer(command);
+                    foreach (var transfer in transfers)
+                        SDL_ReleaseGPUTransferBuffer(_device, (SDL_GPUTransferBuffer*)transfer);
+                }
+            }
+            var ids = new RenderTextureId[created.Count];
+            for (var index = 0; index < created.Count; index++)
+            {
+                var id = new RenderTextureId(_nextTextureId++);
+                _textures.Add(id.Value, created[index]);
+                ids[index] = id;
+            }
+            return ids;
+        }
+        catch
+        {
+            foreach (var texture in created)
+                SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+            throw;
         }
     }
 

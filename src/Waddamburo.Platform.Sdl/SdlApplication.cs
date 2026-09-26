@@ -90,6 +90,13 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.UploadRgba8(width, height, pixels);
     }
 
+    public RenderTextureId[] UploadRgba8Batch(IReadOnlyList<RgbaTextureUpload> uploads)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _renderer!.UploadRgba8Batch(uploads);
+    }
+
     public void UpdateRgba8(RenderTextureId texture, uint width, uint height, ReadOnlySpan<byte> pixels)
     {
         ensureOwnerThread();
@@ -144,7 +151,8 @@ public sealed unsafe class SdlApplication : IDisposable
         int? frameLimit = null,
         int? tickLimit = null,
         Action<RenderCapture>? captureFinalFrame = null,
-        Action<SdlKeyboardSnapshot>? updateFrame = null)
+        Action<SdlKeyboardSnapshot>? updateFrame = null,
+        Func<bool>? profileFrame = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -165,6 +173,10 @@ public sealed unsafe class SdlApplication : IDisposable
         var running = true;
         var pendingPresses = new List<SdlKeyPress>();
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+        using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
+            ? new FrameProfile() : null;
+        var previousProfileEligible = false;
+        var windowFocused = true;
         while (running && (frameLimit is null || renderedFrames < frameLimit))
         {
             SDL_Event currentEvent;
@@ -176,7 +188,12 @@ public sealed unsafe class SdlApplication : IDisposable
                     running = false;
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST)
+                {
                     _pressedKeys.Clear();
+                    windowFocused = false;
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED)
+                    windowFocused = true;
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     or (uint)SDL_EventType.SDL_EVENT_KEY_UP)
                 {
@@ -199,6 +216,7 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!running)
                 break;
 
+            var profileEligibleAtStart = windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
             previousTimestamp = timestamp;
@@ -227,6 +245,18 @@ public sealed unsafe class SdlApplication : IDisposable
             // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
             var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
             var renderTime = Stopwatch.GetElapsedTime(renderStart);
+            var profileEligibleAtEnd = windowFocused && (profileFrame?.Invoke() ?? true);
+            if (frameProfile is not null)
+            {
+                if (previousProfileEligible && profileEligibleAtStart && profileEligibleAtEnd)
+                    frameProfile.Record(elapsed, updateTime, renderTime, simulationTicks);
+                else
+                {
+                    frameProfile.Report(simulationTicks);
+                    frameProfile.Flush();
+                }
+            }
+            previousProfileEligible = profileEligibleAtStart && profileEligibleAtEnd;
             if (hitchTrace && updateTime + renderTime > TimeSpan.FromMilliseconds(40))
                 Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
                     + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms.");
@@ -236,7 +266,85 @@ public sealed unsafe class SdlApplication : IDisposable
             if (reachedTickLimit)
                 break;
         }
+        frameProfile?.Report(simulationTicks);
+        frameProfile?.Flush();
         return new SdlRunResult(renderedFrames, simulationTicks, droppedTicks, clock.InterpolationFraction);
+    }
+
+    private sealed class FrameProfile : IDisposable
+    {
+        private const int WindowFrames = 1920;
+        private readonly double[] _frameTimes = new double[WindowFrames];
+        private readonly Process _process = Process.GetCurrentProcess();
+        private readonly List<string> _reports = [];
+        private int _frames;
+        private double _maximumUpdateMs;
+        private double _maximumRenderMs;
+        private long _windowStart;
+        private TimeSpan _cpuStart;
+        private int _gen0Start;
+        private int _gen1Start;
+        private int _gen2Start;
+
+        public void Record(TimeSpan interval, TimeSpan update, TimeSpan render, int tick)
+        {
+            if (_frames == 0)
+            {
+                _windowStart = Stopwatch.GetTimestamp();
+                _cpuStart = _process.TotalProcessorTime;
+                _gen0Start = GC.CollectionCount(0);
+                _gen1Start = GC.CollectionCount(1);
+                _gen2Start = GC.CollectionCount(2);
+            }
+            _frameTimes[_frames++] = interval.TotalMilliseconds;
+            _maximumUpdateMs = Math.Max(_maximumUpdateMs, update.TotalMilliseconds);
+            _maximumRenderMs = Math.Max(_maximumRenderMs, render.TotalMilliseconds);
+            if (_frames == WindowFrames)
+                Report(tick);
+        }
+
+        public void Report(int tick)
+        {
+            if (_frames == 0)
+                return;
+            var sorted = _frameTimes.AsSpan(0, _frames).ToArray();
+            Array.Sort(sorted);
+            var wallSeconds = Stopwatch.GetElapsedTime(_windowStart).TotalSeconds;
+            var cpuSeconds = (_process.TotalProcessorTime - _cpuStart).TotalSeconds;
+            var over2 = sorted.Count(static ms => ms > 1000d / 480);
+            var over4 = sorted.Count(static ms => ms > 1000d / 240);
+            var over8 = sorted.Count(static ms => ms > 1000d / 120);
+            static double percentile(double[] values, double fraction) =>
+                values[(int)Math.Ceiling((values.Length - 1) * fraction)];
+            _reports.Add($"Gameplay frames to tick {tick}: {_frames} frames, "
+                + $"FPS {_frames / wallSeconds:F0}, "
+                + $"p50/p95/p99/max {percentile(sorted, .5):F2}/{percentile(sorted, .95):F2}/"
+                + $"{percentile(sorted, .99):F2}/{sorted[^1]:F2} ms, "
+                + $">2.08/>4.17/>8.33 ms {over2}/{over4}/{over8}, "
+                + $"max update/render {_maximumUpdateMs:F2}/{_maximumRenderMs:F2} ms, "
+                + $"CPU {cpuSeconds / wallSeconds * 100:F0}% of one core, "
+                + $"RSS {_process.WorkingSet64 / 1048576d:F0} MiB, "
+                + $"managed {GC.GetTotalMemory(false) / 1048576d:F0} MiB, "
+                + $"GC {GC.CollectionCount(0) - _gen0Start}/"
+                + $"{GC.CollectionCount(1) - _gen1Start}/"
+                + $"{GC.CollectionCount(2) - _gen2Start}.");
+            _frames = 0;
+            _maximumUpdateMs = 0;
+            _maximumRenderMs = 0;
+        }
+
+        public void Flush()
+        {
+            foreach (var report in _reports)
+                Console.Error.WriteLine(report);
+            _reports.Clear();
+        }
+
+        public void Dispose()
+        {
+            Flush();
+            _process.Dispose();
+        }
     }
 
     private static SdlKeyboardKey? mapKey(SDL_Keycode key) => key switch

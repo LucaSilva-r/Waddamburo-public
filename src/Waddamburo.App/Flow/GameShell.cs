@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Diagnostics;
 using Waddamburo.App.Audio;
 using Waddamburo.App.Cli;
 using Waddamburo.App.Gameplay;
@@ -42,7 +43,8 @@ internal sealed record GameOptions(
     StartScene StartScene = StartScene.Boot,
     ArcadeSettings? Arcade = null,
     ScoreAccount? Account = null,
-    string? ScoresPath = null);
+    string? ScoresPath = null,
+    bool Autoplay = false);
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -197,6 +199,10 @@ internal sealed class GameShell : IDisposable
         }
         var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
         _audioDevice = needsAudio ? new SdlAudioDevice() : null;
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
+            Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
+                + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
+                + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
         Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice);
         Previews = Audio is null
             ? null
@@ -350,11 +356,21 @@ internal sealed class GameShell : IDisposable
                     _pressLatch.UnionWith(keyboard.Presses.Select(static press => press.Key));
                     _coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
                     flowOf(Active.Id).UpdateFrame(keyboard);
-                });
+                },
+                profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown);
 
             Console.WriteLine($"Active scene: {Active.Id}");
             _gameplay.ReportFinal(Active.Id);
             ReportDiagnostics();
+            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                using var process = Process.GetCurrentProcess();
+                Console.Error.WriteLine($"Profile exit {Active.Id}: managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
+                    + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB.");
+            }
             if (result.DroppedTicks > 0)
                 Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
             return result.RenderedFrames;
@@ -493,8 +509,9 @@ internal sealed class GameShell : IDisposable
     private void switchScene(Action transition)
     {
         flowOf(Active.Id).Exit(Active.Id);
-        transition();
         SceneTextures.Release(Application, _textures);
+        _textures = [];
+        transition();
         activate();
     }
 
