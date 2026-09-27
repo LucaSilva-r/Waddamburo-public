@@ -6,8 +6,18 @@ public sealed class ArcadeTests
 {
     [Fact]
     public void DefaultFileParsesToTheDefaults() =>
-        Assert.Equal(new ArcadeSettings { Version = ArcadeSettings.CurrentVersion },
+        Assert.Equal(new ArcadeSettings { Version = ArcadeSettings.CurrentVersion, Home = true },
             ArcadeSettings.Parse(ArcadeSettings.DefaultFileText));
+
+    [Fact]
+    public void UpgradeChoosesTheModeFromTheCabinetsOwnSettings()
+    {
+        // A free-play PC becomes home; a cabinet (coins, or a cabinet token) stays arcade.
+        Assert.True(ArcadeSettings.Parse(ArcadeSettings.Upgrade("config_version = 1\nfree_play = true\n")).Home);
+        Assert.False(ArcadeSettings.Parse(ArcadeSettings.Upgrade("config_version = 1\ncabinet_token = abc\n")).Home);
+        Assert.False(ArcadeSettings.Parse(ArcadeSettings.Upgrade("config_version = 1\nfree_play = false\n")).Home);
+        Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("mode = party"));
+    }
 
     [Fact]
     public void UpgradeKeepsEditsAndAddsNewerSettings()

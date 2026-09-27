@@ -91,8 +91,9 @@ try
         {
             return 0;
         }
-        Console.WriteLine($"Cabinet settings: {arcadePath} ({(arcade.FreePlay ? "free play" : "coin mode")}, "
-            + $"{arcade.SongsPerSession} songs per session).");
+        Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
+            : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "
+                + $"{arcade.SongsPerSession} songs per session).");
         var accountPath = Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreAccount.FileName);
         if (login || logout)
             return AccountCommands.Run(arcade, accountPath, login);

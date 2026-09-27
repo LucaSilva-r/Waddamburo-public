@@ -189,7 +189,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
         {
             var player = request.Players[lane];
-            if (TaikoGuest.Profiles[(int)player.Player] is not { } profile)
+            // Home: a guest's play is kept on this PC (baid 0, never uploaded).
+            if ((TaikoGuest.Profiles[(int)player.Player] ?? (Shell.Arcade.Home ? ScoreProfile.LocalGuest : null)) is not { } profile)
                 continue;
             try
             {

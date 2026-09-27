@@ -108,10 +108,11 @@ internal sealed class LayerHostFactory(
     public AttractHostBinding? Attract { get; private set; }
 
     /// <summary>What follows the results (see <see cref="TaikoCredit"/>).</summary>
-    public TaikoCreditNext CreditNext => TaikoCredit.Next(songInfo().Stage,
+    // Home: an endless credit, song after song, no revival and no end message.
+    public TaikoCreditNext CreditNext => arcade.Home ? TaikoCreditNext.NextSong : TaikoCredit.Next(songInfo().Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
-    private int endMessage => TaikoCredit.EndMessage(songInfo().Stage,
+    private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(songInfo().Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
     public void EntryCoinsChanged() => _entry?.CoinsChanged();

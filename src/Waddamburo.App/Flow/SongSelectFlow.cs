@@ -99,7 +99,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
             sounds.Waiwai = waiwai is not null;
             sounds.PrepareDrums(request.Players.Length == 2);
         }
-        // ponytail: the stage counts every song since launch (no credits yet); 8 stage frames.
+        // The credit's song number (reset when a credit ends); the movies have 8 stage frames, and a home
+        // session's endless credit stays on the last one.
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), Math.Min(++Shell.SongsPlayed, 8));
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
         var side = request.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;

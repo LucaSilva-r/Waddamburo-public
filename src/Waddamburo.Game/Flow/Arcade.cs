@@ -13,7 +13,10 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
+
+    // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
+    private const string ModePlaceholder = "{mode}";
 
     /// <summary>Settings added in each version (index = version - 1), as they are appended to older files.</summary>
     private static readonly string[] Additions =
@@ -27,6 +30,12 @@ public sealed record ArcadeSettings
         auto_update = true
 
         """,
+        """
+        # mode: home = a PC (free play, endless songs, no countdowns, Escape back to the title);
+        # arcade = a cabinet (coins or free play, songs per session, revival, countdowns).
+        mode = {mode}
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -37,6 +46,9 @@ public sealed record ArcadeSettings
     public bool ShowConsole { get; init; }
 
     public bool AutoUpdate { get; init; } = true;
+
+    /// <summary>Home mode (a PC): free play, endless songs, no countdowns. False: arcade (the cabinet rules).</summary>
+    public bool Home { get; init; }
 
     public bool FreePlay { get; init; } = true;
 
@@ -78,7 +90,7 @@ public sealed record ArcadeSettings
         # cabinet_token: a cabinet token from the server admin; players then log in with a 6-digit code.
         # cabinet_token =
 
-        """ + string.Concat(Additions);
+        """ + string.Concat(Additions).Replace(ModePlaceholder, "home");
 
     /// <summary>Reads the file, writing the defaults first when it does not exist and upgrading an older one.</summary>
     public static ArcadeSettings LoadOrCreate(string path)
@@ -99,12 +111,14 @@ public sealed record ArcadeSettings
     /// </summary>
     public static string Upgrade(string text)
     {
-        var version = Parse(text).Version;
+        var settings = Parse(text);
+        var version = settings.Version;
         if (version >= CurrentVersion)
             return text;
         var kept = text.Split('\n').Where(static line => !isKey(line, "config_version"));
+        var mode = settings.CabinetToken is not null || !settings.FreePlay ? "arcade" : "home";
         return string.Join('\n', kept).TrimEnd() + "\n\n"
-            + string.Concat(Additions[version..])
+            + string.Concat(Additions[version..]).Replace(ModePlaceholder, mode)
             + $"config_version = {CurrentVersion}\n";
     }
 
@@ -144,6 +158,12 @@ public sealed record ArcadeSettings
                 "fullscreen" => settings with { Fullscreen = boolean(value, index) },
                 "console" => settings with { ShowConsole = boolean(value, index) },
                 "auto_update" => settings with { AutoUpdate = boolean(value, index) },
+                "mode" => settings with { Home = value.ToLowerInvariant() switch
+                {
+                    "home" => true,
+                    "arcade" => false,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
+                } },
                 _ => unknownSetting($"{FileName} line {index}: unknown setting '{key}'."),
             };
         }

@@ -162,6 +162,10 @@ public sealed class ScoreSavingTests
                 store.Save(play(cleared: true, miss: 0), upload);
                 store.Save(play(cleared: false, miss: 3), upload);
                 Assert.Empty(store.Crowns(7));
+                // A home guest's play is kept, but never offered for upload.
+                store.Save(play(cleared: true, miss: 0) with { Baid = ScoreProfile.LocalGuestBaid }, upload);
+                Assert.Equal(TaikoCrown.FullCombo, store.Crowns(ScoreProfile.LocalGuestBaid)[key.ToString()]);
+                Assert.DoesNotContain(store.PendingPlays(null, 50), static pending => pending.Baid == ScoreProfile.LocalGuestBaid);
             }
             using var reopened = new ScoreStore(path); // migrations run once
             Assert.Equal(TaikoCrown.FullCombo, reopened.Crowns(42)[key.ToString()]);

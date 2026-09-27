@@ -5,6 +5,11 @@ namespace Waddamburo.Game.Scores;
 /// <summary>A player's Banapass profile: whose plays are saved, and their Don.</summary>
 public sealed record ScoreProfile(long Baid, string Name)
 {
+    /// <summary>A home PC's guest: plays are kept locally under this baid and never uploaded.</summary>
+    public const long LocalGuestBaid = 0;
+
+    public static ScoreProfile LocalGuest { get; } = new(LocalGuestBaid, "");
+
     public Don.DonLook? Look { get; init; }
 }
 

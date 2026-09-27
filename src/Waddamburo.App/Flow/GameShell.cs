@@ -149,13 +149,22 @@ internal sealed class GameShell : IDisposable
     {
         Options = options;
         Arcade = options.Arcade ?? new ArcadeSettings();
+        // Home: a PC plays free, without countdowns (the endless credit is the host factory's).
+        if (Arcade.Home)
+        {
+            Arcade = Arcade with { FreePlay = true };
+            options = options with { Countdown = false };
+            Options = options;
+        }
         var assetRoot = options.AssetRoot;
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
-        var cabinet = options.Account is null && Arcade is { Server: not null, CabinetToken: not null };
+        var cabinet = !Arcade.Home && options.Account is null && Arcade is { Server: not null, CabinetToken: not null };
         _health = Arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, Arcade.ServerInsecure)) : null;
-        Scores = (options.Account is not null || cabinet) && options.ScoresPath is { } scoresPath ? new ScoreStore(scoresPath) : null;
-        if (Scores is not null && Arcade.Server is { } server)
+        // Home keeps every play on this PC, guests' too (baid 0, never uploaded).
+        Scores = (Arcade.Home || options.Account is not null || cabinet) && options.ScoresPath is { } scoresPath
+            ? new ScoreStore(scoresPath) : null;
+        if (Scores is not null && (options.Account is not null || cabinet) && Arcade.Server is { } server)
         {
             var http = ScoreClient.CreateHttp(server, Arcade.ServerInsecure, options.Account?.Token ?? Arcade.CabinetToken);
             ScoreServer = new ScoreClient(http);
@@ -272,7 +281,9 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            Crowns = side => Scores is not null && TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid) : null,
+            Crowns = side => Scores is null ? null
+                : TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid)
+                : Arcade.Home ? Scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
             CardClaimed = (side, card) => TaikoGuest.Profiles[side] = card,
             // A card given to the drum, else the home account for the credit's first player.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look
@@ -445,6 +456,7 @@ internal sealed class GameShell : IDisposable
             PlayRequests.CancelPending();
             Don?.SetDialogDon(false);
             ResetPlayers();
+            SongsPlayed = 0; // a new credit starts at the first song
             Show(FlowScenes.Logo);
             return;
         }
@@ -478,6 +490,9 @@ internal sealed class GameShell : IDisposable
         var escapeIsDown = keys.IsDown(SdlKeyboardKey.Escape);
         var escape = escapeIsDown && !_escapeWasDown;
         _escapeWasDown = escapeIsDown;
+        // Home: Escape in the entry or song select ends the session (back to the title, next tick).
+        if (escape && Arcade.Home && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))
+            _returnToAttract = true;
         if (Coordinator.Flow.State != GameFlowState.TransitionPending)
         {
             scene.Tick(new FlowInput(keys, hitSide, skip, escape));
