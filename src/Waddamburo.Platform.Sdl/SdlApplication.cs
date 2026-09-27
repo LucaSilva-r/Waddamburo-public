@@ -138,6 +138,11 @@ public sealed unsafe class SdlApplication : IDisposable
         return new SdlDonRenderer(_device, _renderer!, assetRoot);
     }
 
+    private volatile bool _quitRequested;
+
+    /// <summary>Ends the running loop after the current frame; callable from any thread.</summary>
+    public void RequestQuit() => _quitRequested = true;
+
     public int Run(
         RenderFrame frame,
         int? frameLimit = null,
@@ -201,7 +206,8 @@ public sealed unsafe class SdlApplication : IDisposable
             ? new FrameProfile() : null;
         var previousProfileEligible = false;
         var windowFocused = true;
-        while (running && (frameLimit is null || renderedFrames < frameLimit))
+        _quitRequested = false;
+        while (running && !_quitRequested && (frameLimit is null || renderedFrames < frameLimit))
         {
             var performanceActive = performanceVisible?.Invoke() == true;
             var inputStart = performanceActive ? Stopwatch.GetTimestamp() : 0;

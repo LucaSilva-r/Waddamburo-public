@@ -23,7 +23,7 @@ public sealed record ArcadeSettings
         fullscreen = false
         # Windows release builds run without a console; true opens one showing the log.
         console = false
-        # Check for a new Waddamburo release at start and install it for the next launch.
+        # Check for a new Waddamburo release at start, install it and restart into it.
         auto_update = true
 
         """,

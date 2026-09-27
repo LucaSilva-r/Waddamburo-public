@@ -112,7 +112,8 @@ The version comes from a `vX.Y.Z` tag on HEAD (or `WADDAMBURO_VERSION`); anythin
 builds `0.0.0-dev`. Releases self-update (`src/Waddamburo.App/Hosting/SelfUpdate.cs`)
 from the latest GitHub release of this repository. To release, push a `vX.Y.Z` tag:
 `.github/workflows/release.yml` runs this script on GitHub's Ubuntu 22.04 runner (so the
-AppImage needs only glibc 2.35) and drafts a release with both files attached; publishing
+AppImage needs only glibc 2.35) and drafts a release with both files and `licenses.zip` (every license and notice the
+binaries need; the AppImage also carries it in `usr/share/licenses`) attached; publishing
 the draft is what installed copies pick up.
 GitHub's asset SHA-256 digest is verified before an update is installed. Development
 builds never update.

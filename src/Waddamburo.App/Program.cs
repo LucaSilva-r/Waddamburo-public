@@ -86,8 +86,11 @@ try
         var arcadePath = Path.Combine(layout.Root, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         ReleaseConsole.Show(arcade.ShowConsole);
-        if (arcade.AutoUpdate)
-            SelfUpdate.Check();
+        if (arcade.AutoUpdate
+            && SelfUpdate.UpdateNow(args, layout.FontPath, windowSize.Width, windowSize.Height, arcade.Fullscreen))
+        {
+            return 0;
+        }
         Console.WriteLine($"Cabinet settings: {arcadePath} ({(arcade.FreePlay ? "free play" : "coin mode")}, "
             + $"{arcade.SongsPerSession} songs per session).");
         var accountPath = Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreAccount.FileName);

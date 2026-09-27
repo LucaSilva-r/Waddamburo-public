@@ -10,9 +10,10 @@ namespace Waddamburo.App.Presentation;
 /// game's outlined title font and its countdown in the disc. After a pairing it shows the player's
 /// name instead. Rebuilt only when its text changes.
 /// </summary>
-internal sealed class PairingPill(SdlApplication application, string fontPath) : IDisposable
+/// <remarks><paramref name="top"/> is the pill's top edge on the 1280x720 stage.</remarks>
+internal sealed class PairingPill(SdlApplication application, string fontPath, float top = 12) : IDisposable
 {
-    private const int Width = 272, Height = 64, Disc = 64, TopMargin = 12;
+    public const int Width = 272, Height = 64, Disc = 64;
     private static readonly (byte R, byte G, byte B) Yellow = (254, 205, 1), Red = (249, 71, 40);
     private (string Text, string? Badge)? _shown;
     private (string Text, string? Badge, uint Scale)? _drawn;
@@ -36,7 +37,7 @@ internal sealed class PairingPill(SdlApplication application, string fontPath) :
             _drawn = (shown.Text, shown.Badge, scale);
         }
         return [RenderQuad.FromRectangles(_texture!.Value,
-            new RenderRectangle((1280f - Width) / 2 / 1280f, TopMargin / 720f, Width / 1280f, Height / 720f),
+            new RenderRectangle((1280f - Width) / 2 / 1280f, top / 720f, Width / 1280f, Height / 720f),
             RenderRectangle.Full, RenderColor.White, RenderColor.Transparent)];
     }
 

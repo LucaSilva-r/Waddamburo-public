@@ -19,11 +19,9 @@ jobs:
           # Oldest supported runner (glibc 2.35): the AppImage runs there and on anything newer.
           - target: linux
             runner: ubuntu-22.04
-            file: Waddamburo-x86_64.AppImage
           # The exe does not depend on glibc; vgmstream needs a newer mingw GCC than 22.04's.
           - target: windows
             runner: ubuntu-24.04
-            file: Waddamburo.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -43,8 +41,12 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.file }}
-          path: out/package/${{ matrix.file }}
+          name: ${{ matrix.target }}
+          # Each job produces its own subset (licenses.zip comes with the Linux build).
+          path: |
+            out/package/Waddamburo.exe
+            out/package/Waddamburo-x86_64.AppImage
+            out/package/licenses.zip
 
   release:
     if: github.ref_type == 'tag'
@@ -60,4 +62,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
-          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage
+          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip

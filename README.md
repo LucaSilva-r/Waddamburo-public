@@ -154,9 +154,9 @@ Release builds are one file per platform, `Waddamburo.exe` (Windows x64) and
 into the game's `USRDIR` and run it; nothing else needs installing. Nijiiro audio
 (G.719) additionally needs [vgmstream-cli](https://github.com/vgmstream/vgmstream/releases)
 next to it (or in a `vgmstream` folder beside it), which Waddamburo cannot ship.
-Releases update themselves: at start they check GitHub for a newer release, download
-it in the background and install it at the next launch (`auto_update = false` in
-`config.cfg` turns this off). The Windows release runs without a console window;
+Releases update themselves: at start they check GitHub for a newer release and, if
+there is one, download it on an update screen and restart into it (`auto_update = false`
+in `config.cfg` turns this off; without a connection the game just starts). The Windows release runs without a console window;
 `console = true` shows the log. F11 switches between fullscreen and a window, and
 `fullscreen = true` starts fullscreen.
 

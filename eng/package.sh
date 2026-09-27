@@ -3,6 +3,7 @@
 #   out/package/Waddamburo.exe              one self-contained Windows file (native libraries
 #                                            self-extract on first run)
 #   out/package/Waddamburo-x86_64.AppImage  the Linux build
+#   out/package/licenses.zip                every license and notice both releases need
 # Both are dropped into the game's USRDIR and find the game next to themselves.
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
 #
@@ -29,6 +30,30 @@ fetch() { # url file sha256
 
 native() { # preset
     (cd native && cmake --preset "$1" && cmake --build --preset "$1")
+}
+
+licenses() { # native-build-dir out-dir: every notice the releases need, beside Waddamburo's own
+    local dir=$2
+    rm -rf "$dir" && mkdir -p "$dir"
+    cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$dir/"
+    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$dir/"
+    local dotnet_root
+    dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
+    mkdir -p "$dir/dotnet" && cp "$dotnet_root/LICENSE.txt" "$dotnet_root/ThirdPartyNotices.txt" "$dir/dotnet/"
+    # NuGet packages carry a license expression, not a file: list each one the app ships.
+    python3 - src/Waddamburo.App/packages.lock.json "${NUGET_PACKAGES:-$HOME/.nuget/packages}" > "$dir/nuget-packages.txt" <<'PY'
+import json, re, sys
+from pathlib import Path
+lock, cache = json.load(open(sys.argv[1])), Path(sys.argv[2])
+packages = {(name, entry["resolved"]) for target in lock["dependencies"].values()
+            for name, entry in target.items() if entry.get("type") != "Project"}
+print("NuGet packages linked into Waddamburo (id, version, license):")
+for name, version in sorted(packages, key=lambda p: p[0].lower()):
+    spec = next((cache / name.lower() / version).glob("*.nuspec"), None)
+    text = spec.read_text(encoding="utf-8-sig") if spec else ""
+    license = re.search(r"<license[^>]*>([^<]+)</license>", text) or re.search(r"<licenseUrl>([^<]+)</licenseUrl>", text)
+    print(f"{name} {version}: {license.group(1) if license else 'see https://www.nuget.org/packages/' + name}")
+PY
 }
 
 publish() { # rid native-dir out-dir extra-args...
@@ -63,6 +88,9 @@ for target in $targets; do
         appdir=$out/Waddamburo.AppDir
         publish linux-x64 "$root/out/build/native/linux-x64/linux-package/stage/Release/lib" "$appdir/usr/bin"
         cp eng/packaging/waddamburo.png "$appdir/waddamburo.png"
+        licenses out/build/native/linux-x64/linux-package "$appdir/usr/share/licenses/waddamburo"
+        (cd "$appdir/usr/share/licenses" && rm -f "$out/licenses.zip" \
+            && python3 -m zipfile -c "$out/licenses.zip" waddamburo/*)
         cat > "$appdir/waddamburo.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -79,6 +107,7 @@ EOF
         ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$tool" --no-appstream --runtime-file "$runtime" \
             "$appdir" "$out/Waddamburo-x86_64.AppImage" >/dev/null
         echo "$out/Waddamburo-x86_64.AppImage"
+        echo "$out/licenses.zip"
         ;;
     *)
         echo "error: unknown target: $target" >&2
