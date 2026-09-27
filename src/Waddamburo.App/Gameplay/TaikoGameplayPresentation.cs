@@ -258,7 +258,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         _ => (GameplaySoundEvent?)null,
                     };
                     if (cue is { } value) sound(value);
-                }, _ => sound(GameplaySoundEvent.LongNoteStarted), lane, kusudama, waiwai: stage is not null);
+                }, _ => sound(GameplaySoundEvent.LongNoteStarted), lane, kusudama, waiwai: stage is not null,
+                createText: kind =>
+                {
+                    var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
+                    return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
+                });
             _character = don is null ? null : new(don, layers["don3d"], lane);
             if (stage is not null) stage.StateChanged += state => _character?.SetGauge(state);
             _animationClock = new(chart.TimingPoints);

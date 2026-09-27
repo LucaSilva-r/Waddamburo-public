@@ -49,6 +49,8 @@ public sealed class TaikoLongNotePresentation
     private readonly TaikoJudgementSession _session;
     private readonly Func<PlayableLongNoteKind, LumenSceneLayer> _createNote;
     private readonly Dictionary<int, LumenSceneLayer> _visible = [];
+    private readonly Func<PlayableLongNoteKind, LumenSceneLayer>? _createText;
+    private readonly Dictionary<int, LumenSceneLayer> _texts = []; // roll text, sized like the body
     private readonly LumenSceneLayer _counter;
     private readonly LumenSceneLayer _balloon;
     private readonly IDonPresentationController? _don;
@@ -69,8 +71,9 @@ public sealed class TaikoLongNotePresentation
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
         Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null,
-        bool waiwai = false)
+        bool waiwai = false, Func<PlayableLongNoteKind, LumenSceneLayer>? createText = null)
     {
+        _createText = createText;
         _player = player;
         _kusu = player == 1 ? "don_kusu2P" : "don_kusu1P";
         _sharedKusudama = sharedKusudama;
@@ -160,15 +163,22 @@ public sealed class TaikoLongNotePresentation
                     throw new InvalidDataException("Long-note movie has no initial note state.");
                 _visible.Add(index, layer);
             }
+            var transform = LumenMatrix.Identity with { X = head, Y = hitY, M11 = tail < head ? -1 : 1 };
             if (!note.IsBalloon)
                 invoke(layer.Player, "SetWidth", Math.Abs(tail - head));
-            yield return (note.StartTime, layer with
-            {
-                Transform = LumenMatrix.Identity with { X = head, Y = hitY, M11 = tail < head ? -1 : 1 },
-            });
+            yield return (note.StartTime, layer with { Transform = transform });
+            // Traced: a roll spawns onp_renda(_dai)_moji below it, sized with the same SetWidth.
+            if (note.IsBalloon || _createText is null) continue;
+            if (!_texts.TryGetValue(index, out var text))
+                _texts.Add(index, text = _createText(note.Kind));
+            invoke(text.Player, "SetWidth", Math.Abs(tail - head));
+            yield return (note.StartTime, text with { Transform = transform with { Y = hitY + TaikoNoteText.Offset } });
         }
         foreach (var index in _visible.Keys.Where(index => !retained.Contains(index)).ToArray())
+        {
             _visible.Remove(index);
+            _texts.Remove(index);
+        }
     }
 
     public bool BalloonVisible => _balloonVisible;

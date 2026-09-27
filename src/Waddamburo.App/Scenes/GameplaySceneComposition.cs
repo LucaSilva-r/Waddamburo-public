@@ -55,6 +55,8 @@ internal static class GameplaySceneComposition
         ("enso_system/common", "onp_fusen", null, 1002),
         ("enso_system/common", "onp_kusudama", null, 1002),
         ("enso_system/common", "onp_moji", null, 1002),
+        ("enso_system/common", "onp_renda_moji", null, 1002),
+        ("enso_system/common", "onp_renda_dai_moji", null, 1002),
         ("enso_waiwai", "onp_synchro_don_1p", null, 1002),
         ("enso_waiwai", "onp_synchro_katsu_1p", null, 1002),
         ("enso_waiwai", "onp_synchro_daidon_1p", null, 1002),
@@ -145,6 +147,8 @@ internal static class GameplaySceneComposition
         ("enso_system/common", "onp_fusen", null, 1002),
         ("enso_system/common", "onp_kusudama", null, 1002),
         ("enso_system/common", "onp_moji", null, 1002),
+        ("enso_system/common", "onp_renda_moji", null, 1002),
+        ("enso_system/common", "onp_renda_dai_moji", null, 1002),
         // Hand notes with feet: two-player gameplay only.
         ("enso_system/base1p", "onp_tetunagidon_1p", null, 1002),
         ("enso_system/base1p", "onp_tetunagikatsu_1p", null, 1002),

@@ -11,6 +11,9 @@ namespace Waddamburo.Game.Gameplay;
 /// </summary>
 public static class TaikoNoteText
 {
+    /// <summary>Text sits this far below its note (traced y 339 vs 257).</summary>
+    public const float Offset = 82;
+
     public static string Balloon(PlayableLongNoteKind kind) => kind == PlayableLongNoteKind.Kusudama ? "imo" : "geki_renda";
 
     public static string[] Labels(PlayableChart chart)

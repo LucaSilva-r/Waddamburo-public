@@ -132,13 +132,13 @@ public sealed class TaikoLumenPresentation
             if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
-                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: NoteTextOffset);
+                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: TaikoNoteText.Offset);
         }
         // Balloons and kusudamas carry their text until they reach the target (then their overlay takes over).
         foreach (var note in _chart.LongNotes)
             if (note.IsBalloon && time < note.StartTime
                 && _noteTexts?.GetValueOrDefault(TaikoNoteText.Balloon(note.Kind)) is { } text)
-                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: NoteTextOffset);
+                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: TaikoNoteText.Offset);
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
         layers.AddRange(texts);
         // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit
@@ -149,8 +149,6 @@ public sealed class TaikoLumenPresentation
         front.AddRange(_foreground.Skip(_flightsAt));
         return (layers, front);
     }
-
-    private const float NoteTextOffset = 82;
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
         TimeSpan noteTime, TimeSpan time, bool scroll, float yOffset = 0)
