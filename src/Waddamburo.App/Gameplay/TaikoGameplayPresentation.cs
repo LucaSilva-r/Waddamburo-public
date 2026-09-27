@@ -396,7 +396,16 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         [PlayableNoteKind.BigKa] = layers["onp_synchro_daikatsu_1p"],
                     }
                     : null,
-                layers.GetValueOrDefault("onp_rare_0_w_00"));
+                layers.GetValueOrDefault("onp_rare_0_w_00"),
+                // One onp_moji player per text label (a traced clone per note, parked on its label).
+                new[] { "don", "do", "ko", "katsu", "ka", "don_dai", "katsu_dai", "geki_renda", "imo" }
+                    .ToDictionary(label => label, label =>
+                    {
+                        var text = layers["onp_moji"] with { Player = content("onp_moji").CreatePlayer() };
+                        if (!text.Player.TryGotoLabel("", label, play: false))
+                            throw new InvalidDataException($"Note text movie is missing label '{label}'.");
+                        return text;
+                    }));
             _presentation.GoGoChanged += active =>
             {
                 if (active && goGoSplash is not null) label(goGoSplash, "splash");

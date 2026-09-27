@@ -16,6 +16,8 @@ public sealed class TaikoLumenPresentation
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _handNotes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _synchroNotes;
     private readonly LumenSceneLayer? _rareNote;
+    private readonly IReadOnlyDictionary<string, LumenSceneLayer>? _noteTexts; // by onp_moji label
+    private readonly string[] _noteLabels;
     private readonly LumenSceneLayer _bar;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
@@ -34,8 +36,11 @@ public sealed class TaikoLumenPresentation
         TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
-        LumenSceneLayer? rareNote = null)
+        LumenSceneLayer? rareNote = null,
+        IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null)
     {
+        _noteTexts = noteTexts;
+        _noteLabels = TaikoNoteText.Labels(chart);
         _rareNote = rareNote;
         _handNotes = handNotes;
         _synchroNotes = synchroNotes;
@@ -111,6 +116,7 @@ public sealed class TaikoLumenPresentation
             notes.AddRange(_longNotes.NoteLayers(time,
                 (noteTime, controlTime) => position(noteTime, time, controlTime, scroll: true), _hitX, _hitY));
         var hitNotes = new List<LumenSceneLayer>(1);
+        var texts = new List<LumenSceneLayer>();
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
             // A miss is judged at the timing window, but its note keeps scrolling out of view.
@@ -124,8 +130,17 @@ public sealed class TaikoLumenPresentation
                 : _notes[note.Kind];
             addAt(hitNotes, template, note.StartTime, time, scroll: true);
             if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
+            // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
+            if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
+                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: NoteTextOffset);
         }
+        // Balloons and kusudamas carry their text until they reach the target (then their overlay takes over).
+        foreach (var note in _chart.LongNotes)
+            if (note.IsBalloon && time < note.StartTime
+                && _noteTexts?.GetValueOrDefault(TaikoNoteText.Balloon(note.Kind)) is { } text)
+                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: NoteTextOffset);
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
+        layers.AddRange(texts);
         // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit
         // flights sit at their template's depth.
         var front = new List<LumenSceneLayer>(_foreground.Take(_flightsAt));
@@ -135,13 +150,15 @@ public sealed class TaikoLumenPresentation
         return (layers, front);
     }
 
+    private const float NoteTextOffset = 82;
+
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
-        TimeSpan noteTime, TimeSpan time, bool scroll)
+        TimeSpan noteTime, TimeSpan time, bool scroll, float yOffset = 0)
     {
         var x = position(noteTime, time, noteTime, scroll);
         if (x < -100 || x > 1380)
             return;
-        layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY } });
+        layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY + yOffset } });
     }
 
     private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, bool scroll)

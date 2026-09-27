@@ -40,6 +40,9 @@ public readonly record struct PlayableHitObject
     /// </summary>
     public bool InRun { get; init; }
 
+    /// <summary>A run don sung ko (fumen type 3). Presentation only: not part of the chart hash.</summary>
+    public bool IsKo { get; init; }
+
     /// <summary>A Waiwai rare (heart) note: played as its note, drawn with the collabo's rare art.</summary>
     public bool IsRare { get; init; }
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
