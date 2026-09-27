@@ -36,6 +36,9 @@ public sealed class ResultHostBinding(
     IResultSoundController? sounds = null,
     int side = 0) : ILumenHostBinding
 {
+    /// <summary>The player's best on the chart before this play, by play index (null: none).</summary>
+    public Func<int, long?>? PreviousBest { get; init; }
+
     private LumenHostContext? _context;
 
     public void Install(LumenHostContext context)
@@ -102,18 +105,18 @@ public sealed class ResultHostBinding(
         call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(two || side == 0), LumenHostValue.FromBoolean(two || side == 1));
         call(player, "SetEndMessage", number(endMessage));
         for (var index = 0; index < plays.Count; index++)
-            sendPlay(player, plays[index], two ? index : side);
+            sendPlay(player, plays[index], two ? index : side, PreviousBest?.Invoke(index));
         for (var index = 0; index < plays.Count; index++)
             sendName(player, two ? index : side, boardIndex: two ? index : 0);
     }
 
-    private static void sendPlay(LumenPlayer player, TaikoPlayResult play, int side)
+    private static void sendPlay(LumenPlayer player, TaikoPlayResult play, int side, long? previousBest)
     {
         var p = number(side);
         var no = LumenHostValue.FromBoolean(false);
         call(player, "SetCourse", p, number(play.CourseIndex));
         call(player, "SetScore", p, number(play.Score));
-        call(player, "SetBestScore", p, number(-10)); // no previous best
+        call(player, "SetBestScore", p, number(previousBest ?? -10)); // -10: no previous best
         call(player, "SetRyo", p, number(play.Great));
         call(player, "SetKa", p, number(play.Good));
         call(player, "SetFuka", p, number(play.Miss));

@@ -8,6 +8,9 @@ namespace Waddamburo.Game.Scores;
 
 public enum TaikoCrown { None, Clear, FullCombo }
 
+/// <summary>A player's best on one chart, as the server keeps it (crown 0 none, 1 clear, 2 full combo).</summary>
+public sealed record RemoteBest(string Sha256, long Score, int Crown);
+
 /// <summary>A play as the server takes it (snake_case JSON); the replay is base64.</summary>
 public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string Mode, int Course, long Score,
     int Great, int Good, int Miss, int MaxCombo, int Rolls, int Gauge, bool Cleared, int ScoringVersion,
@@ -98,6 +101,23 @@ public sealed class ScoreStore : IDisposable
             level INTEGER
         );
         """,
+        // Chart key -> hash for the whole library (filled in the background), and each player's bests
+        // from the server, so crowns match on every machine: a crown is keyed by chart hash.
+        """
+        CREATE TABLE chart_hashes (
+            chart_key TEXT PRIMARY KEY,
+            sha256 TEXT NOT NULL
+        );
+        CREATE INDEX chart_hashes_sha ON chart_hashes (sha256);
+        INSERT OR IGNORE INTO chart_hashes (chart_key, sha256) SELECT chart_key, chart_sha256 FROM plays;
+        CREATE TABLE remote_bests (
+            baid INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            crown INTEGER NOT NULL,
+            PRIMARY KEY (baid, sha256)
+        );
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -119,6 +139,14 @@ public sealed class ScoreStore : IDisposable
         {
             using var transaction = _connection.BeginTransaction();
             insertPlay(play, transaction);
+            using (var hash = _connection.CreateCommand())
+            {
+                hash.Transaction = transaction;
+                hash.CommandText = "INSERT OR REPLACE INTO chart_hashes (chart_key, sha256) VALUES ($key, $sha)";
+                hash.Parameters.AddWithValue("$key", play.Chart.ToString());
+                hash.Parameters.AddWithValue("$sha", play.ChartSha256);
+                hash.ExecuteNonQuery();
+            }
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
@@ -235,8 +263,9 @@ public sealed class ScoreStore : IDisposable
     }
 
     /// <summary>
-    /// The player's best crown per chart key (song select looks charts up by key without hashing
-    /// them). ponytail: an edited chart keeps its old crown until played; a key-to-hash cache fixes that.
+    /// The player's best crown per chart key: local plays, and the server's bests for charts whose hash
+    /// is known here. ponytail: a chart edited since it was hashed keeps its old hash until played or
+    /// re-hashed (the cache has no file stamps).
     /// </summary>
     public Dictionary<string, TaikoCrown> Crowns(long baid)
     {
@@ -249,8 +278,12 @@ public sealed class ScoreStore : IDisposable
         var crowns = new Dictionary<string, TaikoCrown>();
         using var command = _connection.CreateCommand();
         command.CommandText = """
-            SELECT chart_key, MAX(cleared + (cleared AND miss = 0)) FROM plays
-            WHERE baid = $baid GROUP BY chart_key
+            SELECT chart_key, MAX(crown) FROM (
+                SELECT chart_key, cleared + (cleared AND miss = 0) AS crown FROM plays WHERE baid = $baid
+                UNION ALL
+                SELECT hashes.chart_key, bests.crown FROM remote_bests bests
+                JOIN chart_hashes hashes ON hashes.sha256 = bests.sha256 WHERE bests.baid = $baid
+            ) GROUP BY chart_key
             """;
         command.Parameters.AddWithValue("$baid", baid);
         using var reader = command.ExecuteReader();
@@ -258,6 +291,108 @@ public sealed class ScoreStore : IDisposable
             if (reader.GetInt32(1) > 0)
                 crowns[reader.GetString(0)] = (TaikoCrown)reader.GetInt32(1);
         return crowns;
+    }
+
+    /// <summary>The chart keys already hashed (as strings).</summary>
+    public HashSet<string> HashedCharts()
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT chart_key FROM chart_hashes";
+            using var reader = command.ExecuteReader();
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            while (reader.Read())
+                keys.Add(reader.GetString(0));
+            return keys;
+        }
+    }
+
+    public string? ChartHashOf(string chartKey)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT sha256 FROM chart_hashes WHERE chart_key = $key";
+            command.Parameters.AddWithValue("$key", chartKey);
+            return command.ExecuteScalar() as string;
+        }
+    }
+
+    public void SaveChartHashes(IEnumerable<(string ChartKey, string Sha256)> hashes)
+    {
+        ArgumentNullException.ThrowIfNull(hashes);
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT OR REPLACE INTO chart_hashes (chart_key, sha256) VALUES ($key, $sha)";
+            var key = command.Parameters.Add("$key", SqliteType.Text);
+            var sha = command.Parameters.Add("$sha", SqliteType.Text);
+            foreach (var (chartKey, sha256) in hashes)
+            {
+                key.Value = chartKey;
+                sha.Value = sha256;
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+
+    /// <summary>Replaces a player's server bests with a fresh download.</summary>
+    public void ReplaceRemoteBests(long baid, IEnumerable<RemoteBest> bests)
+    {
+        ArgumentNullException.ThrowIfNull(bests);
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            using (var clear = _connection.CreateCommand())
+            {
+                clear.Transaction = transaction;
+                clear.CommandText = "DELETE FROM remote_bests WHERE baid = $baid";
+                clear.Parameters.AddWithValue("$baid", baid);
+                clear.ExecuteNonQuery();
+            }
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT OR REPLACE INTO remote_bests (baid, sha256, score, crown) VALUES ($baid, $sha, $score, $crown)";
+            command.Parameters.AddWithValue("$baid", baid);
+            var sha = command.Parameters.Add("$sha", SqliteType.Text);
+            var score = command.Parameters.Add("$score", SqliteType.Integer);
+            var crown = command.Parameters.Add("$crown", SqliteType.Integer);
+            foreach (var best in bests)
+            {
+                sha.Value = best.Sha256;
+                score.Value = best.Score;
+                crown.Value = best.Crown;
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+
+    /// <summary>
+    /// The player's best score on a chart before <paramref name="excluding"/> (the play just saved):
+    /// local plays and the server's best. Null when there is none.
+    /// </summary>
+    public long? PreviousBest(long baid, string sha256, Guid excluding)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT MAX(score) FROM (
+                    SELECT score FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND id != $id
+                    UNION ALL
+                    SELECT score FROM remote_bests WHERE baid = $baid AND sha256 = $sha
+                )
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$sha", sha256);
+            command.Parameters.AddWithValue("$id", excluding.ToString());
+            return command.ExecuteScalar() is long best ? best : null;
+        }
     }
 
     public void Dispose() => _connection.Dispose();

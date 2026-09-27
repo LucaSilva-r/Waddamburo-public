@@ -120,6 +120,15 @@ public sealed class ScoreClient(HttpClient http)
             .Rankings;
     }
 
+    /// <summary>A player's bests per chart hash (home: the token's player; cabinet: <paramref name="baid"/>).</summary>
+    public async Task<List<RemoteBest>> BestsAsync(long? baid = null, CancellationToken cancellationToken = default)
+    {
+        var path = baid is { } cabinetBaid ? $"api/wdb/bests?baid={cabinetBaid}" : "api/wdb/bests";
+        using var response = await http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<BestsResult>(Json, cancellationToken).ConfigureAwait(false))!.Bests;
+    }
+
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         using var response = await http.DeleteAsync("api/wdb/login", cancellationToken).ConfigureAwait(false);
@@ -181,6 +190,8 @@ public sealed class ScoreClient(HttpClient http)
             }
         });
     }
+
+    private sealed record BestsResult(List<RemoteBest> Bests);
 
     private sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
 

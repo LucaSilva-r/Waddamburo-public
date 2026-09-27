@@ -69,6 +69,12 @@ internal sealed class GameShell : IDisposable
     /// <summary>The local score database, open when a profile plays (null: guests, nothing saved).</summary>
     public ScoreStore? Scores { get; }
 
+    /// <summary>Per lane, the last saved play's previous best on its chart (for results).</summary>
+    public long?[] PreviousBests { get; } = new long?[2];
+
+    /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
+    public ChartHashes ChartHashes { get; }
+
     /// <summary>The server scores upload to (null: offline or a guest).</summary>
     public ScoreClient? ScoreServer { get; }
 
@@ -104,6 +110,33 @@ internal sealed class GameShell : IDisposable
     private ScoreClient? rankingClient() => ScoreServer ?? TaikoGuest.Profiles.Select(static profile => profile?.Token)
         .Append(Accounts?.Default?.Token).Concat(Accounts?.Accounts.Select(static account => account.Token) ?? [])
         .OfType<string>().Select(clientFor).FirstOrDefault(static client => client is not null);
+
+    /// <summary>
+    /// Downloads a player's server bests (crowns from every machine) into the store in the background;
+    /// song select reads them when it loads. Guests have none.
+    /// </summary>
+    public void RefreshBests(ScoreProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (Scores is not { } scores || profile.Baid == ScoreProfile.LocalGuestBaid)
+            return;
+        var client = ScoreServer ?? (profile.Token is { } token ? clientFor(token) : null);
+        if (client is null)
+            return;
+        long? baid = ScoreServer is null ? null : profile.Baid;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                scores.ReplaceRemoteBests(profile.Baid, await client.BestsAsync(baid).ConfigureAwait(false));
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
+                or System.Text.Json.JsonException)
+            {
+                Console.Error.WriteLine($"Warning BESTS: {profile.Name}'s server bests not loaded ({exception.Message}).");
+            }
+        });
+    }
 
     /// <summary>A server client with a home player's token (one per token, reused); null offline.</summary>
     private ScoreClient? clientFor(string token)
@@ -227,7 +260,10 @@ internal sealed class GameShell : IDisposable
             if (ScoreServer is not null)
                 Upload(ScoreProfile.LocalGuest);
             foreach (var account in Arcade.Home ? options.Accounts?.Accounts ?? [] : [])
+            {
                 Upload(account.Profile);
+                RefreshBests(account.Profile);
+            }
             // Names, looks and avatars as the website has them now (revoked logins drop out).
             if (Arcade.Home && options.Accounts is { } book)
                 _ = Task.Run(async () =>
@@ -253,6 +289,7 @@ internal sealed class GameShell : IDisposable
                 ? [new TjaCatalogProvider(options.TjaRoot)] : Array.Empty<ISongCatalogProvider>(),
         ];
         Assets = new CatalogAssetRouter(providers);
+        ChartHashes = new ChartHashes(Scores, Assets.LoadChartAsync);
         _globalCatalog = new GlobalSongCatalog(providers);
         var snapshot = _globalCatalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
         foreach (var status in snapshot.Providers)
@@ -260,6 +297,9 @@ internal sealed class GameShell : IDisposable
                 ? $"Catalog provider {status.Provider}: {status.SongCount} songs in {status.CategoryCount} categories."
                 : $"Catalog provider {status.Provider} failed.");
         SongCatalog = new SongSelectCatalogView(snapshot);
+        // Server crowns need every chart's hash before song select lists it.
+        if (_uploadServer is not null)
+            ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
         if (SongCatalog.Categories.IsEmpty)
             throw new InvalidOperationException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
                 ?? "No song provider discovered any browsable categories.");
@@ -351,11 +391,16 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            Rankings = _uploadServer is null ? null : new SongRankings(rankingClient, Assets.LoadChartAsync),
+            Rankings = _uploadServer is null ? null : new SongRankings(rankingClient, ChartHashes),
+            PreviousBest = index => (uint)index < (uint)PreviousBests.Length ? PreviousBests[index] : null,
             Crowns = side => Scores is null ? null
                 : TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid)
                 : Arcade.Home ? Scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
-            CardClaimed = (side, card) => TaikoGuest.Profiles[side] = card,
+            CardClaimed = (side, card) =>
+            {
+                TaikoGuest.Profiles[side] = card;
+                RefreshBests(card);
+            },
             // A card given to the drum, or the account chosen for it in the home player setup.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             PlayerName = side => TaikoGuest.Profiles[side]?.Name,
@@ -811,6 +856,8 @@ internal sealed class GameShell : IDisposable
             if (!playing[side])
                 continue;
             TaikoGuest.Profiles[side] = profiles[side];
+            if (profiles[side] is { } profile)
+                RefreshBests(profile); // a visitor's first, a stored account's again
             Don?.SetLook(side, profiles[side]?.Look);
             JoinPlayer(side);
         }

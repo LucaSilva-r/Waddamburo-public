@@ -183,6 +183,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // results) is not saved until its mode is worked out.
     private void saveScore(PlayRequest request)
     {
+        Array.Clear(Shell.PreviousBests);
         if (Shell.Options.Autoplay || Shell.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
@@ -194,7 +195,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 continue;
             try
             {
-                scores.Save(new PlayRecord(Guid.NewGuid(), profile.Baid, ChartHash.Compute(_charts[lane], player.Course),
+                var sha = ChartHash.Compute(_charts[lane], player.Course);
+                var id = Guid.NewGuid();
+                if (lane < Shell.PreviousBests.Length)
+                    Shell.PreviousBests[lane] = scores.PreviousBest(profile.Baid, sha, id);
+                scores.Save(new PlayRecord(id, profile.Baid, sha,
                     player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
                     Shell.Gameplay.Replays[lane].Encode()),
                     ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor.Title.Primary, _song?.Descriptor.Subtitle));

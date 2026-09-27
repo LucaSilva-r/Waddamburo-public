@@ -39,6 +39,9 @@ internal sealed class LayerHostFactory(
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
+    /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
+    public Func<int, long?>? PreviousBest { get; init; }
+
     /// <summary>Song select's score windows from the server (null offline).</summary>
     public Flow.SongRankings? Rankings { get; init; }
 
@@ -248,7 +251,10 @@ internal sealed class LayerHostFactory(
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
         var binding = new ResultHostBinding(() => plays, songInfo().Stage, endMessage,
-            don, sounds?.Results, PlayerSide);
+            don, sounds?.Results, PlayerSide)
+        {
+            PreviousBest = PreviousBest,
+        };
         return new LumenLayerHost(binding, binding.Attach);
     }
 

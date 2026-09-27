@@ -176,4 +176,41 @@ public sealed class ScoreSavingTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void ServerBestsBecomeCrownsThroughTheChartHashAndCountAsPreviousBest()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new ScoreStore(path);
+            var played = chart().Key;
+            var other = chart(key: "other").Key;
+            // Played elsewhere only: no crown until this PC knows the chart's hash.
+            store.ReplaceRemoteBests(42, [new RemoteBest("remote-sha", 900, 2), new RemoteBest("sha", 500, 1)]);
+            Assert.Empty(store.Crowns(42));
+            store.SaveChartHashes([(other.ToString(), "remote-sha")]);
+            Assert.Equal(TaikoCrown.FullCombo, store.Crowns(42)[other.ToString()]);
+
+            // A local play and a remote best on the same chart: the better crown, the better score.
+            var id = Guid.NewGuid();
+            Assert.Equal(500, store.PreviousBest(42, "sha", id));
+            store.Save(new PlayRecord(id, 42, "sha", played, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 700, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
+                new TaikoReplay().Encode()), ChartUpload.From(chart(), TaikoCourse.Oni, "Song", null));
+            Assert.Equal(TaikoCrown.FullCombo, store.Crowns(42)[played.ToString()]);
+            Assert.Equal(500, store.PreviousBest(42, "sha", id));
+            Assert.Equal(700, store.PreviousBest(42, "sha", Guid.NewGuid()));
+            Assert.Null(store.PreviousBest(7, "sha", id));
+
+            // A fresh download replaces the old one.
+            store.ReplaceRemoteBests(42, []);
+            Assert.False(store.Crowns(42).ContainsKey(other.ToString()));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
 }

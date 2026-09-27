@@ -8,13 +8,11 @@ namespace Waddamburo.App.Flow;
 /// <summary>
 /// Song select's score windows: the top players per course of the song under the cursor, fetched
 /// from the server as the cursor moves (the movie asks once it settles, ~0.4 s later) and kept for a
-/// minute. Chart hashes are computed off-thread from the parsed charts and remembered.
+/// minute. Chart hashes come from <see cref="ChartHashes"/>.
 /// </summary>
-internal sealed class SongRankings(Func<ScoreClient?> client,
-    Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>> loadChart) : IDisposable
+internal sealed class SongRankings(Func<ScoreClient?> client, ChartHashes hashes) : IDisposable
 {
     private static readonly TimeSpan Fresh = TimeSpan.FromMinutes(1);
-    private readonly ConcurrentDictionary<ChartKey, string> _hashes = new();
     private readonly ConcurrentDictionary<SongKey, (DateTime At, IReadOnlyList<RankingEntry>?[] Courses)> _songs = new();
     private CancellationTokenSource? _current;
 
@@ -32,18 +30,16 @@ internal sealed class SongRankings(Func<ScoreClient?> client,
         {
             try
             {
-                var hashes = new string?[5];
+                var courses = new string?[5];
                 foreach (var chart in song.Descriptor.Charts)
-                    if (chart.Course is { } course && (int)course < hashes.Length)
-                        hashes[(int)course] = _hashes.TryGetValue(chart.Key, out var hash) ? hash
-                            : _hashes[chart.Key] = ChartHash.Compute(
-                                await loadChart(chart.Key, chart.ChartAsset, work.Token).ConfigureAwait(false), course);
-                var wanted = hashes.OfType<string>().Distinct().ToList();
+                    if (chart.Course is { } course && (int)course < courses.Length)
+                        courses[(int)course] = await hashes.HashAsync(chart, work.Token).ConfigureAwait(false);
+                var wanted = courses.OfType<string>().Distinct().ToList();
                 if (wanted.Count == 0)
                     return;
                 var rankings = await server.RankingsAsync(wanted, work.Token).ConfigureAwait(false);
                 _songs[key] = (DateTime.UtcNow,
-                    [.. hashes.Select(hash => hash is not null && rankings.TryGetValue(hash, out var lines) ? lines : null)]);
+                    [.. courses.Select(hash => hash is not null && rankings.TryGetValue(hash, out var lines) ? lines : null)]);
             }
             catch (OperationCanceledException)
             {
