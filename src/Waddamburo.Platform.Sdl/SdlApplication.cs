@@ -24,7 +24,8 @@ public sealed unsafe class SdlApplication : IDisposable
         int height,
         bool debugGpu = false,
         bool resizable = true,
-        bool highPixelDensity = true)
+        bool highPixelDensity = true,
+        bool fullscreen = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -42,6 +43,8 @@ public sealed unsafe class SdlApplication : IDisposable
                 : 0;
             if (resizable)
                 windowFlags |= SDL_WindowFlags.SDL_WINDOW_RESIZABLE;
+            if (fullscreen)
+                windowFlags |= SDL_WindowFlags.SDL_WINDOW_FULLSCREEN;
             _window = SDL_CreateWindow(
                 title,
                 width,
@@ -222,6 +225,13 @@ public sealed unsafe class SdlApplication : IDisposable
                     int width, height;
                     if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
                         pointerMoved(currentEvent.motion.x / width, currentEvent.motion.y / height);
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
+                    && currentEvent.key.key == SDL_Keycode.SDLK_F11)
+                {
+                    // F11: borderless desktop fullscreen <-> window, like a browser.
+                    if (!currentEvent.key.repeat)
+                        SDL_SetWindowFullscreen(_window, (SDL_GetWindowFlags(_window) & SDL_WindowFlags.SDL_WINDOW_FULLSCREEN) == 0);
                 }
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     or (uint)SDL_EventType.SDL_EVENT_KEY_UP)

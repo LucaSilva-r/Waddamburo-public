@@ -13,6 +13,9 @@ cd "$(dirname "$0")/.."
 root=$PWD
 out=$root/out/package
 targets=${1:-linux windows}
+# Release version from a vX.Y.Z tag on HEAD; untagged builds are development builds, which never self-update.
+version=${WADDAMBURO_VERSION:-$(git describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)}
+version=${version:-0.0.0-dev}
 
 appimagetool_version=1.9.1
 appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
@@ -32,7 +35,7 @@ publish() { # rid native-dir out-dir extra-args...
     local rid=$1 native_dir=$2 dir=$3; shift 3
     rm -rf "$dir"
     dotnet publish src/Waddamburo.App -c Release -r "$rid" --self-contained \
-        -p:WaddamburoNativeDir="$native_dir" -p:DebugType=none -p:GenerateDocumentationFile=false \
+        -p:WaddamburoNativeDir="$native_dir" -p:Version="$version" -p:DebugType=none -p:GenerateDocumentationFile=false \
         -o "$dir" "$@" >/dev/null
 }
 

@@ -44,7 +44,8 @@ internal sealed record GameOptions(
     ArcadeSettings? Arcade = null,
     ScoreAccount? Account = null,
     string? ScoresPath = null,
-    bool Autoplay = false);
+    bool Autoplay = false,
+    bool Fullscreen = false);
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -194,7 +195,8 @@ internal sealed class GameShell : IDisposable
             options.WindowHeight,
             debugGpu: false,
             resizable: !Headless,
-            highPixelDensity: !Headless);
+            highPixelDensity: !Headless,
+            fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"SDL_GPU driver: {Application.GpuDriver}");
         DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
         Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);

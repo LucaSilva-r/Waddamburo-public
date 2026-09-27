@@ -1,0 +1,46 @@
+# Pushing a vX.Y.Z tag builds both releases and drafts a GitHub release with them; publishing
+# the draft is what makes installed copies update. Run it by hand (Actions > Release > Run
+# workflow) to only build and download the files from the run's artifacts.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Oldest supported runner (glibc 2.35): the AppImage runs there and on anything newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install the Windows cross compiler
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mingw-w64 ninja-build
+
+      - name: Build
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then export WADDAMBURO_VERSION=${GITHUB_REF_NAME#v}; fi
+          eng/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: waddamburo-${{ github.ref_name }}
+          path: |
+            out/package/Waddamburo.exe
+            out/package/Waddamburo-x86_64.AppImage
+
+      - name: Draft the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" --draft --generate-notes --title "Waddamburo $GITHUB_REF_NAME"
+          out/package/Waddamburo.exe out/package/Waddamburo-x86_64.AppImage

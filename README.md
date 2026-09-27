@@ -154,6 +154,11 @@ Release builds are one file per platform, `Waddamburo.exe` (Windows x64) and
 into the game's `USRDIR` and run it; nothing else needs installing. Nijiiro audio
 (G.719) additionally needs [vgmstream-cli](https://github.com/vgmstream/vgmstream/releases)
 next to it (or in a `vgmstream` folder beside it), which Waddamburo cannot ship.
+Releases update themselves: at start they check GitHub for a newer release, download
+it in the background and install it at the next launch (`auto_update = false` in
+`config.cfg` turns this off). The Windows release runs without a console window;
+`console = true` shows the log. F11 switches between fullscreen and a window, and
+`fullscreen = true` starts fullscreen.
 
 For normal play from source, supply only the game's `USRDIR` directory. It resolves
 `data/lumendata/packed`, the game's own songs under `data`, the optional
@@ -161,7 +166,9 @@ For normal play from source, supply only the game's `USRDIR` directory. It resol
 like the cabinet: the startup notice and logos, then the attract loop (logo, title,
 caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). In free play, hit a drum key (D/F/J/K) during the attract loop to reach player Entry.
 Cabinet settings live in `config.cfg` in that root (written with defaults on first run):
-`free_play`, `credits_per_coin`, `credits_1p`, `credits_2p` and `songs_per_session`. In coin
+`free_play`, `credits_per_coin`, `credits_1p`, `credits_2p`, `songs_per_session`,
+`fullscreen`, `console` and `auto_update`. The file records its `config_version`; a
+newer build appends the settings it added, with their defaults, keeping the user's edits. In coin
 mode F2 inserts a coin; the first coin opens player Entry, and joining pays the credits. Space
 skips the startup screens.
 

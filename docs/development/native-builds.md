@@ -105,7 +105,17 @@ libraries:
   libraries (SDL3, SQLite and ours) on first run.
 - `out/package/Waddamburo-x86_64.AppImage`: a plain self-contained publish in an
   AppDir, packed with a pinned appimagetool and the static type-2 runtime (no FUSE 2
-  needed on the target). Build it on the oldest glibc the release should support.
+  needed on the target). It needs the glibc it was built with or newer, hence the
+  release workflow's old runner.
+
+The version comes from a `vX.Y.Z` tag on HEAD (or `WADDAMBURO_VERSION`); anything else
+builds `0.0.0-dev`. Releases self-update (`src/Waddamburo.App/Hosting/SelfUpdate.cs`)
+from the latest GitHub release of this repository. To release, push a `vX.Y.Z` tag:
+`.github/workflows/release.yml` runs this script on GitHub's Ubuntu 22.04 runner (so the
+AppImage needs only glibc 2.35) and drafts a release with both files attached; publishing
+the draft is what installed copies pick up.
+GitHub's asset SHA-256 digest is verified before an update is installed. Development
+builds never update.
 
 DXIL shaders cannot be compiled on Linux, so the compiled shaders are committed;
 rerun `eng/build-shaders.ps1` on Windows (and `.sh` for SPIR-V) after changing a

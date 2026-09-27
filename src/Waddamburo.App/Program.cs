@@ -1,5 +1,6 @@
 using Waddamburo.App.Cli;
 using Waddamburo.App.Flow;
+using Waddamburo.App.Hosting;
 using Waddamburo.App.Tools;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
@@ -7,6 +8,9 @@ using Waddamburo.Platform.Sdl.Rendering;
 
 try
 {
+    ReleaseConsole.Begin();
+    if (SelfUpdate.HandOff(ref args))
+        return 0;
     var frameLimit = parseFrameLimit(args);
     var tickLimit = parseLimit(args, "--ticks=");
     var seekFrame = parseLimit(args, "--seek-frame=");
@@ -81,6 +85,9 @@ try
         // Cabinet settings (free play, credits, songs per session) beside the game data.
         var arcadePath = Path.Combine(layout.Root, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
+        ReleaseConsole.Show(arcade.ShowConsole);
+        if (arcade.AutoUpdate)
+            SelfUpdate.Check();
         Console.WriteLine($"Cabinet settings: {arcadePath} ({(arcade.FreePlay ? "free play" : "coin mode")}, "
             + $"{arcade.SongsPerSession} songs per session).");
         var accountPath = Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreAccount.FileName);
@@ -109,9 +116,12 @@ try
             arcade,
             account,
             Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName),
-            autoplay));
+            autoplay,
+            arcade.Fullscreen));
         return 0;
     }
+    // Diagnostic runs always show their output.
+    ReleaseConsole.Show(true);
     if (soundBankProbe is not null)
     {
         if (archivePath is not null || movieName is not null || scenePath is not null
@@ -263,7 +273,7 @@ try
 
 catch (Exception exception)
 {
-    Console.Error.WriteLine(exception.Message);
+    ReleaseConsole.Fail(exception);
     return 1;
 }
 

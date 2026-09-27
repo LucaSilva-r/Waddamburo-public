@@ -6,7 +6,31 @@ public sealed class ArcadeTests
 {
     [Fact]
     public void DefaultFileParsesToTheDefaults() =>
-        Assert.Equal(new ArcadeSettings(), ArcadeSettings.Parse(ArcadeSettings.DefaultFileText));
+        Assert.Equal(new ArcadeSettings { Version = ArcadeSettings.CurrentVersion },
+            ArcadeSettings.Parse(ArcadeSettings.DefaultFileText));
+
+    [Fact]
+    public void UpgradeKeepsEditsAndAddsNewerSettings()
+    {
+        // A file written before config_version existed, with the user's own edits.
+        var upgraded = ArcadeSettings.Upgrade("""
+            # my cabinet
+            free_play = false
+            songs_per_session = 4
+            """);
+        Assert.Equal(new ArcadeSettings
+        {
+            Version = ArcadeSettings.CurrentVersion, FreePlay = false, SongsPerSession = 4,
+        }, ArcadeSettings.Parse(upgraded));
+        Assert.Contains("# my cabinet", upgraded, StringComparison.Ordinal);
+        Assert.Contains("auto_update = true", upgraded, StringComparison.Ordinal);
+        Assert.Same(upgraded, ArcadeSettings.Upgrade(upgraded));
+        Assert.Equal(ArcadeSettings.DefaultFileText, ArcadeSettings.Upgrade(ArcadeSettings.DefaultFileText));
+    }
+
+    [Fact]
+    public void AFileFromANewerBuildMayHoldUnknownSettings() =>
+        Assert.True(ArcadeSettings.Parse($"config_version = {ArcadeSettings.CurrentVersion + 1}\nfuture = 1").FreePlay);
 
     [Fact]
     public void ParsesEverySettingAndIgnoresComments()
