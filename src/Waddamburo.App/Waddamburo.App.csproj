@@ -25,4 +25,9 @@
     <ProjectReference Include="../Waddamburo.Providers.Tja/Waddamburo.Providers.Tja.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- QR codes for the home setup's sign-in and friend codes (MIT). -->
+    <PackageReference Include="QRCoder" />
+  </ItemGroup>
+
 </Project>

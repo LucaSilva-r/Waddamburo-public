@@ -126,6 +126,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     private const int PromptRepeatTicks = 300;   // traced 5.0 s between "insert coins" prompts
     private int _ticks;
 
+    /// <summary>Ticks since the entry movie attached (its intro plays over the first ones).</summary>
+    public int Ticks => _ticks;
+
     /// <summary>
     /// Per-tick coin-mode prompts before anyone joins: VO_ENTRY cue 0 when the credits already pay
     /// for a player, else cue 1 ("insert coins"), which repeats (traced session2-coins, session8).
@@ -236,6 +239,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _entry = entry;
         CoinsChanged();
     }
+
+    /// <summary>The voice the entry plays when a drum joins (cue 2 left, 3 right; traced in EntryCoin).</summary>
+    public void PlayJoinVoice(int player) => PlayVoice?.Invoke(player == 1 ? 3 : 2);
 
     /// <summary>A changed Don starts the entry's authored costume flash on its next tick.</summary>
     public void CostumeChanged(int player)

@@ -14,16 +14,18 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
 {
     // Stage positions (1280x720), per side: the Don on its stand, the board's name line, the status line.
     private static readonly float[] StandX = [150, 1130];
-    private const float StandY = 420;
+    private const float StandY = 420, QrY = 368, QrSize = 150;
     private static readonly float[] TagX = [222, 1112];
     private const float TagY = 683, TagWidth = 176, TagHeight = 24;
     private const float MessageY = 560;
 
     private readonly Dictionary<(string Text, int Width, int Height, bool Tag, uint Scale), RenderTextureId> _text = [];
+    private readonly Dictionary<(string Url, uint Scale), (RenderTextureId Texture, float Size)> _qr = [];
 
     /// <param name="setup">Each side's setup column while the setup is open (null: not in setup).</param>
     /// <param name="tags">Each side's name for its board (null: no board).</param>
-    public IEnumerable<RenderQuad> Quads(IReadOnlyList<SetupColumn>? setup, IReadOnlyList<string?> tags)
+    /// <param name="standVisible">Per side, whether the stand's text may show (not while costume smoke covers it).</param>
+    public IEnumerable<RenderQuad> Quads(IReadOnlyList<SetupColumn>? setup, IReadOnlyList<string?> tags, IReadOnlyList<bool> standVisible)
     {
         var scale = (uint)Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
         var quads = new List<RenderQuad>();
@@ -35,13 +37,18 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
                 continue;
             var choice = column.Choice;
             // The stand: a code while pairing, else the option's text where a Don would be.
-            if (column.Code is { } code)
+            if (standVisible[side] && column.Code is { } code)
             {
-                quads.Add(text($"{code[..3]}-{code[3..]}", StandX[side], StandY - 20, 250, 70, tagStyle: false, scale));
+                // The QR code (the page to enter it on, code filled in), the code itself under it for typing,
+                // and the seconds left beside that.
+                if (column.QrUrl is { } url)
+                    quads.Add(qr(url, StandX[side], QrY, QrSize, scale));
+                var codeY = column.QrUrl is null ? StandY - 20 : QrY + QrSize / 2 + 26;
+                quads.Add(text($"{code[..3]}-{code[3..]}", StandX[side], codeY, 170, 42, tagStyle: false, scale));
                 if (column.Seconds is { } seconds)
-                    quads.Add(text($"{seconds}", StandX[side], StandY + 45, 100, 34, tagStyle: false, scale));
+                    quads.Add(text($"{seconds}", StandX[side] + 112, codeY, 44, 30, tagStyle: false, scale));
             }
-            else if (!choice.HasDon)
+            else if (standVisible[side] && !choice.HasDon)
             {
                 if (choice.Kind == SetupChoiceKind.AddAccount)
                 {
@@ -67,6 +74,9 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
         foreach (var texture in _text.Values)
             application.ReleaseTexture(texture);
         _text.Clear();
+        foreach (var (texture, _) in _qr.Values)
+            application.ReleaseTexture(texture);
+        _qr.Clear();
     }
 
     // Text centred in a box in the game's outlined title style (white in black); the name tag's letters
@@ -81,6 +91,35 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
             _text[key] = texture = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
         }
         return quad(texture, centreX - width / 2, centreY - height / 2, width, height, RenderRectangle.Full);
+    }
+
+    // A QR code in whole pixels per module at this window scale (with its white quiet zone), drawn at
+    // most `size` stage units wide.
+    private RenderQuad qr(string url, float centreX, float centreY, float size, uint scale)
+    {
+        if (!_qr.TryGetValue((url, scale), out var entry))
+        {
+            using var generator = new QRCoder.QRCodeGenerator();
+            using var data = generator.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
+            var modules = data.ModuleMatrix;
+            var count = modules.Count;
+            var pixel = Math.Max(1, (int)(size * scale / count));
+            var side = count * pixel;
+            var pixels = new byte[side * side * 4];
+            for (var y = 0; y < side; y++)
+                for (var x = 0; x < side; x++)
+                {
+                    var dark = modules[y / pixel][x / pixel];
+                    var at = (y * side + x) * 4;
+                    pixels[at] = pixels[at + 1] = pixels[at + 2] = dark ? (byte)0 : (byte)255;
+                    pixels[at + 3] = 255;
+                }
+            entry = (application.UploadRgba8((uint)side, (uint)side, pixels), side / (float)scale);
+            _qr[(url, scale)] = entry;
+        }
+        return RenderQuad.FromRectangles(entry.Texture, new RenderRectangle((centreX - entry.Size / 2) / 1280f,
+                (centreY - entry.Size / 2) / 720f, entry.Size / 1280f, entry.Size / 720f), RenderRectangle.Full,
+            RenderColor.White, RenderColor.Transparent, RenderSampling.Nearest);
     }
 
     private static RenderQuad quad(RenderTextureId texture, float x, float y, float width, float height, RenderRectangle uv) =>

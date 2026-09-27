@@ -157,8 +157,7 @@ internal sealed class GameShell : IDisposable
     // Home: the "who's playing?" screen before the entry (stored accounts, guests, friends, in-game login).
     private PlayerSetupFlow? _setup;
     private EntrySetupOverlay? _entryOverlay;
-    private readonly bool[] _setupLookSet = new bool[2], _setupReady = new bool[2];
-    private readonly Waddamburo.Game.Don.DonLook?[] _setupLook = new Waddamburo.Game.Don.DonLook?[2];
+    private readonly bool[] _setupReady = new bool[2];
 
     // Cabinet mode only (cabinet_token set, no home account).
     private readonly CabinetPairing? _pairing;
@@ -618,9 +617,14 @@ internal sealed class GameShell : IDisposable
             {
                 applySetup(entry, setup.Columns());
                 setupArrows().Advance();
+                // The drums pick only once the screen is fully up: the entry on screen, no transition over
+                // it, and its intro (Don entry motion, boards fading in) played.
+                if (!Overlay.IsShown)
+                    _setupShownTicks++;
+                setup.InputEnabled = _setupShownTicks >= SetupIntroTicks;
             }
-            if (open && Tick % 50 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TRACE") == "1")
-                Console.WriteLine("[setup] " + Tick + ": " + string.Join(" | ", setup.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
+            if (open && Tick % 10 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TRACE") == "1")
+                Console.WriteLine("[setup] " + Tick + " entry=" + (Hosts.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", setup.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
             if (open)
                 keys = SdlKeyboardSnapshot.Empty;
         }
@@ -866,11 +870,17 @@ internal sealed class GameShell : IDisposable
 
     // The player setup is the entry itself: both stands up (DON_BOTH), nobody joined yet, the menus
     // hidden (EntrySceneHost.SetupMode). Confirming reloads the entry with the chosen players.
+    private const int SetupIntroTicks = 90; // 1.5 s: the Don's entry motion (traced 0.85 s) and the boards
+    private int _setupShownTicks;
+
     private void beginSetup()
     {
+        _setupShownTicks = 0;
         ResetPlayers();
         SongsPlayed = 0;
-        Array.Clear(_setupLookSet);
+        Array.Clear(_shownChoice);
+        Array.Fill(_swapAt, -1);
+        Array.Fill(_revealAt, -1);
         Array.Clear(_setupReady);
         Hosts.EntrySetup = true;
         Hosts.EntryTrigger = 2;
@@ -886,20 +896,49 @@ internal sealed class GameShell : IDisposable
         {
             var column = columns[side];
             var choice = column.Choice;
-            entry.SetSetupSide(side, choice.HasDon, board: true);
-            if (choice.HasDon && (!_setupLookSet[side] || _setupLook[side] != choice.Look))
+            // A new choice starts the entry's costume change (smoke and cue); what stands on the drum only
+            // swaps once the smoke covers it, so the new Don or text never pops in.
+            if (_shownChoice[side] is not { } shown)
+                showOnStand(side, choice);
+            else if (sameStand(shown, choice))
+                _swapAt[side] = -1;
+            else if (_swapAt[side] < 0)
             {
-                Don?.SetLook(side, choice.Look);
-                _setupLook[side] = choice.Look;
-                _setupLookSet[side] = true;
-            }
-            if (column.Ready && !_setupReady[side])
                 entry.CostumeChanged(side);
+                _swapAt[side] = Tick + SetupSwapDelay;
+                _revealAt[side] = Tick + SetupRevealDelay;
+            }
+            else if (Tick >= _swapAt[side])
+            {
+                showOnStand(side, choice);
+                _swapAt[side] = -1;
+            }
+            entry.SetSetupSide(side, _shownChoice[side]!.HasDon, board: true);
+            // Locking in: the entry's join voice for that drum.
+            if (column.Ready && !_setupReady[side])
+                entry.PlayJoinVoice(side);
             _setupReady[side] = column.Ready;
         }
         // Both drums show their choice: no "hit the drum to start" bubble during the setup.
         _indicators?.SetupPanels(false, false);
     }
+
+    // The costume smoke covers the stand from ~6 ticks and bursts at ~54: the Don swaps under it, and text
+    // (drawn over the scene, so it would show through the smoke) appears with the burst.
+    private const int SetupSwapDelay = 12, SetupRevealDelay = 54;
+    private readonly SetupChoice?[] _shownChoice = new SetupChoice?[2];
+    private readonly long[] _swapAt = [-1, -1], _revealAt = [-1, -1];
+
+    private void showOnStand(int side, SetupChoice choice)
+    {
+        _shownChoice[side] = choice;
+        if (choice.HasDon)
+            Don?.SetLook(side, choice.Look);
+    }
+
+    // Two choices look the same on the stand: the same Don look, or the same option text.
+    private static bool sameStand(SetupChoice a, SetupChoice b) =>
+        a.HasDon == b.HasDon && (a.HasDon ? a.Look == b.Look : a.Kind == b.Kind);
 
     // The entry's own animated arrows (SetupArrows), per loaded entry; anchored on each stand.
     private SetupArrows? _setupArrows;
@@ -922,11 +961,15 @@ internal sealed class GameShell : IDisposable
     {
         if (_entryOverlay is not { } overlay || Active.Id != FlowScenes.Entry)
             return [];
-        var columns = _setup is { IsOpen: true } setup && Hosts.Entry is { SetupMode: true } ? setup.Columns() : null;
-        string?[] tags = columns is not null
-            ? [.. columns.Select(static column => column.Choice.Label)]
+        // The tag follows the live choice; the stand shows what is on it now (it swaps mid-smoke), and its
+        // text only once the smoke has burst.
+        var live = _setup is { IsOpen: true } setup && Hosts.Entry is { SetupMode: true } ? setup.Columns() : null;
+        var columns = live?.Select((column, side) => column with { Choice = _shownChoice[side] ?? column.Choice }).ToArray();
+        bool[] standVisible = [Tick >= _revealAt[0], Tick >= _revealAt[1]];
+        string?[] tags = live is not null
+            ? [.. live.Select(static column => column.Choice.Label)]
             : [.. Enumerable.Range(0, 2).Select(side => JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : null)];
-        var quads = overlay.Quads(columns, tags);
+        var quads = overlay.Quads(columns, tags, standVisible);
         if (columns is null)
             return quads;
         // The arrows while a drum is choosing (not locked in, no code on screen). The entry is its scene's

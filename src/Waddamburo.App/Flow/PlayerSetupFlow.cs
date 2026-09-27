@@ -22,7 +22,11 @@ internal sealed record SetupChoice(SetupChoiceKind Kind, string Label, long Baid
 }
 
 /// <summary>What a column shows: its choice, whether it is locked in, and a code or message while pairing.</summary>
-internal sealed record SetupColumn(SetupChoice Choice, bool Ready, string? Code, int? Seconds, string? Message);
+internal sealed record SetupColumn(SetupChoice Choice, bool Ready, string? Code, int? Seconds, string? Message)
+{
+    /// <summary>Where the code is entered, with the code filled in, for the QR code on the stand.</summary>
+    public string? QrUrl { get; init; }
+}
 
 /// <summary>
 /// Home mode's "who's playing?" screen (like a console's player select), before the entry: each drum
@@ -49,8 +53,8 @@ internal sealed class PlayerSetupFlow : IDisposable
     private static readonly TimeSpan StartGrace = TimeSpan.FromSeconds(1.5);
     private DateTime? _startAt;
 
-    private static readonly TimeSpan OpeningGuard = TimeSpan.FromMilliseconds(400);
-    private DateTime _inputFrom;
+    /// <summary>Whether the drums may pick yet (the shell enables it once the entry's intro has played).</summary>
+    public bool InputEnabled { get; set; }
 
     private sealed class Side
     {
@@ -61,6 +65,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         public long? ReadyBaid; // the account locked in, which the other drum may not take
         public ScoreProfile? Visitor; // a friend's profile (Friend) once paired
         public string? Code;
+        public string? QrUrl; // the page the code is entered on, code filled in (scanned from the stand)
         public DateTime CodeDeadline;
         public string? Message;
     }
@@ -89,7 +94,7 @@ internal sealed class PlayerSetupFlow : IDisposable
     public void Open(int starter)
     {
         IsOpen = true;
-        _inputFrom = DateTime.UtcNow + OpeningGuard;
+        InputEnabled = false;
         foreach (var side in _sides)
             reset(side, idleChoice);
         if (_book.Default is { } first)
@@ -103,7 +108,7 @@ internal sealed class PlayerSetupFlow : IDisposable
     public void Reopen(IReadOnlyList<ScoreProfile?> profiles, IReadOnlyCollection<int> joined)
     {
         IsOpen = true;
-        _inputFrom = DateTime.UtcNow + OpeningGuard;
+        InputEnabled = false;
         foreach (var side in _sides)
             reset(side, idleChoice);
         foreach (var index in joined)
@@ -151,8 +156,9 @@ internal sealed class PlayerSetupFlow : IDisposable
             Cancelled?.Invoke();
             return;
         }
-        // The hit that opened the setup must not also pick for that drum.
-        if (DateTime.UtcNow < _inputFrom)
+        // Nothing is picked before the screen has finished appearing (the entry's intro), so the hit that
+        // opened it, or a few more, cannot lock a drum in or start.
+        if (!InputEnabled)
             return;
         // Left drum: D/K rims, F/J centres; right drum: Z/V rims, X/C centres.
         input(0, keys.IsDown(SdlKeyboardKey.D), keys.IsDown(SdlKeyboardKey.K),
@@ -300,23 +306,11 @@ internal sealed class PlayerSetupFlow : IDisposable
             : Math.Max(0, (int)Math.Ceiling((side.CodeDeadline - DateTime.UtcNow).TotalSeconds));
         var starting = _startAt is not null;
         var message = starting ? side.Ready ? "Starting..." : null : side.Message;
-        return new SetupColumn(current(index), side.Ready, side.Code, seconds, message);
+        return new SetupColumn(current(index), side.Ready, side.Code, seconds, message) { QrUrl = side.Code is null ? null : side.QrUrl };
     }
 
     // A drum nobody picked for yet: Join with code (Guest when there is no server).
     private SetupChoiceKind idleChoice => _server is null ? SetupChoiceKind.Guest : SetupChoiceKind.Friend;
-
-    private static void openBrowser(string url)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
-        }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            Console.Error.WriteLine($"Warning LOGIN: could not open the browser ({exception.Message}); open {url}");
-        }
-    }
 
     private static void reset(Side side, SetupChoiceKind choice)
     {
@@ -378,8 +372,9 @@ internal sealed class PlayerSetupFlow : IDisposable
                     _sides[index].Code = login.UserCode;
                     _sides[index].CodeDeadline = DateTime.UtcNow.AddSeconds(login.ExpiresIn);
                     _sides[index].Message = null;
-                    // The approval page opens in this PC's browser with the code filled in.
-                    openBrowser($"{login.VerificationUrl}?code={login.UserCode}");
+                    // Scanned from the stand, the approval page opens on the phone of whoever signs in,
+                    // already logged in to the account they want.
+                    _sides[index].QrUrl = $"{login.VerificationUrl}?code={login.UserCode}";
                 });
                 while (!work.IsCancellationRequested)
                 {
@@ -395,8 +390,7 @@ internal sealed class PlayerSetupFlow : IDisposable
                             if (account.Avatar is { } url)
                                 loadAvatar(url);
                             select(_sides[index], SetupChoiceKind.Account, account.Baid);
-                            _sides[index].Ready = true;
-                            _sides[index].ReadyBaid = account.Baid;
+                            // Selected, not locked in: the player confirms with the drum like any choice.
                         });
                         return;
                     }
@@ -439,13 +433,14 @@ internal sealed class PlayerSetupFlow : IDisposable
                         {
                             case PairingState.Active active:
                                 _sides[index].Code = active.Code;
+                                // The friend scans it and confirms on their own account's Play page.
+                                _sides[index].QrUrl = $"{_server}waddamburo/play?code={active.Code}"; // ponytail: the site's default scope
                                 _sides[index].CodeDeadline = DateTime.UtcNow + active.ExpiresIn;
                                 _sides[index].Message = null;
                                 break;
                             case PairingState.Visitor visitor:
                                 finishWork(work, index, null);
-                                _sides[index].Visitor = visitor.Profile;
-                                _sides[index].Ready = true;
+                                _sides[index].Visitor = visitor.Profile; // selected; the drum confirms it
                                 if (visitor.Profile.Avatar is { } url)
                                     loadAvatar(url);
                                 break;
