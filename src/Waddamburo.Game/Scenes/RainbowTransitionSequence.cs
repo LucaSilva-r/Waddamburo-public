@@ -17,7 +17,8 @@ public enum RainbowTransitionState
 public sealed class RainbowTransitionSequence
 {
     public const int DefaultLeadInTicks = 60;
-    public const int DefaultCoveredTicks = 120;
+    // Traced (session17): out_extra 1116 ms after in_extra starts; in_extra runs ~59 ticks.
+    public const int DefaultCoveredTicks = 8;
 
     private readonly int _leadInTicks;
     private readonly int _coveredTicks;

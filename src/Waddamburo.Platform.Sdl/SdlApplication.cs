@@ -139,6 +139,13 @@ public sealed unsafe class SdlApplication : IDisposable
     }
 
     private volatile bool _quitRequested;
+    private bool _discardElapsed;
+
+    /// <summary>
+    /// The current frame stalled on purpose (a scene load): the next frame starts timing from its
+    /// end instead of catching the missed ticks up in a burst (the screen jumps otherwise).
+    /// </summary>
+    public void DiscardElapsed() => _discardElapsed = true;
 
     /// <summary>Ends the running loop after the current frame; callable from any thread.</summary>
     public void RequestQuit() => _quitRequested = true;
@@ -314,6 +321,11 @@ public sealed unsafe class SdlApplication : IDisposable
             var interpolationFraction = reachedTickLimit ? 1d : clock.InterpolationFraction;
             var renderStart = Stopwatch.GetTimestamp();
             var capture = _renderer!.Present(createFrame(interpolationFraction), shouldCapture);
+            if (_discardElapsed)
+            {
+                _discardElapsed = false;
+                previousTimestamp = Stopwatch.GetTimestamp();
+            }
             // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
             var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
             var renderTime = Stopwatch.GetElapsedTime(renderStart);

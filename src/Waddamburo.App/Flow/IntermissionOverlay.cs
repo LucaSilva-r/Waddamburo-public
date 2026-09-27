@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Waddamburo.Game;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -50,18 +51,27 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
 /// <summary>Uploads a loaded scene's texture atlas and draws its snapshots.</summary>
 internal static class SceneTextures
 {
-    public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene)
+    /// <summary>One movie's textures (the scene switch then only uploads what was not done ahead).</summary>
+    public static RenderTextureId[] Upload(SdlApplication application, LumenMovieContent content)
+    {
+        var uploaded = application.UploadRgba8Batch([.. content.Textures.Select(static texture => new RgbaTextureUpload(
+            checked((uint)texture.Width), checked((uint)texture.Height),
+            ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
+                ?? throw new InvalidDataException("Texture pixels are unavailable.")))]);
+        content.ReleaseDecodedTexturePixels();
+        return uploaded;
+    }
+
+    public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene,
+        Func<LumenMovieContent, RenderTextureId[]?>? uploadedAhead = null)
     {
         var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
         var start = profile ? Stopwatch.GetTimestamp() : 0;
-        var uploads = scene.Textures.Select(static texture => new RgbaTextureUpload(
-            checked((uint)texture.Width), checked((uint)texture.Height),
-            ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
-                ?? throw new InvalidDataException("Texture pixels are unavailable."))).ToArray();
-        var uploaded = application.UploadRgba8Batch(uploads);
+        var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length);
+        var uploaded = scene.Layers.SelectMany(layer => uploadedAhead?.Invoke(layer.Content) ?? Upload(application, layer.Content))
+            .ToArray();
         if (profile)
         {
-            var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length);
             using var process = Process.GetCurrentProcess();
             Console.Error.WriteLine($"Profile scene {scene.Id}: {uploaded.Length} textures, "
                 + $"RGBA {rgbaBytes / 1048576d:F1} MiB, "

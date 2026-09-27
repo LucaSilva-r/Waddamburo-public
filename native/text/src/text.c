@@ -354,6 +354,8 @@ static waddamburo_text_result render_title_row(
     uint32_t width,
     uint32_t height,
     int gameplay,
+    float base_px,
+    float center_y,
     waddamburo_text_error *error)
 {
     uint32_t scalars[256];
@@ -361,7 +363,7 @@ static waddamburo_text_result render_title_row(
     const uint8_t *cursor = (const uint8_t *)text;
     /* Transition: centred, whole font shrinks to fit. Gameplay: fixed height, right-aligned,
      * glyphs squeezed horizontally (FreeType transform) when the title is too wide. */
-    float font_px = (gameplay ? 44.0f : 62.0f) * raster_scale;
+    float font_px = base_px * raster_scale;
     float margin = 6.0f * raster_scale;
     float advance = 0.0f;
     float pen_x;
@@ -418,8 +420,9 @@ static waddamburo_text_result render_title_row(
     }
 
     pen_x = gameplay ? (float)width - margin - advance : ((float)width - advance) * 0.5f;
-    baseline = (int)(((float)height
-        + (float)face->size->metrics.ascender / 64.0f
+    (void)height;
+    baseline = (int)(center_y * raster_scale
+        + ((float)face->size->metrics.ascender / 64.0f
         + (float)face->size->metrics.descender / 64.0f) * 0.5f);
     for (uint32_t i = 0U; i < scalar_count; ++i) {
         FT_Glyph fill_glyph = NULL;
@@ -706,11 +709,27 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         FT_STROKER_LINEJOIN_ROUND,
         0);
 
-    if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION || profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE) {
+    if (profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE) {
         result = render_title_row(
             context->face, stroker, utf8_title, raster_scale,
-            mask, outline, width, height, profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE, error);
+            mask, outline, width, height, 1, 44.0f, 32.0f, error);
         FT_Set_Transform(context->face, NULL, NULL); /* the face is shared; drop any squeeze */
+    } else if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION) {
+        /* With a subtitle: title and a 0.6x subtitle stacked in the 103 px slot (TaikoRecomp's
+         * 44/46 title-only and 18/30 subtitle proportions, scaled to this slot's 62 px title). */
+        if (utf8_subtitle != NULL && utf8_subtitle[0] != '\0') {
+            result = render_title_row(
+                context->face, stroker, utf8_title, raster_scale,
+                mask, outline, width, height, 0, 59.0f, 36.0f, error);
+            if (result == WADDAMBURO_TEXT_OK)
+                result = render_title_row(
+                    context->face, stroker, utf8_subtitle, raster_scale,
+                    mask, outline, width, height, 0, 35.5f, 84.0f, error);
+        } else {
+            result = render_title_row(
+                context->face, stroker, utf8_title, raster_scale,
+                mask, outline, width, height, 0, 62.0f, 51.5f, error);
+        }
     } else if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
         result = render_title_column(
             context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,

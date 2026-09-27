@@ -36,7 +36,11 @@ public sealed record SongPreviewRequest(
 
 public interface ISongPreviewController
 {
+    /// <summary>A song preview, or null for Song Select's background music.</summary>
     void SetPreview(SongPreviewRequest? request);
+
+    /// <summary>Silence: no preview and no background music (a song was chosen, or Song Select closed).</summary>
+    void Stop();
 }
 
 public sealed record SongSelection(
@@ -85,6 +89,8 @@ public sealed class SongSelectSession
 
     public void StopPreview() => _previews.SetPreview(null);
 
+    public void StopMusic() => _previews.Stop();
+
     public LumenNativeSurfaceKey GetBoardTexture(
         int category,
         int song,
@@ -126,7 +132,8 @@ public sealed class SongSelectSession
         if (!_playRequests.TryRequestPlay(playRequest))
             throw new InvalidOperationException("Another play request is already pending.");
 
-        StopPreview();
+        // The preview fades out and the background stays off until gameplay.
+        StopMusic();
         return Selection = selection;
     }
 

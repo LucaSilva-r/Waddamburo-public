@@ -140,6 +140,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private static readonly string[] NoteMovieNames = ["onp_don", "onp_katsu", "onp_don_dai",
             "onp_katsu_dai", "onp_tetunagidon_1p", "onp_tetunagikatsu_1p", "onp_synchro_don_1p", "onp_synchro_katsu_1p",
             "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p", "onp_rare_0_w_00"];
+        private static readonly string[] NoteTextLabels = ["don", "do", "ko", "katsu", "ka", "don_dai", "katsu_dai",
+            "geki_renda", "imo"];
         private readonly TaikoJudgementSession _session;
         private readonly TaikoLumenPresentation _presentation;
         private readonly TaikoHitFlights _flights;
@@ -403,8 +405,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     : null,
                 layers.GetValueOrDefault("onp_rare_0_w_00"),
                 // One onp_moji player per text label (a traced clone per note, parked on its label).
-                new[] { "don", "do", "ko", "katsu", "ka", "don_dai", "katsu_dai", "geki_renda", "imo" }
-                    .ToDictionary(label => label, label =>
+                NoteTextLabels.ToDictionary(label => label, label =>
                     {
                         var text = layers["onp_moji"] with { Player = content("onp_moji").CreatePlayer() };
                         if (!text.Player.TryGotoLabel("", label, play: false))

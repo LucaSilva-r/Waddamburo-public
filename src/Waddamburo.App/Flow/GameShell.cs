@@ -1,3 +1,4 @@
+using Waddamburo.Game;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Diagnostics;
@@ -168,6 +169,39 @@ internal sealed class GameShell : IDisposable
     public SongSelectCatalogView SongCatalog { get; }
     public TaikoGameplayPresentation Gameplay { get; }
     public GameplaySkinResolver Skins { get; }
+
+    public DirectoryLumenMovieContentSource MovieContent { get; }
+
+    // Prefetched movies' textures, uploaded a few per frame before their scene loads.
+    private readonly Dictionary<LumenMovieContent, RenderTextureId[]> _uploadedAhead = new(ReferenceEqualityComparer.Instance);
+    private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4);
+
+    /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
+    public void Prefetch(SceneDefinition scene)
+    {
+        releaseUploadedAhead();
+        MovieContent.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
+    }
+
+    // ponytail: one movie per step once over budget; a single huge movie can still take a frame.
+    private void uploadAhead()
+    {
+        var start = Stopwatch.GetTimestamp();
+        foreach (var content in MovieContent.DecodedPrefetches)
+        {
+            if (Stopwatch.GetElapsedTime(start) > UploadAheadBudget)
+                return;
+            if (!_uploadedAhead.ContainsKey(content))
+                _uploadedAhead[content] = SceneTextures.Upload(Application, content);
+        }
+    }
+
+    private void releaseUploadedAhead()
+    {
+        foreach (var textures in _uploadedAhead.Values)
+            SceneTextures.Release(Application, textures);
+        _uploadedAhead.Clear();
+    }
     public EnsoLayout EnsoLayout { get; }
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
@@ -203,6 +237,7 @@ internal sealed class GameShell : IDisposable
     private RenderTextureId[] _textures = [];
     private RenderTextureId[] _heldTextures = [];
     private RenderFrame? _heldFrame;
+    private bool _heldBlack; // the loading frame: an intermission still shown is drawn over it
     private RenderFrame? _lastPresentedFrame;
     private bool _lastPresentedHadIntermission;
     private int _holdUntilTick;
@@ -420,7 +455,8 @@ internal sealed class GameShell : IDisposable
                 _returnToAttract = true;
             };
         }
-        _loader = new LumenGameSceneLoader(new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), Hosts);
+        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot));
+        _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
 
@@ -704,7 +740,8 @@ internal sealed class GameShell : IDisposable
             // The old movie's textures must survive while its final frame is being presented.
             // A cleared intermission may already have released its textures, so hold black with
             // the network icon in that case, as the original game did while loading.
-            if (Overlay.IsShown || _lastPresentedHadIntermission || Active.Id == FlowScenes.Movie)
+            _heldBlack = Overlay.IsShown || _lastPresentedHadIntermission || Active.Id == FlowScenes.Movie;
+            if (_heldBlack)
                 _heldFrame = blackLoadingFrame();
             else
             {
@@ -720,13 +757,19 @@ internal sealed class GameShell : IDisposable
         _textures = [];
         transition();
         activate();
+        Application.DiscardElapsed();
     }
 
     private void activate()
     {
         Active = Coordinator.ActiveScene as LumenGameSceneInstance
             ?? throw new InvalidOperationException("The active scene is not a Lumen scene instance.");
-        _textures = SceneTextures.Upload(Application, Active);
+        var ahead = _uploadedAhead.Count;
+        _textures = SceneTextures.Upload(Application, Active,
+            content => _uploadedAhead.Remove(content, out var textures) ? textures : null);
+        var taken = ahead - _uploadedAhead.Count;
+        if (taken > 0)
+            releaseUploadedAhead(); // this scene took its prefetch; the rest is unused
         flowOf(Active.Id).Enter(Active.Id);
     }
 
@@ -814,13 +857,18 @@ internal sealed class GameShell : IDisposable
             var needsFirstPresentation = _heldPresentationsRemaining > 0;
             _heldPresentationsRemaining = 0;
             if (needsFirstPresentation || Tick < _holdUntilTick)
-                return held;
+                // The rainbow stays up across its scene switch (only a fade is cleared with it).
+                return _heldBlack && Overlay.IsShown
+                    ? new RenderFrame(held.ClearColor,
+                        [.. Overlay.Quads((float)interpolationFraction, Titles.Resolve), .. held.Quads], held.ContentAspectRatio)
+                    : held;
             SceneTextures.Release(Application, _heldTextures);
             _heldTextures = [];
             _heldFrame = null;
         }
         var interpolation = (float)interpolationFraction;
         Titles.UploadCompleted();
+        uploadAhead();
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
         var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _textures, "Scene", resolveSurface);

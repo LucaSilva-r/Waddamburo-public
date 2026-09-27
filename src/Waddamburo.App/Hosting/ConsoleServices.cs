@@ -77,6 +77,8 @@ internal sealed class TracePreviewController : ISongPreviewController
         if (request is not null)
             Console.WriteLine($"Song preview requested at {request.Start.TotalSeconds:0.###}s for {request.Song}.");
     }
+
+    public void Stop() { }
 }
 
 internal static class HostValueText

@@ -158,6 +158,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public Action<SongSelectSong>? RankingWanted { get; init; }
 
+    /// <summary>The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)).</summary>
+    public SongSelectSong? CourseSelectSong { get; private set; }
+
     /// <summary>The score windows known for a song: per course (easy..ura), up to three players' bests.</summary>
     public Func<SongSelectSong, IReadOnlyList<RankingEntry>?[]?>? Rankings { get; init; }
 
@@ -239,6 +242,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyOpenFolder", _ => openFolder());
             lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
+            lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
+            {
+                CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
+                return LumenHostValue.Undefined;
+            });
             // SetSelectedMusic(genre, song): the movie's final pick; genre = the mode-switch folder with
             // song -1 moves to the other song select (traced SetSelectedMusic(7|8, -1), then Terminate).
             lumen.RegisterMethod("SetSelectedMusic", call =>
@@ -268,7 +276,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        _session.StopPreview();
+        _session.StopMusic();
         _sounds?.StopVoice();
     }
 

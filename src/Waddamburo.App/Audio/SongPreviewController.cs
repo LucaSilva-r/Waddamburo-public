@@ -50,6 +50,12 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
         replace(null, TimeSpan.Zero);
     }
 
+    public void Stop()
+    {
+        lock (_gate)
+            stopCurrent();
+    }
+
     public void SetPreview(SongPreviewRequest? request) =>
         replace(request, request is null ? TimeSpan.Zero : HoverDebounce);
 
@@ -63,8 +69,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
                 throw new ArgumentException("The preview asset belongs to another catalog provider.", nameof(request));
             if (request is null
                 && _current is { Request: null } background
-                && (background.Delay == TimeSpan.Zero
-                    || background.Handle is { } handle && _audio.Mixer.IsPlaying(handle)))
+                && (background.Handle is not { } handle || _audio.Mixer.IsPlaying(handle)))
             {
                 return;
             }

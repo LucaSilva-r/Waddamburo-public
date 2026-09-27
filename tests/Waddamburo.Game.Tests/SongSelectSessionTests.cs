@@ -133,11 +133,13 @@ public sealed class SongSelectSessionTests
         using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
         var snapshot = await catalog.RefreshAsync();
         var playRequests = new PlayRequestState();
+        var previews = new RecordingPreviewController();
         var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
-            new RecordingPreviewController(), playRequests);
+            previews, playRequests);
 
         var selection = session.Select(0, 0, -1, (int)TaikoCourse.Oni);
 
+        Assert.True(previews.Stopped); // silence until gameplay, not the background music
         Assert.Null(selection.PlayerOneChart);
         Assert.Equal("oni", selection.PlayerTwoChart!.StableId);
         var player = Assert.Single(Assert.IsType<PlayRequest>(playRequests.Pending).Players);
@@ -325,6 +327,10 @@ public sealed class SongSelectSessionTests
     {
         public SongPreviewRequest? Current { get; private set; }
 
-        public void SetPreview(SongPreviewRequest? request) => Current = request;
+        public bool Stopped { get; private set; }
+
+        public void SetPreview(SongPreviewRequest? request) => (Current, Stopped) = (request, false);
+
+        public void Stop() => (Current, Stopped) = (null, true);
     }
 }

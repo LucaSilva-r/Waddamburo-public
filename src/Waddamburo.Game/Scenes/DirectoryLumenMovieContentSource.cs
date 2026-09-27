@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
@@ -21,7 +22,31 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         _limits = limits ?? ParserLimits.Default;
     }
 
+    private ConcurrentDictionary<(string ArchiveId, string MovieId), Task<LumenMovieContent>> _prefetched = new();
+
     public ILumenMovieContentScope CreateSceneScope() => new SceneScope(this);
+
+    /// <summary>
+    /// Decodes these movies on worker threads; the next load of each takes the result (once: a scene
+    /// frees the decoded pixels after upload). Replaces any earlier prefetch not yet taken.
+    /// </summary>
+    public void Prefetch(IEnumerable<(string ArchiveId, string MovieId)> movies)
+    {
+        var fresh = new ConcurrentDictionary<(string ArchiveId, string MovieId), Task<LumenMovieContent>>();
+        foreach (var archive in movies.Distinct().GroupBy(static movie => movie.ArchiveId))
+        {
+            var opened = Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archive.Key)), _limits));
+            foreach (var movie in archive)
+                fresh[movie] = opened.ContinueWith(
+                    task => LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits),
+                    CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
+        _prefetched = fresh;
+    }
+
+    /// <summary>Prefetched movies already decoded and not yet taken by a load.</summary>
+    public IEnumerable<LumenMovieContent> DecodedPrefetches => _prefetched.Values
+        .Where(static task => task.IsCompletedSuccessfully).Select(static task => task.Result);
 
     public async ValueTask<LumenMovieContent> LoadAsync(
         string archiveId,
@@ -44,6 +69,17 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             ArgumentException.ThrowIfNullOrWhiteSpace(archiveId);
             ArgumentException.ThrowIfNullOrWhiteSpace(movieId);
             cancellationToken.ThrowIfCancellationRequested();
+            if (owner._prefetched.TryRemove((archiveId, movieId), out var ready))
+            {
+                try
+                {
+                    return await ready.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception) when (ready.IsFaulted)
+                {
+                    // A failed prefetch loads normally below, reporting its own error.
+                }
+            }
             var archivePath = owner.resolveArchivePath(archiveId);
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)
