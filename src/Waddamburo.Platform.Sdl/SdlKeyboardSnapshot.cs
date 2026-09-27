@@ -31,6 +31,7 @@ public readonly record struct SdlKeyPress(SdlKeyboardKey Key, TimeSpan Timestamp
 public enum SdlKeyboardKey
 {
     Backspace = 8,
+    Tab = 9,
     Enter = 13,
     Escape = 27,
     Space = 32,
@@ -38,6 +39,7 @@ public enum SdlKeyboardKey
     Up = 38,
     Right = 39,
     Down = 40,
+    Delete = 46,
     Digit0 = 48,
     Digit1 = 49,
     Digit2 = 50,

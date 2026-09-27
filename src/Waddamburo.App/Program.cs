@@ -94,14 +94,16 @@ try
         Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
             : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "
                 + $"{arcade.SongsPerSession} songs per session).");
-        var accountPath = Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreAccount.FileName);
+        var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Root);
         if (login || logout)
-            return AccountCommands.Run(arcade, accountPath, login);
-        var account = Waddamburo.Game.Scores.ScoreAccount.Load(accountPath);
-        Console.WriteLine(account is null ? arcade is { Server: not null, CabinetToken: not null }
+            return AccountCommands.Run(arcade, accounts, login);
+        Console.WriteLine(!arcade.Home
+            ? arcade is { Server: not null, CabinetToken: not null }
                 ? $"Scores: cabinet mode, players log in with a code from {arcade.Server} (cabinet {Waddamburo.App.Flow.CabinetPairing.CabinetId})."
-                : "Scores: guest (not saved; --login to save them)."
-            : $"Scores: saved for {account.Name} (baid {account.Baid}), {(arcade.Server is null ? "offline" : $"uploaded to {arcade.Server}")}.");
+                : "Scores: arcade without a cabinet token (not saved)."
+            : $"Scores: kept on this PC; {accounts.Accounts.Count} account(s)"
+                + (accounts.Default is { } first ? $", {first.Name} joins by default" : "")
+                + (arcade.Server is null ? ", offline." : $", uploaded to {arcade.Server}."));
         GameShell.Run(new GameOptions(
             layout.LumenRoot,
             layout.DonRoot,
@@ -118,7 +120,7 @@ try
             countdown,
             startScene,
             arcade,
-            account,
+            accounts,
             Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName),
             autoplay,
             arcade.Fullscreen));

@@ -1,6 +1,5 @@
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
-using Waddamburo.Platform.Sdl.Text;
 
 namespace Waddamburo.App.Presentation;
 
@@ -49,73 +48,23 @@ internal sealed class PairingPill(SdlApplication application, string fontPath, f
 
     private byte[] draw(string text, string? badge, int scale)
     {
-        int width = Width * scale, height = Height * scale;
-        var pixels = new byte[width * height * 4];
+        var canvas = new VectorCanvas(Width, Height, scale, fontPath);
         float s = scale, radius = 30.5f * s, outline = 3f * s, middle = 32f * s;
-        for (var y = 0; y < height; y++)
-            for (var x = 0; x < width; x++)
+        for (var y = 0; y < canvas.PixelHeight; y++)
+            for (var x = 0; x < canvas.PixelWidth; x++)
             {
                 float px = x + 0.5f, py = y + 0.5f;
                 // Signed distances (negative inside): the capsule, then the disc over its left end.
                 var capsule = MathF.Sqrt(MathF.Pow(px - Math.Clamp(px, 32f * s, (Width - 34f) * s), 2) + MathF.Pow(py - middle, 2)) - radius;
                 var disc = MathF.Sqrt(MathF.Pow(px - middle, 2) + MathF.Pow(py - middle, 2)) - radius;
-                blend(pixels, width, x, y, (0, 0, 0), coverage(capsule));
-                blend(pixels, width, x, y, Yellow, coverage(capsule + outline));
-                blend(pixels, width, x, y, (0, 0, 0), coverage(disc));
-                blend(pixels, width, x, y, Red, coverage(disc + outline));
+                canvas.Blend(x, y, (0, 0, 0), VectorCanvas.Coverage(capsule));
+                canvas.Blend(x, y, Yellow, VectorCanvas.Coverage(capsule + outline));
+                canvas.Blend(x, y, (0, 0, 0), VectorCanvas.Coverage(disc));
+                canvas.Blend(x, y, Red, VectorCanvas.Coverage(disc + outline));
             }
-        stamp(pixels, width, height, text, (Disc + (Width - Disc) / 2f) * s, (Width - Disc - 24) * s, scale);
+        canvas.Text(text, Disc + (Width - Disc) / 2f, Height / 2f, Width - Disc - 24, Height - 12);
         if (badge is not null)
-            stamp(pixels, width, height, badge, middle, (Disc - 14) * s, scale);
-        return pixels;
-    }
-
-    private static float coverage(float distance) => Math.Clamp(0.5f - distance, 0f, 1f);
-
-    // The game's outlined title text, cropped to its ink and centred at (centreX, middle), shrunk to maxWidth.
-    private void stamp(byte[] pixels, int width, int height, string text, float centreX, float maxWidth, int scale)
-    {
-        var surface = NativeVerticalTextRasterizer.RenderSongTitle(fontPath, text, null,
-            SongTitleTextProfile.GameplayTitle, 0x000000, (uint)scale);
-        int sw = (int)surface.Width, sh = (int)surface.Height;
-        int left = sw, right = -1, top = sh, bottom = -1;
-        for (var y = 0; y < sh; y++)
-            for (var x = 0; x < sw; x++)
-                if (surface.Pixels[(y * sw + x) * 4 + 3] != 0)
-                {
-                    left = Math.Min(left, x); right = Math.Max(right, x);
-                    top = Math.Min(top, y); bottom = Math.Max(bottom, y);
-                }
-        if (right < 0)
-            return;
-        int inkWidth = right - left + 1, inkHeight = bottom - top + 1;
-        var factor = Math.Min(1f, Math.Min(maxWidth / inkWidth, (height - 12f * scale) / inkHeight));
-        int outWidth = (int)(inkWidth * factor), outHeight = (int)(inkHeight * factor);
-        int originX = (int)(centreX - outWidth / 2f), originY = (height - outHeight) / 2;
-        for (var y = 0; y < outHeight; y++)
-            for (var x = 0; x < outWidth; x++)
-            {
-                // Nearest-neighbour sampling into the ink box: the text only ever shrinks a little.
-                var source = ((top + (int)(y / factor)) * sw + left + (int)(x / factor)) * 4;
-                var alpha = surface.Pixels[source + 3] / 255f;
-                if (alpha > 0 && originX + x is >= 0 and var tx && tx < width)
-                    blend(pixels, width, tx, originY + y,
-                        (surface.Pixels[source], surface.Pixels[source + 1], surface.Pixels[source + 2]), alpha);
-            }
-    }
-
-    // Straight-alpha "over" into the RGBA buffer.
-    private static void blend(byte[] pixels, int width, int x, int y, (byte R, byte G, byte B) colour, float alpha)
-    {
-        if (alpha <= 0)
-            return;
-        var index = (y * width + x) * 4;
-        var below = pixels[index + 3] / 255f;
-        var result = alpha + below * (1 - alpha);
-        byte mix(byte top, byte bottom) => (byte)Math.Round((top * alpha + bottom * below * (1 - alpha)) / result);
-        pixels[index] = mix(colour.R, pixels[index]);
-        pixels[index + 1] = mix(colour.G, pixels[index + 1]);
-        pixels[index + 2] = mix(colour.B, pixels[index + 2]);
-        pixels[index + 3] = (byte)Math.Round(result * 255);
+            canvas.Text(badge, Disc / 2f, Height / 2f, Disc - 14, Height - 12);
+        return canvas.Pixels;
     }
 }

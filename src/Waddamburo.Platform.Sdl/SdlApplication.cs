@@ -424,6 +424,8 @@ public sealed unsafe class SdlApplication : IDisposable
     private static SdlKeyboardKey? mapKey(SDL_Keycode key) => key switch
     {
         SDL_Keycode.SDLK_BACKSPACE => SdlKeyboardKey.Backspace,
+        SDL_Keycode.SDLK_TAB => SdlKeyboardKey.Tab,
+        SDL_Keycode.SDLK_DELETE => SdlKeyboardKey.Delete,
         SDL_Keycode.SDLK_RETURN => SdlKeyboardKey.Enter,
         SDL_Keycode.SDLK_ESCAPE => SdlKeyboardKey.Escape,
         SDL_Keycode.SDLK_SPACE => SdlKeyboardKey.Space,

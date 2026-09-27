@@ -108,6 +108,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>A card is being read (true) until a drum takes it or the dialog closes (false).</summary>
     public Action<bool>? CardDialog { get; init; }
 
+    /// <summary>The name of an account chosen for a drum before the entry (home setup); null: a guest or a card.</summary>
+    public Func<int, string?>? PlayerName { get; init; }
+
     /// <summary>The look of the player about to join a drum (a card or the home account); null: a guest.</summary>
     public Func<int, DonLook?>? PlayerLook { get; init; }
 
@@ -435,6 +438,14 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _joined.Add(player);
         if (_cardNames.Remove(player, out var cardName))
             Parts.UncoverEntryName(player, cardName);
+        // An account chosen in the home setup: its name board, as for a card taken by that drum.
+        else if (PlayerName?.Invoke(player) is { Length: > 0 } accountName)
+        {
+            Parts.ShowEntryName(player, accountName, joined: true);
+            // The movie hides a drum's card prompt once it has card data (touch_msg_Np._visible =
+            // !playerInfo[n].isData); an account never goes through the card path, so hide it here.
+            entry.TrySetInstanceAlpha($"name_bg/touch_msg_{player + 1}p", 0); // ponytail: alpha, not isData
+        }
         // The game's own join voice inside EntryCoin: cue 2 for the left drum, 3 for the right (traced;
         // in free play the movie also requests cue 2).
         PlayVoice?.Invoke(player == 1 ? 3 : 2);

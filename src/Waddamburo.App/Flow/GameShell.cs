@@ -42,7 +42,7 @@ internal sealed record GameOptions(
     bool Countdown = true,
     StartScene StartScene = StartScene.Boot,
     ArcadeSettings? Arcade = null,
-    ScoreAccount? Account = null,
+    AccountBook? Accounts = null,
     string? ScoresPath = null,
     bool Autoplay = false,
     bool Fullscreen = false);
@@ -72,7 +72,51 @@ internal sealed class GameShell : IDisposable
     /// <summary>The server scores upload to (null: offline or a guest).</summary>
     public ScoreClient? ScoreServer { get; }
 
+    /// <summary>The accounts stored on this PC (home mode; empty in arcade).</summary>
+    public AccountBook? Accounts => Arcade.Home ? Options.Accounts : null;
+
+    /// <summary>The stored account that joins the first drum by itself (home).</summary>
+    public ScoreAccount? DefaultAccount => Accounts?.Default;
+
+    private Uri? _uploadServer;
+    private readonly Dictionary<string, ScoreClient> _uploaders = [];
+
+    /// <summary>
+    /// Uploads a player's pending plays in the background: a cabinet uploads everyone's with its own
+    /// token; a home PC uploads each account's with that account's token (a friend's short-lived one
+    /// included). Guests (no token) stay local.
+    /// </summary>
+    public void Upload(ScoreProfile profile)
+    {
+        if (Scores is null)
+            return;
+        if (ScoreServer is { } cabinet)
+        {
+            cabinet.SyncInBackground(Scores, null);
+            return;
+        }
+        if (profile.Token is { } token && clientFor(token) is { } uploader)
+            uploader.SyncInBackground(Scores, profile.Baid);
+    }
+
+    /// <summary>A server client with a home player's token (one per token, reused); null offline.</summary>
+    private ScoreClient? clientFor(string token)
+    {
+        if (_uploadServer is not { } server)
+            return null;
+        lock (_uploaders)
+        {
+            if (!_uploaders.TryGetValue(token, out var client))
+                _uploaders[token] = client = new ScoreClient(ScoreClient.CreateHttp(server, Arcade.ServerInsecure, token));
+            return client;
+        }
+    }
+
     private readonly ServerHealth? _health;
+
+    // Home: the "who's playing?" screen before the entry (stored accounts, guests, friends, in-game login).
+    private PlayerSetupFlow? _setup;
+    private PlayerSetupView? _setupView;
 
     // Cabinet mode only (cabinet_token set, no home account).
     private readonly CabinetPairing? _pairing;
@@ -159,19 +203,37 @@ internal sealed class GameShell : IDisposable
         var assetRoot = options.AssetRoot;
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
-        var cabinet = !Arcade.Home && options.Account is null && Arcade is { Server: not null, CabinetToken: not null };
+        var cabinet = !Arcade.Home && Arcade is { Server: not null, CabinetToken: not null };
         _health = Arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, Arcade.ServerInsecure)) : null;
         // Home keeps every play on this PC, guests' too (baid 0, never uploaded).
-        Scores = (Arcade.Home || options.Account is not null || cabinet) && options.ScoresPath is { } scoresPath
-            ? new ScoreStore(scoresPath) : null;
-        if (Scores is not null && (options.Account is not null || cabinet) && Arcade.Server is { } server)
+        Scores = (Arcade.Home || cabinet) && options.ScoresPath is { } scoresPath ? new ScoreStore(scoresPath) : null;
+        if (Scores is not null && Arcade.Server is { } server)
         {
-            var http = ScoreClient.CreateHttp(server, Arcade.ServerInsecure, options.Account?.Token ?? Arcade.CabinetToken);
-            ScoreServer = new ScoreClient(http);
-            // Plays left over from offline runs: the account's, or (a cabinet) everyone's.
-            ScoreServer.SyncInBackground(Scores, options.Account?.Baid);
+            _uploadServer = server;
             if (cabinet)
+            {
+                var http = ScoreClient.CreateHttp(server, Arcade.ServerInsecure, Arcade.CabinetToken);
+                ScoreServer = new ScoreClient(http);
                 _pairing = new CabinetPairing(http);
+            }
+            // Plays left over from offline runs: a cabinet's (everyone's), or each stored account's.
+            if (ScoreServer is not null)
+                Upload(ScoreProfile.LocalGuest);
+            foreach (var account in Arcade.Home ? options.Accounts?.Accounts ?? [] : [])
+                Upload(account.Profile);
+            // Names, looks and avatars as the website has them now (revoked logins drop out).
+            if (Arcade.Home && options.Accounts is { } book)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await book.RefreshAsync(account => clientFor(account.Token)!).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+                    {
+                        Console.Error.WriteLine($"Warning ACCOUNT: profiles not refreshed ({exception.Message}).");
+                    }
+                });
         }
         // The game's own songs live beside the Lumen data (<data>/lumendata/packed).
         var dataRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
@@ -285,10 +347,17 @@ internal sealed class GameShell : IDisposable
                 : TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid)
                 : Arcade.Home ? Scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
             CardClaimed = (side, card) => TaikoGuest.Profiles[side] = card,
-            // A card given to the drum, else the home account for the credit's first player.
-            PlayerLook = side => TaikoGuest.Profiles[side]?.Look
-                ?? (options.Account is { } home && TaikoGuest.Profiles.All(static profile => profile is null) ? home.Look : null),
+            // A card given to the drum, or the account chosen for it in the home player setup.
+            PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
+            PlayerName = side => TaikoGuest.Profiles[side]?.Name,
         };
+        if (Arcade.Home && Options.Accounts is { } setupBook)
+        {
+            _setupView = new PlayerSetupView(Application, options.FontPath);
+            _setup = new PlayerSetupFlow(setupBook, Arcade.Server, Arcade.ServerInsecure, clientFor,
+                Path.Combine(Path.GetDirectoryName(options.ScoresPath) ?? ".", "avatars"));
+            _setup.Confirmed += startWithPlayers;
+        }
         _loader = new LumenGameSceneLoader(new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
@@ -467,6 +536,21 @@ internal sealed class GameShell : IDisposable
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
         keys = scene.MapKeys(drumPulses(keys));
+        // Home: Tab in the entry goes back to the player setup with the current players (the entry waits).
+        if (_setup is { IsOpen: false } reopen && Active.Id == FlowScenes.Entry && keys.IsDown(SdlKeyboardKey.Tab))
+        {
+            Sounds?.StopAll();
+            reopen.Reopen(TaikoGuest.Profiles, JoinedSides);
+            return;
+        }
+        // Home: the player setup screen takes the input while it is open; the scene behind it waits.
+        if (_setup is { } setup)
+        {
+            var open = setup.IsOpen;
+            setup.Tick(open ? keys : SdlKeyboardSnapshot.Empty);
+            if (open)
+                return;
+        }
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
             Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
         Overlay.Advance();
@@ -601,12 +685,6 @@ internal sealed class GameShell : IDisposable
     // follow them, and the later scenes' hosts read them. A credit starts empty.
     public void JoinPlayer(int side)
     {
-        // Home: the logged-in account is the first player to join (a second one plays as a guest).
-        if (Options.Account is { } account && !TaikoGuest.Profiles.Any(static profile => profile is not null))
-        {
-            TaikoGuest.Profiles[side] = account.Profile;
-            Don?.SetLook(side, account.Look);
-        }
         JoinedSides.Add(side);
         applyPlayers();
     }
@@ -675,7 +753,10 @@ internal sealed class GameShell : IDisposable
         var result = new RenderFrame(
             frame.ClearColor,
             frame.Quads.Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
-                .Concat(indicatorQuads(true)).Concat(pill()).Concat(_performance.Quads()).ToArray(),
+                .Concat(indicatorQuads(true))
+                .Concat(_setup is { IsOpen: true } setup && _setupView is { } view ? view.Quads(setup.Columns()) : [])
+                .Concat(pill())
+                .Concat(_performance.Quads()).ToArray(),
             frame.ContentAspectRatio);
         _lastPresentedFrame = result;
         _lastPresentedHadIntermission = Overlay.IsShown;
@@ -690,6 +771,45 @@ internal sealed class GameShell : IDisposable
         return new RenderFrame(RenderColor.Black, network, 1280d / 720d);
     }
 
+    /// <summary>Home: a drum hit in the attract loop opens the player setup (that drum starts on the default account).</summary>
+    public bool OpenPlayerSetup(int side)
+    {
+        if (_setup is not { } setup)
+            return false;
+        Sounds?.StopAll();
+        // Diagnostic: WADDAMBURO_SETUP_BOTH=1 skips the screen with both drums joined (the DON_BOTH entry
+        // start): the first two stored accounts, a guest where there is none.
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_BOTH") == "1")
+        {
+            var stored = Accounts?.Accounts ?? [];
+            startWithPlayers([.. Enumerable.Range(0, 2).Select(index => index < stored.Count ? stored[index].Profile : null)], [true, true]);
+            return true;
+        }
+        setup.Open(side);
+        return true;
+    }
+
+    // The setup's players: their profiles and looks go in first, then the entry starts with them joined
+    // (SCENE_TRIGGER_DON_1P 0 / _DON_2P 1 / _DON_BOTH 2: the movie joins those drums itself).
+    private void startWithPlayers(ScoreProfile?[] profiles, bool[] playing)
+    {
+        Sounds?.Attract.PlayExit();
+        ResetPlayers();
+        SongsPlayed = 0;
+        for (var side = 0; side < 2; side++)
+        {
+            if (!playing[side])
+                continue;
+            TaikoGuest.Profiles[side] = profiles[side];
+            Don?.SetLook(side, profiles[side]?.Look);
+            JoinPlayer(side);
+        }
+        Hosts.EntryTrigger = playing[0] && playing[1] ? 2 : playing[1] ? 1 : 0;
+        Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
+        string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
+        Show(FlowScenes.Entry);
+    }
+
     /// <summary>A paired card was rejected by the server (shown once).</summary>
     public bool TakeCardFailure() => _pairing?.TakeCardFailure() == true;
 
@@ -699,7 +819,7 @@ internal sealed class GameShell : IDisposable
     private IEnumerable<RenderQuad> pill()
     {
         if (_pairing is null)
-            return [];
+            return _pill.Quads(); // home: the account picker shows and hides it
         // The game takes cards in the attract loop and in entry (not from song select on), one at a time.
         var entry = flowOf(Active.Id) is EntryFlow;
         _pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow
@@ -715,6 +835,8 @@ internal sealed class GameShell : IDisposable
     public void Dispose()
     {
         _pairing?.Dispose();
+        _setup?.Dispose();
+        _setupView?.Dispose();
         _health?.Dispose();
         _pill.Dispose();
         _performance.Dispose();

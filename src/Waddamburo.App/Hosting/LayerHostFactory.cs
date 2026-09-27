@@ -57,6 +57,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
     public bool EntryCardPending => _entry?.Card is not null;
 
+    /// <summary>The name of an account chosen for a drum before the entry (its board shows it at the join).</summary>
+    public Func<int, string?>? PlayerName { get; init; }
+
     /// <summary>The look of the player about to join a drum (see EntrySceneHost.PlayerLook).</summary>
     public Func<int, DonLook?>? PlayerLook { get; init; }
 
@@ -139,6 +142,7 @@ internal sealed class LayerHostFactory(
                 Don = don,
                 ReturnToAttract = () => ReturnToAttract?.Invoke(),
                 PlayerLook = side => PlayerLook?.Invoke(side),
+                PlayerName = side => PlayerName?.Invoke(side),
                 CardDialog = open => CardDialog?.Invoke(open),
                 CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
             };

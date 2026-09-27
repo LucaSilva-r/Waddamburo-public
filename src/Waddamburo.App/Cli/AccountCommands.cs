@@ -5,22 +5,23 @@ using Waddamburo.Game.Scores;
 namespace Waddamburo.App.Cli;
 
 /// <summary>
-/// --login / --logout: a home player's TaikOnline account, asked for in the terminal (the game's
-/// movies have no text entry). The token is kept in account.json beside the game data.
+/// --login / --logout for headless setups: a TaikOnline account asked for in the terminal and added
+/// to the PC's accounts (accounts.json; the game's own way is the account picker's device code), or
+/// every stored account logged out.
 /// </summary>
 internal static class AccountCommands
 {
-    public static int Run(ArcadeSettings arcade, string accountPath, bool login)
+    public static int Run(ArcadeSettings arcade, AccountBook accounts, bool login)
     {
         if (arcade.Server is not { } server)
         {
             Console.Error.WriteLine($"Set 'server = https://...' in {ArcadeSettings.FileName} first.");
             return 1;
         }
-        return login ? logIn(arcade, server, accountPath) : logOut(arcade, server, accountPath);
+        return login ? logIn(arcade, server, accounts) : logOut(arcade, server, accounts);
     }
 
-    private static int logIn(ArcadeSettings arcade, Uri server, string accountPath)
+    private static int logIn(ArcadeSettings arcade, Uri server, AccountBook accounts)
     {
         Console.Write($"TaikOnline ({server.Host}) username or email: ");
         var name = Console.ReadLine()?.Trim() ?? "";
@@ -47,30 +48,35 @@ internal static class AccountCommands
             Console.Error.WriteLine($"Login failed: {exception.Message}");
             return 1;
         }
-        account.Save(accountPath);
-        Console.WriteLine($"Logged in as {(account.Name.Length > 0 ? account.Name : name)} (baid {account.Baid}). Scores are saved from now on.");
+        accounts.Add(account);
+        Console.WriteLine($"Logged in as {(account.Name.Length > 0 ? account.Name : name)} (baid {account.Baid})"
+            + $"{(accounts.DefaultBaid == account.Baid ? ", the default player" : "")}. Scores are saved from now on.");
         return 0;
     }
 
-    private static int logOut(ArcadeSettings arcade, Uri server, string accountPath)
+    private static int logOut(ArcadeSettings arcade, Uri server, AccountBook accounts)
     {
-        if (ScoreAccount.Load(accountPath) is not { } account)
+        if (accounts.Accounts.Count == 0)
         {
             Console.WriteLine("Not logged in.");
             return 0;
         }
-        try
+        foreach (var account in accounts.Accounts.ToArray())
         {
-            using var http = ScoreClient.CreateHttp(server, arcade.ServerInsecure, account.Token);
-            new ScoreClient(http).LogoutAsync().GetAwaiter().GetResult();
+            try
+            {
+                using var http = ScoreClient.CreateHttp(server, arcade.ServerInsecure, account.Token);
+                new ScoreClient(http).LogoutAsync().GetAwaiter().GetResult();
+            }
+            catch (HttpRequestException exception)
+            {
+                // The local token goes anyway; the server's copy can be revoked from the website.
+                Console.Error.WriteLine($"Warning: the server did not revoke {account.Name}'s token ({exception.Message}).");
+            }
+            accounts.Remove(account.Baid);
+            Console.WriteLine($"Logged out {account.Name} (baid {account.Baid}).");
         }
-        catch (HttpRequestException exception)
-        {
-            // The local token goes anyway; the server's copy can be revoked from the website.
-            Console.Error.WriteLine($"Warning: the server did not revoke the token ({exception.Message}).");
-        }
-        File.Delete(accountPath);
-        Console.WriteLine("Logged out. Plays not yet uploaded stay in scores.db until you log in again.");
+        Console.WriteLine("Plays not yet uploaded stay in scores.db until that account logs in again.");
         return 0;
     }
 

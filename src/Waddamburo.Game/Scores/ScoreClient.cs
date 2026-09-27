@@ -5,29 +5,20 @@ using System.Text.Json;
 
 namespace Waddamburo.Game.Scores;
 
-/// <summary>A logged-in home player: the server token and the Banapass profile it belongs to.</summary>
+/// <summary>A home player stored on this PC: the server token and the Banapass profile it belongs to.</summary>
 public sealed record ScoreAccount(string Token, long Baid, string Name)
 {
-    public const string FileName = "account.json";
-
-    /// <summary>The Don's look as of login. ponytail: refreshed only by logging in again.</summary>
+    /// <summary>The Don's look (refreshed from the server at startup).</summary>
     public Don.DonLook? Look { get; init; }
 
-    public ScoreProfile Profile => new(Baid, Name) { Look = Look };
+    /// <summary>The account's custom Don-chan picture URL.</summary>
+    public string? Avatar { get; init; }
 
-    public static ScoreAccount? Load(string path) =>
-        File.Exists(path) ? JsonSerializer.Deserialize<ScoreAccount>(File.ReadAllText(path), ScoreClient.Json) : null;
-
-    /// <summary>Written owner-only: the token is a password equivalent.</summary>
-    public void Save(string path)
-    {
-        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
-        if (!OperatingSystem.IsWindows())
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        using var stream = new FileStream(path, options);
-        JsonSerializer.Serialize(stream, this, ScoreClient.Json);
-    }
+    public ScoreProfile Profile => new(Baid, Name) { Look = Look, Avatar = Avatar, Token = Token };
 }
+
+/// <summary>A device login in progress: the code to show and where to enter it.</summary>
+public sealed record DeviceLoginStart(string DeviceCode, string UserCode, int ExpiresIn, int Interval, string VerificationUrl);
 
 public sealed class TwoFactorRequiredException() : Exception("The account needs a two-factor code.");
 
@@ -42,6 +33,9 @@ public sealed class ScoreClient(HttpClient http)
     };
 
     private int _syncing;
+
+    /// <summary>The client's HTTP connection (its token), for other endpoints such as home pairing.</summary>
+    public HttpClient Http => http;
 
     /// <summary>
     /// A client for <paramref name="server"/>. <paramref name="insecure"/> skips certificate checks
@@ -75,6 +69,41 @@ public sealed class ScoreClient(HttpClient http)
         }
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ScoreAccount>(Json, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>In-game login without a password, step 1: a code for the player to enter on the website.</summary>
+    public async Task<DeviceLoginStart> StartDeviceLoginAsync(string device, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/device", new { device }, Json, cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<DeviceLoginStart>(Json, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>Step 2 (polled every Interval seconds): the account once approved; null while pending.</summary>
+    /// <exception cref="InvalidOperationException">Denied or expired.</exception>
+    public async Task<ScoreAccount?> PollDeviceLoginAsync(string deviceCode, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/device/token", new { device_code = deviceCode }, Json,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var reply = await response.Content.ReadFromJsonAsync<JsonElement>(Json, cancellationToken).ConfigureAwait(false);
+        return reply.GetProperty("status").GetString() switch
+        {
+            "pending" => null,
+            "approved" => reply.Deserialize<ScoreAccount>(Json),
+            var status => throw new InvalidOperationException(status == "denied" ? "The login was refused." : "The code expired."),
+        };
+    }
+
+    /// <summary>The token's current profile (name, look, avatar); null when the token was revoked.</summary>
+    public async Task<ScoreProfile?> MeAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/me", cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ScoreProfile>(Json, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task LogoutAsync(CancellationToken cancellationToken = default)

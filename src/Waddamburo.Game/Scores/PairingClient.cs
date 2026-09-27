@@ -11,6 +11,12 @@ public sealed record ScoreProfile(long Baid, string Name)
     public static ScoreProfile LocalGuest { get; } = new(LocalGuestBaid, "");
 
     public Don.DonLook? Look { get; init; }
+
+    /// <summary>The account's custom Don-chan picture (a transparent PNG on the server), for the picker.</summary>
+    public string? Avatar { get; init; }
+
+    /// <summary>The token its plays upload with at home (a stored account's, or a friend's short-lived one).</summary>
+    public string? Token { get; init; }
 }
 
 /// <summary>What the cabinet should show after a pairing poll.</summary>
@@ -24,6 +30,57 @@ public abstract record PairingState
 
     /// <summary>Someone entered the code on the website and chose this card.</summary>
     public sealed record Claimed(string AccessCode) : PairingState;
+
+    /// <summary>A home PC's pairing: the friend who entered the code, with a short-lived token.</summary>
+    public sealed record Visitor(ScoreProfile Profile) : PairingState;
+
+    /// <summary>The code was used, but the card has no TaikOnline account to play with.</summary>
+    public sealed record Rejected : PairingState;
+}
+
+/// <summary>
+/// A home PC's six-digit pairing (POST api/wdb/pairing with the owner's token): a visiting friend
+/// enters the code on the website and the game receives their profile and a 12-hour token, which it
+/// keeps in memory only.
+/// </summary>
+public sealed class FriendPairingClient(HttpClient http)
+{
+    private string? _session;
+    private string? _ack;
+
+    public async Task<PairingState> PollAsync(bool accepting, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/pairing",
+            new { accepting, session = _session, ack = _ack }, ScoreClient.Json, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var reply = (await response.Content.ReadFromJsonAsync<Reply>(ScoreClient.Json, cancellationToken).ConfigureAwait(false))!;
+        return Apply(reply);
+    }
+
+    /// <summary>Folds one reply into the session state (public for tests).</summary>
+    public PairingState Apply(Reply reply)
+    {
+        ArgumentNullException.ThrowIfNull(reply);
+        if (reply.Session is { Length: > 0 } session)
+            _session = session;
+        switch (reply.Status)
+        {
+            case "active" when reply.Code is { Length: 6 } code && reply.ExpiresIn > 0:
+                return new PairingState.Active(code, TimeSpan.FromSeconds(reply.ExpiresIn.Value));
+            case "claimed" when reply.Friend is { } friend:
+                _ack = reply.CommandId;
+                return new PairingState.Visitor(friend);
+            case "rejected":
+                _ack = reply.CommandId;
+                return new PairingState.Rejected();
+            default:
+                // closed / complete: the next accepting poll opens a new session.
+                _session = _ack = null;
+                return new PairingState.Closed();
+        }
+    }
+
+    public sealed record Reply(string Status, string? Session, string? Code, int? ExpiresIn, string? CommandId, ScoreProfile? Friend);
 }
 
 /// <summary>

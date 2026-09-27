@@ -74,6 +74,10 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
             Shell.Hosts.EntryCard = card;
             Shell.Show(FlowScenes.Entry);
         }
+        // Home: the drum opens the player setup, which starts the entry itself.
+        else if (input.DrumSide is { } setupSide && Shell.OpenPlayerSetup(setupSide))
+        {
+        }
         else if (input.DrumSide is not null && Shell.Coins is null || coinStart)
         {
             // The attract's voices, effects and music end with it (the coin channel plays on).

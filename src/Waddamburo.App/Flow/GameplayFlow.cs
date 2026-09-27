@@ -185,7 +185,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (Shell.Options.Autoplay || Shell.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
-        var saved = false;
+        var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
         {
             var player = request.Players[lane];
@@ -198,7 +198,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                     player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
                     Shell.Gameplay.Replays[lane].Encode()),
                     ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor.Title.Primary, _song?.Descriptor.Subtitle));
-                saved = true;
+                saved.Add(profile);
             }
             catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
             {
@@ -206,8 +206,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
             }
         }
-        if (saved)
-            Shell.ScoreServer?.SyncInBackground(scores, Shell.Options.Account?.Baid);
+        foreach (var profile in saved)
+            Shell.Upload(profile);
     }
 
     private AudioStreamTransport? startAudio(PlayRequest request)

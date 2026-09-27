@@ -115,6 +115,10 @@ internal sealed class SystemIndicators
             if (!_cardDialog)
                 call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
             setSideNumbers(-1, 0);
+            // Both drums already in (home player setup): the panel closes as after the second join
+            // (traced session9). The entry's own EntryCoin calls ran a tick before this.
+            if (TwoPlayers)
+                EntryJoined();
         }
         // SetCoinType seeks the authored movie to its scene label. Repeating it every
         // frame restarts the join message before its fade timeline can advance.
