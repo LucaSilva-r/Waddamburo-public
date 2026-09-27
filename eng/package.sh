@@ -28,7 +28,7 @@ fetch() { # url file sha256
 }
 
 native() { # preset
-    (cd native && cmake --preset "$1" >/dev/null && cmake --build --preset "$1" >/dev/null)
+    (cd native && cmake --preset "$1" && cmake --build --preset "$1")
 }
 
 publish() { # rid native-dir out-dir extra-args...
@@ -36,7 +36,7 @@ publish() { # rid native-dir out-dir extra-args...
     rm -rf "$dir"
     dotnet publish src/Waddamburo.App -c Release -r "$rid" --self-contained \
         -p:WaddamburoNativeDir="$native_dir" -p:Version="$version" -p:DebugType=none -p:GenerateDocumentationFile=false \
-        -o "$dir" "$@" >/dev/null
+        -o "$dir" "$@"
 }
 
 mkdir -p "$out" out/downloads
