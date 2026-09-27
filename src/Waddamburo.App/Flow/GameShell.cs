@@ -99,6 +99,12 @@ internal sealed class GameShell : IDisposable
             uploader.SyncInBackground(Scores, profile.Baid);
     }
 
+    // Rankings are read with the cabinet's token, or at home with any token at hand: a joined
+    // player's, the default account's, then any stored account's.
+    private ScoreClient? rankingClient() => ScoreServer ?? TaikoGuest.Profiles.Select(static profile => profile?.Token)
+        .Append(Accounts?.Default?.Token).Concat(Accounts?.Accounts.Select(static account => account.Token) ?? [])
+        .OfType<string>().Select(clientFor).FirstOrDefault(static client => client is not null);
+
     /// <summary>A server client with a home player's token (one per token, reused); null offline.</summary>
     private ScoreClient? clientFor(string token)
     {
@@ -154,6 +160,7 @@ internal sealed class GameShell : IDisposable
     private readonly LumenGameSceneLoader _loader;
     private readonly CostumeIconTextures _costumeIcons;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
+    private readonly TextFieldTextures _textFields;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly Dictionary<SceneId, FlowScene> _scenes;
@@ -290,6 +297,7 @@ internal sealed class GameShell : IDisposable
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless);
         _pill = new PairingPill(Application, options.FontPath);
+        _textFields = new TextFieldTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
@@ -343,6 +351,7 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
+            Rankings = _uploadServer is null ? null : new SongRankings(rankingClient, Assets.LoadChartAsync),
             Crowns = side => Scores is null ? null
                 : TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid)
                 : Arcade.Home ? Scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
@@ -727,7 +736,8 @@ internal sealed class GameShell : IDisposable
 
     private RenderTextureId? resolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? Titles.Resolve(surface);
+        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface)
+        ?? Titles.Resolve(surface);
 
     private RenderFrame createFrame(double interpolationFraction)
     {
@@ -836,6 +846,8 @@ internal sealed class GameShell : IDisposable
     {
         _pairing?.Dispose();
         _setup?.Dispose();
+        _textFields.Dispose();
+        Hosts?.Rankings?.Dispose();
         _setupView?.Dispose();
         _health?.Dispose();
         _pill.Dispose();

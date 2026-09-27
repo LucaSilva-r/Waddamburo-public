@@ -18,6 +18,9 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
 }
 
 /// <summary>A device login in progress: the code to show and where to enter it.</summary>
+/// <summary>One line of a chart's server ranking: a player's best.</summary>
+public sealed record RankingEntry(long Baid, string Name, int Score);
+
 public sealed record DeviceLoginStart(string DeviceCode, string UserCode, int ExpiresIn, int Interval, string VerificationUrl);
 
 public sealed class TwoFactorRequiredException() : Exception("The account needs a two-factor code.");
@@ -106,6 +109,17 @@ public sealed class ScoreClient(HttpClient http)
         return await response.Content.ReadFromJsonAsync<ScoreProfile>(Json, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The top three players' bests per chart hash (song select's score windows).</summary>
+    public async Task<Dictionary<string, List<RankingEntry>>> RankingsAsync(IReadOnlyCollection<string> charts,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/rankings", new { charts }, Json, cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<RankingsResult>(Json, cancellationToken).ConfigureAwait(false))!
+            .Rankings;
+    }
+
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         using var response = await http.DeleteAsync("api/wdb/login", cancellationToken).ConfigureAwait(false);
@@ -167,6 +181,8 @@ public sealed class ScoreClient(HttpClient http)
             }
         });
     }
+
+    private sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
 
     private sealed record PlaysResult(List<Guid> Accepted, List<string> MissingCharts);
 }

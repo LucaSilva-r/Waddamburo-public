@@ -39,6 +39,9 @@ internal sealed class LayerHostFactory(
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
+    /// <summary>Song select's score windows from the server (null offline).</summary>
+    public Flow.SongRankings? Rankings { get; init; }
+
     /// <summary>A card read in the attract loop, for the entry about to load.</summary>
     public ScoreProfile? EntryCard { get; set; }
 
@@ -232,6 +235,8 @@ internal sealed class LayerHostFactory(
             crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)])
         {
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
+            RankingWanted = Rankings is null ? null : Rankings.Want,
+            Rankings = Rankings is null ? null : Rankings.For,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }

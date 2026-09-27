@@ -20,6 +20,7 @@ public sealed class LumenPlayer
     private readonly LumenRuntimeLimits _limits;
     private readonly Dictionary<uint, LmbShapeDefinition> _shapes;
     private readonly Dictionary<uint, SpriteTimeline> _sprites;
+    private readonly Dictionary<uint, LmbTextDefinition> _texts;
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
     private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
     private readonly List<PendingFrameAction> _pendingActions = [];
@@ -53,6 +54,7 @@ public sealed class LumenPlayer
         StageWidth = stageWidth;
         StageHeight = stageHeight;
         _shapes = movie.Shapes.ToDictionary(shape => shape.CharacterId);
+        _texts = movie.Texts.ToDictionary(text => text.CharacterId);
         _sprites = movie.Sprites.ToDictionary(
             sprite => sprite.CharacterId,
             sprite => compileTimeline(sprite, movie.Strings));
@@ -1943,6 +1945,8 @@ public sealed class LumenPlayer
             8 => LumenRenderBlend.Add,
             _ => parentBlend,
         };
+        if (_texts.TryGetValue(instance.CharacterId, out var textField))
+            appendText(instance, textField, transform, color, blend, maskDepth, quads);
         if (_shapes.TryGetValue(instance.CharacterId, out var shape))
         {
             foreach (var geometry in shape.Geometry)
@@ -2157,6 +2161,28 @@ public sealed class LumenPlayer
     {
         var position = transform.Transform(vertex.X, vertex.Y);
         return new LumenRenderVertex(position.X, position.Y, vertex.U, vertex.V);
+    }
+
+    // A text field shows what a script put in its `text` (the authored placeholder is not drawn): one
+    // quad over its box whose native surface key carries everything the host needs to rasterize it.
+    private void appendText(DisplayInstance instance, LmbTextDefinition field, LumenMatrix transform, ColorState color,
+        LumenRenderBlend blend, byte maskDepth, ImmutableArray<LumenRenderQuad>.Builder quads)
+    {
+        if (!instance.Variables.TryGetValue("text", out var value) || toAvmString(value) is not { Length: > 0 } text
+            || field.BoundsIndex >= _movie.Bounds.Length)
+            return;
+        var box = _movie.Bounds[(int)field.BoundsIndex];
+        var html = field.HtmlStringIndex < _movie.Strings.Length ? _movie.Strings[(int)field.HtmlStringIndex].Value : "";
+        var key = LumenTextSurface.Key(text, box.Right - box.Left, box.Bottom - box.Top, field.FontSize,
+            LumenTextSurface.Align(html), LumenTextSurface.Colour(html));
+        LumenRenderVertex corner(float x, float y, float u, float v)
+        {
+            var position = transform.Transform(x, y);
+            return new LumenRenderVertex(position.X, position.Y, u, v);
+        }
+        quads.Add(new LumenRenderQuad(0, corner(box.Left, box.Top, 0, 0), corner(box.Right, box.Top, 1, 0),
+            corner(box.Right, box.Bottom, 1, 1), corner(box.Left, box.Bottom, 0, 1), color.Multiply, color.Add, blend,
+            NativeSurface: key, MaskDepth: maskDepth));
     }
 
     private static LumenRenderVertex transformNativeVertex(

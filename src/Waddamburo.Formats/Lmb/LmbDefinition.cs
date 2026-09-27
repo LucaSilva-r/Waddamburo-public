@@ -11,6 +11,7 @@ public static class LmbTags
     public const uint DoAction = 0x000C;
     public const uint DefineShape = 0xF022;
     public const uint ShapeGeometry = 0xF023;
+    public const uint DefineText = 0x0025;
     public const uint DefineSprite = 0x0027;
     public const uint FrameLabel = 0x002B;
     public const uint StringPool = 0xF001;
@@ -187,7 +188,22 @@ public sealed record LmbMovieDefinition(
     ImmutableArray<LmbAction> Actions,
     ImmutableArray<LmbShapeDefinition> Shapes,
     ImmutableArray<LmbSpriteDefinition> Sprites,
-    ImmutableArray<LmbRecord> UninterpretedRecords);
+    ImmutableArray<LmbRecord> UninterpretedRecords)
+{
+    /// <summary>Dynamic text fields (tag 0x0025), which scripts fill through <c>text</c>.</summary>
+    public ImmutableArray<LmbTextDefinition> Texts { get; init; } = [];
+}
+
+/// <summary>
+/// A dynamic text field (tag 0x0025, 16 words; song_select's ranking names). Word 0 is the character
+/// id, word 2 the string index of its initial HTML (alignment, font face and size, colour), word 5 the
+/// bounds pool index of its box; word 11 is the font size as a float. The other words are unknown.
+/// </summary>
+public sealed record LmbTextDefinition(uint CharacterId, uint HtmlStringIndex, uint BoundsIndex, float FontSize,
+    ImmutableArray<uint> Words, LmbRecord RawRecord)
+{
+    public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
+}
 
 public sealed record LmbSemanticValidationContext
 {

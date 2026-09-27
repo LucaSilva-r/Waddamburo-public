@@ -152,6 +152,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>Plays a cue the game itself plays (the countdown's ticks and voices).</summary>
     public Action<string, int>? PlayCue { get; init; }
 
+    /// <summary>
+    /// The cursor moved onto a song: fetch its score windows now, the movie asks for them once the
+    /// cursor settles (traced 0.4 s later; fast scrolling never asks).
+    /// </summary>
+    public Action<SongSelectSong>? RankingWanted { get; init; }
+
+    /// <summary>The score windows known for a song: per course (easy..ura), up to three players' bests.</summary>
+    public Func<SongSelectSong, IReadOnlyList<RankingEntry>?[]?>? Rankings { get; init; }
+
     public SongSelectHostBinding(
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
@@ -225,6 +234,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
             lumen.RegisterMethod("RequestSongBoardTexture_Long", call => publishBoard(call, SongBoardTextureKind.Expanded));
             lumen.RegisterMethod("NotifyStopBGM", notifyPreview);
+            lumen.RegisterMethod("GetScore", static _ => LumenHostValue.FromBoolean(true));
+            lumen.RegisterMethod("GetRankingScore", publishRanking);
             lumen.RegisterMethod("NotifyOpenFolder", _ => openFolder());
             lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
@@ -289,8 +300,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 // ponytail: jukuLevel -1 (none); the game sent 12 for a carded player (session13-card), from
                 // player data we do not keep yet.
                 LumenHostValue.FromNumber(-1));
-            invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0),
-                LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
+            // (player, myScore, otherwiseScore, localrankingScore): traced (p, 2, 0, 1) for a carded
+            // player, all 0 for an empty drum.
+            var carded = _crowns[player] is not null && _sides.Contains(player);
+            invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(carded ? 2 : 0),
+                LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(carded ? 1 : 0));
         }
         _parts?.ShowGuestNames(_sides);
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[0].Name);
@@ -363,10 +377,28 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return LumenHostValue.Undefined;
     }
 
+    // Answered inside the call (the movie only stores RankingScore while it waits): per course 0-4
+    // (ura 4), ranks 0-2, empty ones as (course, rank, 0, "") (traced).
+    private LumenHostValue publishRanking(LumenHostCall call)
+    {
+        var rankings = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
+            ? Rankings?.Invoke(song) : null;
+        for (var course = 0; course < 5; course++)
+            for (var rank = 0; rank < 3; rank++)
+            {
+                var entry = rankings?[course] is { } lines && rank < lines.Count ? lines[rank] : null;
+                invoke("RankingScore", LumenHostValue.FromNumber(course), LumenHostValue.FromNumber(rank),
+                    LumenHostValue.FromNumber(entry?.Score ?? 0), LumenHostValue.FromString(entry?.Name ?? ""));
+            }
+        return LumenHostValue.FromBoolean(true);
+    }
+
     private LumenHostValue notifyPreview(LumenHostCall call)
     {
         var category = integer(call, 0);
         var song = integer(call, 1);
+        if (RankingWanted is { } wanted && _session.Catalog.TryGetSong(category, song, out var selected))
+            wanted(selected);
         if (_session.Preview(category, song) is null)
             clearSelectionSurfaces();
         return LumenHostValue.Undefined;

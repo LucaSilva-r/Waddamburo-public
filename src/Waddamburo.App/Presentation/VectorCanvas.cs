@@ -77,7 +77,8 @@ internal sealed class VectorCanvas(int width, int height, int scale, string font
     /// The game's outlined title text, cropped to its ink and centred at (<paramref name="centreX"/>,
     /// <paramref name="centreY"/>), shrunk to fit <paramref name="maxWidth"/> x <paramref name="maxHeight"/>.
     /// </summary>
-    public void Text(string text, float centreX, float centreY, float maxWidth, float maxHeight, uint outlineRgb = 0x000000)
+    public void Text(string text, float centreX, float centreY, float maxWidth, float maxHeight, uint outlineRgb = 0x000000,
+        float anchorX = 0.5f, (byte R, byte G, byte B)? tint = null)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
@@ -87,19 +88,24 @@ internal sealed class VectorCanvas(int width, int height, int scale, string font
         int left = sw, right = -1, top = sh, bottom = -1;
         for (var y = 0; y < sh; y++)
             for (var x = 0; x < sw; x++)
-                if (surface.Pixels[(y * sw + x) * 4 + 3] != 0)
+                if (coverage(surface, (y * sw + x) * 4, tint is not null) != 0)
                 {
                     left = Math.Min(left, x); right = Math.Max(right, x);
                     top = Math.Min(top, y); bottom = Math.Max(bottom, y);
                 }
         if (right < 0)
             return;
-        Image(surface, (left, top, right - left + 1, bottom - top + 1), centreX, centreY, maxWidth, maxHeight, upscale: false);
+        Image(surface, (left, top, right - left + 1, bottom - top + 1), centreX, centreY, maxWidth, maxHeight, upscale: false,
+            anchorX, tint);
     }
 
-    /// <summary>An image (or part of one) centred at a point and fitted into a box, keeping its aspect.</summary>
+    /// <summary>
+    /// An image (or part of one) fitted into a box, keeping its aspect: centred at a point, or with
+    /// <paramref name="anchorX"/> 1 ending at it (0 starting). <paramref name="tint"/> draws only the
+    /// white fill of outlined title text, in that colour.
+    /// </summary>
     public void Image(RgbaTextSurface image, (int X, int Y, int W, int H)? part, float centreX, float centreY,
-        float maxWidth, float maxHeight, bool upscale = true)
+        float maxWidth, float maxHeight, bool upscale = true, float anchorX = 0.5f, (byte R, byte G, byte B)? tint = null)
     {
         var (sx, sy, sw, sh) = part ?? (0, 0, (int)image.Width, (int)image.Height);
         float s = Scale;
@@ -107,18 +113,34 @@ internal sealed class VectorCanvas(int width, int height, int scale, string font
         if (!upscale)
             factor = Math.Min(1f, factor);
         int outWidth = (int)(sw * factor), outHeight = (int)(sh * factor);
-        int originX = (int)(centreX * s - outWidth / 2f), originY = (int)(centreY * s - outHeight / 2f);
+        int originX = (int)(centreX * s - outWidth * anchorX), originY = (int)(centreY * s - outHeight / 2f);
         var stride = (int)image.Width;
         for (var y = 0; y < outHeight; y++)
             for (var x = 0; x < outWidth; x++)
             {
                 var source = ((sy + Math.Min(sh - 1, (int)(y / factor))) * stride + sx + Math.Min(sw - 1, (int)(x / factor))) * 4;
-                var alpha = image.Pixels[source + 3] / 255f;
+                var alpha = coverage(image, source, tint is not null);
+                // Tinted text shrinks a lot (a 64 px title line into a 20 px field): average the
+                // source pixels under this one instead of picking one.
+                if (tint is not null && factor < 1)
+                {
+                    int x0 = (int)(x / factor), x1 = Math.Min(sw, Math.Max(x0 + 1, (int)((x + 1) / factor)));
+                    int y0 = (int)(y / factor), y1 = Math.Min(sh, Math.Max(y0 + 1, (int)((y + 1) / factor)));
+                    var sum = 0f;
+                    for (var v = y0; v < y1; v++)
+                        for (var u = x0; u < x1; u++)
+                            sum += coverage(image, ((sy + v) * stride + sx + u) * 4, true);
+                    alpha = sum / ((x1 - x0) * (y1 - y0));
+                }
                 if (alpha > 0)
                     Blend(originX + x, originY + y,
-                        (image.Pixels[source], image.Pixels[source + 1], image.Pixels[source + 2]), alpha);
+                        tint ?? (image.Pixels[source], image.Pixels[source + 1], image.Pixels[source + 2]), alpha);
             }
     }
+
+    // With a tint only the title rasterizer's white fill counts (its brightness), not its black outline.
+    private static float coverage(RgbaTextSurface image, int index, bool fillOnly) =>
+        image.Pixels[index + 3] / 255f * (fillOnly ? image.Pixels[index] / 255f : 1f);
 
     public static float Coverage(float distance) => Math.Clamp(0.5f - distance, 0f, 1f);
 

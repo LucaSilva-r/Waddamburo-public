@@ -28,6 +28,7 @@ public static class LmbSemanticReader
         var actions = ImmutableArray.CreateBuilder<LmbAction>();
         var shapes = new List<ShapeBuilder>();
         var sprites = new List<SpriteBuilder>();
+        var texts = ImmutableArray.CreateBuilder<LmbTextDefinition>();
         var uninterpreted = ImmutableArray.CreateBuilder<LmbRecord>();
         LmbMovieProperties? properties = null;
         ShapeBuilder? currentShape = null;
@@ -118,6 +119,12 @@ public static class LmbSemanticReader
                             words[17],
                             words[18..],
                             record));
+                        break;
+                    }
+                case LmbTags.DefineText:
+                    {
+                        var words = readWords(record, 16);
+                        texts.Add(new LmbTextDefinition(words[0], words[2], words[5], toSingle(words[11]), words, record));
                         break;
                     }
                 case LmbTags.DefineSprite:
@@ -231,7 +238,10 @@ public static class LmbSemanticReader
             actions.ToImmutable(),
             shapes.Select(shape => shape.Build()).ToImmutableArray(),
             sprites.Select(sprite => sprite.Build()).ToImmutableArray(),
-            uninterpreted.ToImmutable());
+            uninterpreted.ToImmutable())
+        {
+            Texts = texts.ToImmutable(),
+        };
         LmbReferenceValidator.Validate(definition, validationContext, diagnostics);
         return new ParseResult<LmbMovieDefinition>(definition, diagnostics.ToImmutable());
     }
