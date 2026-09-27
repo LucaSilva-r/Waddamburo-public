@@ -35,7 +35,7 @@ publish() { # rid native-dir out-dir extra-args...
     local rid=$1 native_dir=$2 dir=$3; shift 3
     rm -rf "$dir"
     dotnet publish src/Waddamburo.App -c Release -r "$rid" --self-contained \
-        -p:WaddamburoNativeDir="$native_dir" -p:Version="$version" -p:DebugType=none -p:GenerateDocumentationFile=false \
+        -p:WaddamburoNativeDir="$native_dir" -p:Version="$version" -p:DebugType=none -p:PublishDocumentationFile=false -p:PublishReferencesDocumentationFiles=false \
         -o "$dir" "$@"
 }
 
