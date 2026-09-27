@@ -100,7 +100,7 @@ internal static class SelfUpdate
         var percent = 0;
         Exception? failure = null;
         using var cancel = new CancellationTokenSource();
-        using var application = new SdlApplication("Waddamburo", width, height, fullscreen: fullscreen);
+        using var application = new SdlApplication(WindowTitle, width, height, fullscreen: fullscreen);
         using var pill = new PairingPill(application, fontPath, top: (720f - PairingPill.Height) / 2);
         var download = Task.Run(async () =>
         {
@@ -219,6 +219,19 @@ internal static class SelfUpdate
         Environment.GetEnvironmentVariable("APPIMAGE") is { Length: > 0 } appImage ? appImage
         : OperatingSystem.IsWindows() ? Environment.ProcessPath
         : null;
+
+    /// <summary>The window title: the release version, or "dev" and the commit for other builds.</summary>
+    public static string WindowTitle
+    {
+        get
+        {
+            var informational = typeof(SelfUpdate).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+            var commit = informational.Contains('+', StringComparison.Ordinal) ? informational.Split('+')[1] : "";
+            return currentVersion() is { } version
+                ? $"Waddamburo v{version}"
+                : $"Waddamburo dev{(commit.Length >= 7 ? $" ({commit[..7]})" : "")}";
+        }
+    }
 
     private static Version? currentVersion()
     {

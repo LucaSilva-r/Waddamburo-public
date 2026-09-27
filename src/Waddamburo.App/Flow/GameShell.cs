@@ -190,7 +190,7 @@ internal sealed class GameShell : IDisposable
             Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
 
         Application = new SdlApplication(
-            "Waddamburo",
+            Waddamburo.App.Hosting.SelfUpdate.WindowTitle,
             options.WindowWidth,
             options.WindowHeight,
             debugGpu: false,
