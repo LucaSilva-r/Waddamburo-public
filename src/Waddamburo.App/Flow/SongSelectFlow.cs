@@ -20,23 +20,25 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
 
     // The gameplay layout picked (skin included) when the difficulty selector opened, its movies
     // decoding in the background; the song's start takes it when the players match.
-    private sealed record Prefetched(SongKey Song, int Side, bool TwoPlayers,
+    private sealed record Prefetched(SongKey Song, int Side, bool TwoPlayers, bool Waiwai,
         GameplaySceneComposition.ThemedSkin? Theme, SceneDefinition Scene);
     private Prefetched? _prefetch;
 
     public override void Tick(FlowInput input)
     {
-        // Waiwai's layout depends on its charts; it loads when the song starts.
-        if (Shell.Hosts.SongSelect?.CourseSelectSong is { } picked && !Shell.Hosts.Waiwai
+        if (Shell.Hosts.SongSelect?.CourseSelectSong is { } picked
             && _prefetch?.Song != picked.Descriptor.Key && Shell.JoinedSides.Count > 0)
         {
             var twoPlayers = Shell.JoinedSides.Count == 2;
             var side = twoPlayers ? 0 : Shell.JoinedSides.Min;
+            // Waiwai's fixed layout (its charts only reshape the notes).
+            var waiwai = Shell.Hosts.Waiwai && twoPlayers && picked.Descriptor.WaiwaiComposition is not null;
             var (category, _) = find(picked.Descriptor.Key);
-            var theme = Shell.Skins.Resolve(picked.Descriptor, category);
-            var scene = GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers);
+            var theme = waiwai ? null : Shell.Skins.Resolve(picked.Descriptor, category);
+            var scene = waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
+                : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers);
             Shell.Prefetch(scene);
-            _prefetch = new(picked.Descriptor.Key, side, twoPlayers, theme, scene);
+            _prefetch = new(picked.Descriptor.Key, side, twoPlayers, waiwai, theme, scene);
             Console.WriteLine($"Prefetching gameplay for '{picked.Descriptor.Key}'.");
         }
         // The mode-switch folder: reload as the other song select (normal <-> Waiwai).
@@ -100,11 +102,6 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
         var (category, song) = find(request.Song);
         var side = request.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
         var twoPlayers = request.Players.Length == 2;
-        var prefetched = _prefetch is { } ready && ready.Song == request.Song && ready.Side == side
-            && ready.TwoPlayers == twoPlayers ? ready : null;
-        _prefetch = null;
-        // Every song gets its themed skin or a fresh random original mix.
-        var theme = prefetched is not null ? prefetched.Theme : Shell.Skins.Resolve(song.Descriptor, category);
         // Waiwai: both players on the song's Waiwai layout (its duet charts reshaped by section).
         WaiwaiComposition? waiwai = null;
         if (Shell.Hosts.Waiwai && charts.Length == 2 && song.Descriptor.WaiwaiComposition is { } compositionAsset)
@@ -118,6 +115,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
                     || Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RARE") == "1"); // diagnostic: force it
             charts = [left, right];
         }
+        var prefetched = _prefetch is { } ready && ready.Song == request.Song && ready.Side == side
+            && ready.TwoPlayers == twoPlayers && ready.Waiwai == waiwai is not null ? ready : null;
+        _prefetch = null;
+        // Every song gets its themed skin or a fresh random original mix.
+        var theme = prefetched is not null ? prefetched.Theme : waiwai is not null ? null
+            : Shell.Skins.Resolve(song.Descriptor, category);
         if (Shell.Sounds?.Gameplay is { } sounds)
         {
             sounds.Waiwai = waiwai is not null;
@@ -127,10 +130,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
         // session's endless credit stays on the last one.
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), Math.Min(++Shell.SongsPlayed, 8));
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
-        Shell.Catalog.Replace(waiwai is not null
+        Shell.Catalog.Replace(prefetched?.Scene ?? (waiwai is not null
             ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
-            : prefetched?.Scene ?? GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
-                twoPlayers: twoPlayers));
+            : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
+                twoPlayers: twoPlayers)));
         gameplay.Prepare(charts, song, side, waiwai);
         Shell.Show(FlowScenes.Gameplay);
     }
