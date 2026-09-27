@@ -26,9 +26,9 @@ jobs:
             file: Waddamburo.exe
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -41,7 +41,7 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then export WADDAMBURO_VERSION=${GITHUB_REF_NAME#v}; fi
           eng/package.sh ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.file }}
           path: out/package/${{ matrix.file }}
@@ -51,7 +51,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
