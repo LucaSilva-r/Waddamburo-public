@@ -83,7 +83,7 @@ internal static class SceneTextures
         Func<LumenNativeSurfaceKey, RenderTextureId?> surfaces) =>
         LumenRenderFrameAdapter.Compose(
             snapshot,
-            RenderColor.WaddamburoBlue,
+            RenderColor.Black,
             index => index < textures.Length
                 ? textures[index]
                 : throw new InvalidDataException($"{owner} snapshot references missing texture {index}."),

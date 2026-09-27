@@ -240,6 +240,23 @@ public sealed class LumenPlayerTests
         Assert.Equal(LumenRenderColor.Transparent, atStartOfPresentationInterval.MultiplyColor);
     }
 
+    [Fact]
+    public void RenderSnapshotDoesNotExposeHiddenChildPositionsWhenParentAppears()
+    {
+        var player = new LumenPlayer(createRevealMovie(), 1280, 720);
+        var hidden = Assert.Single(player.CreateRenderSnapshot(1).Quads);
+
+        player.Advance();
+        var firstPresented = Assert.Single(player.CreateRenderSnapshot(0).Quads);
+        var current = Assert.Single(player.CreateRenderSnapshot(1).Quads);
+
+        Assert.Equal(0, hidden.MultiplyColor.Alpha);
+        Assert.NotEqual(hidden.TopLeft, current.TopLeft);
+        Assert.Equal(current.TopLeft, firstPresented.TopLeft);
+        Assert.Equal(current.TopRight, firstPresented.TopRight);
+        Assert.Equal(current.MultiplyColor, firstPresented.MultiplyColor);
+    }
+
     [Theory]
     [InlineData(-0.01f)]
     [InlineData(1.01f)]
@@ -1951,6 +1968,38 @@ public sealed class LumenPlayerTests
         Assert.Equal(LumenRenderMaskOperation.Push, composed[0].MaskOperation);
         Assert.Equal(0, composed[^1].MaskDepth);
         Assert.Empty(player.Diagnostics);
+    }
+
+    private static LmbMovieDefinition createRevealMovie()
+    {
+        var geometry = new uint[]
+        {
+            bits(0), bits(0), bits(0), bits(0),
+            bits(100), bits(0), bits(1), bits(0),
+            bits(100), bits(50), bits(1), bits(1),
+            bits(0), bits(50), bits(0), bits(1),
+            4, 0x00410000,
+        };
+        var file = createLmb(
+            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, bits(60)),
+            record(LmbTags.StringPool, stringPool("")),
+            words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
+            words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(30), bits(40)),
+            words(LmbTags.TranslationPool, 1, bits(10), bits(20)),
+            record(LmbTags.ActionPool, actionPool([0x00])),
+            words(LmbTags.DefineShape, 42, 0, 0, 1),
+            words(LmbTags.ShapeGeometry, geometry),
+            words(LmbTags.DefineSprite, 8, 0, 0, 0, 2, 0, 0),
+            words(LmbTags.ShowFrame, 0, 1),
+            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00010000, 0x00030000, 0, 0x80000000, 0, uint.MaxValue, 0, 0),
+            words(LmbTags.ShowFrame, 1, 1),
+            words(LmbTags.PlaceObject, 42, 1, 0, 0, 0x00020000, 0x00030000, 0, 0, uint.MaxValue, uint.MaxValue, 0, 0),
+            words(LmbTags.DefineSprite, 7, 0, 0, 0, 2, 0, 0),
+            words(LmbTags.ShowFrame, 0, 1),
+            words(LmbTags.PlaceObject, 8, 1, 0, 0, 0x00010000, 0x00030000, 0, 0x80000000, 1, uint.MaxValue, 0, 0),
+            words(LmbTags.ShowFrame, 1, 1),
+            words(LmbTags.PlaceObject, 8, 1, 0, 0, 0x00020000, 0x00030000, 0, 0, 0, uint.MaxValue, 0, 0));
+        return LmbSemanticReader.Read(file, validationContext: new LmbSemanticValidationContext(textureCount: 5)).Value;
     }
 
     private static LmbMovieDefinition createMovie(

@@ -25,7 +25,7 @@ internal static class SoundBankProbe
             "Up/Down: change bank; Right/K: next cue; Left/D: previous cue; " +
             "Space/F/Enter: replay; close the window to stop.");
 
-        var frame = new RenderFrame(RenderColor.WaddamburoBlue, []);
+        var frame = new RenderFrame(RenderColor.Black, []);
         var previousKeys = SdlKeyboardSnapshot.Empty;
         var selectedBank = 0;
         var selected = 0;

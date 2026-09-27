@@ -230,6 +230,10 @@ internal sealed class SystemIndicators
         return new LumenScenePlayer(1280, 720, visible).CreateRenderSnapshot(interpolation);
     }
 
+    /// <summary>The network icon alone, for the black screen between scene loads.</summary>
+    public LumenRenderSnapshot CreateNetworkSnapshot(float interpolation) =>
+        new LumenScenePlayer(1280, 720, [Scene.Player.Layers[0]]).CreateRenderSnapshot(interpolation);
+
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
         if (!player.TryInvokeCallback(name, arguments))

@@ -8,7 +8,8 @@ public readonly record struct RenderColor(float Red, float Green, float Blue, fl
 
     public static RenderColor Transparent { get; } = new(0f, 0f, 0f, 0f);
 
-    public static RenderColor WaddamburoBlue { get; } = new(0.035f, 0.075f, 0.14f, 1f);
+    public static RenderColor Black { get; } = new(0f, 0f, 0f, 1f);
+
 }
 
 public readonly record struct RenderRectangle(float X, float Y, float Width, float Height)

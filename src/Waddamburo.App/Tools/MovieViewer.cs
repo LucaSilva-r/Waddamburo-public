@@ -72,7 +72,7 @@ internal static class MovieViewer
             : null;
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
                 player.CreateRenderSnapshot((float)interpolationFraction),
-                RenderColor.WaddamburoBlue,
+                RenderColor.Black,
                 index => index < textureIds.Length
                     ? textureIds[index]
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."));

@@ -243,7 +243,7 @@ try
     var checkerboard = createCheckerboard();
     var texture = application.UploadRgba8(8, 8, checkerboard);
     var frame = new RenderFrame(
-        RenderColor.WaddamburoBlue,
+        RenderColor.Black,
         [RenderQuad.FromRectangles(
             texture,
             new RenderRectangle(0.25f, 0.18f, 0.5f, 0.64f),

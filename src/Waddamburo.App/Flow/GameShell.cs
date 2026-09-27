@@ -114,6 +114,12 @@ internal sealed class GameShell : IDisposable
     private readonly Dictionary<SceneId, FlowScene> _scenes;
     private readonly WaiwaiOutcome? _diagnosticWaiwai;
     private RenderTextureId[] _textures = [];
+    private RenderTextureId[] _heldTextures = [];
+    private RenderFrame? _heldFrame;
+    private RenderFrame? _lastPresentedFrame;
+    private bool _lastPresentedHadIntermission;
+    private int _holdUntilTick;
+    private int _heldPresentationsRemaining;
     private SystemIndicators? _indicators;
     private RenderTextureId[] _indicatorTextures = [];
     private SceneId? _indicatorScene;
@@ -386,6 +392,7 @@ internal sealed class GameShell : IDisposable
             _attract.Dispose();
             Overlay.Dispose();
             SceneTextures.Release(Application, _textures);
+            SceneTextures.Release(Application, _heldTextures);
             SceneTextures.Release(Application, _indicatorTextures);
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
@@ -514,8 +521,24 @@ internal sealed class GameShell : IDisposable
 
     private void switchScene(Action transition)
     {
+        if (_heldFrame is null && _lastPresentedFrame is not null)
+        {
+            // The old movie's textures must survive while its final frame is being presented.
+            // A cleared intermission may already have released its textures, so hold black with
+            // the network icon in that case, as the original game did while loading.
+            if (Overlay.IsShown || _lastPresentedHadIntermission || Active.Id == FlowScenes.Movie)
+                _heldFrame = blackLoadingFrame();
+            else
+            {
+                _heldFrame = _lastPresentedFrame;
+                _heldTextures = _textures;
+            }
+        }
+        _holdUntilTick = Tick + 2;
+        _heldPresentationsRemaining = 1;
         flowOf(Active.Id).Exit(Active.Id);
-        SceneTextures.Release(Application, _textures);
+        if (!ReferenceEquals(_heldTextures, _textures))
+            SceneTextures.Release(Application, _textures);
         _textures = [];
         transition();
         activate();
@@ -613,6 +636,16 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame createFrame(double interpolationFraction)
     {
+        if (_heldFrame is { } held)
+        {
+            var needsFirstPresentation = _heldPresentationsRemaining > 0;
+            _heldPresentationsRemaining = 0;
+            if (needsFirstPresentation || Tick < _holdUntilTick)
+                return held;
+            SceneTextures.Release(Application, _heldTextures);
+            _heldTextures = [];
+            _heldFrame = null;
+        }
         var interpolation = (float)interpolationFraction;
         Titles.UploadCompleted();
         if (DonRenderer is not null)
@@ -622,11 +655,22 @@ internal sealed class GameShell : IDisposable
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads;
         // Depth order (traced): scene, msg_coins (-950), intermission (-2000), network/card (-3000).
-        return new RenderFrame(
+        var result = new RenderFrame(
             frame.ClearColor,
             frame.Quads.Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
                 .Concat(indicatorQuads(true)).Concat(pill()).Concat(_performance.Quads()).ToArray(),
             frame.ContentAspectRatio);
+        _lastPresentedFrame = result;
+        _lastPresentedHadIntermission = Overlay.IsShown;
+        return result;
+    }
+
+    private RenderFrame blackLoadingFrame()
+    {
+        var network = _indicators is null ? []
+            : SceneTextures.Compose(_indicators.CreateNetworkSnapshot(1), _indicatorTextures,
+                "Network", Titles.Resolve).Quads;
+        return new RenderFrame(RenderColor.Black, network, 1280d / 720d);
     }
 
     /// <summary>A paired card was rejected by the server (shown once).</summary>

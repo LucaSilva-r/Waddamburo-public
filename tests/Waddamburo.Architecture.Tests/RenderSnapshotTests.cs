@@ -116,10 +116,10 @@ public sealed class RenderSnapshotTests
 
         var frame = LumenRenderFrameAdapter.Compose(
             snapshot,
-            RenderColor.WaddamburoBlue,
+            RenderColor.Black,
             textureIndex => new RenderTextureId(textureIndex + 100));
 
-        Assert.Equal(RenderColor.WaddamburoBlue, frame.ClearColor);
+        Assert.Equal(RenderColor.Black, frame.ClearColor);
         Assert.Equal([107u, 103u], frame.Quads.Select(command => command.Texture.Value));
         Assert.Equal(new RenderVertex(0.25f, 0.25f, 0.1f, 0.2f), frame.Quads[0].TopLeft);
         Assert.Equal(new RenderVertex(0.5f, 0.5f, 0.3f, 0.4f), frame.Quads[1].TopLeft);
@@ -143,7 +143,7 @@ public sealed class RenderSnapshotTests
 
         var frame = LumenRenderFrameAdapter.Compose(
             snapshot,
-            RenderColor.WaddamburoBlue,
+            RenderColor.Black,
             index => new RenderTextureId(index + 10),
             surface => surface == ready ? new RenderTextureId(99) : null);
 
@@ -165,7 +165,7 @@ public sealed class RenderSnapshotTests
         var snapshot = new LumenRenderSnapshot(1280, 720, []);
         var frame = LumenRenderFrameAdapter.Compose(
             snapshot,
-            RenderColor.WaddamburoBlue,
+            RenderColor.Black,
             _ => throw new InvalidOperationException());
 
         Assert.Equal(
@@ -176,7 +176,7 @@ public sealed class RenderSnapshotTests
     [Fact]
     public void FrameWithoutContentAspectUsesFullDrawableSurface()
     {
-        var frame = new RenderFrame(RenderColor.WaddamburoBlue, []);
+        var frame = new RenderFrame(RenderColor.Black, []);
 
         Assert.Equal(new RenderViewport(0, 0, 1000, 700), frame.ResolveViewport(1000, 700));
     }
@@ -198,7 +198,7 @@ public sealed class RenderSnapshotTests
 
         var frame = LumenRenderFrameAdapter.Compose(
             snapshot,
-            RenderColor.WaddamburoBlue,
+            RenderColor.Black,
             _ => new RenderTextureId(1));
 
         var quad = Assert.Single(frame.Quads);
@@ -217,7 +217,7 @@ public sealed class RenderSnapshotTests
 
         var frame = LumenRenderFrameAdapter.Compose(
             snapshot,
-            RenderColor.WaddamburoBlue,
+            RenderColor.Black,
             _ => new RenderTextureId(1));
 
         Assert.Equal(RenderBlend.Add, Assert.Single(frame.Quads).Blend);

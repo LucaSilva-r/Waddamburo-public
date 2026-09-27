@@ -31,6 +31,10 @@ reads input, advances the active scene's movies, and hands the tick to that scen
 Every scene change goes through `GameShell.Show` (or a pending Lumen transition), which calls the
 old scene's `Exit` and the new one's `Enter`; scene-specific setup and teardown (music, attract
 movie, result timers) lives there, not in the loop.
+The renderer keeps the last complete frame until the new movie has advanced two ticks, with at least
+one held presentation. If an intermission cover was showing, it uses black with the network icon
+instead. Scene textures are released when the held frame is no longer displayed. Uncovered pixels
+use black throughout the app.
 
 ## Checking a flow change
 

@@ -87,7 +87,7 @@ internal static class SceneViewer
                 layer.TextureCount)));
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
                 scene.CreateRenderSnapshot((float)interpolationFraction),
-                RenderColor.WaddamburoBlue,
+                RenderColor.Black,
                 index => index < textureIds.Length
                     ? textureIds[index]
                     : throw new InvalidDataException($"Scene snapshot references missing texture {index}."));

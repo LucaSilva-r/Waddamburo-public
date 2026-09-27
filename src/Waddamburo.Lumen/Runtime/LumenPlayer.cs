@@ -1146,6 +1146,7 @@ public sealed class LumenPlayer
             Color = source.Color,
             PreviousTransform = source.PreviousTransform,
             PreviousMultiply = source.PreviousMultiply,
+            PreviousVisible = source.PreviousVisible,
             ScriptTransformed = source.ScriptTransformed,
             ScriptColored = source.ScriptColored,
             ClipDepth = source.ClipDepth,
@@ -1912,6 +1913,10 @@ public sealed class LumenPlayer
     {
         if (instance.Removed || !instance.Visible)
             return;
+        // A newly revealed or abruptly moved parent must show its children at the same tick.
+        // Otherwise hidden child positions are interpolated under the parent's new opacity.
+        var childInterpolationFraction = interpolationFraction < 1 && isInterpolationCut(instance)
+            ? 1 : interpolationFraction;
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
         var color = local.Color.Then(parentColor);
@@ -1991,7 +1996,7 @@ public sealed class LumenPlayer
             if (child.ClipDepth is { } end && end > child.Depth)
             {
                 var geometry = ImmutableArray.CreateBuilder<LumenRenderQuad>();
-                appendInstance(child, transform, color, blend, interpolationFraction, geometry);
+                appendInstance(child, transform, color, blend, childInterpolationFraction, geometry);
                 if (geometry.Any(quad => quad.MaskOperation != LumenRenderMaskOperation.Draw))
                 {
                     reportOnce("LUM_NESTED_MASK_SHAPE", child.CharacterId, child.Frame,
@@ -2009,7 +2014,7 @@ public sealed class LumenPlayer
             for (var index = 0; index < masks.Count; index++)
                 foreach (var quad in masks[index].Quads)
                     quads.Add(quad with { MaskOperation = LumenRenderMaskOperation.Push, MaskDepth = (byte)(maskDepth + index) });
-            appendInstance(child, transform, color, blend, interpolationFraction, quads, (byte)(maskDepth + masks.Count));
+            appendInstance(child, transform, color, blend, childInterpolationFraction, quads, (byte)(maskDepth + masks.Count));
             for (var index = masks.Count - 1; index >= 0; index--)
                 foreach (var quad in masks[index].Quads)
                     quads.Add(quad with { MaskOperation = LumenRenderMaskOperation.Pop, MaskDepth = (byte)(maskDepth + index + 1) });
@@ -2059,6 +2064,7 @@ public sealed class LumenPlayer
             return;
         instance.PreviousTransform = instance.Transform;
         instance.PreviousMultiply = instance.Color.Multiply;
+        instance.PreviousVisible = instance.Visible;
         foreach (var child in instance.Children.Values)
             snapshotInstances(child);
     }
@@ -2069,6 +2075,7 @@ public sealed class LumenPlayer
             return;
         instance.PreviousTransform = instance.Transform;
         instance.PreviousMultiply = instance.Color.Multiply;
+        instance.PreviousVisible = instance.Visible;
         foreach (var child in instance.Children.Values)
             resetInterpolation(child);
     }
@@ -2082,19 +2089,14 @@ public sealed class LumenPlayer
 
     private static InterpolatedState interpolate(DisplayInstance instance, float fraction)
     {
-        if (fraction >= 1 || instance.PreviousTransform is not LumenMatrix previousTransform
-            || instance.PreviousMultiply is not LumenRenderColor previousMultiply)
+        if (fraction >= 1 || isInterpolationCut(instance))
         {
             return new InterpolatedState(instance.Transform, instance.Color);
         }
 
+        var previousTransform = instance.PreviousTransform!.Value;
+        var previousMultiply = instance.PreviousMultiply!.Value;
         var currentTransform = instance.Transform;
-        if (Math.Abs(currentTransform.X - previousTransform.X)
-            + Math.Abs(currentTransform.Y - previousTransform.Y) > TranslationCutThreshold
-            || colorDistanceExceeds(previousMultiply, instance.Color.Multiply, ColorCutThreshold))
-        {
-            return new InterpolatedState(instance.Transform, instance.Color);
-        }
 
         return new InterpolatedState(
             new LumenMatrix(
@@ -2113,6 +2115,14 @@ public sealed class LumenPlayer
                     lerp(previousMultiply.Alpha, instance.Color.Multiply.Alpha, fraction)),
             });
     }
+
+    private static bool isInterpolationCut(DisplayInstance instance) =>
+        instance.PreviousTransform is not LumenMatrix previousTransform
+        || instance.PreviousMultiply is not LumenRenderColor previousMultiply
+        || instance.PreviousVisible == false && instance.Visible
+        || Math.Abs(instance.Transform.X - previousTransform.X)
+            + Math.Abs(instance.Transform.Y - previousTransform.Y) > TranslationCutThreshold
+        || colorDistanceExceeds(previousMultiply, instance.Color.Multiply, ColorCutThreshold);
 
     private static bool colorDistanceExceeds(
         LumenRenderColor previous,
@@ -2197,6 +2207,8 @@ public sealed class LumenPlayer
         public LumenMatrix? PreviousTransform { get; set; }
 
         public LumenRenderColor? PreviousMultiply { get; set; }
+
+        public bool? PreviousVisible { get; set; }
 
         public SortedDictionary<long, DisplayInstance> Children { get; } = [];
 
