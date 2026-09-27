@@ -10,6 +10,7 @@ using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
+using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -155,7 +156,9 @@ internal sealed class GameShell : IDisposable
 
     // Home: the "who's playing?" screen before the entry (stored accounts, guests, friends, in-game login).
     private PlayerSetupFlow? _setup;
-    private PlayerSetupView? _setupView;
+    private EntrySetupOverlay? _entryOverlay;
+    private readonly bool[] _setupLookSet = new bool[2], _setupReady = new bool[2];
+    private readonly Waddamburo.Game.Don.DonLook?[] _setupLook = new Waddamburo.Game.Don.DonLook?[2];
 
     // Cabinet mode only (cabinet_token set, no home account).
     private readonly CabinetPairing? _pairing;
@@ -403,14 +406,20 @@ internal sealed class GameShell : IDisposable
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
-            PlayerName = side => TaikoGuest.Profiles[side]?.Name,
+            // Home boards show the account's public name (or Guest), drawn by the entry overlay.
+            PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : TaikoGuest.Profiles[side]?.Name,
         };
         if (Arcade.Home && Options.Accounts is { } setupBook)
         {
-            _setupView = new PlayerSetupView(Application, options.FontPath);
+            _entryOverlay = new EntrySetupOverlay(Application, options.FontPath);
             _setup = new PlayerSetupFlow(setupBook, Arcade.Server, Arcade.ServerInsecure, clientFor,
                 Path.Combine(Path.GetDirectoryName(options.ScoresPath) ?? ".", "avatars"));
             _setup.Confirmed += startWithPlayers;
+            _setup.Cancelled += () =>
+            {
+                Hosts.EntrySetup = false;
+                _returnToAttract = true;
+            };
         }
         _loader = new LumenGameSceneLoader(new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)), Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
@@ -590,20 +599,30 @@ internal sealed class GameShell : IDisposable
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
         keys = scene.MapKeys(drumPulses(keys));
-        // Home: Tab in the entry goes back to the player setup with the current players (the entry waits).
+        // Home: Tab in the entry goes back to the player setup with the current players.
         if (_setup is { IsOpen: false } reopen && Active.Id == FlowScenes.Entry && keys.IsDown(SdlKeyboardKey.Tab))
         {
+            ScoreProfile?[] profiles = [.. TaikoGuest.Profiles];
+            int[] joined = [.. JoinedSides];
             Sounds?.StopAll();
-            reopen.Reopen(TaikoGuest.Profiles, JoinedSides);
+            beginSetup();
+            reopen.Reopen(profiles, joined);
             return;
         }
-        // Home: the player setup screen takes the input while it is open; the scene behind it waits.
+        // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
         if (_setup is { } setup)
         {
             var open = setup.IsOpen;
             setup.Tick(open ? keys : SdlKeyboardSnapshot.Empty);
+            if (open && setup.IsOpen && Active.Id == FlowScenes.Entry && Hosts.Entry is { SetupMode: true } entry)
+            {
+                applySetup(entry, setup.Columns());
+                setupArrows().Advance();
+            }
+            if (open && Tick % 50 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TRACE") == "1")
+                Console.WriteLine("[setup] " + Tick + ": " + string.Join(" | ", setup.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
             if (open)
-                return;
+                keys = SdlKeyboardSnapshot.Empty;
         }
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
             Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
@@ -807,9 +826,8 @@ internal sealed class GameShell : IDisposable
         // Depth order (traced): scene, msg_coins (-950), intermission (-2000), network/card (-3000).
         var result = new RenderFrame(
             frame.ClearColor,
-            frame.Quads.Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
+            frame.Quads.Concat(entryOverlay((float)interpolation)).Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
                 .Concat(indicatorQuads(true))
-                .Concat(_setup is { IsOpen: true } setup && _setupView is { } view ? view.Quads(setup.Columns()) : [])
                 .Concat(pill())
                 .Concat(_performance.Quads()).ToArray(),
             frame.ContentAspectRatio);
@@ -840,8 +858,85 @@ internal sealed class GameShell : IDisposable
             startWithPlayers([.. Enumerable.Range(0, 2).Select(index => index < stored.Count ? stored[index].Profile : null)], [true, true]);
             return true;
         }
+        Sounds?.StopAll();
+        beginSetup();
         setup.Open(side);
         return true;
+    }
+
+    // The player setup is the entry itself: both stands up (DON_BOTH), nobody joined yet, the menus
+    // hidden (EntrySceneHost.SetupMode). Confirming reloads the entry with the chosen players.
+    private void beginSetup()
+    {
+        ResetPlayers();
+        SongsPlayed = 0;
+        Array.Clear(_setupLookSet);
+        Array.Clear(_setupReady);
+        Hosts.EntrySetup = true;
+        Hosts.EntryTrigger = 2;
+        _indicatorScene = null;
+        Show(FlowScenes.Entry);
+    }
+
+    // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
+    // the entry's own costume flash and cue when it locks in.
+    private void applySetup(EntrySceneHost entry, SetupColumn[] columns)
+    {
+        for (var side = 0; side < 2; side++)
+        {
+            var column = columns[side];
+            var choice = column.Choice;
+            entry.SetSetupSide(side, choice.HasDon, board: true);
+            if (choice.HasDon && (!_setupLookSet[side] || _setupLook[side] != choice.Look))
+            {
+                Don?.SetLook(side, choice.Look);
+                _setupLook[side] = choice.Look;
+                _setupLookSet[side] = true;
+            }
+            if (column.Ready && !_setupReady[side])
+                entry.CostumeChanged(side);
+            _setupReady[side] = column.Ready;
+        }
+        // Both drums show their choice: no "hit the drum to start" bubble during the setup.
+        _indicators?.SetupPanels(false, false);
+    }
+
+    // The entry's own animated arrows (SetupArrows), per loaded entry; anchored on each stand.
+    private SetupArrows? _setupArrows;
+    private LumenGameSceneInstance? _setupArrowsScene;
+    private static readonly (float X, float Y)[] ArrowAnchors = [(150, 430), (1130, 430)];
+    private const float ArrowGap = 136, ArrowScale = 0.6f;
+
+    private SetupArrows setupArrows()
+    {
+        if (_setupArrows is null || _setupArrowsScene != Active)
+        {
+            _setupArrows = new SetupArrows(Active.Layers[0].Content.Definition);
+            _setupArrowsScene = Active;
+        }
+        return _setupArrows;
+    }
+
+    // Home players' names over the entry's boards, and the setup's arrows and option text.
+    private IEnumerable<RenderQuad> entryOverlay(float interpolation)
+    {
+        if (_entryOverlay is not { } overlay || Active.Id != FlowScenes.Entry)
+            return [];
+        var columns = _setup is { IsOpen: true } setup && Hosts.Entry is { SetupMode: true } ? setup.Columns() : null;
+        string?[] tags = columns is not null
+            ? [.. columns.Select(static column => column.Choice.Label)]
+            : [.. Enumerable.Range(0, 2).Select(side => JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : null)];
+        var quads = overlay.Quads(columns, tags);
+        if (columns is null)
+            return quads;
+        // The arrows while a drum is choosing (not locked in, no code on screen). The entry is its scene's
+        // first layer, so the arrow sprite's texture indices are the scene's.
+        var arrows = setupArrows();
+        for (var side = 0; side < 2; side++)
+            if (!columns[side].Ready && columns[side].Code is null)
+                quads = quads.Concat(SceneTextures.Compose(arrows.Snapshot(side, ArrowAnchors[side].X, ArrowAnchors[side].Y,
+                    ArrowGap, ArrowScale, interpolation), _textures, "Arrows", resolveSurface).Quads);
+        return quads;
     }
 
     // The setup's players: their profiles and looks go in first, then the entry starts with them joined
@@ -849,6 +944,8 @@ internal sealed class GameShell : IDisposable
     private void startWithPlayers(ScoreProfile?[] profiles, bool[] playing)
     {
         Sounds?.Attract.PlayExit();
+        Hosts.EntrySetup = false;
+        _indicatorScene = null; // the entry reloads under the same id: its indicators start over
         ResetPlayers();
         SongsPlayed = 0;
         for (var side = 0; side < 2; side++)
@@ -895,7 +992,7 @@ internal sealed class GameShell : IDisposable
         _setup?.Dispose();
         _textFields.Dispose();
         Hosts?.Rankings?.Dispose();
-        _setupView?.Dispose();
+        _entryOverlay?.Dispose();
         _health?.Dispose();
         _pill.Dispose();
         _performance.Dispose();

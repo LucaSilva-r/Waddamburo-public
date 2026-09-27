@@ -45,6 +45,12 @@ internal sealed class LayerHostFactory(
     /// <summary>Song select's score windows from the server (null offline).</summary>
     public Flow.SongRankings? Rankings { get; init; }
 
+    /// <summary>The next entry is the home player setup (see <see cref="EntrySceneHost.SetupMode"/>).</summary>
+    public bool EntrySetup { get; set; }
+
+    /// <summary>The loaded entry's host (null outside the entry).</summary>
+    public EntrySceneHost? Entry => _entry;
+
     /// <summary>A card read in the attract loop, for the entry about to load.</summary>
     public ScoreProfile? EntryCard { get; set; }
 
@@ -151,6 +157,7 @@ internal sealed class LayerHostFactory(
                 PlayerName = side => PlayerName?.Invoke(side),
                 CardDialog = open => CardDialog?.Invoke(open),
                 CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
+                SetupMode = EntrySetup,
             };
             EntryCard = null;
             if (EntryCardRejected)

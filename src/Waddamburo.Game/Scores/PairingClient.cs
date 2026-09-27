@@ -15,6 +15,12 @@ public sealed record ScoreProfile(long Baid, string Name)
     /// <summary>The account's custom Don-chan picture (a transparent PNG on the server), for the picker.</summary>
     public string? Avatar { get; init; }
 
+    /// <summary>The website account's display name (Latin letters too, unlike the Don-chan's); null for none.</summary>
+    public string? AccountName { get; init; }
+
+    /// <summary>What the home entry's name board shows: the account name, else the Don-chan's.</summary>
+    public string DisplayName => AccountName is { Length: > 0 } account ? account : Name;
+
     /// <summary>The token its plays upload with at home (a stored account's, or a friend's short-lived one).</summary>
     public string? Token { get; init; }
 }

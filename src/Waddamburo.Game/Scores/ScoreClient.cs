@@ -14,7 +14,10 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
     /// <summary>The account's custom Don-chan picture URL.</summary>
     public string? Avatar { get; init; }
 
-    public ScoreProfile Profile => new(Baid, Name) { Look = Look, Avatar = Avatar, Token = Token };
+    /// <summary>The website account's display name.</summary>
+    public string? AccountName { get; init; }
+
+    public ScoreProfile Profile => new(Baid, Name) { Look = Look, Avatar = Avatar, Token = Token, AccountName = AccountName };
 }
 
 /// <summary>A device login in progress: the code to show and where to enter it.</summary>

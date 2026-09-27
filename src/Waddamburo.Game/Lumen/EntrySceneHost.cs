@@ -130,11 +130,51 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// Per-tick coin-mode prompts before anyone joins: VO_ENTRY cue 0 when the credits already pay
     /// for a player, else cue 1 ("insert coins"), which repeats (traced session2-coins, session8).
     /// </summary>
+    /// <summary>
+    /// Home player setup: the entry is the setup screen. Both stands show (DON_BOTH), but nobody really
+    /// joins (no voice, coins or PlayerJoined), the mode panels are hidden, and the host decides per
+    /// side whether its Don and name board show.
+    /// </summary>
+    public bool SetupMode { get; set; }
+
+    private readonly bool[] _donHidden = new bool[2], _boardShown = new bool[2];
+
+    /// <summary>
+    /// Setup: whether a side's Don and name board show (an option replaces the Don with text; a drum
+    /// not playing has neither). A board that appears fades in the entry's way.
+    /// </summary>
+    public void SetSetupSide(int side, bool don, bool board)
+    {
+        if (_entry is not { } entry || side is not (0 or 1) || !_joined.Contains(side))
+            return;
+        // The Don clip's alpha is only forced while hidden; showing it again hands it back to the movie.
+        if (_donHidden[side] && don)
+            entry.TrySetInstanceAlpha(donPath(side), 1);
+        _donHidden[side] = !don;
+        if (board && !_boardShown[side])
+        {
+            Parts.ShowEntryName(side, "", joined: true);
+            entry.TrySetInstanceAlpha($"name_bg/touch_msg_{side + 1}p", 0);
+        }
+        else if (!board && _boardShown[side])
+            Parts.SetEntryBoardVisible(side, false);
+        _boardShown[side] = board;
+    }
+
+    private static string donPath(int side) => side == 0 ? "taiko_1p/body/don1pM" : "taiko_2p/body/don2pM";
+
     public void Advance()
     {
         if (_entry is null)
             return;
         _ticks++;
+        if (SetupMode)
+        {
+            _entry.TrySetInstanceAlpha("modeSelect", 0);
+            for (var side = 0; side < 2; side++)
+                if (_donHidden[side])
+                    _entry.TrySetInstanceAlpha(donPath(side), 0);
+        }
         foreach (var player in _costumeEffectPending)
             startCostumeEffect(player);
         foreach (var player in _costumeCuePending)
@@ -438,14 +478,17 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _joined.Add(player);
         if (_cardNames.Remove(player, out var cardName))
             Parts.UncoverEntryName(player, cardName);
-        // An account chosen in the home setup: its name board, as for a card taken by that drum.
-        else if (PlayerName?.Invoke(player) is { Length: > 0 } accountName)
+        // Home (setup or its players): a name board whose name the host draws over it (account names
+        // need Latin letters the board's kana glyphs lack), as for a card taken by that drum.
+        else if (!SetupMode && PlayerName?.Invoke(player) is { Length: > 0 })
         {
-            Parts.ShowEntryName(player, accountName, joined: true);
+            Parts.ShowEntryName(player, "", joined: true);
             // The movie hides a drum's card prompt once it has card data (touch_msg_Np._visible =
             // !playerInfo[n].isData); an account never goes through the card path, so hide it here.
             entry.TrySetInstanceAlpha($"name_bg/touch_msg_{player + 1}p", 0); // ponytail: alpha, not isData
         }
+        if (SetupMode)
+            return true; // both stands up for the setup screen; the real join comes after it
         // The game's own join voice inside EntryCoin: cue 2 for the left drum, 3 for the right (traced;
         // in free play the movie also requests cue 2).
         PlayVoice?.Invoke(player == 1 ? 3 : 2);

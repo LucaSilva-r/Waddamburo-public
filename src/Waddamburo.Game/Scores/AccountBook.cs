@@ -121,7 +121,7 @@ public sealed class AccountBook
                 Remove(account.Baid);
             }
             else
-                Add(account with { Name = current.Name, Look = current.Look, Avatar = current.Avatar });
+                Add(account with { Name = current.Name, Look = current.Look, Avatar = current.Avatar, AccountName = current.AccountName });
         }
     }
 

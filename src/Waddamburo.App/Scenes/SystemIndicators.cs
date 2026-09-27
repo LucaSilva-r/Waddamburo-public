@@ -68,6 +68,7 @@ internal sealed class SystemIndicators
 
     public void SetScene(IndicatorScene scene)
     {
+        _setupPanels = null;
         var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt;
         _scene = scene;
         if (scene != IndicatorScene.Entry)
@@ -124,6 +125,23 @@ internal sealed class SystemIndicators
         // frame restarts the join message before its fade timeline can advance.
         call(_coins, "SetCoinType", LumenHostValue.FromNumber(2)); // free play
     }
+
+    /// <summary>
+    /// Home player setup: the split panel's "hit the drum to start" bubble on exactly the drums not
+    /// playing yet (the entry's first scene state shows it only opposite the first player).
+    /// </summary>
+    public void SetupPanels(bool left, bool right)
+    {
+        if (_setupPanels == (left, right))
+            return;
+        _setupPanels = (left, right);
+        _messageDelay = -1;
+        call(_coins, "SetScene", LumenHostValue.FromNumber(4));
+        call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(left), LumenHostValue.FromBoolean(right));
+        call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(left || right));
+    }
+
+    private (bool, bool)? _setupPanels;
 
     /// <summary>A player joined at entry: the split panel and the start message go away.</summary>
     public void EntryJoined()

@@ -66,6 +66,13 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     /// The game re-hides the name boards whenever the entry reports its data select state; a board a
     /// card was given to stays (traced session13-card).
     /// </summary>
+    /// <summary>Shows or hides a drum's entry name board (the home setup's "not playing" side).</summary>
+    public void SetEntryBoardVisible(int side, bool visible)
+    {
+        if (_nameBoards.Count >= 3)
+            call(_nameBoards[1 + side], "SetVisible", LumenHostValue.FromBoolean(visible));
+    }
+
     public void HideNameBoards()
     {
         for (var index = 0; index < _nameBoards.Count; index++)

@@ -7,11 +7,19 @@ using Waddamburo.Platform.Sdl.Text;
 
 namespace Waddamburo.App.Flow;
 
-internal enum SetupChoiceKind { NotPlaying, Guest, Account, Friend, AddAccount }
+internal enum SetupChoiceKind { Guest, Account, Friend, AddAccount }
 
 /// <summary>One column's current choice (an account's avatar once it has downloaded).</summary>
 internal sealed record SetupChoice(SetupChoiceKind Kind, string Label, long Baid = 0, RgbaTextSurface? Avatar = null,
-    bool IsDefault = false);
+    bool IsDefault = false)
+{
+    /// <summary>The Don-chan look on the stand (an account's or a visitor's; null: the default Don).</summary>
+    public Waddamburo.Game.Don.DonLook? Look { get; init; }
+
+    /// <summary>Whether a Don stands for this choice (the options show as text instead).</summary>
+    public bool HasDon => Kind is SetupChoiceKind.Guest or SetupChoiceKind.Account
+        || Kind == SetupChoiceKind.Friend && Baid != 0;
+}
 
 /// <summary>What a column shows: its choice, whether it is locked in, and a code or message while pairing.</summary>
 internal sealed record SetupColumn(SetupChoice Choice, bool Ready, string? Code, int? Seconds, string? Message);
@@ -40,6 +48,9 @@ internal sealed class PlayerSetupFlow : IDisposable
     // Everyone playing is ready: the entry starts after a short grace in which another drum may still join.
     private static readonly TimeSpan StartGrace = TimeSpan.FromSeconds(1.5);
     private DateTime? _startAt;
+
+    private static readonly TimeSpan OpeningGuard = TimeSpan.FromMilliseconds(400);
+    private DateTime _inputFrom;
 
     private sealed class Side
     {
@@ -71,12 +82,16 @@ internal sealed class PlayerSetupFlow : IDisposable
     /// <summary>Escape: back to the title.</summary>
     public event Action? Cancelled;
 
-    /// <summary>Opens with the drum that started: it begins on the default account (or Guest), the other on Not playing.</summary>
+    /// <summary>
+    /// Opens with the drum that started on the default account (or Guest); the other drum waits on Join
+    /// with code (Guest offline) and plays only if it locks something in before the start.
+    /// </summary>
     public void Open(int starter)
     {
         IsOpen = true;
+        _inputFrom = DateTime.UtcNow + OpeningGuard;
         foreach (var side in _sides)
-            reset(side);
+            reset(side, idleChoice);
         if (_book.Default is { } first)
             select(_sides[starter], SetupChoiceKind.Account, first.Baid);
         else
@@ -88,8 +103,9 @@ internal sealed class PlayerSetupFlow : IDisposable
     public void Reopen(IReadOnlyList<ScoreProfile?> profiles, IReadOnlyCollection<int> joined)
     {
         IsOpen = true;
+        _inputFrom = DateTime.UtcNow + OpeningGuard;
         foreach (var side in _sides)
-            reset(side);
+            reset(side, idleChoice);
         foreach (var index in joined)
         {
             var profile = profiles[index];
@@ -135,6 +151,9 @@ internal sealed class PlayerSetupFlow : IDisposable
             Cancelled?.Invoke();
             return;
         }
+        // The hit that opened the setup must not also pick for that drum.
+        if (DateTime.UtcNow < _inputFrom)
+            return;
         // Left drum: D/K rims, F/J centres; right drum: Z/V rims, X/C centres.
         input(0, keys.IsDown(SdlKeyboardKey.D), keys.IsDown(SdlKeyboardKey.K),
             keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J));
@@ -185,10 +204,6 @@ internal sealed class PlayerSetupFlow : IDisposable
             return;
         switch (current(index).Kind)
         {
-            case SetupChoiceKind.NotPlaying:
-                // A drum that was not playing joins, as a guest to start with.
-                select(side, SetupChoiceKind.Guest);
-                break;
             case SetupChoiceKind.Guest:
                 side.Ready = true;
                 break;
@@ -210,8 +225,10 @@ internal sealed class PlayerSetupFlow : IDisposable
 
     private void tryStart()
     {
-        var playing = _sides.Select(side => current(Array.IndexOf(_sides, side)).Kind != SetupChoiceKind.NotPlaying).ToArray();
-        if (!playing.Any(static value => value) || _sides.Where((side, index) => playing[index]).Any(static side => !side.Ready))
+        // Whoever locked in plays; a drum that did not simply stays out, unless it is mid-code (a friend
+        // pairing or a sign-in), which holds the start.
+        var playing = _sides.Select(static side => side.Ready).ToArray();
+        if (!playing.Any(static value => value) || _sides.Any(static side => !side.Ready && side.Code is not null))
         {
             _startAt = null;
             return;
@@ -232,19 +249,18 @@ internal sealed class PlayerSetupFlow : IDisposable
         Confirmed?.Invoke(profiles, playing);
     }
 
-    // Not playing, Guest, the accounts the other drum has not taken, Friend, Add account.
+    // Guest, the accounts the other drum has not taken, Join with code (a friend), Sign in (add an account).
     private List<SetupChoice> choicesFor(int index)
     {
         var taken = _sides[1 - index].ReadyBaid ?? -1;
         var online = _server is not null;
         return
         [
-            new(SetupChoiceKind.NotPlaying, "Hit to join"),
             new(SetupChoiceKind.Guest, "Guest"),
             .. _book.Accounts.Where(account => account.Baid != taken).Select(account => new SetupChoice(SetupChoiceKind.Account,
-                account.Name, account.Baid, account.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null,
-                account.Baid == _book.DefaultBaid)),
-            .. online ? [new SetupChoice(SetupChoiceKind.Friend, "Friend"), new(SetupChoiceKind.AddAccount, "Add account")]
+                account.Profile.DisplayName, account.Baid, account.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null,
+                account.Baid == _book.DefaultBaid) { Look = account.Look }),
+            .. online ? [new SetupChoice(SetupChoiceKind.Friend, "Join with code"), new(SetupChoiceKind.AddAccount, "Sign in")]
                 : Array.Empty<SetupChoice>(),
         ];
     }
@@ -272,7 +288,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var side = _sides[index];
         var choice = choices[position(index, choices)];
         return choice.Kind == SetupChoiceKind.Friend && side.Visitor is { } visitor
-            ? choice with { Label = visitor.Name, Baid = visitor.Baid,
+            ? choice with { Label = visitor.DisplayName, Baid = visitor.Baid, Look = visitor.Look,
                 Avatar = visitor.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null }
             : choice;
     }
@@ -283,13 +299,28 @@ internal sealed class PlayerSetupFlow : IDisposable
         int? seconds = side.Code is null ? null
             : Math.Max(0, (int)Math.Ceiling((side.CodeDeadline - DateTime.UtcNow).TotalSeconds));
         var starting = _startAt is not null;
-        var message = starting ? side.Ready ? "Starting..." : "Hit to join!" : side.Message;
+        var message = starting ? side.Ready ? "Starting..." : null : side.Message;
         return new SetupColumn(current(index), side.Ready, side.Code, seconds, message);
     }
 
-    private static void reset(Side side)
+    // A drum nobody picked for yet: Join with code (Guest when there is no server).
+    private SetupChoiceKind idleChoice => _server is null ? SetupChoiceKind.Guest : SetupChoiceKind.Friend;
+
+    private static void openBrowser(string url)
     {
-        select(side, SetupChoiceKind.NotPlaying);
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"Warning LOGIN: could not open the browser ({exception.Message}); open {url}");
+        }
+    }
+
+    private static void reset(Side side, SetupChoiceKind choice)
+    {
+        select(side, choice);
         side.Ready = false;
         side.ReadyBaid = null;
         side.Visitor = null;
@@ -346,7 +377,9 @@ internal sealed class PlayerSetupFlow : IDisposable
                         return;
                     _sides[index].Code = login.UserCode;
                     _sides[index].CodeDeadline = DateTime.UtcNow.AddSeconds(login.ExpiresIn);
-                    _sides[index].Message = $"Enter it at {login.VerificationUrl}";
+                    _sides[index].Message = null;
+                    // The approval page opens in this PC's browser with the code filled in.
+                    openBrowser($"{login.VerificationUrl}?code={login.UserCode}");
                 });
                 while (!work.IsCancellationRequested)
                 {
@@ -385,7 +418,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var owner = _book.Default ?? (_book.Accounts is [var first, ..] ? first : null);
         if (owner is null || _clientFor(owner.Token) is not { } ownerClient)
         {
-            _sides[index].Message = "Friends can join once this PC has an account (Add account).";
+            _sides[index].Message = "Friends can join once this PC has an account (Sign in).";
             return;
         }
         if (beginWork(index) is not { } work)
@@ -407,7 +440,7 @@ internal sealed class PlayerSetupFlow : IDisposable
                             case PairingState.Active active:
                                 _sides[index].Code = active.Code;
                                 _sides[index].CodeDeadline = DateTime.UtcNow + active.ExpiresIn;
-                                _sides[index].Message = $"Enter it at {_server}green/play";
+                                _sides[index].Message = null;
                                 break;
                             case PairingState.Visitor visitor:
                                 finishWork(work, index, null);
