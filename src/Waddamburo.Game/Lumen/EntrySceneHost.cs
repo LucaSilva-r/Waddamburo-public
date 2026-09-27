@@ -20,6 +20,12 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     private bool _timerStarted;
     private LumenPlayer? _entry;
     private readonly HashSet<int> _joined = [];
+    // The movie does not send an effect notification for every picker preview. Defer the fallback
+    // one tick so its own notification and RequestSE can take precedence when it does send them.
+    private readonly HashSet<int> _costumeEffectPending = [];
+    private readonly HashSet<int> _costumeCuePending = [];
+    private readonly HashSet<int> _costumeCueSeen = [];
+    private readonly int[] _costumeEffectUntil = [-1, -1];
 
     public IndicatorParts Parts { get; } = parts ?? throw new ArgumentNullException(nameof(parts));
 
@@ -126,6 +132,17 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         if (_entry is null)
             return;
         _ticks++;
+        foreach (var player in _costumeEffectPending)
+            startCostumeEffect(player);
+        foreach (var player in _costumeCuePending)
+            if (!_costumeCueSeen.Contains(player))
+                PlayCue?.Invoke("SE_COM", player == 0 ? 19 : 20);
+        _costumeEffectPending.Clear();
+        _costumeCuePending.Clear();
+        _costumeCueSeen.Clear();
+        for (var player = 0; player < 2; player++)
+            if (_costumeEffectUntil[player] == _ticks)
+                stopCostumeEffect(player);
         if (_rejectOnLoad && Parts.PollReady())
         {
             _rejectOnLoad = false;
@@ -175,6 +192,47 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     {
         _entry = entry;
         CoinsChanged();
+    }
+
+    /// <summary>A changed Don starts the entry's authored costume flash on its next tick.</summary>
+    public void CostumeChanged(int player)
+    {
+        if (player is 0 or 1)
+        {
+            _costumeEffectPending.Add(player);
+            _costumeCuePending.Add(player);
+        }
+    }
+
+    /// <summary>The movie's own costume cue takes precedence over the fallback cue.</summary>
+    public void ObserveCostumeCue(IReadOnlyList<LumenHostValue> arguments)
+    {
+        if (arguments.Count >= 2 && arguments[0].Kind == LumenHostValueKind.Number
+            && arguments[1].Kind == LumenHostValueKind.Number && arguments[0].AsNumber() == 1)
+        {
+            var cue = (int)arguments[1].AsNumber();
+            if (cue is 19 or 20)
+                _costumeCueSeen.Add(cue - 19);
+        }
+    }
+
+    private static string costumeEffectPath(int player) => player == 0
+        ? "taiko_1p/body/effect" : "taiko_2p/body/effect";
+
+    private void startCostumeEffect(int player)
+    {
+        if (_entry is not { } entry)
+            return;
+        var path = costumeEffectPath(player);
+        if (entry.TryGotoLabel(path, "effect_start"))
+            entry.TrySetInstanceAlpha(path, 1);
+        _costumeEffectUntil[player] = _ticks + 68; // traced effect stop after about 1.13 s
+    }
+
+    private void stopCostumeEffect(int player)
+    {
+        _costumeEffectUntil[player] = -1;
+        _entry?.TrySetInstanceAlpha(costumeEffectPath(player), 0);
     }
 
     /// <summary>
@@ -248,16 +306,20 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             }
             return LumenHostValue.Undefined;
         });
-        // UpdateFillrect(index, id, iconType): the costume picker fills list slot icon_<index>L (0-4) or the
-        // selected item's name plate name_L (10). ponytail: the left (P1) dialog only.
+        // Each dialog has five icon slots and a selected-item name plate. The right dialog's
+        // indices follow the left one's (5-9 and 11 respectively).
         lumen.RegisterMethod("UpdateFillrect", call =>
         {
             if (call.Arguments.Length < 3 || _entry is not { } entry || CostumeIcon is null)
                 return LumenHostValue.Undefined;
             var index = (int)call.Arguments[0].AsNumber();
-            var name = index == 10;
+            if (index is < 0 or > 11)
+                return LumenHostValue.Undefined;
+            var name = index is 10 or 11;
+            var side = index is >= 5 and <= 9 or 11 ? 'R' : 'L';
+            var slot = side == 'R' ? index - 5 : index;
             if (CostumeIcon((int)call.Arguments[2].AsNumber(), (int)call.Arguments[1].AsNumber(), name) is { } surface)
-                entry.SetNativeFill(name ? "name_L" : $"icon_{index}L", surface);
+                entry.SetNativeFill(name ? $"name_{side}" : $"icon_{slot}{side}", surface);
             return LumenHostValue.Undefined;
         });
         // NotifyDataSelect(1): a read card waits for a drum (its board fades in); 0: the game hides the
@@ -331,13 +393,29 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         lumen.RegisterMethod("IsWaiwaiDisable", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyMaccollabo", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyRecognizecollabo", _ => LumenHostValue.FromBoolean(false));
+        lumen.RegisterMethod("NotifyChangeCostume", static _ => LumenHostValue.Undefined);
+        lumen.RegisterMethod("NotifyChangeCostumeEffect", call =>
+        {
+            if (call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
+                && (int)call.Arguments[0].AsNumber() is var player and (0 or 1))
+            {
+                _costumeEffectPending.Remove(player);
+                var active = call.Arguments[1].Kind == LumenHostValueKind.Boolean
+                    ? call.Arguments[1].AsBoolean() : call.Arguments[1].AsNumber() != 0;
+                if (active)
+                    startCostumeEffect(player);
+                else if (_costumeEffectUntil[player] <= _ticks)
+                    stopCostumeEffect(player);
+            }
+            return LumenHostValue.Undefined;
+        });
         lumen.RegisterMethod("Terminate", _ => LumenHostValue.FromBoolean(true));
-        // Traced calls with no visible effect on the entry movies (card reader, indicator lamps, costume
-        // effects, mode notifications, counter reports). ponytail: accessories are accepted but not shown yet.
+        // Traced calls with no visible effect on the entry movies (card reader, indicator lamps,
+        // mode notifications, counter reports). ponytail: accessories are accepted but not shown yet.
         foreach (var name in new[]
         {
             "SetCardReaderEvent", "Wakeup", "SetTouchMode",
-            "ChangeAccessory", "NotifyChangeCostumeEffect",
+            "ChangeAccessory",
             "NotifyDecide", "NotifyModeSelectEnd", "Apply", "SelectCommonSound", "NotifyTimeSec",
         })
             lumen.RegisterMethod(name, static _ => LumenHostValue.Undefined);

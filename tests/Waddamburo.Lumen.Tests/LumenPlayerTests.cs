@@ -82,6 +82,18 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void NativeCallbackCanRevealAndHideAnAuthoredEffectClip()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+
+        Assert.True(player.TrySetInstanceAlpha("placed", 1));
+        Assert.Equal(1, Assert.Single(player.CreateRenderSnapshot().Quads).MultiplyColor.Alpha);
+        Assert.True(player.TrySetInstanceAlpha("placed", 0));
+        Assert.Equal(0, Assert.Single(player.CreateRenderSnapshot().Quads).MultiplyColor.Alpha);
+        Assert.False(player.TrySetInstanceAlpha("missing", 1));
+    }
+
+    [Fact]
     public void FramePlacementsProduceImmutableTransformedRenderSnapshots()
     {
         var player = new LumenPlayer(createMovie(), 1280, 720);

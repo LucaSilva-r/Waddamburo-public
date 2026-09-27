@@ -73,7 +73,11 @@ public sealed class LumenFrontendHostBinding(
                 : _services.TryEnterPlayer()));
             _entry?.Register(lumen);
             lumen.RegisterMethod("IsFreePlay", _ => LumenHostValue.FromBoolean(_services.IsFreePlay));
-            lumen.RegisterMethod("RequestSE", call => requestSound(LumenFrontendSoundRequestKind.Effect, call));
+            lumen.RegisterMethod("RequestSE", call =>
+            {
+                _entry?.ObserveCostumeCue(call.Arguments);
+                return requestSound(LumenFrontendSoundRequestKind.Effect, call);
+            });
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(LumenFrontendSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(LumenFrontendSoundRequestKind.LoopVoice, call));
             // Traced StopVoice(35) right after a mode's voice: it names one voice and must not cut
@@ -87,7 +91,8 @@ public sealed class LumenFrontendHostBinding(
             if (_don is not null)
             {
                 DonLumenBinding.RegisterMotion(context, lumen, _don);
-                DonLumenBinding.RegisterCostume(lumen, _don);
+                DonLumenBinding.RegisterCostume(lumen, _don,
+                    _entry is null ? null : _entry.CostumeChanged);
             }
             lumen.RegisterMethod("SetNextScene", call =>
             {

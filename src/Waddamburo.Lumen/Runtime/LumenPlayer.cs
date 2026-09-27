@@ -212,6 +212,23 @@ public sealed class LumenPlayer
         return true;
     }
 
+    /// <summary>Sets the alpha of a named clip that a native scene callback controls.</summary>
+    public bool TrySetInstanceAlpha(string instancePath, float alpha)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        if (!float.IsFinite(alpha) || alpha is < 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(alpha));
+        var instance = findInstance(instancePath);
+        if (instance is null)
+            return false;
+        instance.Color = instance.Color with
+        {
+            Multiply = instance.Color.Multiply with { Alpha = alpha },
+        };
+        resetInterpolation(instance);
+        return true;
+    }
+
     /// <summary>
     /// Reads a script variable or named clip by dotted path from the root (e.g. "main.isAllEnd"), as the game
     /// polls movie state. Null when any step is missing.

@@ -146,21 +146,28 @@ public static class DonLumenBinding
     }
 
     /// <summary>Entry costume picker: ChangeCostume(player, id) / ChangeDivideCostume(player, head, body, paint).</summary>
-    public static void RegisterCostume(LumenHostObject lumen, IDonPresentationController presentation)
+    public static void RegisterCostume(LumenHostObject lumen, IDonPresentationController presentation,
+        Action<int>? changed = null)
     {
         ArgumentNullException.ThrowIfNull(lumen);
         ArgumentNullException.ThrowIfNull(presentation);
         lumen.RegisterMethod("ChangeCostume", call =>
         {
             if (call.Arguments.Length >= 2 && integer(call.Arguments[0]) is var player and (0 or 1))
+            {
                 presentation.SetCostume(player, DonCostume.FromWhole(integer(call.Arguments[1])));
+                changed?.Invoke(player);
+            }
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("ChangeDivideCostume", call =>
         {
             if (call.Arguments.Length >= 4 && integer(call.Arguments[0]) is var player and (0 or 1))
+            {
                 presentation.SetCostume(player, new DonCostume(null,
                     integer(call.Arguments[1]), integer(call.Arguments[2]), integer(call.Arguments[3])));
+                changed?.Invoke(player);
+            }
             return LumenHostValue.Undefined;
         });
     }
