@@ -43,6 +43,15 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
         try
         {
             var result = NativeMediaMethods.CreateFile(in options, utf8Path, out _handle, ref error);
+            if (result is MediaResult.Unsupported or MediaResult.BackendUnavailable
+                && VgmstreamCli.TryDecode(path, sourceStreamIndex) is { } wav)
+            {
+                Marshal.FreeCoTaskMem(utf8Path);
+                utf8Path = Marshal.StringToCoTaskMemUTF8(wav);
+                var wavOptions = options with { SourceStreamIndex = 0 };
+                error = new MediaError { StructSize = (uint)sizeof(MediaError) };
+                result = NativeMediaMethods.CreateFile(in wavOptions, utf8Path, out _handle, ref error);
+            }
             if (result != MediaResult.Ok)
                 throw createException(result, error);
         }

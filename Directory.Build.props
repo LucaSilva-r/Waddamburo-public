@@ -13,6 +13,11 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <TreatWarningsAsErrors Condition="'$(CI)' == 'true'">true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Release targets (eng/package.sh); listed so RID-specific publishes keep the lock files stable. -->
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+    <!-- Windows releases are single-file: flag single-file hazards in every build (this also keeps
+         the analyzer's ILLink package in the lock files for normal and publish restores alike). -->
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
   <ItemGroup>

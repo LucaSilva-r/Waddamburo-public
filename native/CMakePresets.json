@@ -91,26 +91,41 @@
       }
     },
     {
-      "name": "linux-vgmstream-g719",
-      "displayName": "Linux x64 local-only vgmstream with G.719",
-      "inherits": "linux-base",
-      "cacheVariables": {
-        "BUILD_TESTING": false,
-        "CMAKE_BUILD_TYPE": "Release",
-        "WADDAMBURO_BUILD_VGMSTREAM": true,
-        "WADDAMBURO_G719_SOURCE_DIR": "$env{WADDAMBURO_G719_SOURCE_DIR}"
-      }
-    },
-    {
       "name": "linux-audio-complete",
-      "displayName": "Linux x64 complete local audio backend",
+      "displayName": "Linux x64 pinned FFmpeg and vgmstream (no G.719)",
       "inherits": "linux-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "WADDAMBURO_MEDIA_FFMPEG": true,
         "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix",
-        "WADDAMBURO_MEDIA_VGMSTREAM": true,
-        "WADDAMBURO_VGMSTREAM_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-vgmstream-g719/vgmstream/prefix"
+        "WADDAMBURO_MEDIA_VGMSTREAM": true
+      }
+    },
+    {
+      "name": "linux-package",
+      "displayName": "Linux x64 self-contained release libraries",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
+      "name": "windows-package",
+      "displayName": "Windows x64 self-contained release libraries (mingw-w64 cross build on Linux)",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "binaryDir": "${sourceDir}/../out/build/native/win-x64/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/mingw-w64.cmake",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_PACKAGE": true
       }
     },
     {
@@ -169,12 +184,9 @@
       "configurePreset": "linux-ffmpeg",
       "targets": ["waddamburo_ffmpeg_audit"]
     },
-    {
-      "name": "linux-vgmstream-g719",
-      "configurePreset": "linux-vgmstream-g719",
-      "targets": ["waddamburo_vgmstream_audit"]
-    },
     { "name": "linux-audio-complete", "configurePreset": "linux-audio-complete" },
+    { "name": "linux-package", "configurePreset": "linux-package" },
+    { "name": "windows-package", "configurePreset": "windows-package" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },

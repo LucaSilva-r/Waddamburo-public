@@ -75,7 +75,7 @@ try
         if (seekFrame is not null || !callbackInvocations.IsEmpty)
             throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
-        var layout = GameDataLayout.Resolve(gameDataRoot ?? Directory.GetCurrentDirectory(), fontPath);
+        var layout = GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
         // Cabinet settings (free play, credits, songs per session) beside the game data.

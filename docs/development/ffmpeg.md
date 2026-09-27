@@ -58,41 +58,30 @@ It is diagnostic scaffolding for the streaming decoder, not the final BGM/previe
 sound-effect mixer. SDL device ownership and queue semantics are documented in
 [`sdl-audio.md`](sdl-audio.md).
 
-## Local Nijiro backend
+## vgmstream backend and Nijiiro audio
 
-Nijiro NUS3BANK files containing IDSP or BNSF/IS22 payloads use an optional
-vgmstream backend. This backend is deliberately excluded from normal and release
-builds because its G.719 implementation has no identified open-source redistribution
-grant. Waddamburo downloads pinned vgmstream source, but never downloads G.719 source;
-a developer must obtain it independently and point the build at a local checkout.
-
-The currently reviewed local checkout is `libg719_decode` commit
-`da90ad8a676876c6c47889bcea6a753f9bbf7a73`. To build the complete Linux decoder:
+The game's nuSound2 `.nub` banks (sound effects and voices are cues inside them) and
+NUS3BANK/BNSF files use a vgmstream backend. `native/vgmstream/` downloads pinned
+vgmstream source and builds it as a static library with G.719 disabled: the G.719
+reference code has no identified open-source redistribution grant, so Waddamburo never
+builds, downloads, or ships it. To build the Linux decoder with both backends:
 
 ```sh
-export WADDAMBURO_G719_SOURCE_DIR=/path/to/libg719_decode
 cd native
 cmake --preset linux-ffmpeg
 cmake --build --preset linux-ffmpeg
-cmake --preset linux-vgmstream-g719
-cmake --build --preset linux-vgmstream-g719
 cmake --preset linux-audio-complete
 cmake --build --preset linux-audio-complete
 ctest --preset linux-audio-complete
 ```
 
-Equivalently, run this from the repository root to build and test all three
-native layers:
-
-```sh
-WADDAMBURO_G719_SOURCE_DIR=/path/to/libg719_decode \
-  ./eng/bootstrap.sh --native-only --configuration Release --with-nijiro-audio
-```
-
-The vgmstream prefix includes
-`NON-REDISTRIBUTABLE-G719.txt`. Do not copy its library into a release, CI artifact,
-public download, or package. This is a Linux-only developer recipe; the ordinary
-FFmpeg backend remains the distributable path.
+Release packages (`eng/package.sh`, see [native-builds.md](native-builds.md)) always
+include this backend. Nijiiro BNSF/IS22 audio is G.719, so the bundled decoder rejects
+it; the managed decoder then runs a user-supplied `vgmstream-cli` (an official
+vgmstream release, placed next to the Waddamburo executable, in a `vgmstream` folder
+beside it, or on `PATH`), decodes the file once to a looping WAV in the temporary
+directory, and plays that. Without `vgmstream-cli` those files report the backend
+error and a one-time hint.
 
 With `linux-audio-complete`, file inputs ending in `.nub`, `.nus3bank`,
 `.nus3audio`, `.bnsf`, `.spsis14`, `.spsis22`, or `.idsp` are routed to

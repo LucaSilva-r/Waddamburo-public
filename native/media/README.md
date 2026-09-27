@@ -37,13 +37,13 @@ NUB decoding also reads the enclosing RIFF `smpl` loop when the elementary strea
 does not expose one. Builds without the option retain the explicit
 `BACKEND_UNAVAILABLE` behavior.
 
-`WADDAMBURO_MEDIA_VGMSTREAM=ON` adds file decoding for `.nus3bank`, `.nus3audio`,
+`WADDAMBURO_MEDIA_VGMSTREAM=ON` adds file decoding for `.nub`, `.nus3bank`, `.nus3audio`,
 `.bnsf`, `.spsis14`, `.spsis22`, and `.idsp`. The backend uses vgmstream's public
 library API and FFmpeg `swresample` for the same output contract. NUS3BANK currently
 selects its default/first stream. Callback inputs do not expose a filename and remain
-on the FFmpeg path. The pinned local build recipe is documented in
-`docs/development/ffmpeg.md`; its G.719-enabled output is explicitly not
-redistributable by this project.
+on the FFmpeg path. The pinned build recipe (static, G.719 disabled) and the
+`vgmstream-cli` fallback the managed decoder uses for G.719 files are documented in
+`docs/development/ffmpeg.md`.
 
 The decoder owns demux, codec, resampling, packet, frame, and pending-output state.
 It never retains a complete decoded song. Requested output rate/channel conversion

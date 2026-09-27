@@ -149,7 +149,13 @@ static composition slice does not yet implement script-driven `MovieClipLoader`.
 The game-flow diagnostic can exercise the configured Green Entry-to-Song-Select
 handoff using user-owned archives below one explicit asset root:
 
-For normal play, supply only the game's `USRDIR` directory. It resolves
+Release builds are one file per platform, `Waddamburo.exe` (Windows x64) and
+`Waddamburo-x86_64.AppImage` (Linux x64), built by `eng/package.sh`. Drop the file
+into the game's `USRDIR` and run it; nothing else needs installing. Nijiiro audio
+(G.719) additionally needs [vgmstream-cli](https://github.com/vgmstream/vgmstream/releases)
+next to it (or in a `vgmstream` folder beside it), which Waddamburo cannot ship.
+
+For normal play from source, supply only the game's `USRDIR` directory. It resolves
 `data/lumendata/packed`, the game's own songs under `data`, the optional
 `custom_songs` TJA library, and `data/sound` from that root and boots
 like the cabinet: the startup notice and logos, then the attract loop (logo, title,
@@ -163,8 +169,9 @@ skips the startup screens.
 dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"
 ```
 
-The equivalent explicit form is `--game-data=/path/to/game/USRDIR`. If the process
-working directory is already `USRDIR`, no arguments are required. A user-owned
+The equivalent explicit form is `--game-data=/path/to/game/USRDIR`. Without either, the
+executable's own directory is used when it holds the game (a release dropped into
+`USRDIR`), otherwise the working directory. A user-owned
 TrueType/OpenType font placed in `data/font` is selected automatically, with
 `font.ttf`, `font.otf`, and `font.ttc` preferred in that order. Otherwise an
 installed Japanese-capable system font is used. `--font=/path/to/font` remains the

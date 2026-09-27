@@ -5,7 +5,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>../../eng/packaging/waddamburo.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- Release builds (eng/package.sh): the self-contained native libraries from the
+       linux-package / windows-package CMake presets ship next to the executable. -->
+  <ItemGroup Condition="'$(WaddamburoNativeDir)' != ''">
+    <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/libwaddamburo_*.so"
+          CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />

@@ -54,12 +54,13 @@ endfunction()
 
 include(CTest)
 
-add_subdirectory(media)
-
-option(WADDAMBURO_BUILD_TEXT "Build the FreeType-backed text rasterizer" OFF)
-if(WADDAMBURO_BUILD_TEXT)
-  find_package(Freetype 2.13 REQUIRED)
-  add_subdirectory(text)
+option(WADDAMBURO_PACKAGE
+  "Release libraries: pinned FFmpeg, vgmstream and FreeType linked statically into waddamburo_media and waddamburo_text" OFF)
+if(WADDAMBURO_PACKAGE)
+  set(WADDAMBURO_BUILD_FFMPEG ON)
+  set(WADDAMBURO_MEDIA_FFMPEG ON)
+  set(WADDAMBURO_MEDIA_VGMSTREAM ON)
+  set(WADDAMBURO_BUILD_TEXT ON)
 endif()
 
 option(WADDAMBURO_BUILD_FFMPEG "Enable the pinned minimal FFmpeg dependency target" OFF)
@@ -67,9 +68,23 @@ if(WADDAMBURO_BUILD_FFMPEG)
   add_subdirectory(ffmpeg)
 endif()
 
-option(WADDAMBURO_BUILD_VGMSTREAM "Enable the pinned vgmstream dependency target" OFF)
-if(WADDAMBURO_BUILD_VGMSTREAM)
+option(WADDAMBURO_MEDIA_VGMSTREAM "Build the media decoder with the pinned vgmstream (no G.719)" OFF)
+if(WADDAMBURO_MEDIA_VGMSTREAM)
   add_subdirectory(vgmstream)
+endif()
+
+option(WADDAMBURO_BUILD_TEXT "Build the FreeType-backed text rasterizer" OFF)
+if(WADDAMBURO_BUILD_TEXT)
+  if(WADDAMBURO_PACKAGE)
+    add_subdirectory(freetype)
+  else()
+    find_package(Freetype 2.13 REQUIRED)
+  endif()
+endif()
+
+add_subdirectory(media)
+if(WADDAMBURO_BUILD_TEXT)
+  add_subdirectory(text)
 endif()
 
 if(BUILD_TESTING)

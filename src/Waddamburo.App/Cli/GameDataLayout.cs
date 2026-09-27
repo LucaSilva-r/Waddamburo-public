@@ -31,6 +31,19 @@ internal sealed record GameDataLayout(
         return new GameDataLayout(fullRoot, lumen, don, tja, sound, font);
     }
 
+    /// <summary>
+    /// The USRDIR a release was dropped into: the executable's directory (the AppImage's for
+    /// Linux releases) when it holds the game, otherwise the working directory.
+    /// </summary>
+    public static string DefaultRoot()
+    {
+        var executable = Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath;
+        var directory = Path.GetDirectoryName(executable);
+        return directory is not null && Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed"))
+            ? directory
+            : Directory.GetCurrentDirectory();
+    }
+
     private static string findTitleFont(string root)
     {
         var fontDirectory = Path.Combine(root, "data", "font");

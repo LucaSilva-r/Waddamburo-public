@@ -8,11 +8,18 @@ set(WADDAMBURO_FFMPEG_SHA256
   "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c")
 
 find_program(WADDAMBURO_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
+cmake_host_system_information(RESULT _ffmpeg_jobs QUERY NUMBER_OF_LOGICAL_CORES)
 
 set(_ffmpeg_platform_options --arch=x86_64 --disable-x86asm)
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
-if(WIN32)
+if(MINGW AND CMAKE_CROSSCOMPILING)
+  list(APPEND _ffmpeg_platform_options
+    --enable-cross-compile
+    --cross-prefix=${WADDAMBURO_CROSS_PREFIX}
+    --target-os=mingw32
+    --enable-w32threads)
+elseif(WIN32)
   find_program(WADDAMBURO_BASH_EXECUTABLE NAMES bash REQUIRED)
   set(_ffmpeg_configure_command ${WADDAMBURO_BASH_EXECUTABLE} <SOURCE_DIR>/configure)
   list(APPEND _ffmpeg_platform_options
@@ -52,9 +59,17 @@ set(_ffmpeg_common_options
   --disable-programs
   --disable-doc
   --disable-debug
-  --enable-small
-  --disable-static
-  --enable-shared)
+  --enable-small)
+set(_ffmpeg_byproducts)
+if(WADDAMBURO_PACKAGE)
+  foreach(_library avformat avcodec swresample swscale avutil)
+    list(APPEND _ffmpeg_byproducts "${_ffmpeg_prefix}/lib/lib${_library}.a")
+  endforeach()
+  # Folded into waddamburo_media so a release ships one self-contained media library.
+  list(APPEND _ffmpeg_common_options --enable-static --disable-shared --enable-pic)
+else()
+  list(APPEND _ffmpeg_common_options --disable-static --enable-shared)
+endif()
 
 string(JOIN "\n" _ffmpeg_configure_manifest
   "FFMPEG_VERSION=${WADDAMBURO_FFMPEG_VERSION}"
@@ -81,7 +96,7 @@ ExternalProject_Add(waddamburo_ffmpeg
     ${_ffmpeg_configure_command}
     ${_ffmpeg_common_options}
     ${_ffmpeg_platform_options}
-  BUILD_COMMAND ${WADDAMBURO_MAKE_EXECUTABLE} -j2
+  BUILD_COMMAND ${WADDAMBURO_MAKE_EXECUTABLE} -j${_ffmpeg_jobs}
   INSTALL_COMMAND
     ${WADDAMBURO_MAKE_EXECUTABLE} install
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_ffmpeg_prefix}/licenses/FFmpeg"
@@ -92,6 +107,7 @@ ExternalProject_Add(waddamburo_ffmpeg
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_BINARY_DIR}/configure-options.txt"
             "${_ffmpeg_prefix}/licenses/FFmpeg/configure-options.txt"
+  BUILD_BYPRODUCTS ${_ffmpeg_byproducts}
   USES_TERMINAL_DOWNLOAD true
   USES_TERMINAL_CONFIGURE true
   USES_TERMINAL_BUILD true
@@ -105,6 +121,7 @@ add_custom_target(waddamburo_ffmpeg_audit
     -DFFMPEG_BUILD_DIR=${_ffmpeg_build_dir}
     -DFFMPEG_PREFIX=${_ffmpeg_prefix}
     -DFFMPEG_WINDOWS=${WIN32}
+    -DFFMPEG_STATIC=${WADDAMBURO_PACKAGE}
     -DFFMPEG_FORBIDDEN_PATH=${_repository_root}
     -P "${CMAKE_CURRENT_SOURCE_DIR}/audit.cmake"
   DEPENDS waddamburo_ffmpeg

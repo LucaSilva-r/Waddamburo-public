@@ -285,27 +285,13 @@ int main(void)
 
 #if defined(WADDAMBURO_MEDIA_HAS_VGMSTREAM)
     {
+        /* IS22 is G.719, which the bundled vgmstream never includes: the decoder must reject
+         * it as unsupported so managed code can fall back to a user-supplied vgmstream-cli. */
         const char *path = "waddamburo-synthetic.bnsf";
-        waddamburo_media_stream_info info = {0};
-        float samples[1920] = {0};
-        uint64_t frames_read = 0U;
-        info.struct_size = sizeof(info);
-        options.output_sample_rate = 48000U;
-        options.output_channels = 2U;
         CHECK(write_synthetic_bnsf(path));
         CHECK(waddamburo_media_decoder_create_file(&options, path, &decoder, &error) ==
-              WADDAMBURO_MEDIA_OK);
-        CHECK(decoder != NULL);
-        CHECK(waddamburo_media_decoder_get_stream_info(decoder, &info) == WADDAMBURO_MEDIA_OK);
-        CHECK(info.sample_rate == 48000U);
-        CHECK(info.channels == 2U);
-        CHECK(info.total_frames == 960U);
-        CHECK(waddamburo_media_decoder_read_frames(decoder, samples, 960U, &frames_read) ==
-              WADDAMBURO_MEDIA_OK);
-        CHECK(frames_read == 960U);
-        CHECK(waddamburo_media_decoder_seek(decoder, 0U) == WADDAMBURO_MEDIA_OK);
-        waddamburo_media_decoder_destroy(decoder);
-        decoder = NULL;
+              WADDAMBURO_MEDIA_ERROR_UNSUPPORTED);
+        CHECK(decoder == NULL);
         CHECK(remove(path) == 0);
     }
 #endif

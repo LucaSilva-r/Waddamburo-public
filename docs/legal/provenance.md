@@ -98,13 +98,13 @@ The optional vgmstream integration in `native/media/src/media.c` is original wra
 code written against vgmstream's public `libvgmstream` API. The dependency recipe in
 `native/vgmstream/` is original Waddamburo build configuration against upstream
 vgmstream commit `09c9f40caae4747e44b6a993b3d5b654cef4d1f7`. It downloads the
-unmodified upstream archive and accepts a separately obtained local G.719 source
-directory; neither dependency's source is vendored in this repository. Container
+unmodified upstream archive, builds it with G.719 disabled, and vendors no source. Container
 selection uses filename extensions and public library behavior. The public decode
 regression uses a project-authored, silent synthetic BNSF/IS22 fixture. Private game
 audio was used only for local compatibility checks; no sample, hash, path, capture,
-or content-derived fixture is stored here. Licensing and the resulting local-only
-distribution restriction are recorded in `THIRD_PARTY_NOTICES.md`.
+or content-derived fixture is stored here. `src/Waddamburo.Platform.Sdl/Media/VgmstreamCli.cs`
+runs a user-supplied vgmstream-cli as a separate program for files the bundled decoder
+rejects; licensing is recorded in `THIRD_PARTY_NOTICES.md`.
 
 `src/Waddamburo.Providers.OsuLazer/` is original integration code written against
 the public `ppy.osu.Game` 2026.916.0 and Realm 20.1.0 APIs. It consumes official

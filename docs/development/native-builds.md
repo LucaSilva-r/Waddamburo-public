@@ -81,5 +81,32 @@ The optional title rasterizer is enabled with
 `-DWADDAMBURO_BUILD_TEXT=ON`. It exposes only a small project-owned C ABI and
 links dynamically to a system FreeType 2.13-or-newer development installation.
 It accepts an explicit user-owned font path and returns premultiplied RGBA8; it
-does not discover, embed, cache, or redistribute fonts. Release builds must pin
-and stage an exact reviewed FreeType version before enabling this option.
+does not discover, embed, cache, or redistribute fonts. Release packages link the
+pinned FreeType below statically instead.
+
+## Release packages
+
+`eng/package.sh` builds both releases on a Linux x64 host (it additionally needs
+`make` and the mingw-w64 GCC cross compiler, `x86_64-w64-mingw32-gcc`):
+
+```sh
+./eng/package.sh            # both; or: ./eng/package.sh linux|windows
+```
+
+The `linux-package` and `windows-package` presets (`WADDAMBURO_PACKAGE=ON`; the
+Windows one cross-compiles with `native/cmake/mingw-w64.cmake`) build the pinned FFmpeg,
+vgmstream (G.719 disabled) and FreeType 2.14.2 as static libraries and fold them into
+`waddamburo_media` and `waddamburo_text`. The result depends only on the C runtime and
+system libraries (`libc`/`libm`; `kernel32`/`msvcrt`/`bcrypt`), and exports only the
+project C ABI. The script then publishes the app self-contained with those two
+libraries:
+
+- `out/package/Waddamburo.exe`: a single-file publish; .NET extracts the native
+  libraries (SDL3, SQLite and ours) on first run.
+- `out/package/Waddamburo-x86_64.AppImage`: a plain self-contained publish in an
+  AppDir, packed with a pinned appimagetool and the static type-2 runtime (no FUSE 2
+  needed on the target). Build it on the oldest glibc the release should support.
+
+DXIL shaders cannot be compiled on Linux, so the compiled shaders are committed;
+rerun `eng/build-shaders.ps1` on Windows (and `.sh` for SPIR-V) after changing a
+shader source.
