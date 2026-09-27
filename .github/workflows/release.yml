@@ -12,9 +12,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    # Oldest supported runner (glibc 2.35): the AppImage runs there and on anything newer.
-    runs-on: ubuntu-22.04
+  build:
+    strategy:
+      matrix:
+        include:
+          # Oldest supported runner (glibc 2.35): the AppImage runs there and on anything newer.
+          - target: linux
+            runner: ubuntu-22.04
+            file: Waddamburo-x86_64.AppImage
+          # The exe does not depend on glibc; vgmstream needs a newer mingw GCC than 22.04's.
+          - target: windows
+            runner: ubuntu-24.04
+            file: Waddamburo.exe
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,24 +33,31 @@ jobs:
           global-json-file: global.json
 
       - name: Install the Windows cross compiler
+        if: matrix.target == 'windows'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mingw-w64 ninja-build
 
       - name: Build
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then export WADDAMBURO_VERSION=${GITHUB_REF_NAME#v}; fi
-          eng/package.sh
+          eng/package.sh ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: waddamburo-${{ github.ref_name }}
-          path: |
-            out/package/Waddamburo.exe
-            out/package/Waddamburo-x86_64.AppImage
+          name: ${{ matrix.file }}
+          path: out/package/${{ matrix.file }}
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
 
       - name: Draft the release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "$GITHUB_REF_NAME" --draft --generate-notes --title "Waddamburo $GITHUB_REF_NAME"
-          out/package/Waddamburo.exe out/package/Waddamburo-x86_64.AppImage
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
+          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage
