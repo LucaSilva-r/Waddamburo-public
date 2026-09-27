@@ -40,7 +40,7 @@ public interface ISongPreviewController
     void SetPreview(SongPreviewRequest? request);
 
     /// <summary>Silence: no preview and no background music (a song was chosen, or Song Select closed).</summary>
-    void Stop();
+    void Silence();
 }
 
 public sealed record SongSelection(
@@ -89,7 +89,7 @@ public sealed class SongSelectSession
 
     public void StopPreview() => _previews.SetPreview(null);
 
-    public void StopMusic() => _previews.Stop();
+    public void StopMusic() => _previews.Silence();
 
     public LumenNativeSurfaceKey GetBoardTexture(
         int category,

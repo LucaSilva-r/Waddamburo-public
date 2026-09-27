@@ -119,6 +119,9 @@ public sealed record SongDescriptor
 
     public string? Subtitle { get; }
 
+    /// <summary>The subtitle in English when the song also has a Japanese one (<see cref="Subtitle"/>).</summary>
+    public string? EnglishSubtitle { get; init; }
+
     /// <summary>
     /// The song's Waiwai (party mode) section layout, when the song can be played in Waiwai; the
     /// game's own songs author it (fumen/&lt;id&gt;/composition.xml).

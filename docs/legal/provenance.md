@@ -219,3 +219,10 @@ choices. The backend uses SDL's public
 (accessed 2026-09-22). Tests use synthetic shapes, textures, and placements. No
 private implementation, asset, or raw capture is copied. The new mask shaders use
 the existing Slang 2026.18 and DXC 1.9.2602.24 toolchain; no dependency was added.
+
+`Waddamburo.Providers.Stock/Data/stock-metadata.tsv` (stock musicid → subtitle, English
+title, English subtitle) is generated data: Green's `musicinfo.xml` has only the Japanese
+title, so each stock title was matched against the community ESE/TJADB TJA library's
+`TITLEJA`/`TITLE` and the match's `SUBTITLEJA`/`SUBTITLE`/`TITLE` values kept (song credits
+and title translations, no chart or game data). The generator stays in the private lab
+repository (`tools/stock_subtitles/build.py`, 2026-09-28).

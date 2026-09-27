@@ -22,8 +22,11 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     private readonly SemaphoreSlim _rasterizer = new(1, 1);
     private bool _disposed;
 
-    public SongTitleTextureCache(SdlApplication application, string fontPath, bool asynchronous = true)
+    private readonly bool _english;
+
+    public SongTitleTextureCache(SdlApplication application, string fontPath, bool asynchronous = true, bool english = true)
     {
+        _english = english;
         _application = application ?? throw new ArgumentNullException(nameof(application));
         ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
         _fontPath = Path.GetFullPath(fontPath);
@@ -69,8 +72,9 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         var key = new LumenNativeSurfaceKey(
             $"song-title:{song.Descriptor.Key}:{kind}:{outlineRgb:x6}");
         var request = new TitleRequest(
-            song.Descriptor.Title.Primary,
-            song.Descriptor.Subtitle,
+            _english ? song.Descriptor.Title.English ?? song.Descriptor.Title.Primary
+                : song.Descriptor.Title.Japanese ?? song.Descriptor.Title.Primary,
+            _english ? song.Descriptor.EnglishSubtitle ?? song.Descriptor.Subtitle : song.Descriptor.Subtitle,
             kind,
             outlineRgb);
         if (_requests.TryGetValue(key, out var existing) && existing != request)

@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -36,6 +36,11 @@ public sealed record ArcadeSettings
         mode = {mode}
 
         """,
+        """
+        # Song titles in english (translated, when known) or japanese (the original).
+        title_language = english
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -51,6 +56,9 @@ public sealed record ArcadeSettings
     public bool Home { get; init; }
 
     public bool FreePlay { get; init; } = true;
+
+    /// <summary>Song titles and subtitles in English when a song has them; false: the Japanese originals.</summary>
+    public bool EnglishTitles { get; init; } = true;
 
     public int CreditsPerCoin { get; init; } = 1;
 
@@ -158,6 +166,12 @@ public sealed record ArcadeSettings
                 "fullscreen" => settings with { Fullscreen = boolean(value, index) },
                 "console" => settings with { ShowConsole = boolean(value, index) },
                 "auto_update" => settings with { AutoUpdate = boolean(value, index) },
+                "title_language" => settings with { EnglishTitles = value.ToLowerInvariant() switch
+                {
+                    "english" => true,
+                    "japanese" => false,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: title_language is english or japanese, not '{value}'."),
+                } },
                 "mode" => settings with { Home = value.ToLowerInvariant() switch
                 {
                     "home" => true,

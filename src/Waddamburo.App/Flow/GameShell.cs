@@ -372,7 +372,7 @@ internal sealed class GameShell : IDisposable
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
-        Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless);
+        Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles);
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);

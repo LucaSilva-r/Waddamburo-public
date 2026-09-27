@@ -6,6 +6,15 @@ namespace Waddamburo.Providers.Stock.Tests;
 public sealed class StockCatalogProviderTests
 {
     [Fact]
+    public void StockMetadataGivesSubtitlesAndEnglishTitles()
+    {
+        var ppap = StockCatalogProvider.StockMetadata.Value["ppap"];
+        Assert.Equal("ピコ太郎", ppap.Subtitle);
+        Assert.Equal("Pen-Pineapple-Apple-Pen", ppap.EnglishTitle);
+        Assert.True(StockCatalogProvider.StockMetadata.Value.Count > 900);
+    }
+
+    [Fact]
     public async Task ScanListsInstalledSongsInMetadataOrderByGenre()
     {
         using var data = new TemporaryData();

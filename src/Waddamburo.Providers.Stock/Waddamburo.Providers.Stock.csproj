@@ -8,6 +8,9 @@
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Data/stock-metadata.tsv" LogicalName="Waddamburo.Providers.Stock.StockMetadata.tsv" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Waddamburo.Providers.Stock.Tests" />
   </ItemGroup>
 </Project>

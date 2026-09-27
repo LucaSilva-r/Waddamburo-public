@@ -331,6 +331,6 @@ public sealed class SongSelectSessionTests
 
         public void SetPreview(SongPreviewRequest? request) => (Current, Stopped) = (request, false);
 
-        public void Stop() => (Current, Stopped) = (null, true);
+        public void Silence() => (Current, Stopped) = (null, true);
     }
 }

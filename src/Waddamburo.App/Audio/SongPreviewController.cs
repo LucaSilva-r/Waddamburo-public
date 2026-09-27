@@ -50,7 +50,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
         replace(null, TimeSpan.Zero);
     }
 
-    public void Stop()
+    public void Silence()
     {
         lock (_gate)
             stopCurrent();

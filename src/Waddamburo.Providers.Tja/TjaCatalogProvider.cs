@@ -121,7 +121,9 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
             var japaneseTitle = firstMetadata(files, "TITLEJA");
             var baseTitle = firstMetadata(files, "TITLE");
-            var englishTitle = firstMetadata(files, "TITLEEN");
+            // TITLE is the English title when TITLEJA holds the Japanese one (ESE); likewise SUBTITLE.
+            var englishTitle = firstMetadata(files, "TITLEEN") ?? (japaneseTitle is not null ? baseTitle : null);
+            var japaneseSubtitle = firstMetadata(files, "SUBTITLEJA");
             var primaryTitle = japaneseTitle ?? baseTitle ?? englishTitle
                 ?? Path.GetFileNameWithoutExtension(representative.RelativePath);
             var song = new SongDescriptor(
@@ -131,7 +133,10 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                 charts,
                 representative.Audio.Asset,
                 parsePreview(firstMetadata(files, "DEMOSTART"), representative.RelativePath, diagnostics),
-                normalizeSubtitle(firstMetadata(files, "SUBTITLEJA") ?? firstMetadata(files, "SUBTITLE")));
+                normalizeSubtitle(japaneseSubtitle ?? firstMetadata(files, "SUBTITLE")))
+            {
+                EnglishSubtitle = japaneseSubtitle is null ? null : normalizeSubtitle(firstMetadata(files, "SUBTITLE")),
+            };
             songs.Add(song);
 
             if (!categories.TryGetValue(representative.Category, out var members))

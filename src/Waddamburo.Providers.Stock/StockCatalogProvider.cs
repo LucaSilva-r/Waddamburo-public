@@ -88,14 +88,17 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
             var hasAudio = File.Exists(Path.Combine(_root, "sound", "bgm", "nub", bank + ".nub"));
             if (!hasAudio)
                 diagnostics.Add(warning("STOCK_AUDIO_MISSING", $"Music id '{entry.Id}' has no installed music."));
+            var extra = StockMetadata.Value.GetValueOrDefault(entry.Id);
             songs.Add(new SongDescriptor(
                 key,
-                new SongTitle(entry.Title ?? entry.Id, entry.Title),
+                new SongTitle(entry.Title ?? entry.Id, entry.Title, extra.EnglishTitle),
                 null,
                 charts,
                 hasAudio ? new CatalogAssetKey(Id, $"audio:{entry.Id}") : null,
-                hasAudio ? previewStart(Path.Combine(_root, "sound", "bgm", "nsh", bank + ".nsh")) : null)
+                hasAudio ? previewStart(Path.Combine(_root, "sound", "bgm", "nsh", bank + ".nsh")) : null,
+                extra.Subtitle)
             {
+                EnglishSubtitle = extra.EnglishSubtitle,
                 // Waiwai songs are the ones with a section layout (all of Green's 182 match the traced list).
                 WaiwaiComposition = File.Exists(compositionPath(entry.Id))
                     ? new CatalogAssetKey(Id, $"composition:{entry.Id}") : null,
@@ -201,6 +204,27 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
             : [];
         return revisions.Append(top).Where(File.Exists);
     }
+
+    /// <summary>
+    /// Subtitles and English titles the stock data lacks (the game bakes them into title images):
+    /// matched once from the ESE TJA library by musicid, identical on every Green install.
+    /// </summary>
+    internal static readonly Lazy<Dictionary<string, (string? Subtitle, string? EnglishTitle, string? EnglishSubtitle)>> StockMetadata = new(() =>
+    {
+        using var stream = typeof(StockCatalogProvider).Assembly.GetManifestResourceStream("Waddamburo.Providers.Stock.StockMetadata.tsv")
+            ?? throw new InvalidOperationException("The stock metadata table is not embedded.");
+        using var reader = new StreamReader(stream);
+        var table = new Dictionary<string, (string?, string?, string?)>(StringComparer.Ordinal);
+        static string? value(string[] fields, int index) =>
+            index < fields.Length && !string.IsNullOrWhiteSpace(fields[index]) ? fields[index] : null;
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.Length == 0 || line[0] == '#') continue;
+            var fields = line.Split('\t');
+            table[fields[0]] = (value(fields, 1), value(fields, 2), value(fields, 3));
+        }
+        return table;
+    });
 
     private sealed record MetadataEntry(string Id, string? Title, string? Genre);
 

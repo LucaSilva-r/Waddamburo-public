@@ -5,6 +5,13 @@ namespace Waddamburo.Game.Tests;
 public sealed class ArcadeTests
 {
     [Fact]
+    public void TitleLanguageDefaultsToEnglish()
+    {
+        Assert.True(ArcadeSettings.Parse("").EnglishTitles);
+        Assert.False(ArcadeSettings.Parse("title_language = japanese").EnglishTitles);
+    }
+
+    [Fact]
     public void DefaultFileParsesToTheDefaults() =>
         Assert.Equal(new ArcadeSettings { Version = ArcadeSettings.CurrentVersion, Home = true },
             ArcadeSettings.Parse(ArcadeSettings.DefaultFileText));
