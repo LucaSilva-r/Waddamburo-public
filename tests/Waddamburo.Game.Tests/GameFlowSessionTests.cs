@@ -164,6 +164,29 @@ public sealed class GameFlowSessionTests
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
     }
 
+    [Theory]
+    [InlineData(0, 30, 31, "don_result_in", "don_result_loop")]
+    [InlineData(0, 32, 33, "don_result_clear", "don_result_clear_loop")]
+    [InlineData(0, 35, 36, "don_result_failure", "don_result_failure_loop")]
+    [InlineData(0, 38, 39, "don_result_full", "don_result_full_loop")]
+    [InlineData(0, 41, 42, "don_result_percious", "don_result_percious_loop")]
+    [InlineData(1, 38, 39, "don_result_full", "don_result_full_loop")]
+    [InlineData(1, 40, -1, "don_result_full_koshibai", null)]
+    public void ResultBindingResolvesNumericDonMotionsWithoutMovieConstants(
+        int side, int oneShot, int loop, string expectedOneShot, string? expectedLoop)
+    {
+        var don = new SyntheticDonPresentation();
+        var player = new LumenPlayer(createResultDonMotionMovie(side, oneShot, loop), 1280, 720,
+            hostBinding: new ResultHostBinding(static () => [], 1, 0, don));
+
+        player.Advance();
+
+        Assert.True(don.Requests.Count == 1,
+            string.Join(" | ", player.Diagnostics.Select(diagnostic => $"{diagnostic.Code}: {diagnostic.Message}")));
+        Assert.Equal(new DonMotionRequest(side, expectedOneShot, expectedLoop), don.Requests[0]);
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
+    }
+
     [Fact]
     public void AttachingDonToANewMovieResetsPreviousSceneState()
     {
@@ -412,6 +435,39 @@ public sealed class GameFlowSessionTests
             words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
             record(LmbTags.StringPool, stringPool("Lumen", "SetMotion", "DON_ENTRY1P_OUT", "DON_ENTRY_LOOP")),
             record(LmbTags.ActionPool, actionPool(action)),
+            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
+            words(LmbTags.ShowFrame, 0, 1),
+            words(LmbTags.ShowFrame, 1, 2),
+            words(LmbTags.DoAction, 0, 0));
+        return LmbSemanticReader.Read(file).Value;
+    }
+
+    private static LmbMovieDefinition createResultDonMotionMovie(int side, int oneShot, int loop)
+    {
+        var action = new List<byte>();
+        void pushNumber(int value)
+        {
+            action.AddRange([0x96, 0x05, 0x00, 0x07]);
+            action.AddRange(BitConverter.GetBytes(value));
+        }
+        void pushString(int index) => action.AddRange([0x96, 0x03, 0x00, 0x09, (byte)index, 0x00]);
+        pushNumber(loop);
+        pushNumber(oneShot);
+        pushNumber(side);
+        pushString(4); // DonMot
+        pushNumber(4);
+        pushString(0); // flash
+        action.Add(0x1C); // GetVariable
+        pushString(1); // external
+        action.Add(0x4E); // GetMember
+        pushString(2); // ExternalInterface
+        action.Add(0x4E); // GetMember
+        pushString(3); // call
+        action.AddRange([0x52, 0x17, 0x00]); // CallMethod, Pop, End
+        var file = createLmb(
+            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
+            record(LmbTags.StringPool, stringPool("flash", "external", "ExternalInterface", "call", "DonMot")),
+            record(LmbTags.ActionPool, actionPool([.. action])),
             words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
             words(LmbTags.ShowFrame, 0, 1),
             words(LmbTags.ShowFrame, 1, 2),

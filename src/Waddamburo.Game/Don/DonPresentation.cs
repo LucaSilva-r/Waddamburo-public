@@ -131,7 +131,8 @@ public static class DonLumenBinding
     public static void ApplyMotion(
         LumenHostContext context,
         IDonPresentationController presentation,
-        IReadOnlyList<LumenHostValue> arguments)
+        IReadOnlyList<LumenHostValue> arguments,
+        Func<int, string?>? motionFallback = null)
     {
         if (arguments.Count < 3)
             return;
@@ -140,8 +141,8 @@ public static class DonLumenBinding
             return;
         presentation.SetMotion(new DonMotionRequest(
             player,
-            motionName(context, arguments[1]),
-            motionName(context, arguments[2])));
+            motionName(context, arguments[1], motionFallback),
+            motionName(context, arguments[2], motionFallback)));
     }
 
     /// <summary>Entry costume picker: ChangeCostume(player, id) / ChangeDivideCostume(player, head, body, paint).</summary>
@@ -174,14 +175,18 @@ public static class DonLumenBinding
         return (int)value;
     }
 
-    private static string? motionName(LumenHostContext context, LumenHostValue value)
+    private static string? motionName(LumenHostContext context, LumenHostValue value, Func<int, string?>? fallback)
     {
         if (value.Kind != LumenHostValueKind.Number)
             return null;
         var global = context.FindNumericVariableName("DON_", value.AsNumber());
-        return global is null
-            ? null
-            : $"don_{global[4..].ToLowerInvariant()}"
+        if (global is null)
+        {
+            var number = value.AsNumber();
+            return fallback is not null && double.IsFinite(number) && number == Math.Truncate(number)
+                && number >= int.MinValue && number <= int.MaxValue ? fallback((int)number) : null;
+        }
+        return $"don_{global[4..].ToLowerInvariant()}"
                 .Replace("1p", "1P", StringComparison.Ordinal)
                 .Replace("2p", "2P", StringComparison.Ordinal);
     }

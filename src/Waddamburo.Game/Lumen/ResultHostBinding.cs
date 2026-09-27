@@ -46,7 +46,7 @@ public sealed class ResultHostBinding(
         {
             if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Text
                 && call.Arguments[0].AsString() == "DonMot" && don is not null)
-                DonLumenBinding.ApplyMotion(context, don, call.Arguments[1..]);
+                DonLumenBinding.ApplyMotion(context, don, call.Arguments[1..], resultMotionName);
             return LumenHostValue.Undefined;
         });
         context.RegisterObject("LumenMethod", method =>
@@ -148,6 +148,27 @@ public sealed class ResultHostBinding(
     }
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
+
+    // result.lm sends numeric DonMot IDs without defining DON_* globals. These pairs are the
+    // entrance/idle and outcome motions observed across normal one- and two-player result traces.
+    private static string? resultMotionName(int id) => id switch
+    {
+        30 => "don_result_in",
+        31 => "don_result_loop",
+        32 => "don_result_clear",
+        33 => "don_result_clear_loop",
+        34 => "don_result_clear_koshibai",
+        35 => "don_result_failure",
+        36 => "don_result_failure_loop",
+        37 => "don_result_failure_koshibai",
+        38 => "don_result_full",
+        39 => "don_result_full_loop",
+        40 => "don_result_full_koshibai",
+        41 => "don_result_percious",
+        42 => "don_result_percious_loop",
+        43 => "don_result_percious_koshibai",
+        _ => null,
+    };
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
