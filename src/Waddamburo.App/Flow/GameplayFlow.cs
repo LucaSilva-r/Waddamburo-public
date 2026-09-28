@@ -40,6 +40,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // The player's offsets, fixed for a play (judgement time must not step back mid-song).
     private TimeSpan _audioOffset;
     private TimeSpan _inputOffset;
+    // The music's position stops with the music: after it, the song's time goes on by a stopwatch.
+    private TimeSpan? _musicEndPosition;
+    private readonly Stopwatch _afterMusic = new();
 
     /// <summary>The song select -> gameplay rainbow, begun by Song Select and finished here.</summary>
     public RainbowTransitionSequence Rainbow { get; private set; } = new();
@@ -85,6 +88,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _autoplay = Shell.Options.Autoplay ? new GameplayAutoplay(_charts, _side) : null;
         _startTick = Shell.Tick;
         _clock.Reset();
+        _musicEndPosition = null;
+        _afterMusic.Reset();
         _audioOffset = TimeSpan.FromMilliseconds(Shell.Arcade.AudioOffsetMs);
         _inputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai);
@@ -104,6 +109,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// </summary>
     private TimeSpan chartTime() => -_audioOffset + _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
+        : _musicEndPosition is { } ended ? ended + _afterMusic.Elapsed
         : _music is not null ? Shell.Audio!.GetPosition(_music)
         : Shell.Headless ? TimeSpan.FromSeconds((Shell.Tick - _startTick - _pausedTicks
             - (_paused ? Shell.Tick - _pausedAtTick : 0)) / 60d)
@@ -126,11 +132,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _pauseInterpolation = interpolation;
             _pausedAtTick = Shell.Tick;
             _clock.Stop();
+            _afterMusic.Stop();
         }
         else
         {
             _pausedTicks += Shell.Tick - _pausedAtTick;
             if (revealed) _clock.Start();
+            if (_musicEndPosition is not null) _afterMusic.Start();
         }
         if (_music is { } music && Shell.Audio is { } audio)
             audio.SetPaused(music, paused);
@@ -212,9 +220,16 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
         if (_music?.Failure is not null || Shell.Audio?.Failure is not null)
             throw new IOException("Gameplay audio failed.", _music?.Failure ?? Shell.Audio?.Failure);
-        var chartFinished = _charts.Length != 0
-            && elapsed >= _charts.Max(static chart => chart.Duration) + TimeSpan.FromSeconds(1);
+        // Traced: the shutter closes 9 s after the end banner (the audio had ended by then); a longer
+        // outro still plays out first.
         var musicFinished = _music is not { } music || Shell.Audio is null || !Shell.Audio.Mixer.IsPlaying(music.Handle);
+        if (musicFinished && _music is { } finished && _musicEndPosition is null)
+        {
+            _musicEndPosition = Shell.Audio!.GetPosition(finished);
+            _afterMusic.Restart();
+        }
+        var chartFinished = _charts.Length != 0
+            && elapsed >= _charts.Max(TaikoResultBanner.Time) + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0 && chartFinished && musicFinished && !Shell.Gameplay.OverlayActive)
         {
             overlay.Clear();

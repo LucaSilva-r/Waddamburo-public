@@ -6,30 +6,20 @@ namespace Waddamburo.Game.Tests;
 public sealed class TaikoResultBannerTests
 {
     [Fact]
-    public void FiresOneSecondIntoTheMeasureHoldingTheLastNote()
+    public void FiresAfterTheLastNote()
     {
-        // Bars every 2 s; the last note sits inside the measure starting at 4 s.
         var chart = chartWith([seconds(1), seconds(4.5)], [seconds(0), seconds(2), seconds(4), seconds(6)]);
 
-        Assert.Equal(seconds(5), TaikoResultBanner.Time(chart));
-    }
-
-    [Fact]
-    public void LastNoteOnABarLineUsesThatMeasure()
-    {
-        var chart = chartWith([seconds(1), seconds(4)], [seconds(0), seconds(2), seconds(4), seconds(6)]);
-
-        Assert.Equal(seconds(5), TaikoResultBanner.Time(chart));
+        Assert.Equal(seconds(4.5) + TaikoResultBanner.Delay, TaikoResultBanner.Time(chart));
     }
 
     [Fact]
     public void ARollEndingLaterCountsByItsEnd()
     {
-        // The balloon starts at 3 s but ends at 6.5 s, in the measure starting at 6 s.
         var chart = chartWith([seconds(1)], [seconds(0), seconds(2), seconds(4), seconds(6)],
             [new PlayableLongNote(seconds(3), seconds(6.5), PlayableLongNoteKind.Balloon, 5)]);
 
-        Assert.Equal(seconds(7), TaikoResultBanner.Time(chart));
+        Assert.Equal(seconds(6.5) + TaikoResultBanner.Delay, TaikoResultBanner.Time(chart));
     }
 
     [Theory]
