@@ -11,7 +11,8 @@ on the thread that created the application.
 
 bgfx picks the platform default (Vulkan on Linux, Direct3D on Windows, Metal on
 macOS). `WADDAMBURO_RENDERER=vulkan|gles|d3d11|metal|opengl` forces one for
-diagnostics. The Linux library is built with only the GLES 3.0 and Vulkan
+diagnostics; `renderer` in `config.cfg` does the same for players (`auto` by default,
+the env var wins). The Linux library is built with only the GLES 3.0 and Vulkan
 renderers: bgfx's desktop GL renderer requires GL 4.3, while Ivy Bridge-era GPUs
 expose 4.2 at most and do expose ES 3.0 under Mesa. On Windows those GPUs use
 Direct3D 11 (feature level 11_0). Current bgfx no longer supports GLES 2.

@@ -86,6 +86,9 @@ try
         var arcadePath = Path.Combine(layout.Root, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         ReleaseConsole.Show(arcade.ShowConsole);
+        // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
+        if (arcade.Renderer is not null && Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER") is null)
+            Environment.SetEnvironmentVariable("WADDAMBURO_RENDERER", arcade.Renderer);
         if (arcade.AutoUpdate
             && SelfUpdate.UpdateNow(args, layout.FontPath, windowSize.Width, windowSize.Height, arcade.Fullscreen))
         {

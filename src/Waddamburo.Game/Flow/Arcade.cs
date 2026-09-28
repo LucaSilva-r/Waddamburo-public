@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -66,6 +66,13 @@ public sealed record ArcadeSettings
         mute_in_background = true
 
         """,
+        """
+        # renderer: auto lets the GPU backend be picked for the hardware; vulkan, gles, opengl,
+        # d3d11 or metal forces one (e.g. gles on a Sandy Bridge laptop whose Vulkan driver is slow).
+        # A backend this build or machine lacks falls back to auto.
+        renderer = auto
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -109,6 +116,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
+
+    /// <summary>The forced GPU backend (vulkan, gles, opengl, d3d11, metal), or null for auto.</summary>
+    public string? Renderer { get; init; }
 
     public int CreditsPerCoin { get; init; } = 1;
 
@@ -232,6 +242,12 @@ public sealed record ArcadeSettings
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
+                "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
+                {
+                    "auto" => null,
+                    "vulkan" or "gles" or "opengl" or "d3d11" or "metal" => value.ToLowerInvariant(),
+                    _ => throw new InvalidDataException($"{FileName} line {index}: renderer is auto, vulkan, gles, opengl, d3d11 or metal, not '{value}'."),
+                } },
                 "mode" => settings with { Home = value.ToLowerInvariant() switch
                 {
                     "home" => true,

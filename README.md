@@ -167,7 +167,7 @@ like the cabinet: the startup notice and logos, then the attract loop (logo, tit
 caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). In free play, hit a drum key (D/F/J/K) during the attract loop to reach player Entry.
 Cabinet settings live in `config.cfg` in that root (written with defaults on first run):
 `free_play`, `credits_per_coin`, `credits_1p`, `credits_2p`, `songs_per_session`,
-`fullscreen`, `console` and `auto_update`. The file records its `config_version`; a
+`fullscreen`, `console`, `auto_update` and `renderer` (`auto`, or `vulkan`/`gles`/`opengl`/`d3d11`/`metal` to force a GPU backend). The file records its `config_version`; a
 newer build appends the settings it added, with their defaults, keeping the user's edits. In coin
 mode F2 inserts a coin; the first coin opens player Entry, and joining pays the credits. Space
 skips the startup screens.

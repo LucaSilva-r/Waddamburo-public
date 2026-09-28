@@ -68,6 +68,14 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void RendererIsAutoOrABackend()
+    {
+        Assert.Null(ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).Renderer);
+        Assert.Equal("gles", ArcadeSettings.Parse("renderer = GLES").Renderer);
+        Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("renderer = d3d9"));
+    }
+
+    [Fact]
     public void AFileFromANewerBuildMayHoldUnknownSettings() =>
         Assert.True(ArcadeSettings.Parse($"config_version = {ArcadeSettings.CurrentVersion + 1}\nfuture = 1").FreePlay);
 
