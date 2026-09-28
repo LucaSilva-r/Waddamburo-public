@@ -23,8 +23,8 @@ endif()
 # exposes ES 3.0 there, and modern GPUs use Vulkan anyway. Windows keeps D3D11 for them.
 set(_renderer_args)
 set(_tools ON)
-if(CMAKE_CROSSCOMPILING)
-  set(_tools OFF) # shaderc is a host tool; cross builds only need the library
+if(CMAKE_CROSSCOMPILING OR WADDAMBURO_PACKAGE)
+  set(_tools OFF) # shaderc is a developer host tool; releases only need the library
 endif()
 # Release libraries carry their C++ runtime and link only what they use (the GLES build
 # never touches the desktop GL/GLU libraries bgfx.cmake links; EGL is loaded at runtime).
