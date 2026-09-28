@@ -46,6 +46,26 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void MenuSettingsAreSavedInPlaceKeepingTheRestOfTheFile()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "# mine\nfree_play = false\nmusic_volume = 100 # loud\n");
+            ArcadeSettings.SaveMenuSettings(path, new ArcadeSettings { MusicVolume = 40, AudioOffsetMs = -25 });
+            var text = File.ReadAllText(path);
+            var saved = ArcadeSettings.Parse(text);
+            Assert.Equal((40, -25, 100, false), (saved.MusicVolume, saved.AudioOffsetMs, saved.MasterVolume, saved.FreePlay));
+            Assert.StartsWith("# mine\nfree_play = false\nmusic_volume = 40\n", text, StringComparison.Ordinal);
+            Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("master_volume = 101"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void AFileFromANewerBuildMayHoldUnknownSettings() =>
         Assert.True(ArcadeSettings.Parse($"config_version = {ArcadeSettings.CurrentVersion + 1}\nfuture = 1").FreePlay);
 

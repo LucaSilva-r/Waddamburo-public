@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -41,6 +41,23 @@ public sealed record ArcadeSettings
         title_language = english
 
         """,
+        """
+        # Volumes in percent (0-100). These and the timing settings below can also be changed in
+        # home mode's Escape menu > Settings, which saves them here.
+        master_volume = 100
+        music_volume = 100
+        drum_volume = 100
+        effects_volume = 100
+        # voice_volume: Don-chan's (and Katsu-chan's) voice lines.
+        voice_volume = 100
+        # audio_offset_ms: raise it when the music sounds late against the notes (moves notes and judgement later).
+        audio_offset_ms = 0
+        # input_offset_ms: raise it when your hits are judged late (the drum or keyboard lags).
+        input_offset_ms = 0
+        # audio_buffer_frames: the audio device's period, applied at start. Lower = less delay; too low crackles.
+        audio_buffer_frames = 256
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -59,6 +76,25 @@ public sealed record ArcadeSettings
 
     /// <summary>Song titles and subtitles in English when a song has them; false: the Japanese originals.</summary>
     public bool EnglishTitles { get; init; } = true;
+
+    public int MasterVolume { get; init; } = 100;
+
+    public int MusicVolume { get; init; } = 100;
+
+    public int DrumVolume { get; init; } = 100;
+
+    public int EffectsVolume { get; init; } = 100;
+
+    public int VoiceVolume { get; init; } = 100;
+
+    /// <summary>Milliseconds the heard music lags the chart clock: notes and judgement move this much later.</summary>
+    public int AudioOffsetMs { get; init; }
+
+    /// <summary>Milliseconds the player's hits arrive late: they are judged this much earlier.</summary>
+    public int InputOffsetMs { get; init; }
+
+    /// <summary>The audio device period requested at start (SDL may choose another).</summary>
+    public int AudioBufferFrames { get; init; } = 256;
 
     public int CreditsPerCoin { get; init; } = 1;
 
@@ -172,6 +208,14 @@ public sealed record ArcadeSettings
                     "japanese" => false,
                     _ => throw new InvalidDataException($"{FileName} line {index}: title_language is english or japanese, not '{value}'."),
                 } },
+                "master_volume" => settings with { MasterVolume = integer(value, index, 0, 100) },
+                "music_volume" => settings with { MusicVolume = integer(value, index, 0, 100) },
+                "drum_volume" => settings with { DrumVolume = integer(value, index, 0, 100) },
+                "effects_volume" => settings with { EffectsVolume = integer(value, index, 0, 100) },
+                "voice_volume" => settings with { VoiceVolume = integer(value, index, 0, 100) },
+                "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
+                "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
+                "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
                 "mode" => settings with { Home = value.ToLowerInvariant() switch
                 {
                     "home" => true,
@@ -195,6 +239,44 @@ public sealed record ArcadeSettings
         }
     }
 
+    /// <summary>
+    /// Writes the settings the in-game menu changes into the file, replacing their lines and keeping
+    /// every other line (and the user's comments) as it is.
+    /// </summary>
+    public static void SaveMenuSettings(string path, ArcadeSettings settings)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(settings);
+        var values = new Dictionary<string, int>
+        {
+            ["master_volume"] = settings.MasterVolume,
+            ["music_volume"] = settings.MusicVolume,
+            ["drum_volume"] = settings.DrumVolume,
+            ["effects_volume"] = settings.EffectsVolume,
+            ["voice_volume"] = settings.VoiceVolume,
+            ["audio_offset_ms"] = settings.AudioOffsetMs,
+            ["input_offset_ms"] = settings.InputOffsetMs,
+            ["audio_buffer_frames"] = settings.AudioBufferFrames,
+        };
+        var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+            foreach (var (key, value) in values)
+                if (isKey(lines[index], key))
+                {
+                    lines[index] = string.Create(CultureInfo.InvariantCulture, $"{key} = {value}");
+                    values.Remove(key);
+                    break;
+                }
+        var text = string.Join('\n', lines);
+        if (values.Count != 0)
+            text = text.TrimEnd() + "\n" + string.Concat(values.Select(static pair =>
+                string.Create(CultureInfo.InvariantCulture, $"{pair.Key} = {pair.Value}\n")));
+        // Written beside the file and moved over it: a crash mid-write keeps the old file.
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, text);
+        File.Move(temporary, path, overwrite: true);
+    }
+
     private static bool boolean(string value, int line) => value.ToLowerInvariant() switch
     {
         "true" or "1" or "yes" or "on" => true,
@@ -207,6 +289,12 @@ public sealed record ArcadeSettings
             && uri.Scheme is "http" or "https"
             ? uri
             : throw new InvalidDataException($"{FileName} line {line}: '{value}' is not an http(s) address.");
+
+    private static int integer(string value, int line, int minimum, int maximum) =>
+        int.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number)
+            && number >= minimum && number <= maximum
+            ? number
+            : throw new InvalidDataException($"{FileName} line {line}: '{value}' must be a whole number from {minimum} to {maximum}.");
 
     private static int count(string value, int line, int minimum) =>
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= minimum

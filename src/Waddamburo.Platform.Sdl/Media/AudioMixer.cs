@@ -136,6 +136,7 @@ public sealed class AudioMixer
     private readonly List<StreamVoice> _streamVoices = [];
     private long _nextHandle;
     private float _masterVolume = 1f;
+    private readonly float[] _busGains = [.. Enum.GetValues<AudioBus>().Select(static _ => 1f)];
 
     public AudioMixer(SdlAudioFormat format)
     {
@@ -292,6 +293,15 @@ public sealed class AudioMixer
             _buses[(int)bus].SetVolume(volume);
     }
 
+    /// <summary>The player's volume for a bus, applied on top of its (faded) volume.</summary>
+    public void SetBusGain(AudioBus bus, float gain)
+    {
+        validateBus(bus);
+        validateVolume(gain, nameof(gain));
+        lock (_gate)
+            _busGains[(int)bus] = gain;
+    }
+
     /// <summary>Ramps a bus without stopping or rewinding any voice routed through it.</summary>
     public void FadeBusVolume(AudioBus bus, float volume, TimeSpan duration)
     {
@@ -349,7 +359,7 @@ public sealed class AudioMixer
                         : (float)voice.FadeFramesRemaining / voice.FadeFramesTotal;
                     var gain = bus.Muted
                         ? 0f
-                        : _masterVolume * bus.VolumeAt(outputFrame) * voice.Volume * fade;
+                        : _masterVolume * _busGains[(int)voice.Bus] * bus.VolumeAt(outputFrame) * voice.Volume * fade;
                     var sourceOffset = voice.Position * Format.Channels;
                     var outputOffset = outputFrame * Format.Channels;
                     for (var channel = 0; channel < Format.Channels; channel++)
@@ -383,7 +393,7 @@ public sealed class AudioMixer
                         : (float)voice.FadeFramesRemaining / voice.FadeFramesTotal;
                     var gain = bus.Muted
                         ? 0f
-                        : _masterVolume * bus.VolumeAt(frame) * voice.Volume * fade;
+                        : _masterVolume * _busGains[(int)voice.Bus] * bus.VolumeAt(frame) * voice.Volume * fade;
                     var offset = frame * Format.Channels;
                     for (var channel = 0; channel < Format.Channels; channel++)
                         interleavedDestination[offset + channel] += voice.Buffer[offset + channel] * gain;

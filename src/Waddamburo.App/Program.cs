@@ -120,6 +120,7 @@ try
             countdown,
             startScene,
             arcade,
+            arcadePath,
             accounts,
             Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName),
             autoplay,

@@ -1,3 +1,4 @@
+using Waddamburo.App.Flow;
 using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Nut;
 using Waddamburo.Platform.Sdl;
@@ -25,10 +26,10 @@ internal sealed class HomePauseOverlay : IDisposable
         load(Path.Combine(assetRoot, "song_select", "packeddata.ddp"), [103, 352, 354], 1000);
     }
 
-    public IEnumerable<RenderQuad> Quads(bool paused, int selection, float black)
+    public IEnumerable<RenderQuad> Quads(HomeMenu? menu, float black)
     {
         var quads = new List<RenderQuad>();
-        if (paused)
+        if (menu is not null)
         {
             quads.Add(rect(_white, 0, 0, 1280, 720, new(0, 0, 0, 0.6f)));
             quads.Add(_art.TryGetValue(Panel, out var panel)
@@ -36,15 +37,18 @@ internal sealed class HomePauseOverlay : IDisposable
                 : rect(_white, 140, 98, 1000, 520, new(1, 0.98f, 0.91f, 1)));
             if (_art.TryGetValue(Badge, out var badge))
                 quads.Add(rect(badge.Texture, 460, 143, 58, 58));
-            quads.Add(label("Paused", 640, 174, 260, 60));
-            string[] choices = ["Resume", "Restart Song", "Song Select"];
-            for (var index = 0; index < choices.Length; index++)
+            quads.Add(label(menu.Title, 640, 174, 260, 60));
+            // Rows share the space under the title: the pause choices at full size, settings smaller.
+            var rows = menu.Rows;
+            var spacing = MathF.Min(88, 360f / rows.Length);
+            var height = MathF.Round(spacing * 0.78f);
+            for (var index = 0; index < rows.Length; index++)
             {
-                var y = 247 + index * 88;
-                button(quads, 405, y, 470, 68, index == selection);
-                if (index == selection && _art.TryGetValue(Arrow, out var arrow))
-                    quads.Add(rect(arrow.Texture, 348, y + 10, 48, 48));
-                quads.Add(label(choices[index], 640, y + 35, 470, 52));
+                var y = 237 + index * spacing;
+                button(quads, 405, y, 470, height, index == menu.Selection);
+                if (index == menu.Selection && _art.TryGetValue(Arrow, out var arrow))
+                    quads.Add(rect(arrow.Texture, 396 - height * 0.7f, y + height * 0.15f, height * 0.7f, height * 0.7f));
+                quads.Add(label(rows[index], 640, y + height / 2, 470, (int)(height * 0.76f)));
             }
         }
         if (black > 0)
@@ -72,6 +76,7 @@ internal sealed class HomePauseOverlay : IDisposable
     private RenderQuad label(string value, float centreX, float centreY, int width, int height)
     {
         var scale = (uint)Math.Clamp((_application.GetPixelSize().Height + 719) / 720, 1, 3);
+        // ponytail: every setting value gets its own cached texture (a few hundred at most), freed on exit.
         var key = (value, width, height, scale);
         if (!_text.TryGetValue(key, out var texture))
         {

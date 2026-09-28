@@ -37,6 +37,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private int _pausedAtTick;
     private int _pausedTicks;
     private float _pauseInterpolation;
+    // The player's offsets, fixed for a play (judgement time must not step back mid-song).
+    private TimeSpan _audioOffset;
+    private TimeSpan _inputOffset;
 
     /// <summary>The song select -> gameplay rainbow, begun by Song Select and finished here.</summary>
     public RainbowTransitionSequence Rainbow { get; private set; } = new();
@@ -82,6 +85,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _autoplay = Shell.Options.Autoplay ? new GameplayAutoplay(_charts, _side) : null;
         _startTick = Shell.Tick;
         _clock.Reset();
+        _audioOffset = TimeSpan.FromMilliseconds(Shell.Arcade.AudioOffsetMs);
+        _inputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai);
         if (_directStart)
         {
@@ -93,8 +98,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             + $"{_charts.Sum(static chart => chart.NoteCount)} notes at tick {Shell.Tick}.");
     }
 
-    /// <summary>The chart position: held at zero under the rainbow, then the music's (or the ticks', headless).</summary>
-    private TimeSpan chartTime() => _timeline?.ChartTime(
+    /// <summary>
+    /// The chart position: held at zero under the rainbow, then the music's (or the ticks', headless),
+    /// less the audio offset.
+    /// </summary>
+    private TimeSpan chartTime() => -_audioOffset + _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
         : _music is not null ? Shell.Audio!.GetPosition(_music)
         : Shell.Headless ? TimeSpan.FromSeconds((Shell.Tick - _startTick - _pausedTicks
@@ -165,7 +173,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (!Shell.Headless && revealed && !_paused)
         {
-            var time = chartTime();
+            var time = chartTime() - _inputOffset;
             Shell.Gameplay.Advance(_autoplay?.Apply(keys, time) ?? keys, time);
         }
     }
@@ -195,7 +203,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             return;
         var elapsed = chartTime();
         if (Shell.Headless)
-            Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed) ?? input.Keys, elapsed);
+            Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
         if (_music?.Failure is not null || Shell.Audio?.Failure is not null)
             throw new IOException("Gameplay audio failed.", _music?.Failure ?? Shell.Audio?.Failure);
         var chartFinished = _charts.Length != 0

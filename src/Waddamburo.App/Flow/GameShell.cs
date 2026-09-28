@@ -44,6 +44,7 @@ internal sealed record GameOptions(
     bool Countdown = true,
     StartScene StartScene = StartScene.Boot,
     ArcadeSettings? Arcade = null,
+    string? ArcadePath = null,
     AccountBook? Accounts = null,
     string? ScoresPath = null,
     bool Autoplay = false,
@@ -57,7 +58,7 @@ internal sealed record GameOptions(
 internal sealed class GameShell : IDisposable
 {
     public GameOptions Options { get; }
-    public ArcadeSettings Arcade { get; }
+    public ArcadeSettings Arcade { get; private set; }
 
     public SdlApplication Application { get; }
     public SdlDonRenderer? DonRenderer { get; }
@@ -249,8 +250,7 @@ internal sealed class GameShell : IDisposable
     private SceneId? _fadeTarget;
     private int _fadeStartTick;
     private bool _escapeWasDown;
-    private bool _homePaused;
-    private int _pauseSelection;
+    private readonly HomeMenu _menu;
     private long _qPressedAt;
     private float _qStartAlpha;
     private bool _qNeedsRelease;
@@ -374,12 +374,18 @@ internal sealed class GameShell : IDisposable
             Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
         }
         var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
-        _audioDevice = needsAudio ? new SdlAudioDevice() : null;
+        _audioDevice = needsAudio ? new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames) : null;
         if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
             Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
                 + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
                 + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
         Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice);
+        applyVolumes();
+        _menu = new HomeMenu(() => Arcade, settings =>
+        {
+            Arcade = settings;
+            applyVolumes();
+        }, saveSettings);
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
@@ -681,44 +687,48 @@ internal sealed class GameShell : IDisposable
         var escapeIsDown = keys.IsDown(SdlKeyboardKey.Escape);
         var escape = escapeIsDown && !_escapeWasDown;
         _escapeWasDown = escapeIsDown;
-        if (Arcade.Home && Active.Id == FlowScenes.Gameplay)
+        // Home: Escape opens the menu (pause in gameplay; settings and back to the title in the menus).
+        if (Arcade.Home && !_menu.IsOpen && escape)
         {
-            if (escape && restartBlack() == 0 && _gameplay.CanPause)
+            if (Active.Id == FlowScenes.Gameplay)
             {
-                _qPressedAt = 0;
-                _pauseInterpolation = _lastInterpolation;
-                _gameplay.SetPaused(true, _pauseInterpolation);
-                _homePaused = true;
-                _pauseSelection = 0;
-                return;
-            }
-            if (_homePaused)
-            {
-                if (escape) resumeHome();
-                else if (keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D)
-                    || keys.IsDown(SdlKeyboardKey.Z))
-                    _pauseSelection = (_pauseSelection + 2) % 3;
-                else if (keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K)
-                    || keys.IsDown(SdlKeyboardKey.V))
-                    _pauseSelection = (_pauseSelection + 1) % 3;
-                else if (keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.Space)
-                    || keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J)
-                    || keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C))
+                if (restartBlack() == 0 && _gameplay.CanPause)
                 {
-                    if (_pauseSelection == 0) resumeHome();
-                    else if (_pauseSelection == 1)
-                    {
-                        resumeHome();
-                        _menuRestartAt = Stopwatch.GetTimestamp();
-                    }
-                    else
-                    {
-                        resumeHome();
-                        _gameplay.Abandon();
-                    }
+                    _qPressedAt = 0;
+                    _pauseInterpolation = _lastInterpolation;
+                    _gameplay.SetPaused(true, _pauseInterpolation);
+                    _menu.Open(gameplay: true);
+                    return;
                 }
+            }
+            else if ((Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect)
+                && !Overlay.IsShown && Coordinator.Flow.State != GameFlowState.TransitionPending)
+            {
+                _pauseInterpolation = _lastInterpolation;
+                _menu.Open(gameplay: false);
                 return;
             }
+        }
+        if (_menu.IsOpen)
+        {
+            switch (_menu.Input(keys, escape))
+            {
+                case HomeMenuAction.Resume:
+                    resumeHome();
+                    break;
+                case HomeMenuAction.Restart:
+                    resumeHome();
+                    _menuRestartAt = Stopwatch.GetTimestamp();
+                    break;
+                case HomeMenuAction.SongSelect:
+                    resumeHome();
+                    _gameplay.Abandon();
+                    break;
+                case HomeMenuAction.Title:
+                    _returnToAttract = true;
+                    break;
+            }
+            return;
         }
         if (updateQuickRestart(heldKeys)) return;
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
@@ -741,9 +751,6 @@ internal sealed class GameShell : IDisposable
             }
             _indicators.Advance();
         }
-        // Home: Escape in the entry or song select ends the session (back to the title, next tick).
-        if (escape && Arcade.Home && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))
-            _returnToAttract = true;
         if (Coordinator.Flow.State != GameFlowState.TransitionPending)
         {
             if (Arcade.Home && Active.Id == FlowScenes.Result
@@ -765,8 +772,35 @@ internal sealed class GameShell : IDisposable
 
     private void resumeHome()
     {
-        _homePaused = false;
-        _gameplay.SetPaused(false);
+        if (Active.Id == FlowScenes.Gameplay)
+            _gameplay.SetPaused(false);
+    }
+
+    // The player's volumes (percent) on a curve that sounds even: half way is about a quarter of the level.
+    private void applyVolumes()
+    {
+        if (Audio?.Mixer is not { } mixer) return;
+        static float level(int percent) => percent * percent / 10000f;
+        mixer.MasterVolume = level(Arcade.MasterVolume);
+        mixer.SetBusGain(AudioBus.Bgm, level(Arcade.MusicVolume));
+        mixer.SetBusGain(AudioBus.Preview, level(Arcade.MusicVolume));
+        mixer.SetBusGain(AudioBus.DrumHit, level(Arcade.DrumVolume));
+        mixer.SetBusGain(AudioBus.MenuSound, level(Arcade.EffectsVolume));
+        mixer.SetBusGain(AudioBus.Coin, level(Arcade.EffectsVolume));
+        mixer.SetBusGain(AudioBus.Voice, level(Arcade.VoiceVolume));
+    }
+
+    private void saveSettings()
+    {
+        if (Options.ArcadePath is not { } path) return;
+        try
+        {
+            ArcadeSettings.SaveMenuSettings(path, Arcade);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+        }
     }
 
     private bool updateQuickRestart(SdlKeyboardSnapshot held)
@@ -845,7 +879,7 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame withHomeOverlay(RenderFrame frame) => _homeOverlay is null
         ? frame : new RenderFrame(frame.ClearColor,
-            frame.Quads.Concat(_homeOverlay.Quads(_homePaused, _pauseSelection, restartBlack())),
+            frame.Quads.Concat(_homeOverlay.Quads(_menu.IsOpen ? _menu : null, restartBlack())),
             frame.ContentAspectRatio);
 
     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit counts at
@@ -1003,7 +1037,9 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame createFrame(double interpolationFraction)
     {
-        if (!_homePaused) _lastInterpolation = (float)interpolationFraction;
+        // An open menu freezes the scene between two ticks: hold the blend where it stopped.
+        if (_menu.IsOpen) interpolationFraction = _pauseInterpolation;
+        else _lastInterpolation = (float)interpolationFraction;
         if (_heldFrame is { } held)
         {
             var needsFirstPresentation = _heldPresentationsRemaining > 0;
@@ -1022,7 +1058,7 @@ internal sealed class GameShell : IDisposable
         Titles.UploadCompleted();
         uploadAhead();
         if (DonRenderer is not null)
-            DonRenderer.Interpolation = _homePaused ? _pauseInterpolation : interpolation;
+            DonRenderer.Interpolation = interpolation;
         var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _textures, "Scene", resolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,

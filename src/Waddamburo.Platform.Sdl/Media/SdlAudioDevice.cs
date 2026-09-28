@@ -23,7 +23,8 @@ public sealed unsafe class SdlAudioDevice : IDisposable
 
     public SdlAudioDevice(
         int sampleRate = DefaultSampleRate,
-        int channels = DefaultChannels)
+        int channels = DefaultChannels,
+        int requestedBufferFrames = 256)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);
@@ -34,7 +35,8 @@ public sealed unsafe class SdlAudioDevice : IDisposable
         // Request a smaller device period before opening it. SDL and the backend may
         // choose another size; an explicit user setting takes precedence.
         if (Environment.GetEnvironmentVariable("SDL_AUDIO_DEVICE_SAMPLE_FRAMES") is null)
-            SDL_SetHint("SDL_AUDIO_DEVICE_SAMPLE_FRAMES", "256");
+            SDL_SetHint("SDL_AUDIO_DEVICE_SAMPLE_FRAMES",
+                requestedBufferFrames.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (!SDL_InitSubSystem(SDL_InitFlags.SDL_INIT_AUDIO))
             throw sdlFailure("initialize SDL audio");
         _audioInitialized = true;
