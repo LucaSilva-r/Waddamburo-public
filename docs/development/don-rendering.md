@@ -41,11 +41,10 @@ so one-shot state cannot leak across scene transitions.
 
 ## GPU integration
 
-`SdlDonRenderer` uploads these immutable resources to the existing SDL_GPU
-device, renders both players to independent transparent 600×600 color/depth
-targets, applies the silhouette pass, and exposes the resulting GPU textures to
-the normal Lumen compositor. The prepasses and 2D pass share one command buffer
-and device. Normal presentation never downloads or re-uploads a Don target;
+`SdlDonRenderer` uploads these immutable resources through bgfx, renders each
+player to an independent transparent color/depth framebuffer in its own view,
+applies the silhouette pass in the next view, and exposes the resulting textures to
+the normal Lumen compositor, whose views run after them in the same frame. Normal presentation never downloads or re-uploads a Don target;
 screenshots remain the only readback path.
 
 The material path implements the default body's nearest-sampled repeating RGB

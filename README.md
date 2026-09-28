@@ -14,7 +14,7 @@ The public implementation started from a clean repository. Its .NET 10 solution,
 project boundaries, central build policy, dependency pins, lock files, native build
 presets, checksum-pinned minimal FFmpeg build, versioned media C ABI, architecture
 tests, bounded asset parsers, semantic LMB definitions, a small display-list runtime,
-and an SDL_GPU textured-quad path are in place; the decoder backend and game
+and a bgfx textured-quad path are in place; the decoder backend and game
 functionality are not implemented yet. New product code is written here without
 copying the private proof of concept or importing executable-derived source.
 
@@ -44,7 +44,7 @@ Build and test the current scaffold with the developer bootstrap:
 On Windows x64, run `./eng/bootstrap.ps1 -Configuration Debug` from a Visual
 Studio x64 developer PowerShell.
 
-Run the synthetic SDL_GPU visual smoke test until the window is closed:
+Run the synthetic renderer smoke test until the window is closed:
 
 ```sh
 dotnet run --project src/Waddamburo.App -- --smoke
@@ -56,7 +56,7 @@ independent. `--smoke` renders a synthetic nearest-sampled checkerboard without 
 assets. `--window-size=WIDTHxHEIGHT` selects a diagnostic startup size; Lumen
 frames preserve their logical-stage aspect ratio in the drawable pixel surface.
 
-Capture the final bounded frame directly from the SDL_GPU swapchain with
+Capture the final bounded frame from the back buffer with
 `--screenshot=/path/to/frame.png` (or `.bmp`). If neither `--frames` nor `--ticks` is
 present, a screenshot run renders one frame and exits. With `--ticks`, it captures
 the exact requested simulation state.
@@ -273,8 +273,8 @@ The lossless LMB container boundary is documented in
 [docs/development/lmb-records.md](docs/development/lmb-records.md).
 The initial display-list runtime is documented in
 [docs/development/lumen-runtime.md](docs/development/lumen-runtime.md).
-The current SDL and SDL_GPU lifecycle is documented in
-[docs/development/sdl-gpu.md](docs/development/sdl-gpu.md).
+The SDL window and bgfx rendering lifecycle is documented in
+[docs/development/rendering.md](docs/development/rendering.md).
 For memory, frame time and audio-buffer measurements, see
 [docs/development/profiling.md](docs/development/profiling.md).
 

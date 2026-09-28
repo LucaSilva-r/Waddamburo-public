@@ -36,7 +36,7 @@ licenses() { # native-build-dir out-dir: every notice the releases need, beside 
     local dir=$2
     rm -rf "$dir" && mkdir -p "$dir"
     cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$dir/"
-    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$dir/"
+    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$1"/bgfx/prefix/licenses/* "$dir/"
     local dotnet_root
     dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
     mkdir -p "$dir/dotnet" && cp "$dotnet_root/LICENSE.txt" "$dotnet_root/ThirdPartyNotices.txt" "$dir/dotnet/"

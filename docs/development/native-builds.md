@@ -118,6 +118,7 @@ the draft is what installed copies pick up.
 GitHub's asset SHA-256 digest is verified before an update is installed. Development
 builds never update.
 
-DXIL shaders cannot be compiled on Linux, so the compiled shaders are committed;
-rerun `eng/build-shaders.ps1` on Windows (and `.sh` for SPIR-V) after changing a
-shader source.
+Direct3D 11 shaders cannot be compiled on Linux, so the compiled shaders are
+committed; rerun `eng/build-shaders.ps1` on Windows (and `.sh` on Linux) after
+changing a shader source. Both need the bgfx native build
+(`-DWADDAMBURO_BUILD_BGFX=ON`) for `shaderc`.

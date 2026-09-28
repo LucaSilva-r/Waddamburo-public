@@ -55,12 +55,13 @@ endfunction()
 include(CTest)
 
 option(WADDAMBURO_PACKAGE
-  "Release libraries: pinned FFmpeg, vgmstream and FreeType linked statically into waddamburo_media and waddamburo_text" OFF)
+  "Release libraries: pinned FFmpeg, vgmstream and FreeType linked statically into waddamburo_media and waddamburo_text, plus bgfx" OFF)
 if(WADDAMBURO_PACKAGE)
   set(WADDAMBURO_BUILD_FFMPEG ON)
   set(WADDAMBURO_MEDIA_FFMPEG ON)
   set(WADDAMBURO_MEDIA_VGMSTREAM ON)
   set(WADDAMBURO_BUILD_TEXT ON)
+  set(WADDAMBURO_BUILD_BGFX ON)
 endif()
 
 option(WADDAMBURO_BUILD_FFMPEG "Enable the pinned minimal FFmpeg dependency target" OFF)

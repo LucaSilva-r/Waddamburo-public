@@ -13,7 +13,7 @@
   <!-- Release builds (eng/package.sh): the self-contained native libraries from the
        linux-package / windows-package CMake presets ship next to the executable. -->
   <ItemGroup Condition="'$(WaddamburoNativeDir)' != ''">
-    <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/libwaddamburo_*.so"
+    <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/libwaddamburo_*.so;$(WaddamburoNativeDir)/bgfx*.dll;$(WaddamburoNativeDir)/libbgfx*.so"
           CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 

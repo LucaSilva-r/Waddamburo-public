@@ -22,9 +22,20 @@ endif()
 # Ivy Bridge-era GPUs (GL 4.2 on Mesa). On Linux build the GLES 3.0 renderer instead: Mesa
 # exposes ES 3.0 there, and modern GPUs use Vulkan anyway. Windows keeps D3D11 for them.
 set(_renderer_args)
+set(_tools ON)
+if(CMAKE_CROSSCOMPILING)
+  set(_tools OFF) # shaderc is a host tool; cross builds only need the library
+endif()
+# Release libraries carry their C++ runtime and link only what they use (the GLES build
+# never touches the desktop GL/GLU libraries bgfx.cmake links; EGL is loaded at runtime).
+if(MINGW)
+  list(APPEND _renderer_args "-DCMAKE_SHARED_LINKER_FLAGS=-static")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _renderer_args "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--as-needed")
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # Naming any renderer skips all of config.h's defaults, so Vulkan is listed too.
-  set(_renderer_args "-DCMAKE_CXX_FLAGS=-DBGFX_CONFIG_RENDERER_OPENGL=0 -DBGFX_CONFIG_RENDERER_OPENGLES=30 -DBGFX_CONFIG_RENDERER_VULKAN=1")
+  list(APPEND _renderer_args "-DCMAKE_CXX_FLAGS=-DBGFX_CONFIG_RENDERER_OPENGL=0 -DBGFX_CONFIG_RENDERER_OPENGLES=30 -DBGFX_CONFIG_RENDERER_VULKAN=1")
 endif()
 
 ExternalProject_Add(waddamburo_bgfx_build
@@ -44,8 +55,8 @@ ExternalProject_Add(waddamburo_bgfx_build
     -DBGFX_LIBRARY_TYPE=SHARED
     -DBGFX_BUILD_EXAMPLES=OFF
     -DBGFX_BUILD_TESTS=OFF
-    -DBGFX_BUILD_TOOLS=ON
-    -DBGFX_BUILD_TOOLS_SHADER=ON
+    -DBGFX_BUILD_TOOLS=${_tools}
+    -DBGFX_BUILD_TOOLS_SHADER=${_tools}
     -DBGFX_BUILD_TOOLS_TEXTURE=OFF
     -DBGFX_BUILD_TOOLS_GEOMETRY=OFF
     -DBGFX_BUILD_TOOLS_BIN2C=OFF
@@ -57,3 +68,21 @@ ExternalProject_Add(waddamburo_bgfx_build
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_bgfx_prefix}/licenses/bgfx"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
       <SOURCE_DIR>/bgfx/LICENSE "${_bgfx_prefix}/licenses/bgfx/")
+
+# Stage the library with the other release libraries, under the name P/Invoke loads
+# ("bgfx": bgfx.dll / libbgfx.so; mingw would call it libbgfx.dll).
+set(_stage "${CMAKE_BINARY_DIR}/stage/${CMAKE_BUILD_TYPE}")
+if(WIN32)
+  if(MINGW)
+    set(_built "${_bgfx_prefix}/bin/libbgfx.dll")
+  else()
+    set(_built "${_bgfx_prefix}/bin/bgfx.dll")
+  endif()
+  set(_staged "${_stage}/bin/bgfx.dll")
+else()
+  set(_built "${_bgfx_prefix}/lib/libbgfx.so")
+  set(_staged "${_stage}/lib/libbgfx.so")
+endif()
+ExternalProject_Add_Step(waddamburo_bgfx_build stage
+  DEPENDEES install
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_built}" "${_staged}")
