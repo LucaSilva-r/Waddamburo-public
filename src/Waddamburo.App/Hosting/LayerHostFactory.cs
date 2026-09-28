@@ -96,6 +96,22 @@ internal sealed class LayerHostFactory(
     /// <summary>Two players browse Waiwai's song select (and may switch to the normal one).</summary>
     public bool Waiwai { get; set; }
 
+    /// <summary>The song library normal Song Select lists (home mode switches between them).</summary>
+    public SongSourceKind Library
+    {
+        get => _library ??= libraries().FirstOrDefault();
+        set => (_libraryLeft, _library) = (Library, value);
+    }
+    private SongSourceKind? _library, _libraryLeft;
+
+    // Home mode keeps each source in its own library (arcade lists the stock songs as the game does);
+    // one source needs no switching.
+    private SongSourceKind[] libraries()
+    {
+        var sources = catalog.Categories.Select(static category => category.Key.Source).Distinct().Order().ToArray();
+        return arcade.Home && sources.Length > 1 ? sources : [];
+    }
+
     /// <summary>Waiwai's numbers for its results screen, from the finished song.</summary>
     public Func<WaiwaiOutcome?>? WaiwaiOutcome { get; set; }
 
@@ -230,10 +246,16 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost songSelectHost()
     {
+        var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
+        var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
+            modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
+            links: linked.Where(library => library != Library));
+        // Back from a library: the cursor starts on the folder that leads to it.
+        var start = _libraryLeft is { } left ? Math.Max(view.LinkCategory(left), 0) : 0;
+        _libraryLeft = null;
         var binding = SongSelect = new SongSelectHostBinding(
             new SongSelectSession(
-                new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
-                    modeSwitch: TwoPlayers),
+                view,
                 textures,
                 previews,
                 playRequests),
@@ -244,6 +266,7 @@ internal sealed class LayerHostFactory(
             twoPlayers: TwoPlayers,
             crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)])
         {
+            StartCategory = start,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,

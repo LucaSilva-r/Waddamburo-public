@@ -13,6 +13,10 @@ internal enum HomeMenuAction
     Restart,
     SongSelect,
     Title,
+    /// <summary>Open the folder picker for the custom TJA library.</summary>
+    PickTjaFolder,
+    /// <summary>Open the folder picker for the Nijiiro installation.</summary>
+    PickNijiiroFolder,
 }
 
 /// <summary>
@@ -47,6 +51,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, _) => 1 - value, 0, static value => value != 0 ? "On (restart)" : "Off (restart)", 1),
     ];
 
+    // Folders are picked in the system's folder dialog (centre on the row); songs rescan on restart.
+    private sealed record Folder(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick);
+
+    private static readonly Folder[] Folders =
+    [
+        new("Custom TJA Folder", static s => s.TjaFolder, HomeMenuAction.PickTjaFolder),
+        new("Nijiiro Folder", static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder),
+    ];
+
+    private static int RowCount => Settings.Length + Folders.Length;
+
     private string[] _choices = [];
     private bool _settingsPage;
     private bool _editing;
@@ -63,7 +78,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public string[] Rows => _settingsPage
         ? [.. Settings.Select((setting, index) => index == Selection && _editing
             ? $"< {setting.Label}: {setting.Format(setting.Get(get()))} >"
-            : $"{setting.Label}: {setting.Format(setting.Get(get()))}"), "Back"]
+            : $"{setting.Label}: {setting.Format(setting.Get(get()))}"),
+            .. Folders.Select(folder => $"{folder.Label}: {(folder.Get(get()) is { } path ? Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) : "Default")} (restart)"),
+            "Back"]
         : _choices;
 
     /// <summary>
@@ -115,7 +132,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 }
             return HomeMenuAction.None;
         }
-        var back = Selection == Settings.Length;
+        var back = Selection == RowCount;
         if (_editing)
         {
             if (escape || decide)
@@ -130,10 +147,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             save();
         }
         else if (up || down)
-            Selection = (Selection + (up ? Settings.Length : 1)) % (Settings.Length + 1);
+            Selection = (Selection + (up ? RowCount : 1)) % (RowCount + 1);
+        else if (decide && Selection >= Settings.Length)
+            return Folders[Selection - Settings.Length].Pick;
         else if (decide)
             _editing = true;
-        else if (arrows != 0 && !back)
+        else if (arrows != 0 && Selection < Settings.Length)
             change(arrows);
         return HomeMenuAction.None;
     }

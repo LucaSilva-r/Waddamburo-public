@@ -49,6 +49,14 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
             Shell.Show(FlowScenes.SongSelect);
             return;
         }
+        // A library folder: reload listing that library (home mode).
+        if (Shell.Hosts.SongSelect?.LibraryRequested is { } library)
+        {
+            Shell.Hosts.Library = library;
+            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
+            Shell.Show(FlowScenes.SongSelect);
+            return;
+        }
         if (Shell.PlayRequests.Pending is not { } request)
             return;
         var rainbow = gameplay.Rainbow;

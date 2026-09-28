@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -80,6 +80,13 @@ public sealed record ArcadeSettings
         audio_exclusive = false
 
         """,
+        """
+        # Song folders (home mode; also set from the Settings menu). tja_folder: custom TJA songs, empty =
+        # custom_songs beside the game data. nijiiro_folder: a Nijiiro installation, empty = none.
+        tja_folder =
+        nijiiro_folder =
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -129,6 +136,12 @@ public sealed record ArcadeSettings
 
     /// <summary>The forced GPU backend (vulkan, gles, opengl, d3d11, metal), or null for auto.</summary>
     public string? Renderer { get; init; }
+
+    /// <summary>The custom TJA library (null: custom_songs beside the game data).</summary>
+    public string? TjaFolder { get; init; }
+
+    /// <summary>A Nijiiro installation (null: none).</summary>
+    public string? NijiiroFolder { get; init; }
 
     public int CreditsPerCoin { get; init; } = 1;
 
@@ -257,6 +270,9 @@ public sealed record ArcadeSettings
                 "audio_exclusive" => settings with { AudioExclusive = boolean(value, index) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
+                // ponytail: '#' starts a comment, so a folder path cannot contain one.
+                "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
+                "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
                 "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
                 {
                     "auto" => null,
@@ -307,6 +323,8 @@ public sealed record ArcadeSettings
             ["audio_exclusive"] = settings.AudioExclusive ? "true" : "false",
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
+            ["tja_folder"] = settings.TjaFolder ?? "",
+            ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
         };
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)

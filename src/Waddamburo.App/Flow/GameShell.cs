@@ -340,10 +340,10 @@ internal sealed class GameShell : IDisposable
         // Either source may be absent: a stock install without custom songs, or custom songs alone.
         ISongCatalogProvider[] providers = [
             .. StockCatalogProvider.IsStockData(dataRoot) ? [new StockCatalogProvider(dataRoot)] : Array.Empty<ISongCatalogProvider>(),
-            // ponytail: custom TJA is off while the engine matches the game 1:1 (Waiwai has its own
-            // charts TJA cannot supply); set WADDAMBURO_CUSTOM_TJA=1 to list them anyway.
-            .. Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1" && Directory.Exists(options.TjaRoot)
-                ? [new TjaCatalogProvider(options.TjaRoot)] : Array.Empty<ISongCatalogProvider>(),
+            // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
+            // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
+            .. (Arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(Arcade.TjaFolder ?? options.TjaRoot)
+                ? [new TjaCatalogProvider(Arcade.TjaFolder ?? options.TjaRoot)] : Array.Empty<ISongCatalogProvider>(),
         ];
         Assets = new CatalogAssetRouter(providers);
         ChartHashes = new ChartHashes(Scores, Assets.LoadChartAsync);
@@ -743,6 +743,14 @@ internal sealed class GameShell : IDisposable
         }
         if (_menu.IsOpen)
         {
+            // A folder picked in the system dialog opened from the settings.
+            if (_pickingFolder is { } picking && Application.TryTakePickedFolder(out var folder))
+            {
+                Arcade = picking == HomeMenuAction.PickTjaFolder ? Arcade with { TjaFolder = folder }
+                    : Arcade with { NijiiroFolder = folder };
+                saveSettings();
+                _pickingFolder = null;
+            }
             var action = _menu.Input(keys, escape);
             volumeSample(_menu.PreviewBus);
             if (!_menu.IsOpen)
@@ -762,6 +770,11 @@ internal sealed class GameShell : IDisposable
                 case HomeMenuAction.SongSelect:
                     resumeHome();
                     _gameplay.Abandon();
+                    break;
+                case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder:
+                    _pickingFolder = action;
+                    Application.PickFolder(action == HomeMenuAction.PickTjaFolder ? Arcade.TjaFolder ?? Options.TjaRoot
+                        : Arcade.NijiiroFolder);
                     break;
                 case HomeMenuAction.Title:
                     if (_setup is { IsOpen: true } open)
@@ -937,6 +950,8 @@ internal sealed class GameShell : IDisposable
             return null;
         }
     }
+
+    private HomeMenuAction? _pickingFolder;
 
     private void saveSettings()
     {

@@ -80,6 +80,29 @@ public sealed unsafe class SdlApplication : IDisposable
         return (width, height);
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> PickedFolders = new();
+
+    /// <summary>Opens the system's folder picker; the chosen folder arrives through <see cref="TryTakePickedFolder"/>.</summary>
+    public void PickFolder(string? start)
+    {
+        var location = start is null ? null : System.Text.Encoding.UTF8.GetBytes(start + "\0");
+        fixed (byte* path = location)
+            SDL_ShowOpenFolderDialog(&folderPicked, IntPtr.Zero, _window, path, false);
+    }
+
+    /// <summary>The folder picked since the last call (none when the picker was cancelled).</summary>
+    public bool TryTakePickedFolder([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? folder) =>
+        PickedFolders.TryDequeue(out folder);
+
+    // Called by SDL, possibly on another thread; an empty list = cancelled, null = failed.
+    [System.Runtime.InteropServices.UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    private static void folderPicked(IntPtr userdata, byte** list, int filter)
+    {
+        if (list is not null && *list is not null
+            && System.Runtime.InteropServices.Marshal.PtrToStringUTF8((IntPtr)(*list)) is { Length: > 0 } folder)
+            PickedFolders.Enqueue(folder);
+    }
+
     public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
     {
         ensureOwnerThread();

@@ -265,6 +265,26 @@ public sealed class SongSelectSessionTests
         Assert.Null(pending.Pending);
     }
 
+    [Fact]
+    public async Task LibraryViewListsOneSourceAndLinksTheOthers()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+
+        Assert.Empty(new SongSelectCatalogView(snapshot, library: SongSourceKind.Stock).Categories);
+        var view = new SongSelectCatalogView(snapshot, library: SongSourceKind.Tja,
+            links: [SongSourceKind.Stock, SongSourceKind.Nijiiro]);
+
+        Assert.Equal(["Anime", "ORIGINAL", "NIJIIRO"], view.Categories.Select(static category => category.Name));
+        Assert.Null(view.Categories[0].Link);
+        var link = view.Categories[1];
+        Assert.Equal(SongSourceKind.Stock, link.Link);
+        Assert.Equal(SongSelectCatalogView.FeatureLabel, link.AuthoredLabel);
+        Assert.True(link.Presentation.HasFlag(SongCategoryPresentation.FolderEnd));
+        Assert.Equal(2, view.LinkCategory(SongSourceKind.Nijiiro));
+        Assert.Equal(-1, view.ModeSwitchCategory);
+    }
+
     private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
     {
         public CatalogProviderId Id { get; } = new("synthetic");
@@ -311,6 +331,9 @@ public sealed class SongSelectSessionTests
 
     private sealed class RecordingTextureService : ISongBoardTextureService
     {
+        public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind) =>
+            new($"folder:{name}:{kind}");
+
         public SongSelectSong? LastSong { get; private set; }
 
         public LumenNativeSurfaceKey GetSongTitle(

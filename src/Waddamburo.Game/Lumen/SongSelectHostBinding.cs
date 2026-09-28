@@ -186,6 +186,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The players decided the mode-switch folder (to the other song select).</summary>
     public bool ModeSwitchRequested { get; private set; }
 
+    /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
+    public SongSourceKind? LibraryRequested { get; private set; }
+
+    /// <summary>The folder the cursor starts on.</summary>
+    public int StartCategory { get; init; }
+
     public void Attach(LumenPlayer player)
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
@@ -251,9 +257,14 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             // song -1 moves to the other song select (traced SetSelectedMusic(7|8, -1), then Terminate).
             lumen.RegisterMethod("SetSelectedMusic", call =>
             {
-                if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number
-                    && (int)call.Arguments[0].AsNumber() == _session.Catalog.ModeSwitchCategory)
-                    ModeSwitchRequested = true;
+                if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number)
+                {
+                    var genre = (int)call.Arguments[0].AsNumber();
+                    if (genre == _session.Catalog.ModeSwitchCategory)
+                        ModeSwitchRequested = true;
+                    else if ((uint)genre < (uint)_session.Catalog.Categories.Length)
+                        LibraryRequested = _session.Catalog.Categories[genre].Link;
+                }
                 return LumenHostValue.FromBoolean(true);
             });
             lumen.RegisterMethod(
@@ -287,8 +298,20 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (_player is null)
             return false;
         _assigned = true;
+        var feature = 0;
         foreach (var category in _session.Catalog.Categories)
         {
+            // AssignMusic's last argument picks a feature folder's slot (00-09) whose spine and banner
+            // show host-drawn text; -1 = none (the baked イベント art).
+            var featureSlot = -1;
+            if (category.AuthoredLabel == SongSelectCatalogView.FeatureLabel && feature < 10)
+            {
+                featureSlot = feature++;
+                requirePlayer().SetNativeFill($"feature_board_tate_{featureSlot:00}",
+                    _session.GetFolderName(category.Name, SongBoardTextureKind.Compact));
+                requirePlayer().SetNativeFill($"feature_board_yoko_{featureSlot:00}",
+                    _session.GetFolderName(category.Name, SongBoardTextureKind.Expanded));
+            }
             invoke(
                 "AssignMusic",
                 LumenHostValue.FromString(category.AuthoredLabel),
@@ -296,9 +319,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber((category.Presentation & SongCategoryPresentation.FolderEnd) != 0
                     ? 1 : category.Songs.Length),
                 LumenHostValue.FromNumber((int)category.Presentation),
-                LumenHostValue.FromNumber(-1));
+                LumenHostValue.FromNumber(featureSlot));
         }
-        invoke("SetSelectedMusic", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(-1));
+        invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(-1));
         // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
         // drum alone, both joined for two players. hasData (a profile) lets the boards show crowns.
         foreach (var player in new[] { 0, 1 })
@@ -315,7 +338,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(carded ? 1 : 0));
         }
         _parts?.ShowGuestNames(_sides);
-        _sounds?.SelectCategoryVoice(_session.Catalog.Categories[0].Name);
+        _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
         return true;
     }
 

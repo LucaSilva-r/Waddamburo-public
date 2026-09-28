@@ -57,6 +57,15 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return register(song, TitleTextureKind.Transition, 0U);
     }
 
+    public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var textureKind = kind == SongBoardTextureKind.Compact ? TitleTextureKind.Compact : TitleTextureKind.Banner;
+        var key = new LumenNativeSurfaceKey($"folder-name:{name}:{textureKind}");
+        _requests[key] = new TitleRequest(name, null, textureKind, 0U);
+        return key;
+    }
+
     /// <summary>Title for gameplay song_info's 720x64 song_name slot.</summary>
     public LumenNativeSurfaceKey GetGameplayTitle(SongSelectSong song)
     {
@@ -131,18 +140,12 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 TitleTextureKind.Compact => SongTitleTextProfile.Compact,
                 TitleTextureKind.Expanded => SongTitleTextProfile.Expanded,
                 TitleTextureKind.Transition => SongTitleTextProfile.Transition,
-                TitleTextureKind.Gameplay => SongTitleTextProfile.GameplayTitle,
+                TitleTextureKind.Gameplay or TitleTextureKind.Banner => SongTitleTextProfile.GameplayTitle,
                 _ => throw new ArgumentOutOfRangeException(nameof(key)),
             };
             if (!_asynchronous)
             {
-                var surface = NativeVerticalTextRasterizer.RenderSongTitle(
-                    _fontPath,
-                    request.Text,
-                    request.Subtitle,
-                    profile,
-                    request.OutlineRgb,
-                    rasterScale);
+                var surface = rasterize(request, profile, rasterScale);
                 var texture = _application.UploadRgba8(surface.Width, surface.Height, surface.Pixels);
                 var node = _leastRecentlyUsed.AddFirst(rasterKey);
                 _resident.Add(rasterKey, new ResidentTexture(texture, node));
@@ -190,18 +193,27 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         await _rasterizer.WaitAsync().ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => NativeVerticalTextRasterizer.RenderSongTitle(
-                _fontPath,
-                request.Text,
-                request.Subtitle,
-                profile,
-                request.OutlineRgb,
-                rasterScale)).ConfigureAwait(false);
+            return await Task.Run(() => rasterize(request, profile, rasterScale)).ConfigureAwait(false);
         }
         finally
         {
             _rasterizer.Release();
         }
+    }
+
+    // The feature board's header banner (the genre name tab, 256x56): the name kept to its aspect,
+    // shrunk to fit.
+    // ponytail: box and size guessed from the genre header art; measure the feature_board_yoko shape if off.
+    private const int BannerWidth = 256, BannerHeight = 56;
+
+    private RgbaTextSurface rasterize(TitleRequest request, SongTitleTextProfile profile, uint rasterScale)
+    {
+        if (request.Kind != TitleTextureKind.Banner)
+            return NativeVerticalTextRasterizer.RenderSongTitle(
+                _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale);
+        var canvas = new VectorCanvas(BannerWidth, BannerHeight, (int)rasterScale, _fontPath);
+        canvas.Text(request.Text, BannerWidth / 2f, BannerHeight / 2f, BannerWidth - 16, BannerHeight - 8);
+        return new RgbaTextSurface((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
     }
 
     private void touch(RasterKey key, LinkedListNode<RasterKey> node)
@@ -233,6 +245,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         Expanded,
         Transition,
         Gameplay,
+        Banner,
     }
     private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale);
     private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<RasterKey> Node);

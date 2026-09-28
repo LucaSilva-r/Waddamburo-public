@@ -46,7 +46,8 @@ public sealed record SongSelectCategory(
     string AuthoredLabel,
     SongCategoryPresentation Presentation,
     SongBoardTextureStyle BoardStyle,
-    ImmutableArray<SongSelectSong> Songs);
+    ImmutableArray<SongSelectSong> Songs,
+    SongSourceKind? Link = null);
 
 /// <summary>Source-neutral, revision-pinned data consumed by the authored Song Select host.</summary>
 public sealed class SongSelectCatalogView
@@ -54,19 +55,26 @@ public sealed class SongSelectCatalogView
     /// <summary>The label of the folder that moves between normal and Waiwai song select (GenreResource id 20).</summary>
     public const string ModeSwitchLabel = "通常とワイワイ移動";
 
+    /// <summary>The spine art of library folders (its name goes in the movie's feature_board_* slots).</summary>
+    public const string FeatureLabel = "イベント";
+
     /// <summary>
+    /// <paramref name="library"/> lists only that source's categories (null: every source);
+    /// <paramref name="links"/> appends a folder per other library that switches Song Select to it.
     /// <paramref name="mode"/> Waiwai lists only the songs with a Waiwai layout (empty genres dropped).
     /// <paramref name="modeSwitch"/> appends the folder to the other song select, which the game shows
     /// with two players (traced last in both selects).
     /// </summary>
     // ponytail: Waiwai's "how to play" folder (id 21, before the switch) is left out until tutorials exist.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
-        bool modeSwitch = false)
+        bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
         Mode = mode;
-        var categories = snapshot.Categories.Select(category => new SongSelectCategory(
+        var categories = snapshot.Categories
+            .Where(category => library is null || category.Key.Source == library)
+            .Select(category => new SongSelectCategory(
             category.Key,
             category.Name,
             authoredLabel(category.Name),
@@ -75,7 +83,10 @@ public sealed class SongSelectCatalogView
             [.. category.Songs.Select(key => snapshot.Songs[key])
                 .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
                 .Select(createSong)]))
-            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty);
+            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty)
+            .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
+                LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
+                boardStyle(""), [], link)));
         if (modeSwitch)
             categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "mode-switch"),
                 mode == SongSelectMode.Waiwai ? "To Normal" : "To Waiwai", ModeSwitchLabel,
@@ -84,6 +95,18 @@ public sealed class SongSelectCatalogView
     }
 
     public SongSelectMode Mode { get; }
+
+    /// <summary>Index of the folder that switches to <paramref name="library"/>, or -1.</summary>
+    public int LinkCategory(SongSourceKind library) => Categories.ToList().FindIndex(category => category.Link == library);
+
+    public static string LibraryName(SongSourceKind library) => library switch
+    {
+        SongSourceKind.Stock => "ORIGINAL",
+        SongSourceKind.Nijiiro => "NIJIIRO",
+        SongSourceKind.Tja => "CUSTOM TJA",
+        SongSourceKind.OsuLazer => "OSU! LAZER",
+        _ => library.ToString(),
+    };
 
     /// <summary>Index of the mode-switch folder, or -1.</summary>
     public int ModeSwitchCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == ModeSwitchLabel);
@@ -129,7 +152,7 @@ public sealed class SongSelectCatalogView
         "Classical" => "クラシック",
         "Game Music" => "ゲームミュージック",
         "Namco Original" => "ナムコオリジナル",
-        _ => "イベント",
+        _ => FeatureLabel,
     };
 
     private static SongBoardTextureStyle boardStyle(string category) => new(category switch

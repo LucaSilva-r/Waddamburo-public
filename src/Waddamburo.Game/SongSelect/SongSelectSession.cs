@@ -27,6 +27,9 @@ public interface ISongBoardTextureService
         SongSelectSong song,
         SongBoardTextureStyle style,
         SongBoardTextureKind kind);
+
+    /// <summary>A folder name: Compact = vertical spine text, Expanded = horizontal banner.</summary>
+    LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind);
 }
 
 public sealed record SongPreviewRequest(
@@ -102,6 +105,9 @@ public sealed class SongSelectSession
                 $"Song Select referenced category {category}, song {song} outside the pinned catalog.");
         return _textures.GetSongTitle(selected, Catalog.Categories[category].BoardStyle, kind);
     }
+
+    public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind) =>
+        _textures.GetFolderName(name, kind);
 
     public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse)
     {
