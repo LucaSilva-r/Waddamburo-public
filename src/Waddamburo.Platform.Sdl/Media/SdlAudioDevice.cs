@@ -17,9 +17,11 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
 
     private readonly object _gate = new();
     private SDL_AudioStream* _stream;
+    private SDL_AudioDeviceID _device;
     private bool _audioInitialized;
     private bool _disposed;
     private ulong _submittedFrames;
+    private readonly List<DirectVoice> _directVoices = [];
 
     public SdlAudioDevice(
         int sampleRate = DefaultSampleRate,
@@ -48,19 +50,19 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
                 channels = channels,
                 freq = sampleRate,
             };
-            _stream = SDL_OpenAudioDeviceStream(
-                SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-                &specification,
-                null,
-                0);
-            if (_stream is null)
+            // Opened as a device (not SDL_OpenAudioDeviceStream) so direct voices can bind streams to it too.
+            _device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &specification);
+            if (_device == 0)
                 throw sdlFailure("open the SDL playback device");
+            if (!SDL_PauseAudioDevice(_device))
+                throw sdlFailure("pause SDL audio playback");
+            _stream = SDL_CreateAudioStream(&specification, null);
+            if (_stream is null || !SDL_BindAudioStream(_device, _stream))
+                throw sdlFailure("create the SDL playback stream");
 
-            var device = SDL_GetAudioStreamDevice(_stream);
             SDL_AudioSpec hardwareSpecification;
             int hardwareBufferFrames;
-            if (device == 0 ||
-                !SDL_GetAudioDeviceFormat(device, &hardwareSpecification, &hardwareBufferFrames))
+            if (!SDL_GetAudioDeviceFormat(_device, &hardwareSpecification, &hardwareBufferFrames))
             {
                 throw sdlFailure("query the SDL playback device format");
             }
@@ -118,7 +120,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
         lock (_gate)
         {
             ensureUsable();
-            if (!SDL_ResumeAudioStreamDevice(_stream))
+            if (!SDL_ResumeAudioDevice(_device))
                 throw sdlFailure("resume SDL audio playback");
         }
     }
@@ -128,7 +130,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
         lock (_gate)
         {
             ensureUsable();
-            if (!SDL_PauseAudioStreamDevice(_stream))
+            if (!SDL_PauseAudioDevice(_device))
                 throw sdlFailure("pause SDL audio playback");
         }
     }
@@ -153,6 +155,35 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
                     throw sdlFailure("queue SDL audio");
             }
             _submittedFrames += checked((ulong)(interleavedSamples.Length / Format.Channels));
+        }
+    }
+
+    /// <summary>
+    /// A stream of its own bound to the device: SDL mixes it in on its audio thread at the next device
+    /// buffer, past the application-side queue, and a managed GC pause cannot hold that thread.
+    /// </summary>
+    public DirectVoice CreateDirectVoice()
+    {
+        lock (_gate)
+        {
+            ensureUsable();
+            var specification = new SDL_AudioSpec
+            {
+                format = SDL_AudioFormat.SDL_AUDIO_F32LE,
+                channels = Format.Channels,
+                freq = Format.SampleRate,
+            };
+            var stream = SDL_CreateAudioStream(&specification, &specification);
+            if (stream is null)
+                throw sdlFailure("create an SDL voice stream");
+            if (!SDL_BindAudioStream(_device, stream))
+            {
+                SDL_DestroyAudioStream(stream);
+                throw sdlFailure("bind an SDL voice stream");
+            }
+            var voice = new DirectVoice(stream, Format.Channels);
+            _directVoices.Add(voice);
+            return voice;
         }
     }
 
@@ -196,10 +227,18 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
 
     private void disposeNativeResources()
     {
+        foreach (var voice in _directVoices)
+            voice.Destroy();
+        _directVoices.Clear();
         if (_stream is not null)
         {
             SDL_DestroyAudioStream(_stream);
             _stream = null;
+        }
+        if (_device != 0)
+        {
+            SDL_CloseAudioDevice(_device);
+            _device = 0;
         }
         if (_audioInitialized)
         {
@@ -210,4 +249,71 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
 
     private static InvalidOperationException sdlFailure(string operation)
         => new($"Failed to {operation}: {SDL_GetError()}");
+}
+
+/// <summary>One sound at a time, mixed by SDL into the device (see <see cref="SdlAudioDevice.CreateDirectVoice"/>).</summary>
+public sealed unsafe class DirectVoice
+{
+    private SDL_AudioStream* _stream;
+    private readonly int _channels;
+    // What was last put into the stream, and a spare to build the next one in (no garbage per hit).
+    private float[] _queued = [];
+    private int _queuedLength;
+    private float[] _spare = [];
+
+    internal DirectVoice(SDL_AudioStream* stream, int channels)
+    {
+        _stream = stream;
+        _channels = channels;
+    }
+
+    public bool IsPlaying => _stream is not null && SDL_GetAudioStreamQueued(_stream) > 0;
+
+    /// <summary>Starts <paramref name="samples"/> times <paramref name="gain"/> at the next device buffer, over what is left of the previous sound.</summary>
+    public void Play(ReadOnlySpan<float> samples, float gain) => replace(samples, gain, fadeFrames: -1);
+
+    /// <summary>Ends the sound, fading what is left of it out over <paramref name="fadeFrames"/> (0 = cut).</summary>
+    public void Stop(int fadeFrames) => replace([], 0f, fadeFrames);
+
+    private void replace(ReadOnlySpan<float> samples, float gain, int fadeFrames)
+    {
+        if (_stream is null)
+            return;
+        SDL_LockAudioStream(_stream);
+        try
+        {
+            var queued = Math.Min(_queuedLength, SDL_GetAudioStreamQueued(_stream) / sizeof(float));
+            queued -= queued % _channels;
+            var tail = _queued.AsSpan(_queuedLength - queued, queued);
+            if (fadeFrames >= 0)
+                tail = tail[..Math.Min(tail.Length, fadeFrames * _channels)];
+            var length = Math.Max(samples.Length, tail.Length);
+            if (_spare.Length < length)
+                _spare = new float[length];
+            var next = _spare.AsSpan(0, length);
+            next.Clear();
+            for (var index = 0; index < samples.Length; index++)
+                next[index] = samples[index] * gain;
+            for (var index = 0; index < tail.Length; index++)
+                next[index] += fadeFrames > 0 ? tail[index] * (1f - (float)(index / _channels) / fadeFrames) : tail[index];
+            SDL_ClearAudioStream(_stream);
+            if (length != 0)
+                fixed (float* source = next)
+                    SDL_PutAudioStreamData(_stream, (nint)source, length * sizeof(float));
+            (_queued, _spare) = (_spare, _queued);
+            _queuedLength = length;
+        }
+        finally
+        {
+            SDL_UnlockAudioStream(_stream);
+        }
+    }
+
+    internal void Destroy()
+    {
+        if (_stream is null)
+            return;
+        SDL_DestroyAudioStream(_stream);
+        _stream = null;
+    }
 }

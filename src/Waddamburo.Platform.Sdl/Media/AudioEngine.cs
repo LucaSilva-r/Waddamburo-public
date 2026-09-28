@@ -29,6 +29,8 @@ public sealed class AudioEngine : IDisposable
         Mixer = new AudioMixer(device.Format);
         if (device is SdlAudioDevice sdl)
         {
+            // The mix keeps a queue (it rides out GC pauses); drum hits skip it.
+            Mixer.UseDirectVoices(sdl.CreateDirectVoice);
             sdl.Resume();
             _producer = Task.Run(() => produce(sdl));
         }

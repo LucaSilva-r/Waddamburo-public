@@ -31,6 +31,22 @@ public sealed class SdlAudioDeviceTests
     }
 
     [Fact]
+    public void DirectVoiceReplacesAndStopsItsSound()
+    {
+        using var device = new SdlAudioDevice();
+        var voice = device.CreateDirectVoice();
+        var samples = new float[4800 * device.Format.Channels];
+        Array.Fill(samples, 0.1f);
+
+        voice.Play(samples, 0.5f);
+        Assert.True(voice.IsPlaying);
+        voice.Play(samples, 0.5f); // over the paused device's unplayed first copy
+        Assert.True(voice.IsPlaying);
+        voice.Stop(0);
+        Assert.False(voice.IsPlaying);
+    }
+
+    [Fact]
     public void QueueRequiresWholeFramesAndDisposedDeviceRejectsUse()
     {
         var device = new SdlAudioDevice();
