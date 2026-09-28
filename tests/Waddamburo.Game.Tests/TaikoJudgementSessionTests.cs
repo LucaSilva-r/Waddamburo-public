@@ -41,6 +41,7 @@ public sealed class TaikoJudgementSessionTests
         Assert.True(events[1].StrongHitCompleted);
         Assert.Equal(events[0].NoteIndex, events[1].NoteIndex);
         Assert.Equal(TaikoHitResult.Miss, events[2].Result);
+        Assert.True(events[2].TimedOut);
     }
 
     private static readonly TaikoJudgementWindows Windows = new(
@@ -63,6 +64,7 @@ public sealed class TaikoJudgementSessionTests
         Assert.Equal(TaikoInputResult.Judged, input);
         Assert.Equal(expected, judgement.Result);
         Assert.Equal(TimeSpan.FromMilliseconds(milliseconds), judgement.Offset);
+        Assert.False(judgement.TimedOut);
     }
 
     [Fact]
@@ -91,6 +93,7 @@ public sealed class TaikoJudgementSessionTests
         Assert.Equal(1, session.AdvanceTo(TimeSpan.FromSeconds(1.096)));
 
         Assert.Equal(TaikoHitResult.Miss, Assert.Single(session.CreateSnapshot()).Result);
+        Assert.True(Assert.Single(session.CreateSnapshot()).TimedOut);
     }
 
     [Fact]

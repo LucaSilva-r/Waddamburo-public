@@ -68,7 +68,8 @@ public readonly record struct TaikoNoteJudgement(
     PlayableHitObject HitObject,
     TaikoHitResult? Result,
     TimeSpan? Offset,
-    bool StrongHitCompleted);
+    bool StrongHitCompleted,
+    bool TimedOut = false);
 
 /// <summary>
 /// Deterministic Taiko judgement state. The caller owns the gameplay clock and supplies
@@ -81,6 +82,7 @@ public sealed class TaikoJudgementSession
     private readonly TimeSpan _strongSecondHitWindow;
     private readonly TaikoHitResult?[] _results;
     private readonly TimeSpan?[] _offsets;
+    private readonly bool[] _timedOut;
     private readonly bool[] _strongHits;
     private readonly int[] _longHits;
     private int _nextLongIndex;
@@ -112,6 +114,7 @@ public sealed class TaikoJudgementSession
         _strongSecondHitWindow = strongSecondHitWindow;
         _results = new TaikoHitResult?[chart.NoteCount];
         _offsets = new TimeSpan?[chart.NoteCount];
+        _timedOut = new bool[chart.NoteCount];
         _strongHits = new bool[chart.NoteCount];
         _longHits = new int[chart.LongNotes.Length];
     }
@@ -145,7 +148,8 @@ public sealed class TaikoJudgementSession
         while (_nextNoteIndex < _chart.NoteCount
                && time - _chart.HitObjects[_nextNoteIndex].StartTime > _windows.Miss)
         {
-            judge(_nextNoteIndex, TaikoHitResult.Miss, time - _chart.HitObjects[_nextNoteIndex].StartTime);
+            judge(_nextNoteIndex, TaikoHitResult.Miss, time - _chart.HitObjects[_nextNoteIndex].StartTime,
+                timedOut: true);
             _nextNoteIndex++;
             missed++;
         }
@@ -213,7 +217,8 @@ public sealed class TaikoJudgementSession
                 _chart.HitObjects[index],
                 _results[index],
                 _offsets[index],
-                _strongHits[index]));
+                _strongHits[index],
+                _timedOut[index]));
         }
         return snapshot.MoveToImmutable();
     }
@@ -243,11 +248,12 @@ public sealed class TaikoJudgementSession
         }
     }
 
-    private void judge(int index, TaikoHitResult result, TimeSpan offset)
+    private void judge(int index, TaikoHitResult result, TimeSpan offset, bool timedOut = false)
     {
         _results[index] = result;
         _offsets[index] = offset;
-        Judged?.Invoke(new TaikoNoteJudgement(index, _chart.HitObjects[index], result, offset, false));
+        _timedOut[index] = timedOut;
+        Judged?.Invoke(new TaikoNoteJudgement(index, _chart.HitObjects[index], result, offset, false, timedOut));
     }
 
     private void ensureMonotonic(TimeSpan time)

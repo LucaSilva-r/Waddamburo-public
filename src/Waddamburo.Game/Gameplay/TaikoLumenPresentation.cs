@@ -188,6 +188,8 @@ public sealed class TaikoLumenPresentation
             return;
         _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(_combo));
+        if (result.TimedOut)
+            return;
         var label = result.Result switch
         {
             TaikoHitResult.Great => "ryo",
