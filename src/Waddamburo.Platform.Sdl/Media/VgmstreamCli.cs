@@ -52,6 +52,8 @@ public static class VgmstreamCli
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // A console program: without this, Windows flashes a console window for every decode.
+            CreateNoWindow = true,
         };
         // -L writes the loop points as a RIFF smpl chunk, which the native decoder reads back.
         foreach (var argument in new[] { "-L", "-o", partial })
