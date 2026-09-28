@@ -285,7 +285,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private void saveScore(PlayRequest request)
     {
         Array.Clear(Shell.PreviousBests);
-        if (Shell.Options.Autoplay || Shell.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
@@ -313,7 +313,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
         }
         foreach (var profile in saved)
-            Shell.Upload(profile);
+            Shell.Sync.Upload(profile);
     }
 
     private AudioStreamTransport? startAudio(PlayRequest request)

@@ -11,7 +11,6 @@ using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
-using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -22,8 +21,6 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
-using Waddamburo.Providers.Stock;
-using Waddamburo.Providers.Tja;
 
 namespace Waddamburo.App.Flow;
 
@@ -69,17 +66,14 @@ internal sealed class GameShell : IDisposable
     public SongTitleTextureCache Titles { get; }
     public CoinBank? Coins { get; }
 
-    /// <summary>The local score database, open when a profile plays (null: guests, nothing saved).</summary>
-    public ScoreStore? Scores { get; }
-
     /// <summary>Per lane, the last saved play's previous best on its chart (for results).</summary>
     public long?[] PreviousBests { get; } = new long?[2];
 
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
 
-    /// <summary>The server scores upload to (null: offline or a guest).</summary>
-    public ScoreClient? ScoreServer { get; }
+    /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
+    public ScoreSync Sync { get; }
 
     /// <summary>The accounts stored on this PC (home mode; empty in arcade).</summary>
     public AccountBook? Accounts => Arcade.Home ? Options.Accounts : null;
@@ -87,81 +81,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>The stored account that joins the first drum by itself (home).</summary>
     public ScoreAccount? DefaultAccount => Accounts?.Default;
 
-    private Uri? _uploadServer;
-    private readonly Dictionary<string, ScoreClient> _uploaders = [];
-
-    /// <summary>
-    /// Uploads a player's pending plays in the background: a cabinet uploads everyone's with its own
-    /// token; a home PC uploads each account's with that account's token (a friend's short-lived one
-    /// included). Guests (no token) stay local.
-    /// </summary>
-    public void Upload(ScoreProfile profile)
-    {
-        if (Scores is null)
-            return;
-        if (ScoreServer is { } cabinet)
-        {
-            cabinet.SyncInBackground(Scores, null);
-            return;
-        }
-        if (profile.Token is { } token && clientFor(token) is { } uploader)
-            uploader.SyncInBackground(Scores, profile.Baid);
-    }
-
-    // Rankings are read with the cabinet's token, or at home with any token at hand: a joined
-    // player's, the default account's, then any stored account's.
-    private ScoreClient? rankingClient() => ScoreServer ?? TaikoGuest.Profiles.Select(static profile => profile?.Token)
-        .Append(Accounts?.Default?.Token).Concat(Accounts?.Accounts.Select(static account => account.Token) ?? [])
-        .OfType<string>().Select(clientFor).FirstOrDefault(static client => client is not null);
-
-    /// <summary>
-    /// Downloads a player's server bests (crowns from every machine) into the store in the background;
-    /// song select reads them when it loads. Guests have none.
-    /// </summary>
-    public void RefreshBests(ScoreProfile profile)
-    {
-        ArgumentNullException.ThrowIfNull(profile);
-        if (Scores is not { } scores || profile.Baid == ScoreProfile.LocalGuestBaid)
-            return;
-        var client = ScoreServer ?? (profile.Token is { } token ? clientFor(token) : null);
-        if (client is null)
-            return;
-        long? baid = ScoreServer is null ? null : profile.Baid;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                scores.ReplaceRemoteBests(profile.Baid, await client.BestsAsync(baid).ConfigureAwait(false));
-            }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
-                or System.Text.Json.JsonException)
-            {
-                Console.Error.WriteLine($"Warning BESTS: {profile.Name}'s server bests not loaded ({exception.Message}).");
-            }
-        });
-    }
-
-    /// <summary>A server client with a home player's token (one per token, reused); null offline.</summary>
-    private ScoreClient? clientFor(string token)
-    {
-        if (_uploadServer is not { } server)
-            return null;
-        lock (_uploaders)
-        {
-            if (!_uploaders.TryGetValue(token, out var client))
-                _uploaders[token] = client = new ScoreClient(ScoreClient.CreateHttp(server, Arcade.ServerInsecure, token));
-            return client;
-        }
-    }
-
-    private readonly ServerHealth? _health;
-
     // Home: the "who's playing?" screen before the entry (stored accounts, guests, friends, in-game login).
-    private PlayerSetupFlow? _setup;
-    private EntrySetupOverlay? _entryOverlay;
+    private readonly PlayerSetupController? _playerSetup;
 
-    // Cabinet mode only (cabinet_token set, no home account).
-    private readonly CabinetPairing? _pairing;
     private readonly PairingPill _pill;
     private readonly PerformanceOverlay _performance;
 
@@ -224,7 +146,7 @@ internal sealed class GameShell : IDisposable
     /// <summary>The credit's joined drums (0 left, 1 right).</summary>
     public SortedSet<int> JoinedSides { get; } = [];
 
-    private readonly GlobalSongCatalog _globalCatalog;
+    private readonly SongLibraries _libraries;
     private readonly IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
     private readonly CostumeIconTextures _costumeIcons;
@@ -252,20 +174,11 @@ internal sealed class GameShell : IDisposable
     private int _fadeStartTick;
     private bool _escapeWasDown;
     private readonly HomeMenu _menu;
-    private AudioBus? _sampleBus;
-    private AudioPlaybackHandle? _sampleMusic;
-    private bool _menuMusicHeld;
+    private readonly MenuAudio _menuAudio;
+    private readonly QuickRestart _restart;
     private bool _wasFocused = true;
     private static readonly HashSet<SceneId> _attractScenes =
         [FlowScenes.Logo, FlowScenes.Title, FlowScenes.Caution, FlowScenes.Movie];
-    private int _sampleNextTick;
-    private long _qPressedAt;
-    private float _qStartAlpha;
-    private bool _qNeedsRelease;
-    private long _restartCancelAt;
-    private float _restartCancelAlpha;
-    private long _menuRestartAt;
-    private long _restartRevealAt;
     private float _lastInterpolation;
     private float _pauseInterpolation;
     // Live presses reach only the per-frame callback; ticks see held keys. Latch drum hits there for
@@ -300,72 +213,17 @@ internal sealed class GameShell : IDisposable
         var assetRoot = options.AssetRoot;
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
-        var cabinet = !Arcade.Home && Arcade is { Server: not null, CabinetToken: not null };
-        _health = Arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, Arcade.ServerInsecure)) : null;
-        // Home keeps every play on this PC, guests' too (baid 0, never uploaded).
-        Scores = (Arcade.Home || cabinet) && options.ScoresPath is { } scoresPath ? new ScoreStore(scoresPath) : null;
-        if (Scores is not null && Arcade.Server is { } server)
-        {
-            _uploadServer = server;
-            if (cabinet)
-            {
-                var http = ScoreClient.CreateHttp(server, Arcade.ServerInsecure, Arcade.CabinetToken);
-                ScoreServer = new ScoreClient(http);
-                _pairing = new CabinetPairing(http);
-            }
-            // Plays left over from offline runs: a cabinet's (everyone's), or each stored account's.
-            if (ScoreServer is not null)
-                Upload(ScoreProfile.LocalGuest);
-            foreach (var account in Arcade.Home ? options.Accounts?.Accounts ?? [] : [])
-            {
-                Upload(account.Profile);
-                RefreshBests(account.Profile);
-            }
-            // Names, looks and avatars as the website has them now (revoked logins drop out).
-            if (Arcade.Home && options.Accounts is { } book)
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await book.RefreshAsync(account => clientFor(account.Token)!).ConfigureAwait(false);
-                    }
-                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-                    {
-                        Console.Error.WriteLine($"Warning ACCOUNT: profiles not refreshed ({exception.Message}).");
-                    }
-                });
-        }
+        Sync = new ScoreSync(Arcade, options.ScoresPath, Accounts);
         // The game's own songs live beside the Lumen data (<data>/lumendata/packed).
         var dataRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
-        // Either source may be absent: a stock install without custom songs, or custom songs alone.
-        ISongCatalogProvider[] providers = [
-            .. StockCatalogProvider.IsStockData(dataRoot) ? [new StockCatalogProvider(dataRoot)] : Array.Empty<ISongCatalogProvider>(),
-            // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
-            // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
-            .. (Arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(Arcade.TjaFolder ?? options.TjaRoot)
-                ? [new TjaCatalogProvider(Arcade.TjaFolder ?? options.TjaRoot)] : Array.Empty<ISongCatalogProvider>(),
-            // A Nijiiro installation picked in the settings (home mode).
-            .. Arcade.Home && Arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is { Exists: true } installed
-                ? [installed] : Array.Empty<ISongCatalogProvider>(),
-        ];
-        Assets = new CatalogAssetRouter(providers);
-        ChartHashes = new ChartHashes(Scores, Assets.LoadChartAsync);
-        _globalCatalog = new GlobalSongCatalog(providers);
-        var snapshot = _globalCatalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
-        foreach (var status in snapshot.Providers)
-            Console.WriteLine(status.Succeeded
-                ? $"Catalog provider {status.Provider}: {status.SongCount} songs in {status.CategoryCount} categories."
-                : $"Catalog provider {status.Provider} failed.");
+        _libraries = SongLibraries.Load(dataRoot, Arcade, options.TjaRoot);
+        var snapshot = _libraries.Snapshot;
+        Assets = new CatalogAssetRouter(_libraries.Providers);
+        ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync);
         SongCatalog = new SongSelectCatalogView(snapshot);
         // Server crowns need every chart's hash before song select lists it.
-        if (_uploadServer is not null)
+        if (Sync.Online)
             ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
-        if (SongCatalog.Categories.IsEmpty)
-            throw new InvalidOperationException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
-                ?? "No song provider discovered any browsable categories.");
-        Console.WriteLine($"Catalog revision {snapshot.Revision}: {SongCatalog.Categories.Length} categories.");
-        foreach (var diagnostic in snapshot.Diagnostics)
-            Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
 
         Application = new SdlApplication(
             Waddamburo.App.Hosting.SelfUpdate.WindowTitle,
@@ -394,13 +252,14 @@ internal sealed class GameShell : IDisposable
         _menu = new HomeMenu(() => Arcade, settings =>
         {
             Arcade = settings;
-            applyAudioSettings();
+            _menuAudio?.Apply(Arcade);
         }, saveSettings, don => Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false), options.TjaRoot);
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
-        applyAudioSettings();
+        _menuAudio = new MenuAudio(Audio, Sounds, SongCatalog, Assets);
+        _menuAudio.Apply(Arcade);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles);
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
@@ -458,15 +317,15 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            Rankings = _uploadServer is null ? null : new SongRankings(rankingClient, ChartHashes),
+            Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             PreviousBest = index => (uint)index < (uint)PreviousBests.Length ? PreviousBests[index] : null,
-            Crowns = side => Scores is null ? null
-                : TaikoGuest.Profiles[side] is { } profile ? Scores.Crowns(profile.Baid)
-                : Arcade.Home ? Scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
+            Crowns = side => Sync.Scores is not { } scores ? null
+                : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
+                : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
             CardClaimed = (side, card) =>
             {
                 TaikoGuest.Profiles[side] = card;
-                RefreshBests(card);
+                Sync.RefreshBests(card);
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
@@ -474,18 +333,7 @@ internal sealed class GameShell : IDisposable
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : TaikoGuest.Profiles[side]?.Name,
         };
         if (Arcade.Home && Options.Accounts is { } setupBook)
-        {
-            _entryOverlay = new EntrySetupOverlay(Application, options.FontPath);
-            _setup = new PlayerSetupFlow(setupBook, Arcade.Server, Arcade.ServerInsecure, clientFor,
-                Path.Combine(Path.GetDirectoryName(options.ScoresPath) ?? ".", "avatars"));
-            _setup.Confirmed += joinSetupPlayers;
-            _setup.Refused += () => Sounds?.Frontend.PlayCue("SE_COM", 12); // SE_COM_COM_CARD_ERROR
-            _setup.Cancelled += () =>
-            {
-                Hosts.EntrySetup = false;
-                _returnToAttract = true;
-            };
-        }
+            _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
         MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot));
         _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
@@ -493,6 +341,7 @@ internal sealed class GameShell : IDisposable
 
         _attract = new AttractFlow(this, AttractMovie.Discover(Path.Combine(dataRoot, "movie")));
         _gameplay = new GameplayFlow(this);
+        _restart = new QuickRestart(_gameplay.Restart);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this);
         _scenes = new()
@@ -578,7 +427,7 @@ internal sealed class GameShell : IDisposable
             };
             Hosts.CardDialog = open => _indicators.CardDialog(open);
             Hosts.ReturnToAttract = () => _returnToAttract = true;
-            _indicators.NetworkIcon = _health is null ? null : () => _health.IconType;
+            _indicators.NetworkIcon = Sync.Health is { } health ? () => health.IconType : null;
             Hosts.EntryJoined = side =>
             {
                 JoinPlayer(side);
@@ -662,6 +511,8 @@ internal sealed class GameShell : IDisposable
         _ => (int?)null,
     }).FirstOrDefault(static side => side is not null);
 
+    // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
+    // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
     private void tick(SdlKeyboardSnapshot keyboard)
     {
         Tick++;
@@ -670,157 +521,169 @@ internal sealed class GameShell : IDisposable
         _drumSideLatched = null;
         var skip = _skipLatched || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
         _skipLatched = false;
-        // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
-        // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
-        var toAttract = _attractLatched || _returnToAttract
-            || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
-        _attractLatched = _returnToAttract = false;
-        if (toAttract && Active.Id != FlowScenes.Gameplay && Active.Id != FlowScenes.Boot)
-        {
-            Sounds?.StopAll();
-            Overlay.Clear();
-            PlayRequests.CancelPending();
-            Don?.SetDialogDon(false);
-            ResetPlayers();
-            SongsPlayed = 0; // a new credit starts at the first song
-            Show(FlowScenes.Logo);
+        if (backToAttract(keys))
             return;
-        }
         coins(keys);
         // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
         if (_traceInput)
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
-        var heldKeys = keys;
+        var held = keys;
         keys = scene.MapKeys(drumPulses(keys));
         var escapeIsDown = keys.IsDown(SdlKeyboardKey.Escape);
         var escape = escapeIsDown && !_escapeWasDown;
         _escapeWasDown = escapeIsDown;
-        // Home: Escape opens the menu (pause in gameplay; settings and back to the title in the menus).
-        // Going to the background: the sound fades out (when set) and a home song pauses.
-        if (Application.Focused != _wasFocused)
-        {
-            _wasFocused = Application.Focused;
-            if (Arcade.MuteInBackground || _wasFocused)
-                Audio?.Mixer.FadeOutput(_wasFocused ? 1 : 0, TimeSpan.FromMilliseconds(300));
-        }
-        // Resume's countdown: the song stays held until it ends; Escape or leaving the window pauses again.
-        if (_resume is { Running: true } countdown)
-        {
-            if (escape || !_wasFocused)
-            {
-                countdown.Cancel();
-                _menu.Open(gameplay: true);
-            }
-            else if (countdown.Advance((bank, cue) => Sounds?.Bank.Play(bank, cue, trace: false)))
-                resumeHome();
+        followFocus();
+        if (resumeCountdown(escape) || openMenu(escape) || menuInput(keys, held, escape))
             return;
-        }
-        // A song still unpausable when the window lost focus (under the rainbow) pauses once it can.
-        // Once every note and long note is over (the song's tail), leaving the window no longer pauses.
-        if (Arcade.Home && !_menu.IsOpen
-            && (escape || !_wasFocused && Active.Id == FlowScenes.Gameplay && !_gameplay.ChartOver))
-        {
-            if (Active.Id == FlowScenes.Gameplay)
-            {
-                if (restartBlack() == 0 && _gameplay.CanPause)
-                {
-                    _qPressedAt = 0;
-                    _pauseInterpolation = _lastInterpolation;
-                    _gameplay.SetPaused(true, _pauseInterpolation);
-                    _menu.Open(gameplay: true);
-                    return;
-                }
-            }
-            // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
-            else if (_attractScenes.Contains(Active.Id) || Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect)
-            {
-                if (Overlay.IsShown || Coordinator.Flow.State == GameFlowState.TransitionPending)
-                    return;
-                _pauseInterpolation = _lastInterpolation;
-                _menu.Open(gameplay: false, attract: _attractScenes.Contains(Active.Id));
-                holdMenuMusic(true);
-                return;
-            }
-        }
-        if (_menu.IsOpen)
-        {
-            // A folder picked in the system dialog opened from the settings.
-            if (_pickingFolder is { } picking && SdlApplication.TryTakePickedFolder(out var folder))
-            {
-                Arcade = picking == HomeMenuAction.PickTjaFolder ? Arcade with { TjaFolder = folder }
-                    : Arcade with { NijiiroFolder = folder };
-                saveSettings();
-                _pickingFolder = null;
-            }
-            var action = _menu.Input(keys, escape, heldKeys);
-            volumeSample(_menu.PreviewBus);
-            if (!_menu.IsOpen)
-                holdMenuMusic(false);
-            switch (action)
-            {
-                case HomeMenuAction.Resume when Active.Id == FlowScenes.Gameplay && _resume is { } resume:
-                    resume.Start();
-                    break;
-                case HomeMenuAction.Resume:
-                    resumeHome();
-                    break;
-                case HomeMenuAction.Restart:
-                    resumeHome();
-                    _menuRestartAt = Stopwatch.GetTimestamp();
-                    break;
-                case HomeMenuAction.SongSelect:
-                    resumeHome();
-                    _gameplay.Abandon();
-                    break;
-                case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder:
-                    _pickingFolder = action;
-                    Application.PickFolder(action == HomeMenuAction.PickTjaFolder ? Arcade.TjaFolder ?? Options.TjaRoot
-                        : Arcade.NijiiroFolder);
-                    break;
-                case HomeMenuAction.Title:
-                    if (_setup is { IsOpen: true } open)
-                    {
-                        open.Close();
-                        Hosts.EntrySetup = false;
-                    }
-                    _returnToAttract = true;
-                    break;
-            }
-            return;
-        }
-        // Home: Tab in the entry goes back to the player setup with the current players.
-        if (_setup is { IsOpen: false } reopen && Active.Id == FlowScenes.Entry && keys.IsDown(SdlKeyboardKey.Tab))
-        {
-            ScoreProfile?[] profiles = [.. TaikoGuest.Profiles];
-            int[] joined = [.. JoinedSides];
-            Sounds?.StopAll();
-            beginSetup();
-            reopen.Reopen(profiles, joined);
-            return;
-        }
         // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
-        if (_setup is { } setup)
+        if (_playerSetup is not null && _playerSetup.Tick(ref keys))
+            return;
+        if (_restart.Update(Arcade.Home && (Active.Id == FlowScenes.Result
+                || Active.Id == FlowScenes.Gameplay && _gameplay.CanQuickRestart), held))
+            return;
+        advance(scene, keys);
+        // Results wait while a quick restart is being held or asked for from the menu.
+        var restarting = Arcade.Home && Active.Id == FlowScenes.Result && held.IsDown(SdlKeyboardKey.Q);
+        if (Coordinator.Flow.State != GameFlowState.TransitionPending)
         {
-            var open = setup.IsOpen;
-            setup.Tick(open ? keys : SdlKeyboardSnapshot.Empty);
-            if (open && setup.IsOpen && Active.Id == FlowScenes.Entry && Hosts.Entry is { SetupMode: true } entry)
-            {
-                applySetup(entry, setup.Columns());
-                setupArrows().Advance();
-                // The drums pick only once the screen is fully up: the entry on screen, no transition over
-                // it, and its intro (Don entry motion, boards fading in) played.
-                if (!Overlay.IsShown)
-                    _setupShownTicks++;
-                setup.InputEnabled = _setupShownTicks >= SetupIntroTicks;
-            }
-            if (open && Tick % 10 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TRACE") == "1")
-                Console.WriteLine("[setup] " + Tick + " entry=" + (Hosts.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", setup.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
-            if (open)
-                keys = SdlKeyboardSnapshot.Empty;
+            if (!restarting && !(Arcade.Home && Active.Id == FlowScenes.Result && _restart.MenuPending))
+                scene.Tick(new FlowInput(keys, hitSide, skip, escape));
+            return;
         }
-        if (updateQuickRestart(heldKeys)) return;
+        if (restarting || Arcade.Home && Active.Id == FlowScenes.Result && _restart.Holding)
+            return;
+        // A movie asked for the next scene (entry -> song select); its last voice finishes first.
+        if (Sounds?.Bank.IsVoicePlaying == true)
+            return;
+        ReportDiagnostics();
+        switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
+        Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
+    }
+
+    // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
+    // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
+    private bool backToAttract(SdlKeyboardSnapshot keys)
+    {
+        var toAttract = _attractLatched || _returnToAttract
+            || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
+        _attractLatched = _returnToAttract = false;
+        if (!toAttract || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Boot)
+            return false;
+        Sounds?.StopAll();
+        Overlay.Clear();
+        PlayRequests.CancelPending();
+        Don?.SetDialogDon(false);
+        ResetPlayers();
+        SongsPlayed = 0; // a new credit starts at the first song
+        Show(FlowScenes.Logo);
+        return true;
+    }
+
+    // Going to the background: the sound fades out (when set); a home song pauses (openMenu).
+    private void followFocus()
+    {
+        if (Application.Focused == _wasFocused)
+            return;
+        _wasFocused = Application.Focused;
+        if (Arcade.MuteInBackground || _wasFocused)
+            Audio?.Mixer.FadeOutput(_wasFocused ? 1 : 0, TimeSpan.FromMilliseconds(300));
+    }
+
+    // Resume's countdown: the song stays held until it ends; Escape or leaving the window pauses again.
+    private bool resumeCountdown(bool escape)
+    {
+        if (_resume is not { Running: true } countdown)
+            return false;
+        if (escape || !_wasFocused)
+        {
+            countdown.Cancel();
+            _menu.Open(gameplay: true);
+        }
+        else if (countdown.Advance((bank, cue) => Sounds?.Bank.Play(bank, cue, trace: false)))
+            resumeHome();
+        return true;
+    }
+
+    // Home: Escape opens the menu (pause in gameplay; settings and back to the title in the menus). A song
+    // still unpausable when the window lost focus (under the rainbow) pauses once it can; once every note
+    // and long note is over (the song's tail), leaving the window no longer pauses.
+    private bool openMenu(bool escape)
+    {
+        if (!Arcade.Home || _menu.IsOpen
+            || !(escape || !_wasFocused && Active.Id == FlowScenes.Gameplay && !_gameplay.ChartOver))
+            return false;
+        if (Active.Id == FlowScenes.Gameplay)
+        {
+            if (_restart.Black != 0 || !_gameplay.CanPause)
+                return false;
+            _restart.CancelHold();
+            _pauseInterpolation = _lastInterpolation;
+            _gameplay.SetPaused(true, _pauseInterpolation);
+            _menu.Open(gameplay: true);
+            return true;
+        }
+        // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
+        if (!_attractScenes.Contains(Active.Id) && Active.Id != FlowScenes.Entry && Active.Id != FlowScenes.SongSelect)
+            return false;
+        if (Overlay.IsShown || Coordinator.Flow.State == GameFlowState.TransitionPending)
+            return true;
+        _pauseInterpolation = _lastInterpolation;
+        _menu.Open(gameplay: false, attract: _attractScenes.Contains(Active.Id));
+        _menuAudio.HoldMenuMusic(true);
+        return true;
+    }
+
+    // The open menu takes the input and carries out its choice.
+    private bool menuInput(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
+    {
+        if (!_menu.IsOpen)
+            return false;
+        // A folder picked in the system dialog opened from the settings.
+        if (_pickingFolder is { } picking && SdlApplication.TryTakePickedFolder(out var folder))
+        {
+            Arcade = picking == HomeMenuAction.PickTjaFolder ? Arcade with { TjaFolder = folder }
+                : Arcade with { NijiiroFolder = folder };
+            saveSettings();
+            _pickingFolder = null;
+        }
+        var action = _menu.Input(keys, escape, held);
+        _menuAudio.Sample(_menu.PreviewBus, Tick);
+        if (!_menu.IsOpen)
+            _menuAudio.HoldMenuMusic(false);
+        switch (action)
+        {
+            case HomeMenuAction.Resume when Active.Id == FlowScenes.Gameplay && _resume is { } resume:
+                resume.Start();
+                break;
+            case HomeMenuAction.Resume:
+                resumeHome();
+                break;
+            case HomeMenuAction.Restart:
+                resumeHome();
+                _restart.FromMenu();
+                break;
+            case HomeMenuAction.SongSelect:
+                resumeHome();
+                _gameplay.Abandon();
+                break;
+            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder:
+                _pickingFolder = action;
+                Application.PickFolder(action == HomeMenuAction.PickTjaFolder ? Arcade.TjaFolder ?? Options.TjaRoot
+                    : Arcade.NijiiroFolder);
+                break;
+            case HomeMenuAction.Title:
+                _playerSetup?.Close();
+                _returnToAttract = true;
+                break;
+        }
+        return true;
+    }
+
+    // The scene's movies and the overlays drawn with it advance one tick.
+    private void advance(FlowScene scene, SdlKeyboardSnapshot keys)
+    {
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
             Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
         Overlay.Advance();
@@ -832,126 +695,20 @@ internal sealed class GameShell : IDisposable
                 foreach (var line in Active.Player.Layers[index].Player.DescribeDisplayList())
                     Console.WriteLine(line);
             }
-        if (_indicators is not null)
+        if (_indicators is null)
+            return;
+        if (_indicatorScene != Active.Id)
         {
-            if (_indicatorScene != Active.Id)
-            {
-                _indicatorScene = Active.Id;
-                _indicators.SetScene(scene.IndicatorsFor(Active.Id));
-            }
-            _indicators.Advance();
+            _indicatorScene = Active.Id;
+            _indicators.SetScene(scene.IndicatorsFor(Active.Id));
         }
-        if (Coordinator.Flow.State != GameFlowState.TransitionPending)
-        {
-            if (Arcade.Home && Active.Id == FlowScenes.Result
-                && (heldKeys.IsDown(SdlKeyboardKey.Q) || _menuRestartAt != 0))
-                return;
-            scene.Tick(new FlowInput(keys, hitSide, skip, escape));
-            return;
-        }
-        if (Arcade.Home && Active.Id == FlowScenes.Result
-            && (heldKeys.IsDown(SdlKeyboardKey.Q) || _qPressedAt != 0))
-            return;
-        // A movie asked for the next scene (entry -> song select); its last voice finishes first.
-        if (Sounds?.Bank.IsVoicePlaying == true)
-            return;
-        ReportDiagnostics();
-        switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
-        Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
-    }
-
-    // The entry's and Song Select's music and preview hold while their menu is open.
-    private void holdMenuMusic(bool held)
-    {
-        if (Audio is null || _menuMusicHeld == held) return;
-        _menuMusicHeld = held;
-        Audio.Mixer.SetBusPaused(AudioBus.Bgm, held);
-        Audio.Mixer.SetBusPaused(AudioBus.Preview, held);
+        _indicators.Advance();
     }
 
     private void resumeHome()
     {
         if (Active.Id == FlowScenes.Gameplay)
             _gameplay.SetPaused(false);
-    }
-
-    // The player's audio settings; volumes (percent) on a curve that sounds even: half way is about a quarter of the level.
-    private void applyAudioSettings()
-    {
-        if (Audio?.Mixer is not { } mixer) return;
-        static float level(int percent) => percent * percent / 10000f;
-        mixer.MasterVolume = level(Arcade.MasterVolume);
-        mixer.SetBusGain(AudioBus.Bgm, level(Arcade.MusicVolume));
-        mixer.SetBusGain(AudioBus.Preview, level(Arcade.MusicVolume));
-        mixer.SetBusGain(AudioBus.DrumHit, level(Arcade.DrumVolume));
-        mixer.SetBusGain(AudioBus.MenuSound, level(Arcade.EffectsVolume));
-        mixer.SetBusGain(AudioBus.Coin, level(Arcade.EffectsVolume));
-        mixer.SetBusGain(AudioBus.Voice, level(Arcade.VoiceVolume));
-        if (Sounds is not null)
-            Sounds.Gameplay.Panning = Arcade.StereoPanning;
-    }
-
-    // While a volume is edited its bus keeps sounding: a random song, a menu sound, or a Don-chan
-    // line, each repeated once it has finished.
-    private void volumeSample(AudioBus? bus)
-    {
-        if (bus != _sampleBus)
-        {
-            if (_sampleMusic is { } music)
-                Audio?.Mixer.Stop(music, TimeSpan.FromMilliseconds(20));
-            if (_sampleBus == AudioBus.Voice)
-                Sounds?.Bank.StopVoice();
-            _sampleMusic = null;
-            _sampleBus = bus;
-            _sampleNextTick = 0;
-        }
-        if (bus is not { } playing || Audio is null || Tick < _sampleNextTick)
-            return;
-        switch (playing)
-        {
-            case AudioBus.Bgm when _sampleMusic is not { } music || !Audio.Mixer.IsPlaying(music):
-                _sampleMusic = randomSong();
-                _sampleNextTick = Tick + 60;
-                break;
-            case AudioBus.MenuSound:
-                Sounds?.Bank.Play("SE_COM", 13, AudioBus.MenuSound, trace: false);
-                _sampleNextTick = Tick + 60;
-                break;
-            case AudioBus.Voice when Sounds?.Bank is { IsVoicePlaying: false } bank:
-                bank.Play("VO_SELECT", 1, trace: false);
-                _sampleNextTick = Tick + 30;
-                break;
-        }
-    }
-
-    // A random catalog song from its preview point, on the music bus.
-    // ponytail: opens the file on the tick (a short hitch); open it in the background if that shows.
-    private AudioPlaybackHandle? randomSong()
-    {
-        var songs = SongCatalog.Categories.SelectMany(static category => category.Songs)
-            .Where(static song => song.Descriptor.AudioAsset is not null).ToArray();
-        if (songs.Length == 0 || Audio is null) return null;
-        var song = songs[Random.Shared.Next(songs.Length)].Descriptor;
-        try
-        {
-            var input = Assets.OpenReadAsync(song.AudioAsset!).AsTask().GetAwaiter().GetResult();
-            BufferedAudioSource source;
-            try
-            {
-                source = new BufferedAudioSource(input, Audio.Mixer.Format, song.PreviewStart ?? TimeSpan.Zero);
-            }
-            catch
-            {
-                input.Dispose();
-                throw;
-            }
-            return Audio.Mixer.PlayStream(source, AudioBus.Bgm);
-        }
-        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
-        {
-            Console.Error.WriteLine($"Volume sample '{song.Title.Primary}' unavailable: {exception.Message}");
-            return null;
-        }
     }
 
     private HomeMenuAction? _pickingFolder;
@@ -969,86 +726,12 @@ internal sealed class GameShell : IDisposable
         }
     }
 
-    private bool updateQuickRestart(SdlKeyboardSnapshot held)
-    {
-        if (!Arcade.Home || Active.Id != FlowScenes.Result
-            && (Active.Id != FlowScenes.Gameplay || !_gameplay.CanQuickRestart))
-        {
-            _qPressedAt = 0;
-            _restartCancelAt = 0;
-            _menuRestartAt = 0;
-            return false;
-        }
-        var now = Stopwatch.GetTimestamp();
-        if (_menuRestartAt != 0 && Stopwatch.GetElapsedTime(_menuRestartAt, now) >= TimeSpan.FromMilliseconds(500))
-        {
-            _menuRestartAt = 0;
-            return restartNow();
-        }
-        if (!held.IsDown(SdlKeyboardKey.Q))
-        {
-            if (_qPressedAt != 0)
-            {
-                _restartCancelAlpha = qHoldAlpha(now);
-                _restartCancelAt = now;
-            }
-            _qPressedAt = 0;
-            _qNeedsRelease = false;
-        }
-        else if (!_qNeedsRelease && _qPressedAt == 0 && _menuRestartAt == 0 && _restartRevealAt == 0)
-        {
-            _qStartAlpha = cancelAlpha(now);
-            _restartCancelAt = 0;
-            _qPressedAt = now;
-        }
-        if (_qPressedAt != 0 && qHoldAlpha(now) >= 1)
-        {
-            _qPressedAt = 0;
-            _qNeedsRelease = true;
-            return restartNow();
-        }
-        if (_restartRevealAt != 0 && Stopwatch.GetElapsedTime(_restartRevealAt, now) >= TimeSpan.FromMilliseconds(500))
-            _restartRevealAt = 0;
-        if (_restartCancelAt != 0 && cancelAlpha(now) <= 0)
-            _restartCancelAt = 0;
-        return false;
-    }
-
-    private bool restartNow()
-    {
-        _qPressedAt = 0;
-        _restartCancelAt = 0;
-        _menuRestartAt = 0;
-        if (_gameplay.Restart())
-            _restartRevealAt = Stopwatch.GetTimestamp();
-        return true;
-    }
-
-    private float qHoldAlpha(long now) => Math.Clamp(_qStartAlpha
-        + (float)(Stopwatch.GetElapsedTime(_qPressedAt, now).TotalSeconds * 2), 0, 1);
-
-    private float cancelAlpha(long now) => _restartCancelAt == 0 ? 0 : Math.Clamp(_restartCancelAlpha
-        - (float)(Stopwatch.GetElapsedTime(_restartCancelAt, now).TotalSeconds * 2), 0, 1);
-
-    private float restartBlack()
-    {
-        if (_menuRestartAt != 0)
-            return Math.Clamp((float)(Stopwatch.GetElapsedTime(_menuRestartAt).TotalSeconds * 2), 0, 1);
-        if (_qPressedAt != 0)
-            return qHoldAlpha(Stopwatch.GetTimestamp());
-        if (_restartCancelAt != 0)
-            return cancelAlpha(Stopwatch.GetTimestamp());
-        if (_restartRevealAt != 0)
-            return Math.Clamp(1 - (float)(Stopwatch.GetElapsedTime(_restartRevealAt).TotalSeconds * 2), 0, 1);
-        return 0;
-    }
-
     private RenderFrame withHomeOverlay(RenderFrame frame) => _homeOverlay is null
         ? frame : new RenderFrame(frame.ClearColor,
             frame.Quads.Concat(_resume is { Running: true } countdown
                     ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", Titles.Resolve).Quads
                     : [])
-                .Concat(_homeOverlay.Quads(_menu.IsOpen ? _menu : null, restartBlack())),
+                .Concat(_homeOverlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black)),
             frame.ContentAspectRatio);
 
     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit counts at
@@ -1190,6 +873,18 @@ internal sealed class GameShell : IDisposable
         Catalog.Replace(FlowScenes.SongSelectScene(JoinedSides.Count == 0 ? [0] : [.. JoinedSides], Hosts.Waiwai));
     }
 
+    /// <summary>The system indicators (panels, coins, network), once loaded.</summary>
+    public SystemIndicators? Indicators => _indicators;
+
+    /// <summary>The indicators restart with the next scene (it reloads under the same id).</summary>
+    public void ResetIndicatorScene() => _indicatorScene = null;
+
+    /// <summary>The active scene's uploaded textures, by the scene's texture index.</summary>
+    public RenderTextureId[] SceneTextureIds => _textures;
+
+    /// <summary>Back to the attract loop on the next tick (outside the callbacks asking for it).</summary>
+    public void ReturnToAttract() => _returnToAttract = true;
+
     public void ReportDiagnostics()
     {
         foreach (var layer in Active.Layers.Select((loaded, index) => (loaded, index)))
@@ -1199,7 +894,7 @@ internal sealed class GameShell : IDisposable
                     + $"at character {diagnostic.CharacterId} frame {diagnostic.Frame}: {diagnostic.Message}");
     }
 
-    private RenderTextureId? resolveSurface(LumenNativeSurfaceKey surface) =>
+    public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
         ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface)
         ?? Titles.Resolve(surface);
@@ -1228,14 +923,14 @@ internal sealed class GameShell : IDisposable
         uploadAhead();
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
-        var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _textures, "Scene", resolveSurface);
+        var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads;
         // Depth order (traced): scene, msg_coins (-950), intermission (-2000), network/card (-3000).
         var result = new RenderFrame(
             frame.ClearColor,
-            frame.Quads.Concat(entryOverlay((float)interpolation)).Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
+            frame.Quads.Concat(_playerSetup?.Quads(interpolation) ?? []).Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
                 .Concat(indicatorQuads(true))
                 .Concat(pill())
                 .Concat(_performance.Quads()).ToArray(),
@@ -1256,229 +951,38 @@ internal sealed class GameShell : IDisposable
     /// <summary>Home: a drum hit in the attract loop opens the player setup (that drum starts on the default account).</summary>
     public bool OpenPlayerSetup(int side)
     {
-        if (_setup is not { } setup)
-            return false;
-        Sounds?.StopAll();
-        // Diagnostic: WADDAMBURO_SETUP_BOTH=1 skips the screen with both drums joined (the DON_BOTH entry
-        // start): the first two stored accounts, a guest where there is none.
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_BOTH") == "1")
-        {
-            var stored = Accounts?.Accounts ?? [];
-            startWithPlayers([.. Enumerable.Range(0, 2).Select(index => index < stored.Count ? stored[index].Profile : null)], [true, true]);
-            return true;
-        }
-        Sounds?.StopAll();
-        beginSetup();
-        setup.Open(side);
-        return true;
-    }
-
-    // The player setup is the entry itself: both stands up (DON_BOTH), nobody joined yet, the menus
-    // hidden (EntrySceneHost.SetupMode). Confirming joins the chosen players in place (FinishSetup).
-    private const int SetupIntroTicks = 90; // 1.5 s: the Don's entry motion (traced 0.85 s) and the boards
-    private int _setupShownTicks;
-
-    private void beginSetup()
-    {
-        _setupShownTicks = 0;
-        ResetPlayers();
-        SongsPlayed = 0;
-        Array.Clear(_shownChoice);
-        Array.Fill(_swapAt, -1);
-        Array.Fill(_revealAt, -1);
-        Hosts.EntrySetup = true;
-        Hosts.EntryTrigger = 2;
-        _indicatorScene = null;
-        Show(FlowScenes.Entry);
-    }
-
-    // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
-    // the entry's own costume flash and cue when it changes.
-    private void applySetup(EntrySceneHost entry, SetupColumn[] columns)
-    {
-        for (var side = 0; side < 2; side++)
-        {
-            var column = columns[side];
-            var choice = column.Choice;
-            // A new choice starts the entry's costume change (smoke and cue); what stands on the drum only
-            // swaps once the smoke covers it, so the new Don or text never pops in.
-            if (_shownChoice[side] is not { } shown)
-                showOnStand(side, choice);
-            else if (sameStand(shown, choice))
-                _swapAt[side] = -1;
-            else if (_swapAt[side] < 0)
-            {
-                entry.CostumeChanged(side);
-                _swapAt[side] = Tick + SetupSwapDelay;
-                _revealAt[side] = Tick + SetupRevealDelay;
-            }
-            else if (Tick >= _swapAt[side])
-            {
-                showOnStand(side, choice);
-                _swapAt[side] = -1;
-            }
-            entry.SetSetupSide(side, _shownChoice[side]!.HasDon, board: true);
-        }
-        // Both drums show their choice: no "hit the drum to start" bubble during the setup.
-        _indicators?.SetupPanels(false, false);
-    }
-
-    // The costume smoke covers the stand from ~6 ticks and bursts at ~54: the Don swaps under it, and text
-    // (drawn over the scene, so it would show through the smoke) appears with the burst.
-    private const int SetupSwapDelay = 12, SetupRevealDelay = 54;
-    private readonly SetupChoice?[] _shownChoice = new SetupChoice?[2];
-    private readonly long[] _swapAt = [-1, -1], _revealAt = [-1, -1];
-
-    private void showOnStand(int side, SetupChoice choice)
-    {
-        _shownChoice[side] = choice;
-        if (choice.HasDon)
-            Don?.SetLook(side, choice.Look);
-    }
-
-    // Two choices look the same on the stand: the same Don look, or the same option text.
-    private static bool sameStand(SetupChoice a, SetupChoice b) =>
-        a.HasDon == b.HasDon && (a.HasDon ? a.Look == b.Look : a.Kind == b.Kind);
-
-    // The entry's own animated arrows (SetupArrows), per loaded entry; anchored on each stand.
-    private SetupArrows? _setupArrows;
-    private LumenGameSceneInstance? _setupArrowsScene;
-    private static readonly (float X, float Y)[] ArrowAnchors = [(150, 430), (1130, 430)];
-    private const float ArrowGap = 150, ArrowScale = 0.45f;
-    private const int AutoJoinStar = 295; // entry.lm texture: the yellow four-point sparkle (40x40)
-    private const float AutoJoinStarSize = 44;
-    private static readonly (float X, float Y)[] AutoJoinStarAt = [(85, 345), (1065, 345)];
-
-    private SetupArrows setupArrows()
-    {
-        if (_setupArrows is null || _setupArrowsScene != Active)
-        {
-            _setupArrows = new SetupArrows(Active.Layers[0].Content.Definition);
-            _setupArrowsScene = Active;
-        }
-        return _setupArrows;
-    }
-
-    // Home players' names over the entry's boards, and the setup's arrows and option text.
-    private IEnumerable<RenderQuad> entryOverlay(float interpolation)
-    {
-        if (_entryOverlay is not { } overlay || Active.Id != FlowScenes.Entry)
-            return [];
-        // The tag follows the live choice; the stand shows what is on it now (it swaps mid-smoke), and its
-        // text only once the smoke has burst.
-        var live = _setup is { IsOpen: true } setup && Hosts.Entry is { SetupMode: true } ? setup.Columns() : null;
-        var columns = live?.Select((column, side) => column with { Choice = _shownChoice[side] ?? column.Choice }).ToArray();
-        bool[] standVisible = [Tick >= _revealAt[0], Tick >= _revealAt[1]];
-        string?[] tags = live is not null
-            ? [.. live.Select(static column => column.Choice.Label)]
-            : [.. Enumerable.Range(0, 2).Select(side => JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : null)];
-        var quads = overlay.Quads(columns, tags, standVisible);
-        if (columns is null)
-            return quads;
-        // The account that joins by itself (S): the entry's yellow sparkle over the Don's top-left, twinkling.
-        // The live choice decides (S toggles it at once); the stand must already show that account.
-        for (var side = 0; side < 2; side++)
-            if (live![side].Choice is { IsDefault: true, HasDon: true } choice && columns[side].Choice.Baid == choice.Baid
-                && standVisible[side] && AutoJoinStar < _textures.Length)
-            {
-                var size = AutoJoinStarSize * (0.85f + 0.15f * MathF.Sin((Tick + interpolation) * 0.08f));
-                var (x, y) = AutoJoinStarAt[side];
-                quads = quads.Append(RenderQuad.FromRectangles(_textures[AutoJoinStar],
-                    new RenderRectangle((x - size / 2) / 1280f, (y - size / 2) / 720f, size / 1280f, size / 720f),
-                    RenderRectangle.Full, RenderColor.White, RenderColor.Transparent));
-            }
-        // The arrows wait for the stands' slide-in (the same intro gate as the drums).
-        if (_setupShownTicks < SetupIntroTicks)
-            return quads;
-        // The arrows while a drum is choosing (not locked in, no code on screen). The entry is its scene's
-        // first layer, so the arrow sprite's texture indices are the scene's.
-        var arrows = setupArrows();
-        for (var side = 0; side < 2; side++)
-            if (!columns[side].Ready && columns[side].Code is null)
-                quads = quads.Concat(SceneTextures.Compose(arrows.Snapshot(side, ArrowAnchors[side].X, ArrowAnchors[side].Y,
-                    ArrowGap, ArrowScale, interpolation), _textures, "Arrows", resolveSurface).Quads);
-        return quads;
-    }
-
-    // The setup's players: their profiles and looks go in first, then the entry starts with them joined
-    // (SCENE_TRIGGER_DON_1P 0 / _DON_2P 1 / _DON_BOTH 2: the movie joins those drums itself).
-    private void startWithPlayers(ScoreProfile?[] profiles, bool[] playing)
-    {
-        Sounds?.Attract.PlayExit();
-        Hosts.EntrySetup = false;
-        _indicatorScene = null; // the entry reloads under the same id: its indicators start over
-        ResetPlayers();
-        SongsPlayed = 0;
-        for (var side = 0; side < 2; side++)
-        {
-            if (!playing[side])
-                continue;
-            TaikoGuest.Profiles[side] = profiles[side];
-            if (profiles[side] is { } profile)
-                RefreshBests(profile); // a visitor's first, a stored account's again
-            Don?.SetLook(side, profiles[side]?.Look);
-            JoinPlayer(side);
-        }
-        Hosts.EntryTrigger = playing[0] && playing[1] ? 2 : playing[1] ? 1 : 0;
-        Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
-        string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
-        Show(FlowScenes.Entry);
-    }
-
-    // The setup's players join the entry already on screen (its music and Don motions carry on).
-    private void joinSetupPlayers(ScoreProfile?[] profiles, bool[] playing)
-    {
-        if (Hosts.Entry is not { SetupMode: true } entry || Active.Id != FlowScenes.Entry)
-        {
-            startWithPlayers(profiles, playing);
-            return;
-        }
-        Hosts.EntrySetup = false;
-        for (var side = 0; side < 2; side++)
-        {
-            if (!playing[side])
-                continue;
-            TaikoGuest.Profiles[side] = profiles[side];
-            if (profiles[side] is { } profile)
-                RefreshBests(profile);
-            Don?.SetLook(side, profiles[side]?.Look);
-        }
-        entry.FinishSetup(playing); // PlayerJoined -> JoinPlayer per side
-        Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
-        string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
+        _playerSetup?.Open(side);
+        return _playerSetup is not null;
     }
 
     /// <summary>A paired card was rejected by the server (shown once).</summary>
-    public bool TakeCardFailure() => _pairing?.TakeCardFailure() == true;
+    public bool TakeCardFailure() => Sync.Pairing?.TakeCardFailure() == true;
 
     /// <summary>A card was paired during the attract loop: it starts the credit (SCENE_TRIGGER_CARD).</summary>
-    public ScoreProfile? TakeCard() => _pairing?.TakeCard();
+    public ScoreProfile? TakeCard() => Sync.Pairing?.TakeCard();
 
     private IEnumerable<RenderQuad> pill()
     {
-        if (_pairing is null)
+        if (Sync.Pairing is not { } pairing)
             return _pill.Quads(); // home: the account picker shows and hides it
         // The game takes cards in the attract loop and in entry (not from song select on), one at a time.
         var entry = flowOf(Active.Id) is EntryFlow;
-        _pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow
+        pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow
             || entry && !Hosts.EntryCardPending;
-        if (entry && _pairing.TakeCardFailure())
+        if (entry && pairing.TakeCardFailure())
             Hosts.RejectEntryCard();
-        if (entry && _pairing.TakeCard() is { } card && !Hosts.InsertEntryCard(card))
+        if (entry && pairing.TakeCard() is { } card && !Hosts.InsertEntryCard(card))
             Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
-        _pairing.UpdatePill(_pill);
+        pairing.UpdatePill(_pill);
         return _pill.Quads();
     }
 
     public void Dispose()
     {
-        _pairing?.Dispose();
-        _setup?.Dispose();
+        _playerSetup?.Dispose();
         _textFields.Dispose();
         Hosts?.Rankings?.Dispose();
-        _entryOverlay?.Dispose();
         _homeOverlay?.Dispose();
-        _health?.Dispose();
         _pill.Dispose();
         _performance.Dispose();
         Titles.Dispose();
@@ -1487,7 +991,7 @@ internal sealed class GameShell : IDisposable
         _audioDevice?.Dispose();
         DonRenderer?.Dispose();
         Application.Dispose();
-        _globalCatalog.Dispose();
-        Scores?.Dispose();
+        _libraries.Dispose();
+        Sync.Dispose();
     }
 }
