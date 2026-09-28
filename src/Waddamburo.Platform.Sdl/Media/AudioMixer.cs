@@ -136,6 +136,7 @@ public sealed class AudioMixer
     private readonly List<StreamVoice> _streamVoices = [];
     private long _nextHandle;
     private float _masterVolume = 1f;
+    private readonly BusState _output = new();
     private readonly float[] _busGains = [.. Enum.GetValues<AudioBus>().Select(static _ => 1f)];
 
     public AudioMixer(SdlAudioFormat format)
@@ -309,6 +310,16 @@ public sealed class AudioMixer
                 stream.Paused = paused;
     }
 
+    /// <summary>Ramps everything the mixer outputs (the game going to the background and back).</summary>
+    public void FadeOutput(float volume, TimeSpan duration)
+    {
+        validateVolume(volume, nameof(volume));
+        ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero);
+        var frames = checked((long)Math.Ceiling(duration.TotalSeconds * Format.SampleRate));
+        lock (_gate)
+            _output.FadeTo(volume, frames);
+    }
+
     /// <summary>Holds (or resumes) every sound on the bus now; sounds started later play normally.</summary>
     public void SetBusPaused(AudioBus bus, bool paused)
     {
@@ -440,9 +451,11 @@ public sealed class AudioMixer
                 }
             }
             for (var index = 0; index < interleavedDestination.Length; index++)
-                interleavedDestination[index] = Math.Clamp(interleavedDestination[index], -1f, 1f);
+                interleavedDestination[index] = Math.Clamp(
+                    interleavedDestination[index] * _output.VolumeAt(index / Format.Channels), -1f, 1f);
             foreach (var bus in _buses)
                 bus.Advance(frameCount);
+            _output.Advance(frameCount);
             return hadVoices;
         }
     }

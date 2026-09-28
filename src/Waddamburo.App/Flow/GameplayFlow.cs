@@ -109,6 +109,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             - (_paused ? Shell.Tick - _pausedAtTick : 0)) / 60d)
         : _clock.Elapsed) ?? TimeSpan.Zero;
 
+    /// <summary>Every player's last note, roll, balloon and kusudama is over.</summary>
+    public bool ChartOver => _charts.Length != 0 && chartTime() >= _charts.Max(static chart =>
+        chart.HitObjects.Select(static note => note.StartTime)
+            .Concat(chart.LongNotes.Select(static note => note.EndTime))
+            .DefaultIfEmpty(TimeSpan.Zero).Max()) + TimeSpan.FromMilliseconds(200);
+
     public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
     public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
 

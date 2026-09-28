@@ -248,7 +248,7 @@ or Song Select, and centre or Enter confirms. In the entry and Song Select, Esca
 Resume, Settings, or Return to Title. Settings holds the master, music, drum, effects and
 Don-chan voice volumes, the audio and input offsets (applied from the next play or
 restart) and the audio buffer size (applied at start); centre edits a row and the rims
-change it (Left/Right also work) by 1, or by 5 then 10 when pressed rapidly, and leaving the page saves them to `config.cfg`. Holding Q during gameplay or its
+change it (Left/Right also work) by 1, or by 5 then 10 when pressed rapidly, and leaving the page saves them to `config.cfg`. Settings also toggle stereo panning (off: two players share centred sounds) and muting while the window is in the background; losing focus mid-song pauses it (not once the chart's last note or roll is over). Resume counts 3-2-1 on the game's timer before the song goes on. The attract and player setup open the same menu with Escape. A sound cuts off its own previous play (Don stops Don, not Ka). Holding Q during gameplay or its
 results fades toward black; releasing early fades back, while reaching black after
 half a second restarts the same match and fades the new play in. Pause artwork
 is decoded from the user's game archives at runtime. In cabinet mode, Escape

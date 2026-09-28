@@ -17,7 +17,8 @@ public static class TaikoResultBanner
     {
         ArgumentNullException.ThrowIfNull(chart);
         var last = chart.HitObjects.Select(note => note.StartTime)
-            .Concat(chart.LongNotes.Select(note => note.StartTime))
+            // ponytail: a roll/balloon ending last counts by its end (untraced; never mid-roll).
+            .Concat(chart.LongNotes.Select(note => note.EndTime))
             .DefaultIfEmpty(TimeSpan.Zero).Max();
         var measure = chart.BarLines.Select(bar => bar.Time).Where(time => time <= last)
             .DefaultIfEmpty(last).Max();

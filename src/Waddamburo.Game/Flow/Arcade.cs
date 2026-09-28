@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -58,6 +58,14 @@ public sealed record ArcadeSettings
         audio_buffer_frames = 256
 
         """,
+        """
+        # stereo_panning: two players' drums and cues on their own side (left/right), each cutting off
+        # only its own sounds; false = everything centred, one of each sound at a time.
+        stereo_panning = true
+        # mute_in_background: fade the sound out while the window is not focused.
+        mute_in_background = true
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -95,6 +103,12 @@ public sealed record ArcadeSettings
 
     /// <summary>The audio device period requested at start (SDL may choose another).</summary>
     public int AudioBufferFrames { get; init; } = 256;
+
+    /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
+    public bool StereoPanning { get; init; } = true;
+
+    /// <summary>Fade the sound out while the window is in the background.</summary>
+    public bool MuteInBackground { get; init; } = true;
 
     public int CreditsPerCoin { get; init; } = 1;
 
@@ -216,6 +230,8 @@ public sealed record ArcadeSettings
                 "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
                 "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
+                "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
+                "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 "mode" => settings with { Home = value.ToLowerInvariant() switch
                 {
                     "home" => true,
@@ -247,7 +263,7 @@ public sealed record ArcadeSettings
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(settings);
-        var values = new Dictionary<string, int>
+        var values = new Dictionary<string, object>
         {
             ["master_volume"] = settings.MasterVolume,
             ["music_volume"] = settings.MusicVolume,
@@ -257,6 +273,8 @@ public sealed record ArcadeSettings
             ["audio_offset_ms"] = settings.AudioOffsetMs,
             ["input_offset_ms"] = settings.InputOffsetMs,
             ["audio_buffer_frames"] = settings.AudioBufferFrames,
+            ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
+            ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
         };
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)

@@ -22,6 +22,16 @@ public sealed class TaikoResultBannerTests
         Assert.Equal(seconds(5), TaikoResultBanner.Time(chart));
     }
 
+    [Fact]
+    public void ARollEndingLaterCountsByItsEnd()
+    {
+        // The balloon starts at 3 s but ends at 6.5 s, in the measure starting at 6 s.
+        var chart = chartWith([seconds(1)], [seconds(0), seconds(2), seconds(4), seconds(6)],
+            [new PlayableLongNote(seconds(3), seconds(6.5), PlayableLongNoteKind.Balloon, 5)]);
+
+        Assert.Equal(seconds(7), TaikoResultBanner.Time(chart));
+    }
+
     [Theory]
     [InlineData(false, false, "fail")]
     [InlineData(false, true, "fail")]
@@ -32,7 +42,7 @@ public sealed class TaikoResultBannerTests
 
     private static TimeSpan seconds(double value) => TimeSpan.FromSeconds(value);
 
-    private static PlayableChart chartWith(TimeSpan[] notes, TimeSpan[] bars) => new(
+    private static PlayableChart chartWith(TimeSpan[] notes, TimeSpan[] bars, PlayableLongNote[]? longNotes = null) => new(
         new ChartKey(new SongKey(SongSourceKind.Tja, "song"), "chart"),
         TimeSpan.Zero,
         seconds(8),
@@ -40,5 +50,6 @@ public sealed class TaikoResultBannerTests
         [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4)],
         [new ChartScrollPoint(TimeSpan.Zero, 1)],
         [new ChartEffectPoint(TimeSpan.Zero, false)],
-        bars.Select(time => new ChartBarLine(time, true)));
+        bars.Select(time => new ChartBarLine(time, true)),
+        longNotes);
 }

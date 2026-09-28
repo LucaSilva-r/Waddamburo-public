@@ -154,6 +154,9 @@ public sealed unsafe class SdlApplication : IDisposable
             captureFinalFrame);
     }
 
+    /// <summary>Whether the window has the keyboard focus (true until SDL reports otherwise).</summary>
+    public bool Focused { get; private set; } = true;
+
     public SdlRunResult Run(
         Func<double, RenderFrame> createFrame,
         Action<SdlKeyboardSnapshot> simulationTick,
@@ -207,9 +210,10 @@ public sealed unsafe class SdlApplication : IDisposable
                 {
                     _pressedKeys.Clear();
                     windowFocused = false;
+                    Focused = false;
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED)
-                    windowFocused = true;
+                    windowFocused = Focused = true;
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION && pointerMoved is not null)
                 {
                     int width, height;

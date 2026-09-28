@@ -9,7 +9,9 @@ namespace Waddamburo.App.Audio;
 /// <summary>
 /// The user's sound tree (data/sound): nuSound2 bank cues (se/*.nub, named by
 /// config/nuSound2BankStr.bin) and music (bgm/nub). Plays cues on their buses, keeps the latest
-/// voice (one voice at a time), the coin channel, and reports each missing sound once.
+/// voice (one voice at a time), the coin channel, and reports each missing sound once. A cue cuts
+/// off its own previous play (as the cabinet does: Don stops Don, not Ka); two players stay apart
+/// because each plays its own panned bank or cue.
 /// </summary>
 internal sealed class SoundBank
 {
@@ -19,6 +21,7 @@ internal sealed class SoundBank
     private readonly NuSoundBankCatalog _catalog;
     private readonly Dictionary<(string Bank, int Cue), AudioClip> _clips = [];
     private readonly HashSet<(string Bank, int Cue)> _reportedFailures = [];
+    private readonly Dictionary<(string Bank, int Cue), AudioPlaybackHandle> _lastPlayed = [];
     private AudioClip? _latestVoice;
     private int _latestVoiceCue = -1;
     private AudioPlaybackHandle? _oneShotVoice;
@@ -51,7 +54,12 @@ internal sealed class SoundBank
                 _latestVoice = clip;
                 _latestVoiceCue = cue;
             }
+            // A few milliseconds of fade: a hard cut clicks.
+            if (!loop && _lastPlayed.TryGetValue(key, out var previous))
+                _audio.Mixer.Stop(previous, TimeSpan.FromMilliseconds(3));
             var handle = _audio.Mixer.Play(clip, bus, loop: loop);
+            if (!loop)
+                _lastPlayed[key] = handle;
             if (bus == AudioBus.Voice)
             {
                 if (loop)

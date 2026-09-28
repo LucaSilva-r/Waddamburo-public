@@ -13,9 +13,12 @@ internal sealed class GameplaySounds(SoundBank bank)
     // ponytail: Waiwai song select's tone choice (AssignTone / RequestToneSE) is not offered yet.
     public bool Waiwai { get; set; }
 
+    /// <summary>False: two players' sounds are centred and shared (one of each at a time).</summary>
+    public bool Panning { get; set; } = true;
+
     // A drum's hit sounds: centred for one player; in two-player play the left drum's pan left and
     // the right drum's right (traced session9-2p).
-    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100" : "SE_GAME_NEIRO_000") + lane switch
+    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100" : "SE_GAME_NEIRO_000") + (Panning ? lane : null) switch
     {
         0 => "_L",
         1 => "_R",
@@ -24,7 +27,8 @@ internal sealed class GameplaySounds(SoundBank bank)
 
     public void PrepareDrums(bool twoPlayers = false)
     {
-        foreach (var lane in twoPlayers ? new int?[] { 0, 1 } : [null])
+        // Both sets for two players: panning may be switched in the pause menu.
+        foreach (var lane in twoPlayers ? new int?[] { 0, 1, null } : [null])
             foreach (var cue in new[] { 0, 1 })
                 bank.Preload(drumBank(lane), cue);
     }
@@ -39,7 +43,7 @@ internal sealed class GameplaySounds(SoundBank bank)
     public void Play(int? lane, GameplaySoundEvent sound)
     {
         // ponytail: the hundred-combo voice follows the same rule untraced.
-        int own(int cue) => lane is { } player ? cue + 1 + player : cue;
+        int own(int cue) => lane is { } player && Panning ? cue + 1 + player : cue;
         switch (sound)
         {
             case GameplaySoundEvent.LongNoteStarted:

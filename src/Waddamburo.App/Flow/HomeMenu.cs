@@ -38,6 +38,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         volume("Don-chan Voice", static s => s.VoiceVolume, static (s, v) => s with { VoiceVolume = v }, AudioBus.Voice),
         offset("Audio Offset", static s => s.AudioOffsetMs, static (s, v) => s with { AudioOffsetMs = v }),
         offset("Input Offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v }),
+        toggle("Stereo Panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v }),
+        toggle("Mute in Background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v }),
         new("Audio Buffer", static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
             static value => $"{value} (restart)", 2048),
@@ -69,9 +71,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public AudioBus? PreviewBus => IsOpen && _settingsPage && _editing && Selection < Settings.Length
         ? Settings[Selection].Bus : null;
 
-    public void Open(bool gameplay)
+    public void Open(bool gameplay, bool attract = false)
     {
-        _choices = gameplay ? ["Resume", "Restart Song", "Settings", "Song Select"] : ["Resume", "Settings", "Return to Title"];
+        _choices = gameplay ? ["Resume", "Restart Song", "Settings", "Song Select"]
+            : attract ? ["Resume", "Settings"] : ["Resume", "Settings", "Return to Title"];
         IsOpen = true;
         Selection = 0;
         _settingsPage = _editing = false;
@@ -154,6 +157,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private static Setting volume(string label, Func<ArcadeSettings, int> read, Func<ArcadeSettings, int, ArcadeSettings> write,
         AudioBus? bus) =>
         new(label, read, write, static (value, step) => value + step, 0, static value => $"{value}%", 100, bus);
+
+    private static Setting toggle(string label, Func<ArcadeSettings, bool> read, Func<ArcadeSettings, bool, ArcadeSettings> write) =>
+        new(label, s => read(s) ? 1 : 0, (s, v) => write(s, v != 0), static (value, _) => 1 - value, 0,
+            static value => value != 0 ? "On" : "Off", 1);
 
     private static Setting offset(string label, Func<ArcadeSettings, int> read, Func<ArcadeSettings, int, ArcadeSettings> write) =>
         new(label, read, write, static (value, step) => value + step, -500,
