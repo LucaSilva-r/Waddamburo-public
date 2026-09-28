@@ -33,7 +33,7 @@ internal sealed record SetupColumn(SetupChoice Choice, bool Ready, string? Code,
 /// picks, in its own column, Not playing / Guest / a stored account / Friend (a visitor pairs with the
 /// 6-digit code and plays under a 12-hour token kept in memory) / Add account (an in-game login with a
 /// code entered on the website). Rims choose, a centre hit locks the choice in (a rim hit unlocks it);
-/// once every drum is locked in or not playing, the entry starts with those players already joined.
+/// once a drum locks in, the entry starts with it and any other drum showing a Don already joined.
 /// </summary>
 internal sealed class PlayerSetupFlow : IDisposable
 {
@@ -62,7 +62,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         public SetupChoiceKind Kind;
         public long Baid;
         public bool Ready;
-        public long? ReadyBaid; // the account locked in, which the other drum may not take
+        public bool Touched; // this drum picked something (an untouched idle drum never plays)
         public ScoreProfile? Visitor; // a friend's profile (Friend) once paired
         public string? Code;
         public string? QrUrl; // the page the code is entered on, code filled in (scanned from the stand)
@@ -84,6 +84,9 @@ internal sealed class PlayerSetupFlow : IDisposable
     /// <summary>The players chosen (null: the setup is still open or was left).</summary>
     public event Action<ScoreProfile?[], bool[]>? Confirmed;
 
+    /// <summary>A drum tried to lock in the account the other stand shows (the card error sound).</summary>
+    public event Action? Refused;
+
     /// <summary>Escape: back to the title.</summary>
     public event Action? Cancelled;
 
@@ -101,6 +104,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             select(_sides[starter], SetupChoiceKind.Account, first.Baid);
         else
             select(_sides[starter], SetupChoiceKind.Guest);
+        _sides[starter].Touched = true;
         loadAvatars();
     }
 
@@ -114,6 +118,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         foreach (var index in joined)
         {
             var profile = profiles[index];
+            _sides[index].Touched = true;
             if (profile is null)
                 select(_sides[index], SetupChoiceKind.Guest);
             else if (_book.Accounts.All(account => account.Baid != profile.Baid))
@@ -189,10 +194,10 @@ internal sealed class PlayerSetupFlow : IDisposable
             _startAt = null; // any hit holds the start
         if (left || right)
         {
+            side.Touched = true;
             if (side.Ready)
             {
                 side.Ready = false; // a rim hit unlocks
-                side.ReadyBaid = null;
             }
             else
             {
@@ -208,15 +213,18 @@ internal sealed class PlayerSetupFlow : IDisposable
         }
         if (!centre || side.Ready || _workSide == index)
             return;
+        // Both drums may browse the same account, but only one may play it.
+        if (sameAccount())
+        {
+            Refused?.Invoke();
+            return;
+        }
         switch (current(index).Kind)
         {
             case SetupChoiceKind.Guest:
                 side.Ready = true;
                 break;
             case SetupChoiceKind.Account:
-                side.Ready = true;
-                side.ReadyBaid = current(index).Baid;
-                break;
             case SetupChoiceKind.Friend when side.Visitor is not null:
                 side.Ready = true;
                 break;
@@ -231,10 +239,11 @@ internal sealed class PlayerSetupFlow : IDisposable
 
     private void tryStart()
     {
-        // Whoever locked in plays; a drum that did not simply stays out, unless it is mid-code (a friend
-        // pairing or a sign-in), which holds the start.
-        var playing = _sides.Select(static side => side.Ready).ToArray();
-        if (!playing.Any(static value => value) || _sides.Any(static side => !side.Ready && side.Code is not null))
+        // Once a drum locks in, every drum with a Don on its stand plays too (the other player need not
+        // confirm); options (Join with code, Sign in) stay out, and one mid-code holds the start.
+        var playing = Enumerable.Range(0, 2).Select(playsIfStarted).ToArray();
+        if (!_sides.Any(static side => side.Ready) || _sides.Any(static side => !side.Ready && side.Code is not null)
+            || playing.All(static value => value) && sameAccount())
         {
             _startAt = null;
             return;
@@ -255,15 +264,19 @@ internal sealed class PlayerSetupFlow : IDisposable
         Confirmed?.Invoke(profiles, playing);
     }
 
-    // Guest, the accounts the other drum has not taken, Join with code (a friend), Sign in (add an account).
+    private bool playsIfStarted(int index) => _sides[index].Ready || _sides[index].Touched && current(index).HasDon;
+
+    // Both stands show the same account (or a visitor who is also a stored account).
+    private bool sameAccount() => current(0) is { HasDon: true, Baid: not 0 } left && left.Baid == current(1).Baid;
+
+    // Guest, the stored accounts, Join with code (a friend), Sign in (add an account).
     private List<SetupChoice> choicesFor(int index)
     {
-        var taken = _sides[1 - index].ReadyBaid ?? -1;
         var online = _server is not null;
         return
         [
             new(SetupChoiceKind.Guest, "Guest"),
-            .. _book.Accounts.Where(account => account.Baid != taken).Select(account => new SetupChoice(SetupChoiceKind.Account,
+            .. _book.Accounts.Select(account => new SetupChoice(SetupChoiceKind.Account,
                 account.Profile.DisplayName, account.Baid, account.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null,
                 account.Baid == _book.DefaultBaid) { Look = account.Look }),
             .. online ? [new SetupChoice(SetupChoiceKind.Friend, "Join with code"), new(SetupChoiceKind.AddAccount, "Sign in")]
@@ -305,7 +318,8 @@ internal sealed class PlayerSetupFlow : IDisposable
         int? seconds = side.Code is null ? null
             : Math.Max(0, (int)Math.Ceiling((side.CodeDeadline - DateTime.UtcNow).TotalSeconds));
         var starting = _startAt is not null;
-        var message = starting ? side.Ready ? "Starting..." : null : side.Message;
+        var message = starting ? playsIfStarted(index) ? "Starting..." : null
+            : !side.Ready && sameAccount() ? "Already chosen by the other player" : side.Message;
         return new SetupColumn(current(index), side.Ready, side.Code, seconds, message) { QrUrl = side.Code is null ? null : side.QrUrl };
     }
 
@@ -316,7 +330,7 @@ internal sealed class PlayerSetupFlow : IDisposable
     {
         select(side, choice);
         side.Ready = false;
-        side.ReadyBaid = null;
+        side.Touched = false;
         side.Visitor = null;
         side.Code = null;
         side.Message = null;

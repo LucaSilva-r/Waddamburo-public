@@ -159,7 +159,6 @@ internal sealed class GameShell : IDisposable
     // Home: the "who's playing?" screen before the entry (stored accounts, guests, friends, in-game login).
     private PlayerSetupFlow? _setup;
     private EntrySetupOverlay? _entryOverlay;
-    private readonly bool[] _setupReady = new bool[2];
 
     // Cabinet mode only (cabinet_token set, no home account).
     private readonly CabinetPairing? _pairing;
@@ -476,7 +475,8 @@ internal sealed class GameShell : IDisposable
             _entryOverlay = new EntrySetupOverlay(Application, options.FontPath);
             _setup = new PlayerSetupFlow(setupBook, Arcade.Server, Arcade.ServerInsecure, clientFor,
                 Path.Combine(Path.GetDirectoryName(options.ScoresPath) ?? ".", "avatars"));
-            _setup.Confirmed += startWithPlayers;
+            _setup.Confirmed += joinSetupPlayers;
+            _setup.Refused += () => Sounds?.Frontend.PlayCue("SE_COM", 12); // SE_COM_COM_CARD_ERROR
             _setup.Cancelled += () =>
             {
                 Hosts.EntrySetup = false;
@@ -1237,7 +1237,7 @@ internal sealed class GameShell : IDisposable
     }
 
     // The player setup is the entry itself: both stands up (DON_BOTH), nobody joined yet, the menus
-    // hidden (EntrySceneHost.SetupMode). Confirming reloads the entry with the chosen players.
+    // hidden (EntrySceneHost.SetupMode). Confirming joins the chosen players in place (FinishSetup).
     private const int SetupIntroTicks = 90; // 1.5 s: the Don's entry motion (traced 0.85 s) and the boards
     private int _setupShownTicks;
 
@@ -1249,7 +1249,6 @@ internal sealed class GameShell : IDisposable
         Array.Clear(_shownChoice);
         Array.Fill(_swapAt, -1);
         Array.Fill(_revealAt, -1);
-        Array.Clear(_setupReady);
         Hosts.EntrySetup = true;
         Hosts.EntryTrigger = 2;
         _indicatorScene = null;
@@ -1257,7 +1256,7 @@ internal sealed class GameShell : IDisposable
     }
 
     // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
-    // the entry's own costume flash and cue when it locks in.
+    // the entry's own costume flash and cue when it changes.
     private void applySetup(EntrySceneHost entry, SetupColumn[] columns)
     {
         for (var side = 0; side < 2; side++)
@@ -1282,10 +1281,6 @@ internal sealed class GameShell : IDisposable
                 _swapAt[side] = -1;
             }
             entry.SetSetupSide(side, _shownChoice[side]!.HasDon, board: true);
-            // Locking in: the entry's join voice for that drum.
-            if (column.Ready && !_setupReady[side])
-                entry.PlayJoinVoice(side);
-            _setupReady[side] = column.Ready;
         }
         // Both drums show their choice: no "hit the drum to start" bubble during the setup.
         _indicators?.SetupPanels(false, false);
@@ -1312,7 +1307,7 @@ internal sealed class GameShell : IDisposable
     private SetupArrows? _setupArrows;
     private LumenGameSceneInstance? _setupArrowsScene;
     private static readonly (float X, float Y)[] ArrowAnchors = [(150, 430), (1130, 430)];
-    private const float ArrowGap = 136, ArrowScale = 0.6f;
+    private const float ArrowGap = 150, ArrowScale = 0.45f;
 
     private SetupArrows setupArrows()
     {
@@ -1338,7 +1333,8 @@ internal sealed class GameShell : IDisposable
             ? [.. live.Select(static column => column.Choice.Label)]
             : [.. Enumerable.Range(0, 2).Select(side => JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : null)];
         var quads = overlay.Quads(columns, tags, standVisible);
-        if (columns is null)
+        // The arrows wait for the stands' slide-in (the same intro gate as the drums).
+        if (columns is null || _setupShownTicks < SetupIntroTicks)
             return quads;
         // The arrows while a drum is choosing (not locked in, no code on screen). The entry is its scene's
         // first layer, so the arrow sprite's texture indices are the scene's.
@@ -1373,6 +1369,29 @@ internal sealed class GameShell : IDisposable
         Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
         string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
         Show(FlowScenes.Entry);
+    }
+
+    // The setup's players join the entry already on screen (its music and Don motions carry on).
+    private void joinSetupPlayers(ScoreProfile?[] profiles, bool[] playing)
+    {
+        if (Hosts.Entry is not { SetupMode: true } entry || Active.Id != FlowScenes.Entry)
+        {
+            startWithPlayers(profiles, playing);
+            return;
+        }
+        Hosts.EntrySetup = false;
+        for (var side = 0; side < 2; side++)
+        {
+            if (!playing[side])
+                continue;
+            TaikoGuest.Profiles[side] = profiles[side];
+            if (profiles[side] is { } profile)
+                RefreshBests(profile);
+            Don?.SetLook(side, profiles[side]?.Look);
+        }
+        entry.FinishSetup(playing); // PlayerJoined -> JoinPlayer per side
+        Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
+        string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
     }
 
     /// <summary>A paired card was rejected by the server (shown once).</summary>

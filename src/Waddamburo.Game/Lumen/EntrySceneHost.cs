@@ -164,6 +164,36 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _boardShown[side] = board;
     }
 
+    private const int ModeSelectFadeTicks = 15;
+    private int _modeSelectFade = -1;
+
+    /// <summary>
+    /// Home: the setup's players join the running entry (no reload, so its intro and music carry on).
+    /// The movie joined both stands for the setup; a drum not playing keeps its Don and board hidden.
+    /// ponytail: the movie still counts that drum as joined; untested whether any mode waits for it.
+    /// </summary>
+    public void FinishSetup(IReadOnlyList<bool> playing)
+    {
+        if (!SetupMode || _entry is not { } entry)
+            return;
+        SetupMode = false;
+        _modeSelectFade = 0;
+        call(entry, "BnCoinSetFree", LumenHostValue.FromBoolean(false));
+        for (var side = 0; side < 2; side++)
+        {
+            if (!playing[side])
+            {
+                SetSetupSide(side, don: false, board: false);
+                _joined.Remove(side);
+                Parts.SetIndicator(side, 0);
+                continue;
+            }
+            PlayerJoined?.Invoke(side);
+            assignCostumes(entry, side, PlayerLook?.Invoke(side));
+        }
+        CoinsChanged();
+    }
+
     private static string donPath(int side) => side == 0 ? "taiko_1p/body/don1pM" : "taiko_2p/body/don2pM";
 
     public void Advance()
@@ -172,12 +202,17 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             return;
         _ticks++;
         if (SetupMode)
-        {
             _entry.TrySetInstanceAlpha("modeSelect", 0);
-            for (var side = 0; side < 2; side++)
-                if (_donHidden[side])
-                    _entry.TrySetInstanceAlpha(donPath(side), 0);
+        else if (_modeSelectFade >= 0)
+        {
+            _modeSelectFade++;
+            _entry.TrySetInstanceAlpha("modeSelect", Math.Min(1, _modeSelectFade / (float)ModeSelectFadeTicks));
+            if (_modeSelectFade >= ModeSelectFadeTicks)
+                _modeSelectFade = -1; // handed back to the movie
         }
+        for (var side = 0; side < 2; side++)
+            if (_donHidden[side])
+                _entry.TrySetInstanceAlpha(donPath(side), 0);
         foreach (var player in _costumeEffectPending)
             startCostumeEffect(player);
         foreach (var player in _costumeCuePending)
