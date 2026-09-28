@@ -1,5 +1,3 @@
-using Waddamburo.Game;
-using System.Collections.Immutable;
 using System.Globalization;
 using System.Diagnostics;
 using Waddamburo.App.Audio;
@@ -21,6 +19,8 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.App.Home;
+using Waddamburo.App.Online;
 
 namespace Waddamburo.App.Flow;
 
@@ -55,7 +55,8 @@ internal sealed record GameOptions(
 internal sealed class GameShell : IDisposable
 {
     public GameOptions Options { get; }
-    public ArcadeSettings Arcade { get; private set; }
+    /// <summary>The settings (the home menu changes them while the game runs).</summary>
+    public ArcadeSettings Arcade { get; set; }
 
     public SdlApplication Application { get; }
     public SdlDonRenderer? DonRenderer { get; }
@@ -94,36 +95,12 @@ internal sealed class GameShell : IDisposable
 
     public DirectoryLumenMovieContentSource MovieContent { get; }
 
-    // Prefetched movies' textures, uploaded a few per frame before their scene loads.
-    private readonly Dictionary<LumenMovieContent, RenderTextureId[]> _uploadedAhead = new(ReferenceEqualityComparer.Instance);
-    private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4);
+    /// <summary>The active scene's textures and the frame held across a scene switch.</summary>
+    private readonly ScenePresenter _presenter;
 
     /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
-    public void Prefetch(SceneDefinition scene)
-    {
-        releaseUploadedAhead();
-        MovieContent.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
-    }
+    public void Prefetch(SceneDefinition scene) => _presenter.Prefetch(scene);
 
-    // ponytail: one movie per step once over budget; a single huge movie can still take a frame.
-    private void uploadAhead()
-    {
-        var start = Stopwatch.GetTimestamp();
-        foreach (var content in MovieContent.DecodedPrefetches)
-        {
-            if (Stopwatch.GetElapsedTime(start) > UploadAheadBudget)
-                return;
-            if (!_uploadedAhead.ContainsKey(content))
-                _uploadedAhead[content] = SceneTextures.Upload(Application, content);
-        }
-    }
-
-    private void releaseUploadedAhead()
-    {
-        foreach (var textures in _uploadedAhead.Values)
-            SceneTextures.Release(Application, textures);
-        _uploadedAhead.Clear();
-    }
     public EnsoLayout EnsoLayout { get; }
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
@@ -152,42 +129,20 @@ internal sealed class GameShell : IDisposable
     private readonly CostumeIconTextures _costumeIcons;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
-    private readonly HomePauseOverlay? _homeOverlay;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
+    private readonly HomeControls _home;
     private readonly Dictionary<SceneId, FlowScene> _scenes;
     private readonly WaiwaiOutcome? _diagnosticWaiwai;
-    private RenderTextureId[] _textures = [];
-    private RenderTextureId[] _heldTextures = [];
-    private RenderFrame? _heldFrame;
-    private bool _heldBlack; // the loading frame: an intermission still shown is drawn over it
-    private RenderFrame? _lastPresentedFrame;
-    private bool _lastPresentedHadIntermission;
-    private int _holdUntilTick;
-    private int _heldPresentationsRemaining;
     private SystemIndicators? _indicators;
     private RenderTextureId[] _indicatorTextures = [];
-    private ResumeCountdown? _resume;
-    private RenderTextureId[] _resumeTextures = [];
     private SceneId? _indicatorScene;
     private SceneId? _fadeTarget;
     private int _fadeStartTick;
-    private bool _escapeWasDown;
-    private readonly HomeMenu _menu;
-    private readonly MenuAudio _menuAudio;
-    private readonly QuickRestart _restart;
-    private bool _wasFocused = true;
     private static readonly HashSet<SceneId> _attractScenes =
         [FlowScenes.Logo, FlowScenes.Title, FlowScenes.Caution, FlowScenes.Movie];
-    private float _lastInterpolation;
-    private float _pauseInterpolation;
-    // Live presses reach only the per-frame callback; ticks see held keys. Latch drum hits there for
-    // the attract loop (scripted --press pulses arrive in the tick instead).
-    private int? _drumSideLatched;
-    private bool _skipLatched;
-    private bool _attractLatched;
+    private readonly InputLatches _input = new();
     private bool _returnToAttract; // the entry gave up (applied on the next tick, outside its callbacks)
-    private int _coinLatched;
     private int _queuedCoinSounds;
     private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
     private readonly int _dumpTreeTick =
@@ -249,21 +204,13 @@ internal sealed class GameShell : IDisposable
                 + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
                 + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
         Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice);
-        _menu = new HomeMenu(() => Arcade, settings =>
-        {
-            Arcade = settings;
-            _menuAudio?.Apply(Arcade);
-        }, saveSettings, don => Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false), options.TjaRoot);
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
-        _menuAudio = new MenuAudio(Audio, Sounds, SongCatalog, Assets);
-        _menuAudio.Apply(Arcade);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles);
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
-        _homeOverlay = Arcade.Home ? new HomePauseOverlay(Application, options.FontPath, assetRoot) : null;
         _performance = new PerformanceOverlay(Application, () => Audio);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
@@ -335,13 +282,14 @@ internal sealed class GameShell : IDisposable
         if (Arcade.Home && Options.Accounts is { } setupBook)
             _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
         MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot));
+        _presenter = new ScenePresenter(Application, MovieContent);
         _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
 
         _attract = new AttractFlow(this, AttractMovie.Discover(Path.Combine(dataRoot, "movie")));
         _gameplay = new GameplayFlow(this);
-        _restart = new QuickRestart(_gameplay.Restart);
+        _home = new HomeControls(this, _gameplay, options.FontPath, assetRoot);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this);
         _scenes = new()
@@ -410,13 +358,7 @@ internal sealed class GameShell : IDisposable
             _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
                 .AsTask().GetAwaiter().GetResult()) { Coins = Coins };
-            if (Arcade.Home)
-            {
-                _resume = new ResumeCountdown((LumenGameSceneInstance)_loader
-                    .LoadAsync(ResumeCountdown.Definition(new SceneId("resume-countdown")), CancellationToken.None)
-                    .AsTask().GetAwaiter().GetResult());
-                _resumeTextures = SceneTextures.Upload(Application, _resume.Scene);
-            }
+            _home.LoadResume(_loader);
             Hosts.LayerLoading = host =>
             {
                 if (Don is null) return;
@@ -444,11 +386,7 @@ internal sealed class GameShell : IDisposable
                 Options.ScreenshotPath is null ? null : capture => ScreenshotWriter.Write(Options.ScreenshotPath, capture),
                 updateFrame: keyboard =>
                 {
-                    _drumSideLatched ??= drumSide(keyboard.Presses);
-                    _skipLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
-                    _attractLatched |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
-                    _pressLatch.UnionWith(keyboard.Presses.Select(static press => press.Key));
-                    _coinLatched += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
+                    _input.Frame(keyboard);
                     flowOf(Active.Id).UpdateFrame(keyboard);
                 },
                 profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown,
@@ -477,39 +415,13 @@ internal sealed class GameShell : IDisposable
         {
             _attract.Dispose();
             Overlay.Dispose();
-            SceneTextures.Release(Application, _textures);
-            SceneTextures.Release(Application, _heldTextures);
+            _presenter.Dispose();
             SceneTextures.Release(Application, _indicatorTextures);
-            SceneTextures.Release(Application, _resumeTextures);
-            _resume?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _home.Dispose();
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
     }
-
-    private readonly HashSet<SdlKeyboardKey> _pressLatch = [];
-    private ImmutableHashSet<SdlKeyboardKey> _heldLastTick = [];
-
-    /// <summary>
-    /// Movies see a key for one tick per press, as a drum hit is a pulse: a held key would read as a
-    /// new hit in every panel that starts polling while it is still down (the entry's card dialog
-    /// closing under a decide hit joined P1 as well). Taps between ticks count too.
-    /// </summary>
-    private SdlKeyboardSnapshot drumPulses(SdlKeyboardSnapshot keys)
-    {
-        var held = keys.PressedKeys.ToImmutableHashSet();
-        var pulses = held.Except(_heldLastTick).Union(_pressLatch).Union(keys.Presses.Select(static press => press.Key));
-        _heldLastTick = held;
-        _pressLatch.Clear();
-        return new SdlKeyboardSnapshot(pulses, keys.Presses, keys.Timestamp);
-    }
-
-    private static int? drumSide(IEnumerable<SdlKeyPress> presses) => presses.Select(static press => press.Key switch
-    {
-        SdlKeyboardKey.D or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K => 0,
-        SdlKeyboardKey.Z or SdlKeyboardKey.X or SdlKeyboardKey.C or SdlKeyboardKey.V => 1,
-        _ => (int?)null,
-    }).FirstOrDefault(static side => side is not null);
 
     // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
     // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
@@ -517,43 +429,34 @@ internal sealed class GameShell : IDisposable
     {
         Tick++;
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
-        var hitSide = _drumSideLatched ?? drumSide(keys.Presses);
-        _drumSideLatched = null;
-        var skip = _skipLatched || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.Space);
-        _skipLatched = false;
-        if (backToAttract(keys))
+        var presses = _input.Take(keys);
+        if (backToAttract(presses.Attract))
             return;
-        coins(keys);
+        coins(_input.TakeCoins(keys));
         // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
         if (_traceInput)
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
         var held = keys;
-        keys = scene.MapKeys(drumPulses(keys));
-        var escapeIsDown = keys.IsDown(SdlKeyboardKey.Escape);
-        var escape = escapeIsDown && !_escapeWasDown;
-        _escapeWasDown = escapeIsDown;
-        followFocus();
-        if (resumeCountdown(escape) || openMenu(escape) || menuInput(keys, held, escape))
+        keys = scene.MapKeys(_input.Pulses(keys));
+        var escape = _input.EscapePressed(keys);
+        if (_home.Tick(keys, held, escape))
             return;
         // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
         if (_playerSetup is not null && _playerSetup.Tick(ref keys))
             return;
-        if (_restart.Update(Arcade.Home && (Active.Id == FlowScenes.Result
-                || Active.Id == FlowScenes.Gameplay && _gameplay.CanQuickRestart), held))
+        if (_home.QuickRestart(held))
             return;
         advance(scene, keys);
-        // Results wait while a quick restart is being held or asked for from the menu.
-        var restarting = Arcade.Home && Active.Id == FlowScenes.Result && held.IsDown(SdlKeyboardKey.Q);
-        if (Coordinator.Flow.State != GameFlowState.TransitionPending)
+        var switching = Coordinator.Flow.State == GameFlowState.TransitionPending;
+        if (_home.HoldsResults(held, switching))
+            return;
+        if (!switching)
         {
-            if (!restarting && !(Arcade.Home && Active.Id == FlowScenes.Result && _restart.MenuPending))
-                scene.Tick(new FlowInput(keys, hitSide, skip, escape));
+            scene.Tick(new FlowInput(keys, presses.DrumSide, presses.Skip, escape));
             return;
         }
-        if (restarting || Arcade.Home && Active.Id == FlowScenes.Result && _restart.Holding)
-            return;
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
         if (Sounds?.Bank.IsVoicePlaying == true)
             return;
@@ -564,11 +467,10 @@ internal sealed class GameShell : IDisposable
 
     // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
     // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
-    private bool backToAttract(SdlKeyboardSnapshot keys)
+    private bool backToAttract(bool f1)
     {
-        var toAttract = _attractLatched || _returnToAttract
-            || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
-        _attractLatched = _returnToAttract = false;
+        var toAttract = f1 || _returnToAttract;
+        _returnToAttract = false;
         if (!toAttract || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Boot)
             return false;
         Sounds?.StopAll();
@@ -578,106 +480,6 @@ internal sealed class GameShell : IDisposable
         ResetPlayers();
         SongsPlayed = 0; // a new credit starts at the first song
         Show(FlowScenes.Logo);
-        return true;
-    }
-
-    // Going to the background: the sound fades out (when set); a home song pauses (openMenu).
-    private void followFocus()
-    {
-        if (Application.Focused == _wasFocused)
-            return;
-        _wasFocused = Application.Focused;
-        if (Arcade.MuteInBackground || _wasFocused)
-            Audio?.Mixer.FadeOutput(_wasFocused ? 1 : 0, TimeSpan.FromMilliseconds(300));
-    }
-
-    // Resume's countdown: the song stays held until it ends; Escape or leaving the window pauses again.
-    private bool resumeCountdown(bool escape)
-    {
-        if (_resume is not { Running: true } countdown)
-            return false;
-        if (escape || !_wasFocused)
-        {
-            countdown.Cancel();
-            _menu.Open(gameplay: true);
-        }
-        else if (countdown.Advance((bank, cue) => Sounds?.Bank.Play(bank, cue, trace: false)))
-            resumeHome();
-        return true;
-    }
-
-    // Home: Escape opens the menu (pause in gameplay; settings and back to the title in the menus). A song
-    // still unpausable when the window lost focus (under the rainbow) pauses once it can; once every note
-    // and long note is over (the song's tail), leaving the window no longer pauses.
-    private bool openMenu(bool escape)
-    {
-        if (!Arcade.Home || _menu.IsOpen
-            || !(escape || !_wasFocused && Active.Id == FlowScenes.Gameplay && !_gameplay.ChartOver))
-            return false;
-        if (Active.Id == FlowScenes.Gameplay)
-        {
-            if (_restart.Black != 0 || !_gameplay.CanPause)
-                return false;
-            _restart.CancelHold();
-            _pauseInterpolation = _lastInterpolation;
-            _gameplay.SetPaused(true, _pauseInterpolation);
-            _menu.Open(gameplay: true);
-            return true;
-        }
-        // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
-        if (!_attractScenes.Contains(Active.Id) && Active.Id != FlowScenes.Entry && Active.Id != FlowScenes.SongSelect)
-            return false;
-        if (Overlay.IsShown || Coordinator.Flow.State == GameFlowState.TransitionPending)
-            return true;
-        _pauseInterpolation = _lastInterpolation;
-        _menu.Open(gameplay: false, attract: _attractScenes.Contains(Active.Id));
-        _menuAudio.HoldMenuMusic(true);
-        return true;
-    }
-
-    // The open menu takes the input and carries out its choice.
-    private bool menuInput(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
-    {
-        if (!_menu.IsOpen)
-            return false;
-        // A folder picked in the system dialog opened from the settings.
-        if (_pickingFolder is { } picking && SdlApplication.TryTakePickedFolder(out var folder))
-        {
-            Arcade = picking == HomeMenuAction.PickTjaFolder ? Arcade with { TjaFolder = folder }
-                : Arcade with { NijiiroFolder = folder };
-            saveSettings();
-            _pickingFolder = null;
-        }
-        var action = _menu.Input(keys, escape, held);
-        _menuAudio.Sample(_menu.PreviewBus, Tick);
-        if (!_menu.IsOpen)
-            _menuAudio.HoldMenuMusic(false);
-        switch (action)
-        {
-            case HomeMenuAction.Resume when Active.Id == FlowScenes.Gameplay && _resume is { } resume:
-                resume.Start();
-                break;
-            case HomeMenuAction.Resume:
-                resumeHome();
-                break;
-            case HomeMenuAction.Restart:
-                resumeHome();
-                _restart.FromMenu();
-                break;
-            case HomeMenuAction.SongSelect:
-                resumeHome();
-                _gameplay.Abandon();
-                break;
-            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder:
-                _pickingFolder = action;
-                Application.PickFolder(action == HomeMenuAction.PickTjaFolder ? Arcade.TjaFolder ?? Options.TjaRoot
-                    : Arcade.NijiiroFolder);
-                break;
-            case HomeMenuAction.Title:
-                _playerSetup?.Close();
-                _returnToAttract = true;
-                break;
-        }
         return true;
     }
 
@@ -705,41 +507,10 @@ internal sealed class GameShell : IDisposable
         _indicators.Advance();
     }
 
-    private void resumeHome()
-    {
-        if (Active.Id == FlowScenes.Gameplay)
-            _gameplay.SetPaused(false);
-    }
-
-    private HomeMenuAction? _pickingFolder;
-
-    private void saveSettings()
-    {
-        if (Options.ArcadePath is not { } path) return;
-        try
-        {
-            ArcadeSettings.SaveMenuSettings(path, Arcade);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
-        }
-    }
-
-    private RenderFrame withHomeOverlay(RenderFrame frame) => _homeOverlay is null
-        ? frame : new RenderFrame(frame.ClearColor,
-            frame.Quads.Concat(_resume is { Running: true } countdown
-                    ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", Titles.Resolve).Quads
-                    : [])
-                .Concat(_homeOverlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black)),
-            frame.ContentAspectRatio);
-
     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit counts at
     // once; each coin's sound queues and plays in full, one after another.
-    private void coins(SdlKeyboardSnapshot keys)
+    private void coins(int inserted)
     {
-        var inserted = _coinLatched + keys.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
-        _coinLatched = 0;
         if (Coins is not null && inserted > 0)
         {
             for (var coin = 0; coin < inserted; coin++)
@@ -766,26 +537,9 @@ internal sealed class GameShell : IDisposable
 
     private void switchScene(Action transition)
     {
-        if (_heldFrame is null && _lastPresentedFrame is not null)
-        {
-            // The old movie's textures must survive while its final frame is being presented.
-            // A cleared intermission may already have released its textures, so hold black with
-            // the network icon in that case, as the original game did while loading.
-            _heldBlack = Overlay.IsShown || _lastPresentedHadIntermission || Active.Id == FlowScenes.Movie;
-            if (_heldBlack)
-                _heldFrame = blackLoadingFrame();
-            else
-            {
-                _heldFrame = _lastPresentedFrame;
-                _heldTextures = _textures;
-            }
-        }
-        _holdUntilTick = Tick + 2;
-        _heldPresentationsRemaining = 1;
+        _presenter.Hold(Tick, black: Overlay.IsShown || Active.Id == FlowScenes.Movie, blackLoadingFrame);
         flowOf(Active.Id).Exit(Active.Id);
-        if (!ReferenceEquals(_heldTextures, _textures))
-            SceneTextures.Release(Application, _textures);
-        _textures = [];
+        _presenter.ReleaseScene();
         transition();
         activate();
         Application.DiscardElapsed();
@@ -795,12 +549,7 @@ internal sealed class GameShell : IDisposable
     {
         Active = Coordinator.ActiveScene as LumenGameSceneInstance
             ?? throw new InvalidOperationException("The active scene is not a Lumen scene instance.");
-        var ahead = _uploadedAhead.Count;
-        _textures = SceneTextures.Upload(Application, Active,
-            content => _uploadedAhead.Remove(content, out var textures) ? textures : null);
-        var taken = ahead - _uploadedAhead.Count;
-        if (taken > 0)
-            releaseUploadedAhead(); // this scene took its prefetch; the rest is unused
+        _presenter.Activate(Active);
         flowOf(Active.Id).Enter(Active.Id);
     }
 
@@ -880,10 +629,13 @@ internal sealed class GameShell : IDisposable
     public void ResetIndicatorScene() => _indicatorScene = null;
 
     /// <summary>The active scene's uploaded textures, by the scene's texture index.</summary>
-    public RenderTextureId[] SceneTextureIds => _textures;
+    public RenderTextureId[] SceneTextureIds => _presenter.Textures;
 
     /// <summary>Back to the attract loop on the next tick (outside the callbacks asking for it).</summary>
     public void ReturnToAttract() => _returnToAttract = true;
+
+    /// <summary>Back to the title from the menu: an open player setup closes.</summary>
+    public void ClosePlayerSetup() => _playerSetup?.Close();
 
     public void ReportDiagnostics()
     {
@@ -899,45 +651,39 @@ internal sealed class GameShell : IDisposable
         ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface)
         ?? Titles.Resolve(surface);
 
+    // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),
+    // network/card (-3000); then Waddamburo's own overlays and the home menu over everything.
     private RenderFrame createFrame(double interpolationFraction)
     {
-        // An open menu freezes the scene between two ticks: hold the blend where it stopped.
-        if (_menu.IsOpen || _resume?.Running == true) interpolationFraction = _pauseInterpolation;
-        else _lastInterpolation = (float)interpolationFraction;
-        if (_heldFrame is { } held)
-        {
-            var needsFirstPresentation = _heldPresentationsRemaining > 0;
-            _heldPresentationsRemaining = 0;
-            if (needsFirstPresentation || Tick < _holdUntilTick)
-                // The rainbow stays up across its scene switch (only a fade is cleared with it).
-                return _heldBlack && Overlay.IsShown
-                    ? withHomeOverlay(new RenderFrame(held.ClearColor,
-                        [.. Overlay.Quads((float)interpolationFraction, Titles.Resolve), .. held.Quads], held.ContentAspectRatio)
-                    ) : withHomeOverlay(held);
-            SceneTextures.Release(Application, _heldTextures);
-            _heldTextures = [];
-            _heldFrame = null;
-        }
-        var interpolation = (float)interpolationFraction;
+        var interpolation = _home.Interpolation(interpolationFraction);
+        if (_presenter.Held(Tick) is { } held)
+            // The rainbow stays up across its scene switch (only a fade is cleared with it).
+            return _home.Draw(held.Black && Overlay.IsShown
+                ? new RenderFrame(held.Frame.ClearColor,
+                    [.. Overlay.Quads(interpolation, Titles.Resolve), .. held.Frame.Quads], held.Frame.ContentAspectRatio)
+                : held.Frame);
         Titles.UploadCompleted();
-        uploadAhead();
+        _presenter.UploadAhead();
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
-        var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _textures, "Scene", ResolveSurface);
+        var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads;
-        // Depth order (traced): scene, msg_coins (-950), intermission (-2000), network/card (-3000).
         var result = new RenderFrame(
             frame.ClearColor,
-            frame.Quads.Concat(_playerSetup?.Quads(interpolation) ?? []).Concat(indicatorQuads(false)).Concat(Overlay.Quads(interpolation, Titles.Resolve))
-                .Concat(indicatorQuads(true))
-                .Concat(pill())
-                .Concat(_performance.Quads()).ToArray(),
+            [
+                .. frame.Quads,
+                .. _playerSetup?.Quads(interpolation) ?? [],
+                .. indicatorQuads(false),
+                .. Overlay.Quads(interpolation, Titles.Resolve),
+                .. indicatorQuads(true),
+                .. pill(),
+                .. _performance.Quads(),
+            ],
             frame.ContentAspectRatio);
-        _lastPresentedFrame = result;
-        _lastPresentedHadIntermission = Overlay.IsShown;
-        return withHomeOverlay(result);
+        _presenter.Presented(result, Overlay.IsShown);
+        return _home.Draw(result);
     }
 
     private RenderFrame blackLoadingFrame()
@@ -982,7 +728,6 @@ internal sealed class GameShell : IDisposable
         _playerSetup?.Dispose();
         _textFields.Dispose();
         Hosts?.Rankings?.Dispose();
-        _homeOverlay?.Dispose();
         _pill.Dispose();
         _performance.Dispose();
         Titles.Dispose();

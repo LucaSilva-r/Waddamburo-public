@@ -2,7 +2,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scores;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Online;
 
 /// <summary>
 /// The local score database and the TaikOnline side: uploads, server bests, rankings and the

@@ -43,7 +43,7 @@ internal sealed class LayerHostFactory(
     public Func<int, long?>? PreviousBest { get; init; }
 
     /// <summary>Song select's score windows from the server (null offline).</summary>
-    public Flow.SongRankings? Rankings { get; init; }
+    public Online.SongRankings? Rankings { get; init; }
 
     /// <summary>The next entry is the home player setup (see <see cref="EntrySceneHost.SetupMode"/>).</summary>
     public bool EntrySetup { get; set; }

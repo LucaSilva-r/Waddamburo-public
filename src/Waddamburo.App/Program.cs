@@ -102,7 +102,7 @@ try
             return AccountCommands.Run(arcade, accounts, login);
         Console.WriteLine(!arcade.Home
             ? arcade is { Server: not null, CabinetToken: not null }
-                ? $"Scores: cabinet mode, players log in with a code from {arcade.Server} (cabinet {Waddamburo.App.Flow.CabinetPairing.CabinetId})."
+                ? $"Scores: cabinet mode, players log in with a code from {arcade.Server} (cabinet {Waddamburo.App.Online.CabinetPairing.CabinetId})."
                 : "Scores: arcade without a cabinet token (not saved)."
             : $"Scores: kept on this PC; {accounts.Accounts.Count} account(s)"
                 + (accounts.Default is { } first ? $", {first.Name} joins by default" : "")

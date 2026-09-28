@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Waddamburo.Platform.Sdl;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Home;
 
 /// <summary>
 /// Home's quick restart of the song: holding Q fades to black over half a second and restarts once

@@ -1,4 +1,4 @@
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Online;
 
 /// <summary>
 /// Whether TaikOnline answers (its /up health route, every 15 s), for the network indicator:

@@ -5,7 +5,7 @@ using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Text;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Home;
 
 internal enum SetupChoiceKind { Guest, Account, Friend, AddAccount }
 

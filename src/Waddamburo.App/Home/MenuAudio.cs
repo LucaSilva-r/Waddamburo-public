@@ -4,7 +4,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Home;
 
 /// <summary>
 /// The home menu's sound: the player's volume settings on the mixer, a sample of the bus whose volume

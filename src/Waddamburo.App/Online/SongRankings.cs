@@ -3,7 +3,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Online;
 
 /// <summary>
 /// Song select's score windows: the top players per course of the song under the cursor, fetched

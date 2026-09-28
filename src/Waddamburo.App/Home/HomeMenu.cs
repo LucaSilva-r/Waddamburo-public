@@ -5,7 +5,7 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Providers.Stock;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Home;
 
 internal enum HomeMenuAction
 {

@@ -3,7 +3,7 @@ using System.Diagnostics;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Scores;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Online;
 
 /// <summary>
 /// Chart key -> canonical hash, remembered in the score store (when there is one) so server bests

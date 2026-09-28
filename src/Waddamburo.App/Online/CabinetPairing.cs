@@ -3,7 +3,7 @@ using System.Text;
 using Waddamburo.App.Presentation;
 using Waddamburo.Game.Scores;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Online;
 
 /// <summary>
 /// Cabinet login without a card reader: while the attract loop runs, polls TaikOnline's pairing

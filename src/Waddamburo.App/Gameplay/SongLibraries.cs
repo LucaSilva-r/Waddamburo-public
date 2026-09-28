@@ -3,7 +3,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Providers.Stock;
 using Waddamburo.Providers.Tja;
 
-namespace Waddamburo.App.Flow;
+namespace Waddamburo.App.Gameplay;
 
 /// <summary>
 /// The song sources this run lists, scanned once at start: the game's own songs beside the Lumen data,
