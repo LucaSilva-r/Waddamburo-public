@@ -6,14 +6,13 @@ using static SDL.SDL3;
 
 namespace Waddamburo.Platform.Sdl;
 
-/// <summary>Owns SDL video, one window, and one SDL_GPU device on the creating thread.</summary>
+/// <summary>Owns SDL video, one window, and the bgfx renderer on the creating thread.</summary>
 public sealed unsafe class SdlApplication : IDisposable
 {
     private readonly int _ownerThreadId;
     private SDL_Window* _window;
-    private SDL_GPUDevice* _device;
     private RenderDevice? _renderer;
-    private bool _windowClaimed;
+    private bool _bgfxInitialized;
     private bool _sdlInitialized;
     private bool _disposed;
     private readonly HashSet<SdlKeyboardKey> _pressedKeys = [];
@@ -53,35 +52,13 @@ public sealed unsafe class SdlApplication : IDisposable
             if (_window is null)
                 throw sdlFailure("create the window");
 
-            _device = SDL_CreateGPUDevice(
-                SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_DXIL,
-                debugGpu,
-                (byte*)null);
-            if (_device is null)
-                throw sdlFailure("create the GPU device");
-
-            if (!SDL_ClaimWindowForGPUDevice(_device, _window))
-                throw sdlFailure("claim the window for the GPU device");
-            _windowClaimed = true;
-            // Diagnostic: WADDAMBURO_PRESENT_MODE=mailbox (uncapped, no tearing) or immediate
-            // (uncapped, tearing); the default and any unsupported mode stay on vsync.
-            var presentMode = Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") switch
-            {
-                "mailbox" => SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_MAILBOX,
-                "immediate" => SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_IMMEDIATE,
-                _ => SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_VSYNC,
-            };
-            if (presentMode != SDL_GPUPresentMode.SDL_GPU_PRESENTMODE_VSYNC)
-            {
-                if (SDL_WindowSupportsGPUPresentMode(_device, _window, presentMode)
-                    && SDL_SetGPUSwapchainParameters(_device, _window,
-                        SDL_GPUSwapchainComposition.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, presentMode))
-                    Console.WriteLine($"Present mode: {presentMode}.");
-                else
-                    Console.Error.WriteLine($"Present mode {presentMode} is not supported here; using vsync.");
-            }
-            _renderer = new RenderDevice(_device, _window);
-            GpuDriver = SDL_GetGPUDeviceDriver(_device) ?? "unknown";
+            int pixelWidth, pixelHeight;
+            if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
+                throw sdlFailure("query the window pixel size");
+            BgfxSupport.Initialize(_window, (uint)pixelWidth, (uint)pixelHeight, debugGpu);
+            _bgfxInitialized = true;
+            _renderer = new RenderDevice(_window, (uint)pixelWidth, (uint)pixelHeight);
+            GpuDriver = BgfxSupport.RendererName;
         }
         catch
         {
@@ -135,7 +112,7 @@ public sealed unsafe class SdlApplication : IDisposable
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return new SdlDonRenderer(_device, _renderer!, assetRoot);
+        return new SdlDonRenderer(_renderer!, assetRoot);
     }
 
     private volatile bool _quitRequested;
@@ -276,10 +253,10 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!running)
                 break;
 
-            // Input runs apart from presentation, like osu!'s 1 kHz input thread: while vsync still
-            // holds every swapchain image, drum presses are delivered (judged, hit sound played) at
-            // once and SDL is polled again ~1 ms later, instead of waiting for the next frame.
-            // Screenshot runs and minimised/hidden windows keep the blocking present.
+            // Input runs apart from presentation, like osu!'s 1 kHz input thread: while the render
+            // thread still presents the previous frame (vsync), drum presses are delivered (judged,
+            // hit sound played) at once and SDL is polled again ~1 ms later, instead of waiting for
+            // the next frame. Screenshot runs and minimised/hidden windows keep the blocking present.
             if (captureFinalFrame is null
                 && (SDL_GetWindowFlags(_window) & (SDL_WindowFlags.SDL_WINDOW_MINIMIZED | SDL_WindowFlags.SDL_WINDOW_HIDDEN)) == 0
                 && !_renderer!.TryAcquireSwapchain())
@@ -466,15 +443,12 @@ public sealed unsafe class SdlApplication : IDisposable
 
     private void disposeNativeResources()
     {
-        if (_device is not null)
+        _renderer?.Dispose();
+        _renderer = null;
+        if (_bgfxInitialized)
         {
-            _renderer?.Dispose();
-            _renderer = null;
-            if (_windowClaimed && _window is not null)
-                SDL_ReleaseWindowFromGPUDevice(_device, _window);
-            SDL_DestroyGPUDevice(_device);
-            _device = null;
-            _windowClaimed = false;
+            BgfxSupport.Shutdown();
+            _bgfxInitialized = false;
         }
         if (_window is not null)
         {

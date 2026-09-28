@@ -16,6 +16,16 @@
                       LogicalName="Waddamburo.Shaders.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The bgfx renderer from the native build (native/bgfx) runs next to the executable. -->
+  <PropertyGroup>
+    <WaddamburoBgfxDir Condition="'$(WaddamburoBgfxDir)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)../../out/build/native/win-x64/windows-debug/bgfx/prefix/bin</WaddamburoBgfxDir>
+    <WaddamburoBgfxDir Condition="'$(WaddamburoBgfxDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/linux-x64/linux-debug/bgfx/prefix/lib</WaddamburoBgfxDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(WaddamburoBgfxDir)/bgfx*.dll;$(WaddamburoBgfxDir)/libbgfx*.so"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />

@@ -364,7 +364,7 @@ internal sealed class GameShell : IDisposable
             resizable: !Headless,
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
-        Console.WriteLine($"SDL_GPU driver: {Application.GpuDriver}");
+        Console.WriteLine($"Renderer: {Application.GpuDriver}");
         DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
         Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
         // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.

@@ -1,59 +1,44 @@
+# Compiles the bgfx .sc shaders with the pinned shaderc from the native bgfx build. On Windows this
+# adds the D3D11 bytecode (s_5_0, via the Windows SDK compiler) to the backends build-shaders.sh
+# produces on Linux; it rebuilds those too so either host can regenerate the full set.
+param([string]$BgfxPrefix)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$slangVersion = "2026.18"
-$slangSha256 = "6ffa4827b519fd0a85b38407049d87ab0c1f045fe2289cb1e6831f965169f8a1"
-$dxcVersion = "1.9.2602.24"
-$dxcSha256 = "cf658aacf070d3045e31b8f1f8a696c2945f37c1095019481ef7c513368db3b4"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$archive = Join-Path $repoRoot "out/downloads/slang-$slangVersion-windows-x86_64.zip"
-$dxcArchive = Join-Path $repoRoot "out/downloads/dxc-$dxcVersion-windows-x86_64.zip"
-$toolRoot = Join-Path $repoRoot "out/tools/slang-$slangVersion-windows-x86_64"
-$dxcRoot = Join-Path $repoRoot "out/tools/dxc-$dxcVersion-windows-x86_64"
-$shaderRoot = Join-Path $repoRoot "src/Waddamburo.Platform.Sdl/Shaders"
-$outputRoot = Join-Path $shaderRoot "Compiled"
+if (-not $BgfxPrefix) {
+    $BgfxPrefix = Join-Path $repoRoot "out/build/native/win-x64/windows-debug/bgfx/prefix"
+}
+$shaderc = Join-Path $BgfxPrefix "bin/shaderc.exe"
+$shaderRoot = Join-Path $repoRoot "src/Waddamburo.Platform.Sdl/Shaders/Bgfx"
+$outputRoot = Join-Path $repoRoot "src/Waddamburo.Platform.Sdl/Shaders/Compiled"
+if (-not (Test-Path $shaderc)) {
+    throw "shaderc not found at $shaderc; build native with -DWADDAMBURO_BUILD_BGFX=ON first."
+}
+New-Item -ItemType Directory -Force $outputRoot | Out-Null
 
-New-Item -ItemType Directory -Force (Split-Path -Parent $archive), $toolRoot, $dxcRoot, $outputRoot | Out-Null
-if (-not (Test-Path $archive)) {
-    Invoke-WebRequest `
-        -Uri "https://github.com/shader-slang/slang/releases/download/v$slangVersion/slang-$slangVersion-windows-x86_64.zip" `
-        -OutFile $archive
+$shaders = @{
+    "vs_quad" = "quad"; "fs_quad" = "quad"; "fs_mask" = "quad"
+    "vs_don" = "don"; "fs_don" = "don"
+    "vs_don_post" = "post"; "fs_don_post" = "post"
 }
-if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $slangSha256) {
-    throw "Slang archive checksum mismatch: $archive"
+# token, profile, platform
+$targets = @(
+    @("dx11", "s_5_0", "windows"),
+    @("spirv", "spirv", "linux"),
+    @("glsl", "330", "linux"),
+    @("essl", "300_es", "android"),
+    @("metal", "metal", "osx")
+)
+foreach ($name in $shaders.Keys) {
+    $type = if ($name.StartsWith("vs_")) { "vertex" } else { "fragment" }
+    $varying = Join-Path $shaderRoot "$($shaders[$name]).varying.def.sc"
+    foreach ($target in $targets) {
+        & $shaderc -f (Join-Path $shaderRoot "$name.sc") -o (Join-Path $outputRoot "$name.$($target[0]).bin") `
+            --type $type --varyingdef $varying -i (Join-Path $BgfxPrefix "include/bgfx") `
+            --platform $target[2] -p $target[1] -O 3
+        if ($LASTEXITCODE -ne 0) { throw "shaderc failed for $name ($($target[0]))." }
+    }
 }
-if (-not (Test-Path $dxcArchive)) {
-    Invoke-WebRequest `
-        -Uri "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v$dxcVersion/dxc_2026_05_27.zip" `
-        -OutFile $dxcArchive
-}
-if ((Get-FileHash -Algorithm SHA256 $dxcArchive).Hash.ToLowerInvariant() -ne $dxcSha256) {
-    throw "DXC archive checksum mismatch: $dxcArchive"
-}
-
-$slangc = Join-Path $toolRoot "bin/slangc.exe"
-if (-not (Test-Path $slangc)) {
-    Expand-Archive -Path $archive -DestinationPath $toolRoot -Force
-}
-$dxc = Join-Path $dxcRoot "bin/x64/dxc.exe"
-if (-not (Test-Path $dxc)) {
-    Expand-Archive -Path $dxcArchive -DestinationPath $dxcRoot -Force
-}
-
-& $slangc (Join-Path $shaderRoot "quad.vert.glsl") -entry main -stage vertex -target spirv -profile glsl_450 -warnings-as-errors all -o (Join-Path $outputRoot "quad.vert.spv")
-if ($LASTEXITCODE -ne 0) { throw "Vertex SPIR-V compilation failed." }
-& $slangc (Join-Path $shaderRoot "quad.frag.glsl") -entry main -stage fragment -target spirv -profile glsl_450 -warnings-as-errors all -o (Join-Path $outputRoot "quad.frag.spv")
-if ($LASTEXITCODE -ne 0) { throw "Fragment SPIR-V compilation failed." }
-& $slangc (Join-Path $shaderRoot "mask.frag.glsl") -entry main -stage fragment -target spirv -profile glsl_450 -warnings-as-errors all -o (Join-Path $outputRoot "mask.frag.spv")
-if ($LASTEXITCODE -ne 0) { throw "Mask SPIR-V compilation failed." }
-& $dxc -WX -E main -T vs_6_0 -Fo (Join-Path $outputRoot "quad.vert.dxil") (Join-Path $shaderRoot "quad.vert.hlsl")
-if ($LASTEXITCODE -ne 0) { throw "Vertex DXIL compilation failed." }
-& $dxc -WX -E main -T ps_6_0 -Fo (Join-Path $outputRoot "quad.frag.dxil") (Join-Path $shaderRoot "quad.frag.hlsl")
-if ($LASTEXITCODE -ne 0) { throw "Fragment DXIL compilation failed." }
-foreach ($shader in @("mask.frag", "don.vert", "don.frag", "don-post.vert", "don-post.frag")) {
-    $profile = if ($shader.EndsWith(".vert")) { "vs_6_0" } else { "ps_6_0" }
-    & $dxc -WX -E main -T $profile -Fo (Join-Path $outputRoot "$shader.dxil") (Join-Path $shaderRoot "$shader.hlsl")
-    if ($LASTEXITCODE -ne 0) { throw "Don shader compilation failed: $shader" }
-}
-
-Write-Host "Built SPIR-V with Slang $slangVersion and DXIL with DXC $dxcVersion."
+Write-Output "Built bgfx shaders (dx11, spirv, glsl, essl, metal)."

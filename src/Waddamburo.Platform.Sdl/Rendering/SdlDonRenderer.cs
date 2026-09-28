@@ -1,11 +1,10 @@
 using System.Collections.Immutable;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using SDL;
+using Bgfx;
 using Waddamburo.Formats.Don;
 using Waddamburo.Formats.Nud;
 using Waddamburo.Formats.Nut;
-using static SDL.SDL3;
 
 namespace Waddamburo.Platform.Sdl.Rendering;
 
@@ -49,7 +48,6 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return camera;
     }
 
-    private readonly SDL_GPUDevice* _device;
     private readonly RenderDevice _compositor;
     private readonly string _assetRoot;
     private readonly DonAnimationFile _bindAnimation;
@@ -58,12 +56,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private readonly Dictionary<string, DonAnimationFile> _animations = new(StringComparer.Ordinal);
     // Per player: the costume's meshes and face atlas, shared through the caches below.
     private readonly List<GpuMesh>[] _meshes = [[], [], []];
-    private readonly Dictionary<uint, nint>[] _faceTextures = [[], [], []];
+    private readonly Dictionary<uint, bgfx.TextureHandle>[] _faceTextures = [[], [], []];
     private readonly Dictionary<string, List<GpuMesh>> _modelCache = new(StringComparer.Ordinal);
-    private readonly Dictionary<(string Path, bool Recolor), Dictionary<uint, nint>> _faceCache = [];
-    private readonly List<nint> _ownedTextures = [];
-    private readonly List<nint> _ownedBuffers = [];
-    private readonly Dictionary<(bool Blend, SDL_GPUCullMode Cull), nint> _pipelines = [];
+    private readonly Dictionary<(string Path, bool Recolor), Dictionary<uint, bgfx.TextureHandle>> _faceCache = [];
+    private readonly List<bgfx.TextureHandle> _ownedTextures = [];
+    private readonly List<GpuMesh> _ownedMeshes = [];
     // Slots 0 and 1: the players; 2: the entry's card dialog Don (donExM), drawn only while shown.
     private readonly Player[] _players = [new(), new(), new()];
     private readonly float[] _pose = new float[DonSkeleton.CharacterValuesPerFrame];
@@ -72,12 +69,21 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     public float Interpolation { get; set; } = 1;
     private readonly Target[] _targets = new Target[3];
     private readonly float[] _poseUniforms = new float[16 * (PaletteSize + 1)];
-    private SDL_GPUShader* _vertexShader;
-    private SDL_GPUShader* _fragmentShader;
-    private SDL_GPUGraphicsPipeline* _postPipeline;
-    private SDL_GPUSampler* _linearSampler;
-    private SDL_GPUSampler* _nearestSampler;
-    private SDL_GPUTexture* _whiteTexture;
+    private readonly bgfx.ProgramHandle _modelProgram;
+    private readonly bgfx.ProgramHandle _postProgram;
+    private readonly bgfx.VertexBufferHandle _postTriangle;
+    private readonly bgfx.UniformHandle _materialSampler;
+    private readonly bgfx.UniformHandle _characterSampler;
+    private readonly bgfx.UniformHandle _cameraUniform;
+    private readonly bgfx.UniformHandle _bonesUniform;
+    private readonly bgfx.UniformHandle _outlineUniform;
+    private readonly bgfx.UniformHandle _materialUniform;
+    private readonly bgfx.UniformHandle _replaceRedUniform;
+    private readonly bgfx.UniformHandle _replaceGreenUniform;
+    private readonly bgfx.UniformHandle _replaceBlueUniform;
+    private readonly bgfx.UniformHandle _postUniform;
+    private bgfx.VertexLayout _meshLayout;
+    private readonly bgfx.TextureHandle _whiteTexture;
     private bool _mirrorPlayerTwoCamera = true;
     // Per player: in two-player gameplay one Don can be in a balloon while the other plays on.
     private readonly DonCameraLayout[] _layouts = new DonCameraLayout[3];
@@ -97,43 +103,56 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     public bool DialogVisible { get; set; }
     private bool _disposed;
 
-    internal SdlDonRenderer(SDL_GPUDevice* device, RenderDevice compositor, string assetRoot)
+    internal SdlDonRenderer(RenderDevice compositor, string assetRoot)
     {
-        _device = device;
         _compositor = compositor;
         _assetRoot = Path.GetFullPath(assetRoot ?? throw new ArgumentNullException(nameof(assetRoot)));
         if (!Directory.Exists(_assetRoot))
             throw new DirectoryNotFoundException($"Don asset root does not exist: {_assetRoot}");
 
-        try
+        _bindAnimation = readAnimation("ani/don_bind.bin");
+        _skeleton = DonSkeleton.ForAnimation(_bindAnimation);
+        _bindWorld = _skeleton.EvaluateWorld(_bindAnimation.GetFrame(0));
+        _modelProgram = BgfxSupport.LoadProgram("vs_don", "fs_don");
+        _postProgram = BgfxSupport.LoadProgram("vs_don_post", "fs_don_post");
+        _materialSampler = bgfx.create_uniform("s_material", bgfx.UniformType.Sampler, 1);
+        _characterSampler = bgfx.create_uniform("s_character", bgfx.UniformType.Sampler, 1);
+        _cameraUniform = bgfx.create_uniform("u_camera", bgfx.UniformType.Mat4, 1);
+        _bonesUniform = bgfx.create_uniform("u_bones", bgfx.UniformType.Mat4, PaletteSize);
+        _outlineUniform = bgfx.create_uniform("u_outline", bgfx.UniformType.Vec4, 1);
+        _materialUniform = bgfx.create_uniform("u_material", bgfx.UniformType.Vec4, 1);
+        _replaceRedUniform = bgfx.create_uniform("u_replaceRed", bgfx.UniformType.Vec4, 1);
+        _replaceGreenUniform = bgfx.create_uniform("u_replaceGreen", bgfx.UniformType.Vec4, 1);
+        _replaceBlueUniform = bgfx.create_uniform("u_replaceBlue", bgfx.UniformType.Vec4, 1);
+        _postUniform = bgfx.create_uniform("u_post", bgfx.UniformType.Vec4, 1);
+        fixed (bgfx.VertexLayout* layout = &_meshLayout)
         {
-            _bindAnimation = readAnimation("ani/don_bind.bin");
-            _skeleton = DonSkeleton.ForAnimation(_bindAnimation);
-            _bindWorld = _skeleton.EvaluateWorld(_bindAnimation.GetFrame(0));
-            _linearSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR);
-            _nearestSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_NEAREST);
-            _vertexShader = createShader("don.vert", SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_VERTEX, 0, 2);
-            _fragmentShader = createShader("don.frag", SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
-            _postPipeline = createPostPipeline();
-            _whiteTexture = uploadRgba(1, 1, [255, 255, 255, 255]);
-            SetCostume(0, null, 0, 0, 0);
-            SetCostume(1, null, 0, 0, 0);
-            SetCostume(2, null, 0, 0, 0);
-            for (var index = 0; index < _targets.Length; index++)
-                _targets[index] = createTarget((600, 600));
-            var idle = loadMotion("don_select_loop");
-            foreach (var player in _players)
-                player.Set(idle, idle);
-            _compositor.AddPrepass(this);
+            bgfx.vertex_layout_begin(layout, bgfx.RendererType.Noop);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Position, 3, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Normal, 3, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Weight, 4, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Indices, 4, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_end(layout);
         }
-        catch
-        {
-            foreach (var target in _targets)
-                if (target.TextureId.Value != 0)
-                    _compositor.UnregisterBorrowedTexture(target.TextureId);
-            releaseResources();
-            throw;
-        }
+        var postLayout = new bgfx.VertexLayout();
+        bgfx.vertex_layout_begin(&postLayout, bgfx.RendererType.Noop);
+        bgfx.vertex_layout_add(&postLayout, bgfx.Attrib.Position, 2, bgfx.AttribType.Float, false, false);
+        bgfx.vertex_layout_end(&postLayout);
+        ReadOnlySpan<float> triangle = [-1, -1, 3, -1, -1, 3];
+        _postTriangle = bgfx.create_vertex_buffer(BgfxSupport.Copy(MemoryMarshal.AsBytes(triangle)), &postLayout, 0);
+        _whiteTexture = BgfxSupport.CreateRgba8(1, 1, [255, 255, 255, 255]);
+        _ownedTextures.Add(_whiteTexture);
+        SetCostume(0, null, 0, 0, 0);
+        SetCostume(1, null, 0, 0, 0);
+        SetCostume(2, null, 0, 0, 0);
+        for (var index = 0; index < _targets.Length; index++)
+            _targets[index] = createTarget((600, 600));
+        var idle = loadMotion("don_select_loop");
+        foreach (var player in _players)
+            player.Set(idle, idle);
+        _compositor.AddPrepass(this);
     }
 
     public RenderTextureId GetTexture(int playerIndex)
@@ -209,7 +228,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             player.Advance(frames);
     }
 
-    void IGpuRenderPrepass.Record(SDL_GPUCommandBuffer* commandBuffer, uint width, uint height)
+    void IGpuRenderPrepass.Record(uint width, uint height)
     {
         // Render at twice the window's stage scale and let the composite's downscale anti-alias.
         var scale = Math.Min(width / 1280f, height / 720f);
@@ -219,7 +238,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             if (index == 2 && !DialogVisible)
                 continue;
             resizeTarget(index, (pixels(_targetSizes[index].Width), pixels(_targetSizes[index].Height)));
-            recordPlayer(commandBuffer, index);
+            recordPlayer(index);
         }
     }
 
@@ -231,12 +250,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         foreach (var target in _targets)
             if (target.TextureId.Value != 0)
                 _compositor.UnregisterBorrowedTexture(target.TextureId);
-        SDL_WaitForGPUIdle(_device);
         releaseResources();
         _disposed = true;
     }
 
-    private void recordPlayer(SDL_GPUCommandBuffer* commandBuffer, int playerIndex)
+    private void recordPlayer(int playerIndex)
     {
         var player = _players[playerIndex];
         var target = _targets[playerIndex];
@@ -270,31 +288,23 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                 matrices[index + 1] = Matrix4x4.Identity;
         }
 
-        var colorTarget = new SDL_GPUColorTargetInfo
-        {
-            texture = (SDL_GPUTexture*)target.Color,
-            clear_color = new SDL_FColor(),
-            load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
-            store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_STORE,
-        };
-        var depthTarget = new SDL_GPUDepthStencilTargetInfo
-        {
-            texture = (SDL_GPUTexture*)target.Depth,
-            clear_depth = 1,
-            load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
-            store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_DONT_CARE,
-        };
-        var pass = SDL_BeginGPURenderPass(commandBuffer, &colorTarget, 1, &depthTarget);
-        if (pass is null)
-            throw sdlFailure("begin the Don model pass");
-        fixed (float* pose = _poseUniforms)
-            SDL_PushGPUVertexUniformData(commandBuffer, 0, (nint)pose, checked((uint)(_poseUniforms.Length * sizeof(float))));
+        var modelView = (ushort)(playerIndex * 2);
+        var postView = (ushort)(modelView + 1);
+        var (pixelWidth, pixelHeight) = ((ushort)target.Pixels.Width, (ushort)target.Pixels.Height);
+        bgfx.set_view_frame_buffer(modelView, target.Model);
+        bgfx.set_view_rect(modelView, 0, 0, pixelWidth, pixelHeight, 0, 1);
+        bgfx.set_view_clear(modelView, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Depth), 0, 1, 0);
+        // Submission order is draw order: opaque first, then the blended decals.
+        bgfx.set_view_mode(modelView, bgfx.ViewMode.Sequential);
+        bgfx.touch(modelView);
 
         var expression = _skeleton.GetExpression(frame);
-        var face = _faceTextures[playerIndex].TryGetValue((uint)expression, out var faceAddress)
-            ? (SDL_GPUTexture*)faceAddress
-            : _whiteTexture;
-        var binding = new SDL_GPUTextureSamplerBinding();
+        var face = _faceTextures[playerIndex].TryGetValue((uint)expression, out var faceTexture) ? faceTexture : _whiteTexture;
+        var replaceRed = _colors[playerIndex] is { } own ? rgb(own.Body)
+            : playerIndex != 1 ? color(0x6C, 0xC3, 0xC6) : color(0xF9, 0x4C, 0x2C);
+        var replaceGreen = _colors[playerIndex] is { } ownFace ? rgb(ownFace.Face)
+            : playerIndex != 1 ? color(0xF9, 0x4C, 0x2C) : color(0x6C, 0xC3, 0xC6);
+        var replaceBlue = _colors[playerIndex] is { } ownLimb ? rgb(ownLimb.Limb) : color(0xF8, 0xF0, 0xDC);
         foreach (var blended in new[] { false, true })
         {
             foreach (var mesh in _meshes[playerIndex])
@@ -308,82 +318,61 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                     // The silhouette post-pass supplies its visible outer edge.
                     if (kind == 8)
                         continue;
+                    // bgfx keeps uniforms per draw, so every draw carries its pose.
+                    fixed (float* pose = _poseUniforms)
+                    {
+                        bgfx.set_uniform(_cameraUniform, pose, 1);
+                        bgfx.set_uniform(_bonesUniform, pose + 16, PaletteSize);
+                    }
                     // Hull line: 3 stage pixels, offset per axis (clip units per stage pixel).
                     var outline = new Float4(kind is 3 or 8 ? 3f : 0, 2f / targetSize.Width, 2f / targetSize.Height, 0);
-                    SDL_PushGPUVertexUniformData(commandBuffer, 1, (nint)(&outline), (uint)sizeof(Float4));
+                    bgfx.set_uniform(_outlineUniform, &outline, 1);
+                    var parameters = new Float4(material.AlphaFunction != 0 || kind == 8
+                        ? Math.Max(material.AlphaReference, (byte)6) / 255f
+                        : 0, kind, 0, 0);
+                    bgfx.set_uniform(_materialUniform, &parameters, 1);
+                    bgfx.set_uniform(_replaceRedUniform, &replaceRed, 1);
+                    bgfx.set_uniform(_replaceGreenUniform, &replaceGreen, 1);
+                    bgfx.set_uniform(_replaceBlueUniform, &replaceBlue, 1);
+                    // CCW-front culling; reflecting the 2P camera reverses projected winding, so
+                    // swap the culled side to keep the authored visible side.
                     var cull = material.CullMode switch
                     {
-                        0x405 => SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK,
-                        0x404 => SDL_GPUCullMode.SDL_GPU_CULLMODE_FRONT,
-                        _ => SDL_GPUCullMode.SDL_GPU_CULLMODE_NONE,
+                        0x405 => reflectedCamera ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
+                        0x404 => reflectedCamera ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
+                        _ => bgfx.StateFlags.None,
                     };
-                    // Reflecting the 2P camera reverses projected triangle winding. Preserve
-                    // the authored visible side instead of rendering the mesh inside-out.
-                    if (reflectedCamera)
-                    {
-                        cull = cull switch
-                        {
-                            SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK => SDL_GPUCullMode.SDL_GPU_CULLMODE_FRONT,
-                            SDL_GPUCullMode.SDL_GPU_CULLMODE_FRONT => SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK,
-                            _ => cull,
-                        };
-                    }
-                    SDL_BindGPUGraphicsPipeline(pass, getModelPipeline(blended, cull));
-                    var vertexBinding = new SDL_GPUBufferBinding { buffer = (SDL_GPUBuffer*)mesh.VertexBuffer };
-                    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
-                    var indexBinding = new SDL_GPUBufferBinding { buffer = (SDL_GPUBuffer*)mesh.IndexBuffer };
-                    SDL_BindGPUIndexBuffer(pass, &indexBinding, SDL_GPUIndexElementSize.SDL_GPU_INDEXELEMENTSIZE_16BIT);
+                    // Blended decals (face disc, costume prints) are tested against the opaque body so the
+                    // ones on its far side stay hidden, but do not write depth.
+                    var state = (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA | bgfx.StateFlags.DepthTestLequal | cull);
+                    state |= blended
+                        ? BgfxSupport.BlendSeparate(bgfx.StateFlags.BlendSrcAlpha, bgfx.StateFlags.BlendInvSrcAlpha,
+                            bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha)
+                        : (ulong)bgfx.StateFlags.WriteZ;
+                    bgfx.set_state(state, 0);
                     var texture = kind == 2
                         ? face
-                        : material.TextureIds.Length > 0
-                        && mesh.Textures.TryGetValue(material.TextureIds[0], out var textureAddress)
-                            ? (SDL_GPUTexture*)textureAddress
+                        : material.TextureIds.Length > 0 && mesh.Textures.TryGetValue(material.TextureIds[0], out var materialTexture)
+                            ? materialTexture
                             : _whiteTexture;
-                    var materialUniforms = new MaterialUniforms
-                    {
-                        Parameters = new Float4(material.AlphaFunction != 0 || kind == 8
-                            ? Math.Max(material.AlphaReference, (byte)6) / 255f
-                            : 0, kind, 0, 0),
-                        ReplaceRed = _colors[playerIndex] is { } own ? rgb(own.Body)
-                            : playerIndex != 1
-                            ? color(0x6C, 0xC3, 0xC6)
-                            : color(0xF9, 0x4C, 0x2C),
-                        ReplaceGreen = _colors[playerIndex] is { } ownFace ? rgb(ownFace.Face)
-                            : playerIndex != 1
-                            ? color(0xF9, 0x4C, 0x2C)
-                            : color(0x6C, 0xC3, 0xC6),
-                        ReplaceBlue = _colors[playerIndex] is { } ownLimb ? rgb(ownLimb.Limb) : color(0xF8, 0xF0, 0xDC),
-                    };
-                    SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&materialUniforms), (uint)sizeof(MaterialUniforms));
-                    binding = new SDL_GPUTextureSamplerBinding
-                    {
-                        texture = texture,
-                        sampler = kind == 1 ? _nearestSampler : _linearSampler,
-                    };
-                    SDL_BindGPUFragmentSamplers(pass, 0, &binding, 1);
-                    SDL_DrawGPUIndexedPrimitives(pass, mesh.IndexCount, 1, 0, 0, 0);
+                    bgfx.set_texture(0, _materialSampler, texture,
+                        kind == 1 ? (uint)(bgfx.SamplerFlags.MinPoint | bgfx.SamplerFlags.MagPoint | bgfx.SamplerFlags.MipPoint) : 0);
+                    bgfx.set_vertex_buffer(0, mesh.VertexBuffer, 0, uint.MaxValue);
+                    bgfx.set_index_buffer(mesh.IndexBuffer, 0, uint.MaxValue);
+                    bgfx.submit(modelView, _modelProgram, 0, (byte)bgfx.DiscardFlags.All);
                 }
             }
         }
-        SDL_EndGPURenderPass(pass);
 
-        var finalTarget = new SDL_GPUColorTargetInfo
-        {
-            texture = (SDL_GPUTexture*)target.Final,
-            load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_DONT_CARE,
-            store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_STORE,
-        };
-        var post = SDL_BeginGPURenderPass(commandBuffer, &finalTarget, 1, null);
-        if (post is null)
-            throw sdlFailure("begin the Don outline pass");
-        SDL_BindGPUGraphicsPipeline(post, _postPipeline);
-        var postBinding = new SDL_GPUTextureSamplerBinding { texture = (SDL_GPUTexture*)target.Color, sampler = _linearSampler };
-        SDL_BindGPUFragmentSamplers(post, 0, &postBinding, 1);
-        var postUniform = new Float4(3f * target.Pixels.Width / targetSize.Width,
+        bgfx.set_view_frame_buffer(postView, target.Post);
+        bgfx.set_view_rect(postView, 0, 0, pixelWidth, pixelHeight, 0, 1);
+        bgfx.set_state((ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA), 0);
+        bgfx.set_texture(0, _characterSampler, bgfx.get_texture(target.Model, 0), uint.MaxValue);
+        var postParameters = new Float4(3f * target.Pixels.Width / targetSize.Width,
             1f / target.Pixels.Width, 1f / target.Pixels.Height, 0);
-        SDL_PushGPUFragmentUniformData(commandBuffer, 0, (nint)(&postUniform), (uint)sizeof(Float4));
-        SDL_DrawGPUPrimitives(post, 3, 1, 0, 0);
-        SDL_EndGPURenderPass(post);
+        bgfx.set_uniform(_postUniform, &postParameters, 1);
+        bgfx.set_vertex_buffer(0, _postTriangle, 0, 3);
+        bgfx.submit(postView, _postProgram, 0, (byte)bgfx.DiscardFlags.All);
     }
 
     /// <summary>
@@ -425,7 +414,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return meshes;
     }
 
-    private Dictionary<uint, nint> faces(string relativePath, bool recolor)
+    private Dictionary<uint, bgfx.TextureHandle> faces(string relativePath, bool recolor)
     {
         if (!_faceCache.TryGetValue((relativePath, recolor), out var textures))
             _faceCache[(relativePath, recolor)] = textures = loadFaces(relativePath, recolor);
@@ -451,20 +440,24 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                     vertex.Color,
                     vertex.BoneWeights,
                     vertex.BoneIndices)).ToArray();
-                meshes.Add(new GpuMesh(
-                    (nint)uploadBuffer(MemoryMarshal.AsBytes(vertices.AsSpan()), SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_VERTEX),
-                    (nint)uploadBuffer(MemoryMarshal.AsBytes(polygon.TriangleIndices.AsSpan()), SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_INDEX),
-                    checked((uint)polygon.TriangleIndices.Length),
-                    polygon.Materials,
-                    textures));
+                fixed (bgfx.VertexLayout* layout = &_meshLayout)
+                {
+                    var mesh = new GpuMesh(
+                        bgfx.create_vertex_buffer(BgfxSupport.Copy(MemoryMarshal.AsBytes(vertices.AsSpan())), layout, 0),
+                        bgfx.create_index_buffer(BgfxSupport.Copy(MemoryMarshal.AsBytes(polygon.TriangleIndices.AsSpan())), 0),
+                        polygon.Materials,
+                        textures);
+                    _ownedMeshes.Add(mesh);
+                    meshes.Add(mesh);
+                }
             }
         }
         return meshes;
     }
 
-    private Dictionary<uint, nint> loadFaces(string relativePath, bool replaceFaceColor)
+    private Dictionary<uint, bgfx.TextureHandle> loadFaces(string relativePath, bool replaceFaceColor)
     {
-        var faces = new Dictionary<uint, nint>();
+        var faces = new Dictionary<uint, bgfx.TextureHandle>();
         var nut = NutFile.Parse(File.ReadAllBytes(resolveAsset(relativePath)));
         foreach (var texture in nut.Textures)
         {
@@ -472,7 +465,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             if (replaceFaceColor)
                 replaceRgb(pixels, 0xF9, 0x4C, 0x2C, 0x6C, 0xC3, 0xC6);
             var id = texture.GlobalId ?? checked((uint)texture.Index);
-            faces[id] = (nint)uploadRgba(texture.Width, texture.Height, pixels);
+            faces[id] = uploadRgba(texture.Width, texture.Height, pixels);
         }
         return faces;
     }
@@ -500,14 +493,14 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         }
     }
 
-    private Dictionary<uint, nint> uploadNut(string path)
+    private Dictionary<uint, bgfx.TextureHandle> uploadNut(string path)
     {
-        var result = new Dictionary<uint, nint>();
+        var result = new Dictionary<uint, bgfx.TextureHandle>();
         var nut = NutFile.Parse(File.ReadAllBytes(path));
         foreach (var texture in nut.Textures)
         {
             var pixels = NutTextureDecoder.DecodeRgba8(texture);
-            result[texture.GlobalId ?? checked((uint)texture.Index)] = (nint)uploadRgba(texture.Width, texture.Height, pixels);
+            result[texture.GlobalId ?? checked((uint)texture.Index)] = uploadRgba(texture.Width, texture.Height, pixels);
         }
         return result;
     }
@@ -539,18 +532,18 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 
     private Target createTarget((uint Width, uint Height) pixels, RenderTextureId? reuse = null)
     {
-        var colorTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
-            pixels.Width, pixels.Height);
-        var depthTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, pixels.Width, pixels.Height);
-        var finalTexture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
-            pixels.Width, pixels.Height);
+        var (width, height) = ((ushort)pixels.Width, (ushort)pixels.Height);
+        var attachments = stackalloc bgfx.TextureHandle[2];
+        attachments[0] = bgfx.create_texture_2d(width, height, false, 1, bgfx.TextureFormat.RGBA8, (ulong)bgfx.TextureFlags.Rt, null, 0);
+        attachments[1] = bgfx.create_texture_2d(width, height, false, 1, BgfxSupport.DepthFormat(), (ulong)bgfx.TextureFlags.RtWriteOnly, null, 0);
+        var model = bgfx.create_frame_buffer_from_handles(2, attachments, true);
+        var final = bgfx.create_texture_2d(width, height, false, 1, bgfx.TextureFormat.RGBA8, (ulong)bgfx.TextureFlags.Rt, null, 0);
+        var post = bgfx.create_frame_buffer_from_handles(1, &final, true);
+        if (!model.Valid || !post.Valid)
+            throw new InvalidOperationException($"bgfx could not create a {width}x{height} Don target.");
         if (reuse is { } id)
-            _compositor.ReplaceBorrowedTexture(id, (nint)finalTexture);
-        return new Target((nint)colorTexture, (nint)depthTexture, (nint)finalTexture,
-            reuse ?? _compositor.RegisterBorrowedTexture((nint)finalTexture), pixels);
+            _compositor.ReplaceBorrowedTexture(id, final);
+        return new Target(model, post, reuse ?? _compositor.RegisterBorrowedTexture(final), pixels);
     }
 
     private void resizeTarget(int index, (uint Width, uint Height) pixels)
@@ -558,270 +551,40 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var old = _targets[index];
         if (pixels == old.Pixels) return;
         _targets[index] = createTarget(pixels, old.TextureId);
-        // SDL defers the release until submitted work no longer uses the textures.
-        foreach (var texture in new[] { old.Color, old.Depth, old.Final })
-        {
-            _ownedTextures.Remove(texture);
-            SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
-        }
+        // bgfx defers the destruction until frames in flight no longer use them.
+        bgfx.destroy_frame_buffer(old.Model);
+        bgfx.destroy_frame_buffer(old.Post);
     }
 
-    private SDL_GPUTexture* createTexture(SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage, uint width, uint height)
+    private bgfx.TextureHandle uploadRgba(uint width, uint height, ReadOnlySpan<byte> pixels)
     {
-        var info = new SDL_GPUTextureCreateInfo
-        {
-            type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
-            format = format,
-            usage = usage,
-            width = width,
-            height = height,
-            layer_count_or_depth = 1,
-            num_levels = 1,
-            sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
-        };
-        var texture = SDL_CreateGPUTexture(_device, &info);
-        if (texture is null)
-            throw sdlFailure("create a Don texture");
-        _ownedTextures.Add((nint)texture);
+        var texture = BgfxSupport.CreateRgba8(width, height, pixels);
+        _ownedTextures.Add(texture);
         return texture;
-    }
-
-    private SDL_GPUTexture* uploadRgba(uint width, uint height, ReadOnlySpan<byte> pixels)
-    {
-        var texture = createTexture(SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER, width, height);
-        uploadTexture(texture, width, height, pixels);
-        return texture;
-    }
-
-    private void uploadTexture(SDL_GPUTexture* texture, uint width, uint height, ReadOnlySpan<byte> pixels)
-    {
-        var transferInfo = new SDL_GPUTransferBufferCreateInfo
-        {
-            usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            size = checked((uint)pixels.Length),
-        };
-        var transfer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
-        if (transfer is null)
-            throw sdlFailure("create a Don texture upload buffer");
-        try
-        {
-            var mapped = SDL_MapGPUTransferBuffer(_device, transfer, false);
-            if (mapped == 0)
-                throw sdlFailure("map a Don texture upload buffer");
-            pixels.CopyTo(new Span<byte>((void*)mapped, pixels.Length));
-            SDL_UnmapGPUTransferBuffer(_device, transfer);
-            var command = SDL_AcquireGPUCommandBuffer(_device);
-            var copy = SDL_BeginGPUCopyPass(command);
-            var source = new SDL_GPUTextureTransferInfo { transfer_buffer = transfer, pixels_per_row = width, rows_per_layer = height };
-            var destination = new SDL_GPUTextureRegion { texture = texture, w = width, h = height, d = 1 };
-            SDL_UploadToGPUTexture(copy, &source, &destination, false);
-            SDL_EndGPUCopyPass(copy);
-            if (!SDL_SubmitGPUCommandBuffer(command))
-                throw sdlFailure("submit a Don texture upload");
-        }
-        finally
-        {
-            SDL_ReleaseGPUTransferBuffer(_device, transfer);
-        }
-    }
-
-    private SDL_GPUBuffer* uploadBuffer(ReadOnlySpan<byte> bytes, SDL_GPUBufferUsageFlags usage)
-    {
-        var info = new SDL_GPUBufferCreateInfo { usage = usage, size = checked((uint)bytes.Length) };
-        var buffer = SDL_CreateGPUBuffer(_device, &info);
-        if (buffer is null)
-            throw sdlFailure("create a Don geometry buffer");
-        _ownedBuffers.Add((nint)buffer);
-        var transferInfo = new SDL_GPUTransferBufferCreateInfo { usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, size = info.size };
-        var transfer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
-        if (transfer is null)
-            throw sdlFailure("create a Don geometry upload buffer");
-        try
-        {
-            var mapped = SDL_MapGPUTransferBuffer(_device, transfer, false);
-            bytes.CopyTo(new Span<byte>((void*)mapped, bytes.Length));
-            SDL_UnmapGPUTransferBuffer(_device, transfer);
-            var command = SDL_AcquireGPUCommandBuffer(_device);
-            var copy = SDL_BeginGPUCopyPass(command);
-            var source = new SDL_GPUTransferBufferLocation { transfer_buffer = transfer };
-            var destination = new SDL_GPUBufferRegion { buffer = buffer, size = info.size };
-            SDL_UploadToGPUBuffer(copy, &source, &destination, false);
-            SDL_EndGPUCopyPass(copy);
-            if (!SDL_SubmitGPUCommandBuffer(command))
-                throw sdlFailure("submit a Don geometry upload");
-            return buffer;
-        }
-        finally
-        {
-            SDL_ReleaseGPUTransferBuffer(_device, transfer);
-        }
-    }
-
-    private SDL_GPUGraphicsPipeline* getModelPipeline(bool blend, SDL_GPUCullMode cull)
-    {
-        if (_pipelines.TryGetValue((blend, cull), out var address))
-            return (SDL_GPUGraphicsPipeline*)address;
-        var attributes = stackalloc SDL_GPUVertexAttribute[6];
-        var formats = stackalloc SDL_GPUVertexElementFormat[6]
-        {
-            SDL_GPUVertexElementFormat.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            SDL_GPUVertexElementFormat.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            SDL_GPUVertexElementFormat.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-            SDL_GPUVertexElementFormat.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-            SDL_GPUVertexElementFormat.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-            SDL_GPUVertexElementFormat.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-        };
-        var offsets = stackalloc uint[6] { 0, 12, 24, 32, 48, 64 };
-        for (var index = 0; index < 6; index++)
-            attributes[index] = new SDL_GPUVertexAttribute { location = (uint)index, format = formats[index], offset = offsets[index] };
-        var vertexDescription = new SDL_GPUVertexBufferDescription
-        {
-            slot = 0,
-            pitch = (uint)sizeof(GpuVertex),
-            input_rate = SDL_GPUVertexInputRate.SDL_GPU_VERTEXINPUTRATE_VERTEX,
-        };
-        var blendState = new SDL_GPUColorTargetBlendState();
-        if (blend)
-        {
-            blendState = new SDL_GPUColorTargetBlendState
-            {
-                enable_blend = true,
-                src_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-                dst_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                color_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
-                src_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
-                dst_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                alpha_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
-            };
-        }
-        var target = new SDL_GPUColorTargetDescription
-        {
-            format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            blend_state = blendState,
-        };
-        var info = new SDL_GPUGraphicsPipelineCreateInfo
-        {
-            vertex_shader = _vertexShader,
-            fragment_shader = _fragmentShader,
-            vertex_input_state = new SDL_GPUVertexInputState
-            {
-                vertex_buffer_descriptions = &vertexDescription,
-                num_vertex_buffers = 1,
-                vertex_attributes = attributes,
-                num_vertex_attributes = 6,
-            },
-            primitive_type = SDL_GPUPrimitiveType.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-            rasterizer_state = new SDL_GPURasterizerState { cull_mode = cull, front_face = SDL_GPUFrontFace.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE },
-            depth_stencil_state = new SDL_GPUDepthStencilState
-            {
-                // Blended decals (face disc, costume prints) are tested against the opaque body so the
-                // ones on its far side stay hidden, but do not write depth.
-                enable_depth_test = true,
-                enable_depth_write = !blend,
-                compare_op = SDL_GPUCompareOp.SDL_GPU_COMPAREOP_LESS_OR_EQUAL,
-            },
-            target_info = new SDL_GPUGraphicsPipelineTargetInfo
-            {
-                color_target_descriptions = &target,
-                num_color_targets = 1,
-                has_depth_stencil_target = true,
-                depth_stencil_format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-            },
-        };
-        var pipeline = SDL_CreateGPUGraphicsPipeline(_device, &info);
-        if (pipeline is null)
-            throw sdlFailure("create a Don model pipeline");
-        _pipelines.Add((blend, cull), (nint)pipeline);
-        return pipeline;
-    }
-
-    private SDL_GPUGraphicsPipeline* createPostPipeline()
-    {
-        var vertex = createShader("don-post.vert", SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
-        var fragment = createShader("don-post.frag", SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
-        try
-        {
-            var target = new SDL_GPUColorTargetDescription { format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM };
-            var info = new SDL_GPUGraphicsPipelineCreateInfo
-            {
-                vertex_shader = vertex,
-                fragment_shader = fragment,
-                primitive_type = SDL_GPUPrimitiveType.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-                rasterizer_state = new SDL_GPURasterizerState { cull_mode = SDL_GPUCullMode.SDL_GPU_CULLMODE_NONE },
-                target_info = new SDL_GPUGraphicsPipelineTargetInfo { color_target_descriptions = &target, num_color_targets = 1 },
-            };
-            var pipeline = SDL_CreateGPUGraphicsPipeline(_device, &info);
-            return pipeline is null ? throw sdlFailure("create the Don outline pipeline") : pipeline;
-        }
-        finally
-        {
-            SDL_ReleaseGPUShader(_device, vertex);
-            SDL_ReleaseGPUShader(_device, fragment);
-        }
-    }
-
-    private SDL_GPUShader* createShader(string name, SDL_GPUShaderStage stage, uint samplerCount, uint uniformCount)
-    {
-        var formats = SDL_GetGPUShaderFormats(_device);
-        var format = (formats & SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV) != 0
-            ? SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV
-            : (formats & SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_DXIL) != 0
-                ? SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_DXIL
-                : throw new PlatformNotSupportedException($"SDL_GPU selected unsupported shader formats: {formats}.");
-        var extension = format == SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV ? "spv" : "dxil";
-        using var stream = typeof(SdlDonRenderer).Assembly.GetManifestResourceStream($"{ShaderPrefix}{name}.{extension}")
-            ?? throw new InvalidOperationException($"Packaged Don shader '{name}.{extension}' is missing.");
-        using var memory = new MemoryStream();
-        stream.CopyTo(memory);
-        var code = memory.ToArray();
-        fixed (byte* codePointer = code)
-        fixed (byte* entry = "main\0"u8)
-        {
-            var info = new SDL_GPUShaderCreateInfo
-            {
-                code = codePointer,
-                code_size = (nuint)code.Length,
-                entrypoint = entry,
-                format = format,
-                stage = stage,
-                num_samplers = samplerCount,
-                num_uniform_buffers = uniformCount,
-            };
-            var shader = SDL_CreateGPUShader(_device, &info);
-            return shader is null ? throw sdlFailure($"create Don shader '{name}'") : shader;
-        }
-    }
-
-    private SDL_GPUSampler* createSampler(SDL_GPUFilter filter)
-    {
-        var info = new SDL_GPUSamplerCreateInfo
-        {
-            min_filter = filter,
-            mag_filter = filter,
-            mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-            address_mode_u = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-            address_mode_v = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-            address_mode_w = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        };
-        var sampler = SDL_CreateGPUSampler(_device, &info);
-        return sampler is null ? throw sdlFailure("create a Don sampler") : sampler;
     }
 
     private void releaseResources()
     {
-        foreach (var pipeline in _pipelines.Values)
-            SDL_ReleaseGPUGraphicsPipeline(_device, (SDL_GPUGraphicsPipeline*)pipeline);
-        _pipelines.Clear();
-        if (_postPipeline is not null) SDL_ReleaseGPUGraphicsPipeline(_device, _postPipeline);
-        if (_fragmentShader is not null) SDL_ReleaseGPUShader(_device, _fragmentShader);
-        if (_vertexShader is not null) SDL_ReleaseGPUShader(_device, _vertexShader);
-        if (_nearestSampler is not null) SDL_ReleaseGPUSampler(_device, _nearestSampler);
-        if (_linearSampler is not null) SDL_ReleaseGPUSampler(_device, _linearSampler);
-        foreach (var buffer in _ownedBuffers) SDL_ReleaseGPUBuffer(_device, (SDL_GPUBuffer*)buffer);
-        foreach (var texture in _ownedTextures) SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
-        _ownedBuffers.Clear();
+        foreach (var target in _targets)
+        {
+            if (target.Model.Valid) bgfx.destroy_frame_buffer(target.Model);
+            if (target.Post.Valid) bgfx.destroy_frame_buffer(target.Post);
+        }
+        foreach (var mesh in _ownedMeshes)
+        {
+            bgfx.destroy_vertex_buffer(mesh.VertexBuffer);
+            bgfx.destroy_index_buffer(mesh.IndexBuffer);
+        }
+        foreach (var texture in _ownedTextures)
+            bgfx.destroy_texture(texture);
+        _ownedMeshes.Clear();
         _ownedTextures.Clear();
+        bgfx.destroy_vertex_buffer(_postTriangle);
+        bgfx.destroy_program(_modelProgram);
+        bgfx.destroy_program(_postProgram);
+        foreach (var uniform in new[] { _materialSampler, _characterSampler, _cameraUniform, _bonesUniform, _outlineUniform,
+            _materialUniform, _replaceRedUniform, _replaceGreenUniform, _replaceBlueUniform, _postUniform })
+            bgfx.destroy_uniform(uniform);
     }
 
     private static string normalizeMotion(string value)
@@ -835,8 +598,6 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private static Float4 color(byte red, byte green, byte blue) => new(red / 255f, green / 255f, blue / 255f, 1);
 
     private static Float4 rgb(uint value) => color((byte)(value >> 16), (byte)(value >> 8), (byte)value);
-
-    private static InvalidOperationException sdlFailure(string operation) => new($"Failed to {operation}: {SDL_GetError()}");
 
     private sealed class Player
     {
@@ -905,22 +666,14 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         }
     }
 
-    private sealed class GpuMesh(
-        nint vertexBuffer,
-        nint indexBuffer,
-        uint indexCount,
-        ImmutableArray<NudMaterial> materials,
-        Dictionary<uint, nint> textures)
-    {
-        public nint VertexBuffer { get; } = vertexBuffer;
-        public nint IndexBuffer { get; } = indexBuffer;
-        public uint IndexCount { get; } = indexCount;
-        public ImmutableArray<NudMaterial> Materials { get; } = materials;
-        public Dictionary<uint, nint> Textures { get; } = textures;
-    }
+    private sealed record GpuMesh(
+        bgfx.VertexBufferHandle VertexBuffer,
+        bgfx.IndexBufferHandle IndexBuffer,
+        ImmutableArray<NudMaterial> Materials,
+        Dictionary<uint, bgfx.TextureHandle> Textures);
 
-    private readonly record struct Target(nint Color, nint Depth, nint Final, RenderTextureId TextureId,
-        (uint Width, uint Height) Pixels);
+    private readonly record struct Target(bgfx.FrameBufferHandle Model, bgfx.FrameBufferHandle Post,
+        RenderTextureId TextureId, (uint Width, uint Height) Pixels);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct GpuVertex(
@@ -933,13 +686,4 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct Float4(float X, float Y, float Z, float W);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MaterialUniforms
-    {
-        public Float4 Parameters;
-        public Float4 ReplaceRed;
-        public Float4 ReplaceGreen;
-        public Float4 ReplaceBlue;
-    }
 }

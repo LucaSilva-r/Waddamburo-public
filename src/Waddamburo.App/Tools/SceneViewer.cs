@@ -69,7 +69,7 @@ internal static class SceneViewer
             debugGpu: false,
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
-        Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
+        Console.WriteLine($"Renderer: {application.GpuDriver}");
         var textureIds = loaded
             .SelectMany(layer => layer.Content.Textures)
             .Select(texture => application.UploadRgba8(

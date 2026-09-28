@@ -82,6 +82,11 @@ if(WADDAMBURO_BUILD_TEXT)
   endif()
 endif()
 
+option(WADDAMBURO_BUILD_BGFX "Build the pinned bgfx renderer library and shaderc" OFF)
+if(WADDAMBURO_BUILD_BGFX)
+  add_subdirectory(bgfx)
+endif()
+
 add_subdirectory(media)
 if(WADDAMBURO_BUILD_TEXT)
   add_subdirectory(text)

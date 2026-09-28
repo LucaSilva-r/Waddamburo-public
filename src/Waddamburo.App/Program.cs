@@ -231,7 +231,7 @@ try
         debugGpu: false,
         resizable: screenshotPath is null,
         highPixelDensity: screenshotPath is null);
-    Console.WriteLine($"SDL_GPU driver: {application.GpuDriver}");
+    Console.WriteLine($"Renderer: {application.GpuDriver}");
     using var audioDevice = audioPath is null && jinglePath is null ? null : new SdlAudioDevice();
     using var music = audioPath is null ? null : new StreamingMusicPlayer(audioDevice!, audioPath);
     using var audioEngine = jinglePath is null ? null : new AudioEngine(audioDevice!);

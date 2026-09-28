@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Bgfx;
 using SDL;
 using static SDL.SDL3;
 
@@ -6,66 +7,44 @@ namespace Waddamburo.Platform.Sdl.Rendering;
 
 public readonly record struct RgbaTextureUpload(uint Width, uint Height, ReadOnlyMemory<byte> Pixels);
 
-/// <summary>Owns SDL_GPU resources and command submission for one claimed window.</summary>
+/// <summary>Owns bgfx resources and frame submission for one window.</summary>
 internal sealed unsafe class RenderDevice : IDisposable
 {
-    private const string ShaderResourcePrefix = "Waddamburo.Shaders.";
+    // Prepasses (the Don targets) own views 0..ClearView-1 and run first; bgfx executes views in id order.
+    internal const ushort ClearView = 16;
+    private const ushort MainView = 17;
 
-    private readonly SDL_GPUDevice* _device;
     private readonly SDL_Window* _window;
-    private readonly Dictionary<uint, nint> _textures = [];
+    private readonly Dictionary<uint, bgfx.TextureHandle> _textures = [];
     private readonly HashSet<uint> _borrowedTextures = [];
     private readonly List<IGpuRenderPrepass> _prepasses = [];
-    private SDL_GPUGraphicsPipeline* _normalQuadPipeline;
-    private SDL_GPUGraphicsPipeline* _addQuadPipeline;
-    private SDL_GPUGraphicsPipeline* _screenQuadPipeline;
-    private SDL_GPUGraphicsPipeline* _pushMaskPipeline;
-    private SDL_GPUGraphicsPipeline* _popMaskPipeline;
-    private SDL_GPUTexture* _stencil;
-    private uint _stencilWidth;
-    private uint _stencilHeight;
-    private readonly SDL_GPUTextureFormat _stencilFormat;
-    private SDL_GPUSampler* _nearestSampler;
-    private SDL_GPUSampler* _linearSampler;
-    private SDL_GPUSampler* _nearestRepeatSampler;
-    private SDL_GPUSampler* _linearRepeatSampler;
+    private readonly bgfx.ProgramHandle _quadProgram;
+    private readonly bgfx.ProgramHandle _maskProgram;
+    private readonly bgfx.UniformHandle _textureSampler;
+    private bgfx.VertexLayout _layout;
+    private uint _width;
+    private uint _height;
     private uint _nextTextureId = 1;
     private bool _disposed;
-    private SDL_GPUCommandBuffer* _readyCommandBuffer;
-    private SDL_GPUTexture* _readySwapchainTexture;
-    private uint _readyWidth;
-    private uint _readyHeight;
 
-    public RenderDevice(SDL_GPUDevice* device, SDL_Window* window)
+    public RenderDevice(SDL_Window* window, uint width, uint height)
     {
-        if (device is null)
-            throw new ArgumentNullException(nameof(device));
-        if (window is null)
-            throw new ArgumentNullException(nameof(window));
-        _device = device;
         _window = window;
-        _stencilFormat = SDL_GPUTextureSupportsFormat(device, SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
-            SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D, SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)
-            ? SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT
-            : SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
-
-        try
+        _width = width;
+        _height = height;
+        _quadProgram = BgfxSupport.LoadProgram("vs_quad", "fs_quad");
+        _maskProgram = BgfxSupport.LoadProgram("vs_quad", "fs_mask");
+        _textureSampler = bgfx.create_uniform("s_texture", bgfx.UniformType.Sampler, 1);
+        fixed (bgfx.VertexLayout* layout = &_layout)
         {
-            _nearestSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_NEAREST);
-            _linearSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR);
-            _nearestRepeatSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_NEAREST, repeat: true);
-            _linearRepeatSampler = createSampler(SDL_GPUFilter.SDL_GPU_FILTER_LINEAR, repeat: true);
-            _normalQuadPipeline = createQuadPipeline(RenderBlend.Normal);
-            _addQuadPipeline = createQuadPipeline(RenderBlend.Add);
-            _screenQuadPipeline = createQuadPipeline(RenderBlend.Screen);
-            _pushMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Push);
-            _popMaskPipeline = createQuadPipeline(RenderBlend.Normal, RenderMaskOperation.Pop);
+            bgfx.vertex_layout_begin(layout, bgfx.RendererType.Noop);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Position, 2, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_add(layout, bgfx.Attrib.Color1, 4, bgfx.AttribType.Float, false, false);
+            bgfx.vertex_layout_end(layout);
         }
-        catch
-        {
-            releaseResources();
-            throw;
-        }
+        bgfx.set_view_mode(MainView, bgfx.ViewMode.Sequential);
     }
 
     public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
@@ -73,144 +52,20 @@ internal sealed unsafe class RenderDevice : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfZero(width);
         ArgumentOutOfRangeException.ThrowIfZero(height);
-
-        var expectedLength = checked((ulong)width * height * 4);
-        if (expectedLength > uint.MaxValue || (ulong)pixels.Length != expectedLength)
+        if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
-
-        var textureInfo = new SDL_GPUTextureCreateInfo
-        {
-            type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
-            format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            usage = SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
-            width = width,
-            height = height,
-            layer_count_or_depth = 1,
-            num_levels = 1,
-            sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
-        };
-        var texture = SDL_CreateGPUTexture(_device, &textureInfo);
-        if (texture is null)
-            throw sdlFailure("create an RGBA texture");
-
-        try
-        {
-            uploadInto(texture, width, height, pixels);
-            var id = new RenderTextureId(_nextTextureId++);
-            _textures.Add(id.Value, (nint)texture);
-            texture = null;
-            return id;
-        }
-        finally
-        {
-            if (texture is not null)
-                SDL_ReleaseGPUTexture(_device, texture);
-        }
+        var id = new RenderTextureId(_nextTextureId++);
+        _textures.Add(id.Value, BgfxSupport.CreateRgba8(width, height, pixels));
+        return id;
     }
 
-    /// <summary>Uploads scene textures in bounded GPU copy passes.</summary>
     public RenderTextureId[] UploadRgba8Batch(IReadOnlyList<RgbaTextureUpload> uploads)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(uploads);
-        var created = new List<nint>();
-        try
-        {
-            for (var first = 0; first < uploads.Count; first += 32)
-            {
-                var end = Math.Min(first + 32, uploads.Count);
-                var transfers = new List<nint>();
-                SDL_GPUCommandBuffer* command = null;
-                SDL_GPUCopyPass* pass = null;
-                try
-                {
-                    command = SDL_AcquireGPUCommandBuffer(_device);
-                    if (command is null)
-                        throw sdlFailure("acquire a texture upload command buffer");
-                    pass = SDL_BeginGPUCopyPass(command);
-                    if (pass is null)
-                        throw sdlFailure("begin a texture upload pass");
-                    for (var index = first; index < end; index++)
-                    {
-                        var upload = uploads[index];
-                        if (upload.Width == 0 || upload.Height == 0 ||
-                            (ulong)upload.Pixels.Length != checked((ulong)upload.Width * upload.Height * 4))
-                            throw new ArgumentException("RGBA8 uploads must contain width * height * 4 bytes.", nameof(uploads));
-                        var info = new SDL_GPUTextureCreateInfo
-                        {
-                            type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
-                            format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                            usage = SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                            width = upload.Width,
-                            height = upload.Height,
-                            layer_count_or_depth = 1,
-                            num_levels = 1,
-                            sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
-                        };
-                        var texture = SDL_CreateGPUTexture(_device, &info);
-                        if (texture is null)
-                            throw sdlFailure("create an RGBA texture");
-                        created.Add((nint)texture);
-                        var transferInfo = new SDL_GPUTransferBufferCreateInfo
-                        {
-                            usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                            size = checked((uint)upload.Pixels.Length),
-                        };
-                        var transfer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
-                        if (transfer is null)
-                            throw sdlFailure("create a texture upload buffer");
-                        transfers.Add((nint)transfer);
-                        var mapped = SDL_MapGPUTransferBuffer(_device, transfer, false);
-                        if (mapped == 0)
-                            throw sdlFailure("map a texture upload buffer");
-                        upload.Pixels.Span.CopyTo(new Span<byte>((void*)mapped, upload.Pixels.Length));
-                        SDL_UnmapGPUTransferBuffer(_device, transfer);
-                        var source = new SDL_GPUTextureTransferInfo
-                        {
-                            transfer_buffer = transfer,
-                            pixels_per_row = upload.Width,
-                            rows_per_layer = upload.Height,
-                        };
-                        var destination = new SDL_GPUTextureRegion
-                        {
-                            texture = texture,
-                            w = upload.Width,
-                            h = upload.Height,
-                            d = 1,
-                        };
-                        SDL_UploadToGPUTexture(pass, &source, &destination, false);
-                    }
-                    SDL_EndGPUCopyPass(pass);
-                    pass = null;
-                    if (!SDL_SubmitGPUCommandBuffer(command))
-                        throw sdlFailure("submit a texture upload batch");
-                    command = null;
-                }
-                finally
-                {
-                    if (pass is not null)
-                        SDL_EndGPUCopyPass(pass);
-                    if (command is not null)
-                        SDL_CancelGPUCommandBuffer(command);
-                    foreach (var transfer in transfers)
-                        SDL_ReleaseGPUTransferBuffer(_device, (SDL_GPUTransferBuffer*)transfer);
-                }
-            }
-            var ids = new RenderTextureId[created.Count];
-            for (var index = 0; index < created.Count; index++)
-            {
-                var id = new RenderTextureId(_nextTextureId++);
-                _textures.Add(id.Value, created[index]);
-                ids[index] = id;
-            }
-            return ids;
-        }
-        catch
-        {
-            foreach (var texture in created)
-                SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
-            throw;
-        }
+        var ids = new RenderTextureId[uploads.Count];
+        for (var index = 0; index < ids.Length; index++)
+            ids[index] = UploadRgba8(uploads[index].Width, uploads[index].Height, uploads[index].Pixels.Span);
+        return ids;
     }
 
     /// <summary>Replaces the pixels of an owned texture of the same size (streamed video frames).</summary>
@@ -221,62 +76,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
         if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
-        uploadInto((SDL_GPUTexture*)texture, width, height, pixels);
-    }
-
-    private void uploadInto(SDL_GPUTexture* texture, uint width, uint height, ReadOnlySpan<byte> pixels)
-    {
-        SDL_GPUTransferBuffer* transferBuffer = null;
-        try
-        {
-            var transferInfo = new SDL_GPUTransferBufferCreateInfo
-            {
-                usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                size = (uint)pixels.Length,
-            };
-            transferBuffer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
-            if (transferBuffer is null)
-                throw sdlFailure("create a texture upload buffer");
-
-            var mapped = SDL_MapGPUTransferBuffer(_device, transferBuffer, false);
-            if (mapped == 0)
-                throw sdlFailure("map a texture upload buffer");
-            pixels.CopyTo(new Span<byte>((void*)mapped, pixels.Length));
-            SDL_UnmapGPUTransferBuffer(_device, transferBuffer);
-
-            var commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
-            if (commandBuffer is null)
-                throw sdlFailure("acquire a texture upload command buffer");
-            var copyPass = SDL_BeginGPUCopyPass(commandBuffer);
-            if (copyPass is null)
-            {
-                SDL_CancelGPUCommandBuffer(commandBuffer);
-                throw sdlFailure("begin a texture upload pass");
-            }
-
-            var source = new SDL_GPUTextureTransferInfo
-            {
-                transfer_buffer = transferBuffer,
-                pixels_per_row = width,
-                rows_per_layer = height,
-            };
-            var destination = new SDL_GPUTextureRegion
-            {
-                texture = texture,
-                w = width,
-                h = height,
-                d = 1,
-            };
-            SDL_UploadToGPUTexture(copyPass, &source, &destination, false);
-            SDL_EndGPUCopyPass(copyPass);
-            if (!SDL_SubmitGPUCommandBuffer(commandBuffer))
-                throw sdlFailure("submit a texture upload");
-        }
-        finally
-        {
-            if (transferBuffer is not null)
-                SDL_ReleaseGPUTransferBuffer(_device, transferBuffer);
-        }
+        bgfx.update_texture_2d(texture, 0, 0, 0, 0, (ushort)width, (ushort)height, BgfxSupport.Copy(pixels), ushort.MaxValue);
     }
 
     public void ReleaseTexture(RenderTextureId id)
@@ -286,14 +86,12 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new ArgumentException($"Texture {id.Value} is owned by a render prepass.", nameof(id));
         if (!_textures.Remove(id.Value, out var texture))
             throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
-        SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+        bgfx.destroy_texture(texture);
     }
 
-    internal RenderTextureId RegisterBorrowedTexture(nint texture)
+    internal RenderTextureId RegisterBorrowedTexture(bgfx.TextureHandle texture)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (texture == 0)
-            throw new ArgumentNullException(nameof(texture));
         var id = new RenderTextureId(_nextTextureId++);
         _textures.Add(id.Value, texture);
         _borrowedTextures.Add(id.Value);
@@ -301,11 +99,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     }
 
     /// <summary>Points a borrowed id at a new texture, so frames built earlier stay valid.</summary>
-    internal void ReplaceBorrowedTexture(RenderTextureId id, nint texture)
+    internal void ReplaceBorrowedTexture(RenderTextureId id, bgfx.TextureHandle texture)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (texture == 0)
-            throw new ArgumentNullException(nameof(texture));
         if (!_borrowedTextures.Contains(id.Value))
             throw new ArgumentException($"Texture {id.Value} is not borrowed by this render device.", nameof(id));
         _textures[id.Value] = texture;
@@ -313,16 +108,11 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     internal void UnregisterBorrowedTexture(RenderTextureId id)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_borrowedTextures.Remove(id.Value) || !_textures.Remove(id.Value))
             throw new ArgumentException($"Texture {id.Value} is not borrowed by this render device.", nameof(id));
     }
 
-    internal void AddPrepass(IGpuRenderPrepass prepass)
-    {
-        ArgumentNullException.ThrowIfNull(prepass);
-        _prepasses.Add(prepass);
-    }
+    internal void AddPrepass(IGpuRenderPrepass prepass) => _prepasses.Add(prepass ?? throw new ArgumentNullException(nameof(prepass)));
 
     internal void RemovePrepass(IGpuRenderPrepass prepass)
     {
@@ -331,35 +121,13 @@ internal sealed unsafe class RenderDevice : IDisposable
     }
 
     /// <summary>
-    /// Without blocking, takes a free swapchain image for the next <see cref="Present"/>; false while
-    /// every image is still in flight (vsync), so the caller can keep polling input meanwhile.
+    /// Without blocking, whether the next <see cref="Present"/> can start: false while the render
+    /// thread still presents the previous frame (vsync), so the caller can keep polling input.
     /// </summary>
     public bool TryAcquireSwapchain()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_readyCommandBuffer is not null)
-            return true;
-        var commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
-        if (commandBuffer is null)
-            throw sdlFailure("acquire a GPU command buffer");
-        SDL_GPUTexture* swapchainTexture = null;
-        uint width = 0;
-        uint height = 0;
-        if (!SDL_AcquireGPUSwapchainTexture(commandBuffer, _window, &swapchainTexture, &width, &height))
-        {
-            SDL_CancelGPUCommandBuffer(commandBuffer);
-            throw sdlFailure("acquire the swapchain texture");
-        }
-        if (swapchainTexture is null)
-        {
-            SDL_CancelGPUCommandBuffer(commandBuffer);
-            return false;
-        }
-        _readyCommandBuffer = commandBuffer;
-        _readySwapchainTexture = swapchainTexture;
-        _readyWidth = width;
-        _readyHeight = height;
-        return true;
+        return BgfxSupport.RenderThreadReady;
     }
 
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
@@ -368,400 +136,150 @@ internal sealed unsafe class RenderDevice : IDisposable
         ArgumentNullException.ThrowIfNull(frame);
         validateFrame(frame);
 
-        var commandBuffer = _readyCommandBuffer;
-        SDL_GPUTexture* swapchainTexture = _readySwapchainTexture;
-        uint width = _readyWidth;
-        uint height = _readyHeight;
-        _readyCommandBuffer = null;
-        _readySwapchainTexture = null;
-        if (commandBuffer is null)
+        int pixelWidth, pixelHeight;
+        if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
+            throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
+        var width = (uint)Math.Max(1, pixelWidth);
+        var height = (uint)Math.Max(1, pixelHeight);
+        if (width != _width || height != _height)
         {
-            commandBuffer = SDL_AcquireGPUCommandBuffer(_device);
-            if (commandBuffer is null)
-                throw sdlFailure("acquire a GPU command buffer");
-            if (!SDL_WaitAndAcquireGPUSwapchainTexture(commandBuffer, _window, &swapchainTexture, &width, &height))
+            _width = width;
+            _height = height;
+            var swapChain = new bgfx.SwapChain
             {
-                SDL_CancelGPUCommandBuffer(commandBuffer);
-                throw sdlFailure("acquire the swapchain texture");
-            }
+                width = width,
+                height = height,
+                formatColor = bgfx.TextureFormat.Count,
+                formatDepthStencil = bgfx.TextureFormat.D24S8,
+                depth = BgfxSupport.InvalidTexture,
+            };
+            bgfx.reset(BgfxSupport.ResetFlags, &swapChain);
         }
 
-        SDL_GPUTransferBuffer* captureBuffer = null;
-        var swapchainFormat = SDL_GetGPUSwapchainTextureFormat(_device, _window);
-        if (swapchainTexture is null && capture)
+        foreach (var prepass in _prepasses)
+            prepass.Record(width, height);
+
+        // The whole window (letterbox bars included) takes the clear colour; the stage draws inside.
+        bgfx.set_view_rect(ClearView, 0, 0, (ushort)width, (ushort)height, 0, 1);
+        bgfx.set_view_clear(ClearView, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Stencil),
+            BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
+        bgfx.touch(ClearView);
+        var viewport = frame.ResolveViewport(width, height);
+        bgfx.set_view_rect(MainView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
+        bgfx.set_view_scissor(MainView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
+        submitQuads(frame.Quads.AsSpan());
+
+        if (!capture)
         {
-            SDL_CancelGPUCommandBuffer(commandBuffer);
-            throw new InvalidOperationException("The swapchain has no image available for screenshot capture.");
-        }
-        if (swapchainTexture is not null)
-        {
-            foreach (var prepass in _prepasses)
-                prepass.Record(commandBuffer, width, height);
-            var clear = frame.ClearColor;
-            var target = new SDL_GPUColorTargetInfo
-            {
-                texture = swapchainTexture,
-                clear_color = new SDL_FColor { r = clear.Red, g = clear.Green, b = clear.Blue, a = clear.Alpha },
-                load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
-                store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_STORE,
-            };
-            ensureStencil(width, height);
-            var stencilTarget = new SDL_GPUDepthStencilTargetInfo
-            {
-                texture = _stencil,
-                load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_DONT_CARE,
-                store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_DONT_CARE,
-                stencil_load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
-                stencil_store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_DONT_CARE,
-                clear_stencil = 0,
-                cycle = true,
-            };
-            var renderPass = SDL_BeginGPURenderPass(commandBuffer, &target, 1, &stencilTarget);
-            if (renderPass is null)
-            {
-                SDL_CancelGPUCommandBuffer(commandBuffer);
-                throw sdlFailure("begin the GPU render pass");
-            }
-
-            var resolvedViewport = frame.ResolveViewport(width, height);
-            var viewport = new SDL_GPUViewport
-            {
-                x = resolvedViewport.X,
-                y = resolvedViewport.Y,
-                w = resolvedViewport.Width,
-                h = resolvedViewport.Height,
-                min_depth = 0,
-                max_depth = 1,
-            };
-            var scissor = new SDL_Rect
-            {
-                x = resolvedViewport.X,
-                y = resolvedViewport.Y,
-                w = resolvedViewport.Width,
-                h = resolvedViewport.Height,
-            };
-            SDL_SetGPUViewport(renderPass, &viewport);
-            SDL_SetGPUScissor(renderPass, &scissor);
-            SDL_GPUGraphicsPipeline* boundPipeline = null;
-            foreach (var quad in frame.Quads)
-            {
-                var pipeline = quad.MaskOperation switch
-                {
-                    RenderMaskOperation.Push => _pushMaskPipeline,
-                    RenderMaskOperation.Pop => _popMaskPipeline,
-                    _ => quad.Blend switch
-                    {
-                        RenderBlend.Add => _addQuadPipeline,
-                        RenderBlend.Screen => _screenQuadPipeline,
-                        _ => _normalQuadPipeline,
-                    },
-                };
-                if (pipeline != boundPipeline)
-                {
-                    SDL_BindGPUGraphicsPipeline(renderPass, pipeline);
-                    boundPipeline = pipeline;
-                }
-                SDL_SetGPUStencilReference(renderPass, quad.MaskDepth);
-                drawQuad(commandBuffer, renderPass, quad);
-            }
-            SDL_EndGPURenderPass(renderPass);
-
-            if (capture)
-            {
-                var captureSize = checked((ulong)width * height * 4);
-                if (captureSize > uint.MaxValue)
-                {
-                    SDL_CancelGPUCommandBuffer(commandBuffer);
-                    throw new InvalidOperationException("The swapchain image is too large to capture.");
-                }
-                var transferInfo = new SDL_GPUTransferBufferCreateInfo
-                {
-                    usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-                    size = (uint)captureSize,
-                };
-                captureBuffer = SDL_CreateGPUTransferBuffer(_device, &transferInfo);
-                if (captureBuffer is null)
-                {
-                    SDL_CancelGPUCommandBuffer(commandBuffer);
-                    throw sdlFailure("create a screenshot download buffer");
-                }
-
-                var copyPass = SDL_BeginGPUCopyPass(commandBuffer);
-                if (copyPass is null)
-                {
-                    SDL_CancelGPUCommandBuffer(commandBuffer);
-                    SDL_ReleaseGPUTransferBuffer(_device, captureBuffer);
-                    throw sdlFailure("begin a screenshot download pass");
-                }
-                var source = new SDL_GPUTextureRegion
-                {
-                    texture = swapchainTexture,
-                    w = width,
-                    h = height,
-                    d = 1,
-                };
-                var destination = new SDL_GPUTextureTransferInfo
-                {
-                    transfer_buffer = captureBuffer,
-                    pixels_per_row = width,
-                    rows_per_layer = height,
-                };
-                SDL_DownloadFromGPUTexture(copyPass, &source, &destination);
-                SDL_EndGPUCopyPass(copyPass);
-            }
-        }
-
-        if (captureBuffer is null)
-        {
-            if (!SDL_SubmitGPUCommandBuffer(commandBuffer))
-                throw sdlFailure("submit the GPU command buffer");
+            BgfxSupport.Frame();
             return null;
         }
-
-        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commandBuffer);
-        if (fence is null)
-        {
-            SDL_ReleaseGPUTransferBuffer(_device, captureBuffer);
-            throw sdlFailure("submit the screenshot command buffer");
-        }
-        try
-        {
-            if (!SDL_WaitForGPUFences(_device, true, &fence, 1))
-                throw sdlFailure("wait for the screenshot download");
-            var mapped = SDL_MapGPUTransferBuffer(_device, captureBuffer, false);
-            if (mapped == 0)
-                throw sdlFailure("map the screenshot download buffer");
-            try
-            {
-                var pixels = new byte[checked((int)((ulong)width * height * 4))];
-                new ReadOnlySpan<byte>((void*)mapped, pixels.Length).CopyTo(pixels);
-                normalizeCaptureChannels(pixels, swapchainFormat);
-                return new RenderCapture(width, height, [.. pixels]);
-            }
-            finally
-            {
-                SDL_UnmapGPUTransferBuffer(_device, captureBuffer);
-            }
-        }
-        finally
-        {
-            SDL_ReleaseGPUFence(_device, fence);
-            SDL_ReleaseGPUTransferBuffer(_device, captureBuffer);
-        }
+        BgfxSupport.Callbacks.Capture = null;
+        bgfx.request_screen_shot(BgfxSupport.BackBuffer, "capture");
+        // The request is served while a later frame renders.
+        for (var attempt = 0; attempt < 4 && BgfxSupport.Callbacks.Capture is null; attempt++)
+            BgfxSupport.Frame();
+        return BgfxSupport.Callbacks.Capture
+            ?? throw new InvalidOperationException("bgfx did not deliver the screenshot.");
     }
 
-    public void Dispose()
+    private void submitQuads(ReadOnlySpan<RenderQuad> quads)
     {
-        if (_disposed)
+        if (quads.IsEmpty)
             return;
-        if (_readyCommandBuffer is not null)
-            SDL_SubmitGPUCommandBuffer(_readyCommandBuffer); // holds a swapchain image, so it cannot be cancelled
-        SDL_WaitForGPUIdle(_device);
-        releaseResources();
-        _disposed = true;
-    }
-
-    private void drawQuad(SDL_GPUCommandBuffer* commandBuffer, SDL_GPURenderPass* renderPass, RenderQuad quad)
-    {
-        var textureAddress = _textures[quad.Texture.Value];
-
-        var multiply = quad.MultiplyColor;
-        var add = quad.AddColor;
-        var uniforms = new QuadUniforms
+        var vertexCount = (uint)quads.Length * 6;
+        bgfx.TransientVertexBuffer buffer;
+        fixed (bgfx.VertexLayout* layout = &_layout)
         {
-            TopLeft = convert(quad.TopLeft),
-            TopRight = convert(quad.TopRight),
-            BottomRight = convert(quad.BottomRight),
-            BottomLeft = convert(quad.BottomLeft),
-            MultiplyColor = new Float4(multiply.Red, multiply.Green, multiply.Blue, multiply.Alpha),
-            AddColor = new Float4(add.Red, add.Green, add.Blue, add.Alpha),
-        };
-        SDL_PushGPUVertexUniformData(commandBuffer, 0, (nint)(&uniforms), (uint)sizeof(QuadUniforms));
-
-        var binding = new SDL_GPUTextureSamplerBinding
-        {
-            texture = (SDL_GPUTexture*)textureAddress,
-            // Authored shapes tile a texture by giving UVs beyond 0..1; everything else clamps so
-            // atlas edges do not bleed.
-            sampler = tiles(quad)
-                ? quad.Sampling is RenderSampling.Nearest ? _nearestRepeatSampler : _linearRepeatSampler
-                : quad.Sampling is RenderSampling.Nearest ? _nearestSampler : _linearSampler,
-        };
-        SDL_BindGPUFragmentSamplers(renderPass, 0, &binding, 1);
-        SDL_DrawGPUPrimitives(renderPass, 6, 1, 0, 0);
-    }
-
-    private void ensureStencil(uint width, uint height)
-    {
-        if (_stencil is not null && _stencilWidth == width && _stencilHeight == height) return;
-        var info = new SDL_GPUTextureCreateInfo
-        {
-            type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
-            format = _stencilFormat,
-            usage = SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-            width = width, height = height, layer_count_or_depth = 1, num_levels = 1,
-            sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
-        };
-        var texture = SDL_CreateGPUTexture(_device, &info);
-        if (texture is null) throw sdlFailure("create the stencil target");
-        if (_stencil is not null) SDL_ReleaseGPUTexture(_device, _stencil);
-        _stencil = texture;
-        _stencilWidth = width;
-        _stencilHeight = height;
-    }
-
-    private SDL_GPUGraphicsPipeline* createQuadPipeline(RenderBlend blend,
-        RenderMaskOperation maskOperation = RenderMaskOperation.Draw)
-    {
-        var formats = SDL_GetGPUShaderFormats(_device);
-        var format = (formats & SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV) != 0
-            ? SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV
-            : (formats & SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_DXIL) != 0
-                ? SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_DXIL
-                : throw new PlatformNotSupportedException($"SDL_GPU selected unsupported shader formats: {formats}.");
-        var extension = format is SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV ? "spv" : "dxil";
-
-        var vertexShader = createShader($"quad.vert.{extension}", format, SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
-        SDL_GPUShader* fragmentShader = null;
-        try
-        {
-            var fragmentName = maskOperation == RenderMaskOperation.Draw ? "quad" : "mask";
-            fragmentShader = createShader($"{fragmentName}.frag.{extension}", format, SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
-            var blendState = new SDL_GPUColorTargetBlendState
-            {
-                src_color_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
-                // Premultiplied source: screen is s + d(1 - s).
-                dst_color_blendfactor = blend switch
-                {
-                    RenderBlend.Add => SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
-                    RenderBlend.Screen => SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_COLOR,
-                    _ => SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                },
-                color_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
-                src_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE,
-                dst_alpha_blendfactor = SDL_GPUBlendFactor.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                alpha_blend_op = SDL_GPUBlendOp.SDL_GPU_BLENDOP_ADD,
-                enable_blend = maskOperation == RenderMaskOperation.Draw,
-                enable_color_write_mask = maskOperation != RenderMaskOperation.Draw,
-                color_write_mask = 0,
-            };
-            var targetDescription = new SDL_GPUColorTargetDescription
-            {
-                format = SDL_GetGPUSwapchainTextureFormat(_device, _window),
-                blend_state = blendState,
-            };
-            var stencilState = new SDL_GPUStencilOpState
-            {
-                compare_op = SDL_GPUCompareOp.SDL_GPU_COMPAREOP_EQUAL,
-                fail_op = SDL_GPUStencilOp.SDL_GPU_STENCILOP_KEEP,
-                depth_fail_op = SDL_GPUStencilOp.SDL_GPU_STENCILOP_KEEP,
-                pass_op = maskOperation switch
-                {
-                    RenderMaskOperation.Push => SDL_GPUStencilOp.SDL_GPU_STENCILOP_INCREMENT_AND_CLAMP,
-                    RenderMaskOperation.Pop => SDL_GPUStencilOp.SDL_GPU_STENCILOP_DECREMENT_AND_CLAMP,
-                    _ => SDL_GPUStencilOp.SDL_GPU_STENCILOP_KEEP,
-                },
-            };
-            var pipelineInfo = new SDL_GPUGraphicsPipelineCreateInfo
-            {
-                vertex_shader = vertexShader,
-                fragment_shader = fragmentShader,
-                primitive_type = SDL_GPUPrimitiveType.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-                rasterizer_state = new SDL_GPURasterizerState
-                {
-                    fill_mode = SDL_GPUFillMode.SDL_GPU_FILLMODE_FILL,
-                    cull_mode = SDL_GPUCullMode.SDL_GPU_CULLMODE_NONE,
-                    front_face = SDL_GPUFrontFace.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
-                    enable_depth_clip = true,
-                },
-                depth_stencil_state = new SDL_GPUDepthStencilState
-                {
-                    enable_stencil_test = true,
-                    compare_mask = byte.MaxValue,
-                    write_mask = maskOperation == RenderMaskOperation.Draw ? (byte)0 : byte.MaxValue,
-                    front_stencil_state = stencilState,
-                    back_stencil_state = stencilState,
-                },
-                multisample_state = new SDL_GPUMultisampleState
-                {
-                    sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
-                },
-                target_info = new SDL_GPUGraphicsPipelineTargetInfo
-                {
-                    color_target_descriptions = &targetDescription,
-                    num_color_targets = 1,
-                    has_depth_stencil_target = true,
-                    depth_stencil_format = _stencilFormat,
-                },
-            };
-            var pipeline = SDL_CreateGPUGraphicsPipeline(_device, &pipelineInfo);
-            return pipeline is null ? throw sdlFailure("create the textured quad pipeline") : pipeline;
+            // ponytail: frames past the transient buffer size draw only what fits; raise
+            // Init.limits.maxTransientVbSize if a scene ever gets there.
+            vertexCount = Math.Min(vertexCount, bgfx.get_avail_transient_vertex_buffer(vertexCount, layout) / 6 * 6);
+            if (vertexCount == 0)
+                return;
+            bgfx.alloc_transient_vertex_buffer(&buffer, vertexCount, layout);
         }
-        finally
+        var vertices = new Span<QuadVertex>(buffer.data, (int)vertexCount);
+        var quadCount = (int)vertexCount / 6;
+        for (var index = 0; index < quadCount; index++)
         {
-            SDL_ReleaseGPUShader(_device, vertexShader);
-            if (fragmentShader is not null)
-                SDL_ReleaseGPUShader(_device, fragmentShader);
+            var quad = quads[index];
+            var multiply = quad.MultiplyColor;
+            var add = quad.AddColor;
+            var corners = vertices.Slice(index * 6, 6);
+            corners[0] = vertex(quad.TopLeft, multiply, add);
+            corners[1] = vertex(quad.TopRight, multiply, add);
+            corners[2] = vertex(quad.BottomRight, multiply, add);
+            corners[3] = corners[0];
+            corners[4] = corners[2];
+            corners[5] = vertex(quad.BottomLeft, multiply, add);
+        }
+
+        // One draw per run of quads that share texture, sampling and blend/stencil state.
+        var start = 0;
+        for (var index = 1; index <= quadCount; index++)
+        {
+            if (index < quadCount && sameBatch(quads[start], quads[index]))
+                continue;
+            var first = quads[start];
+            bgfx.set_state(stateFor(first), 0);
+            var stencilOperation = first.MaskOperation switch
+            {
+                RenderMaskOperation.Push => bgfx.StencilFlags.OpPassZIncrsat,
+                RenderMaskOperation.Pop => bgfx.StencilFlags.OpPassZDecrsat,
+                _ => bgfx.StencilFlags.OpPassZKeep,
+            };
+            var stencil = (uint)(bgfx.StencilFlags.TestEqual | bgfx.StencilFlags.OpFailSKeep | bgfx.StencilFlags.OpFailZKeep | stencilOperation)
+                | first.MaskDepth | (0xffu << (int)bgfx.StencilFlags.FuncRmaskShift);
+            bgfx.set_stencil(stencil, (uint)bgfx.StencilFlags.None);
+            bgfx.set_texture(0, _textureSampler, _textures[first.Texture.Value], samplerFor(first));
+            bgfx.set_transient_vertex_buffer(0, &buffer, (uint)start * 6, (uint)(index - start) * 6);
+            bgfx.submit(MainView, first.MaskOperation == RenderMaskOperation.Draw ? _quadProgram : _maskProgram, 0, (byte)bgfx.DiscardFlags.All);
+            start = index;
         }
     }
 
-    private SDL_GPUShader* createShader(
-        string resourceName,
-        SDL_GPUShaderFormat format,
-        SDL_GPUShaderStage stage,
-        uint samplerCount,
-        uint uniformBufferCount)
+    private static bool sameBatch(in RenderQuad a, in RenderQuad b) =>
+        a.Texture == b.Texture && a.Blend == b.Blend && a.MaskOperation == b.MaskOperation
+        && a.MaskDepth == b.MaskDepth && a.Sampling == b.Sampling && tiles(a) == tiles(b);
+
+    private static ulong stateFor(in RenderQuad quad)
     {
-        var assembly = typeof(RenderDevice).Assembly;
-        using var stream = assembly.GetManifestResourceStream(ShaderResourcePrefix + resourceName)
-            ?? throw new InvalidOperationException(
-                $"Packaged shader '{resourceName}' is missing. Run the platform shader build script before building.");
-        using var memory = new MemoryStream();
-        stream.CopyTo(memory);
-        var code = memory.ToArray();
-        ReadOnlySpan<byte> entryPoint = "main\0"u8;
-        fixed (byte* codePointer = code)
-        fixed (byte* entryPointPointer = entryPoint)
+        if (quad.MaskOperation != RenderMaskOperation.Draw)
+            return 0; // stencil only: no colour writes
+        // Premultiplied source: normal s + d(1 - sa), add s + d, screen s + d(1 - s).
+        var destination = quad.Blend switch
         {
-            var shaderInfo = new SDL_GPUShaderCreateInfo
-            {
-                code_size = (nuint)code.Length,
-                code = codePointer,
-                entrypoint = entryPointPointer,
-                format = format,
-                stage = stage,
-                num_samplers = samplerCount,
-                num_uniform_buffers = uniformBufferCount,
-            };
-            var shader = SDL_CreateGPUShader(_device, &shaderInfo);
-            return shader is null ? throw sdlFailure($"create packaged shader '{resourceName}'") : shader;
-        }
+            RenderBlend.Add => bgfx.StateFlags.BlendOne,
+            RenderBlend.Screen => bgfx.StateFlags.BlendInvSrcColor,
+            _ => bgfx.StateFlags.BlendInvSrcAlpha,
+        };
+        return (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA)
+            | BgfxSupport.BlendSeparate(bgfx.StateFlags.BlendOne, destination, bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha);
     }
 
-    private static bool tiles(RenderQuad quad)
+    private static uint samplerFor(in RenderQuad quad)
+    {
+        var flags = quad.Sampling is RenderSampling.Nearest
+            ? bgfx.SamplerFlags.MinPoint | bgfx.SamplerFlags.MagPoint | bgfx.SamplerFlags.MipPoint
+            : bgfx.SamplerFlags.None;
+        // Authored shapes tile a texture by giving UVs beyond 0..1; everything else clamps so
+        // atlas edges do not bleed.
+        if (!tiles(quad))
+            flags |= bgfx.SamplerFlags.UClamp | bgfx.SamplerFlags.VClamp;
+        return (uint)flags;
+    }
+
+    private static bool tiles(in RenderQuad quad)
     {
         static bool outside(RenderVertex vertex) =>
             vertex.U is < -0.001f or > 1.001f || vertex.V is < -0.001f or > 1.001f;
         return outside(quad.TopLeft) || outside(quad.TopRight) || outside(quad.BottomRight) || outside(quad.BottomLeft);
     }
 
-    private SDL_GPUSampler* createSampler(SDL_GPUFilter filter, bool repeat = false)
-    {
-        var address = repeat
-            ? SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_REPEAT
-            : SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-        var samplerInfo = new SDL_GPUSamplerCreateInfo
-        {
-            min_filter = filter,
-            mag_filter = filter,
-            mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-            address_mode_u = address,
-            address_mode_v = address,
-            address_mode_w = address,
-        };
-        var sampler = SDL_CreateGPUSampler(_device, &samplerInfo);
-        return sampler is null ? throw sdlFailure($"create a {filter} sampler") : sampler;
-    }
+    private static QuadVertex vertex(RenderVertex corner, RenderColor multiply, RenderColor add) => new(
+        corner.X, corner.Y, corner.U, corner.V,
+        multiply.Red, multiply.Green, multiply.Blue, multiply.Alpha,
+        add.Red, add.Green, add.Blue, add.Alpha);
 
     private void validateFrame(RenderFrame frame)
     {
@@ -787,117 +305,45 @@ internal sealed unsafe class RenderDevice : IDisposable
         }
     }
 
-    private static Float4 convert(RenderVertex vertex) => new(vertex.X, vertex.Y, vertex.U, vertex.V);
-
-    private static void normalizeCaptureChannels(Span<byte> pixels, SDL_GPUTextureFormat format)
-    {
-        if (format is SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
-            or SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB)
-        {
-            return;
-        }
-        if (format is not (SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM
-            or SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB))
-        {
-            throw new PlatformNotSupportedException($"Screenshot capture does not support swapchain format {format}.");
-        }
-        for (var offset = 0; offset < pixels.Length; offset += 4)
-            (pixels[offset], pixels[offset + 2]) = (pixels[offset + 2], pixels[offset]);
-    }
-
     private static void validateVertex(RenderVertex vertex, string name)
     {
         if (!float.IsFinite(vertex.X) || !float.IsFinite(vertex.Y)
             || !float.IsFinite(vertex.U) || !float.IsFinite(vertex.V))
-        {
             throw new ArgumentException($"{name} must contain finite values.");
-        }
     }
 
     private static void validateColor(RenderColor color, string name)
     {
         if (!float.IsFinite(color.Red) || !float.IsFinite(color.Green)
             || !float.IsFinite(color.Blue) || !float.IsFinite(color.Alpha))
-        {
             throw new ArgumentException($"{name} must contain finite values.");
-        }
     }
 
-    private void releaseResources()
+    public void Dispose()
     {
+        if (_disposed)
+            return;
         foreach (var (id, texture) in _textures)
             if (!_borrowedTextures.Contains(id))
-                SDL_ReleaseGPUTexture(_device, (SDL_GPUTexture*)texture);
+                bgfx.destroy_texture(texture);
         _textures.Clear();
         _borrowedTextures.Clear();
         _prepasses.Clear();
-        if (_stencil is not null)
-        {
-            SDL_ReleaseGPUTexture(_device, _stencil);
-            _stencil = null;
-        }
-        if (_pushMaskPipeline is not null)
-        {
-            SDL_ReleaseGPUGraphicsPipeline(_device, _pushMaskPipeline);
-            _pushMaskPipeline = null;
-        }
-        if (_popMaskPipeline is not null)
-        {
-            SDL_ReleaseGPUGraphicsPipeline(_device, _popMaskPipeline);
-            _popMaskPipeline = null;
-        }
-        if (_addQuadPipeline is not null)
-        {
-            SDL_ReleaseGPUGraphicsPipeline(_device, _addQuadPipeline);
-            _addQuadPipeline = null;
-        }
-        if (_screenQuadPipeline is not null)
-        {
-            SDL_ReleaseGPUGraphicsPipeline(_device, _screenQuadPipeline);
-            _screenQuadPipeline = null;
-        }
-        if (_normalQuadPipeline is not null)
-        {
-            SDL_ReleaseGPUGraphicsPipeline(_device, _normalQuadPipeline);
-            _normalQuadPipeline = null;
-        }
-        if (_linearSampler is not null)
-        {
-            SDL_ReleaseGPUSampler(_device, _linearSampler);
-            _linearSampler = null;
-        }
-        foreach (var repeat in new[] { (nint)_linearRepeatSampler, (nint)_nearestRepeatSampler })
-            if (repeat != 0)
-                SDL_ReleaseGPUSampler(_device, (SDL_GPUSampler*)repeat);
-        _linearRepeatSampler = null;
-        _nearestRepeatSampler = null;
-        if (_nearestSampler is not null)
-        {
-            SDL_ReleaseGPUSampler(_device, _nearestSampler);
-            _nearestSampler = null;
-        }
+        bgfx.destroy_program(_quadProgram);
+        bgfx.destroy_program(_maskProgram);
+        bgfx.destroy_uniform(_textureSampler);
+        _disposed = true;
     }
 
-    private static InvalidOperationException sdlFailure(string operation) =>
-        new($"Failed to {operation}: {SDL_GetError()}");
-
     [StructLayout(LayoutKind.Sequential)]
-    private readonly record struct Float4(float X, float Y, float Z, float W);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct QuadUniforms
-    {
-        public Float4 TopLeft;
-        public Float4 TopRight;
-        public Float4 BottomRight;
-        public Float4 BottomLeft;
-        public Float4 MultiplyColor;
-        public Float4 AddColor;
-    }
+    private readonly record struct QuadVertex(
+        float X, float Y, float U, float V,
+        float MultiplyRed, float MultiplyGreen, float MultiplyBlue, float MultiplyAlpha,
+        float AddRed, float AddGreen, float AddBlue, float AddAlpha);
 }
 
-internal unsafe interface IGpuRenderPrepass
+internal interface IGpuRenderPrepass
 {
-    /// <summary>Records off-screen work; width/height are the swapchain size in pixels.</summary>
-    void Record(SDL_GPUCommandBuffer* commandBuffer, uint width, uint height);
+    /// <summary>Submits off-screen views; width/height are the window size in pixels.</summary>
+    void Record(uint width, uint height);
 }
