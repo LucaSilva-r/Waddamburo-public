@@ -17,8 +17,8 @@ internal enum GameplaySoundEvent
     BalloonPopped,
     KusudamaPopped,
     KusudamaFailed,
-    FiftyCombo,
-    HundredCombo,
+    /// <summary>Don-chan's combo voice (50, then every 100 to 5000).</summary>
+    Combo,
     FailBanner,
     ClearBanner,
     FullComboBanner,
@@ -35,7 +35,7 @@ internal enum GameplaySoundEvent
 /// </summary>
 internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? playHitSound = null,
     IDonPresentationController? don = null,
-    Action<int?, GameplaySoundEvent>? playEventSound = null)
+    Action<int?, GameplaySoundEvent, int>? playEventSound = null)
 {
     private static readonly TimeSpan GreatWindow = TimeSpan.FromMilliseconds(35);
     private Lane[] _lanes = [];
@@ -79,7 +79,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         var stage = waiwai is null ? null : new WaiwaiStage(
             layers.Where(entry => entry.Definition.HostId == GameplaySceneComposition.StaticHostId)
                 .ToDictionary(entry => role(entry.Definition), entry => entry.Layer.Player),
-            waiwai.Timeline(charts[0]), cue => playEventSound?.Invoke(null, cue));
+            waiwai.Timeline(charts[0]), cue => playEventSound?.Invoke(null, cue, 0));
         _stage = stage;
         _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
             layers.Where(entry => entry.Definition.HostId == (lane == 1
@@ -172,12 +172,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             IReadOnlyList<(SceneLayerDefinition Definition, LumenSceneLayer Layer, LumenMovieContent Content)> sceneLayers,
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
-            Action<int?, GameplaySoundEvent>? playEventSound, WaiwaiStage? stage = null)
+            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
             _playHitSound = playHitSound;
-            void sound(GameplaySoundEvent cue) => playEventSound?.Invoke(_soundLane, cue);
+            void sound(GameplaySoundEvent cue, int combo = 0) => playEventSound?.Invoke(_soundLane, cue, combo);
             var PlayerName = TaikoGuest.Name(side); // no title (traced)
             // Skin parts are addressed by role ("bg_nomal"), whatever variant the composition picked.
             var layers = sceneLayers.ToDictionary(entry => role(entry.Definition), entry => entry.Layer);
@@ -334,8 +334,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!judgement.StrongHitCompleted && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good)
                 {
                     if (judgement.HitObject.IsRare) sound(GameplaySoundEvent.RareHit);
-                    if (score.Combo == 50) sound(GameplaySoundEvent.FiftyCombo);
-                    else if (score.Combo == 100) sound(GameplaySoundEvent.HundredCombo);
+                    if (score.Combo == 50 || score.Combo % 100 == 0 && score.Combo <= 5000)
+                        sound(GameplaySoundEvent.Combo, score.Combo);
                 }
                 var segments = gauge.FilledSegments;
                 if (gauge.Apply(judgement) && gaugeMovie is not null)

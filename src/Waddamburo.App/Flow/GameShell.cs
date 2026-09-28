@@ -214,7 +214,7 @@ internal sealed class GameShell : IDisposable
         _performance = new PerformanceOverlay(Application, () => Audio);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
-            Don, (lane, sound) => Sounds?.Gameplay.Play(lane, sound));
+            Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo));
         _costumeIcons = new CostumeIconTextures(Application, dataRoot);
         _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
         Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),

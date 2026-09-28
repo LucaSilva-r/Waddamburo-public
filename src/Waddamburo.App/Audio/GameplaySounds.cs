@@ -14,10 +14,10 @@ internal sealed class GameplaySounds(SoundBank bank)
     public bool Waiwai { get; set; }
 
     /// <summary>
-    /// Per player (lane 0/1; one player is 0): Don-chan's gameplay voices are off, as on oni and ura
-    /// (the game's rule; a partner on hard or lower keeps theirs). The sound effects stay.
+    /// Per player (lane 0/1; one player is 0): Don-chan's roll and balloon shout is off, as on normal
+    /// and up (the game's rule; only easy keeps it). Every other voice plays on every course.
     /// </summary>
-    public bool[] VoicesOff { get; set; } = [];
+    public bool[] RollVoicesOff { get; set; } = [];
 
     /// <summary>False: two players' sounds are centred and shared (one of each at a time).</summary>
     public bool Panning { get; set; } = true;
@@ -46,19 +46,14 @@ internal sealed class GameplaySounds(SoundBank bank)
     /// cues follow the one-player cue as +1 / +2 (traced session9-2p: combo voice 1/2, banners
     /// 10/11 · 7/8 · 13/14, full-combo voice 154/155, balloon 2, roll voice 158, kusudama miss voice 160/161).
     /// </summary>
-    public void Play(int? lane, GameplaySoundEvent sound)
+    public void Play(int? lane, GameplaySoundEvent sound, int combo = 0)
     {
-        // ponytail: the hundred-combo voice follows the same rule untraced.
         int own(int cue) => lane is { } player && Panning ? cue + 1 + player : cue;
-        var quiet = VoicesOff.ElementAtOrDefault(lane ?? 0);
-        void voice(string name, int cue)
-        {
-            if (!quiet) bank.Play(name, cue);
-        }
         switch (sound)
         {
             case GameplaySoundEvent.LongNoteStarted:
-                voice("VO_GAME", own(156));
+                if (!RollVoicesOff.ElementAtOrDefault(lane ?? 0))
+                    bank.Play("VO_GAME", own(156));
                 break;
             case GameplaySoundEvent.BalloonPopped:
                 bank.Play("SE_GAME", own(0));
@@ -68,13 +63,11 @@ internal sealed class GameplaySounds(SoundBank bank)
                 break;
             case GameplaySoundEvent.KusudamaFailed:
                 bank.Play("SE_GAME", 5);
-                voice("VO_GAME", own(159));
+                bank.Play("VO_GAME", own(159));
                 break;
-            case GameplaySoundEvent.FiftyCombo:
-                voice("VO_GAME", own(0));
-                break;
-            case GameplaySoundEvent.HundredCombo:
-                voice("VO_GAME", own(3));
+            // VO_GAME triplets: 0 = 50 combo, 3k = 100k combo up to 5000 (cue 150).
+            case GameplaySoundEvent.Combo:
+                bank.Play("VO_GAME", own(combo == 50 ? 0 : combo / 100 * 3));
                 break;
             case GameplaySoundEvent.FailBanner:
                 bank.Play("SE_GAME", own(9));
@@ -84,7 +77,7 @@ internal sealed class GameplaySounds(SoundBank bank)
                 break;
             case GameplaySoundEvent.FullComboBanner:
                 bank.Play("SE_GAME", own(12));
-                voice("VO_GAME", own(153));
+                bank.Play("VO_GAME", own(153));
                 break;
             // Waiwai (traced session11-waiwai): SE_WAIENSO 0 as the song starts, 4 per together
             // section, 2 per solo section.
@@ -102,9 +95,7 @@ internal sealed class GameplaySounds(SoundBank bank)
                 bank.Play("SE_WAIENSO", 2);
                 break;
             case GameplaySoundEvent.SongFinished:
-                // The finished-song voice is shared: silent only when every player is on oni or ura.
-                if (VoicesOff.Length == 0 || !VoicesOff.All(static off => off))
-                    bank.Play("VO_RESULT", 0);
+                bank.Play("VO_RESULT", 0);
                 bank.Play("SE_GAME", 15);
                 break;
             default:

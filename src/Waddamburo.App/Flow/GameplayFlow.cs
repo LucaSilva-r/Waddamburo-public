@@ -97,7 +97,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _inputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai);
         if (Shell.Sounds is { } sounds)
-            sounds.Gameplay.VoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Oni)];
+            sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
         {
             _music = startAudio(request);
