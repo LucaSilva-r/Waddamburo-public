@@ -168,7 +168,7 @@ public sealed class TaikoJudgementSession
         if (result is null)
             return hitLongNote(action, time);
         if (!matches(action, hitObject.Kind))
-            result = TaikoHitResult.Miss;
+            return TaikoInputResult.Ignored;
 
         var judgedIndex = _nextNoteIndex++;
         _lastJudgedInputTime = time;

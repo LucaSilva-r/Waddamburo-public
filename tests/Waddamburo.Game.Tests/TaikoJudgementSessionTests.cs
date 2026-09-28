@@ -66,14 +66,31 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
-    public void WrongSurfaceConsumesAnInWindowNoteAsMiss()
+    public void WrongSurfaceIsIgnoredAndNoteCanStillBeHit()
     {
         var session = createSession(new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.Ka));
 
-        session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1));
+        Assert.Equal(TaikoInputResult.Ignored,
+            session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1)));
+        Assert.Null(Assert.Single(session.CreateSnapshot()).Result);
+        Assert.Equal(0, session.NextNoteIndex);
+        Assert.Equal(TaikoInputResult.Judged,
+            session.SubmitInput(TaikoInputAction.LeftKa, TimeSpan.FromSeconds(1)));
+
+        Assert.Equal(TaikoHitResult.Great, Assert.Single(session.CreateSnapshot()).Result);
+        Assert.True(session.IsComplete);
+    }
+
+    [Fact]
+    public void WrongSurfaceLeavesNoteToMissWhenItsWindowExpires()
+    {
+        var session = createSession(new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.Ka));
+
+        Assert.Equal(TaikoInputResult.Ignored,
+            session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1)));
+        Assert.Equal(1, session.AdvanceTo(TimeSpan.FromSeconds(1.096)));
 
         Assert.Equal(TaikoHitResult.Miss, Assert.Single(session.CreateSnapshot()).Result);
-        Assert.True(session.IsComplete);
     }
 
     [Fact]

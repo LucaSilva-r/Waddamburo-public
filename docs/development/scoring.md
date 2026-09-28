@@ -36,7 +36,8 @@ Offsets from the note's time, in ms (they are frame multiples at 59.94 Hz: 1.5, 
 | Easy with parent-and-child support (パパママサポート) | ±41.708 | ±125.125 | ±125.125 |
 
 A hit between the Good and Bad windows is a Bad. A note never hit is a Bad at the end of its
-window. Hitting the wrong colour shows no judgement but counts as a Bad in the results (W2).
+window. A wrong-colour input is ignored; the note can still be hit with the correct colour.
+If it is not hit before its window ends, it counts as a Bad in the results (W2).
 
 **Status: wrong.** The engine uses 35 / 80 / 95 ms for every course
 (`TaikoGameplayPresentation`), including Waiwai's two lanes. In particular, Hard needs the Oni
