@@ -108,13 +108,13 @@ public sealed class TaikoLumenPresentation
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
         foreach (var bar in _chart.BarLines)
             if (bar.IsVisible)
-                addAt(layers, _bar, bar.Time, time, scroll: false);
+                addAt(layers, _bar, bar.Time, time);
         // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
         // deeper depth), so an earlier roll body covers the notes that follow it.
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
         if (_longNotes is not null)
             notes.AddRange(_longNotes.NoteLayers(time,
-                (noteTime, controlTime) => position(noteTime, time, controlTime, scroll: true), _hitX, _hitY));
+                (noteTime, controlTime) => position(noteTime, time, controlTime), _hitX, _hitY));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
@@ -128,17 +128,17 @@ public sealed class TaikoLumenPresentation
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
-            addAt(hitNotes, template, note.StartTime, time, scroll: true);
+            addAt(hitNotes, template, note.StartTime, time);
             if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
-                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: TaikoNoteText.Offset);
+                addAt(texts, text, note.StartTime, time, yOffset: TaikoNoteText.Offset);
         }
         // Balloons and kusudamas carry their text until they reach the target (then their overlay takes over).
         foreach (var note in _chart.LongNotes)
             if (note.IsBalloon && time < note.StartTime
                 && _noteTexts?.GetValueOrDefault(TaikoNoteText.Balloon(note.Kind)) is { } text)
-                addAt(texts, text, note.StartTime, time, scroll: true, yOffset: TaikoNoteText.Offset);
+                addAt(texts, text, note.StartTime, time, yOffset: TaikoNoteText.Offset);
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
         layers.AddRange(texts);
         // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit
@@ -151,15 +151,15 @@ public sealed class TaikoLumenPresentation
     }
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
-        TimeSpan noteTime, TimeSpan time, bool scroll, float yOffset = 0)
+        TimeSpan noteTime, TimeSpan time, float yOffset = 0)
     {
-        var x = position(noteTime, time, noteTime, scroll);
+        var x = position(noteTime, time, noteTime);
         if (x < -100 || x > 1380)
             return;
         layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY + yOffset } });
     }
 
-    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, bool scroll)
+    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime)
     {
         var bpm = _chart.TimingPoints[0].BeatsPerMinute;
         foreach (var point in _chart.TimingPoints)
@@ -169,13 +169,12 @@ public sealed class TaikoLumenPresentation
             bpm = point.BeatsPerMinute;
         }
         var multiplier = 1d;
-        if (scroll)
-            foreach (var point in _chart.ScrollPoints)
-            {
-                if (point.Time > controlTime)
-                    break;
-                multiplier = point.Multiplier;
-            }
+        foreach (var point in _chart.ScrollPoints)
+        {
+            if (point.Time > controlTime)
+                break;
+            multiplier = point.Multiplier;
+        }
         // Product layout: four beats span the visible lane at scroll 1.
         return (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * bpm / 60
             * (1280 - _hitX) / 4 * multiplier, -100_000, 100_000);
