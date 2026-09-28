@@ -68,6 +68,15 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void ServerDefaultsToTaikOnlineAndEmptyIsOffline()
+    {
+        var defaults = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText);
+        Assert.Equal(new Uri("https://taikonline.com/"), defaults.Server);
+        Assert.False(defaults.ServerInsecure);
+        Assert.Null(ArcadeSettings.Parse("server =").Server);
+    }
+
+    [Fact]
     public void RendererIsAutoOrABackend()
     {
         Assert.Null(ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).Renderer);

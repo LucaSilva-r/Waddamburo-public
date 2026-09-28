@@ -130,8 +130,11 @@ public sealed record ArcadeSettings
 
     public int SongsPerSession { get; init; } = 2;
 
+    /// <summary>The official TaikOnline server, used unless config.cfg names another or none.</summary>
+    public static readonly Uri DefaultServer = new("https://taikonline.com/");
+
     /// <summary>The TaikOnline server scores go to (null: offline, scores stay local).</summary>
-    public Uri? Server { get; init; }
+    public Uri? Server { get; init; } = DefaultServer;
 
     /// <summary>Accept any server certificate (a local server's self-signed one). Exposes the login to the network.</summary>
     public bool ServerInsecure { get; init; }
@@ -151,8 +154,9 @@ public sealed record ArcadeSettings
         credits_2p = 2
         # Songs in one session.
         songs_per_session = 2
-        # TaikOnline server for scores (log in with --login). Leave out to play offline.
-        # server = https://taikonline.example
+        # TaikOnline server for scores (log in with --login). Left out = https://taikonline.com;
+        # an empty value (server =) plays offline, scores stay local.
+        # server = https://taikonline.com
         # server_insecure: true accepts a self-signed certificate (local servers only).
         # server_insecure = false
         # cabinet_token: a cabinet token from the server admin; players then log in with a 6-digit code.
@@ -219,7 +223,7 @@ public sealed record ArcadeSettings
                 "credits_1p" => settings with { CreditsOnePlayer = count(value, index, 1) },
                 "credits_2p" => settings with { CreditsTwoPlayers = count(value, index, 1) },
                 "songs_per_session" => settings with { SongsPerSession = count(value, index, 1) },
-                "server" => settings with { Server = server(value, index) },
+                "server" => settings with { Server = value.Length == 0 ? null : server(value, index) },
                 "server_insecure" => settings with { ServerInsecure = boolean(value, index) },
                 "cabinet_token" => settings with { CabinetToken = value.Length == 0 ? null : value },
                 "config_version" => settings with { Version = count(value, index, 0) },
