@@ -44,7 +44,7 @@ public sealed record ArcadeSettings
         """
         # Volumes in percent (0-100). These and the timing settings below can also be changed in
         # home mode's Escape menu > Settings, which saves them here.
-        master_volume = 100
+        master_volume = 50
         music_volume = 100
         drum_volume = 100
         effects_volume = 100
@@ -77,7 +77,7 @@ public sealed record ArcadeSettings
     /// <summary>Song titles and subtitles in English when a song has them; false: the Japanese originals.</summary>
     public bool EnglishTitles { get; init; } = true;
 
-    public int MasterVolume { get; init; } = 100;
+    public int MasterVolume { get; init; } = 50;
 
     public int MusicVolume { get; init; } = 100;
 

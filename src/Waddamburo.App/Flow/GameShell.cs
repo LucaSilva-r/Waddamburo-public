@@ -251,6 +251,10 @@ internal sealed class GameShell : IDisposable
     private int _fadeStartTick;
     private bool _escapeWasDown;
     private readonly HomeMenu _menu;
+    private AudioBus? _sampleBus;
+    private AudioPlaybackHandle? _sampleMusic;
+    private bool _menuMusicHeld;
+    private int _sampleNextTick;
     private long _qPressedAt;
     private float _qStartAlpha;
     private bool _qNeedsRelease;
@@ -385,7 +389,7 @@ internal sealed class GameShell : IDisposable
         {
             Arcade = settings;
             applyVolumes();
-        }, saveSettings);
+        }, saveSettings, don => Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
@@ -706,12 +710,17 @@ internal sealed class GameShell : IDisposable
             {
                 _pauseInterpolation = _lastInterpolation;
                 _menu.Open(gameplay: false);
+                holdMenuMusic(true);
                 return;
             }
         }
         if (_menu.IsOpen)
         {
-            switch (_menu.Input(keys, escape))
+            var action = _menu.Input(keys, escape);
+            volumeSample(_menu.PreviewBus);
+            if (!_menu.IsOpen)
+                holdMenuMusic(false);
+            switch (action)
             {
                 case HomeMenuAction.Resume:
                     resumeHome();
@@ -770,6 +779,15 @@ internal sealed class GameShell : IDisposable
         Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
     }
 
+    // The entry's and Song Select's music and preview hold while their menu is open.
+    private void holdMenuMusic(bool held)
+    {
+        if (Audio is null || _menuMusicHeld == held) return;
+        _menuMusicHeld = held;
+        Audio.Mixer.SetBusPaused(AudioBus.Bgm, held);
+        Audio.Mixer.SetBusPaused(AudioBus.Preview, held);
+    }
+
     private void resumeHome()
     {
         if (Active.Id == FlowScenes.Gameplay)
@@ -788,6 +806,69 @@ internal sealed class GameShell : IDisposable
         mixer.SetBusGain(AudioBus.MenuSound, level(Arcade.EffectsVolume));
         mixer.SetBusGain(AudioBus.Coin, level(Arcade.EffectsVolume));
         mixer.SetBusGain(AudioBus.Voice, level(Arcade.VoiceVolume));
+    }
+
+    // While a volume is edited its bus keeps sounding: a random song, a menu sound, or a Don-chan
+    // line, each repeated once it has finished.
+    private void volumeSample(AudioBus? bus)
+    {
+        if (bus != _sampleBus)
+        {
+            if (_sampleMusic is { } music)
+                Audio?.Mixer.Stop(music, TimeSpan.FromMilliseconds(20));
+            if (_sampleBus == AudioBus.Voice)
+                Sounds?.Bank.StopVoice();
+            _sampleMusic = null;
+            _sampleBus = bus;
+            _sampleNextTick = 0;
+        }
+        if (bus is not { } playing || Audio is null || Tick < _sampleNextTick)
+            return;
+        switch (playing)
+        {
+            case AudioBus.Bgm when _sampleMusic is not { } music || !Audio.Mixer.IsPlaying(music):
+                _sampleMusic = randomSong();
+                _sampleNextTick = Tick + 60;
+                break;
+            case AudioBus.MenuSound:
+                Sounds?.Bank.Play("SE_COM", 13, AudioBus.MenuSound, trace: false);
+                _sampleNextTick = Tick + 60;
+                break;
+            case AudioBus.Voice when Sounds?.Bank is { IsVoicePlaying: false } bank:
+                bank.Play("VO_SELECT", 1, trace: false);
+                _sampleNextTick = Tick + 30;
+                break;
+        }
+    }
+
+    // A random catalog song from its preview point, on the music bus.
+    // ponytail: opens the file on the tick (a short hitch); open it in the background if that shows.
+    private AudioPlaybackHandle? randomSong()
+    {
+        var songs = SongCatalog.Categories.SelectMany(static category => category.Songs)
+            .Where(static song => song.Descriptor.AudioAsset is not null).ToArray();
+        if (songs.Length == 0 || Audio is null) return null;
+        var song = songs[Random.Shared.Next(songs.Length)].Descriptor;
+        try
+        {
+            var input = Assets.OpenReadAsync(song.AudioAsset!).AsTask().GetAwaiter().GetResult();
+            BufferedAudioSource source;
+            try
+            {
+                source = new BufferedAudioSource(input, Audio.Mixer.Format, song.PreviewStart ?? TimeSpan.Zero);
+            }
+            catch
+            {
+                input.Dispose();
+                throw;
+            }
+            return Audio.Mixer.PlayStream(source, AudioBus.Bgm);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            Console.Error.WriteLine($"Volume sample '{song.Title.Primary}' unavailable: {exception.Message}");
+            return null;
+        }
     }
 
     private void saveSettings()

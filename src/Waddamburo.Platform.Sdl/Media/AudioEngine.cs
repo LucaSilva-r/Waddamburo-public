@@ -18,7 +18,6 @@ public sealed class AudioEngine : IDisposable
     private long _performanceBlocks;
     private long _performanceWorkTicks;
     private bool _disposed;
-    private volatile bool _paused;
 
     public AudioEngine(SdlAudioDevice device)
     {
@@ -58,27 +57,20 @@ public sealed class AudioEngine : IDisposable
                 TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
     }
 
-    /// <summary>Freezes the song stream and audio device together for a gameplay pause.</summary>
+    /// <summary>
+    /// Holds the song stream for a gameplay pause; other sounds (the pause menu's) keep playing. The
+    /// device frames that pass meanwhile are left out of the song's position.
+    /// </summary>
     public void SetPaused(AudioStreamTransport transport, bool paused)
     {
         ArgumentNullException.ThrowIfNull(transport);
         lock (_outputGate)
         {
-            if (_paused == paused) return;
             if (paused)
-            {
                 _ = transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
                     TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
-                transport.SetPaused(true);
-                _paused = true;
-                _device.Pause();
-            }
-            else
-            {
-                transport.SetPaused(false);
-                _paused = false;
-                _device.Resume();
-            }
+            transport.SetPaused(paused, _device.SubmittedFrames);
+            Mixer.SetStreamPaused(transport.Handle, paused);
         }
     }
 
@@ -113,11 +105,6 @@ public sealed class AudioEngine : IDisposable
         {
             while (!_cancellation.IsCancellationRequested)
             {
-                if (_paused)
-                {
-                    await Task.Delay(1, _cancellation.Token).ConfigureAwait(false);
-                    continue;
-                }
                 if (_device.QueuedFrames >= TargetQueuedFrames)
                 {
                     await Task.Delay(1, _cancellation.Token).ConfigureAwait(false);
@@ -125,7 +112,6 @@ public sealed class AudioEngine : IDisposable
                 }
                 lock (_outputGate)
                 {
-                    if (_paused) continue;
                     var monitoring = _performanceMonitoring;
                     var start = monitoring ? Stopwatch.GetTimestamp() : 0;
                     Mixer.Render(samples);

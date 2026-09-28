@@ -10,6 +10,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     private readonly AudioPlaybackClock _clock = new();
     private readonly System.Diagnostics.Stopwatch _elapsed = System.Diagnostics.Stopwatch.StartNew();
     private bool _paused;
+    private ulong _pausedAt;
 
     internal AudioStreamTransport(ScheduledAudioSource source, Func<ulong> submittedFrames)
     {
@@ -43,11 +44,24 @@ public sealed class AudioStreamTransport : IAudioStreamSource
         return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
     }
 
-    internal void SetPaused(bool paused)
+    // ponytail: the song frames already queued when pausing still play out (~10 ms at the default
+    // buffer) and are skipped on resume; hold them back in the device if that ever matters.
+    internal void SetPaused(bool paused, ulong submitted)
     {
+        if (_paused == paused) return;
         _paused = paused;
-        if (paused) _elapsed.Stop();
-        else _elapsed.Start();
+        if (paused)
+        {
+            _pausedAt = submitted;
+            _elapsed.Stop();
+        }
+        else
+        {
+            // Frames submitted while paused held no song: start the song that much later.
+            if (_firstOutputFrame >= 0)
+                _firstOutputFrame += checked((long)(submitted - _pausedAt));
+            _elapsed.Start();
+        }
     }
 
     public void Dispose() => _source.Dispose();

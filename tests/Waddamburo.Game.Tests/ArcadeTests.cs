@@ -55,7 +55,7 @@ public sealed class ArcadeTests
             ArcadeSettings.SaveMenuSettings(path, new ArcadeSettings { MusicVolume = 40, AudioOffsetMs = -25 });
             var text = File.ReadAllText(path);
             var saved = ArcadeSettings.Parse(text);
-            Assert.Equal((40, -25, 100, false), (saved.MusicVolume, saved.AudioOffsetMs, saved.MasterVolume, saved.FreePlay));
+            Assert.Equal((40, -25, 50, false), (saved.MusicVolume, saved.AudioOffsetMs, saved.MasterVolume, saved.FreePlay));
             Assert.StartsWith("# mine\nfree_play = false\nmusic_volume = 40\n", text, StringComparison.Ordinal);
             Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("master_volume = 101"));
         }

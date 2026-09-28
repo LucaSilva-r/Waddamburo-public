@@ -168,6 +168,14 @@ public sealed class AudioMixer
         }
     }
 
+    /// <summary>Whether anything audible is routed through the bus (a paused stream is not).</summary>
+    public bool IsBusPlaying(AudioBus bus)
+    {
+        lock (_gate)
+            return _voices.Exists(voice => voice.Bus == bus && !voice.Paused)
+                || _streamVoices.Exists(voice => voice.Bus == bus && !voice.Paused);
+    }
+
     public float MasterVolume
     {
         get
@@ -293,6 +301,27 @@ public sealed class AudioMixer
             _buses[(int)bus].SetVolume(volume);
     }
 
+    /// <summary>Holds a stream where it is (it is not read) while everything else keeps playing.</summary>
+    public void SetStreamPaused(AudioPlaybackHandle handle, bool paused)
+    {
+        lock (_gate)
+            if (_streamVoices.Find(candidate => candidate.Handle == handle) is { } stream)
+                stream.Paused = paused;
+    }
+
+    /// <summary>Holds (or resumes) every sound on the bus now; sounds started later play normally.</summary>
+    public void SetBusPaused(AudioBus bus, bool paused)
+    {
+        validateBus(bus);
+        lock (_gate)
+        {
+            foreach (var voice in _voices.Where(voice => voice.Bus == bus))
+                voice.Paused = paused;
+            foreach (var voice in _streamVoices.Where(voice => voice.Bus == bus))
+                voice.Paused = paused;
+        }
+    }
+
     /// <summary>The player's volume for a bus, applied on top of its (faded) volume.</summary>
     public void SetBusGain(AudioBus bus, float gain)
     {
@@ -337,6 +366,8 @@ public sealed class AudioMixer
             for (var voiceIndex = _voices.Count - 1; voiceIndex >= 0; voiceIndex--)
             {
                 var voice = _voices[voiceIndex];
+                if (voice.Paused)
+                    continue;
                 var bus = _buses[(int)voice.Bus];
                 for (var outputFrame = 0; outputFrame < frameCount; outputFrame++)
                 {
@@ -380,6 +411,8 @@ public sealed class AudioMixer
             for (var voiceIndex = _streamVoices.Count - 1; voiceIndex >= 0; voiceIndex--)
             {
                 var voice = _streamVoices[voiceIndex];
+                if (voice.Paused)
+                    continue;
                 voice.EnsureBuffer(interleavedDestination.Length);
                 var sampleCount = voice.Source.Read(voice.Buffer.AsSpan(0, interleavedDestination.Length));
                 if (sampleCount < 0 || sampleCount > interleavedDestination.Length || sampleCount % Format.Channels != 0)
@@ -493,6 +526,8 @@ public sealed class AudioMixer
 
         public float Volume { get; } = volume;
 
+        public bool Paused { get; set; }
+
         public bool Loop { get; } = loop;
 
         public int Position { get; set; }
@@ -523,6 +558,7 @@ public sealed class AudioMixer
         public float[] Buffer { get; private set; } = [];
         public long FadeFramesTotal { get; private set; }
         public long FadeFramesRemaining { get; set; }
+        public bool Paused { get; set; }
 
         public void EnsureBuffer(int sampleCount)
         {
