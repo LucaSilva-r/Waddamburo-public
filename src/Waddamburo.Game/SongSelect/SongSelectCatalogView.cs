@@ -99,6 +99,14 @@ public sealed class SongSelectCatalogView
     /// <summary>Index of the folder that switches to <paramref name="library"/>, or -1.</summary>
     public int LinkCategory(SongSourceKind library) => Categories.ToList().FindIndex(category => category.Link == library);
 
+    /// <summary>A song's folder and position (null: not listed).</summary>
+    public (int Category, int Song)? Find(CategoryKey category, SongKey song)
+    {
+        var index = Categories.ToList().FindIndex(entry => entry.Key == category);
+        var position = index < 0 ? -1 : Categories[index].Songs.ToList().FindIndex(entry => entry.Descriptor.Key == song);
+        return position < 0 ? null : (index, position);
+    }
+
     public static string LibraryName(SongSourceKind library) => library switch
     {
         SongSourceKind.Stock => "ORIGINAL",

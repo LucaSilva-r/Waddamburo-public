@@ -49,14 +49,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
             Shell.Show(FlowScenes.SongSelect);
             return;
         }
-        // A library folder: reload listing that library (home mode).
-        if (Shell.Hosts.SongSelect?.LibraryRequested is { } library)
-        {
-            Shell.Hosts.Library = library;
-            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
-            Shell.Show(FlowScenes.SongSelect);
+        if (switchLibrary())
             return;
-        }
         if (Shell.PlayRequests.Pending is not { } request)
             return;
         var rainbow = gameplay.Rainbow;
@@ -82,6 +76,38 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
         }
         if (Shell.Overlay.Player is { } cover && rainbow.FinishCoverWhenStopped(cover.IsPlaying, Shell.Tick))
             startSong(request);
+    }
+
+    // A library folder (home mode): the plain rainbow covers the screen, Song Select reloads listing
+    // that library under it (its music plays on), then the rainbow opens.
+    private SongSourceKind? _switching;
+    private bool _switched;
+
+    private bool switchLibrary()
+    {
+        if (_switching is null)
+        {
+            if (Shell.Hosts.SongSelect?.LibraryRequested is not { } library)
+                return false;
+            _switching = library;
+            _switched = false;
+            Shell.Overlay.Show(FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
+            return true;
+        }
+        if (Shell.Overlay.Player is { IsPlaying: true })
+            return true;
+        if (!_switched)
+        {
+            Shell.Hosts.Library = _switching.Value;
+            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
+            Shell.Show(FlowScenes.SongSelect);
+            Shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
+            _switched = true;
+            return true;
+        }
+        Shell.Overlay.Clear();
+        _switching = null;
+        return true;
     }
 
     private (string Category, SongSelectSong Song) find(SongKey song) => Shell.SongCatalog.Categories

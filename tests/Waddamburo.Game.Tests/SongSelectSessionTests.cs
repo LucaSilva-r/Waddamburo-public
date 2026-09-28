@@ -283,6 +283,8 @@ public sealed class SongSelectSessionTests
         Assert.True(link.Presentation.HasFlag(SongCategoryPresentation.FolderEnd));
         Assert.Equal(2, view.LinkCategory(SongSourceKind.Nijiiro));
         Assert.Equal(-1, view.ModeSwitchCategory);
+        Assert.Equal((0, 0), view.Find(view.Categories[0].Key, view.Categories[0].Songs[0].Descriptor.Key));
+        Assert.Null(view.Find(link.Key, view.Categories[0].Songs[0].Descriptor.Key));
     }
 
     private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider

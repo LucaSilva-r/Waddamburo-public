@@ -103,6 +103,7 @@ internal sealed class LayerHostFactory(
         set => (_libraryLeft, _library) = (Library, value);
     }
     private SongSourceKind? _library, _libraryLeft;
+    private (CategoryKey Category, SongKey Song)? _lastPick;
 
     // Home mode keeps each source in its own library (arcade lists the stock songs as the game does);
     // one source needs no switching.
@@ -250,8 +251,14 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library));
-        // Back from a library: the cursor starts on the folder that leads to it.
-        var start = _libraryLeft is { } left ? Math.Max(view.LinkCategory(left), 0) : 0;
+        // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
+        // song played, when this view lists it.
+        _lastPick = SongSelect?.Picked ?? _lastPick;
+        var (start, startSong) = (0, -1);
+        if (_libraryLeft is { } left)
+            start = Math.Max(view.LinkCategory(left), 0);
+        else if (_lastPick is { } pick && view.Find(pick.Category, pick.Song) is { } found)
+            (start, startSong) = found;
         _libraryLeft = null;
         var binding = SongSelect = new SongSelectHostBinding(
             new SongSelectSession(
@@ -267,6 +274,7 @@ internal sealed class LayerHostFactory(
             crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)])
         {
             StartCategory = start,
+            StartSong = startSong,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,

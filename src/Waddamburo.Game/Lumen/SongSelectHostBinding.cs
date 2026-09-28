@@ -192,6 +192,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The folder the cursor starts on.</summary>
     public int StartCategory { get; init; }
 
+    /// <summary>The song the cursor starts on inside <see cref="StartCategory"/> (-1: on the folder).</summary>
+    public int StartSong { get; init; } = -1;
+
+    /// <summary>The folder and song of the last course decided (to come back to it).</summary>
+    public (CategoryKey Category, SongKey Song)? Picked { get; private set; }
+
     public void Attach(LumenPlayer player)
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
@@ -245,7 +251,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyStopBGM", notifyPreview);
             lumen.RegisterMethod("GetScore", static _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("GetRankingScore", publishRanking);
-            lumen.RegisterMethod("NotifyOpenFolder", _ => openFolder());
+            lumen.RegisterMethod("NotifyOpenFolder", openFolder);
             lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
@@ -287,7 +293,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        _session.StopMusic();
+        // A library switch reloads Song Select under the rainbow: its music plays on.
+        if (LibraryRequested is null)
+            _session.StopMusic();
         _sounds?.StopVoice();
     }
 
@@ -321,7 +329,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber((int)category.Presentation),
                 LumenHostValue.FromNumber(featureSlot));
         }
-        invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(-1));
+        // Callback_SetSelectedMusic(genre, music) resets the movie's selection onto that song's board.
+        invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(StartSong));
         // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
         // drum alone, both joined for two players. hasData (a profile) lets the boards show crowns.
         foreach (var player in new[] { 0, 1 })
@@ -397,6 +406,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (!_session.Catalog.TryGetSong(category, songIndex, out _))
             return LumenHostValue.Undefined;
         var surface = _session.GetBoardTexture(category, songIndex, kind);
+        if (slot is 13 or 14)
+            _centre = (category, songIndex);
         requirePlayer().SetNativeFill(slot switch
         {
             13 => "song_name_center",
@@ -451,17 +462,20 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return LumenHostValue.Undefined;
     }
 
+    private (int Category, int Song)? _centre; // the song the centre board's titles show
+
     private LumenHostValue clearSelectionSurfaces()
     {
+        _centre = null;
         requirePlayer().RemoveNativeFill("song_name_center");
         requirePlayer().RemoveNativeFill("song_name_detail");
         return LumenHostValue.Undefined;
     }
 
-    private LumenHostValue openFolder()
-    {
-        return clearSelectionSurfaces();
-    }
+    // Starting on a song (back from a play), the movie asks for the centre board's titles and then
+    // notifies the folder open for that same song: keep them.
+    private LumenHostValue openFolder(LumenHostCall call) =>
+        _centre == (integer(call, 0), integer(call, 1)) ? LumenHostValue.Undefined : clearSelectionSurfaces();
 
     private LumenHostValue clearFolderSurfaces()
     {
@@ -477,7 +491,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
-        _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse));
+        var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse));
+        Picked = (_session.Catalog.Categories[request.Category].Key, selection.Song);
         return LumenHostValue.Undefined;
     }
 

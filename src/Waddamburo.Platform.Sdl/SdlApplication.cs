@@ -91,7 +91,7 @@ public sealed unsafe class SdlApplication : IDisposable
     }
 
     /// <summary>The folder picked since the last call (none when the picker was cancelled).</summary>
-    public bool TryTakePickedFolder([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? folder) =>
+    public static bool TryTakePickedFolder([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? folder) =>
         PickedFolders.TryDequeue(out folder);
 
     // Called by SDL, possibly on another thread; an empty list = cancelled, null = failed.

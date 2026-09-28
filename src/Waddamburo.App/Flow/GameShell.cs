@@ -744,7 +744,7 @@ internal sealed class GameShell : IDisposable
         if (_menu.IsOpen)
         {
             // A folder picked in the system dialog opened from the settings.
-            if (_pickingFolder is { } picking && Application.TryTakePickedFolder(out var folder))
+            if (_pickingFolder is { } picking && SdlApplication.TryTakePickedFolder(out var folder))
             {
                 Arcade = picking == HomeMenuAction.PickTjaFolder ? Arcade with { TjaFolder = folder }
                     : Arcade with { NijiiroFolder = folder };
