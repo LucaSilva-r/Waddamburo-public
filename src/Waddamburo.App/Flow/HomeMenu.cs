@@ -43,6 +43,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new("Audio Buffer", static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
             static value => $"{value} (restart)", 2048),
+        new("Exclusive Audio", static s => s.AudioExclusive ? 1 : 0, static (s, v) => s with { AudioExclusive = v != 0 },
+            static (value, _) => 1 - value, 0, static value => value != 0 ? "On (restart)" : "Off (restart)", 1),
     ];
 
     private string[] _choices = [];

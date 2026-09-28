@@ -225,7 +225,7 @@ internal sealed class GameShell : IDisposable
     public SortedSet<int> JoinedSides { get; } = [];
 
     private readonly GlobalSongCatalog _globalCatalog;
-    private readonly SdlAudioDevice? _audioDevice;
+    private readonly IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
     private readonly CostumeIconTextures _costumeIcons;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
@@ -382,7 +382,7 @@ internal sealed class GameShell : IDisposable
             Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
         }
         var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
-        _audioDevice = needsAudio ? new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames) : null;
+        _audioDevice = needsAudio ? openAudio() : null;
         if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
             Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
                 + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
@@ -514,6 +514,25 @@ internal sealed class GameShell : IDisposable
             return null;
         var path = Path.Combine(Path.GetFullPath(Options.SoundRoot), "bgm", "nub", fileName);
         return File.Exists(path) ? path : null;
+    }
+
+    private IAudioOutput openAudio()
+    {
+        if (Arcade.AudioExclusive && OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var exclusive = new WasapiExclusiveOutput();
+                Console.WriteLine($"Audio: WASAPI exclusive, {exclusive.HardwareBufferFrames} frames "
+                    + $"({1000.0 * exclusive.HardwareBufferFrames / exclusive.Format.SampleRate:0.##} ms), {exclusive.Driver}.");
+                return exclusive;
+            }
+            catch (InvalidOperationException exception)
+            {
+                Console.Error.WriteLine($"Audio: exclusive output unavailable, using shared. {exception.Message}");
+            }
+        }
+        return new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames);
     }
 
     private FlowScene flowOf(SceneId scene) => _scenes[scene];

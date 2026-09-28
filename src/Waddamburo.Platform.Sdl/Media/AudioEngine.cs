@@ -4,33 +4,46 @@ namespace Waddamburo.Platform.Sdl.Media;
 
 public readonly record struct AudioPerformanceCounters(long Blocks, long WorkTicks);
 
-/// <summary>Feeds mixed PCM to one SDL device from a bounded background producer.</summary>
+/// <summary>
+/// Feeds mixed PCM to one device: an SDL device from a bounded background producer, or a WASAPI
+/// exclusive device that pulls each buffer from the mixer on its own thread.
+/// </summary>
 public sealed class AudioEngine : IDisposable
 {
     private const int RenderFrames = 128;
     private const int TargetQueuedFrames = 512;
 
-    private readonly SdlAudioDevice _device;
+    private readonly IAudioOutput _device;
     private readonly CancellationTokenSource _cancellation = new();
-    private readonly Task _producer;
+    private readonly Task? _producer;
     private readonly object _outputGate = new();
     private volatile bool _performanceMonitoring;
     private long _performanceBlocks;
     private long _performanceWorkTicks;
     private bool _disposed;
 
-    public AudioEngine(SdlAudioDevice device)
+    public AudioEngine(IAudioOutput device)
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
         Mixer = new AudioMixer(device.Format);
-        _device.Resume();
-        _producer = Task.Run(produce);
+        if (device is SdlAudioDevice sdl)
+        {
+            sdl.Resume();
+            _producer = Task.Run(() => produce(sdl));
+        }
+        else if (OperatingSystem.IsWindows() && device is WasapiExclusiveOutput exclusive)
+            exclusive.Start(render);
+        else
+            throw new ArgumentException($"Unsupported audio output {device.GetType().Name}.", nameof(device));
     }
 
     public AudioMixer Mixer { get; }
 
-    public Exception? Failure { get; private set; }
+    private Exception? _failure;
+
+    public Exception? Failure => _failure
+        ?? (OperatingSystem.IsWindows() && _device is WasapiExclusiveOutput exclusive ? exclusive.Failure : null);
 
     public void SetPerformanceMonitoring(bool enabled) => _performanceMonitoring = enabled;
 
@@ -98,29 +111,37 @@ public sealed class AudioEngine : IDisposable
         return Mixer.Play(clip, bus, volume, loop: true);
     }
 
-    private async Task produce()
+    private void render(Span<float> samples)
     {
-        var samples = new float[RenderFrames * _device.Format.Channels];
+        lock (_outputGate)
+        {
+            var monitoring = _performanceMonitoring;
+            var start = monitoring ? Stopwatch.GetTimestamp() : 0;
+            Mixer.Render(samples);
+            if (monitoring)
+            {
+                Interlocked.Add(ref _performanceWorkTicks, Stopwatch.GetTimestamp() - start);
+                Interlocked.Increment(ref _performanceBlocks);
+            }
+        }
+    }
+
+    private async Task produce(SdlAudioDevice device)
+    {
+        var samples = new float[RenderFrames * device.Format.Channels];
         try
         {
             while (!_cancellation.IsCancellationRequested)
             {
-                if (_device.QueuedFrames >= TargetQueuedFrames)
+                if (device.QueuedFrames >= TargetQueuedFrames)
                 {
                     await Task.Delay(1, _cancellation.Token).ConfigureAwait(false);
                     continue;
                 }
                 lock (_outputGate)
                 {
-                    var monitoring = _performanceMonitoring;
-                    var start = monitoring ? Stopwatch.GetTimestamp() : 0;
-                    Mixer.Render(samples);
-                    _device.Queue(samples);
-                    if (monitoring)
-                    {
-                        Interlocked.Add(ref _performanceWorkTicks, Stopwatch.GetTimestamp() - start);
-                        Interlocked.Increment(ref _performanceBlocks);
-                    }
+                    render(samples);
+                    device.Queue(samples);
                 }
             }
         }
@@ -129,7 +150,7 @@ public sealed class AudioEngine : IDisposable
         }
         catch (Exception exception)
         {
-            Failure = exception;
+            _failure = exception;
         }
     }
 
@@ -141,13 +162,16 @@ public sealed class AudioEngine : IDisposable
         _cancellation.Cancel();
         try
         {
-            _producer.GetAwaiter().GetResult();
+            _producer?.GetAwaiter().GetResult();
         }
         finally
         {
             Mixer.StopAll();
-            _device.Pause();
-            _device.Clear();
+            if (_device is SdlAudioDevice sdl)
+            {
+                sdl.Pause();
+                sdl.Clear();
+            }
             _cancellation.Dispose();
         }
     }

@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 7;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -73,6 +73,13 @@ public sealed record ArcadeSettings
         renderer = auto
 
         """,
+        """
+        # audio_exclusive (Windows): take the sound device for the game alone (WASAPI exclusive mode)
+        # for the lowest delay; other programs are silent while the game runs. Recalibrate the offsets
+        # after changing it. Falls back to shared output when the device refuses.
+        audio_exclusive = false
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -110,6 +117,9 @@ public sealed record ArcadeSettings
 
     /// <summary>The audio device period requested at start (SDL may choose another).</summary>
     public int AudioBufferFrames { get; init; } = 256;
+
+    /// <summary>Windows: WASAPI exclusive output at the device's minimum period, instead of SDL's shared output.</summary>
+    public bool AudioExclusive { get; init; }
 
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
@@ -244,6 +254,7 @@ public sealed record ArcadeSettings
                 "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
                 "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
+                "audio_exclusive" => settings with { AudioExclusive = boolean(value, index) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
@@ -293,6 +304,7 @@ public sealed record ArcadeSettings
             ["audio_offset_ms"] = settings.AudioOffsetMs,
             ["input_offset_ms"] = settings.InputOffsetMs,
             ["audio_buffer_frames"] = settings.AudioBufferFrames,
+            ["audio_exclusive"] = settings.AudioExclusive ? "true" : "false",
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
         };

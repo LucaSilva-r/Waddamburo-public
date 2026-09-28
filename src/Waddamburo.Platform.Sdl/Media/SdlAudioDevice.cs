@@ -10,7 +10,7 @@ public readonly record struct SdlAudioFormat(int SampleRate, int Channels);
 /// Owns one SDL logical playback device and its application-side float stream.
 /// Producers may queue audio from any thread; the owner must outlive all producers.
 /// </summary>
-public sealed unsafe class SdlAudioDevice : IDisposable
+public sealed unsafe class SdlAudioDevice : IAudioOutput
 {
     public const int DefaultSampleRate = 48000;
     public const int DefaultChannels = 2;
