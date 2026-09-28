@@ -3,9 +3,16 @@ using Waddamburo.Catalog;
 
 namespace Waddamburo.Game.Gameplay;
 
-/// <summary>Integrates chart tempo into presentation frames (30 frames per quarter-note beat).</summary>
+/// <summary>
+/// Integrates chart tempo into presentation frames. Traced in the original game (session19-21): the
+/// beat-synced movies' frame step is 5340 / BPM against 60 per 60 Hz tick (44.5 at 120 BPM, 50.38 at
+/// 106, 25.19 at 212), i.e. BPM / 89 frames per tick = 3600 / 89 (about 40.4) frames per beat.
+/// </summary>
 public sealed class TaikoAnimationClock
 {
+    /// <summary>Frames per second per BPM: (BPM / 89) frames per tick at 60 ticks a second.</summary>
+    private const double FramesPerSecondPerBpm = 60d / 89;
+
     private readonly ImmutableArray<ChartTimingPoint> _points;
     private readonly double[] _frames;
     private double? _previous;
@@ -18,7 +25,7 @@ public sealed class TaikoAnimationClock
         _frames = new double[points.Length];
         for (var i = 1; i < points.Length; i++)
             _frames[i] = _frames[i - 1] + (points[i].Time - points[i - 1].Time).TotalSeconds
-                * points[i - 1].BeatsPerMinute / 2;
+                * points[i - 1].BeatsPerMinute * FramesPerSecondPerBpm;
     }
 
     public double Position(TimeSpan time)
@@ -31,7 +38,7 @@ public sealed class TaikoAnimationClock
             if (_points[middle].Time <= time) low = middle;
             else high = middle;
         }
-        return _frames[low] + (time - _points[low].Time).TotalSeconds * _points[low].BeatsPerMinute / 2;
+        return _frames[low] + (time - _points[low].Time).TotalSeconds * _points[low].BeatsPerMinute * FramesPerSecondPerBpm;
     }
 
     public int FramesToAdvance { get; private set; }

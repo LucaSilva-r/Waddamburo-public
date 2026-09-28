@@ -214,7 +214,7 @@ broader parity validation.
 
 Gameplay theme movies and normal Don motion now advance from integrated chart
 tempo, including tempo changes inside a measure. The presentation policy uses
-30 animation frames per quarter-note beat (native 60 Hz at 120 BPM), retaining
+3600/89 (about 40.4) animation frames per quarter-note beat, as traced in the original game's frame step (5340/BPM against 60 per tick: native 60 Hz at 89 BPM), for the dancers, chibi runners, fever crowd and notes, retaining
 fractional frames across ticks and tempo boundaries. Repeated or slightly backward
 audio position samples do not replay elapsed animation time. Hit feedback, note
 flights, counters, balloon overlays, and screen transitions retain real-time ticks.

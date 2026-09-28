@@ -269,10 +269,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _character = don is null ? null : new(don, layers["don3d"], lane);
             if (stage is not null) stage.StateChanged += state => _character?.SetGauge(state);
             _animationClock = new(chart.TimingPoints);
-            // ponytail: which skin parts follow the beat is carried over from the first skin
-            // (backgrounds, dancers, backdrop); runners, roll characters and fever run in real time.
-            _beatLayers = [.. layers.Where(pair => pair.Key is "bg_nomal" or "dance" or "dodai"
-                or "bg_fever" or "donbg" or "donbg_w_00").Select(pair => pair.Value)];
+            // Traced (session21): the game steps the dancers, the chibi runners, the fever crowd and
+            // the notes by the tempo; the backgrounds (normal and Go-Go), stage, Don-chan's backdrop,
+            // rolls' characters and the lane run in real time.
+            _beatLayers = [.. layers.Where(pair => pair.Key is "dance" or "fever" or "chibi"
+                || NoteMovieNames.Contains(pair.Key)).Select(pair => pair.Value)];
             // Shared movies are advanced by the first lane only.
             _fixedLayers = [.. layers.Values.Except(_beatLayers)];
             var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg") ?? skin("donbg_w_00"),
