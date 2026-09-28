@@ -222,6 +222,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if (call.Arguments.Length != 1 || call.Arguments[0].Kind != LumenHostValueKind.Number)
                     throw new ArgumentException("StartTimer requires a duration in seconds.", nameof(call));
                 _timer.Start(call.Arguments[0].AsNumber());
+                // Countdown off: the timer holds its full time (the movie reads GetTimeSec, e.g. ExtendTimer).
+                if (!(_parts?.Countdown ?? true))
+                    _timer.Stop();
                 _countdownCues.Reset();
                 _parts?.StartCountdown(call.Arguments[0].AsNumber());
                 return LumenHostValue.Undefined;
