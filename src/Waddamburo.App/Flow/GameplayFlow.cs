@@ -31,6 +31,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private int _startTick;
     private int _shutterStartTick = -1;
     private bool _shutterClosing;
+    private bool _paused;
+    private bool _directStart;
+    private PlayRequest? _lastRequest;
+    private int _pausedAtTick;
+    private int _pausedTicks;
+    private float _pauseInterpolation;
 
     /// <summary>The song select -> gameplay rainbow, begun by Song Select and finished here.</summary>
     public RainbowTransitionSequence Rainbow { get; private set; } = new();
@@ -40,11 +46,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public void ResetRainbow() => Rainbow = new RainbowTransitionSequence();
 
-    private bool revealed => Rainbow.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete;
+    private bool revealed => _directStart || Rainbow.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete;
 
     /// <summary>The next song's charts (one per player) and layout, for <see cref="Enter"/>.</summary>
     public void Prepare(PlayableChart[] charts, SongSelectSong song, int side, WaiwaiComposition? waiwai)
     {
+        _directStart = false;
         _charts = charts;
         _song = song;
         _side = side;
@@ -56,6 +63,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public override void Enter(SceneId scene)
     {
         var request = Shell.PlayRequests.ActivatePending();
+        _lastRequest = request;
+        _paused = false;
+        _pausedTicks = 0;
+        _shutterStartTick = -1;
+        _shutterClosing = false;
         var active = Shell.Active;
         // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
         var songInfoIndex = active.Layers.ToList().FindIndex(layer =>
@@ -71,6 +83,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _startTick = Shell.Tick;
         _clock.Reset();
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai);
+        if (_directStart)
+        {
+            _music = startAudio(request);
+            _clock.Restart();
+        }
         Console.WriteLine(
             $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
             + $"{_charts.Sum(static chart => chart.NoteCount)} notes at tick {Shell.Tick}.");
@@ -80,22 +97,73 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private TimeSpan chartTime() => _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
         : _music is not null ? Shell.Audio!.GetPosition(_music)
-        : Shell.Headless ? TimeSpan.FromSeconds((Shell.Tick - _startTick) / 60d)
+        : Shell.Headless ? TimeSpan.FromSeconds((Shell.Tick - _startTick - _pausedTicks
+            - (_paused ? Shell.Tick - _pausedAtTick : 0)) / 60d)
         : _clock.Elapsed) ?? TimeSpan.Zero;
+
+    public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
+    public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
+
+    public void SetPaused(bool paused, float interpolation = 0)
+    {
+        if (_paused == paused) return;
+        if (paused)
+        {
+            _pauseInterpolation = interpolation;
+            _pausedAtTick = Shell.Tick;
+            _clock.Stop();
+        }
+        else
+        {
+            _pausedTicks += Shell.Tick - _pausedAtTick;
+            if (revealed) _clock.Start();
+        }
+        if (_music is { } music && Shell.Audio is { } audio)
+            audio.SetPaused(music, paused);
+        _paused = paused;
+    }
+
+    /// <summary>Abandons the current round and loads the same match again without saving it.</summary>
+    public bool Restart()
+    {
+        if (_lastRequest is not { } request || _charts.Length == 0) return false;
+        if (_paused) SetPaused(false);
+        if (_music is { } music)
+            Shell.Audio?.Mixer.Stop(music.Handle);
+        _music = null;
+        _clock.Reset();
+        Shell.Gameplay.Stop();
+        Shell.PlayRequests.ClearActive();
+        if (!Shell.PlayRequests.TryRequestPlay(request))
+            throw new InvalidOperationException("The restarted play request could not be queued.");
+        Shell.Coordinator.Flow.CancelPendingTransition();
+        Shell.CancelFade();
+        ResetRainbow();
+        _directStart = true;
+        Shell.Show(FlowScenes.Gameplay);
+        return true;
+    }
+
+    public void Abandon()
+    {
+        if (_paused) SetPaused(false);
+        end(finished: false);
+    }
 
     public override void Advance(LumenInputSnapshot input)
     {
+        if (_paused) return;
         var animationFrames = Shell.Gameplay.AdvanceAnimations(chartTime(), input);
         Shell.DonRenderer?.Advance(animationFrames);
     }
 
     public override LumenRenderSnapshot CreateSnapshot(float interpolation) =>
-        Shell.Gameplay.CreateSnapshot(chartTime(), interpolation);
+        Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation : interpolation);
 
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
-        if (!Shell.Headless && revealed)
+        if (!Shell.Headless && revealed && !_paused)
         {
             var time = chartTime();
             Shell.Gameplay.Advance(_autoplay?.Apply(keys, time) ?? keys, time);
@@ -104,6 +172,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public override void Tick(FlowInput input)
     {
+        if (_paused) return;
         var overlay = Shell.Overlay;
         if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick))
         {
@@ -132,7 +201,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         var chartFinished = _charts.Length != 0
             && elapsed >= _charts.Max(static chart => chart.Duration) + TimeSpan.FromSeconds(1);
         var musicFinished = _music is not { } music || Shell.Audio is null || !Shell.Audio.Mixer.IsPlaying(music.Handle);
-        if (!input.Escape && _shutterStartTick < 0 && chartFinished && musicFinished && !Shell.Gameplay.OverlayActive)
+        if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0 && chartFinished && musicFinished && !Shell.Gameplay.OverlayActive)
         {
             overlay.Clear();
             // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
@@ -148,8 +217,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _shutterClosing = shutter.TryInvokeCallback("Close",
                 [LumenHostValue.FromNumber(Shell.Hosts.TwoPlayers ? 2 : Shell.Hosts.PlayerSide)]);
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
-        if (input.Escape || _shutterStartTick >= 0 && Shell.Tick - _shutterStartTick >= 70)
-            end(finished: !input.Escape);
+        if (input.Escape && !Shell.Arcade.Home || _shutterStartTick >= 0 && Shell.Tick - _shutterStartTick >= 70)
+            end(finished: !input.Escape || Shell.Arcade.Home);
     }
 
     // A finished song shows its results (the shutter stays over them until their first frames are
@@ -161,6 +230,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
         _music = null;
         _clock.Reset();
+        _directStart = false;
         if (!finished)
             Shell.Overlay.Clear();
         ResetRainbow();
@@ -173,7 +243,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (finished)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
         Shell.Catalog.Replace(Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
-        _charts = [];
+        if (!finished) _charts = [];
         _autoplay = null;
         Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");

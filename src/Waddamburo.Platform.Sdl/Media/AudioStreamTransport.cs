@@ -9,6 +9,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     private long _lastPosition;
     private readonly AudioPlaybackClock _clock = new();
     private readonly System.Diagnostics.Stopwatch _elapsed = System.Diagnostics.Stopwatch.StartNew();
+    private bool _paused;
 
     internal AudioStreamTransport(ScheduledAudioSource source, Func<ulong> submittedFrames)
     {
@@ -30,6 +31,8 @@ public sealed class AudioStreamTransport : IAudioStreamSource
 
     internal TimeSpan Position(ulong submitted, ulong queued, TimeSpan hardwareLatency)
     {
+        if (_paused)
+            return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
         if (_firstOutputFrame < 0)
             return TimeSpan.Zero;
         var consumed = checked((long)submitted) - checked((long)queued) - _firstOutputFrame;
@@ -38,6 +41,13 @@ public sealed class AudioStreamTransport : IAudioStreamSource
         var played = checked((long)Math.Floor(position.TotalSeconds * Format.SampleRate));
         _lastPosition = Math.Max(_lastPosition, Math.Clamp(played, 0, _source.ProducedFrames));
         return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
+    }
+
+    internal void SetPaused(bool paused)
+    {
+        _paused = paused;
+        if (paused) _elapsed.Stop();
+        else _elapsed.Start();
     }
 
     public void Dispose() => _source.Dispose();

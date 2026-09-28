@@ -230,6 +230,7 @@ internal sealed class GameShell : IDisposable
     private readonly CostumeIconTextures _costumeIcons;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
+    private readonly HomePauseOverlay? _homeOverlay;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly Dictionary<SceneId, FlowScene> _scenes;
@@ -248,6 +249,17 @@ internal sealed class GameShell : IDisposable
     private SceneId? _fadeTarget;
     private int _fadeStartTick;
     private bool _escapeWasDown;
+    private bool _homePaused;
+    private int _pauseSelection;
+    private long _qPressedAt;
+    private float _qStartAlpha;
+    private bool _qNeedsRelease;
+    private long _restartCancelAt;
+    private float _restartCancelAlpha;
+    private long _menuRestartAt;
+    private long _restartRevealAt;
+    private float _lastInterpolation;
+    private float _pauseInterpolation;
     // Live presses reach only the per-frame callback; ticks see held keys. Latch drum hits there for
     // the attract loop (scripted --press pulses arrive in the tick instead).
     private int? _drumSideLatched;
@@ -375,6 +387,7 @@ internal sealed class GameShell : IDisposable
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles);
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
+        _homeOverlay = Arcade.Home ? new HomePauseOverlay(Application, options.FontPath, assetRoot) : null;
         _performance = new PerformanceOverlay(Application, () => Audio);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
@@ -633,6 +646,7 @@ internal sealed class GameShell : IDisposable
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
+        var heldKeys = keys;
         keys = scene.MapKeys(drumPulses(keys));
         // Home: Tab in the entry goes back to the player setup with the current players.
         if (_setup is { IsOpen: false } reopen && Active.Id == FlowScenes.Entry && keys.IsDown(SdlKeyboardKey.Tab))
@@ -664,6 +678,49 @@ internal sealed class GameShell : IDisposable
             if (open)
                 keys = SdlKeyboardSnapshot.Empty;
         }
+        var escapeIsDown = keys.IsDown(SdlKeyboardKey.Escape);
+        var escape = escapeIsDown && !_escapeWasDown;
+        _escapeWasDown = escapeIsDown;
+        if (Arcade.Home && Active.Id == FlowScenes.Gameplay)
+        {
+            if (escape && restartBlack() == 0 && _gameplay.CanPause)
+            {
+                _qPressedAt = 0;
+                _pauseInterpolation = _lastInterpolation;
+                _gameplay.SetPaused(true, _pauseInterpolation);
+                _homePaused = true;
+                _pauseSelection = 0;
+                return;
+            }
+            if (_homePaused)
+            {
+                if (escape) resumeHome();
+                else if (keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D)
+                    || keys.IsDown(SdlKeyboardKey.Z))
+                    _pauseSelection = (_pauseSelection + 2) % 3;
+                else if (keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K)
+                    || keys.IsDown(SdlKeyboardKey.V))
+                    _pauseSelection = (_pauseSelection + 1) % 3;
+                else if (keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.Space)
+                    || keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J)
+                    || keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C))
+                {
+                    if (_pauseSelection == 0) resumeHome();
+                    else if (_pauseSelection == 1)
+                    {
+                        resumeHome();
+                        _menuRestartAt = Stopwatch.GetTimestamp();
+                    }
+                    else
+                    {
+                        resumeHome();
+                        _gameplay.Abandon();
+                    }
+                }
+                return;
+            }
+        }
+        if (updateQuickRestart(heldKeys)) return;
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
             Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
         Overlay.Advance();
@@ -684,17 +741,20 @@ internal sealed class GameShell : IDisposable
             }
             _indicators.Advance();
         }
-        var escapeIsDown = keys.IsDown(SdlKeyboardKey.Escape);
-        var escape = escapeIsDown && !_escapeWasDown;
-        _escapeWasDown = escapeIsDown;
         // Home: Escape in the entry or song select ends the session (back to the title, next tick).
         if (escape && Arcade.Home && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))
             _returnToAttract = true;
         if (Coordinator.Flow.State != GameFlowState.TransitionPending)
         {
+            if (Arcade.Home && Active.Id == FlowScenes.Result
+                && (heldKeys.IsDown(SdlKeyboardKey.Q) || _menuRestartAt != 0))
+                return;
             scene.Tick(new FlowInput(keys, hitSide, skip, escape));
             return;
         }
+        if (Arcade.Home && Active.Id == FlowScenes.Result
+            && (heldKeys.IsDown(SdlKeyboardKey.Q) || _qPressedAt != 0))
+            return;
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
         if (Sounds?.Bank.IsVoicePlaying == true)
             return;
@@ -702,6 +762,91 @@ internal sealed class GameShell : IDisposable
         switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
         Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
     }
+
+    private void resumeHome()
+    {
+        _homePaused = false;
+        _gameplay.SetPaused(false);
+    }
+
+    private bool updateQuickRestart(SdlKeyboardSnapshot held)
+    {
+        if (!Arcade.Home || Active.Id != FlowScenes.Result
+            && (Active.Id != FlowScenes.Gameplay || !_gameplay.CanQuickRestart))
+        {
+            _qPressedAt = 0;
+            _restartCancelAt = 0;
+            _menuRestartAt = 0;
+            return false;
+        }
+        var now = Stopwatch.GetTimestamp();
+        if (_menuRestartAt != 0 && Stopwatch.GetElapsedTime(_menuRestartAt, now) >= TimeSpan.FromMilliseconds(500))
+        {
+            _menuRestartAt = 0;
+            return restartNow();
+        }
+        if (!held.IsDown(SdlKeyboardKey.Q))
+        {
+            if (_qPressedAt != 0)
+            {
+                _restartCancelAlpha = qHoldAlpha(now);
+                _restartCancelAt = now;
+            }
+            _qPressedAt = 0;
+            _qNeedsRelease = false;
+        }
+        else if (!_qNeedsRelease && _qPressedAt == 0 && _menuRestartAt == 0 && _restartRevealAt == 0)
+        {
+            _qStartAlpha = cancelAlpha(now);
+            _restartCancelAt = 0;
+            _qPressedAt = now;
+        }
+        if (_qPressedAt != 0 && qHoldAlpha(now) >= 1)
+        {
+            _qPressedAt = 0;
+            _qNeedsRelease = true;
+            return restartNow();
+        }
+        if (_restartRevealAt != 0 && Stopwatch.GetElapsedTime(_restartRevealAt, now) >= TimeSpan.FromMilliseconds(500))
+            _restartRevealAt = 0;
+        if (_restartCancelAt != 0 && cancelAlpha(now) <= 0)
+            _restartCancelAt = 0;
+        return false;
+    }
+
+    private bool restartNow()
+    {
+        _qPressedAt = 0;
+        _restartCancelAt = 0;
+        _menuRestartAt = 0;
+        if (_gameplay.Restart())
+            _restartRevealAt = Stopwatch.GetTimestamp();
+        return true;
+    }
+
+    private float qHoldAlpha(long now) => Math.Clamp(_qStartAlpha
+        + (float)(Stopwatch.GetElapsedTime(_qPressedAt, now).TotalSeconds * 2), 0, 1);
+
+    private float cancelAlpha(long now) => _restartCancelAt == 0 ? 0 : Math.Clamp(_restartCancelAlpha
+        - (float)(Stopwatch.GetElapsedTime(_restartCancelAt, now).TotalSeconds * 2), 0, 1);
+
+    private float restartBlack()
+    {
+        if (_menuRestartAt != 0)
+            return Math.Clamp((float)(Stopwatch.GetElapsedTime(_menuRestartAt).TotalSeconds * 2), 0, 1);
+        if (_qPressedAt != 0)
+            return qHoldAlpha(Stopwatch.GetTimestamp());
+        if (_restartCancelAt != 0)
+            return cancelAlpha(Stopwatch.GetTimestamp());
+        if (_restartRevealAt != 0)
+            return Math.Clamp(1 - (float)(Stopwatch.GetElapsedTime(_restartRevealAt).TotalSeconds * 2), 0, 1);
+        return 0;
+    }
+
+    private RenderFrame withHomeOverlay(RenderFrame frame) => _homeOverlay is null
+        ? frame : new RenderFrame(frame.ClearColor,
+            frame.Quads.Concat(_homeOverlay.Quads(_homePaused, _pauseSelection, restartBlack())),
+            frame.ContentAspectRatio);
 
     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit counts at
     // once; each coin's sound queues and plays in full, one after another.
@@ -801,6 +946,12 @@ internal sealed class GameShell : IDisposable
 
     public bool FadePending => _fadeTarget is not null;
 
+    public void CancelFade()
+    {
+        _fadeTarget = null;
+        Overlay.Clear();
+    }
+
     // The joined drums (0 left, 1 right): panels, Song Select's name boards and the gameplay Don slots
     // follow them, and the later scenes' hosts read them. A credit starts empty.
     public void JoinPlayer(int side)
@@ -852,6 +1003,7 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame createFrame(double interpolationFraction)
     {
+        if (!_homePaused) _lastInterpolation = (float)interpolationFraction;
         if (_heldFrame is { } held)
         {
             var needsFirstPresentation = _heldPresentationsRemaining > 0;
@@ -859,9 +1011,9 @@ internal sealed class GameShell : IDisposable
             if (needsFirstPresentation || Tick < _holdUntilTick)
                 // The rainbow stays up across its scene switch (only a fade is cleared with it).
                 return _heldBlack && Overlay.IsShown
-                    ? new RenderFrame(held.ClearColor,
+                    ? withHomeOverlay(new RenderFrame(held.ClearColor,
                         [.. Overlay.Quads((float)interpolationFraction, Titles.Resolve), .. held.Quads], held.ContentAspectRatio)
-                    : held;
+                    ) : withHomeOverlay(held);
             SceneTextures.Release(Application, _heldTextures);
             _heldTextures = [];
             _heldFrame = null;
@@ -870,7 +1022,7 @@ internal sealed class GameShell : IDisposable
         Titles.UploadCompleted();
         uploadAhead();
         if (DonRenderer is not null)
-            DonRenderer.Interpolation = interpolation;
+            DonRenderer.Interpolation = _homePaused ? _pauseInterpolation : interpolation;
         var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _textures, "Scene", resolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
@@ -885,7 +1037,7 @@ internal sealed class GameShell : IDisposable
             frame.ContentAspectRatio);
         _lastPresentedFrame = result;
         _lastPresentedHadIntermission = Overlay.IsShown;
-        return result;
+        return withHomeOverlay(result);
     }
 
     private RenderFrame blackLoadingFrame()
@@ -1084,6 +1236,7 @@ internal sealed class GameShell : IDisposable
         _textFields.Dispose();
         Hosts?.Rankings?.Dispose();
         _entryOverlay?.Dispose();
+        _homeOverlay?.Dispose();
         _health?.Dispose();
         _pill.Dispose();
         _performance.Dispose();

@@ -92,6 +92,20 @@ public sealed class GameFlowSessionTests
     }
 
     [Fact]
+    public void HostRestartCanReplaceAPendingAuthoredTransition()
+    {
+        var flow = activeSession("result");
+        Assert.True(flow.TryRequestTransition(new LumenSceneRequest(1, 0, 0)));
+
+        flow.CancelPendingTransition();
+        flow.LoadScene(new SceneId("gameplay"));
+
+        Assert.Null(flow.PendingTransition);
+        Assert.Equal(GameFlowState.Loading, flow.State);
+        Assert.Equal(new SceneId("gameplay"), flow.LoadingScene);
+    }
+
+    [Fact]
     public void FailureAndStopClearTransientState()
     {
         var flow = activeSession("entry");

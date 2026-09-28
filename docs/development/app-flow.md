@@ -25,7 +25,7 @@ reads input, advances the active scene's movies, and hands the tick to that scen
 | `AttractFlow` | boot, logo, title, caution, CM | attract rotation; a coin or drum hit starts the entry |
 | `EntryFlow` | entry | entry jingle; the movie requests Song Select itself |
 | `SongSelectFlow` | song select | mode switch; the rainbow cover, chart loading, handoff to gameplay |
-| `GameplayFlow` | gameplay | rainbow reveal and music; song end -> shutter -> results; Escape |
+| `GameplayFlow` | gameplay | rainbow reveal and music; song end -> shutter -> results; home pause/restart; cabinet Escape abandonment |
 | `CreditEndFlow` | results, revival, game over | what follows the results per the credit rules |
 
 Every scene change goes through `GameShell.Show` (or a pending Lumen transition), which calls the

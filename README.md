@@ -242,8 +242,13 @@ drives drum, judgement, combo, score, and Go-Go presentation. Chart offsets and 
 are explicit; interactive judgement follows an estimated audio output clock,
 independently of animation ticks. See [gameplay integration](docs/development/gameplay-integration.md)
 for the timing contract, reference sources, and remaining limitations.
-`F`/`J` are the left and right Don inputs, `D`/`K` are Ka, and Escape returns to a
-fresh Song Select scene.
+`F`/`J` are the left and right Don inputs, and `D`/`K` are Ka. In home (PC) mode,
+Escape pauses a loaded song; rims or arrow keys select Resume, Restart Song, or
+Song Select, and centre or Enter confirms. Holding Q during gameplay or its
+results fades toward black; releasing early fades back, while reaching black after
+half a second restarts the same match and fades the new play in. Pause artwork
+is decoded from the user's game archives at runtime. In cabinet mode, Escape
+still abandons gameplay and returns to Song Select.
 TJA supports standard rolls, balloons, partner notes, mid-measure commands, and
 fixed-route branches; see the [compatibility matrix](docs/development/custom-tja.md#gameplay-compatibility)
 for supported features and remaining limits. Invalid or unsupported chart loads

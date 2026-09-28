@@ -52,6 +52,14 @@ public sealed class GameFlowSession : ISceneTransitionSink
         return true;
     }
 
+    /// <summary>Discards an authored scene request when a host control takes over the handoff.</summary>
+    public void CancelPendingTransition()
+    {
+        if (State != GameFlowState.TransitionPending) return;
+        PendingTransition = null;
+        State = GameFlowState.Active;
+    }
+
     public void LoadTransitionTarget(SceneId scene)
     {
         ArgumentNullException.ThrowIfNull(scene);
