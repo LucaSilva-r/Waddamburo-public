@@ -344,6 +344,9 @@ internal sealed class GameShell : IDisposable
             // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
             .. (Arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(Arcade.TjaFolder ?? options.TjaRoot)
                 ? [new TjaCatalogProvider(Arcade.TjaFolder ?? options.TjaRoot)] : Array.Empty<ISongCatalogProvider>(),
+            // A Nijiiro installation picked in the settings (home mode).
+            .. Arcade.Home && Arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is { Exists: true } installed
+                ? [installed] : Array.Empty<ISongCatalogProvider>(),
         ];
         Assets = new CatalogAssetRouter(providers);
         ChartHashes = new ChartHashes(Scores, Assets.LoadChartAsync);

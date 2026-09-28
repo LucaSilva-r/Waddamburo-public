@@ -79,7 +79,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         ? [.. Settings.Select((setting, index) => index == Selection && _editing
             ? $"< {setting.Label}: {setting.Format(setting.Get(get()))} >"
             : $"{setting.Label}: {setting.Format(setting.Get(get()))}"),
-            .. Folders.Select(folder => $"{folder.Label}: {(folder.Get(get()) is { } path ? Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) : "Default")} (restart)"),
+            .. Folders.Select(folder => $"{folder.Label}: {(folder.Get(get()) is { } path ? Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) : "Default")} (restart)"
+                // Nijiiro music is G.719, which only the user's own vgmstream-cli decodes.
+                + (folder.Pick == HomeMenuAction.PickNijiiroFolder && !Waddamburo.Platform.Sdl.Media.VgmstreamCli.IsInstalled
+                    ? " - music needs vgmstream-cli" : "")),
             "Back"]
         : _choices;
 

@@ -123,6 +123,21 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
         try
         {
             var result = NativeMediaMethods.CreateCallbacks(in options, in callbacks, out _handle, ref error);
+            // A file the bundled decoder rejects (G.719 banks): vgmstream-cli's WAV instead.
+            if (result is MediaResult.Unsupported or MediaResult.BackendUnavailable
+                && input is FileStream file && VgmstreamCli.TryDecode(file.Name, sourceStreamIndex) is { } wav)
+            {
+                _inputHandle.Free();
+                if (!leaveOpen)
+                    input.Dispose();
+                state = new InputState(File.OpenRead(wav), leaveOpen: false);
+                _inputState = state;
+                _inputHandle = GCHandle.Alloc(state);
+                callbacks = callbacks with { UserData = GCHandle.ToIntPtr(_inputHandle) };
+                options = options with { SourceStreamIndex = 0 };
+                error = new MediaError { StructSize = (uint)sizeof(MediaError) };
+                result = NativeMediaMethods.CreateCallbacks(in options, in callbacks, out _handle, ref error);
+            }
             if (result != MediaResult.Ok)
                 throw state.Failure ?? createException(result, error);
 

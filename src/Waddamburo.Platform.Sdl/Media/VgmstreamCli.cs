@@ -10,7 +10,7 @@ namespace Waddamburo.Platform.Sdl.Media;
 /// The user drops vgmstream-cli (or its release folder, named <c>vgmstream</c>) next to
 /// the executable, or puts it on PATH.
 /// </summary>
-internal static class VgmstreamCli
+public static class VgmstreamCli
 {
     private static readonly string ExecutableName = OperatingSystem.IsWindows() ? "vgmstream-cli.exe" : "vgmstream-cli";
     private static bool _reportedMissing;
@@ -23,13 +23,20 @@ internal static class VgmstreamCli
             return null;
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             $"{source.FullName}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|{sourceStreamIndex}")))[..32];
-        var cache = Path.Combine(Path.GetTempPath(), "waddamburo-vgmstream");
+        // Decoded once per bank: kept across restarts (the temp folder may be wiped on boot).
+        // ponytail: plain WAV (~10 MB a minute), never pruned; compress or cap it if the folder grows.
+        var cache = Path.Combine(OperatingSystem.IsWindows()
+            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
+            "Waddamburo", "vgmstream");
         var wav = Path.Combine(cache, key + ".wav");
         if (File.Exists(wav))
             return wav;
 
         Directory.CreateDirectory(cache);
-        var partial = wav + ".part";
+        // Unique per decode: the preview and the song start may decode the same bank at once.
+        var partial = $"{wav}.{Guid.NewGuid():N}.part";
         var start = new ProcessStartInfo(findExecutable())
         {
             RedirectStandardOutput = true,
@@ -55,9 +62,17 @@ internal static class VgmstreamCli
             if (process.ExitCode != 0 || !File.Exists(partial))
             {
                 Console.Error.WriteLine($"vgmstream-cli could not decode {path}: {errors.Trim()}");
+                File.Delete(partial);
                 return null;
             }
-            File.Move(partial, wav, overwrite: true);
+            try
+            {
+                File.Move(partial, wav, overwrite: true);
+            }
+            catch (IOException) when (File.Exists(wav))
+            {
+                File.Delete(partial); // a parallel decode finished first (and its file may be open)
+            }
             return wav;
         }
         catch (System.ComponentModel.Win32Exception)
@@ -72,6 +87,12 @@ internal static class VgmstreamCli
             return null;
         }
     }
+
+    /// <summary>True when vgmstream-cli is next to the executable or on PATH.</summary>
+    public static bool IsInstalled => _installed ??= findExecutable() != ExecutableName
+        || (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+            .Any(static directory => directory.Length > 0 && File.Exists(Path.Combine(directory, ExecutableName)));
+    private static bool? _installed;
 
     private static string findExecutable()
     {
