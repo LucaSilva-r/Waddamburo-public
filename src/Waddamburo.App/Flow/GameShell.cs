@@ -395,7 +395,7 @@ internal sealed class GameShell : IDisposable
         {
             Arcade = settings;
             applyAudioSettings();
-        }, saveSettings, don => Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
+        }, saveSettings, don => Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false), options.TjaRoot);
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
@@ -754,7 +754,7 @@ internal sealed class GameShell : IDisposable
                 saveSettings();
                 _pickingFolder = null;
             }
-            var action = _menu.Input(keys, escape);
+            var action = _menu.Input(keys, escape, heldKeys);
             volumeSample(_menu.PreviewBus);
             if (!_menu.IsOpen)
                 holdMenuMusic(false);

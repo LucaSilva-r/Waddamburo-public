@@ -156,6 +156,9 @@ public static class VgmstreamCli
             .Any(static directory => directory.Length > 0 && File.Exists(Path.Combine(directory, ExecutableName)));
     private static bool? _installed;
 
+    /// <summary>Looks for vgmstream-cli again at the next <see cref="IsInstalled"/>.</summary>
+    public static void Recheck() => _installed = null;
+
     private static string findExecutable()
     {
         var executable = Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath;
