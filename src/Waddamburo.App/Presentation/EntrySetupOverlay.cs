@@ -62,8 +62,7 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
                     quads.Add(text("code", StandX[side], StandY + 28, 200, 48, tagStyle: false, scale));
                 }
             }
-            var message = column.Message ?? (choice.IsDefault && !column.Ready ? "Joins by itself (S)" : null);
-            if (message is not null)
+            if (column.Message is { } message)
                 quads.Add(text(message, StandX[side], MessageY, 300, 26, tagStyle: false, scale));
         }
         return quads;

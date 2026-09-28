@@ -49,10 +49,6 @@ internal sealed class PlayerSetupFlow : IDisposable
     private CancellationTokenSource? _work;
     private int _workSide = -1;
 
-    // Everyone playing is ready: the entry starts after a short grace in which another drum may still join.
-    private static readonly TimeSpan StartGrace = TimeSpan.FromSeconds(1.5);
-    private DateTime? _startAt;
-
     /// <summary>Whether the drums may pick yet (the shell enables it once the entry's intro has played).</summary>
     public bool InputEnabled { get; set; }
 
@@ -190,8 +186,6 @@ internal sealed class PlayerSetupFlow : IDisposable
     private void input(int index, bool left, bool right, bool centre)
     {
         var side = _sides[index];
-        if (left || right || centre)
-            _startAt = null; // any hit holds the start
         if (left || right)
         {
             side.Touched = true;
@@ -244,14 +238,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var playing = Enumerable.Range(0, 2).Select(playsIfStarted).ToArray();
         if (!_sides.Any(static side => side.Ready) || _sides.Any(static side => !side.Ready && side.Code is not null)
             || playing.All(static value => value) && sameAccount())
-        {
-            _startAt = null;
             return;
-        }
-        _startAt ??= DateTime.UtcNow + StartGrace;
-        if (DateTime.UtcNow < _startAt)
-            return;
-        _startAt = null;
         var profiles = new ScoreProfile?[2];
         for (var index = 0; index < 2; index++)
             profiles[index] = !playing[index] ? null : current(index) switch
@@ -317,9 +304,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var side = _sides[index];
         int? seconds = side.Code is null ? null
             : Math.Max(0, (int)Math.Ceiling((side.CodeDeadline - DateTime.UtcNow).TotalSeconds));
-        var starting = _startAt is not null;
-        var message = starting ? playsIfStarted(index) ? "Starting..." : null
-            : !side.Ready && sameAccount() ? "Already chosen by the other player" : side.Message;
+        var message = !side.Ready && sameAccount() ? "Already chosen by the other player" : side.Message;
         return new SetupColumn(current(index), side.Ready, side.Code, seconds, message) { QrUrl = side.Code is null ? null : side.QrUrl };
     }
 

@@ -1308,6 +1308,9 @@ internal sealed class GameShell : IDisposable
     private LumenGameSceneInstance? _setupArrowsScene;
     private static readonly (float X, float Y)[] ArrowAnchors = [(150, 430), (1130, 430)];
     private const float ArrowGap = 150, ArrowScale = 0.45f;
+    private const int AutoJoinStar = 295; // entry.lm texture: the yellow four-point sparkle (40x40)
+    private const float AutoJoinStarSize = 44;
+    private static readonly (float X, float Y)[] AutoJoinStarAt = [(85, 345), (1065, 345)];
 
     private SetupArrows setupArrows()
     {
@@ -1333,8 +1336,22 @@ internal sealed class GameShell : IDisposable
             ? [.. live.Select(static column => column.Choice.Label)]
             : [.. Enumerable.Range(0, 2).Select(side => JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : null)];
         var quads = overlay.Quads(columns, tags, standVisible);
+        if (columns is null)
+            return quads;
+        // The account that joins by itself (S): the entry's yellow sparkle over the Don's top-left, twinkling.
+        // The live choice decides (S toggles it at once); the stand must already show that account.
+        for (var side = 0; side < 2; side++)
+            if (live![side].Choice is { IsDefault: true, HasDon: true } choice && columns[side].Choice.Baid == choice.Baid
+                && standVisible[side] && AutoJoinStar < _textures.Length)
+            {
+                var size = AutoJoinStarSize * (0.85f + 0.15f * MathF.Sin((Tick + interpolation) * 0.08f));
+                var (x, y) = AutoJoinStarAt[side];
+                quads = quads.Append(RenderQuad.FromRectangles(_textures[AutoJoinStar],
+                    new RenderRectangle((x - size / 2) / 1280f, (y - size / 2) / 720f, size / 1280f, size / 720f),
+                    RenderRectangle.Full, RenderColor.White, RenderColor.Transparent));
+            }
         // The arrows wait for the stands' slide-in (the same intro gate as the drums).
-        if (columns is null || _setupShownTicks < SetupIntroTicks)
+        if (_setupShownTicks < SetupIntroTicks)
             return quads;
         // The arrows while a drum is choosing (not locked in, no code on screen). The entry is its scene's
         // first layer, so the arrow sprite's texture indices are the scene's.
