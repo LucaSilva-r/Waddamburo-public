@@ -291,7 +291,7 @@ internal sealed class GameShell : IDisposable
         _gameplay = new GameplayFlow(this);
         _home = new HomeControls(this, _gameplay, options.FontPath, assetRoot);
         var entry = new EntryFlow(this);
-        var ending = new CreditEndFlow(this);
+        var ending = new CreditEndFlow(this, _gameplay);
         _scenes = new()
         {
             [FlowScenes.Boot] = _attract,

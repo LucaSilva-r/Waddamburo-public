@@ -22,6 +22,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 {
     private PlayableChart[] _charts = [];
     private SongSelectSong? _song;
+
+    /// <summary>The song being (or last) played.</summary>
+    public SongSelectSong? Song => _song;
     private int _side;
     private WaiwaiComposition? _waiwai;
     private AudioStreamTransport? _music;

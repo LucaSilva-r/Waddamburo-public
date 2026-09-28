@@ -10,7 +10,7 @@ namespace Waddamburo.App.Flow;
 /// revival drum roll, or game over and back to the attract loop. Traced: each hands over under the
 /// intermission fade, except results -> revival.
 /// </summary>
-internal sealed class CreditEndFlow(GameShell shell) : FlowScene(shell)
+internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : FlowScene(shell)
 {
     private int _resultStartTick;
 
@@ -21,6 +21,11 @@ internal sealed class CreditEndFlow(GameShell shell) : FlowScene(shell)
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
+        // result.lm's song_name slot is the same as gameplay song_info's: reuse its title texture.
+        var resultIndex = Shell.Active.Layers.ToList().FindIndex(layer =>
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");
+        if (resultIndex >= 0 && gameplay.Song is { } song)
+            Shell.Active.Player.Layers[resultIndex].Player.SetNativeFill("song_name", Shell.Titles.GetGameplayTitle(song));
         Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
     }
 
