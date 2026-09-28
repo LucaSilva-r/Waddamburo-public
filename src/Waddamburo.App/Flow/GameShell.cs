@@ -265,6 +265,7 @@ internal sealed class GameShell : IDisposable
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
+            SongsStarted = () => SongsPlayed,
             PreviousBest = index => (uint)index < (uint)PreviousBests.Length ? PreviousBests[index] : null,
             Crowns = side => Sync.Scores is not { } scores ? null
                 : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)

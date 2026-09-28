@@ -160,9 +160,11 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
             sounds.Waiwai = waiwai is not null;
             sounds.PrepareDrums(request.Players.Length == 2);
         }
-        // The credit's song number (reset when a credit ends); the movies have 8 stage frames, and a home
-        // session's endless credit stays on the last one.
-        Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), Math.Min(++Shell.SongsPlayed, 8));
+        // The credit's song number (reset when a credit ends); a home session's endless credit stays on 1
+        // (the counters only have art for songs 1-4).
+        var stage = Shell.Arcade.Home ? 1 : ++Shell.SongsPlayed;
+        Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), stage,
+            Final: !Shell.Arcade.Home && stage >= Shell.Arcade.SongsPerSession);
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
         Shell.Catalog.Replace(prefetched?.Scene ?? (waiwai is not null
             ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)

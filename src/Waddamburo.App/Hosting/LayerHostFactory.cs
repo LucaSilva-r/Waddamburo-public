@@ -42,6 +42,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
     public Func<int, long?>? PreviousBest { get; init; }
 
+    /// <summary>Songs started this credit (song select shows the next one's number).</summary>
+    public Func<int>? SongsStarted { get; init; }
+
     /// <summary>Song select's score windows from the server (null offline).</summary>
     public Online.SongRankings? Rankings { get; init; }
 
@@ -183,7 +186,15 @@ internal sealed class LayerHostFactory(
             _entry.PlayerJoined += player => EntryJoined?.Invoke(player);
         }
         else if (layer.HostId == "song-select")
-            _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown);
+        {
+            // time_counter has art for songs 1-4 (red when final); home's endless credit stays on 1.
+            var next = arcade.Home ? 1 : (SongsStarted?.Invoke() ?? 0) + 1;
+            _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown)
+            {
+                MusicNumber = Math.Min(next, 4),
+                FinalStage = !arcade.Home && next >= arcade.SongsPerSession,
+            };
+        }
         return layer.HostId switch
         {
             "player-entry" => entryHost(_entry!),

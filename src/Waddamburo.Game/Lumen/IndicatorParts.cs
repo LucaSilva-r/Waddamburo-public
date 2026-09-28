@@ -26,6 +26,10 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     /// <summary>The cabinet's countdown option: when off, timers show but never run out.</summary>
     public bool Countdown { get; } = countdown;
 
+    /// <summary>Song select's song number (N曲目) and whether it is the credit's last song.</summary>
+    public int MusicNumber { get; init; } = 1;
+    public bool FinalStage { get; init; }
+
     public void Attach(string movie, LumenPlayer player) => _pending.Add((player, () => setup(movie, player)));
 
     /// <summary>Runs pending setups whose callbacks exist; true once all parts are set up.</summary>
@@ -195,8 +199,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                     call(player, "SetShadow", LumenHostValue.FromBoolean(true));
                 else
                 {
-                    call(player, "SetFinalStage", LumenHostValue.FromBoolean(false));
-                    call(player, "SetMusicNum", number(1));
+                    call(player, "SetFinalStage", LumenHostValue.FromBoolean(FinalStage));
+                    call(player, "SetMusicNum", number(MusicNumber));
                     call(player, "SetVisible", LumenHostValue.FromBoolean(true));
                 }
                 break;
