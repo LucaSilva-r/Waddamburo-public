@@ -158,7 +158,7 @@ int main(void)
     waddamburo_media_error error = {0};
     waddamburo_media_io_callbacks callbacks = {0};
 
-    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_3);
+    CHECK(waddamburo_media_get_abi_version() == WADDAMBURO_MEDIA_ABI_VERSION_1_4);
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_0, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_0);
@@ -174,7 +174,10 @@ int main(void)
     CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_3, &negotiated) ==
           WADDAMBURO_MEDIA_OK);
     CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_3);
-    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 4U), &negotiated) ==
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION_1_4, &negotiated) ==
+          WADDAMBURO_MEDIA_OK);
+    CHECK(negotiated == WADDAMBURO_MEDIA_ABI_VERSION_1_4);
+    CHECK(waddamburo_media_negotiate_abi(WADDAMBURO_MEDIA_ABI_VERSION(1U, 5U), &negotiated) ==
           WADDAMBURO_MEDIA_ERROR_ABI_MISMATCH);
     CHECK(negotiated == 0U);
 

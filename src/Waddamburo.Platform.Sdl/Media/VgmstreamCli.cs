@@ -6,7 +6,8 @@ namespace Waddamburo.Platform.Sdl.Media;
 
 /// <summary>
 /// Decodes files the bundled decoder rejects (G.719 in Nijiiro banks, which Waddamburo
-/// cannot redistribute) with a user-supplied vgmstream-cli, into a cached looping WAV.
+/// cannot redistribute) with a user-supplied vgmstream-cli. The WAV plays at once and is
+/// re-encoded in the background as Opus (~1.2 MB a minute instead of ~10), which later plays use.
 /// The user drops vgmstream-cli (or its release folder, named <c>vgmstream</c>) next to
 /// the executable, or puts it on PATH.
 /// </summary>
@@ -24,15 +25,25 @@ public static class VgmstreamCli
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             $"{source.FullName}|{source.Length}|{source.LastWriteTimeUtc.Ticks}|{sourceStreamIndex}")))[..32];
         // Decoded once per bank: kept across restarts (the temp folder may be wiped on boot).
-        // ponytail: plain WAV (~10 MB a minute), never pruned; compress or cap it if the folder grows.
+        // ponytail: never pruned (Opus keeps it small); cap it if the folder still grows too much.
+        // Loop points are dropped with the WAV: the banks decoded this way are songs, played once.
         var cache = Path.Combine(OperatingSystem.IsWindows()
             ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
             : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
             "Waddamburo", "vgmstream");
         var wav = Path.Combine(cache, key + ".wav");
+        var opus = Path.Combine(cache, key + ".ogg");
+        if (File.Exists(opus))
+        {
+            tryDelete(wav); // left over when it was still open at the end of its re-encode
+            return opus;
+        }
         if (File.Exists(wav))
+        {
+            compressLater(wav, opus);
             return wav;
+        }
 
         Directory.CreateDirectory(cache);
         // Unique per decode: the preview and the song start may decode the same bank at once.
@@ -73,6 +84,7 @@ public static class VgmstreamCli
             {
                 File.Delete(partial); // a parallel decode finished first (and its file may be open)
             }
+            compressLater(wav, opus);
             return wav;
         }
         catch (System.ComponentModel.Win32Exception)
@@ -85,6 +97,54 @@ public static class VgmstreamCli
                     + "and put it (or its folder, named 'vgmstream') next to Waddamburo.");
             }
             return null;
+        }
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Compressing = new();
+
+    // The WAV re-encoded as Opus off the audio path; the WAV goes once the Opus file is in place.
+    private static void compressLater(string wav, string opus)
+    {
+        if (!Compressing.TryAdd(opus, 0))
+            return;
+        _ = Task.Run(() =>
+        {
+            var partial = $"{opus}.{Guid.NewGuid():N}.part";
+            try
+            {
+                var error = new MediaError { StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<MediaError>() };
+                var result = NativeMediaMethods.TranscodeOpus(wav, partial, 160_000, ref error);
+                if (result != MediaResult.Ok)
+                {
+                    Console.Error.WriteLine($"Could not compress the decoded audio {wav}: {result} {error.Text}.");
+                    tryDelete(partial);
+                    return;
+                }
+                File.Move(partial, opus, overwrite: true);
+                tryDelete(wav);
+            }
+            catch (Exception exception)
+            {
+                // A background task: anything failing is reported here or nowhere (the WAV stays usable).
+                Console.Error.WriteLine($"Could not compress the decoded audio {wav}: {exception.Message}");
+                tryDelete(partial);
+            }
+            finally
+            {
+                Compressing.TryRemove(opus, out _);
+            }
+        });
+    }
+
+    // Windows refuses while the file is open (still playing): the next lookup retries.
+    private static void tryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
         }
     }
 

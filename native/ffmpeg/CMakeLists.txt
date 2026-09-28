@@ -34,6 +34,37 @@ else()
 endif()
 
 set(_ffmpeg_prefix "${CMAKE_BINARY_DIR}/ffmpeg/prefix")
+
+# libopus (BSD-3-Clause) for the decoded-audio cache's Opus encoder: built static with PIC and
+# folded into avcodec, installed into the FFmpeg prefix so its configure finds it by pkg-config.
+set(WADDAMBURO_OPUS_VERSION "1.5.2")
+set(WADDAMBURO_OPUS_SHA256 "65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1")
+set(_opus_cmake_options
+  -DCMAKE_INSTALL_PREFIX=${_ffmpeg_prefix}
+  -DCMAKE_INSTALL_LIBDIR=lib
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  -DBUILD_SHARED_LIBS=OFF
+  -DOPUS_BUILD_PROGRAMS=OFF
+  -DOPUS_BUILD_TESTING=OFF)
+if(CMAKE_TOOLCHAIN_FILE)
+  list(APPEND _opus_cmake_options -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+endif()
+if(DEFINED WADDAMBURO_CROSS_PREFIX)
+  list(APPEND _opus_cmake_options -DWADDAMBURO_CROSS_PREFIX=${WADDAMBURO_CROSS_PREFIX})
+endif()
+ExternalProject_Add(waddamburo_opus
+  URL "https://downloads.xiph.org/releases/opus/opus-${WADDAMBURO_OPUS_VERSION}.tar.gz"
+  URL_HASH "SHA256=${WADDAMBURO_OPUS_SHA256}"
+  DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
+  SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/opus-${WADDAMBURO_OPUS_VERSION}"
+  BINARY_DIR "${CMAKE_BINARY_DIR}/opus/build"
+  DOWNLOAD_EXTRACT_TIMESTAMP true
+  CMAKE_ARGS ${_opus_cmake_options}
+  INSTALL_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target install
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ffmpeg_prefix}/licenses/opus"
+    COMMAND ${CMAKE_COMMAND} -E copy <SOURCE_DIR>/COPYING "${_ffmpeg_prefix}/licenses/opus/COPYING"
+  BUILD_BYPRODUCTS "${_ffmpeg_prefix}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}opus${CMAKE_STATIC_LIBRARY_SUFFIX}")
 set(_ffmpeg_build_dir "${CMAKE_BINARY_DIR}/ffmpeg/build")
 get_filename_component(_repository_root "${CMAKE_SOURCE_DIR}/.." ABSOLUTE)
 set(_ffmpeg_common_options
@@ -53,6 +84,11 @@ set(_ffmpeg_common_options
   --enable-swscale
   --enable-decoder=atrac3p,h264,mp3,mp3float,vorbis,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8
   --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264
+  # The decoded-audio cache (vgmstream-cli output) is re-encoded as Opus in Ogg.
+  --enable-libopus
+  --pkg-config-flags=--static
+  --enable-encoder=libopus
+  --enable-muxer=ogg
   --enable-parser=mpegaudio,vorbis,flac,opus,h264
   --enable-protocol=file
   --disable-network
@@ -92,7 +128,9 @@ ExternalProject_Add(waddamburo_ffmpeg
   SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/ffmpeg-${WADDAMBURO_FFMPEG_VERSION}"
   BINARY_DIR "${_ffmpeg_build_dir}"
   DOWNLOAD_EXTRACT_TIMESTAMP true
+  DEPENDS waddamburo_opus
   CONFIGURE_COMMAND
+    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_prefix}/lib/pkgconfig"
     ${_ffmpeg_configure_command}
     ${_ffmpeg_common_options}
     ${_ffmpeg_platform_options}

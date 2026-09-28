@@ -1,4 +1,4 @@
-add_library(waddamburo_media SHARED src/media.c src/video.c)
+add_library(waddamburo_media SHARED src/media.c src/video.c src/transcode.c)
 add_library(Waddamburo::Media ALIAS waddamburo_media)
 
 waddamburo_configure_native_target(waddamburo_media)
@@ -19,6 +19,9 @@ if(WADDAMBURO_MEDIA_FFMPEG)
     foreach(_library avformat avcodec swresample swscale avutil)
       target_link_libraries(waddamburo_media PRIVATE "${_ffmpeg_prefix}/lib/lib${_library}.a")
     endforeach()
+    # avcodec's libopus encoder (the decoded-audio cache), static in the same prefix.
+    target_link_libraries(waddamburo_media PRIVATE
+      "${_ffmpeg_prefix}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}opus${CMAKE_STATIC_LIBRARY_SUFFIX}")
     add_dependencies(waddamburo_media waddamburo_ffmpeg)
   elseif(WADDAMBURO_FFMPEG_ROOT)
     set(_ffmpeg_include "${WADDAMBURO_FFMPEG_ROOT}/include")

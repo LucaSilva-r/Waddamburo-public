@@ -57,6 +57,15 @@ internal unsafe struct MediaError
     internal int NativeCode;
     internal uint MessageLength;
     internal fixed byte Message[256];
+
+    internal string Text
+    {
+        get
+        {
+            fixed (byte* bytes = Message)
+                return System.Text.Encoding.UTF8.GetString(bytes, (int)Math.Min(MessageLength, 255U));
+        }
+    }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -72,7 +81,7 @@ internal struct MediaIoCallbacks
 internal static partial class NativeMediaMethods
 {
     internal const string LibraryName = "waddamburo_media";
-    internal const uint AbiVersion = (1U << 16) | 3U;
+    internal const uint AbiVersion = (1U << 16) | 4U;
 
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_get_abi_version")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -81,6 +90,10 @@ internal static partial class NativeMediaMethods
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_negotiate_abi")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial MediaResult NegotiateAbi(uint requestedVersion, out uint negotiatedVersion);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_transcode_opus", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial MediaResult TranscodeOpus(string inputPath, string outputPath, uint bitRate, ref MediaError error);
 
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_decoder_create_file")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

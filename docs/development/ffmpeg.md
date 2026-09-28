@@ -9,8 +9,13 @@ remain below ignored `out/` directories.
 The configuration builds dynamic `avutil`, `avcodec`, `avformat`, `swresample`,
 and `swscale` libraries. It disables automatic dependency discovery, static
 libraries, programs, devices, filters, networking, GPL components,
-nonfree components, and version-3-only components. No external codec library is
-linked.
+nonfree components, and version-3-only components. The one external codec library
+is libopus 1.5.2 (BSD-3-Clause, SHA-256
+`65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1`, matching xiph's
+SHA256SUMS), built static with PIC into the same prefix and linked into `avcodec`: it
+re-encodes vgmstream-cli's WAV output as Opus for the decoded-audio cache
+(`waddamburo_media_transcode_opus`, ABI 1.4). FFmpeg's own Opus encoder is not used: its
+psychoacoustic queue overflows and drops audio on songs that start with silence.
 
 The allowlist supports the product's declared inputs:
 
@@ -21,6 +26,8 @@ The allowlist supports the product's declared inputs:
 | Parsers | MPEG audio, Vorbis, Opus, FLAC, H.264 |
 | Scaling | `swscale` converts decoded YUV movie frames to RGBA |
 | Protocols | Local files only; managed-memory inputs use Waddamburo's AVIO callbacks |
+| Encoders | libopus (the decoded-audio cache) |
+| Muxers | Ogg (the decoded-audio cache) |
 
 Build the Linux dependency from the repository root with:
 
@@ -79,9 +86,13 @@ Release packages (`eng/package.sh`, see [native-builds.md](native-builds.md)) al
 include this backend. Nijiiro BNSF/IS22 audio is G.719, so the bundled decoder rejects
 it; the managed decoder then runs a user-supplied `vgmstream-cli` (an official
 vgmstream release, placed next to the Waddamburo executable, in a `vgmstream` folder
-beside it, or on `PATH`), decodes the file once to a looping WAV in the temporary
-directory, and plays that. Without `vgmstream-cli` those files report the backend
-error and a one-time hint.
+beside it, or on `PATH`), decodes the file once to a WAV in the user cache
+(`$XDG_CACHE_HOME` or `~/.cache`, `%LOCALAPPDATA%` on Windows, under
+`Waddamburo/vgmstream`), and plays that. In the background the WAV is re-encoded as
+160 kbit/s Opus in Ogg (about a tenth of the size) and removed; later plays use the
+Opus file. Loop points are dropped with the WAV (these banks are songs, played once).
+Without `vgmstream-cli` those files report the backend error and a one-time hint, and
+the settings' Nijiiro row says the music needs it.
 
 With `linux-audio-complete`, file inputs ending in `.nub`, `.nus3bank`,
 `.nus3audio`, `.bnsf`, `.spsis14`, `.spsis22`, or `.idsp` are routed to

@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Waddamburo.Catalog;
-using Waddamburo.Providers.Stock;
 
 namespace Waddamburo.Providers.Stock.Tests;
 
