@@ -197,6 +197,12 @@ internal static class SelfUpdate
         Process.Start(start)?.Dispose();
     }
 
+    /// <summary>
+    /// Starts the game again with the same arguments (a settings change that needs a restart, or memory
+    /// to give back after a texture bake): the release file, or this executable in development.
+    /// </summary>
+    public static void Relaunch(string[] args) => launch(installedFile() ?? Environment.ProcessPath!, args);
+
     /// <summary>Retries a file operation while the other instance still holds the file (up to 10 s).</summary>
     private static void retry(Action operation)
     {

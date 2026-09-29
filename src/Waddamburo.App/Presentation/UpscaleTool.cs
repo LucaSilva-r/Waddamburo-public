@@ -58,10 +58,6 @@ internal sealed class UpscaleTool : IDisposable
     /// <summary>Movies the game has loaded ("archive|movie" lines): what a batch upscales.</summary>
     public string UsedListPath => Path.Combine(Cache, "used.txt");
 
-    /// <summary>Worker threads for live upscaling while the game runs (WADDAMBURO_UPSCALE_THREADS, default 2).</summary>
-    public static int LiveThreads => int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_THREADS"),
-        NumberStyles.Integer, CultureInfo.InvariantCulture, out var threads) && threads > 0 ? threads : 2;
-
     /// <summary>
     /// The tool, or null when the model files or the BC7 library are not installed. The cache lives in
     /// <paramref name="cacheFolder"/> (USRDIR/waddamburo/cache/upscaled), or in the user cache folder

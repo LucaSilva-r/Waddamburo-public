@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -87,6 +87,14 @@ public sealed record ArcadeSettings
         nijiiro_folder =
 
         """,
+        """
+        # Texture upscaling (also in the Settings menu). upscale_textures: show the game's textures upscaled
+        # 3x (made on this PC, kept in waddamburo/cache/upscaled). upscale_threads: CPU threads upscaling
+        # textures not yet in the cache while the game runs (paused during songs); 0 = off.
+        upscale_textures = false
+        upscale_threads = 0
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -130,6 +138,12 @@ public sealed record ArcadeSettings
 
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
+
+    /// <summary>Show textures upscaled from the cache (opt-in).</summary>
+    public bool UpscaleTextures { get; init; }
+
+    /// <summary>CPU threads upscaling missing textures in the background; 0 = off.</summary>
+    public int UpscaleThreads { get; init; }
 
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
@@ -269,6 +283,8 @@ public sealed record ArcadeSettings
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
                 "audio_exclusive" => settings with { AudioExclusive = boolean(value, index) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
+                "upscale_textures" => settings with { UpscaleTextures = boolean(value, index) },
+                "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
@@ -322,6 +338,8 @@ public sealed record ArcadeSettings
             ["audio_buffer_frames"] = settings.AudioBufferFrames,
             ["audio_exclusive"] = settings.AudioExclusive ? "true" : "false",
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
+            ["upscale_textures"] = settings.UpscaleTextures ? "true" : "false",
+            ["upscale_threads"] = settings.UpscaleThreads,
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",

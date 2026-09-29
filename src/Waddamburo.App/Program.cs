@@ -134,6 +134,9 @@ try
             Path.Combine(layout.Home, Waddamburo.Game.Scores.ScoreStore.FileName),
             autoplay,
             arcade.Fullscreen));
+        // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
+        if (GameShell.RestartRequested)
+            SelfUpdate.Relaunch(args);
         return 0;
     }
     // Diagnostic runs always show their output.

@@ -29,6 +29,7 @@ internal sealed class HomeControls : IDisposable
     private ResumeCountdown? _resume;
     private RenderTextureId[] _resumeTextures = [];
     private HomeMenuAction? _pickingFolder;
+    private readonly string _assetRoot;
     private bool _focused = true;
     private float _lastInterpolation;
     private float _pauseInterpolation;
@@ -44,9 +45,11 @@ internal sealed class HomeControls : IDisposable
             shell.Arcade = settings;
             _audio.Apply(settings);
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
-            shell.Options.TjaRoot);
+            shell.Options.TjaRoot, () => shell.Upscale?.CachedCount);
+        _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
-        _overlay = shell.Arcade.Home ? new HomePauseOverlay(shell.Application, fontPath, assetRoot) : null;
+        _overlay = shell.Arcade.Home
+            ? new HomePauseOverlay(shell.Application, fontPath, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures) : null;
     }
 
     private bool home => _shell.Arcade.Home;
@@ -204,6 +207,15 @@ internal sealed class HomeControls : IDisposable
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();
                 _shell.ReturnToAttract();
+                break;
+            case HomeMenuAction.RestartGame:
+                save();
+                _shell.RequestRestart();
+                break;
+            // A bake already running is shown again rather than started twice.
+            case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
+                _menu.Bake = _shell.Bake is { Running: true } running ? running
+                    : _shell.Bake = TextureBake.Start(upscale, _assetRoot);
                 break;
         }
         return true;

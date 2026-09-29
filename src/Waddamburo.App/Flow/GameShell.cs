@@ -101,6 +101,12 @@ internal sealed class GameShell : IDisposable
     /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
     public void Prefetch(SceneDefinition scene) => _presenter.Prefetch(scene);
 
+    /// <summary>The texture upscaler and its cache (null: unavailable on this machine).</summary>
+    public UpscaleTool? Upscale { get; private set; }
+
+    /// <summary>A texture bake started from the Settings menu (running or finished).</summary>
+    public TextureBake? Bake { get; set; }
+
     /// <summary>The scene being prefetched, until one takes it.</summary>
     public SceneId? Prefetched => _presenter.Prefetched;
 
@@ -153,6 +159,16 @@ internal sealed class GameShell : IDisposable
     private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
     private readonly int _dumpTreeTick =
         int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
+
+    /// <summary>The game closed to start again (the caller relaunches it once everything is released).</summary>
+    public static bool RestartRequested { get; private set; }
+
+    /// <summary>Closes the game to start it again (see <see cref="RestartRequested"/>).</summary>
+    public void RequestRestart()
+    {
+        RestartRequested = true;
+        Application.RequestQuit();
+    }
 
     public static int Run(GameOptions options)
     {
@@ -294,15 +310,17 @@ internal sealed class GameShell : IDisposable
         // The settings file sits in USRDIR/waddamburo, the caches under it.
         if (UpscaleTool.Find(options.ArcadePath is { } settings ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settings))!, "cache", "upscaled") : null) is { } upscale)
         {
+            Upscale = upscale;
             MovieContent.Loaded = upscale.RecordUsed;
-            // Cached upscales replace textures as movies decode: the GPU only ever gets those.
+            // Cached upscales replace textures as movies decode (opt-in): the GPU only ever gets those.
             MovieContent.Decoded = content =>
             {
-                if (Application.ShowUpscaled)
+                if (Arcade.UpscaleTextures && Application.ShowUpscaled)
                     upscale.ApplyCached(content, Application.SupportsBc7);
             };
-            SceneTextures.Upscaler = new TextureUpscaler(upscale);
-            Console.WriteLine($"Texture upscaling: {UpscaleTool.LiveThreads} CPU thread(s), cache {upscale.Cache}.");
+            SceneTextures.Upscaler = new TextureUpscaler(upscale, () => Arcade);
+            Console.WriteLine($"Texture upscaling {(Arcade.UpscaleTextures ? "on" : "off")}, "
+                + $"{Arcade.UpscaleThreads} background thread(s), cache {upscale.Cache}.");
         }
         _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
@@ -690,7 +708,7 @@ internal sealed class GameShell : IDisposable
         _presenter.UploadAhead();
         if (SceneTextures.Upscaler is { } upscaler)
         {
-            upscaler.Paused = Active.Id == FlowScenes.Gameplay;
+            upscaler.Paused = Active.Id == FlowScenes.Gameplay || Bake?.Running == true;
             upscaler.Apply(Application);
         }
         if (DonRenderer is not null)
@@ -764,6 +782,7 @@ internal sealed class GameShell : IDisposable
         Audio?.Dispose();
         _audioDevice?.Dispose();
         DonRenderer?.Dispose();
+        Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();
         Application.Dispose();
         _libraries.Dispose();

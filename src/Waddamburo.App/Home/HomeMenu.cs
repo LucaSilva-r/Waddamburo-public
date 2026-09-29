@@ -18,6 +18,10 @@ internal enum HomeMenuAction
     PickTjaFolder,
     /// <summary>Open the folder picker for the Nijiiro installation.</summary>
     PickNijiiroFolder,
+    /// <summary>Start upscaling every texture the game uses (the bake page shows it).</summary>
+    BakeTextures,
+    /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
+    RestartGame,
 }
 
 /// <summary>
@@ -26,8 +30,9 @@ internal enum HomeMenuAction
 /// editing and the rims (or Left/Right at any time) change it: by 1, or by 5 then 10 when pressed
 /// quickly again and again. Each move plays a Ka, each pick a Don.
 /// </summary>
+/// <param name="cachedTextures">Textures in the upscale cache; null when upscaling is unavailable.</param>
 internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> apply, Action save, Action<bool> drum,
-    string defaultTjaFolder)
+    string defaultTjaFolder, Func<int?> cachedTextures)
 {
     // Presses closer together than this keep a streak going; its length picks the step.
     private static readonly TimeSpan StreakGap = TimeSpan.FromMilliseconds(200);
@@ -40,8 +45,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>A song library the player points at a folder (picked in the system's folder dialog).</summary>
     private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, bool Nijiiro);
 
-    // One settings row: a section header, a setting, a song library, or Back (all null).
-    private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null);
+    /// <summary>A row that starts something (the texture bake).</summary>
+    private sealed record Command(string Label, HomeMenuAction Action, string Hint);
+
+    // One settings row: a section header, a setting, a song library, a command, or Back (all null).
+    private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null, Command? Command = null);
+
+    // Background upscaling may take all threads but one (the game needs its own).
+    private static readonly int UpscaleThreadsMaximum = Math.Max(1, Environment.ProcessorCount - 1);
 
     private static readonly Row[] Rows_ =
     [
@@ -75,10 +86,19 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new("Exclusive Audio", static s => s.AudioExclusive ? 1 : 0, static (s, v) => s with { AudioExclusive = v != 0 },
             static (value, _) => 1 - value, 0, static value => value != 0 ? "On" : "Off", 1,
             Hint: "Windows: the sound device for the game alone, for the lowest latency." + Restart)),
+        new("Graphics"),
+        new(Setting: toggle("Upscaled Textures", static s => s.UpscaleTextures, static (s, v) => s with { UpscaleTextures = v },
+            "Sharper textures, upscaled 3x on this PC and kept in its cache. Applies to screens loaded next.")),
+        new(Setting: new("Background Upscaling", static s => s.UpscaleThreads, static (s, v) => s with { UpscaleThreads = v },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => value == 0 ? "Off" : value == 1 ? "1 thread" : $"{value} threads", UpscaleThreadsMaximum,
+            Hint: "CPU threads that upscale textures not in the cache yet while you play (paused during songs).")),
+        new(Command: new("Bake All Textures", HomeMenuAction.BakeTextures,
+            "Upscale every texture the game uses now, with most of the CPU. Stop at any time; finished ones are kept.")),
         new(),
     ];
 
-    public enum ItemKind { Header, Setting, Library, Back }
+    public enum ItemKind { Header, Setting, Library, Command, Back }
 
     /// <summary>A song library's state: red (not set up), orange (set up, something missing), green.</summary>
     public enum LibraryState { Missing, Warning, Ready }
@@ -100,7 +120,39 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public int Selection { get; private set; }
 
-    public string Title => _settingsPage ? "Settings" : "Paused";
+    public string Title => Bake is not null ? "Upscaling Textures" : _restartPrompt ? "Restart?" : _settingsPage ? "Settings" : "Paused";
+
+    /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
+    public Presentation.TextureBake? Bake
+    {
+        get => _bake;
+        set
+        {
+            _bake = value;
+            _baked |= value is not null;
+        }
+    }
+
+    private Presentation.TextureBake? _bake;
+    private bool _baked;
+
+    /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
+    public string? Message => _restartPrompt ? "Some changes need a restart to apply." : null;
+
+    // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
+    // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
+    private bool _restartPrompt;
+    private string? _declined;
+    private string[] _pauseChoices = [];
+
+    private string restartState()
+    {
+        var now = get();
+        var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
+            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder;
+        return changed || _baked
+            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{_baked}" : "";
+    }
 
     /// <summary>The pause page's choices (the settings page draws <see cref="Items"/>).</summary>
     public string[] Rows => _choices;
@@ -117,6 +169,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         { Header: { } header } => new(ItemKind.Header, header, null, ""),
         { Setting: { } setting } => new(ItemKind.Setting, setting.Label, setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
+        { Command: { } command } => cachedTextures() is { } cached
+            ? new(ItemKind.Command, command.Label, $"{cached:N0} cached", command.Hint)
+            : new(ItemKind.Command, command.Label, "Unavailable", "Upscaling is unavailable on this machine."),
         _ => new(ItemKind.Back, "Back", null, "Save and return."),
     };
 
@@ -174,7 +229,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             : attract ? ["Resume", "Settings"] : ["Resume", "Settings", "Return to Title"];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = false;
+        _settingsPage = _editing = _restartPrompt = false;
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
 
@@ -191,6 +246,21 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             drum(true);
         else if (up || down || arrows != 0)
             drum(false);
+        if (_restartPrompt)
+        {
+            if (up || down)
+                Selection = 1 - Selection;
+            else if (escape || decide)
+            {
+                if (decide && Selection == 0)
+                    return close(HomeMenuAction.RestartGame);
+                _declined = restartState();
+                _restartPrompt = false;
+                _choices = _pauseChoices;
+                Selection = Array.IndexOf(_choices, "Settings");
+            }
+            return HomeMenuAction.None;
+        }
         if (!_settingsPage)
         {
             if (escape)
@@ -209,6 +279,18 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                     case "Return to Title": return close(HomeMenuAction.Title);
                     default: return close(HomeMenuAction.Resume);
                 }
+            return HomeMenuAction.None;
+        }
+        // The bake page: Escape or a pick stops a running bake, and leaves a finished one.
+        if (Bake is { } bake)
+        {
+            if (escape || decide)
+            {
+                if (bake.Running)
+                    bake.Stop();
+                else
+                    Bake = null;
+            }
             return HomeMenuAction.None;
         }
         var row = Rows_[Selection];
@@ -232,11 +314,20 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _settingsPage = false;
             Selection = Array.IndexOf(_choices, "Settings");
             save();
+            if (restartState() is { Length: > 0 } state && state != _declined)
+            {
+                _restartPrompt = true;
+                _pauseChoices = _choices;
+                _choices = ["Restart Now", "Later"];
+                Selection = 0;
+            }
         }
         else if (up || down)
             Selection = move(Selection + (up ? -1 : 1), up ? -1 : 1);
         else if (decide && row.Library is { } library)
             return library.Pick;
+        else if (decide && row.Command is { } command && cachedTextures() is not null)
+            return command.Action;
         else if (decide && row.Setting is not null)
             _editing = true;
         else if (arrows != 0 && row.Setting is not null)

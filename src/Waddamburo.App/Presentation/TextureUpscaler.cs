@@ -6,8 +6,8 @@ namespace Waddamburo.App.Presentation;
 
 /// <summary>
 /// Live upscaling while the game runs: every uploaded movie texture is queued, newest first, and
-/// upscaled one at a time on a few CPU threads (<see cref="UpscaleTool.LiveThreads"/>), holding during
-/// gameplay. Cached results arrive at once; each replaces its texture in place (UVs are normalised).
+/// upscaled one at a time on the threads set in upscale_threads (none by default), holding during
+/// gameplay and bakes. Cached results arrive at once; each replaces its texture in place (UVs are normalised).
 /// A batch run (--upscale-textures) fills the cache ahead with more threads.
 /// </summary>
 internal sealed class TextureUpscaler : IDisposable
@@ -25,13 +25,17 @@ internal sealed class TextureUpscaler : IDisposable
     private readonly SemaphoreSlim _missWake = new(0);
     private readonly CancellationTokenSource _stop = new();
     private readonly UpscaleTool _tool;
+    private readonly Func<Waddamburo.Game.Flow.ArcadeSettings> _settings;
     private readonly Thread _loader;
     private readonly Thread _upscaler;
     private volatile bool _paused;
 
-    public TextureUpscaler(UpscaleTool tool)
+    /// <param name="settings">upscale_textures (queue anything at all) and upscale_threads (0: none
+    /// upscaled in the background), read live.</param>
+    public TextureUpscaler(UpscaleTool tool, Func<Waddamburo.Game.Flow.ArcadeSettings> settings)
     {
         _tool = tool;
+        _settings = settings;
         // Two threads: cached results load at once, even during gameplay, while only the
         // upscaling of misses holds (an upscale caught mid-way must not keep the cache waiting).
         _loader = new Thread(load) { IsBackground = true, Name = "Upscaled texture loader", Priority = ThreadPriority.BelowNormal };
@@ -56,7 +60,7 @@ internal sealed class TextureUpscaler : IDisposable
     public void Enqueue(RenderTextureId texture, uint width, uint height, byte[] rgba)
     {
         // Tiny textures (dots, flat fills) gain nothing; upscaled ones arrived that way from the cache.
-        if (width * height < 256 || _tool.IsUpscaled(rgba))
+        if (!_settings().UpscaleTextures || width * height < 256 || _tool.IsUpscaled(rgba))
             return;
         _jobs.Push(new Job(texture, new UpscaleSource(width, height, rgba)));
         _jobWake.Release();
@@ -99,25 +103,28 @@ internal sealed class TextureUpscaler : IDisposable
                 });
     }
 
+    // Every second at least: the thread count may have been turned up from off meanwhile.
     private void upscale()
     {
-        while (wait(_missWake))
-            while (!_paused && !_stop.IsCancellationRequested && _misses.TryPop(out var job))
+        while (wait(_missWake, TimeSpan.FromSeconds(1)))
+            while (!_paused && threads() > 0 && !_stop.IsCancellationRequested && _misses.TryPop(out var job))
                 guard(() =>
                 {
                     var key = UpscaleTool.Key(job.Source);
                     if (!_tool.IsCached(key))
-                        _tool.Upscale(job.Source, UpscaleTool.LiveThreads, () => _paused && !_stop.IsCancellationRequested);
+                        _tool.Upscale(job.Source, Math.Max(1, threads()), () => _paused && !_stop.IsCancellationRequested);
                     if (_tool.Load(key) is { } upscaled)
                         _done.Enqueue(new Result(job.Texture, upscaled));
                 });
     }
 
-    private bool wait(SemaphoreSlim wake)
+    private int threads() => _settings().UpscaleThreads;
+
+    private bool wait(SemaphoreSlim wake, TimeSpan? timeout = null)
     {
         try
         {
-            wake.Wait(_stop.Token);
+            wake.Wait(timeout ?? Timeout.InfiniteTimeSpan, _stop.Token);
             return true;
         }
         catch (OperationCanceledException)
