@@ -2,9 +2,14 @@
 
 namespace Waddamburo.App.Cli;
 
-/// <summary>Resolves the stable paths used by a normal game boot from one USRDIR root.</summary>
+/// <summary>
+/// Resolves the stable paths used by a normal game boot from one USRDIR root. Waddamburo's own files
+/// (settings, accounts, scores, avatars, caches) live together in <see cref="Home"/>
+/// (USRDIR/waddamburo); custom_songs stays at the root, as the user's own song folder.
+/// </summary>
 internal sealed record GameDataLayout(
     string Root,
+    string Home,
     string LumenRoot,
     string DonRoot,
     string TjaRoot,
@@ -28,7 +33,35 @@ internal sealed record GameDataLayout(
         var font = fontOverride is null ? findTitleFont(fullRoot) : Path.GetFullPath(fontOverride);
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
-        return new GameDataLayout(fullRoot, lumen, don, tja, sound, font);
+        var home = Path.Combine(fullRoot, "waddamburo");
+        moveIntoHome(fullRoot, home);
+        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font);
+    }
+
+    /// <summary>The upscaled-texture and decoded-audio caches.</summary>
+    public string UpscaleCache => Path.Combine(Home, "cache", "upscaled");
+
+    public string AudioCache => Path.Combine(Home, "cache", "vgmstream");
+
+    // Files from before the waddamburo folder move in once (never over newer ones).
+    private static readonly string[] HomeFiles =
+        ["config.cfg", "accounts.json", "account.json", "scores.db", "scores.db-wal", "scores.db-shm", "scores.db-journal"];
+
+    private static void moveIntoHome(string root, string home)
+    {
+        Directory.CreateDirectory(home);
+        foreach (var name in HomeFiles)
+            if (File.Exists(Path.Combine(root, name)) && !File.Exists(Path.Combine(home, name)))
+                File.Move(Path.Combine(root, name), Path.Combine(home, name));
+        foreach (var (from, to) in new[] { ("avatars", "avatars"), ("upscaled", Path.Combine("cache", "upscaled")) })
+        {
+            var source = Path.Combine(root, from);
+            var target = Path.Combine(home, to);
+            if (!Directory.Exists(source) || Directory.Exists(target))
+                continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            Directory.Move(source, target);
+        }
     }
 
     /// <summary>

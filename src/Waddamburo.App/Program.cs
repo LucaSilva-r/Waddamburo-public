@@ -83,7 +83,8 @@ try
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
         // Cabinet settings (free play, credits, songs per session) beside the game data.
-        var arcadePath = Path.Combine(layout.Root, Waddamburo.Game.Flow.ArcadeSettings.FileName);
+        var arcadePath = Path.Combine(layout.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
+        Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache;
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         ReleaseConsole.Show(arcade.ShowConsole);
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
@@ -99,10 +100,10 @@ try
                 + $"{arcade.SongsPerSession} songs per session).");
         // Fills the texture upscale cache ahead of play, with no game window (see TextureCacheBuilder).
         if (args.FirstOrDefault(static arg => arg.StartsWith("--upscale-textures", StringComparison.Ordinal)) is { } upscale)
-            return TextureCacheBuilder.Run(layout.Root, layout.LumenRoot, upscale.Split('=') is [_, var count]
+            return TextureCacheBuilder.Run(layout.UpscaleCache, layout.LumenRoot, upscale.Split('=') is [_, var count]
                 ? int.Parse(count, System.Globalization.CultureInfo.InvariantCulture)
                 : Math.Max(1, Environment.ProcessorCount - 2));
-        var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Root);
+        var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
         if (login || logout)
             return AccountCommands.Run(arcade, accounts, login);
         Console.WriteLine(!arcade.Home
@@ -130,7 +131,7 @@ try
             arcade,
             arcadePath,
             accounts,
-            Path.Combine(layout.Root, Waddamburo.Game.Scores.ScoreStore.FileName),
+            Path.Combine(layout.Home, Waddamburo.Game.Scores.ScoreStore.FileName),
             autoplay,
             arcade.Fullscreen));
         return 0;

@@ -64,10 +64,10 @@ internal sealed class UpscaleTool : IDisposable
 
     /// <summary>
     /// The tool, or null when the model files or the BC7 library are not installed. The cache lives in
-    /// <paramref name="gameRoot"/>/upscaled (next to config.cfg and scores.db), or in the user cache
-    /// folder when there is no game folder (diagnostic runs).
+    /// <paramref name="cacheFolder"/> (USRDIR/waddamburo/cache/upscaled), or in the user cache folder
+    /// when there is no game folder (diagnostic runs).
     /// </summary>
-    public static UpscaleTool? Find(string? gameRoot)
+    public static UpscaleTool? Find(string? cacheFolder)
     {
         var folder = Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_MODEL") is { Length: > 0 } set ? set
             : Path.Combine(AppContext.BaseDirectory, "upscale");
@@ -85,7 +85,7 @@ internal sealed class UpscaleTool : IDisposable
             : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
             "Waddamburo", "upscaled");
-        var cache = gameRoot is null ? userCache : Path.Combine(gameRoot, "upscaled");
+        var cache = cacheFolder ?? userCache;
         // A cache from before it moved next to the game data comes along once.
         if (cache != userCache && !File.Exists(Path.Combine(cache, CacheName)) && Directory.Exists(userCache))
         {

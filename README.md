@@ -156,7 +156,7 @@ into the game's `USRDIR` and run it; nothing else needs installing. Nijiiro audi
 next to it (or in a `vgmstream` folder beside it), which Waddamburo cannot ship.
 Releases update themselves: at start they check GitHub for a newer release and, if
 there is one, download it on an update screen and restart into it (`auto_update = false`
-in `config.cfg` turns this off; without a connection the game just starts). The Windows release runs without a console window;
+in `waddamburo/config.cfg` turns this off; without a connection the game just starts). The Windows release runs without a console window;
 `console = true` shows the log. F11 switches between fullscreen and a window, and
 `fullscreen = true` starts fullscreen.
 
@@ -165,7 +165,10 @@ For normal play from source, supply only the game's `USRDIR` directory. It resol
 `custom_songs` TJA library, and `data/sound` from that root and boots
 like the cabinet: the startup notice and logos, then the attract loop (logo, title,
 caution screen, then one of the `data/movie/attract_cm_###.pam` commercials in turn). In free play, hit a drum key (D/F/J/K) during the attract loop to reach player Entry.
-Cabinet settings live in `config.cfg` in that root (written with defaults on first run):
+Waddamburo keeps its own files together in a `waddamburo` folder in that root: `config.cfg`,
+`accounts.json`, `scores.db` and `avatars`, plus `cache/upscaled` (upscaled textures) and
+`cache/vgmstream` (decoded Nijiiro audio); files from older versions move there on first start.
+Cabinet settings live in `waddamburo/config.cfg` (written with defaults on first run):
 `free_play`, `credits_per_coin`, `credits_1p`, `credits_2p`, `songs_per_session`,
 `fullscreen`, `console`, `auto_update` and `renderer` (`auto`, or `vulkan`/`gles`/`opengl`/`d3d11`/`metal` to force a GPU backend). Scores go to `server` (default `https://taikonline.com`; `server =` left empty plays offline). The file records its `config_version`; a
 newer build appends the settings it added, with their defaults, keeping the user's edits. In coin

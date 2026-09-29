@@ -14,6 +14,43 @@ namespace Waddamburo.Platform.Sdl.Media;
 public static class VgmstreamCli
 {
     private static readonly string ExecutableName = OperatingSystem.IsWindows() ? "vgmstream-cli.exe" : "vgmstream-cli";
+
+    // Before the game folder held it (USRDIR/waddamburo/cache/vgmstream): the user cache folder.
+    private static readonly string UserCache = Path.Combine(OperatingSystem.IsWindows()
+        ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+        : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
+        "Waddamburo", "vgmstream");
+
+    private static string? _cacheDirectory;
+
+    /// <summary>
+    /// Where decoded audio is kept (set to USRDIR/waddamburo/cache/vgmstream by a normal boot; the
+    /// user cache folder otherwise). A cache in the old user-cache location moves here once.
+    /// </summary>
+    public static string CacheDirectory
+    {
+        get => _cacheDirectory ?? UserCache;
+        set
+        {
+            _cacheDirectory = value;
+            if (value != UserCache && Directory.Exists(UserCache) && !Directory.Exists(value))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(value)!);
+                try
+                {
+                    Directory.Move(UserCache, value);
+                }
+                catch (IOException)
+                {
+                    // Another drive: copy the files over instead.
+                    Directory.CreateDirectory(value);
+                    foreach (var file in Directory.GetFiles(UserCache))
+                        File.Move(file, Path.Combine(value, Path.GetFileName(file)));
+                }
+            }
+        }
+    }
     private static bool _reportedMissing;
 
     /// <summary>The decoded WAV for <paramref name="path"/>, or null when vgmstream-cli is missing or fails.</summary>
@@ -27,11 +64,7 @@ public static class VgmstreamCli
         // Decoded once per bank: kept across restarts (the temp folder may be wiped on boot).
         // ponytail: never pruned (Opus keeps it small); cap it if the folder still grows too much.
         // Loop points are dropped with the WAV: the banks decoded this way are songs, played once.
-        var cache = Path.Combine(OperatingSystem.IsWindows()
-            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
-            "Waddamburo", "vgmstream");
+        var cache = CacheDirectory;
         var wav = Path.Combine(cache, key + ".wav");
         var opus = Path.Combine(cache, key + ".ogg");
         if (File.Exists(opus))
