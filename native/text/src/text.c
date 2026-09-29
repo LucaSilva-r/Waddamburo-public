@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 struct waddamburo_text_context {
     FT_Library library;
@@ -171,45 +172,110 @@ static void draw_bitmap_to_mask(
     }
 }
 
-/* Dilate the rendered fill with a round footprint. Stroking font contours can leave tiny
- * self-intersection holes in the counters of outlined UI letters. A bitmap border follows the
- * same hinted pixels as the white fill, including when FreeType changes hinting at small sizes. */
+/* One line of Felzenszwalb and Huttenlocher's squared Euclidean distance transform: d[q] =
+ * min over p of (q - p)^2 + f[p], in linear time (the lower envelope of the parabolas). */
+static void distance_1d(const float *f, float *d, uint32_t n, uint32_t *v, float *z)
+{
+    uint32_t k = 0U;
+    v[0] = 0U;
+    z[0] = -1e20f;
+    z[1] = 1e20f;
+    for (uint32_t q = 1U; q < n; ++q) {
+        float s;
+        for (;;) {
+            float p = (float)v[k];
+            s = ((f[q] + (float)q * (float)q) - (f[v[k]] + p * p)) / (2.0f * ((float)q - p));
+            if (s > z[k] || k == 0U)
+                break;
+            k--;
+        }
+        if (s <= z[k]) {
+            v[0] = q;
+            z[0] = -1e20f;
+            z[1] = 1e20f;
+            k = 0U;
+            continue;
+        }
+        k++;
+        v[k] = q;
+        z[k] = s;
+        z[k + 1U] = 1e20f;
+    }
+    k = 0U;
+    for (uint32_t q = 0U; q < n; ++q) {
+        float dq;
+        while (z[k + 1U] < (float)q)
+            k++;
+        dq = (float)q - (float)v[k];
+        d[q] = dq * dq + f[v[k]];
+    }
+}
+
+/* Outline the rendered fill with a round border: every pixel within radius of the ink (fill at half
+ * coverage or more) is covered, with a one-pixel anti-aliased rim. Stroking font contours can leave
+ * tiny self-intersection holes in the counters of outlined UI letters; a border grown from the fill
+ * follows the same hinted pixels as the white fill, including when FreeType changes hinting at small
+ * sizes. A distance transform costs the same at any radius (a round max filter was 2r+1 passes over
+ * the surface: ~30 ms per label at raster scale 3), and only the ink's box grown by the radius is
+ * touched (the rest stays zero). */
 static int dilate_mask_round(
     const uint8_t *fill, uint8_t *outline, uint32_t width, uint32_t height, uint32_t radius)
 {
-    uint32_t *queue = (uint32_t *)malloc((size_t)width * sizeof(*queue));
-    if (queue == NULL)
-        return 0;
-    for (int32_t dy = -(int32_t)radius; dy <= (int32_t)radius; ++dy) {
-        uint32_t distance_y = (uint32_t)(dy < 0 ? -dy : dy);
-        uint32_t half_width = radius;
-        while (half_width * half_width + distance_y * distance_y > radius * radius)
-            half_width--;
-        for (uint32_t y = 0U; y < height; ++y) {
-            int32_t source_y = (int32_t)y + dy;
-            uint32_t head = 0U, tail = 0U, next = 0U;
-            const uint8_t *source;
-            uint8_t *destination;
-            if (source_y < 0 || source_y >= (int32_t)height)
-                continue;
-            source = fill + (size_t)source_y * width;
-            destination = outline + (size_t)y * width;
-            for (uint32_t x = 0U; x < width; ++x) {
-                uint32_t right = x + half_width < width ? x + half_width : width - 1U;
-                uint32_t left = x > half_width ? x - half_width : 0U;
-                while (next <= right) {
-                    while (tail > head && source[queue[tail - 1U]] <= source[next])
-                        tail--;
-                    queue[tail++] = next++;
-                }
-                while (head < tail && queue[head] < left)
-                    head++;
-                if (source[queue[head]] > destination[x])
-                    destination[x] = source[queue[head]];
+    const float far_away = 1e20f;
+    uint32_t ink_left = width, ink_right = 0U, ink_top = height, ink_bottom = 0U;
+    uint32_t box_left, box_top, box_width, box_height, longest;
+    float *grid, *line, *result, *z;
+    uint32_t *v;
+    for (uint32_t y = 0U; y < height; ++y)
+        for (uint32_t x = 0U; x < width; ++x)
+            if (fill[(size_t)y * width + x] >= 128U) {
+                if (x < ink_left) ink_left = x;
+                if (x > ink_right) ink_right = x;
+                if (y < ink_top) ink_top = y;
+                ink_bottom = y;
             }
+    if (ink_left > ink_right) {
+        memcpy(outline, fill, (size_t)width * height);
+        return 1;
+    }
+    box_left = ink_left > radius + 1U ? ink_left - radius - 1U : 0U;
+    box_top = ink_top > radius + 1U ? ink_top - radius - 1U : 0U;
+    box_width = (ink_right + radius + 1U < width ? ink_right + radius + 1U : width - 1U) - box_left + 1U;
+    box_height = (ink_bottom + radius + 1U < height ? ink_bottom + radius + 1U : height - 1U) - box_top + 1U;
+    longest = box_width > box_height ? box_width : box_height;
+    grid = (float *)malloc((size_t)box_width * box_height * sizeof(*grid));
+    line = (float *)calloc((size_t)longest, sizeof(*line));
+    result = (float *)calloc((size_t)longest, sizeof(*result));
+    z = (float *)malloc(((size_t)longest + 1U) * sizeof(*z));
+    v = (uint32_t *)malloc((size_t)longest * sizeof(*v));
+    if (grid == NULL || line == NULL || result == NULL || z == NULL || v == NULL) {
+        free(grid); free(line); free(result); free(z); free(v);
+        return 0;
+    }
+    for (uint32_t y = 0U; y < box_height; ++y)
+        for (uint32_t x = 0U; x < box_width; ++x)
+            grid[(size_t)y * box_width + x] =
+                fill[(size_t)(box_top + y) * width + box_left + x] >= 128U ? 0.0f : far_away;
+    /* Columns, then rows: the squared distance to the nearest ink pixel. */
+    for (uint32_t x = 0U; x < box_width; ++x) {
+        for (uint32_t y = 0U; y < box_height; ++y)
+            line[y] = grid[(size_t)y * box_width + x];
+        distance_1d(line, result, box_height, v, z);
+        for (uint32_t y = 0U; y < box_height; ++y)
+            grid[(size_t)y * box_width + x] = result[y];
+    }
+    for (uint32_t y = 0U; y < box_height; ++y) {
+        float *row = grid + (size_t)y * box_width;
+        distance_1d(row, result, box_width, v, z);
+        for (uint32_t x = 0U; x < box_width; ++x) {
+            size_t index = (size_t)(box_top + y) * width + box_left + x;
+            float cover = (float)radius + 0.5f - sqrtf(result[x]);
+            uint32_t border = cover >= 1.0f ? 255U : cover <= 0.0f ? 0U : (uint32_t)(cover * 255.0f + 0.5f);
+            /* Fill below half coverage (anti-aliased glyph edges) still counts at its own level. */
+            outline[index] = (uint8_t)(border > fill[index] ? border : fill[index]);
         }
     }
-    free(queue);
+    free(grid); free(line); free(result); free(z); free(v);
     return 1;
 }
 
