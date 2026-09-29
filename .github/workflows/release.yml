@@ -1,13 +1,10 @@
 # Pushing a vX.Y.Z tag builds both releases and drafts a GitHub release with them; publishing
-# the draft is what makes installed copies update. Every push to master also drafts a
-# development build (dev-<commit>, a prerelease, version 0.0.0-dev: never offered as an update).
-# Run it by hand (Actions > Release > Run workflow) to only build and download the files from
-# the run's artifacts.
+# the draft is what makes installed copies update. Run it by hand (Actions > Release > Run
+# workflow) to only build and download the files from the run's artifacts.
 name: Release
 
 on:
   push:
-    branches: [master]
     tags: ['v*']
   workflow_dispatch:
 
@@ -56,7 +53,7 @@ jobs:
             out/package/licenses.zip
 
   release:
-    if: github.event_name == 'push'
+    if: github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -67,14 +64,6 @@ jobs:
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            tag=$GITHUB_REF_NAME
-            flags=()
-          else
-            # The tag is only created on the commit if the draft is published.
-            tag=dev-${GITHUB_SHA::7}
-            flags=(--prerelease --target "$GITHUB_SHA")
-          fi
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --generate-notes "${flags[@]}" \
-            --title "Waddamburo $tag" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip
+        run: >
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
+          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip
