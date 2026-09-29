@@ -112,6 +112,11 @@ namespace Waddamburo.Platform.Sdl.Rendering
         /// <summary>BGFX_RESET_* for init and every resize: vsync unless WADDAMBURO_PRESENT_MODE uncaps it.</summary>
         public static uint ResetFlags { get; private set; }
 
+        /// <summary>Turns vsync on or off (the next present resets the swap chain); the diagnostic env var still wins.</summary>
+        public static void SetVsync(bool vsync) =>
+            ResetFlags = vsync && Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") is not ("immediate" or "mailbox")
+                ? (uint)bgfx.ResetFlags.Vsync : 0;
+
         private static Thread? s_renderThread;
         private static readonly Lock s_pendingLock = new();
         private static int s_pendingFrames;

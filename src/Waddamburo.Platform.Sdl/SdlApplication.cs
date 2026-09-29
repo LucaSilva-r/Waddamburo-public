@@ -69,6 +69,73 @@ public sealed unsafe class SdlApplication : IDisposable
 
     public string GpuDriver { get; } = string.Empty;
 
+    private DisplaySettings? _display;
+
+    // Stopwatch ticks between frame starts under the frame limit; 0 = none.
+    private long _frameInterval;
+    private long _nextFrameAt;
+
+    /// <summary>
+    /// Applies vsync, the fullscreen kind and mode, and the letterbox. The window only enters or leaves
+    /// fullscreen when that setting itself changed (F11 toggles it apart from the settings).
+    /// </summary>
+    public void ApplyDisplay(DisplaySettings display)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        BgfxSupport.SetVsync(display.Vsync);
+        _frameInterval = display.FpsCap > 0 ? Stopwatch.Frequency / display.FpsCap : 0;
+        _renderer!.Letterbox = (display.LetterboxSize, display.LetterboxX, display.LetterboxY);
+        if (_display is { } previous && previous.Fullscreen == display.Fullscreen && previous.Exclusive == display.Exclusive
+            && previous.Width == display.Width && previous.Height == display.Height && previous.RefreshRate == display.RefreshRate)
+        {
+            _display = display;
+            return;
+        }
+        _display = display;
+        SDL_DisplayMode mode;
+        var (width, height) = display.Width > 0 ? (display.Width, display.Height) : desktop();
+        var refresh = display.RefreshRate > 0 ? display.RefreshRate
+            : FullscreenModes().Where(m => (m.Width, m.Height) == (width, height)).Select(static m => m.RefreshRate).DefaultIfEmpty(0).Max();
+        var exclusive = display.Exclusive && SDL_GetClosestFullscreenDisplayMode(SDL_GetDisplayForWindow(_window),
+            width, height, refresh, true, &mode);
+        // Null: borderless (the desktop's mode).
+        if (!SDL_SetWindowFullscreenMode(_window, exclusive ? &mode : null))
+            Console.Error.WriteLine($"Fullscreen mode not applied: {SDL_GetError()}");
+        SDL_SetWindowFullscreen(_window, display.Fullscreen);
+    }
+
+    private (int Width, int Height) desktop()
+    {
+        var mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(_window));
+        return mode is null ? (1920, 1080) : (mode->w, mode->h);
+    }
+
+    /// <summary>The exclusive fullscreen modes of the window's display, largest and fastest first.</summary>
+    public IReadOnlyList<(int Width, int Height, int RefreshRate)> FullscreenModes()
+    {
+        ensureOwnerThread();
+        int count;
+        var modes = SDL_GetFullscreenDisplayModes(SDL_GetDisplayForWindow(_window), &count);
+        if (modes is null)
+            return [];
+        var list = new List<(int, int, int)>();
+        for (var index = 0; index < count; index++)
+            list.Add((modes[index]->w, modes[index]->h, (int)Math.Round(modes[index]->refresh_rate)));
+        SDL_free(modes);
+        return [.. list.Distinct()];
+    }
+
+    /// <summary>
+    /// The height the stage is drawn at in fullscreen: the exclusive mode's or the desktop's, times the
+    /// letterbox (what the upscaled textures are sized for).
+    /// </summary>
+    public int StageHeight(DisplaySettings display)
+    {
+        var (width, height) = display.Exclusive && display.Width > 0 ? (display.Width, display.Height) : desktop();
+        return (int)(Math.Min(height, width * 9 / 16) * display.LetterboxSize);
+    }
+
     public (int Width, int Height) GetPixelSize()
     {
         ensureOwnerThread();
@@ -336,6 +403,29 @@ public sealed unsafe class SdlApplication : IDisposable
                 continue;
             }
 
+            // The frame limit: until the next frame is due, input is still delivered as above.
+            if (_frameInterval > 0 && captureFinalFrame is null)
+            {
+                var now = Stopwatch.GetTimestamp();
+                if (now < _nextFrameAt)
+                {
+                    if (updateFrame is not null && pendingPresses.Count > 0)
+                    {
+                        updateFrame(new SdlKeyboardSnapshot(_pressedKeys, pendingPresses,
+                            TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)))));
+                        pendingPresses.Clear();
+                    }
+                    // ponytail: sleeps in 1 ms steps, spins the last one (Sleep(1) overshoots).
+                    if (Stopwatch.GetElapsedTime(now, _nextFrameAt) > TimeSpan.FromMilliseconds(1.5))
+                        Thread.Sleep(1);
+                    else
+                        Thread.Yield();
+                    continue;
+                }
+                // Due times advance by the interval (no drift), restarting after a stall.
+                _nextFrameAt = Math.Max(_nextFrameAt + _frameInterval, now);
+            }
+
             var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
@@ -546,6 +636,10 @@ public sealed unsafe class SdlApplication : IDisposable
         return new InvalidOperationException($"Failed to {operation}: {error}");
     }
 }
+
+/// <summary>The display settings <see cref="SdlApplication.ApplyDisplay"/> takes. Width/Height 0: the desktop's; RefreshRate 0: the highest; FpsCap 0: none.</summary>
+public readonly record struct DisplaySettings(bool Vsync, bool Fullscreen, bool Exclusive, int Width, int Height, int RefreshRate,
+    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0);
 
 public readonly record struct SdlRunResult(
     int RenderedFrames,

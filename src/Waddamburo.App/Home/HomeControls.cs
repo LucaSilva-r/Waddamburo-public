@@ -44,8 +44,10 @@ internal sealed class HomeControls : IDisposable
         {
             shell.Arcade = settings;
             _audio.Apply(settings);
+            shell.ApplyDisplay();
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
             shell.Options.TjaRoot, () => shell.Upscale?.CachedCount);
+        HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
         _overlay = shell.Arcade.Home

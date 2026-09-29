@@ -26,6 +26,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     private bgfx.VertexLayout _layout;
     private uint _width;
     private uint _height;
+    private uint _resetFlags = BgfxSupport.ResetFlags;
     private uint _nextTextureId = 1;
     private bool _disposed;
 
@@ -207,10 +208,11 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
         var width = (uint)Math.Max(1, pixelWidth);
         var height = (uint)Math.Max(1, pixelHeight);
-        if (width != _width || height != _height)
+        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags)
         {
             _width = width;
             _height = height;
+            _resetFlags = BgfxSupport.ResetFlags;
             var swapChain = new bgfx.SwapChain
             {
                 width = width,
@@ -230,7 +232,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.set_view_clear(ClearView, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Stencil),
             BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
         bgfx.touch(ClearView);
-        var viewport = frame.ResolveViewport(width, height);
+        var viewport = letterbox(frame.ResolveViewport(width, height), width, height);
         bgfx.set_view_rect(MainView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
         bgfx.set_view_scissor(MainView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
         submitQuads(frame.Quads.AsSpan());
@@ -247,6 +249,19 @@ internal sealed unsafe class RenderDevice : IDisposable
             BgfxSupport.Frame();
         return BgfxSupport.Callbacks.Capture
             ?? throw new InvalidOperationException("bgfx did not deliver the screenshot.");
+    }
+
+    /// <summary>osu!-style letterbox: the stage at this fraction of its size, placed in the free space (0-1, 0.5 = centred).</summary>
+    public (float Size, float X, float Y) Letterbox { get; set; } = (1, .5f, .5f);
+
+    private RenderViewport letterbox(RenderViewport fitted, uint width, uint height)
+    {
+        var (size, x, y) = Letterbox;
+        if (size >= 1)
+            return fitted;
+        var w = Math.Max(1, (int)(fitted.Width * size));
+        var h = Math.Max(1, (int)(fitted.Height * size));
+        return new RenderViewport((int)((width - w) * x), (int)((height - h) * y), w, h);
     }
 
     private void submitQuads(ReadOnlySpan<RenderQuad> quads)

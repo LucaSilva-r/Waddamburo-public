@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 10;
+    public const int CurrentVersion = 11;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -101,12 +101,57 @@ public sealed record ArcadeSettings
         squash_titles = false
 
         """,
+        """
+        # Display (also in the Settings menu). vsync: wait for the screen's refresh (no tearing); false
+        # renders as fast as it can. fps_cap: frames per second at most in a window or borderless
+        # fullscreen, 0 = no limit. fullscreen_mode (Windows): borderless (a window covering the desktop)
+        # or exclusive (the game takes the screen: less load on older PCs, and the resolution and
+        # refresh rate below apply; a 4:3 resolution shows the game letterboxed).
+        # fullscreen_resolution: WIDTHxHEIGHT or native (the desktop's); refresh_rate in Hz, 0 = the
+        # highest at that resolution. The resolution also sizes the upscaled textures loaded.
+        vsync = true
+        fps_cap = 0
+        fullscreen_mode = borderless
+        fullscreen_resolution = native
+        refresh_rate = 0
+        # Letterboxing, as in osu!: letterbox_size shrinks the game to that percent of the screen (100 =
+        # off); letterbox_x and letterbox_y place it in the free space (0 = left/top, 50 = centred).
+        letterbox_size = 100
+        letterbox_x = 50
+        letterbox_y = 50
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
     public int Version { get; init; }
 
     public bool Fullscreen { get; init; }
+
+    /// <summary>Wait for the display's refresh before showing a frame.</summary>
+    public bool Vsync { get; init; } = true;
+
+    /// <summary>Frames per second at most, outside exclusive fullscreen; 0 = no limit.</summary>
+    public int FpsCap { get; init; }
+
+    /// <summary>Exclusive fullscreen (the resolution and refresh rate apply) instead of borderless.</summary>
+    public bool ExclusiveFullscreen { get; init; }
+
+    /// <summary>Exclusive fullscreen's resolution; 0 x 0 = the desktop's.</summary>
+    public int FullscreenWidth { get; init; }
+
+    public int FullscreenHeight { get; init; }
+
+    /// <summary>Exclusive fullscreen's refresh rate in Hz; 0 = the highest at its resolution.</summary>
+    public int RefreshRate { get; init; }
+
+    /// <summary>Percent of the screen the game fills (100 = no letterbox).</summary>
+    public int LetterboxSize { get; init; } = 100;
+
+    /// <summary>The letterboxed game's place in the free space, percent (50 = centred).</summary>
+    public int LetterboxX { get; init; } = 50;
+
+    public int LetterboxY { get; init; } = 50;
 
     public bool ShowConsole { get; init; }
 
@@ -274,6 +319,20 @@ public sealed record ArcadeSettings
                 "cabinet_token" => settings with { CabinetToken = value.Length == 0 ? null : value },
                 "config_version" => settings with { Version = count(value, index, 0) },
                 "fullscreen" => settings with { Fullscreen = boolean(value, index) },
+                "vsync" => settings with { Vsync = boolean(value, index) },
+                "fps_cap" => settings with { FpsCap = integer(value, index, 0, 10000) },
+                "fullscreen_mode" => settings with { ExclusiveFullscreen = value.ToLowerInvariant() switch
+                {
+                    "borderless" => false,
+                    "exclusive" => true,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: fullscreen_mode is borderless or exclusive, not '{value}'."),
+                } },
+                "fullscreen_resolution" => resolution(value, index) is var (width, height)
+                    ? settings with { FullscreenWidth = width, FullscreenHeight = height } : settings,
+                "refresh_rate" => settings with { RefreshRate = integer(value, index, 0, 1000) },
+                "letterbox_size" => settings with { LetterboxSize = integer(value, index, 20, 100) },
+                "letterbox_x" => settings with { LetterboxX = integer(value, index, 0, 100) },
+                "letterbox_y" => settings with { LetterboxY = integer(value, index, 0, 100) },
                 "console" => settings with { ShowConsole = boolean(value, index) },
                 "auto_update" => settings with { AutoUpdate = boolean(value, index) },
                 "title_language" => settings with { EnglishTitles = value.ToLowerInvariant() switch
@@ -354,6 +413,15 @@ public sealed record ArcadeSettings
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
+            ["fullscreen"] = settings.Fullscreen ? "true" : "false",
+            ["vsync"] = settings.Vsync ? "true" : "false",
+            ["fps_cap"] = settings.FpsCap,
+            ["fullscreen_mode"] = settings.ExclusiveFullscreen ? "exclusive" : "borderless",
+            ["fullscreen_resolution"] = settings.FullscreenWidth == 0 ? "native" : $"{settings.FullscreenWidth}x{settings.FullscreenHeight}",
+            ["refresh_rate"] = settings.RefreshRate,
+            ["letterbox_size"] = settings.LetterboxSize,
+            ["letterbox_x"] = settings.LetterboxX,
+            ["letterbox_y"] = settings.LetterboxY,
         };
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)
@@ -380,6 +448,14 @@ public sealed record ArcadeSettings
         "false" or "0" or "no" or "off" => false,
         _ => throw new InvalidDataException($"{FileName} line {line}: '{value}' is not true or false."),
     };
+
+    private static (int Width, int Height) resolution(string value, int line) =>
+        value.Equals("native", StringComparison.OrdinalIgnoreCase) ? (0, 0)
+        : value.Split('x', 'X') is [var width, var height]
+            && int.TryParse(width, NumberStyles.None, CultureInfo.InvariantCulture, out var w) && w is >= 320 and <= 16384
+            && int.TryParse(height, NumberStyles.None, CultureInfo.InvariantCulture, out var h) && h is >= 200 and <= 16384
+            ? (w, h)
+            : throw new InvalidDataException($"{FileName} line {line}: fullscreen_resolution is native or WIDTHxHEIGHT, not '{value}'.");
 
     private static Uri server(string value, int line) =>
         Uri.TryCreate(value.EndsWith('/') ? value : value + "/", UriKind.Absolute, out var uri)

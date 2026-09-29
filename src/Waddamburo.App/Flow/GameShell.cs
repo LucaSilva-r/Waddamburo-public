@@ -170,6 +170,22 @@ internal sealed class GameShell : IDisposable
         Application.RequestQuit();
     }
 
+    /// <summary>Applies the display settings (vsync, fullscreen, letterbox) and sizes the upscaled textures for them.</summary>
+    public void ApplyDisplay()
+    {
+        if (Headless)
+            return;
+        // Exclusive fullscreen on Windows only: Linux compositors only emulate it.
+        var exclusive = Arcade.ExclusiveFullscreen && OperatingSystem.IsWindows();
+        var display = new DisplaySettings(Arcade.Vsync, Arcade.Fullscreen, exclusive, Arcade.FullscreenWidth,
+            Arcade.FullscreenHeight, Arcade.RefreshRate, Arcade.LetterboxSize / 100f, Arcade.LetterboxX / 100f, Arcade.LetterboxY / 100f,
+            exclusive && Arcade.Fullscreen ? 0 : Arcade.FpsCap);
+        Application.ApplyDisplay(display);
+        // The stage is 720 lines: 1080p loads textures at 1.5x, 1440p at 2x, 4K at the model's 3x.
+        if (Upscale is not null)
+            Upscale.Scale = Math.Clamp(Math.Ceiling(Application.StageHeight(display) / 720d * 2) / 2, 1, 3);
+    }
+
     public static int Run(GameOptions options)
     {
         using var shell = new GameShell(options);
@@ -326,6 +342,7 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"Texture upscaling {(Arcade.UpscaleTextures ? "on" : "off")}, "
                 + $"{Arcade.UpscaleThreads} background thread(s), cache {upscale.Cache}.");
         }
+        ApplyDisplay();
         _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);

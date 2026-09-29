@@ -38,7 +38,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private static readonly TimeSpan StreakGap = TimeSpan.FromMilliseconds(200);
 
     private sealed record Setting(string Label, Func<ArcadeSettings, int> Get, Func<ArcadeSettings, int, ArcadeSettings> Set,
-        Func<int, int, int> Step, int Minimum, Func<int, string> Format, int Maximum, AudioBus? Bus = null, string Hint = "");
+        Func<int, int, int> Step, int Minimum, Func<int, string> Format, int Maximum, AudioBus? Bus = null, string Hint = "")
+    {
+        /// <summary>The shown value when it depends on other settings (replaces <see cref="Format"/>).</summary>
+        public Func<ArcadeSettings, string>? FormatFor { get; init; }
+    }
 
     private const string Restart = " Applies after a restart.";
 
@@ -49,10 +53,30 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private sealed record Command(string Label, HomeMenuAction Action, string Hint);
 
     // One settings row: a section header, a setting, a song library, a command, or Back (all null).
-    private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null, Command? Command = null);
+    // Shown: whether the row applies to the current settings (hidden rows are skipped); null = always.
+    private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null, Command? Command = null,
+        Func<ArcadeSettings, bool>? Shown = null);
 
     // Background upscaling may take all threads but one (the game needs its own).
     private static readonly int UpscaleThreadsMaximum = Math.Max(1, Environment.ProcessorCount - 1);
+
+    /// <summary>The display's exclusive fullscreen modes, largest first (set once by the host).</summary>
+    // ponytail: read once at start; a different monitor plugged in later needs a restart.
+    public static IReadOnlyList<(int Width, int Height, int RefreshRate)> DisplayModes { get; set; } = [];
+
+    // Exclusive fullscreen exists on Windows only (Linux compositors only emulate it).
+    private static readonly bool ExclusiveAvailable = OperatingSystem.IsWindows();
+
+    private static bool exclusive(ArcadeSettings s) => ExclusiveAvailable && s.Fullscreen && s.ExclusiveFullscreen;
+
+    // The Resolution row's choices (0 = native) and the Refresh Rate row's for the chosen one (0 = highest).
+    private static (int Width, int Height)[] resolutions => [.. DisplayModes.Select(static m => (m.Width, m.Height)).Distinct()];
+
+    private static int[] rates(ArcadeSettings s) =>
+        [.. DisplayModes.Where(m => (m.Width, m.Height) == (s.FullscreenWidth, s.FullscreenHeight))
+            .Select(static m => m.RefreshRate).Distinct().OrderDescending()];
+
+    private static readonly int[] FpsCaps = [0, 60, 120, 144, 165, 240, 360, 480, 1000];
 
     private static readonly Row[] Rows_ =
     [
@@ -86,6 +110,40 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new("Exclusive Audio", static s => s.AudioExclusive ? 1 : 0, static (s, v) => s with { AudioExclusive = v != 0 },
             static (value, _) => 1 - value, 0, static value => value != 0 ? "On" : "Off", 1,
             Hint: "Windows: the sound device for the game alone, for the lowest latency." + Restart)),
+        new("Display"),
+        new(Setting: new("Fullscreen", static s => !s.Fullscreen ? 0 : exclusive(s) ? 2 : 1,
+            static (s, v) => s with { Fullscreen = v != 0, ExclusiveFullscreen = v == 2 ? true : v == 1 ? false : s.ExclusiveFullscreen },
+            static (value, step) => value + Math.Sign(step), 0, static value => value switch { 0 => "Off", 1 => "Borderless", _ => "Exclusive" },
+            ExclusiveAvailable ? 2 : 1,
+            Hint: ExclusiveAvailable ? "Exclusive takes the screen at its own resolution: lighter on older PCs. F11 switches to a window and back."
+                : "F11 switches to a window and back.")),
+        new(Shown: exclusive, Setting: new("Resolution",
+            static s => Array.IndexOf(resolutions, (s.FullscreenWidth, s.FullscreenHeight)) + 1,
+            static (s, v) => (v = Math.Min(v, resolutions.Length)) == 0
+                ? s with { FullscreenWidth = 0, FullscreenHeight = 0, RefreshRate = 0 }
+                : s with { FullscreenWidth = resolutions[v - 1].Width, FullscreenHeight = resolutions[v - 1].Height, RefreshRate = 0 },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => value == 0 || value > resolutions.Length ? "Native" : $"{resolutions[value - 1].Width}x{resolutions[value - 1].Height}",
+            int.MaxValue, Hint: "Also the size upscaled textures load at (screens loaded next). A 4:3 one shows the game letterboxed.")),
+        new(Shown: static s => exclusive(s) && s.FullscreenWidth > 0, Setting: new("Refresh Rate",
+            static s => Array.IndexOf(rates(s), s.RefreshRate) + 1,
+            static (s, v) => s with { RefreshRate = Math.Min(v, rates(s).Length) is var index and > 0 ? rates(s)[index - 1] : 0 },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue,
+            Hint: "The screen's refresh rate at this resolution.") { FormatFor = static s => s.RefreshRate == 0 ? "Highest" : $"{s.RefreshRate} Hz" }),
+        new(Setting: toggle("VSync", static s => s.Vsync, static (s, v) => s with { Vsync = v },
+            "Wait for the screen's refresh: no tearing. Off draws as fast as the PC can (or up to the frame limit).")),
+        new(Shown: static s => !exclusive(s), Setting: new("Frame Limit",
+            static s => Math.Max(0, Array.IndexOf(FpsCaps, s.FpsCap)),
+            static (s, v) => s with { FpsCap = FpsCaps[Math.Min(v, FpsCaps.Length - 1)] },
+            static (value, step) => value + Math.Sign(step), 0, static value => value == 0 ? "Off" : $"{FpsCaps[value]} FPS", FpsCaps.Length - 1,
+            Hint: "Frames drawn per second at most (window and borderless): less heat and power.")),
+        new(Setting: new("Letterbox Size", static s => s.LetterboxSize, static (s, v) => s with { LetterboxSize = v },
+            static (value, step) => value + step, 20, static value => value == 100 ? "Off" : $"{value}%", 100,
+            Hint: "Shrink the game inside the screen, as in osu!.")),
+        new(Shown: static s => s.LetterboxSize < 100, Setting: new("Letterbox X", static s => s.LetterboxX, static (s, v) => s with { LetterboxX = v },
+            static (value, step) => value + step, 0, static value => $"{value}%", 100, Hint: "Where the shrunk game sits: 0% left, 100% right.")),
+        new(Shown: static s => s.LetterboxSize < 100, Setting: new("Letterbox Y", static s => s.LetterboxY, static (s, v) => s with { LetterboxY = v },
+            static (value, step) => value + step, 0, static value => $"{value}%", 100, Hint: "Where the shrunk game sits: 0% top, 100% bottom.")),
         new("Graphics"),
         new(Setting: toggle("Upscaled Textures", static s => s.UpscaleTextures, static (s, v) => s with { UpscaleTextures = v },
             "Sharper textures, upscaled 3x on this PC and kept in its cache. Applies to screens loaded next.")),
@@ -165,12 +223,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The selected setting is being changed (drawn between arrows).</summary>
     public bool Editing => _editing;
 
-    public Item[] Items => [.. Rows_.Select(item)];
+    public Item[] Items => [.. rows.Select(item)];
+
+    // The rows shown for the current settings; Selection indexes these. Only rows below the one being
+    // changed come and go, so the selection stays on it.
+    private Row[] rows => [.. Rows_.Where(row => row.Shown?.Invoke(get()) ?? true)];
 
     private Item item(Row row) => row switch
     {
         { Header: { } header } => new(ItemKind.Header, header, null, ""),
-        { Setting: { } setting } => new(ItemKind.Setting, setting.Label, setting.Format(setting.Get(get())), setting.Hint),
+        { Setting: { } setting } => new(ItemKind.Setting, setting.Label,
+            setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
         { Command: { } command } => cachedTextures() is { } cached
             ? new(ItemKind.Command, command.Label, $"{cached:N0} cached", command.Hint)
@@ -224,7 +287,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// The bus to keep a sample playing on while its volume is edited (music for the master; none for
     /// the drum, whose Ka on each change is already its sample).
     /// </summary>
-    public AudioBus? PreviewBus => IsOpen && _settingsPage && _editing ? Rows_[Selection].Setting?.Bus : null;
+    public AudioBus? PreviewBus => IsOpen && _settingsPage && _editing ? rows[Selection].Setting?.Bus : null;
 
     public void Open(bool gameplay, bool attract = false)
     {
@@ -296,7 +359,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             }
             return HomeMenuAction.None;
         }
-        var row = Rows_[Selection];
+        var row = rows[Selection];
         if (row.Setting is not null && !(up || down || arrows != 0 || decide || escape) && repeat(held) is { } step)
         {
             drum(false);
@@ -364,11 +427,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     }
 
     // The next selectable row from index on, going in direction (headers are skipped; the list wraps).
-    private static int move(int index, int direction)
+    private int move(int index, int direction)
     {
-        index = (index % Rows_.Length + Rows_.Length) % Rows_.Length;
-        while (Rows_[index].Header is not null)
-            index = ((index + direction) % Rows_.Length + Rows_.Length) % Rows_.Length;
+        var shown = rows;
+        index = (index % shown.Length + shown.Length) % shown.Length;
+        while (shown[index].Header is not null)
+            index = ((index + direction) % shown.Length + shown.Length) % shown.Length;
         return index;
     }
 
@@ -378,7 +442,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         _streak = _lastChangeAt != 0 && Stopwatch.GetElapsedTime(_lastChangeAt, now) < StreakGap ? _streak + 1 : 0;
         _lastChangeAt = now;
         var size = _streak >= 12 ? 10 : _streak >= 4 ? 5 : 1;
-        var setting = Rows_[Selection].Setting!;
+        var setting = rows[Selection].Setting!;
         var settings = get();
         apply(setting.Set(settings,
             Math.Clamp(setting.Step(setting.Get(settings), direction * size), setting.Minimum, setting.Maximum)));

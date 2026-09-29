@@ -85,6 +85,25 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void DisplaySettingsParseAndSaveBack()
+    {
+        var settings = ArcadeSettings.Parse("fullscreen_mode = exclusive\nfullscreen_resolution = 1920x1080\nrefresh_rate = 144\nvsync = false\nletterbox_size = 80");
+        Assert.Equal((true, 1920, 1080, 144, false, 80),
+            (settings.ExclusiveFullscreen, settings.FullscreenWidth, settings.FullscreenHeight, settings.RefreshRate, settings.Vsync, settings.LetterboxSize));
+        Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("fullscreen_resolution = 1920"));
+        var path = Path.GetTempFileName();
+        try
+        {
+            ArcadeSettings.SaveMenuSettings(path, settings);
+            Assert.Equal(settings, ArcadeSettings.Parse(File.ReadAllText(path)) with { Version = settings.Version });
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void AFileFromANewerBuildMayHoldUnknownSettings() =>
         Assert.True(ArcadeSettings.Parse($"config_version = {ArcadeSettings.CurrentVersion + 1}\nfuture = 1").FreePlay);
 

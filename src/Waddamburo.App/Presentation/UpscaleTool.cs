@@ -47,12 +47,16 @@ internal sealed class UpscaleTool : IDisposable
         var cachePath = Path.Combine(cache, CacheName);
         convertPngCache(cache, cachePath);
         _textures = new UpscaleCache(cachePath);
+        _sized = _textures.Names.Count(static name => name.Contains('@', StringComparison.Ordinal));
     }
 
     /// <summary>The folder holding textures.tar and used.txt.</summary>
     public string Cache { get; }
 
-    public int CachedCount => _textures.Count;
+    /// <summary>Upscaled textures in the cache (the smaller copies of <see cref="Scale"/> not counted).</summary>
+    public int CachedCount => _textures.Count - _sized;
+
+    private int _sized;
 
     /// <summary>Movies the game has loaded ("archive|movie" lines): what a batch upscales.</summary>
     public string UsedListPath => Path.Combine(Cache, "used.txt");
@@ -130,8 +134,33 @@ internal sealed class UpscaleTool : IDisposable
 
     public bool IsCached(string key) => _textures.Contains(key);
 
-    /// <summary>A cached result (its blocks a slice of the mapped cache), or null.</summary>
+    /// <summary>
+    /// The upscale factor textures are loaded at (1-3, from the display resolution): below the model's 3x,
+    /// a smaller copy is made from the 3x one the first time and kept in the cache beside it.
+    /// </summary>
+    public double Scale { get; set; } = 3;
+
+    /// <summary>A cached result at <see cref="Scale"/> (its blocks a slice of the mapped cache), or null.</summary>
     public UpscaledTexture? Load(string key)
+    {
+        var result = read(key);
+        if (result is not { } full || Scale >= 3)
+            return result;
+        var (width, height) = ((int)(full.Width * Scale / 3 + 3) / 4 * 4, (int)(full.Height * Scale / 3 + 3) / 4 * 4);
+        if (width >= full.Width || height >= full.Height)
+            return full;
+        var sized = $"{key[..^4]}@{width}x{height}.bc7";
+        if (!_textures.Contains(sized))
+        {
+            Interlocked.Increment(ref _sized);
+            // ponytail: plain bicubic, which aliases a little shrinking past 2x; box-filter first if that shows.
+            var rgba = Bc7.Decode(full.Bc7.Span, (int)full.Width, (int)full.Height);
+            _textures.Write(sized, encode(width, height, CompactUpscaler.ResizeRgba(rgba, (int)full.Width, (int)full.Height, width, height)));
+        }
+        return read(sized);
+    }
+
+    private UpscaledTexture? read(string key)
     {
         var entry = _textures.Read(key);
         if (entry.Length < Header)
