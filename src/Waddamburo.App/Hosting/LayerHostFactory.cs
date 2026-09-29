@@ -39,6 +39,9 @@ internal sealed class LayerHostFactory(
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
+    /// <summary>The songs marked favourite (a folder per library, a red coin icon on their boards).</summary>
+    public SongFavourites? Favourites { get; init; }
+
     /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
     public Func<int, long?>? PreviousBest { get; init; }
 
@@ -261,7 +264,7 @@ internal sealed class LayerHostFactory(
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
-            links: linked.Where(library => library != Library));
+            links: linked.Where(library => library != Library), favourites: Favourites?.Songs);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
@@ -286,6 +289,7 @@ internal sealed class LayerHostFactory(
         {
             StartCategory = start,
             StartSong = startSong,
+            Favourites = Favourites,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,

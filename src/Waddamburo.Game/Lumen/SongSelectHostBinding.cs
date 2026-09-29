@@ -158,6 +158,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public Action<SongSelectSong>? RankingWanted { get; init; }
 
+    /// <summary>The songs marked favourite: their boards show the red coin icon (P toggles, see <see cref="ToggleFavourite"/>).</summary>
+    public SongFavourites? Favourites { get; init; }
+
     /// <summary>The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)).</summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
 
@@ -255,7 +258,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("GetScore", static _ => LumenHostValue.FromBoolean(true));
             lumen.RegisterMethod("GetRankingScore", publishRanking);
             lumen.RegisterMethod("NotifyOpenFolder", openFolder);
-            lumen.RegisterMethod("NotifyCloseFolder", _ => clearFolderSurfaces());
+            lumen.RegisterMethod("NotifyCloseFolder", _ =>
+            {
+                _openFolder = -1;
+                if (_favouritesChanged)
+                    relistFavourites();
+                return clearFolderSurfaces();
+            });
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
             {
@@ -309,6 +318,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (_player is null)
             return false;
         _assigned = true;
+        installFavouriteIcon();
         var feature = 0;
         foreach (var category in _session.Catalog.Categories)
         {
@@ -354,11 +364,42 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return true;
     }
 
+    // SetMusicData(rank, musicBits): each bit shows MusicInfo.LABEL_M_ICON[bit] on the board (spine and
+    // detail). The authored labels are time_new, time_limited, character_0; the host appends the red coin
+    // bubble ("usercup_1P", otherwise a per-player course icon) for favourites.
+    private const int FavouriteIconBit = 3;
+
+    // Diagnostic: WADDAMBURO_ICON_GALLERY=1 gives the n-th song of a folder the n-th frame label of the
+    // board icon clip (mod their count), to see every icon the boards can show.
+    private static readonly string[]? IconGallery = Environment.GetEnvironmentVariable("WADDAMBURO_ICON_GALLERY") == "1"
+        ? ["time_new", "present_1P", "present_2P", "present", "usercup_1P", "usercup_2P", "usercup", "officialcup_1P",
+            "officialcup_2P", "officialcup", "vs_1P", "vs_2P", "vs", "time_limited", "character_1", "feature", "entry2players"]
+        : null;
+
+    private void installFavouriteIcon()
+    {
+        string?[] labels = IconGallery ?? [.. Enumerable.Repeat<string?>(null, FavouriteIconBit), "usercup_1P"];
+        for (var bit = 0; bit < labels.Length; bit++)
+            if (labels[bit] is { } label
+                && !requirePlayer().TryWriteScriptValue($"_global.MusicInfo.LABEL_M_ICON.{bit}", label))
+                Console.Error.WriteLine("Song Select has no MusicInfo.LABEL_M_ICON; favourites show no icon.");
+    }
+
+    private int musicBits(int songIndex, SongSelectSong song)
+    {
+        if (IconGallery is not { } gallery)
+            return Favourites?.Contains(song.Descriptor.Key) == true ? 1 << FavouriteIconBit : 0;
+        Console.WriteLine($"Icon gallery: {song.Descriptor.Title.English ?? song.Descriptor.Title.Primary} -> {gallery[songIndex % gallery.Length]}.");
+        return 1 << (songIndex % gallery.Length);
+    }
+
     private LumenHostValue publishMusicInfo(LumenHostCall call)
     {
-        invoke("SetMusicData", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
+        var found = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song);
+        invoke("SetMusicData", LumenHostValue.FromNumber(0),
+            LumenHostValue.FromNumber(found ? musicBits(integer(call, 1), song) : 0));
         invoke("SetPlayerBits", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0));
-        if (!_session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song))
+        if (!found)
             return LumenHostValue.Undefined;
         var courses = SongSelectCoursePresentation.FromSong(song);
         invoke("SetInvalidCourse", LumenHostValue.FromNumber((int)courses.SelectionRestrictions));
@@ -409,6 +450,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (!_session.Catalog.TryGetSong(category, songIndex, out _))
             return LumenHostValue.Undefined;
         var surface = _session.GetBoardTexture(category, songIndex, kind);
+        if ((uint)slot < (uint)_boards.Length)
+            _boards[slot] = (category, songIndex);
         if (slot is 13 or 14)
             _centre = (category, songIndex);
         requirePlayer().SetNativeFill(slot switch
@@ -466,6 +509,54 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     }
 
     private (int Category, int Song)? _centre; // the song the centre board's titles show
+    private int _openFolder = -1;
+    private bool _favouritesChanged;
+
+    // GenreResource.FAVORITE: the folder's id in the movie's genre list.
+    private const int FavouriteGenreId = 10;
+
+    // The movie's own genre.SetMusicNum(id, count) updates the folder's GenreInfo and its open index
+    // (no callback exports it).
+    private void relistFavourites()
+    {
+        _favouritesChanged = false;
+        if (Favourites is null || _session.Catalog.RefreshFavourites(Favourites.Songs) is not { } count)
+            return;
+        if (!requirePlayer().TryCallScriptMethod("_global.CppConnection.resource.genre", "SetMusicNum",
+                [LumenHostValue.FromNumber(FavouriteGenreId), LumenHostValue.FromNumber(count)]))
+            Console.Error.WriteLine("Song Select has no genre list; the favourites folder updates on the next load.");
+    }
+    private readonly (int Category, int Song)?[] _boards = new (int, int)?[15]; // the song each board slot shows
+
+    /// <summary>
+    /// Marks or unmarks the song under the cursor; its boards redraw their icons at once. The favourites
+    /// folder itself changes when Song Select next loads. False when the cursor is on no song.
+    /// </summary>
+    public bool ToggleFavourite()
+    {
+        if (Favourites is null || _centre is not { } centre
+            || !_session.Catalog.TryGetSong(centre.Category, centre.Song, out var song))
+            return false;
+        var key = song.Descriptor.Key;
+        Console.WriteLine($"Favourite {(Favourites.Toggle(key) ? "added" : "removed")}: {key}.");
+        // Inside the favourites folder its list stays until the folder closes (the boards index it).
+        _favouritesChanged = true;
+        if (_openFolder != _session.Catalog.FavouritesCategory)
+            relistFavourites();
+        // The boards keep the info they asked for: invalidate the ones showing this song (the same song
+        // may also sit in the favourites folder) and let them ask again (UpdateMusicBoard -> GetInfo).
+        for (var slot = 0; slot < _boards.Length; slot++)
+        {
+            if (_boards[slot] is not { } board || !_session.Catalog.TryGetSong(board.Category, board.Song, out var shown)
+                || shown.Descriptor.Key != key)
+                continue;
+            if (!requirePlayer().TryWriteScriptValue(
+                    $"_global.CppConnection.resource.musicboardList.{slot}.musicInfo.isValidBasicInfo", false))
+                Console.Error.WriteLine($"Song Select board {slot} has no musicInfo to refresh.");
+            invoke("UpdateMusicBoard", LumenHostValue.FromNumber(slot));
+        }
+        return true;
+    }
 
     private LumenHostValue clearSelectionSurfaces()
     {
@@ -477,8 +568,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     // Starting on a song (back from a play), the movie asks for the centre board's titles and then
     // notifies the folder open for that same song: keep them.
-    private LumenHostValue openFolder(LumenHostCall call) =>
-        _centre == (integer(call, 0), integer(call, 1)) ? LumenHostValue.Undefined : clearSelectionSurfaces();
+    private LumenHostValue openFolder(LumenHostCall call)
+    {
+        _openFolder = integer(call, 0);
+        return _centre == (integer(call, 0), integer(call, 1)) ? LumenHostValue.Undefined : clearSelectionSurfaces();
+    }
 
     private LumenHostValue clearFolderSurfaces()
     {

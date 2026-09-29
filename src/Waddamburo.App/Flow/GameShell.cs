@@ -290,6 +290,9 @@ internal sealed class GameShell : IDisposable
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => SongsPlayed,
             PreviousBest = index => (uint)index < (uint)PreviousBests.Length ? PreviousBests[index] : null,
+            // Next to the settings file (USRDIR/waddamburo); memory only without one.
+            Favourites = new SongFavourites(options.ArcadePath is { } arcade
+                ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),
             Crowns = side => Sync.Scores is not { } scores ? null
                 : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
                 : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,

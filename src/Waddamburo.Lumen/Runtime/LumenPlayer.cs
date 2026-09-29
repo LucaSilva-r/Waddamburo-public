@@ -151,6 +151,24 @@ public sealed class LumenPlayer
         return invoked;
     }
 
+    /// <summary>
+    /// Calls a script method on the object at <paramref name="targetPath"/> (as <see cref="ReadScriptValue"/>
+    /// finds it), for authored helpers the movie exports no callback for. False when either is missing.
+    /// </summary>
+    public bool TryCallScriptMethod(string targetPath, string method, IReadOnlyList<LumenHostValue> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(targetPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (ReadScriptValue(targetPath) is not Avm1Object target
+            || target.GetProperty(method).Value is not Avm1FunctionValue function)
+            return false;
+        var invoked = invokeFunction(_root, function, target, arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
+        if (invoked)
+            drainActions();
+        return invoked;
+    }
+
     public void Advance()
         => Advance(LumenInputSnapshot.Empty);
 
@@ -247,6 +265,7 @@ public sealed class LumenPlayer
             {
                 DisplayInstance instance => instance.Variables.GetValueOrDefault(part)
                     ?? instance.Children.Values.FirstOrDefault(child => child.Name == part),
+                Avm1ArrayObject array => array.GetIndexedProperty(part).Value,
                 Avm1Object script => script.Properties.GetValueOrDefault(part),
                 Dictionary<string, object?> globals => globals.GetValueOrDefault(part),
                 _ => null,
@@ -254,6 +273,37 @@ public sealed class LumenPlayer
             if (value is null) return null;
         }
         return value;
+    }
+
+    /// <summary>
+    /// Writes a primitive (number, string, bool) to a script variable by dotted path, as
+    /// <see cref="ReadScriptValue"/> reads it (array elements by index). False when the parent is missing.
+    /// </summary>
+    public bool TryWriteScriptValue(string path, object value)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (value is not (double or string or bool))
+            throw new ArgumentException("Only numbers, strings and booleans cross into script.", nameof(value));
+        var split = path.LastIndexOf('.');
+        if (split <= 0)
+            return false;
+        var name = path[(split + 1)..];
+        switch (ReadScriptValue(path[..split]))
+        {
+            case DisplayInstance instance:
+                instance.Variables[name] = value;
+                return true;
+            case Avm1ArrayObject array:
+                return array.TrySetIndexedProperty(name, value, _limits.MaxStackValues);
+            case Avm1Object script:
+                script.Properties[name] = value;
+                return true;
+            case Dictionary<string, object?> globals:
+                globals[name] = value;
+                return true;
+            default:
+                return false;
+        }
     }
 
     /// <summary>Whether an explicitly named child path exists and its timeline is playing.</summary>

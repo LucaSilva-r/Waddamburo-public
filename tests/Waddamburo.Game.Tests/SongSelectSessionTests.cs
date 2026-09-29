@@ -287,6 +287,36 @@ public sealed class SongSelectSessionTests
         Assert.Null(view.Find(link.Key, view.Categories[0].Songs[0].Descriptor.Key));
     }
 
+    [Fact]
+    public async Task FavouritesFolderComesFirstPerLibraryAndPersists()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var song = new SongSelectCatalogView(snapshot).Categories[0].Songs[0].Descriptor.Key;
+        var path = Path.Combine(Path.GetTempPath(), $"favourites-{Guid.NewGuid():N}.txt");
+        try
+        {
+            var favourites = new SongFavourites(path);
+            Assert.True(favourites.Toggle(song));
+            Assert.Equal([song], new SongFavourites(path).Songs);
+
+            var view = new SongSelectCatalogView(snapshot, library: song.Source, favourites: favourites.Songs);
+            Assert.Equal(SongSelectCatalogView.FavouritesLabel, view.Categories[0].AuthoredLabel);
+            Assert.Equal(song, view.Categories[0].Songs.Single().Descriptor.Key);
+            var other = song.Source == SongSourceKind.Stock ? SongSourceKind.Tja : SongSourceKind.Stock;
+            Assert.Empty(new SongSelectCatalogView(snapshot, library: other, favourites: favourites.Songs).Categories[0].Songs);
+
+            Assert.False(favourites.Toggle(song));
+            Assert.Empty(new SongFavourites(path).Songs);
+            Assert.Equal(0, view.RefreshFavourites(favourites.Songs));
+            Assert.Empty(view.Categories[view.FavouritesCategory].Songs);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
     {
         public CatalogProviderId Id { get; } = new("synthetic");

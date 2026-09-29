@@ -58,21 +58,34 @@ public sealed class SongSelectCatalogView
     /// <summary>The spine art of library folders (its name goes in the movie's feature_board_* slots).</summary>
     public const string FeatureLabel = "イベント";
 
+    /// <summary>The favourites folder's art (GenreResource.FAVORITE).</summary>
+    public const string FavouritesLabel = "お気に入り";
+
     /// <summary>
     /// <paramref name="library"/> lists only that source's categories (null: every source);
     /// <paramref name="links"/> appends a folder per other library that switches Song Select to it.
     /// <paramref name="mode"/> Waiwai lists only the songs with a Waiwai layout (empty genres dropped).
     /// <paramref name="modeSwitch"/> appends the folder to the other song select, which the game shows
     /// with two players (traced last in both selects).
+    /// <paramref name="favourites"/> lists the marked songs of the shown library in a folder first
+    /// (where the game assigns お気に入り, after おすすめ); see <see cref="RefreshFavourites"/>.
     /// </summary>
     // ponytail: Waiwai's "how to play" folder (id 21, before the switch) is left out until tutorials exist.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
-        bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null)
+        bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
+        IEnumerable<SongKey>? favourites = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
         Mode = mode;
-        var categories = snapshot.Categories
+        _snapshot = snapshot;
+        _library = library;
+        var favouriteFolder = favourites is null ? [] : new[]
+        {
+            new SongSelectCategory(new CategoryKey(library ?? SongSourceKind.Stock, "favourites"), "Favourites",
+                FavouritesLabel, SongCategoryPresentation.AlwaysVisible, boardStyle(""), marked(favourites)),
+        };
+        var categories = favouriteFolder.Concat(snapshot.Categories
             .Where(category => library is null || category.Key.Source == library)
             .Select(category => new SongSelectCategory(
             category.Key,
@@ -83,7 +96,7 @@ public sealed class SongSelectCatalogView
             [.. category.Songs.Select(key => snapshot.Songs[key])
                 .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
                 .Select(createSong)]))
-            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty)
+            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
                 boardStyle(""), [], link)));
@@ -95,6 +108,29 @@ public sealed class SongSelectCatalogView
     }
 
     public SongSelectMode Mode { get; }
+
+    private readonly SongCatalogSnapshot _snapshot;
+    private readonly SongSourceKind? _library;
+
+    /// <summary>Index of the favourites folder, or -1.</summary>
+    public int FavouritesCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == FavouritesLabel);
+
+    /// <summary>Relists the favourites folder (the movie's song count must follow); its song count, or null without one.</summary>
+    public int? RefreshFavourites(IEnumerable<SongKey> favourites)
+    {
+        var index = FavouritesCategory;
+        if (index < 0)
+            return null;
+        Categories = Categories.SetItem(index, Categories[index] with { Songs = marked(favourites) });
+        return Categories[index].Songs.Length;
+    }
+
+    // The marked songs of the listed library.
+    private ImmutableArray<SongSelectSong> marked(IEnumerable<SongKey> favourites) => [.. favourites
+        .Where(key => (_library is null || key.Source == _library) && _snapshot.Songs.ContainsKey(key))
+        .Select(key => _snapshot.Songs[key])
+        .Where(song => Mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
+        .Select(createSong)];
 
     /// <summary>Index of the folder that switches to <paramref name="library"/>, or -1.</summary>
     public int LinkCategory(SongSourceKind library) => Categories.ToList().FindIndex(category => category.Link == library);
@@ -121,7 +157,7 @@ public sealed class SongSelectCatalogView
 
     public long Revision { get; }
 
-    public ImmutableArray<SongSelectCategory> Categories { get; }
+    public ImmutableArray<SongSelectCategory> Categories { get; private set; }
 
     public bool TryGetSong(int category, int song, out SongSelectSong result)
     {

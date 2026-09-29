@@ -4,6 +4,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 
 namespace Waddamburo.App.Flow;
@@ -79,6 +80,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
         }
         if (switchLibrary())
             return;
+        // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
+        if (input.Keys.IsDown(SdlKeyboardKey.P) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
+            Console.WriteLine("Favourite: the cursor is on no song.");
         if (Shell.PlayRequests.Pending is not { } request)
             return;
         var rainbow = gameplay.Rainbow;
