@@ -131,6 +131,10 @@ struct waddamburo_media_decoder {
     uint64_t total_frames;
     uint64_t loop_start_frame;
     uint64_t loop_end_frame;
+    /* ATRAC encoder delay from the RIFF `fact` chunk, in output frames: FFmpeg decodes these
+     * priming samples, Sony's decoder (and the charts' timing) skips them. */
+    uint64_t priming_frames;
+    uint64_t priming_left;
     float *pending;
     uint64_t pending_frames;
     uint64_t pending_offset;
@@ -386,11 +390,18 @@ static void discover_file_riff_loop(const char *path, waddamburo_media_decoder *
                     uint32_t start = read_u32le(payload + 44U);
                     uint32_t end = read_u32le(payload + 48U);
                     if (loop_count != 0U && end >= start && decoder->input_sample_rate > 0) {
+                        /* The loop counts the ATRAC priming (its end is `fact` + skip); the output
+                         * starts after it. */
+                        uint64_t priming = decoder->priming_frames;
                         decoder->loop_start_frame = (uint64_t)av_rescale(
                             start, decoder->output_sample_rate, decoder->input_sample_rate);
                         decoder->loop_end_frame = (uint64_t)av_rescale(
                             (uint64_t)end + 1U,
                             decoder->output_sample_rate, decoder->input_sample_rate);
+                        decoder->loop_start_frame = decoder->loop_start_frame > priming
+                            ? decoder->loop_start_frame - priming : 0U;
+                        decoder->loop_end_frame = decoder->loop_end_frame > priming
+                            ? decoder->loop_end_frame - priming : 0U;
                     }
                 }
                 break;
@@ -458,6 +469,49 @@ static int discover_riff_view(waddamburo_media_decoder *decoder)
     return input_seek_absolute(&decoder->input, 0) < 0 ? AVERROR(EIO) : 0;
 }
 
+/* The encoder delay of an ATRAC3, ATRAC3plus or ATRAC9 RIFF (the `fact` chunk's skip, as vgmstream
+ * reads it: its second word when 8 bytes long, its third when 12), in input samples; 0 otherwise.
+ * Stock songs: fact (samples, 2048, 2232), i.e. 2232 samples = 50.6 ms at 44.1 kHz. */
+static uint32_t discover_riff_priming(waddamburo_media_decoder *decoder)
+{
+    static const uint8_t atrac3plus[16] = {0xBF, 0xAA, 0x23, 0xE9, 0x58, 0xCB, 0x71, 0x44,
+                                           0xA1, 0x19, 0xFF, 0xFA, 0x01, 0xE4, 0xCE, 0x62};
+    static const uint8_t atrac9[16] = {0xD2, 0x42, 0xE1, 0x47, 0xBA, 0x36, 0x8D, 0x4D,
+                                       0x88, 0xFC, 0x61, 0x65, 0x4F, 0x8C, 0x83, 0x6C};
+    uint8_t header[1024];
+    int count;
+    uint32_t offset = 12U;
+    int atrac = 0;
+    uint32_t skip = 0U;
+    if (decoder->input.view_size < 12 || input_seek_absolute(&decoder->input, decoder->input.view_offset) < 0)
+        return 0U;
+    count = input_read(&decoder->input, header, (int)sizeof(header));
+    if (input_seek_absolute(&decoder->input, decoder->input.view_offset) < 0 || count < 12)
+        return 0U;
+    while (offset + 8U <= (uint32_t)count) {
+        uint32_t size = read_u32le(header + offset + 4U);
+        const uint8_t *body = header + offset + 8U;
+        uint32_t readable = (uint32_t)count - offset - 8U;
+        if (memcmp(header + offset, "fmt ", 4U) == 0 && readable >= 2U) {
+            uint32_t tag = (uint32_t)body[0] | ((uint32_t)body[1] << 8U);
+            atrac = tag == 0x0270U
+                || (tag == 0xFFFEU && size >= 40U && readable >= 40U
+                    && (memcmp(body + 24, atrac3plus, 16U) == 0 || memcmp(body + 24, atrac9, 16U) == 0));
+        } else if (memcmp(header + offset, "fact", 4U) == 0) {
+            if (size == 8U && readable >= 8U)
+                skip = read_u32le(body + 4);
+            else if (size >= 12U && readable >= 12U)
+                skip = read_u32le(body + 8);
+        } else if (memcmp(header + offset, "data", 4U) == 0) {
+            break;
+        }
+        if (size > (uint32_t)count)
+            break;
+        offset += 8U + size + (size & 1U);
+    }
+    return atrac ? skip : 0U;
+}
+
 static int ffmpeg_interrupt(void *opaque)
 {
     return input_cancelled((waddamburo_media_decoder *)opaque);
@@ -497,6 +551,7 @@ static waddamburo_media_result decoder_open(
     AVChannelLayout output_layout = {0};
     uint8_t *io_buffer;
     int native_result;
+    uint32_t priming;
     decoder->error.struct_size = sizeof(decoder->error);
     decoder->backend = MEDIA_BACKEND_FFMPEG;
     decoder->input.view_size = -1;
@@ -512,6 +567,7 @@ static waddamburo_media_result decoder_open(
                           native_result, "Could not inspect the audio input");
         goto fail;
     }
+    priming = native_result == 1 ? discover_riff_priming(decoder) : 0U;
     decoder->format = avformat_alloc_context();
     io_buffer = av_malloc(IO_BUFFER_SIZE);
     if (decoder->format == NULL || io_buffer == NULL) {
@@ -609,6 +665,9 @@ static waddamburo_media_result decoder_open(
         decoder->total_frames = (uint64_t)av_rescale_q(
             decoder->format->duration, AV_TIME_BASE_Q,
             (AVRational){1, (int)decoder->output_sample_rate});
+    /* The duration FFmpeg reads for these is the `fact` sample count: already without the priming. */
+    decoder->priming_left = decoder->priming_frames = (uint64_t)av_rescale(
+        priming, decoder->output_sample_rate, decoder->input_sample_rate);
     *result = decoder;
     set_error(error, WADDAMBURO_MEDIA_OK, "");
     return WADDAMBURO_MEDIA_OK;
@@ -1095,6 +1154,12 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_decoder_read_fram
     *frames_read = 0U;
     while (*frames_read < frame_capacity) {
         uint64_t available = decoder->pending_frames - decoder->pending_offset;
+        if (available > 0U && decoder->priming_left > 0U) {
+            uint64_t dropped = available < decoder->priming_left ? available : decoder->priming_left;
+            decoder->pending_offset += dropped;
+            decoder->priming_left -= dropped;
+            continue;
+        }
         if (available > 0U) {
             uint64_t count = frame_capacity - *frames_read;
             if (count > available)
@@ -1158,6 +1223,11 @@ waddamburo_media_decoder_seek(waddamburo_media_decoder *decoder, uint64_t frame_
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
     decoder_set_cancelled(decoder, false);
     stream = decoder->format->streams[decoder->audio_stream];
+    /* Frames count after the encoder delay; the demuxer's timeline still has it. */
+    if (frame_index > INT64_MAX - decoder->priming_frames)
+        return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
+    decoder->priming_left = 0U;
+    frame_index += decoder->priming_frames;
     timestamp = av_rescale_q((int64_t)frame_index,
                              (AVRational){1, (int)decoder->output_sample_rate}, stream->time_base);
     if (stream->start_time != AV_NOPTS_VALUE)
