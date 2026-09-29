@@ -18,7 +18,8 @@ public enum SongTitleTextProfile : uint
 /// <summary>Rasterizes a user-supplied font through Waddamburo's stable FreeType C adapter.</summary>
 public static unsafe partial class NativeVerticalTextRasterizer
 {
-    private const uint AbiVersion = 0x0001_0004;
+    private const uint AbiVersion = 0x0001_0005;
+    private const uint SquashFlag = 1; // WADDAMBURO_TEXT_SONG_TITLE_SQUASH
     private static readonly ConcurrentDictionary<string, Lazy<NativeFontContext>> FontContexts =
         new(StringComparer.Ordinal);
 
@@ -28,7 +29,8 @@ public static unsafe partial class NativeVerticalTextRasterizer
         string? subtitle,
         SongTitleTextProfile profile,
         uint outlineRgb,
-        uint rasterScale)
+        uint rasterScale,
+        bool squash = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -55,7 +57,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
             static path => new Lazy<NativeFontContext>(
                 () => new NativeFontContext(path),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
-        return context.Render(title, subtitle, profile, outlineRgb, rasterScale, width, height);
+        return context.Render(title, subtitle, profile, squash ? SquashFlag : 0, outlineRgb, rasterScale, width, height);
     }
 
     public static RgbaTextSurface Render(string fontPath, string text, uint width, uint height)
@@ -121,6 +123,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
             string title,
             string? subtitle,
             SongTitleTextProfile profile,
+            uint flags,
             uint outlineRgb,
             uint rasterScale,
             uint width,
@@ -137,6 +140,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
                         title,
                         subtitle,
                         profile,
+                        flags,
                         outlineRgb & 0x00ff_ffffU,
                         rasterScale,
                         width,
@@ -186,7 +190,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
 
     [LibraryImport(
         "waddamburo_text",
-        EntryPoint = "waddamburo_text_context_render_song_title_rgba8",
+        EntryPoint = "waddamburo_text_context_render_song_title_ex_rgba8",
         StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int RenderSongTitleWithContext(
@@ -194,6 +198,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         string title,
         string? subtitle,
         SongTitleTextProfile profile,
+        uint flags,
         uint outlineRgb,
         uint rasterScale,
         uint width,

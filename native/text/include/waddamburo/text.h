@@ -21,6 +21,11 @@ extern "C" {
 
 #define WADDAMBURO_TEXT_ABI_VERSION_1_3 UINT32_C(0x00010003)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_4 UINT32_C(0x00010004)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_5 UINT32_C(0x00010005)
+
+/* Song-title flags (ABI 1.5): a column too long for its slot keeps its font size and is squashed
+ * vertically (as the arcade does), instead of the whole font shrinking. Compact and expanded only. */
+#define WADDAMBURO_TEXT_SONG_TITLE_SQUASH UINT32_C(1)
 
 typedef struct waddamburo_text_context waddamburo_text_context;
 
@@ -91,6 +96,22 @@ waddamburo_text_context_render_song_title_rgba8(
     const char *utf8_title,
     const char *utf8_subtitle,
     waddamburo_text_profile profile,
+    uint32_t outline_rgb,
+    uint32_t raster_scale,
+    uint32_t width,
+    uint32_t height,
+    uint8_t *rgba8,
+    uint64_t rgba8_capacity,
+    waddamburo_text_error *error);
+
+/* As above, with WADDAMBURO_TEXT_SONG_TITLE_* flags (ABI 1.5). */
+WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
+waddamburo_text_context_render_song_title_ex_rgba8(
+    waddamburo_text_context *context,
+    const char *utf8_title,
+    const char *utf8_subtitle,
+    waddamburo_text_profile profile,
+    uint32_t flags,
     uint32_t outline_rgb,
     uint32_t raster_scale,
     uint32_t width,

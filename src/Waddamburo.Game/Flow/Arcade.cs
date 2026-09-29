@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 10;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -95,6 +95,12 @@ public sealed record ArcadeSettings
         upscale_threads = 0
 
         """,
+        """
+        # squash_titles: song-select titles too long for their column keep their width and are squashed
+        # vertically, as in the arcade (true); false shrinks the whole text instead.
+        squash_titles = false
+
+        """,
     ];
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
@@ -144,6 +150,9 @@ public sealed record ArcadeSettings
 
     /// <summary>CPU threads upscaling missing textures in the background; 0 = off.</summary>
     public int UpscaleThreads { get; init; }
+
+    /// <summary>Long song-select titles squashed vertically at full width (the arcade's way) instead of shrunk.</summary>
+    public bool SquashTitles { get; init; }
 
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
@@ -285,6 +294,7 @@ public sealed record ArcadeSettings
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "upscale_textures" => settings with { UpscaleTextures = boolean(value, index) },
                 "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
+                "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
@@ -340,6 +350,7 @@ public sealed record ArcadeSettings
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
             ["upscale_textures"] = settings.UpscaleTextures ? "true" : "false",
             ["upscale_threads"] = settings.UpscaleThreads,
+            ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",

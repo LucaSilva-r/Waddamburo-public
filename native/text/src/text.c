@@ -220,6 +220,8 @@ static waddamburo_text_result render_title_column(
     float center_x,
     uint32_t top,
     uint32_t bottom,
+    int squash,
+    int from_bottom,
     uint8_t *mask,
     uint8_t *outline,
     uint32_t width,
@@ -227,6 +229,8 @@ static waddamburo_text_result render_title_column(
     waddamburo_text_error *error)
 {
     uint32_t scalars[256];
+    float vertical = 1.0f; /* < 1: the column squashed vertically to fit, at its full font size */
+    float offset;
     title_item items[256];
     float positions[256];
     uint32_t item_count = 0U;
@@ -250,7 +254,10 @@ static waddamburo_text_result render_title_column(
     natural_height = positions[item_count - 1U] + font_px;
     if (natural_height > (float)(bottom - top)) {
         float fit = (float)(bottom - top) / natural_height;
-        font_px *= fit;
+        if (squash)
+            vertical = fit;
+        else
+            font_px *= fit;
         leading *= fit;
         positions[0] = 0.0f;
         for (uint32_t i = 1U; i < item_count; ++i) {
@@ -263,10 +270,14 @@ static waddamburo_text_result render_title_column(
     }
     if (font_px < 6.0f)
         font_px = 6.0f;
+    /* A column shorter than its slot starts at the bottom when asked (the expanded subtitle). */
+    natural_height = positions[item_count - 1U] + font_px * vertical;
+    offset = from_bottom && natural_height < (float)(bottom - top) ? (float)(bottom - top) - natural_height : 0.0f;
+    top += (uint32_t)offset;
     ft_error = FT_Set_Pixel_Sizes(face, 0U, (FT_UInt)(font_px + 0.5f));
     if (ft_error != 0)
         return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not size the song-title font.");
-    ascent = (float)face->size->metrics.ascender / 64.0f;
+    ascent = (float)face->size->metrics.ascender / 64.0f * vertical;
 
     for (uint32_t i = 0U; i < item_count; ++i) {
         title_item item = items[i];
@@ -290,7 +301,20 @@ static waddamburo_text_result render_title_column(
             int glyph_top;
             int outline_left;
             int outline_top;
+            rotate = !is_beside_scalar(scalar) && is_rotated_scalar(scalar);
+            /* Squashed: glyphs scaled vertically only (a rotated one along its own x, which turns
+             * vertical); the measuring above ran without it, and horizontal advances do not change. */
+            if (vertical < 1.0f) {
+                FT_Matrix squash_matrix;
+                squash_matrix.xx = (FT_Fixed)((rotate ? vertical : 1.0f) * 65536.0f);
+                squash_matrix.xy = 0;
+                squash_matrix.yx = 0;
+                squash_matrix.yy = (FT_Fixed)((rotate ? 1.0f : vertical) * 65536.0f);
+                FT_Set_Transform(face, &squash_matrix, NULL);
+            }
             ft_error = FT_Load_Char(face, scalar, FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            if (vertical < 1.0f)
+                FT_Set_Transform(face, NULL, NULL);
             if (ft_error != 0)
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not rasterize a song-title glyph.");
             ft_error = FT_Get_Glyph(face->glyph, &fill_glyph);
@@ -317,12 +341,11 @@ static waddamburo_text_result render_title_column(
             }
             fill_bitmap = (FT_BitmapGlyph)fill_glyph;
             outline_bitmap = (FT_BitmapGlyph)outline_glyph;
-            rotate = !is_beside_scalar(scalar) && is_rotated_scalar(scalar);
             if (rotate) {
                 left = (int)(center_x - (float)fill_bitmap->bitmap.rows * 0.5f);
-                glyph_top = (int)((float)top + positions[i] + (font_px - (float)fill_bitmap->bitmap.width) * 0.5f);
+                glyph_top = (int)((float)top + positions[i] + (font_px * vertical - (float)fill_bitmap->bitmap.width) * 0.5f);
                 outline_left = (int)(center_x - (float)outline_bitmap->bitmap.rows * 0.5f);
-                outline_top = (int)((float)top + positions[i] + (font_px - (float)outline_bitmap->bitmap.width) * 0.5f);
+                outline_top = (int)((float)top + positions[i] + (font_px * vertical - (float)outline_bitmap->bitmap.width) * 0.5f);
             } else {
                 int baseline_y = (int)((float)top + positions[i] + ascent);
                 left = (int)x + fill_bitmap->left;
@@ -330,8 +353,8 @@ static waddamburo_text_result render_title_column(
                 outline_left = (int)x + outline_bitmap->left;
                 outline_top = baseline_y - outline_bitmap->top;
                 if (scalar == '\'' || scalar == '"') {
-                    glyph_top += (int)(font_px * 0.7f);
-                    outline_top += (int)(font_px * 0.7f);
+                    glyph_top += (int)(font_px * vertical * 0.7f);
+                    outline_top += (int)(font_px * vertical * 0.7f);
                 }
             }
             draw_bitmap_to_mask(mask, width, height, &fill_bitmap->bitmap, left, glyph_top, rotate);
@@ -470,7 +493,7 @@ static waddamburo_text_result render_title_row(
 
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_4;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_5;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -663,6 +686,26 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
     uint64_t rgba8_capacity,
     waddamburo_text_error *error)
 {
+    return waddamburo_text_context_render_song_title_ex_rgba8(
+        context, utf8_title, utf8_subtitle, profile, 0U, outline_rgb, raster_scale,
+        width, height, rgba8, rgba8_capacity, error);
+}
+
+waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_title_ex_rgba8(
+    waddamburo_text_context *context,
+    const char *utf8_title,
+    const char *utf8_subtitle,
+    waddamburo_text_profile profile,
+    uint32_t flags,
+    uint32_t outline_rgb,
+    uint32_t raster_scale,
+    uint32_t width,
+    uint32_t height,
+    uint8_t *rgba8,
+    uint64_t rgba8_capacity,
+    waddamburo_text_error *error)
+{
+    const int squash = (flags & WADDAMBURO_TEXT_SONG_TITLE_SQUASH) != 0U;
     FT_Stroker stroker = NULL;
     FT_Error ft_error;
     uint32_t base_width;
@@ -733,17 +776,18 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
     } else if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
         result = render_title_column(
             context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
-            28.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale,
+            28.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 0,
             mask, outline, width, height, error);
     } else {
         result = render_title_column(
             context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
-            70.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale,
+            70.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 0,
             mask, outline, width, height, error);
+        /* The subtitle column (artist) runs from the bottom, as in the arcade. */
         if (result == WADDAMBURO_TEXT_OK && utf8_subtitle != NULL && utf8_subtitle[0] != '\0') {
             result = render_title_column(
                 context->face, stroker, utf8_subtitle, 30.5f * raster_scale, 29.7f * raster_scale,
-                23.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale,
+                23.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 1,
                 mask, outline, width, height, error);
         }
     }

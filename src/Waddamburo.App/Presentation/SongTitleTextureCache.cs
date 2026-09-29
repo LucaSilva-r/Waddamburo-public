@@ -23,9 +23,14 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     private bool _disposed;
 
     private readonly bool _english;
+    private readonly Func<bool> _squash;
 
-    public SongTitleTextureCache(SdlApplication application, string fontPath, bool asynchronous = true, bool english = true)
+    /// <param name="squash">Song-select titles too long for their column: squashed vertically at full
+    /// width (the arcade's way) instead of shrunk; read live.</param>
+    public SongTitleTextureCache(SdlApplication application, string fontPath, bool asynchronous = true, bool english = true,
+        Func<bool>? squash = null)
     {
+        _squash = squash ?? (static () => false);
         _english = english;
         _application = application ?? throw new ArgumentNullException(nameof(application));
         ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
@@ -125,7 +130,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
 
         var pixelSize = _application.GetPixelSize();
         var rasterScale = (uint)Math.Clamp((pixelSize.Height + 719) / 720, 1, 4);
-        var rasterKey = new RasterKey(key, rasterScale);
+        var rasterKey = new RasterKey(key, rasterScale, _squash());
         if (_resident.TryGetValue(rasterKey, out var cached))
         {
             touch(rasterKey, cached.Node);
@@ -145,7 +150,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             };
             if (!_asynchronous)
             {
-                var surface = rasterize(request, profile, rasterScale);
+                var surface = rasterize(request, profile, rasterScale, rasterKey.Squash);
                 var texture = _application.UploadRgba8(surface.Width, surface.Height, surface.Pixels);
                 var node = _leastRecentlyUsed.AddFirst(rasterKey);
                 _resident.Add(rasterKey, new ResidentTexture(texture, node));
@@ -153,7 +158,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 return texture;
             }
             if (_pending.Count < MaximumPendingRasterizations)
-                _pending.Add(rasterKey, rasterizeAsync(request, profile, rasterScale));
+                _pending.Add(rasterKey, rasterizeAsync(request, profile, rasterScale, rasterKey.Squash));
         }
 
         var fallback = _leastRecentlyUsed.FirstOrDefault(node => node.Surface == key);
@@ -188,12 +193,13 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     private async Task<RgbaTextSurface> rasterizeAsync(
         TitleRequest request,
         SongTitleTextProfile profile,
-        uint rasterScale)
+        uint rasterScale,
+        bool squash)
     {
         await _rasterizer.WaitAsync().ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => rasterize(request, profile, rasterScale)).ConfigureAwait(false);
+            return await Task.Run(() => rasterize(request, profile, rasterScale, squash)).ConfigureAwait(false);
         }
         finally
         {
@@ -206,11 +212,11 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     // ponytail: box and size guessed from the genre header art; measure the feature_board_yoko shape if off.
     private const int BannerWidth = 256, BannerHeight = 56;
 
-    private RgbaTextSurface rasterize(TitleRequest request, SongTitleTextProfile profile, uint rasterScale)
+    private RgbaTextSurface rasterize(TitleRequest request, SongTitleTextProfile profile, uint rasterScale, bool squash)
     {
         if (request.Kind != TitleTextureKind.Banner)
             return NativeVerticalTextRasterizer.RenderSongTitle(
-                _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale);
+                _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale, squash);
         var canvas = new VectorCanvas(BannerWidth, BannerHeight, (int)rasterScale, _fontPath);
         canvas.Text(request.Text, BannerWidth / 2f, BannerHeight / 2f, BannerWidth - 16, BannerHeight - 8);
         return new RgbaTextSurface((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
@@ -247,6 +253,6 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         Gameplay,
         Banner,
     }
-    private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale);
+    private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale, bool Squash);
     private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<RasterKey> Node);
 }
