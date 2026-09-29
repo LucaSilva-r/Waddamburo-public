@@ -89,6 +89,7 @@ if(WADDAMBURO_BUILD_BGFX)
 endif()
 
 add_subdirectory(media)
+add_subdirectory(texture)
 if(WADDAMBURO_BUILD_TEXT)
   add_subdirectory(text)
 endif()

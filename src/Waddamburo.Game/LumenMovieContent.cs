@@ -82,11 +82,18 @@ public sealed class LumenMovieContent
 
     /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>
     public void ReleaseDecodedTexturePixels() =>
-        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [] })];
+        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [], Bc7 = default })];
 }
 
 public sealed record LumenTextureContent(
     int Index,
     int Width,
     int Height,
-    ImmutableArray<byte> Rgba8);
+    ImmutableArray<byte> Rgba8)
+{
+    /// <summary>
+    /// BC7 blocks (one byte per pixel) given in place of <see cref="Rgba8"/> (an upscaled copy from
+    /// the cache); empty when the texture is RGBA.
+    /// </summary>
+    public ReadOnlyMemory<byte> Bc7 { get; init; }
+}

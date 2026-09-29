@@ -58,16 +58,22 @@ internal static class SceneTextures
     /// <summary>One movie's textures (the scene switch then only uploads what was not done ahead).</summary>
     public static RenderTextureId[] Upload(SdlApplication application, LumenMovieContent content)
     {
-        var uploads = content.Textures.Select(static texture => new RgbaTextureUpload(
-            checked((uint)texture.Width), checked((uint)texture.Height),
-            ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
-                ?? throw new InvalidDataException("Texture pixels are unavailable."))).ToArray();
-        var uploaded = application.UploadRgba8Batch(uploads);
-        // The upscaler keeps the pixel arrays the content is about to drop.
-        if (Upscaler is { } upscaler)
-            for (var index = 0; index < uploads.Length; index++)
-                upscaler.Enqueue(uploaded[index], uploads[index].Width, uploads[index].Height,
-                    ImmutableCollectionsMarshal.AsArray(content.Textures[index].Rgba8)!);
+        var uploaded = new RenderTextureId[content.Textures.Length];
+        for (var index = 0; index < uploaded.Length; index++)
+        {
+            var texture = content.Textures[index];
+            var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
+            if (!texture.Bc7.IsEmpty)
+            {
+                uploaded[index] = application.UploadBc7(width, height, texture.Bc7.Span);
+                continue;
+            }
+            var rgba = ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
+                ?? throw new InvalidDataException("Texture pixels are unavailable.");
+            uploaded[index] = application.UploadRgba8(width, height, rgba);
+            // The upscaler keeps the pixel arrays the content is about to drop.
+            Upscaler?.Enqueue(uploaded[index], width, height, rgba);
+        }
         content.ReleaseDecodedTexturePixels();
         return uploaded;
     }
@@ -77,14 +83,14 @@ internal static class SceneTextures
     {
         var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
         var start = profile ? Stopwatch.GetTimestamp() : 0;
-        var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length);
+        var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length);
         var uploaded = scene.Layers.SelectMany(layer => uploadedAhead?.Invoke(layer.Content) ?? Upload(application, layer.Content))
             .ToArray();
         if (profile)
         {
             using var process = Process.GetCurrentProcess();
             Console.Error.WriteLine($"Profile scene {scene.Id}: {uploaded.Length} textures, "
-                + $"RGBA {rgbaBytes / 1048576d:F1} MiB, "
+                + $"pixels {rgbaBytes / 1048576d:F1} MiB, "
                 + $"upload {Stopwatch.GetElapsedTime(start).TotalMilliseconds:F0} ms, "
                 + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB (committed {GC.GetGCMemoryInfo().TotalCommittedBytes / 1048576d:F1}), "
                 + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB.");

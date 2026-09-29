@@ -292,7 +292,7 @@ internal sealed class GameShell : IDisposable
             MovieContent.Decoded = content =>
             {
                 if (Application.ShowUpscaled)
-                    upscale.ApplyCached(content);
+                    upscale.ApplyCached(content, Application.SupportsBc7);
             };
             SceneTextures.Upscaler = new TextureUpscaler(upscale);
             Console.WriteLine($"Texture upscaling: {UpscaleTool.LiveThreads} CPU thread(s), cache {upscale.Cache}.");

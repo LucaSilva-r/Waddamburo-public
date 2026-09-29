@@ -240,3 +240,8 @@ independently from the network layout in the `.param` file and the ncnn weight-f
 (fp16-tagged convolution weights, fp32 biases and PReLU slopes, 2026-09-29); no Real-ESRGAN
 or ncnn source is copied. Upscaled textures are derived locally from the user's own files and
 cached on their machine only.
+
+The upscaled-texture cache stores BC7 blocks encoded by bc7enc (bc7enc_rdo, MIT or public
+domain, copyright Richard Geldreich, Jr.), vendored unchanged in `native/texture/third_party/bc7enc/`
+at commit `b9438627eef73a1157e84201b6fa6eb2ffd6d9f0` (hashes in THIRD_PARTY_NOTICES.md). The
+`waddamburo_texture` C ABI around it and the C# bindings are original project code.

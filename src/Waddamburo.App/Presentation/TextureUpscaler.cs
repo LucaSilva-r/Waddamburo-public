@@ -13,7 +13,7 @@ namespace Waddamburo.App.Presentation;
 internal sealed class TextureUpscaler : IDisposable
 {
     private readonly record struct Job(RenderTextureId Texture, UpscaleSource Source);
-    private readonly record struct Result(RenderTextureId Texture, uint Width, uint Height, byte[] Rgba);
+    private readonly record struct Result(RenderTextureId Texture, UpscaledTexture Upscaled);
 
     // Newest first: the scene on screen before the ones left behind (those still fill the cache).
     // ponytail: queued jobs keep their pixels alive (a few hundred MB after many scenes); re-decode
@@ -63,7 +63,7 @@ internal sealed class TextureUpscaler : IDisposable
     }
 
     /// <summary>
-    /// Swaps finished textures in (main thread, once per frame), up to about 16 MB of pixels a frame:
+    /// Swaps finished textures in (main thread, once per frame), up to about 16 MB of BC7 a frame:
     /// a few big textures in one frame stall it.
     /// </summary>
     public void Apply(SdlApplication application)
@@ -72,8 +72,13 @@ internal sealed class TextureUpscaler : IDisposable
         long bytes = 0;
         while (bytes < Budget && _done.TryDequeue(out var result))
         {
-            application.TryReplaceRgba8(result.Texture, result.Width, result.Height, result.Rgba);
-            bytes += result.Rgba.Length;
+            var (texture, upscaled) = result;
+            if (application.SupportsBc7)
+                application.TryReplaceBc7(texture, upscaled.Width, upscaled.Height, upscaled.Bc7.Span);
+            else
+                application.TryReplaceRgba8(texture, upscaled.Width, upscaled.Height,
+                    Waddamburo.Upscale.Bc7.Decode(upscaled.Bc7.Span, (int)upscaled.Width, (int)upscaled.Height));
+            bytes += upscaled.Bc7.Length;
         }
     }
 
@@ -84,8 +89,8 @@ internal sealed class TextureUpscaler : IDisposable
             while (!_stop.IsCancellationRequested && _jobs.TryPop(out var job))
                 guard(() =>
                 {
-                    if (_tool.Load(UpscaleTool.Key(job.Source)) is var (width, height, rgba))
-                        _done.Enqueue(new Result(job.Texture, width, height, rgba));
+                    if (_tool.Load(UpscaleTool.Key(job.Source)) is { } upscaled)
+                        _done.Enqueue(new Result(job.Texture, upscaled));
                     else
                     {
                         _misses.Push(job);
@@ -103,8 +108,8 @@ internal sealed class TextureUpscaler : IDisposable
                     var key = UpscaleTool.Key(job.Source);
                     if (!_tool.IsCached(key))
                         _tool.Upscale(job.Source, UpscaleTool.LiveThreads, () => _paused && !_stop.IsCancellationRequested);
-                    if (_tool.Load(key) is var (width, height, rgba))
-                        _done.Enqueue(new Result(job.Texture, width, height, rgba));
+                    if (_tool.Load(key) is { } upscaled)
+                        _done.Enqueue(new Result(job.Texture, upscaled));
                 });
     }
 

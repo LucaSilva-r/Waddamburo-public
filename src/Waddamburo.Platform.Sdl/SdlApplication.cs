@@ -110,6 +110,23 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.UploadRgba8(width, height, pixels);
     }
 
+    /// <summary>Whether BC7 textures can be drawn (natively, or decoded by bgfx).</summary>
+    public bool SupportsBc7 => _renderer?.SupportsBc7 ?? false;
+
+    public RenderTextureId UploadBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _renderer!.UploadBc7(width, height, blocks);
+    }
+
+    public bool TryReplaceBc7(RenderTextureId texture, uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _renderer!.TryReplaceBc7(texture, width, height, blocks);
+    }
+
     public RenderTextureId[] UploadRgba8Batch(IReadOnlyList<RgbaTextureUpload> uploads)
     {
         ensureOwnerThread();

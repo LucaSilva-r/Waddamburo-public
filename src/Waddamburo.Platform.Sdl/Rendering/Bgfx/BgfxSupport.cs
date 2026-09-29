@@ -57,6 +57,22 @@ namespace Waddamburo.Platform.Sdl.Rendering
             return texture;
         }
 
+        /// <summary>A BC7 texture from its blocks (sizes multiples of 4, one byte per pixel).</summary>
+        public static bgfx.TextureHandle CreateBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
+        {
+            if (width > ushort.MaxValue || height > ushort.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(width), "Texture is too large.");
+            var texture = bgfx.create_texture_2d((ushort)width, (ushort)height, false, 1, bgfx.TextureFormat.BC7, 0, Copy(blocks), 0);
+            if (!texture.Valid)
+                throw new InvalidOperationException($"bgfx could not create a {width}x{height} BC7 texture.");
+            return texture;
+        }
+
+        /// <summary>Whether this backend draws BC7 textures (natively, or decoded by bgfx).</summary>
+        public static bool SupportsBc7() =>
+            (bgfx.get_caps()->formats[(int)bgfx.TextureFormat.BC7]
+                & (uint)(bgfx.CapsFormatFlags.Texture2d | bgfx.CapsFormatFlags.Texture2dEmulated)) != 0;
+
         /// <summary>First depth format this backend renders to (AMD Vulkan has no D24, GLES may lack D32F).</summary>
         public static bgfx.TextureFormat DepthFormat()
         {

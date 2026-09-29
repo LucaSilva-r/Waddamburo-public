@@ -304,6 +304,22 @@ public sealed class CompactUpscaler : IDisposable
         Unsafe.As<float, Vector<float>>(ref output[at]) = value;
     }
 
+    /// <summary>Bicubic resize of RGBA8 (BC7 needs sizes that are multiples of 4).</summary>
+    public static byte[] ResizeRgba(ReadOnlySpan<byte> rgba, int width, int height, int outWidth, int outHeight)
+    {
+        var result = new byte[outWidth * outHeight * 4];
+        var plane = new float[width * height];
+        for (var c = 0; c < 4; c++)
+        {
+            for (var i = 0; i < plane.Length; i++)
+                plane[i] = rgba[i * 4 + c];
+            var resized = Bicubic.Resize(plane, width, height, outWidth, outHeight);
+            for (var i = 0; i < resized.Length; i++)
+                result[i * 4 + c] = (byte)Math.Clamp(resized[i] + 0.5f, 0, 255);
+        }
+        return result;
+    }
+
     /// <summary>Separable bicubic resize (a = -0.75, as ncnn's Interp), edges clamped.</summary>
     private static class Bicubic
     {

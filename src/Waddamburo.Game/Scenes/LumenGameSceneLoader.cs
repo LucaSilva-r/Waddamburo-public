@@ -68,7 +68,7 @@ public sealed class LumenGameSceneInstance : IGameSceneInstance
     {
         foreach (var layer in Layers)
             layer.Content.ReleaseDecodedTexturePixels();
-        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [] })];
+        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [], Bc7 = default })];
     }
 
     public async ValueTask DisposeAsync()

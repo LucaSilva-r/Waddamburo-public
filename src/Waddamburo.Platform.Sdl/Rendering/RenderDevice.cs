@@ -88,15 +88,53 @@ internal sealed unsafe class RenderDevice : IDisposable
     /// </summary>
     public bool TryReplaceRgba8(RenderTextureId id, uint width, uint height, ReadOnlySpan<byte> pixels)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_borrowedTextures.Contains(id.Value) || !_textures.ContainsKey(id.Value))
-            return false;
         if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
+        if (!replaceable(id))
+            return false;
+        replace(id, BgfxSupport.CreateRgba8(width, height, pixels));
+        return true;
+    }
+
+    /// <summary>As <see cref="TryReplaceRgba8"/> with BC7 blocks.</summary>
+    public bool TryReplaceBc7(RenderTextureId id, uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        checkBc7(width, height, blocks);
+        if (!replaceable(id))
+            return false;
+        replace(id, BgfxSupport.CreateBc7(width, height, blocks));
+        return true;
+    }
+
+    private bool replaceable(RenderTextureId id)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return !_borrowedTextures.Contains(id.Value) && _textures.ContainsKey(id.Value);
+    }
+
+    private void replace(RenderTextureId id, bgfx.TextureHandle texture)
+    {
         if (_replacements.Remove(id.Value, out var previous))
             bgfx.destroy_texture(previous);
-        _replacements[id.Value] = BgfxSupport.CreateRgba8(width, height, pixels);
-        return true;
+        _replacements[id.Value] = texture;
+    }
+
+    /// <summary>Whether BC7 textures can be drawn (natively, or decoded by bgfx).</summary>
+    public bool SupportsBc7 { get; } = BgfxSupport.SupportsBc7();
+
+    public RenderTextureId UploadBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        checkBc7(width, height, blocks);
+        var id = new RenderTextureId(_nextTextureId++);
+        _textures.Add(id.Value, BgfxSupport.CreateBc7(width, height, blocks));
+        return id;
+    }
+
+    private static void checkBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        if (width == 0 || height == 0 || width % 4 != 0 || height % 4 != 0 || (ulong)blocks.Length != (ulong)width * height)
+            throw new ArgumentException("BC7 textures need sizes that are multiples of 4 and one byte per pixel.", nameof(blocks));
     }
 
     /// <summary>Draw replaced textures (true) or their originals.</summary>
