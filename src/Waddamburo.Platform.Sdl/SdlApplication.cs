@@ -239,6 +239,7 @@ public sealed unsafe class SdlApplication : IDisposable
         var running = true;
         var pendingPresses = new List<SdlKeyPress>();
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+        (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
         using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
             ? new FrameProfile() : null;
         var previousProfileEligible = false;
@@ -384,9 +385,16 @@ public sealed unsafe class SdlApplication : IDisposable
                 }
             }
             previousProfileEligible = profileEligibleAtStart && profileEligibleAtEnd;
-            if (hitchTrace && updateTime + renderTime > TimeSpan.FromMilliseconds(40))
-                Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
-                    + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms.");
+            if (hitchTrace)
+            {
+                // With the collections and GC pause time since the last report: a hitch that is GC shows here.
+                var (gen0, gen1, gen2, pause) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration());
+                if (updateTime + renderTime > TimeSpan.FromMilliseconds(25))
+                    Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
+                        + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms; GC since last "
+                        + $"{gen0 - hitchGc.Gen0}/{gen1 - hitchGc.Gen1}/{gen2 - hitchGc.Gen2} (gen0/1/2), paused {(pause - hitchGc.Pause).TotalMilliseconds:F0} ms.");
+                hitchGc = (gen0, gen1, gen2, pause);
+            }
             if (capture is not null)
                 captureFinalFrame!(capture);
             renderedFrames++;

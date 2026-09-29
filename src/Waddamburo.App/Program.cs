@@ -99,7 +99,7 @@ try
                 + $"{arcade.SongsPerSession} songs per session).");
         // Fills the texture upscale cache ahead of play, with no game window (see TextureCacheBuilder).
         if (args.FirstOrDefault(static arg => arg.StartsWith("--upscale-textures", StringComparison.Ordinal)) is { } upscale)
-            return TextureCacheBuilder.Run(layout.LumenRoot, upscale.Split('=') is [_, var count]
+            return TextureCacheBuilder.Run(layout.Root, layout.LumenRoot, upscale.Split('=') is [_, var count]
                 ? int.Parse(count, System.Globalization.CultureInfo.InvariantCulture)
                 : Math.Max(1, Environment.ProcessorCount - 2));
         var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Root);

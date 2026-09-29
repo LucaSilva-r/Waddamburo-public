@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Waddamburo.Upscale;
+namespace Waddamburo.Platform.Sdl.Rendering;
 
 /// <summary>BC7 texture blocks through the native waddamburo_texture library (bc7enc).</summary>
 public static partial class Bc7

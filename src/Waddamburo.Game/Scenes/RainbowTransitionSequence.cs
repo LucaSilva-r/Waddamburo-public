@@ -16,9 +16,15 @@ public enum RainbowTransitionState
 /// </summary>
 public sealed class RainbowTransitionSequence
 {
+    // Traced: in_extra 1027-1029 ms after NotifyEndCourseSelect (normal Song Select), 1514-1522 ms in
+    // Waiwai's (sessions 9-12, 17).
     public const int DefaultLeadInTicks = 60;
-    // Traced (session17): out_extra 1116 ms after in_extra starts; in_extra runs ~59 ticks.
-    public const int DefaultCoveredTicks = 8;
+    public const int WaiwaiLeadInTicks = 91;
+    // The title is held stopped (the movie waits on frame 65) before out_extra: ~1.45 s in a real-time
+    // capture of Green (in_extra at ~0.38 s, identical frames 1.5-2.8 s, out_extra's fade-out at ~2.83 s).
+    // The TaikoRecomp traces show only ~0.1 s, but their loads finish early and the capture is the
+    // reference (user-confirmed). A longer load holds longer.
+    public const int DefaultCoveredTicks = 87;
 
     private readonly int _leadInTicks;
     private readonly int _coveredTicks;
@@ -36,11 +42,11 @@ public sealed class RainbowTransitionSequence
 
     public RainbowTransitionState State { get; private set; }
 
-    public void Begin(int currentTick)
+    public void Begin(int currentTick, int? leadInTicks = null)
     {
         if (State is not RainbowTransitionState.Idle and not RainbowTransitionState.Complete)
             throw new InvalidOperationException($"A rainbow transition is already {State}.");
-        _deadlineTick = checked(currentTick + _leadInTicks);
+        _deadlineTick = checked(currentTick + (leadInTicks ?? _leadInTicks));
         State = RainbowTransitionState.WaitingToCover;
     }
 

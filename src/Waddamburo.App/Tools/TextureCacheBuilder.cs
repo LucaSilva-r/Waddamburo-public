@@ -22,9 +22,9 @@ internal static class TextureCacheBuilder
     private static readonly int[] Sides = [0, 1];
     private static readonly bool[] PlayerCounts = [false, true];
 
-    public static int Run(string lumenRoot, int threads)
+    public static int Run(string gameRoot, string lumenRoot, int threads)
     {
-        using var tool = UpscaleTool.Find();
+        using var tool = UpscaleTool.Find(gameRoot);
         if (tool is null)
         {
             Console.Error.WriteLine("Texture upscaling needs the model: realesr-animevideov3-x3.param and .bin in an "

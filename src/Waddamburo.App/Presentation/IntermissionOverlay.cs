@@ -12,11 +12,21 @@ namespace Waddamburo.App.Presentation;
 /// <summary>
 /// The one intermission movie drawn over the scene (traced depth -2000): the rainbow before a song,
 /// the shutter after it, the fade between the credit's closing scenes. Showing one replaces the last.
+/// Preloaded ones stay loaded and are only hidden: showing them never touches the disk.
 /// </summary>
 internal sealed class IntermissionOverlay(SdlApplication application, LumenGameSceneLoader loader) : IDisposable
 {
     private LumenGameSceneInstance? _scene;
     private RenderTextureId[] _textures = [];
+    private readonly Dictionary<SceneDefinition, (LumenGameSceneInstance Scene, RenderTextureId[] Textures)> _kept =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Loads an intermission once and keeps it (the rainbow must never stall a song's start).</summary>
+    public void Preload(SceneDefinition definition)
+    {
+        var scene = (LumenGameSceneInstance)loader.LoadAsync(definition, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        _kept[definition] = (scene, SceneTextures.Upload(application, scene));
+    }
 
     public bool IsShown => _scene is not null;
 
@@ -26,16 +36,24 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
     public LumenPlayer Show(SceneDefinition definition)
     {
         Clear();
-        _scene = (LumenGameSceneInstance)loader.LoadAsync(definition, CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        _textures = SceneTextures.Upload(application, _scene);
+        if (_kept.TryGetValue(definition, out var kept))
+            (_scene, _textures) = kept;
+        else
+        {
+            _scene = (LumenGameSceneInstance)loader.LoadAsync(definition, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            _textures = SceneTextures.Upload(application, _scene);
+        }
         return Player!;
     }
 
     public void Clear()
     {
-        SceneTextures.Release(application, _textures);
+        if (_scene is not null && !_kept.Values.Any(kept => ReferenceEquals(kept.Scene, _scene)))
+        {
+            SceneTextures.Release(application, _textures);
+            _scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
         _textures = [];
-        _scene?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _scene = null;
     }
 
@@ -45,7 +63,16 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
         _scene is null ? [] : SceneTextures.Compose(_scene.Player.CreateRenderSnapshot(interpolation), _textures, "Intermission",
             surfaces).Quads;
 
-    public void Dispose() => Clear();
+    public void Dispose()
+    {
+        Clear();
+        foreach (var (scene, textures) in _kept.Values)
+        {
+            SceneTextures.Release(application, textures);
+            scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        _kept.Clear();
+    }
 }
 
 /// <summary>Uploads a loaded scene's texture atlas and draws its snapshots.</summary>
@@ -59,23 +86,30 @@ internal static class SceneTextures
     public static RenderTextureId[] Upload(SdlApplication application, LumenMovieContent content)
     {
         var uploaded = new RenderTextureId[content.Textures.Length];
-        for (var index = 0; index < uploaded.Length; index++)
-        {
-            var texture = content.Textures[index];
-            var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
-            if (!texture.Bc7.IsEmpty)
-            {
-                uploaded[index] = application.UploadBc7(width, height, texture.Bc7.Span);
-                continue;
-            }
-            var rgba = ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
-                ?? throw new InvalidDataException("Texture pixels are unavailable.");
-            uploaded[index] = application.UploadRgba8(width, height, rgba);
-            // The upscaler keeps the pixel arrays the content is about to drop.
-            Upscaler?.Enqueue(uploaded[index], width, height, rgba);
-        }
-        content.ReleaseDecodedTexturePixels();
+        UploadRest(application, content, uploaded, 0);
         return uploaded;
+    }
+
+    /// <summary>Uploads a movie's textures from <paramref name="from"/> on, then drops its pixels.</summary>
+    public static void UploadRest(SdlApplication application, LumenMovieContent content, RenderTextureId[] uploaded, int from)
+    {
+        for (var index = from; index < uploaded.Length; index++)
+            uploaded[index] = UploadOne(application, content.Textures[index]);
+        content.ReleaseDecodedTexturePixels();
+    }
+
+    /// <summary>One texture: BC7 blocks as they are, RGBA queued for upscaling.</summary>
+    public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture)
+    {
+        var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
+        if (!texture.Bc7.IsEmpty)
+            return application.UploadBc7(width, height, texture.Bc7.Span);
+        var rgba = ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
+            ?? throw new InvalidDataException("Texture pixels are unavailable.");
+        var id = application.UploadRgba8(width, height, rgba);
+        // The upscaler keeps the pixel arrays the content is about to drop.
+        Upscaler?.Enqueue(id, width, height, rgba);
+        return id;
     }
 
     public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene,

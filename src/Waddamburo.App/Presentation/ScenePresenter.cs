@@ -15,6 +15,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
 {
     private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4);
     private readonly Dictionary<LumenMovieContent, RenderTextureId[]> _uploadedAhead = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<LumenMovieContent, (RenderTextureId[] Uploaded, int Next)> _partial = new(ReferenceEqualityComparer.Instance);
     private RenderTextureId[] _textures = [];
     private RenderTextureId[] _heldTextures = [];
     private RenderFrame? _heldFrame;
@@ -34,18 +35,45 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
     }
 
-    /// <summary>Uploads decoded prefetches within a small time budget (once per frame).</summary>
-    // ponytail: one movie per step once over budget; a single huge movie can still take a frame.
+    /// <summary>Every prefetched movie is decoded and uploaded ahead.</summary>
+    public bool PrefetchReady => movies.PrefetchComplete && movies.DecodedPrefetches.All(_uploadedAhead.ContainsKey);
+
+    /// <summary>
+    /// Uploads decoded prefetches within a small time budget (once per frame), a texture at a time: a
+    /// whole movie at once stalled the frame (and the audio) as Song Select's course select opened.
+    /// </summary>
     public void UploadAhead()
     {
         var start = Stopwatch.GetTimestamp();
         foreach (var content in movies.DecodedPrefetches)
         {
-            if (Stopwatch.GetElapsedTime(start) > UploadAheadBudget)
-                return;
-            if (!_uploadedAhead.ContainsKey(content))
-                _uploadedAhead[content] = SceneTextures.Upload(application, content);
+            if (_uploadedAhead.ContainsKey(content))
+                continue;
+            var (uploaded, next) = _partial.GetValueOrDefault(content, (new RenderTextureId[content.Textures.Length], 0));
+            for (; next < uploaded.Length; next++)
+            {
+                if (Stopwatch.GetElapsedTime(start) > UploadAheadBudget)
+                {
+                    _partial[content] = (uploaded, next);
+                    return;
+                }
+                uploaded[next] = SceneTextures.UploadOne(application, content.Textures[next]);
+            }
+            _partial.Remove(content);
+            content.ReleaseDecodedTexturePixels();
+            _uploadedAhead[content] = uploaded;
         }
+    }
+
+    // A movie half uploaded ahead: the scene switch uploads the rest.
+    private RenderTextureId[]? takeAhead(LumenMovieContent content)
+    {
+        if (_uploadedAhead.Remove(content, out var textures))
+            return textures;
+        if (!_partial.Remove(content, out var partial))
+            return null;
+        SceneTextures.UploadRest(application, content, partial.Uploaded, partial.Next);
+        return partial.Uploaded;
     }
 
     /// <summary>
@@ -82,10 +110,9 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     /// <summary>The new scene's textures: its prefetched uploads where there are any, the rest now.</summary>
     public void Activate(LumenGameSceneInstance scene)
     {
-        var ahead = _uploadedAhead.Count;
-        _textures = SceneTextures.Upload(application, scene,
-            content => _uploadedAhead.Remove(content, out var textures) ? textures : null);
-        if (ahead - _uploadedAhead.Count > 0)
+        var ahead = _uploadedAhead.Count + _partial.Count;
+        _textures = SceneTextures.Upload(application, scene, takeAhead);
+        if (ahead - _uploadedAhead.Count - _partial.Count > 0)
             releaseUploadedAhead(); // this scene took its prefetch; the rest is unused
     }
 
@@ -125,6 +152,9 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         foreach (var textures in _uploadedAhead.Values)
             SceneTextures.Release(application, textures);
+        foreach (var (uploaded, next) in _partial.Values)
+            SceneTextures.Release(application, uploaded.Take(next));
         _uploadedAhead.Clear();
+        _partial.Clear(); // not yet released: the prefetch still holds them whole
     }
 }

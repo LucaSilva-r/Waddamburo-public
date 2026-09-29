@@ -27,6 +27,17 @@
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
+  <!-- Developer builds: the BC7 library from the native debug build runs next to the executable.
+       Release publishes take it from WaddamburoNativeDir (Waddamburo.App). -->
+  <PropertyGroup Condition="'$(WaddamburoNativeDir)' == ''">
+    <WaddamburoTextureDir Condition="'$(WaddamburoTextureDir)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)../../out/build/native/win-x64/windows-debug/stage/Debug/bin</WaddamburoTextureDir>
+    <WaddamburoTextureDir Condition="'$(WaddamburoTextureDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/linux-x64/linux-debug/stage/Debug/lib</WaddamburoTextureDir>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WaddamburoNativeDir)' == ''">
+    <None Include="$(WaddamburoTextureDir)/waddamburo_texture*.dll;$(WaddamburoTextureDir)/libwaddamburo_texture*.so"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />

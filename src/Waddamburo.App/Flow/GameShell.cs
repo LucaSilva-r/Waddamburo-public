@@ -101,6 +101,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
     public void Prefetch(SceneDefinition scene) => _presenter.Prefetch(scene);
 
+    /// <summary>The prefetched scene is decoded and uploaded (its switch will not stall).</summary>
+    public bool PrefetchReady => _presenter.PrefetchReady;
+
     public EnsoLayout EnsoLayout { get; }
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
@@ -285,7 +288,7 @@ internal sealed class GameShell : IDisposable
         MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot));
         _presenter = new ScenePresenter(Application, MovieContent);
         // Upscaling runs when the model files are installed (see UpscaleTool).
-        if (UpscaleTool.Find() is { } upscale)
+        if (UpscaleTool.Find(options.ArcadePath is { } settings ? Path.GetDirectoryName(Path.GetFullPath(settings)) : null) is { } upscale)
         {
             MovieContent.Loaded = upscale.RecordUsed;
             // Cached upscales replace textures as movies decode: the GPU only ever gets those.
@@ -300,6 +303,9 @@ internal sealed class GameShell : IDisposable
         _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
+        // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
+        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade })
+            Overlay.Preload(intermission);
 
         _attract = new AttractFlow(this, AttractMovie.Discover(Path.Combine(dataRoot, "movie")));
         _gameplay = new GameplayFlow(this);

@@ -56,6 +56,9 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         _prefetched = fresh;
     }
 
+    /// <summary>Every prefetched movie not yet taken is decoded (or failed, which its load reports).</summary>
+    public bool PrefetchComplete => _prefetched.Values.All(static task => task.IsCompleted);
+
     /// <summary>Prefetched movies already decoded and not yet taken by a load.</summary>
     public IEnumerable<LumenMovieContent> DecodedPrefetches => _prefetched.Values
         .Where(static task => task.IsCompletedSuccessfully).Select(static task => task.Result);

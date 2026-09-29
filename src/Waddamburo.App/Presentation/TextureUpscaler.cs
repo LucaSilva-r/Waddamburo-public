@@ -77,7 +77,7 @@ internal sealed class TextureUpscaler : IDisposable
                 application.TryReplaceBc7(texture, upscaled.Width, upscaled.Height, upscaled.Bc7.Span);
             else
                 application.TryReplaceRgba8(texture, upscaled.Width, upscaled.Height,
-                    Waddamburo.Upscale.Bc7.Decode(upscaled.Bc7.Span, (int)upscaled.Width, (int)upscaled.Height));
+                    Bc7.Decode(upscaled.Bc7.Span, (int)upscaled.Width, (int)upscaled.Height));
             bytes += upscaled.Bc7.Length;
         }
     }

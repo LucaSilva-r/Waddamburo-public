@@ -1,3 +1,4 @@
+using Waddamburo.Platform.Sdl.Rendering;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -61,8 +62,12 @@ internal sealed class UpscaleTool : IDisposable
     public static int LiveThreads => int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_THREADS"),
         NumberStyles.Integer, CultureInfo.InvariantCulture, out var threads) && threads > 0 ? threads : 2;
 
-    /// <summary>The tool, or null when the model files or the BC7 library are not installed.</summary>
-    public static UpscaleTool? Find()
+    /// <summary>
+    /// The tool, or null when the model files or the BC7 library are not installed. The cache lives in
+    /// <paramref name="gameRoot"/>/upscaled (next to config.cfg and scores.db), or in the user cache
+    /// folder when there is no game folder (diagnostic runs).
+    /// </summary>
+    public static UpscaleTool? Find(string? gameRoot)
     {
         var folder = Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_MODEL") is { Length: > 0 } set ? set
             : Path.Combine(AppContext.BaseDirectory, "upscale");
@@ -75,11 +80,20 @@ internal sealed class UpscaleTool : IDisposable
             Console.Error.WriteLine("Texture upscaling off: the waddamburo_texture library (BC7) is missing.");
             return null;
         }
-        var cache = Path.Combine(OperatingSystem.IsWindows()
+        var userCache = Path.Combine(OperatingSystem.IsWindows()
             ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
             : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
             "Waddamburo", "upscaled");
+        var cache = gameRoot is null ? userCache : Path.Combine(gameRoot, "upscaled");
+        // A cache from before it moved next to the game data comes along once.
+        if (cache != userCache && !File.Exists(Path.Combine(cache, CacheName)) && Directory.Exists(userCache))
+        {
+            Directory.CreateDirectory(cache);
+            foreach (var file in Directory.GetFiles(userCache))
+                File.Move(file, Path.Combine(cache, Path.GetFileName(file)));
+            Console.WriteLine($"Moved the upscaled-texture cache from {userCache} to {cache}.");
+        }
         return new UpscaleTool(CompactUpscaler.Load(param, bin), cache);
     }
 
@@ -165,7 +179,7 @@ internal sealed class UpscaleTool : IDisposable
                 upscaled[index] = texture with { Width = (int)cached.Width, Height = (int)cached.Height, Rgba8 = [], Bc7 = cached.Bc7 };
                 return;
             }
-            var pixels = Waddamburo.Upscale.Bc7.Decode(cached.Bc7.Span, (int)cached.Width, (int)cached.Height);
+            var pixels = Bc7.Decode(cached.Bc7.Span, (int)cached.Width, (int)cached.Height);
             _upscaled.AddOrUpdate(pixels, this);
             upscaled[index] = texture with
             {
@@ -190,7 +204,7 @@ internal sealed class UpscaleTool : IDisposable
         var (w, h) = ((width + 3) / 4 * 4, (height + 3) / 4 * 4);
         if (w != width || h != height)
             rgba = CompactUpscaler.ResizeRgba(rgba, width, height, w, h);
-        var blocks = Waddamburo.Upscale.Bc7.Encode(rgba, w, h);
+        var blocks = Bc7.Encode(rgba, w, h);
         var entry = new byte[Header + blocks.Length];
         BinaryPrimitives.WriteUInt32LittleEndian(entry, (uint)w);
         BinaryPrimitives.WriteUInt32LittleEndian(entry.AsSpan(4), (uint)h);
