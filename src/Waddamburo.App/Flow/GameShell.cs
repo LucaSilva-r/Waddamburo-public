@@ -277,6 +277,8 @@ internal sealed class GameShell : IDisposable
         Catalog = new SceneCatalog(
             FlowScenes.Initial([
                 GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
+                // Placeholder: the audio calibration replaces it with a fresh lane each time.
+                GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
                 _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
             ]),
             [
@@ -352,7 +354,8 @@ internal sealed class GameShell : IDisposable
 
         _attract = new AttractFlow(this, AttractMovie.Discover(Path.Combine(dataRoot, "movie")));
         _gameplay = new GameplayFlow(this);
-        _home = new HomeControls(this, _gameplay, options.FontPath, assetRoot);
+        var calibration = new CalibrationFlow(this);
+        _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this, _gameplay);
         _scenes = new()
@@ -363,8 +366,9 @@ internal sealed class GameShell : IDisposable
             [FlowScenes.Caution] = _attract,
             [FlowScenes.Movie] = _attract,
             [FlowScenes.Entry] = entry,
-            [FlowScenes.SongSelect] = new SongSelectFlow(this, _gameplay),
+            [FlowScenes.SongSelect] = new SongSelectFlow(this, _gameplay, calibration),
             [FlowScenes.Gameplay] = _gameplay,
+            [FlowScenes.Calibration] = calibration,
             [FlowScenes.Result] = ending,
             [FlowScenes.Retry] = ending,
             [FlowScenes.GameOver] = ending,
@@ -528,13 +532,16 @@ internal sealed class GameShell : IDisposable
         Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
     }
 
+    // A gameplay lane is on screen: a song or the audio calibration (drums drive it, not the movies' controls).
+    private bool onLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration;
+
     // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
     // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
     private bool backToAttract(bool f1)
     {
         var toAttract = f1 || _returnToAttract;
         _returnToAttract = false;
-        if (!toAttract || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Boot)
+        if (!toAttract || onLane || Active.Id == FlowScenes.Boot)
             return false;
         Sounds?.StopAll();
         Overlay.Clear();
@@ -550,7 +557,7 @@ internal sealed class GameShell : IDisposable
     private void advance(FlowScene scene, SdlKeyboardSnapshot keys)
     {
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
-            Active.Id == FlowScenes.Gameplay ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
+            onLane ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
         Overlay.Advance();
         // Diagnostic: WADDAMBURO_DUMP_TREE=<tick> prints the active scene's display lists.
         if (_dumpTreeTick == Tick)
@@ -729,7 +736,7 @@ internal sealed class GameShell : IDisposable
         _presenter.UploadAhead();
         if (SceneTextures.Upscaler is { } upscaler)
         {
-            upscaler.Paused = Active.Id == FlowScenes.Gameplay || Bake?.Running == true;
+            upscaler.Paused = onLane || Bake?.Running == true;
             upscaler.Apply(Application);
         }
         if (DonRenderer is not null)

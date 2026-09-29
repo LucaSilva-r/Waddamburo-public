@@ -89,6 +89,20 @@ internal sealed class SoundBank
         }
     }
 
+    /// <summary>A cue's decoded sound (for mixing it into a stream); null when it is unavailable.</summary>
+    public AudioClip? Clip(string bank, int cue)
+    {
+        try
+        {
+            return load((bank, cue));
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            reportUnavailable((bank, cue), exception);
+            return null;
+        }
+    }
+
     /// <summary>Starts a bgm/nub track on the music bus; null when the file is unavailable.</summary>
     public AudioPlaybackHandle? PlayMusic(string label, string name, bool loop)
     {

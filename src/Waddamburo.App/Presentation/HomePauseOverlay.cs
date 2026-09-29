@@ -3,6 +3,7 @@ using Waddamburo.Formats.Nut;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
+using Waddamburo.Game.Flow;
 
 namespace Waddamburo.App.Presentation;
 
@@ -34,9 +35,12 @@ internal sealed class HomePauseOverlay : IDisposable
         load(Path.Combine(assetRoot, "song_select", "packeddata.ddp"), [103, 352, 354], 1000);
     }
 
-    public IEnumerable<RenderQuad> Quads(HomeMenu? menu, float black)
+    /// <remarks><paramref name="calibration"/>: an audio calibration being played, whose instructions show over the lane.</remarks>
+    public IEnumerable<RenderQuad> Quads(HomeMenu? menu, float black, LatencyCalibration? calibration = null)
     {
         var quads = new List<RenderQuad>();
+        if (calibration is not null)
+            calibrationBanner(quads, calibration);
         if (menu is not null)
         {
             quads.Add(rect(_white, 0, 0, 1280, 720, new(0, 0, 0, 0.6f)));
@@ -45,12 +49,14 @@ internal sealed class HomePauseOverlay : IDisposable
             else
                 quads.Add(rect(_white, 140, 98, 1000, 520, new(1, 0.98f, 0.91f, 1)));
             // The badge just left of the title, however wide the title is.
-            var titleWidth = menu.Bake is null ? 260 : 420;
+            var titleWidth = menu.Bake is null && menu.Calibration is null ? 260 : 420;
             if (_art.TryGetValue(Badge, out var badge))
                 quads.Add(rect(badge.Texture, 640 - titleWidth / 2f - 50, 143, 58, 58));
             quads.Add(label(menu.Title, 640, 174, titleWidth, 60));
             if (menu.Bake is { } bake)
                 bakePage(quads, bake);
+            else if (menu.Calibration is { } result)
+                calibrationResult(quads, result);
             else if (menu.SettingsPage)
                 settings(quads, menu);
             else
@@ -179,6 +185,25 @@ internal sealed class HomePauseOverlay : IDisposable
         quads.Add(slot("speed", _bakeText[1], 640, 404, 860, 30));
         quads.Add(slot("hint", bake.Running ? "Escape or centre: stop (finished textures are kept)." : "Escape or centre: back.",
             640, 550, 860, 27));
+    }
+
+    // The calibration, under the lane: what to do, and the offset being tried.
+    private void calibrationBanner(List<RenderQuad> quads, LatencyCalibration calibration)
+    {
+        quads.Add(rect(_white, 0, 580, 1280, 100, new(0, 0, 0, 0.7f)));
+        quads.Add(slot("calibration",
+            $"Make each click land as its note reaches the circle. ({signed(calibration.AudioOffsetMs)})", 640, 612, 1100, 36));
+        quads.Add(slot("calibration-hint",
+            "Don't drum along. Left rim: notes earlier, right rim: later. Big don (both centres): done.", 640, 652, 1100, 28));
+    }
+
+    private static string signed(int ms) => ms.ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture) + " ms";
+
+    // The finished calibration in the menu panel: the offset, save or discard.
+    private void calibrationResult(List<RenderQuad> quads, LatencyCalibration calibration)
+    {
+        quads.Add(label($"Audio Offset {signed(calibration.AudioOffsetMs)}", 640, 320, 860, 40));
+        quads.Add(label("Centre or Enter: save it. Escape: discard.", 640, 550, 860, 27));
     }
 
     private static string[] bakeText(TextureBake bake)

@@ -23,6 +23,10 @@ internal enum HomeMenuAction
     BakeTextures,
     /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
     RestartGame,
+    /// <summary>Start the audio calibration (the calibration page shows it).</summary>
+    Calibrate,
+    /// <summary>The calibration page closed (saved or not): its sound stops.</summary>
+    EndCalibration,
 }
 
 /// <summary>
@@ -50,7 +54,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>A song library the player points at a folder (picked in the system's folder dialog).</summary>
     private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, bool Nijiiro);
 
-    /// <summary>A row that starts something (the texture bake).</summary>
+    /// <summary>A row that starts something (the texture bake, the audio calibration).</summary>
     private sealed record Command(string Label, HomeMenuAction Action, string Hint);
 
     // One settings row: a section header, a setting, a song library, a command, or Back (all null).
@@ -96,10 +100,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: volume("Don-chan Voice", static s => s.VoiceVolume, static (s, v) => s with { VoiceVolume = v }, AudioBus.Voice,
             "Don-chan's calls and cheers.")),
         new("Timing"),
+        new(Command: new("Calibrate Audio", HomeMenuAction.Calibrate,
+            "Sets the Audio Offset: move the notes until each click lands as its note reaches the circle.")),
         new(Setting: offset("Audio Offset", static s => s.AudioOffsetMs, static (s, v) => s with { AudioOffsetMs = v },
-            "How late you hear the music: notes and judgement move this much later.")),
+            "+ if you hear the music late: notes and judgement move later to meet it. - if you hear it early.")),
         new(Setting: offset("Input Offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v },
-            "How late your hits arrive: they are judged this much earlier.")),
+            "+ if your hits land late (mostly LATE): they are judged earlier. - if they land early.")),
         new("Sound"),
         new(Setting: toggle("Stereo Panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v },
             "With two players, each side's sounds come from its own speaker.")),
@@ -183,7 +189,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public int Selection { get; private set; }
 
-    public string Title => Bake is not null ? "Upscaling Textures" : _restartPrompt ? "Restart?" : _settingsPage ? "Settings" : "Paused";
+    public string Title => Bake is not null ? "Upscaling Textures" : Calibration is not null ? "Audio Calibration" : _restartPrompt ? "Restart?" : _settingsPage ? "Settings" : "Paused";
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
     public Presentation.TextureBake? Bake
@@ -198,6 +204,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     private Presentation.TextureBake? _bake;
     private bool _baked;
+
+    /// <summary>A finished audio calibration, shown instead of the pause choices until saved or discarded.</summary>
+    public LatencyCalibration? Calibration { get; set; }
+
+    // When the calibration was first seen finished: a drum hit right after the last one does not save.
+    private long _calibrationDoneAt;
 
     /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
     public string? Message => _restartPrompt ? "Some changes need a restart to apply." : null;
@@ -229,7 +241,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // The rows shown for the current settings; Selection indexes these. Only rows below the one being
     // changed come and go, so the selection stays on it.
-    private Row[] rows => [.. Rows_.Where(row => row.Shown?.Invoke(get()) ?? true)];
+    private Row[] rows => [.. Rows_.Where(row => (row.Shown?.Invoke(get()) ?? true)
+        && (row.Command?.Action != HomeMenuAction.Calibrate || _calibrationOffered))];
+
+    // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
+    private bool _calibrationOffered;
 
     private Item item(Row row) => row switch
     {
@@ -237,6 +253,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         { Setting: { } setting } => new(ItemKind.Setting, setting.Label,
             setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
+        { Command: { Action: not HomeMenuAction.BakeTextures } command } => new(ItemKind.Command, command.Label, null, command.Hint),
         { Command: { } command } => cachedTextures() is { } cached
             ? new(ItemKind.Command, command.Label, $"{cached:N0} cached", command.Hint)
             : new(ItemKind.Command, command.Label, "Unavailable", "Upscaling is unavailable on this machine."),
@@ -297,8 +314,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// </summary>
     public AudioBus? PreviewBus => IsOpen && _settingsPage && _editing ? rows[Selection].Setting?.Bus : null;
 
-    public void Open(bool gameplay, bool attract = false)
+    public void Open(bool gameplay, bool attract = false, bool songSelect = false)
     {
+        _calibrationOffered = songSelect;
         _choices = gameplay ? ["Resume", "Restart Song", "Settings", "Song Select"]
             : attract ? ["Resume", "Settings"] : ["Resume", "Settings", "Return to Title"];
         IsOpen = true;
@@ -310,6 +328,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>One tick of menu input (key pulses); returns what the shell should do.</summary>
     public HomeMenuAction Input(SdlKeyboardSnapshot keys, bool escape, SdlKeyboardSnapshot held)
     {
+        if (Calibration is { } calibration)
+            return calibrationInput(calibration, keys, escape);
         var up = keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Z);
         var down = keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K) || keys.IsDown(SdlKeyboardKey.V);
         var decide = keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.Space)
@@ -400,6 +420,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             Selection = move(Selection + (up ? -1 : 1), up ? -1 : 1);
         else if (decide && row.Library is { } library)
             return library.Pick;
+        else if (decide && row.Command is { Action: HomeMenuAction.Calibrate })
+        {
+            // It leaves Song Select: the settings are saved and the menu closes, as with Back then Resume.
+            _settingsPage = false;
+            save();
+            return close(HomeMenuAction.Calibrate);
+        }
         else if (decide && row.Command is { } command && cachedTextures() is not null)
             return command.Action;
         else if (decide && row.Setting is not null)
@@ -407,6 +434,24 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         else if (arrows != 0 && row.Setting is not null)
             change(arrows);
         return HomeMenuAction.None;
+    }
+
+    // The calibration's result: Enter or centre saves the Audio Offset (from half a second on, so the
+    // confirming big don does not), Escape discards it.
+    private HomeMenuAction calibrationInput(LatencyCalibration calibration, SdlKeyboardSnapshot keys, bool escape)
+    {
+        var decide = keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J);
+        if (_calibrationDoneAt == 0)
+            _calibrationDoneAt = Stopwatch.GetTimestamp();
+        var save = decide && Stopwatch.GetElapsedTime(_calibrationDoneAt) >= TimeSpan.FromSeconds(0.5);
+        if (!escape && !save)
+            return HomeMenuAction.None;
+        drum(save);
+        if (save)
+            apply(get() with { AudioOffsetMs = calibration.AudioOffsetMs });
+        Calibration = null;
+        _calibrationDoneAt = 0;
+        return close(HomeMenuAction.EndCalibration);
     }
 
     // A held key repeats its change after RepeatDelay, every RepeatInterval: Left/Right on a setting, and

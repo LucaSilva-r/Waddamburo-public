@@ -13,7 +13,7 @@ namespace Waddamburo.App.Flow;
 /// Song Select (normal or Waiwai): the mode-switch folder, and a chosen song's handoff: the rainbow
 /// intermission covers the screen (song title in it), the charts load under it, gameplay starts.
 /// </summary>
-internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : FlowScene(shell)
+internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
     public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.SongSelect;
 
@@ -78,7 +78,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
             Shell.Show(FlowScenes.SongSelect);
             return;
         }
-        if (switchLibrary())
+        if (switchLibrary() || calibrate())
             return;
         // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
         if (input.Keys.IsDown(SdlKeyboardKey.P) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
@@ -157,6 +157,31 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay) : F
         }
         Shell.Overlay.Clear();
         _switching = null;
+        return true;
+    }
+
+    // The audio calibration (asked for in the settings): the plain rainbow covers the screen and the
+    // music stops (only its clicks should sound), the calibration lane loads under it, and it opens there.
+    private bool _coveringForCalibration;
+
+    private bool calibrate()
+    {
+        if (!_coveringForCalibration)
+        {
+            if (!calibration.Requested)
+                return false;
+            _coveringForCalibration = true;
+            Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
+            Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
+            Shell.Overlay.Show(FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
+            return true;
+        }
+        if (Shell.Overlay.Player is { IsPlaying: true })
+            return true;
+        _coveringForCalibration = false;
+        Shell.Catalog.Replace(calibration.Scene());
+        Shell.Show(FlowScenes.Calibration);
+        Shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
         return true;
     }
 

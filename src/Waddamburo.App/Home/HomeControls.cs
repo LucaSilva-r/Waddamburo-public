@@ -22,6 +22,7 @@ internal sealed class HomeControls : IDisposable
 
     private readonly GameShell _shell;
     private readonly GameplayFlow _gameplay;
+    private readonly CalibrationFlow _calibration;
     private readonly HomeMenu _menu;
     private readonly MenuAudio _audio;
     private readonly QuickRestart _restart;
@@ -34,8 +35,9 @@ internal sealed class HomeControls : IDisposable
     private float _lastInterpolation;
     private float _pauseInterpolation;
 
-    public HomeControls(GameShell shell, GameplayFlow gameplay, string fontPath, string assetRoot)
+    public HomeControls(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration, string fontPath, string assetRoot)
     {
+        _calibration = calibration;
         _shell = shell;
         _gameplay = gameplay;
         _audio = new MenuAudio(shell.Audio, shell.Sounds, shell.SongCatalog, shell.Assets);
@@ -76,7 +78,7 @@ internal sealed class HomeControls : IDisposable
     public bool Tick(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
     {
         followFocus();
-        return resumeCountdown(escape) || openMenu(escape) || menuInput(keys, held, escape);
+        return resumeCountdown(escape) || calibrationDone() || openMenu(escape) || menuInput(keys, held, escape);
     }
 
     /// <summary>The quick restart's tick (after the player setup): true when the song restarted.</summary>
@@ -104,7 +106,8 @@ internal sealed class HomeControls : IDisposable
             frame.Quads.Concat(_resume is { Running: true } countdown
                     ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
                     : [])
-                .Concat(_overlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black)),
+                .Concat(_overlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black,
+                    _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)),
             frame.ContentAspectRatio);
 
     public void Dispose()
@@ -122,6 +125,18 @@ internal sealed class HomeControls : IDisposable
         _focused = _shell.Application.Focused;
         if (_shell.Arcade.MuteInBackground || _focused)
             _shell.Audio?.Mixer.FadeOutput(_focused ? 1 : 0, TimeSpan.FromMilliseconds(300));
+    }
+
+    // A finished audio calibration shows its result in the menu (the lane stays under it).
+    private bool calibrationDone()
+    {
+        if (_menu.IsOpen || active != FlowScenes.Calibration
+            || _calibration.Calibration is not { Done: true } calibration)
+            return false;
+        _pauseInterpolation = _lastInterpolation;
+        _menu.Open(gameplay: false);
+        _menu.Calibration = calibration;
+        return true;
     }
 
     // Resume's countdown: the song stays held until it ends; Escape or leaving the window pauses again.
@@ -163,7 +178,7 @@ internal sealed class HomeControls : IDisposable
         if (_shell.Overlay.IsShown || _shell.Coordinator.Flow.State == GameFlowState.TransitionPending)
             return true;
         _pauseInterpolation = _lastInterpolation;
-        _menu.Open(gameplay: false, attract: AttractScenes.Contains(active));
+        _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect);
         _audio.HoldMenuMusic(true);
         return true;
     }
@@ -209,6 +224,12 @@ internal sealed class HomeControls : IDisposable
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();
                 _shell.ReturnToAttract();
+                break;
+            case HomeMenuAction.Calibrate:
+                _calibration.Requested = true;
+                break;
+            case HomeMenuAction.EndCalibration:
+                _calibration.Leave();
                 break;
             case HomeMenuAction.RestartGame:
                 save();

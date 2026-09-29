@@ -16,6 +16,8 @@ internal static class FlowScenes
     public static readonly SceneId Entry = new("entry");
     public static readonly SceneId SongSelect = new("song-select");
     public static readonly SceneId Gameplay = new("gameplay");
+    /// <summary>The audio calibration's own gameplay lane.</summary>
+    public static readonly SceneId Calibration = new("calibration");
     public static readonly SceneId Result = new("result");
     public static readonly SceneId Retry = new("retry");
     public static readonly SceneId GameOver = new("gameover");

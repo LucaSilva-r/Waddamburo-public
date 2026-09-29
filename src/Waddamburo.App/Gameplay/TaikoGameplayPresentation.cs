@@ -110,6 +110,20 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane.ReportDiagnostics();
     }
 
+    /// <summary>Takes a note off every lane with no judgement (the audio calibration's hit notes).</summary>
+    public void RemoveNote(int index)
+    {
+        foreach (var lane in _lanes)
+            lane.RemoveNote(index);
+    }
+
+    /// <summary>Every lane's target hit ring, with no judgement (the audio calibration's beat flash).</summary>
+    public void FlashTarget()
+    {
+        foreach (var lane in _lanes)
+            lane.FlashTarget();
+    }
+
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {
         foreach (var lane in _lanes)
@@ -475,6 +489,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _onChartTime(chartTime);
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
         }
+
+        public void RemoveNote(int index) => _presentation.RemoveNote(index);
+
+        public void FlashTarget() => _presentation.FlashTarget();
 
         public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time) =>
             _presentation.CreateLayers(time, _character?.Layer, _characterSlot);

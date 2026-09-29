@@ -9,6 +9,8 @@ public enum AudioBus
     DrumHit,
     /// <summary>Coin insertion: the cabinet's separate channel, never stopped with the scene.</summary>
     Coin,
+    /// <summary>The audio calibration's beat: no volume setting of its own, only the master volume.</summary>
+    Metronome,
 }
 
 public readonly record struct AudioPlaybackHandle(long Value);

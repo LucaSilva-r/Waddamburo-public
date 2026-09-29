@@ -100,6 +100,15 @@ public sealed class TaikoLumenPresentation
     /// The lane's layers in draw order, split at the notes: backgrounds, lane, bar lines and notes;
     /// then the overlays in front (two lanes are merged back, back, front, front).
     /// </summary>
+    // Notes taken off the lane without a judgement (the audio calibration's hit notes).
+    private readonly HashSet<int> _removed = [];
+
+    /// <summary>Stops drawing note <paramref name="index"/>, with no judgement shown.</summary>
+    public void RemoveNote(int index) => _removed.Add(index);
+
+    /// <summary>The target's hit ring (a GOOD's), alone: no judgement, combo or score.</summary>
+    public void FlashTarget() => _target.Player.TryGotoLabel("hit_effect", "hit_ryo");
+
     public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time,
         LumenSceneLayer? character = null, int characterSlot = 0)
     {
@@ -120,7 +129,7 @@ public sealed class TaikoLumenPresentation
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
             // A miss is judged at the timing window, but its note keeps scrolling out of view.
-            if (_judgement.IsJudged(index) && !_judgement.IsMissed(index)) continue;
+            if (_removed.Contains(index) || _judgement.IsJudged(index) && !_judgement.IsMissed(index)) continue;
             hitNotes.Clear();
             var note = _chart.HitObjects[index];
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
