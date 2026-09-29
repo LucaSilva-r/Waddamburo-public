@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Waddamburo.Game;
+using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
@@ -33,7 +34,12 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         releaseUploadedAhead();
         movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
+        Prefetched = scene.Id;
+        Console.WriteLine($"Prefetching {scene.Id} ({scene.Layers.Length} movies).");
     }
+
+    /// <summary>The scene being prefetched (null once a scene took it).</summary>
+    public SceneId? Prefetched { get; private set; }
 
     /// <summary>Every prefetched movie is decoded and uploaded ahead.</summary>
     public bool PrefetchReady => movies.PrefetchComplete && movies.DecodedPrefetches.All(_uploadedAhead.ContainsKey);
@@ -111,9 +117,15 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     public void Activate(LumenGameSceneInstance scene)
     {
         var ahead = _uploadedAhead.Count + _partial.Count;
+        var decoded = movies.DecodedPrefetches.Count();
         _textures = SceneTextures.Upload(application, scene, takeAhead);
+        Console.WriteLine($"Scene {scene.Id}: {ahead - _uploadedAhead.Count - _partial.Count} of {scene.Layers.Length} movies "
+            + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead).");
         if (ahead - _uploadedAhead.Count - _partial.Count > 0)
+        {
             releaseUploadedAhead(); // this scene took its prefetch; the rest is unused
+            Prefetched = null;
+        }
     }
 
     /// <summary>

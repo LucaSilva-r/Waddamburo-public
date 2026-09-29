@@ -21,6 +21,9 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
+        // The next song's Song Select loads in the background while the results play.
+        if (Shell.Hosts.CreditNext == Waddamburo.Game.Lumen.TaikoCreditNext.NextSong)
+            Shell.Prefetch(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
         // result.lm's song_name slot is the same as gameplay song_info's: reuse its title texture.
         var resultIndex = Shell.Active.Layers.ToList().FindIndex(layer =>
             Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");

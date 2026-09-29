@@ -15,7 +15,7 @@ public sealed class AudioEngine : IDisposable
 
     private readonly IAudioOutput _device;
     private readonly CancellationTokenSource _cancellation = new();
-    private readonly Task? _producer;
+    private readonly Thread? _producer;
     private readonly object _outputGate = new();
     private volatile bool _performanceMonitoring;
     private long _performanceBlocks;
@@ -32,7 +32,10 @@ public sealed class AudioEngine : IDisposable
             // The mix keeps a queue (it rides out GC pauses); drum hits skip it.
             Mixer.UseDirectVoices(sdl.CreateDirectVoice);
             sdl.Resume();
-            _producer = Task.Run(() => produce(sdl));
+            // Its own high-priority thread: on the thread pool, scene loads and texture decoding
+            // (pool work) delayed it past the ~11 ms queue, and the music stuttered.
+            _producer = new Thread(() => produce(sdl)) { IsBackground = true, Name = "Audio mix", Priority = ThreadPriority.Highest };
+            _producer.Start();
         }
         else if (OperatingSystem.IsWindows() && device is WasapiExclusiveOutput exclusive)
             exclusive.Start(render);
@@ -128,7 +131,7 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    private async Task produce(SdlAudioDevice device)
+    private void produce(SdlAudioDevice device)
     {
         var samples = new float[RenderFrames * device.Format.Channels];
         try
@@ -137,7 +140,7 @@ public sealed class AudioEngine : IDisposable
             {
                 if (device.QueuedFrames >= TargetQueuedFrames)
                 {
-                    await Task.Delay(1, _cancellation.Token).ConfigureAwait(false);
+                    Thread.Sleep(1);
                     continue;
                 }
                 lock (_outputGate)
@@ -146,9 +149,6 @@ public sealed class AudioEngine : IDisposable
                     device.Queue(samples);
                 }
             }
-        }
-        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
-        {
         }
         catch (Exception exception)
         {
@@ -164,7 +164,7 @@ public sealed class AudioEngine : IDisposable
         _cancellation.Cancel();
         try
         {
-            _producer?.GetAwaiter().GetResult();
+            _producer?.Join();
         }
         finally
         {

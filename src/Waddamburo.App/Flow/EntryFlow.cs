@@ -18,6 +18,9 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
 
     public override void Enter(SceneId scene)
     {
+        // Song Select comes next: its ~1,400 textures decode and upload in the background meanwhile
+        // (loading it at the switch froze the game ~0.7 s). Its movies are the same for either side.
+        Shell.Prefetch(FlowScenes.SongSelectScene([0]));
         if (_jingle is null || Shell.Audio is not { } audio)
             return;
         // --play-jingle plays it once (a sync check); the scene itself loops it.

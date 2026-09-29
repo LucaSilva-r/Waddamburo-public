@@ -28,6 +28,10 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
 
     public override void Enter(SceneId scene)
     {
+        // A drum hit leads to Entry: it loads in the background once per loop (loading it on the hit
+        // froze the attract ~0.6 s).
+        if (Shell.Prefetched != FlowScenes.Entry)
+            Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         if (scene == FlowScenes.Movie)
             startMovie();
     }

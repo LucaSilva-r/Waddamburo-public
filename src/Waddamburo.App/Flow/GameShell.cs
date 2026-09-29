@@ -101,6 +101,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
     public void Prefetch(SceneDefinition scene) => _presenter.Prefetch(scene);
 
+    /// <summary>The scene being prefetched, until one takes it.</summary>
+    public SceneId? Prefetched => _presenter.Prefetched;
+
     /// <summary>The prefetched scene is decoded and uploaded (its switch will not stall).</summary>
     public bool PrefetchReady => _presenter.PrefetchReady;
 

@@ -111,6 +111,21 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             throw new DirectoryNotFoundException($"Don asset root does not exist: {_assetRoot}");
 
         _bindAnimation = readAnimation("ani/don_bind.bin");
+        // Every motion up front (~80 files, ~4 MB): reading one as it first played stalled that frame
+        // (Go-Go, fever and combo motions mid-song). Files of another shape are not motions.
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(_assetRoot, "ani"), "*.bin"))
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            if (name == "don_bind")
+                continue;
+            try
+            {
+                loadMotion(name);
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
         _skeleton = DonSkeleton.ForAnimation(_bindAnimation);
         _bindWorld = _skeleton.EvaluateWorld(_bindAnimation.GetFrame(0));
         _modelProgram = BgfxSupport.LoadProgram("vs_don", "fs_don");
