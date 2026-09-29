@@ -85,6 +85,7 @@ try
         // Cabinet settings (free play, credits, songs per session) beside the game data.
         var arcadePath = Path.Combine(layout.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache;
+        Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         ReleaseConsole.Show(arcade.ShowConsole);
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.

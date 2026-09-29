@@ -9,7 +9,7 @@ namespace Waddamburo.Platform.Sdl.Media;
 /// cannot redistribute) with a user-supplied vgmstream-cli. The WAV plays at once and is
 /// re-encoded in the background as Opus (~1.2 MB a minute instead of ~10), which later plays use.
 /// The user drops vgmstream-cli (or its release folder, named <c>vgmstream</c>) next to
-/// the executable, or puts it on PATH.
+/// the executable or in the game folder (USRDIR), or puts it on PATH.
 /// </summary>
 public static class VgmstreamCli
 {
@@ -23,6 +23,10 @@ public static class VgmstreamCli
         "Waddamburo", "vgmstream");
 
     private static string? _cacheDirectory;
+
+    /// <summary>The game folder (USRDIR), also searched for vgmstream-cli: a release sits in it, a development
+    /// build does not.</summary>
+    public static string? GameFolder { get; set; }
 
     /// <summary>
     /// Where decoded audio is kept (set to USRDIR/waddamburo/cache/vgmstream by a normal boot; the
@@ -183,7 +187,7 @@ public static class VgmstreamCli
         }
     }
 
-    /// <summary>True when vgmstream-cli is next to the executable or on PATH.</summary>
+    /// <summary>True when vgmstream-cli is next to the executable, in the game folder or on PATH.</summary>
     public static bool IsInstalled => _installed ??= findExecutable() != ExecutableName
         || (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
             .Any(static directory => directory.Length > 0 && File.Exists(Path.Combine(directory, ExecutableName)));
@@ -195,9 +199,10 @@ public static class VgmstreamCli
     private static string findExecutable()
     {
         var executable = Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath;
-        var directory = Path.GetDirectoryName(executable);
-        if (directory is not null)
+        foreach (var directory in new[] { Path.GetDirectoryName(executable), GameFolder })
         {
+            if (directory is null)
+                continue;
             foreach (var candidate in new[] { Path.Combine(directory, ExecutableName), Path.Combine(directory, "vgmstream", ExecutableName) })
             {
                 if (File.Exists(candidate))

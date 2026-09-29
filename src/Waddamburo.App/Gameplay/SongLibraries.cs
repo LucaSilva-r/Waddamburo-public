@@ -1,5 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
+using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Providers.Stock;
 using Waddamburo.Providers.Tja;
 
@@ -35,9 +36,9 @@ internal sealed class SongLibraries : IDisposable
             // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
             .. (arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(tja)
                 ? [new TjaCatalogProvider(tja)] : Array.Empty<ISongCatalogProvider>(),
-            // A Nijiiro installation picked in the settings (home mode).
-            .. arcade.Home && arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is { Exists: true } installed
-                ? [installed] : Array.Empty<ISongCatalogProvider>(),
+            // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
+            .. arcade.Home && arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is var installed
+                && usable(installed) ? [installed] : Array.Empty<ISongCatalogProvider>(),
         ]);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)
@@ -54,6 +55,24 @@ internal sealed class SongLibraries : IDisposable
         foreach (var diagnostic in snapshot.Diagnostics)
             Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
         return libraries;
+    }
+
+    /// <summary>
+    /// Why a Nijiiro installation cannot be played, null when it can: its own <see cref="NijiiroCatalogProvider.Problem"/>,
+    /// or no vgmstream-cli for its G.719 music (a song would start without its sound).
+    /// </summary>
+    public static string? NijiiroProblem(NijiiroCatalogProvider installation) => installation.Problem ?? VgmstreamProblem;
+
+    /// <summary>Null when vgmstream-cli is found, else what to do about it.</summary>
+    public static string? VgmstreamProblem => VgmstreamCli.IsInstalled ? null
+        : "The music needs vgmstream-cli next to the game: get it from github.com/vgmstream/vgmstream/releases.";
+
+    private static bool usable(NijiiroCatalogProvider installation)
+    {
+        if (NijiiroProblem(installation) is not { } problem)
+            return true;
+        Console.Error.WriteLine($"Nijiiro library left out: {problem}");
+        return false;
     }
 
     public void Dispose() => _catalog.Dispose();

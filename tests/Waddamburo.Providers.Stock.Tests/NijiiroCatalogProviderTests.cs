@@ -40,6 +40,12 @@ public sealed class NijiiroCatalogProviderTests
             Assert.Equal([TaikoCourse.Easy, TaikoCourse.Oni], song.Charts.Select(static chart => chart.Course!.Value));
             Assert.Equal([2, 8], song.Charts.Select(static chart => chart.Level!.Value));
             Assert.Equal("Vocaloid", Assert.Single(contribution.Categories).Name);
+
+            // Usable with the loader's key; without the loader nothing decrypts, and it says so.
+            Assert.Null(provider.Problem);
+            File.Delete(Path.Combine(install, "Executable", "Release", "bnusio.dll"));
+            Assert.Contains("bnusio.dll", new NijiiroCatalogProvider(install).Problem);
+            Assert.Equal("No Nijiiro data there.", new NijiiroCatalogProvider(Path.Combine(install, "nothing")).Problem);
         }
         finally
         {

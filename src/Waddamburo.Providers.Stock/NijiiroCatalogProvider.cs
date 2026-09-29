@@ -52,6 +52,29 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     /// <summary>True when the folder resolves to a Nijiiro data folder.</summary>
     public bool Exists => Directory.Exists(Path.Combine(_root, "fumen")) && Directory.Exists(Path.Combine(_root, "sound"));
 
+    /// <summary>
+    /// Why the installation cannot be played (null: it can): no data there, or its song table does not
+    /// decrypt (the loader's keys are missing or wrong, so no chart or song would either).
+    /// </summary>
+    public string? Problem
+    {
+        get
+        {
+            if (!Exists)
+                return "No Nijiiro data there.";
+            try
+            {
+                _ = table("musicinfo");
+                return null;
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException
+                or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                return exception.Message;
+            }
+        }
+    }
+
     public ValueTask<SongCatalogContribution> ScanAsync(IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
     {
         progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));

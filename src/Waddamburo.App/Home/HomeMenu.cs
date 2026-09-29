@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using Waddamburo.App.Gameplay;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
@@ -169,7 +170,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // The folders the running game loaded its songs from: a change needs a restart.
     private readonly ArcadeSettings _atStart = get();
-    private readonly Dictionary<(string Path, bool Nijiiro), bool> _valid = [];
+    private readonly Dictionary<string, bool> _valid = [];
+    private readonly Dictionary<string, string?> _nijiiroProblems = [];
 
     private string[] _choices = [];
     private bool _settingsPage;
@@ -249,15 +251,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         if (path is null)
             return new(ItemKind.Library, library.Label, "Not set up", $"Centre: choose {what}.", LibraryState.Missing);
         path = Path.TrimEndingDirectorySeparator(path);
-        if (!valid(path, library.Nijiiro))
-            return new(ItemKind.Library, library.Label, "Not set up",
-                $"No {(library.Nijiiro ? "Nijiiro data" : ".tja songs")} there. Centre: choose {what}.",
+        // Nijiiro: the same checks as loading it (a library that cannot play is left out of Song Select).
+        if (library.Nijiiro && nijiiroProblem(path) is { } problem)
+            return new(ItemKind.Library, library.Label, "Not usable", $"{problem} Centre: choose {what}.",
                 LibraryState.Missing);
-        // Nijiiro music is G.719, which only the user's own vgmstream-cli decodes.
-        if (library.Nijiiro && !VgmstreamCli.IsInstalled)
-            return new(ItemKind.Library, library.Label, "Needs vgmstream-cli",
-                "The music needs vgmstream-cli next to the game: get it from github.com/vgmstream/vgmstream/releases.",
-                LibraryState.Warning);
+        if (!library.Nijiiro && !valid(path))
+            return new(ItemKind.Library, library.Label, "Not set up", $"No .tja songs there. Centre: choose {what}.",
+                LibraryState.Missing);
         return new(ItemKind.Library, library.Label, Path.GetFileName(path),
             chosen != library.Get(_atStart) ? "Restart the game to load these songs." : "Centre: choose another folder.",
             LibraryState.Ready);
@@ -265,22 +265,30 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // ponytail: remembered per path for the session (the menu redraws every frame); a folder filled
     // while the game runs shows as set up after choosing it again.
-    private bool valid(string path, bool nijiiro)
+    private bool valid(string path)
     {
-        if (!_valid.TryGetValue((path, nijiiro), out var ok))
+        if (!_valid.TryGetValue(path, out var ok))
         {
             try
             {
-                ok = nijiiro ? new NijiiroCatalogProvider(path).Exists
-                    : Directory.Exists(path) && Directory.EnumerateFiles(path, "*.tja", SearchOption.AllDirectories).Any();
+                ok = Directory.Exists(path) && Directory.EnumerateFiles(path, "*.tja", SearchOption.AllDirectories).Any();
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 ok = false;
             }
-            _valid[(path, nijiiro)] = ok;
+            _valid[path] = ok;
         }
         return ok;
+    }
+
+    // The installation's own problem is remembered per path like valid() (it decrypts the song table);
+    // vgmstream-cli is looked for again each time the menu opens.
+    private string? nijiiroProblem(string path)
+    {
+        if (!_nijiiroProblems.TryGetValue(path, out var problem))
+            _nijiiroProblems[path] = problem = new NijiiroCatalogProvider(path).Problem;
+        return problem ?? SongLibraries.VgmstreamProblem;
     }
 
     /// <summary>
