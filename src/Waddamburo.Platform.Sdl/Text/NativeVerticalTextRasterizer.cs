@@ -6,6 +6,13 @@ namespace Waddamburo.Platform.Sdl.Text;
 
 public sealed record RgbaTextSurface(uint Width, uint Height, byte[] Pixels);
 
+/// <summary>
+/// One rendered glyph: its fill and outline masks (8-bit, <see cref="Width"/> x <see cref="Height"/>), the
+/// masks' top-left from the pen position on the baseline (<see cref="Top"/> above it), and the size's metrics.
+/// </summary>
+public sealed record GlyphMasks(int Width, int Height, int Left, int Top, float Advance, float Ascender, float Descender,
+    byte[] Fill, byte[] Outline);
+
 public enum SongTitleTextProfile : uint
 {
     Compact = 0,
@@ -18,7 +25,7 @@ public enum SongTitleTextProfile : uint
 /// <summary>Rasterizes a user-supplied font through Waddamburo's stable FreeType C adapter.</summary>
 public static unsafe partial class NativeVerticalTextRasterizer
 {
-    private const uint AbiVersion = 0x0001_0005;
+    private const uint AbiVersion = 0x0001_0006;
     private const uint SquashFlag = 1; // WADDAMBURO_TEXT_SONG_TITLE_SQUASH
     private static readonly ConcurrentDictionary<string, Lazy<NativeFontContext>> FontContexts =
         new(StringComparer.Ordinal);
@@ -58,6 +65,21 @@ public static unsafe partial class NativeVerticalTextRasterizer
                 () => new NativeFontContext(path),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         return context.Render(title, subtitle, profile, squash ? SquashFlag : 0, outlineRgb, rasterScale, width, height);
+    }
+
+    /// <summary>One character at <paramref name="fontPx"/> with its <paramref name="outlineRadius"/> border.</summary>
+    public static GlyphMasks RenderGlyph(string fontPath, int scalar, float fontPx, uint outlineRadius)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
+        if (!File.Exists(fontPath))
+            throw new FileNotFoundException("The configured title font does not exist.", fontPath);
+        if (GetAbiVersion() != AbiVersion)
+            throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
+        return FontContexts.GetOrAdd(
+            Path.GetFullPath(fontPath),
+            static path => new Lazy<NativeFontContext>(
+                () => new NativeFontContext(path),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value.RenderGlyph(scalar, fontPx, outlineRadius);
     }
 
     public static RgbaTextSurface Render(string fontPath, string text, uint width, uint height)
@@ -157,7 +179,48 @@ public static unsafe partial class NativeVerticalTextRasterizer
             return new RgbaTextSurface(width, height, pixels);
         }
 
+        public GlyphMasks RenderGlyph(int scalar, float fontPx, uint outlineRadius)
+        {
+            var error = new NativeTextError { StructSize = (uint)Unsafe.SizeOf<NativeTextError>() };
+            var glyph = new NativeTextGlyph { StructSize = (uint)Unsafe.SizeOf<NativeTextGlyph>() };
+            lock (_sync)
+            {
+                // First the size, then the masks.
+                check(RenderGlyphWithContext(_handle.DangerousGetHandle(), (uint)scalar, fontPx, outlineRadius, &glyph,
+                    null, null, 0, &error), error);
+                var fill = new byte[checked((int)(glyph.Width * glyph.Height))];
+                var outline = new byte[fill.Length];
+                fixed (byte* fillMask = fill)
+                fixed (byte* outlineMask = outline)
+                    check(RenderGlyphWithContext(_handle.DangerousGetHandle(), (uint)scalar, fontPx, outlineRadius, &glyph,
+                        fillMask, outlineMask, (ulong)fill.Length, &error), error);
+                return new GlyphMasks((int)glyph.Width, (int)glyph.Height, glyph.Left, glyph.Top, glyph.Advance,
+                    glyph.Ascender, glyph.Descender, fill, outline);
+            }
+
+            static void check(int result, NativeTextError error)
+            {
+                if (result != 0)
+                    throw new InvalidOperationException(error.Message.Length == 0
+                        ? $"Glyph rasterization failed with code {result}."
+                        : error.Message);
+            }
+        }
+
         public void Dispose() => _handle.Dispose();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTextGlyph
+    {
+        public uint StructSize;
+        public uint Width;
+        public uint Height;
+        public int Left;
+        public int Top;
+        public float Advance;
+        public float Ascender;
+        public float Descender;
     }
 
     private sealed class NativeTextContextHandle : SafeHandle
@@ -205,6 +268,19 @@ public static unsafe partial class NativeVerticalTextRasterizer
         uint height,
         byte* rgba8,
         ulong rgba8Capacity,
+        NativeTextError* error);
+
+    [LibraryImport("waddamburo_text", EntryPoint = "waddamburo_text_context_render_glyph")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int RenderGlyphWithContext(
+        nint context,
+        uint scalar,
+        float fontPx,
+        uint outlineRadius,
+        NativeTextGlyph* glyph,
+        byte* fill,
+        byte* outline,
+        ulong maskCapacity,
         NativeTextError* error);
 
     [LibraryImport(

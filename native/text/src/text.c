@@ -553,7 +553,7 @@ static waddamburo_text_result render_title_row(
 
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_5;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_6;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -895,4 +895,49 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_render_song_title_rg
         width, height, rgba8, rgba8_capacity, error);
     waddamburo_text_context_destroy(context);
     return result;
+}
+
+waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_glyph(
+    waddamburo_text_context *context,
+    uint32_t scalar,
+    float font_px,
+    uint32_t outline_radius,
+    waddamburo_text_glyph *glyph,
+    uint8_t *fill,
+    uint8_t *outline,
+    uint64_t mask_capacity,
+    waddamburo_text_error *error)
+{
+    const FT_Bitmap *bitmap;
+    FT_Error ft_error;
+    uint64_t pixel_count;
+    if (!error_is_valid(error))
+        return WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT;
+    if (context == NULL || glyph == NULL || glyph->struct_size < sizeof(*glyph) ||
+        !(font_px >= 1.0f && font_px <= 1024.0f) || outline_radius > 256U)
+        return set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "Invalid glyph rasterizer arguments.");
+    /* The face is shared with the title profiles: its size and any squeeze are set per call. */
+    FT_Set_Transform(context->face, NULL, NULL);
+    ft_error = FT_Set_Pixel_Sizes(context->face, 0U, (FT_UInt)(font_px + 0.5f));
+    if (ft_error == 0)
+        ft_error = FT_Load_Char(context->face, scalar, FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL | FT_LOAD_RENDER);
+    if (ft_error != 0)
+        return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not render a glyph.");
+    bitmap = &context->face->glyph->bitmap;
+    glyph->width = bitmap->width + 2U * outline_radius;
+    glyph->height = bitmap->rows + 2U * outline_radius;
+    glyph->left = context->face->glyph->bitmap_left - (int32_t)outline_radius;
+    glyph->top = context->face->glyph->bitmap_top + (int32_t)outline_radius;
+    glyph->advance = (float)context->face->glyph->advance.x / 64.0f;
+    glyph->ascender = (float)context->face->size->metrics.ascender / 64.0f;
+    glyph->descender = (float)context->face->size->metrics.descender / 64.0f;
+    pixel_count = (uint64_t)glyph->width * glyph->height;
+    if (fill == NULL || outline == NULL || mask_capacity < pixel_count)
+        return set_error(error, WADDAMBURO_TEXT_OK, 0, "");
+    memset(fill, 0, (size_t)pixel_count);
+    memset(outline, 0, (size_t)pixel_count);
+    draw_bitmap_to_mask(fill, glyph->width, glyph->height, bitmap, (int)outline_radius, (int)outline_radius, 0);
+    if (!dilate_mask_round(fill, outline, glyph->width, glyph->height, outline_radius))
+        return set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to outline a glyph.");
+    return set_error(error, WADDAMBURO_TEXT_OK, 0, "");
 }

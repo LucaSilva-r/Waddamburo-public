@@ -85,8 +85,7 @@ internal sealed class VectorCanvas(int width, int height, int scale, string font
         if (string.IsNullOrWhiteSpace(text))
             return;
         var fillOnly = tint is not null;
-        RgbaTextSurface render(string value) => NativeVerticalTextRasterizer.RenderSongTitle(fontPath, value, null,
-            SongTitleTextProfile.GameplayTitle, outlineRgb, (uint)Scale);
+        RgbaTextSurface render(string value) => GlyphLineRasterizer.Render(fontPath, value, outlineRgb, (uint)Scale);
         var line = render(text);
         if (ink(line, fillOnly) is not { } whole)
             return;

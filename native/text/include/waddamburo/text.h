@@ -22,6 +22,7 @@ extern "C" {
 #define WADDAMBURO_TEXT_ABI_VERSION_1_3 UINT32_C(0x00010003)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_4 UINT32_C(0x00010004)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_5 UINT32_C(0x00010005)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_6 UINT32_C(0x00010006)
 
 /* Song-title flags (ABI 1.5): a column too long for its slot keeps its font size and is squashed
  * vertically (as the arcade does), instead of the whole font shrinking. Compact and expanded only. */
@@ -118,6 +119,33 @@ waddamburo_text_context_render_song_title_ex_rgba8(
     uint32_t height,
     uint8_t *rgba8,
     uint64_t rgba8_capacity,
+    waddamburo_text_error *error);
+
+/* One glyph's masks and metrics (ABI 1.6). Pixels; y grows down from the top edge. */
+typedef struct waddamburo_text_glyph {
+    uint32_t struct_size;
+    uint32_t width;   /* mask size: the glyph plus the outline radius on every side */
+    uint32_t height;
+    int32_t left;     /* the mask's left edge, from the pen position */
+    int32_t top;      /* the mask's top edge, above the baseline */
+    float advance;    /* pen advance */
+    float ascender;   /* the size's line metrics (descender negative) */
+    float descender;
+} waddamburo_text_glyph;
+
+/* Renders one Unicode scalar at font_px as two width*height 8-bit masks (ABI 1.6): the fill and its
+ * outline (the fill grown round by outline_radius, as the song titles' border). With null masks or a
+ * capacity under width*height, only `glyph` is filled (call again with buffers that size). */
+WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
+waddamburo_text_context_render_glyph(
+    waddamburo_text_context *context,
+    uint32_t scalar,
+    float font_px,
+    uint32_t outline_radius,
+    waddamburo_text_glyph *glyph,
+    uint8_t *fill,
+    uint8_t *outline,
+    uint64_t mask_capacity,
     waddamburo_text_error *error);
 
 #ifdef __cplusplus
