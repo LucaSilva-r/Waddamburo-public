@@ -20,8 +20,8 @@ internal sealed class HomePauseOverlay : IDisposable
     private readonly UpscaleTool? _upscale;
     private readonly bool _upscaled;
 
-    /// <param name="upscale">With <paramref name="upscaled"/> on, the art comes from the upscale cache when
-    /// it is there, and is queued for background upscaling when not.</param>
+    /// <remarks><paramref name="upscale"/>: With <paramref name="upscaled"/> on, the art comes from the upscale cache when
+    /// it is there, and is queued for background upscaling when not.</remarks>
     public HomePauseOverlay(SdlApplication application, string fontPath, string assetRoot, UpscaleTool? upscale = null,
         bool upscaled = false)
     {
@@ -67,7 +67,7 @@ internal sealed class HomePauseOverlay : IDisposable
 
     // A nine-slice: corners at their own size, edges stretched along their length only, the centre
     // filling the rest; each part with its own UVs.
-    private void nineSlice(List<RenderQuad> quads, (RenderTextureId Texture, int Width, int Height) art,
+    private static void nineSlice(List<RenderQuad> quads, (RenderTextureId Texture, int Width, int Height) art,
         float x, float y, float width, float height, float border)
     {
         var (u, v) = (border / art.Width, border / art.Height);

@@ -25,8 +25,8 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     private readonly bool _english;
     private readonly Func<bool> _squash;
 
-    /// <param name="squash">Song-select titles too long for their column: squashed vertically at full
-    /// width (the arcade's way) instead of shrunk; read live.</param>
+    /// <remarks><paramref name="squash"/>: Song-select titles too long for their column: squashed vertically at full
+    /// width (the arcade's way) instead of shrunk; read live.</remarks>
     public SongTitleTextureCache(SdlApplication application, string fontPath, bool asynchronous = true, bool english = true,
         Func<bool>? squash = null)
     {

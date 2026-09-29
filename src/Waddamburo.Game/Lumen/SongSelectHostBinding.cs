@@ -378,10 +378,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private void installFavouriteIcon()
     {
-        string?[] labels = IconGallery ?? [.. Enumerable.Repeat<string?>(null, FavouriteIconBit), "usercup_1P"];
-        for (var bit = 0; bit < labels.Length; bit++)
-            if (labels[bit] is { } label
-                && !requirePlayer().TryWriteScriptValue($"_global.MusicInfo.LABEL_M_ICON.{bit}", label))
+        var labels = IconGallery?.Select(static (label, bit) => (label, bit)) ?? [("usercup_1P", FavouriteIconBit)];
+        foreach (var (label, bit) in labels)
+            if (!requirePlayer().TryWriteScriptValue($"_global.MusicInfo.LABEL_M_ICON.{bit}", label))
                 Console.Error.WriteLine("Song Select has no MusicInfo.LABEL_M_ICON; favourites show no icon.");
     }
 

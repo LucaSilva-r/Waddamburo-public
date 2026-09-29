@@ -30,7 +30,7 @@ internal enum HomeMenuAction
 /// editing and the rims (or Left/Right at any time) change it: by 1, or by 5 then 10 when pressed
 /// quickly again and again. Each move plays a Ka, each pick a Don.
 /// </summary>
-/// <param name="cachedTextures">Textures in the upscale cache; null when upscaling is unavailable.</param>
+/// <remarks><paramref name="cachedTextures"/>: Textures in the upscale cache; null when upscaling is unavailable.</remarks>
 internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> apply, Action save, Action<bool> drum,
     string defaultTjaFolder, Func<int?> cachedTextures)
 {

@@ -30,8 +30,8 @@ internal sealed class TextureUpscaler : IDisposable
     private readonly Thread _upscaler;
     private volatile bool _paused;
 
-    /// <param name="settings">upscale_textures (queue anything at all) and upscale_threads (0: none
-    /// upscaled in the background), read live.</param>
+    /// <remarks><paramref name="settings"/>: upscale_textures (queue anything at all) and upscale_threads (0: none
+    /// upscaled in the background), read live.</remarks>
     public TextureUpscaler(UpscaleTool tool, Func<Waddamburo.Game.Flow.ArcadeSettings> settings)
     {
         _tool = tool;

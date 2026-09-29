@@ -1,6 +1,5 @@
 using Waddamburo.Platform.Sdl.Rendering;
 using System.Buffers.Binary;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;

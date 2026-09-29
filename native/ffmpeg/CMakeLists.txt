@@ -18,7 +18,9 @@ if(MINGW AND CMAKE_CROSSCOMPILING)
     --enable-cross-compile
     --cross-prefix=${WADDAMBURO_CROSS_PREFIX}
     --target-os=mingw32
-    --enable-w32threads)
+    --enable-w32threads
+    # The host pkg-config reads the prefix's opus.pc (no <cross-prefix>pkg-config on the runners).
+    --pkg-config=pkg-config)
 elseif(WIN32)
   find_program(WADDAMBURO_BASH_EXECUTABLE NAMES bash REQUIRED)
   set(_ffmpeg_configure_command ${WADDAMBURO_BASH_EXECUTABLE} <SOURCE_DIR>/configure)
@@ -130,7 +132,7 @@ ExternalProject_Add(waddamburo_ffmpeg
   DOWNLOAD_EXTRACT_TIMESTAMP true
   DEPENDS waddamburo_opus
   CONFIGURE_COMMAND
-    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_prefix}/lib/pkgconfig"
+    ${CMAKE_COMMAND} -E env "PKG_CONFIG_LIBDIR=${_ffmpeg_prefix}/lib/pkgconfig"
     ${_ffmpeg_configure_command}
     ${_ffmpeg_common_options}
     ${_ffmpeg_platform_options}
