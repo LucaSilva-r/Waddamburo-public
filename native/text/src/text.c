@@ -3,7 +3,6 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
-#include FT_STROKER_H
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -172,6 +171,48 @@ static void draw_bitmap_to_mask(
     }
 }
 
+/* Dilate the rendered fill with a round footprint. Stroking font contours can leave tiny
+ * self-intersection holes in the counters of outlined UI letters. A bitmap border follows the
+ * same hinted pixels as the white fill, including when FreeType changes hinting at small sizes. */
+static int dilate_mask_round(
+    const uint8_t *fill, uint8_t *outline, uint32_t width, uint32_t height, uint32_t radius)
+{
+    uint32_t *queue = (uint32_t *)malloc((size_t)width * sizeof(*queue));
+    if (queue == NULL)
+        return 0;
+    for (int32_t dy = -(int32_t)radius; dy <= (int32_t)radius; ++dy) {
+        uint32_t distance_y = (uint32_t)(dy < 0 ? -dy : dy);
+        uint32_t half_width = radius;
+        while (half_width * half_width + distance_y * distance_y > radius * radius)
+            half_width--;
+        for (uint32_t y = 0U; y < height; ++y) {
+            int32_t source_y = (int32_t)y + dy;
+            uint32_t head = 0U, tail = 0U, next = 0U;
+            const uint8_t *source;
+            uint8_t *destination;
+            if (source_y < 0 || source_y >= (int32_t)height)
+                continue;
+            source = fill + (size_t)source_y * width;
+            destination = outline + (size_t)y * width;
+            for (uint32_t x = 0U; x < width; ++x) {
+                uint32_t right = x + half_width < width ? x + half_width : width - 1U;
+                uint32_t left = x > half_width ? x - half_width : 0U;
+                while (next <= right) {
+                    while (tail > head && source[queue[tail - 1U]] <= source[next])
+                        tail--;
+                    queue[tail++] = next++;
+                }
+                while (head < tail && queue[head] < left)
+                    head++;
+                if (source[queue[head]] > destination[x])
+                    destination[x] = source[queue[head]];
+            }
+        }
+    }
+    free(queue);
+    return 1;
+}
+
 typedef struct title_item {
     uint32_t first;
     uint32_t count;
@@ -213,7 +254,6 @@ static waddamburo_text_result decode_title_items(
 
 static waddamburo_text_result render_title_column(
     FT_Face face,
-    FT_Stroker stroker,
     const char *text,
     float requested_font_px,
     float requested_leading_px,
@@ -223,7 +263,6 @@ static waddamburo_text_result render_title_column(
     int squash,
     int from_bottom,
     uint8_t *mask,
-    uint8_t *outline,
     uint32_t width,
     uint32_t height,
     waddamburo_text_error *error)
@@ -293,14 +332,10 @@ static waddamburo_text_result render_title_column(
         for (uint32_t k = 0U; k < item.count; ++k) {
             uint32_t scalar = scalars[item.first + k];
             FT_Glyph fill_glyph = NULL;
-            FT_Glyph outline_glyph = NULL;
             FT_BitmapGlyph fill_bitmap;
-            FT_BitmapGlyph outline_bitmap;
             int rotate;
             int left;
             int glyph_top;
-            int outline_left;
-            int outline_top;
             rotate = !is_beside_scalar(scalar) && is_rotated_scalar(scalar);
             /* Squashed: glyphs scaled vertically only (a rotated one along its own x, which turns
              * vertical); the measuring above ran without it, and horizontal advances do not change. */
@@ -320,47 +355,25 @@ static waddamburo_text_result render_title_column(
             ft_error = FT_Get_Glyph(face->glyph, &fill_glyph);
             if (ft_error != 0)
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not retain a song-title glyph.");
-            ft_error = FT_Glyph_Copy(fill_glyph, &outline_glyph);
-            if (ft_error != 0) {
-                FT_Done_Glyph(fill_glyph);
-                return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not copy a song-title glyph.");
-            }
             ft_error = FT_Glyph_To_Bitmap(&fill_glyph, FT_RENDER_MODE_NORMAL, NULL, 1);
             if (ft_error != 0) {
-                FT_Done_Glyph(outline_glyph);
                 FT_Done_Glyph(fill_glyph);
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not render a song-title glyph.");
             }
-            ft_error = FT_Glyph_StrokeBorder(&outline_glyph, stroker, 0, 1);
-            if (ft_error == 0)
-                ft_error = FT_Glyph_To_Bitmap(&outline_glyph, FT_RENDER_MODE_NORMAL, NULL, 1);
-            if (ft_error != 0) {
-                FT_Done_Glyph(outline_glyph);
-                FT_Done_Glyph(fill_glyph);
-                return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not stroke a song-title glyph.");
-            }
             fill_bitmap = (FT_BitmapGlyph)fill_glyph;
-            outline_bitmap = (FT_BitmapGlyph)outline_glyph;
             if (rotate) {
                 left = (int)(center_x - (float)fill_bitmap->bitmap.rows * 0.5f);
                 glyph_top = (int)((float)top + positions[i] + (font_px * vertical - (float)fill_bitmap->bitmap.width) * 0.5f);
-                outline_left = (int)(center_x - (float)outline_bitmap->bitmap.rows * 0.5f);
-                outline_top = (int)((float)top + positions[i] + (font_px * vertical - (float)outline_bitmap->bitmap.width) * 0.5f);
             } else {
                 int baseline_y = (int)((float)top + positions[i] + ascent);
                 left = (int)x + fill_bitmap->left;
                 glyph_top = baseline_y - fill_bitmap->top;
-                outline_left = (int)x + outline_bitmap->left;
-                outline_top = baseline_y - outline_bitmap->top;
                 if (scalar == '\'' || scalar == '"') {
                     glyph_top += (int)(font_px * vertical * 0.7f);
-                    outline_top += (int)(font_px * vertical * 0.7f);
                 }
             }
             draw_bitmap_to_mask(mask, width, height, &fill_bitmap->bitmap, left, glyph_top, rotate);
-            draw_bitmap_to_mask(outline, width, height, &outline_bitmap->bitmap, outline_left, outline_top, rotate);
             x += (float)face->glyph->advance.x / 64.0f;
-            FT_Done_Glyph(outline_glyph);
             FT_Done_Glyph(fill_glyph);
         }
     }
@@ -369,11 +382,9 @@ static waddamburo_text_result render_title_column(
 
 static waddamburo_text_result render_title_row(
     FT_Face face,
-    FT_Stroker stroker,
     const char *text,
     uint32_t raster_scale,
     uint8_t *mask,
-    uint8_t *outline,
     uint32_t width,
     uint32_t height,
     int gameplay,
@@ -449,9 +460,7 @@ static waddamburo_text_result render_title_row(
         + (float)face->size->metrics.descender / 64.0f) * 0.5f);
     for (uint32_t i = 0U; i < scalar_count; ++i) {
         FT_Glyph fill_glyph = NULL;
-        FT_Glyph outline_glyph = NULL;
         FT_BitmapGlyph fill_bitmap;
-        FT_BitmapGlyph outline_bitmap;
         float glyph_advance;
 
         ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
@@ -461,31 +470,16 @@ static waddamburo_text_result render_title_row(
         ft_error = FT_Get_Glyph(face->glyph, &fill_glyph);
         if (ft_error != 0)
             return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not retain a transition-title glyph.");
-        ft_error = FT_Glyph_Copy(fill_glyph, &outline_glyph);
-        if (ft_error != 0) {
-            FT_Done_Glyph(fill_glyph);
-            return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not copy a transition-title glyph.");
-        }
         ft_error = FT_Glyph_To_Bitmap(&fill_glyph, FT_RENDER_MODE_NORMAL, NULL, 1);
-        if (ft_error == 0)
-            ft_error = FT_Glyph_StrokeBorder(&outline_glyph, stroker, 0, 1);
-        if (ft_error == 0)
-            ft_error = FT_Glyph_To_Bitmap(&outline_glyph, FT_RENDER_MODE_NORMAL, NULL, 1);
         if (ft_error != 0) {
-            FT_Done_Glyph(outline_glyph);
             FT_Done_Glyph(fill_glyph);
             return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not render a transition-title glyph.");
         }
         fill_bitmap = (FT_BitmapGlyph)fill_glyph;
-        outline_bitmap = (FT_BitmapGlyph)outline_glyph;
         draw_bitmap_to_mask(
             mask, width, height, &fill_bitmap->bitmap,
             (int)pen_x + fill_bitmap->left, baseline - fill_bitmap->top, 0);
-        draw_bitmap_to_mask(
-            outline, width, height, &outline_bitmap->bitmap,
-            (int)pen_x + outline_bitmap->left, baseline - outline_bitmap->top, 0);
         pen_x += glyph_advance;
-        FT_Done_Glyph(outline_glyph);
         FT_Done_Glyph(fill_glyph);
     }
     return WADDAMBURO_TEXT_OK;
@@ -706,9 +700,8 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
     waddamburo_text_error *error)
 {
     const int squash = (flags & WADDAMBURO_TEXT_SONG_TITLE_SQUASH) != 0U;
-    FT_Stroker stroker = NULL;
-    FT_Error ft_error;
     uint32_t base_width;
+    uint32_t outline_radius;
     uint64_t pixel_count;
     uint8_t *mask = NULL;
     uint8_t *outline = NULL;
@@ -741,58 +734,55 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         return set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to allocate the song-title surface.");
     }
 
-    ft_error = FT_Stroker_New(context->library, &stroker);
-    if (ft_error != 0)
-        goto song_font_failure;
-    FT_Stroker_Set(
-        stroker,
-        /* Gameplay title: 1 px thicker than the other titles, matching the stock art. */
-        (FT_Fixed)((profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE ? 5.5f : 4.5f) * raster_scale * 64.0f + 0.5f),
-        FT_STROKER_LINECAP_ROUND,
-        FT_STROKER_LINEJOIN_ROUND,
-        0);
+    outline_radius = (uint32_t)((profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE ? 5.5f
+        : profile == WADDAMBURO_TEXT_PROFILE_TRANSITION ? 5.0f : 4.5f) * raster_scale + 0.5f);
 
     if (profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE) {
         result = render_title_row(
-            context->face, stroker, utf8_title, raster_scale,
-            mask, outline, width, height, 1, 44.0f, 32.0f, error);
+            context->face, utf8_title, raster_scale,
+            mask, width, height, 1, 44.0f, 32.0f, error);
         FT_Set_Transform(context->face, NULL, NULL); /* the face is shared; drop any squeeze */
     } else if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION) {
-        /* With a subtitle: title and a 0.6x subtitle stacked in the 103 px slot (TaikoRecomp's
-         * 44/46 title-only and 18/30 subtitle proportions, scaled to this slot's 62 px title). */
+        /* The artist line is smaller than the title after Latin and Japanese glyph metrics are
+         * taken into account. Keep the two rows independently sized in the 103 px slot. */
         if (utf8_subtitle != NULL && utf8_subtitle[0] != '\0') {
             result = render_title_row(
-                context->face, stroker, utf8_title, raster_scale,
-                mask, outline, width, height, 0, 59.0f, 36.0f, error);
+                context->face, utf8_title, raster_scale,
+                mask, width, height, 0, 46.0f, 36.0f, error);
             if (result == WADDAMBURO_TEXT_OK)
                 result = render_title_row(
-                    context->face, stroker, utf8_subtitle, raster_scale,
-                    mask, outline, width, height, 0, 35.5f, 84.0f, error);
+                    context->face, utf8_subtitle, raster_scale,
+                    mask, width, height, 0, 22.0f, 84.0f, error);
         } else {
             result = render_title_row(
-                context->face, stroker, utf8_title, raster_scale,
-                mask, outline, width, height, 0, 62.0f, 51.5f, error);
+                context->face, utf8_title, raster_scale,
+                mask, width, height, 0, 49.0f, 51.5f, error);
         }
     } else if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
         result = render_title_column(
-            context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
+            context->face, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
             28.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 0,
-            mask, outline, width, height, error);
+            mask, width, height, error);
     } else {
         result = render_title_column(
-            context->face, stroker, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
+            context->face, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
             70.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 0,
-            mask, outline, width, height, error);
-        /* The subtitle column (artist) runs from the bottom, as in the arcade. */
+            mask, width, height, error);
+        /* The narrower artist column runs from the bottom, as in the arcade. */
         if (result == WADDAMBURO_TEXT_OK && utf8_subtitle != NULL && utf8_subtitle[0] != '\0') {
             result = render_title_column(
-                context->face, stroker, utf8_subtitle, 30.5f * raster_scale, 29.7f * raster_scale,
+                context->face, utf8_subtitle, 21.0f * raster_scale, 21.0f * raster_scale,
                 23.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 1,
-                mask, outline, width, height, error);
+                mask, width, height, error);
         }
     }
     if (result != WADDAMBURO_TEXT_OK)
         goto song_failure;
+
+    if (!dilate_mask_round(mask, outline, width, height, outline_radius)) {
+        result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to outline the song-title surface.");
+        goto song_failure;
+    }
 
     for (uint64_t i = 0U; i < pixel_count; ++i) {
         uint32_t fill = mask[i];
@@ -807,16 +797,11 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
         rgba8[i * 4U + 3U] = (uint8_t)(alpha > 255U ? 255U : alpha);
     }
 
-    FT_Stroker_Done(stroker);
     free(outline);
     free(mask);
     return set_error(error, WADDAMBURO_TEXT_OK, 0, "");
 
-song_font_failure:
-    result = set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not initialize the song-title stroker.");
 song_failure:
-    if (stroker != NULL)
-        FT_Stroker_Done(stroker);
     free(outline);
     free(mask);
     return result;

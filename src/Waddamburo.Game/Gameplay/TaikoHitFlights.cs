@@ -40,9 +40,9 @@ public sealed class TaikoHitFlights
         trigger(label);
     }
 
-    public static string StateFor(PlayableLongNoteKind kind, TaikoInputAction action) => kind switch
+    public static string? StateFor(PlayableLongNoteKind kind, TaikoInputAction action) => kind switch
     {
-        PlayableLongNoteKind.Balloon or PlayableLongNoteKind.Kusudama => "don_hit",
+        PlayableLongNoteKind.Balloon or PlayableLongNoteKind.Kusudama => null,
         PlayableLongNoteKind.BigRoll => action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon
             ? "don_renda_d_hit" : "katsu_renda_d_hit",
         _ => action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don_hit" : "katsu_hit",
@@ -50,6 +50,8 @@ public sealed class TaikoHitFlights
 
     public void Trigger(TaikoLongNoteProgress progress)
     {
+        if (progress.Note.IsBalloon)
+            return;
         if (progress.LastAction is { } action)
             trigger(progress.IsPopped ? "geki_hit" : StateFor(progress.Note.Kind, action));
     }

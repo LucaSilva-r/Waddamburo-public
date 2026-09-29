@@ -13,8 +13,8 @@ The transition profile lays out one centered horizontal title with proportional
 fitting and the same outline-based rasterization used by the vertical profiles.
 
 The context API keeps one FreeType library and face alive for repeated work with
-the same font. Song-title borders are rasterized from the font outlines with
-FreeType's stroker rather than by expanding a completed bitmap.
+the same font. Song-title borders are round dilations of the rendered glyph mask,
+so small enclosed spaces do not pick up contour-stroker artifacts.
 
 The interactive Song Select composition prepares title surfaces on one background
 worker and uploads at most two completed textures per frame. Missing titles are

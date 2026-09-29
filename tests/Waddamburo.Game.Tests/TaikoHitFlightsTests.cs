@@ -12,10 +12,42 @@ public sealed class TaikoHitFlightsTests
     [InlineData(PlayableLongNoteKind.Roll, TaikoInputAction.RightKa, "katsu_hit")]
     [InlineData(PlayableLongNoteKind.BigRoll, TaikoInputAction.RightDon, "don_renda_d_hit")]
     [InlineData(PlayableLongNoteKind.BigRoll, TaikoInputAction.LeftKa, "katsu_renda_d_hit")]
-    [InlineData(PlayableLongNoteKind.Balloon, TaikoInputAction.LeftDon, "don_hit")]
     public void LongHitsSelectSurfaceAndSize(PlayableLongNoteKind kind, TaikoInputAction action, string expected)
     {
         Assert.Equal(expected, TaikoHitFlights.StateFor(kind, action));
+    }
+
+    [Theory]
+    [InlineData(PlayableLongNoteKind.Balloon, false)]
+    [InlineData(PlayableLongNoteKind.Balloon, true)]
+    [InlineData(PlayableLongNoteKind.Kusudama, false)]
+    [InlineData(PlayableLongNoteKind.Kusudama, true)]
+    public void BalloonHitsAndPopsDoNotLaunchGaugeFlights(PlayableLongNoteKind kind, bool popped)
+    {
+        var flights = new TaikoHitFlights([createLayer()]);
+        var note = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), kind, 2);
+        var progress = new TaikoLongNoteProgress(0, note, popped ? 2 : 1, popped)
+        {
+            LastAction = TaikoInputAction.LeftDon,
+        };
+
+        Assert.Null(TaikoHitFlights.StateFor(kind, TaikoInputAction.LeftDon));
+        flights.Trigger(progress);
+
+        Assert.Empty(flights.ActiveLayers);
+    }
+
+    [Fact]
+    public void RollHitStillLaunchesGaugeFlight()
+    {
+        var flights = new TaikoHitFlights([createLayer()]);
+        var note = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Roll);
+        flights.Trigger(new TaikoLongNoteProgress(0, note, 1, false)
+        {
+            LastAction = TaikoInputAction.LeftDon,
+        });
+
+        Assert.Single(flights.ActiveLayers);
     }
 
     [Fact]
