@@ -167,6 +167,17 @@ internal static class GameplaySceneComposition
         ("enso_system/base1p", "action_gogotime", 0, 500),
     ];
 
+    private static readonly string[] NoSuffix = [""];
+    private static readonly string[] SideSuffixes = ["_1p", "_2p"];
+
+    /// <summary>Every enso_original part movie a random mix may pick (archive, movie).</summary>
+    public static IEnumerable<(string Archive, string Movie)> OriginalMovies() =>
+        from entry in OriginalParts
+        from variant in Enumerable.Range(1, entry.Variants)
+        from suffix in entry.Suffix.Length == 0 ? NoSuffix : SideSuffixes
+        let name = $"{entry.Part}_a_{variant:00}{suffix}"
+        select ($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm");
+
     /// <summary>Traced draw depth of a gameplay layer role (larger = further back); null if unknown.</summary>
     public static int? Depth(string role) =>
         SkinRoles.FirstOrDefault(entry => entry.Role == role) is { Role: not null } skin ? skin.Depth

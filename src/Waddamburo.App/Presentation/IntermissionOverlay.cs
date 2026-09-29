@@ -51,13 +51,23 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
 /// <summary>Uploads a loaded scene's texture atlas and draws its snapshots.</summary>
 internal static class SceneTextures
 {
+    /// <summary>Upscales movie textures in the background once they are up (null: not installed).</summary>
+    // ponytail: static, set once by the shell; every movie texture goes through Upload below.
+    public static TextureUpscaler? Upscaler { get; set; }
+
     /// <summary>One movie's textures (the scene switch then only uploads what was not done ahead).</summary>
     public static RenderTextureId[] Upload(SdlApplication application, LumenMovieContent content)
     {
-        var uploaded = application.UploadRgba8Batch([.. content.Textures.Select(static texture => new RgbaTextureUpload(
+        var uploads = content.Textures.Select(static texture => new RgbaTextureUpload(
             checked((uint)texture.Width), checked((uint)texture.Height),
             ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
-                ?? throw new InvalidDataException("Texture pixels are unavailable.")))]);
+                ?? throw new InvalidDataException("Texture pixels are unavailable."))).ToArray();
+        var uploaded = application.UploadRgba8Batch(uploads);
+        // The upscaler keeps the pixel arrays the content is about to drop.
+        if (Upscaler is { } upscaler)
+            for (var index = 0; index < uploads.Length; index++)
+                upscaler.Enqueue(uploaded[index], uploads[index].Width, uploads[index].Height,
+                    ImmutableCollectionsMarshal.AsArray(content.Textures[index].Rgba8)!);
         content.ReleaseDecodedTexturePixels();
         return uploaded;
     }
@@ -76,7 +86,7 @@ internal static class SceneTextures
             Console.Error.WriteLine($"Profile scene {scene.Id}: {uploaded.Length} textures, "
                 + $"RGBA {rgbaBytes / 1048576d:F1} MiB, "
                 + $"upload {Stopwatch.GetElapsedTime(start).TotalMilliseconds:F0} ms, "
-                + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
+                + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB (committed {GC.GetGCMemoryInfo().TotalCommittedBytes / 1048576d:F1}), "
                 + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB.");
         }
         scene.ReleaseUploadedTexturePixels();

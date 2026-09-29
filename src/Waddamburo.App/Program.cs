@@ -97,6 +97,11 @@ try
         Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
             : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "
                 + $"{arcade.SongsPerSession} songs per session).");
+        // Fills the texture upscale cache ahead of play, with no game window (see TextureCacheBuilder).
+        if (args.FirstOrDefault(static arg => arg.StartsWith("--upscale-textures", StringComparison.Ordinal)) is { } upscale)
+            return TextureCacheBuilder.Run(layout.LumenRoot, upscale.Split('=') is [_, var count]
+                ? int.Parse(count, System.Globalization.CultureInfo.InvariantCulture)
+                : Math.Max(1, Environment.ProcessorCount - 2));
         var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Root);
         if (login || logout)
             return AccountCommands.Run(arcade, accounts, login);

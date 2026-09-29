@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Always optimized: in a Debug build the vector code runs about ten times slower, which
+         makes live texture upscaling crawl in development runs. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+</Project>

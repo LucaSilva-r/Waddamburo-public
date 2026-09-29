@@ -73,6 +73,13 @@ public sealed class LumenMovieContent
         ILumenHostBinding? hostBinding = null) =>
         new(Definition, stageWidth, stageHeight, hostBinding: hostBinding);
 
+    /// <summary>Replaces textures before upload (upscaled copies; UVs are normalised, so any size fits).</summary>
+    public void ReplaceTextures(Func<LumenTextureContent, int, LumenTextureContent> replace)
+    {
+        ArgumentNullException.ThrowIfNull(replace);
+        Textures = [.. Textures.Select(replace)];
+    }
+
     /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>
     public void ReleaseDecodedTexturePixels() =>
         Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [] })];

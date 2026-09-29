@@ -26,6 +26,18 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
 
     public ILumenMovieContentScope CreateSceneScope() => new SceneScope(this);
 
+    /// <summary>Called with every movie a scene loads (archive, movie); any thread.</summary>
+    public Action<string, string>? Loaded { get; set; }
+
+    /// <summary>Called with each movie once decoded, before any upload, on the decoding thread.</summary>
+    public Action<LumenMovieContent>? Decoded { get; set; }
+
+    private LumenMovieContent decoded(LumenMovieContent content)
+    {
+        Decoded?.Invoke(content);
+        return content;
+    }
+
     /// <summary>
     /// Decodes these movies on worker threads; the next load of each takes the result (once: a scene
     /// frees the decoded pixels after upload). Replaces any earlier prefetch not yet taken.
@@ -38,7 +50,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var opened = Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archive.Key)), _limits));
             foreach (var movie in archive)
                 fresh[movie] = opened.ContinueWith(
-                    task => LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits),
+                    task => decoded(LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits)),
                     CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         }
         _prefetched = fresh;
@@ -69,6 +81,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             ArgumentException.ThrowIfNullOrWhiteSpace(archiveId);
             ArgumentException.ThrowIfNullOrWhiteSpace(movieId);
             cancellationToken.ThrowIfCancellationRequested();
+            owner.Loaded?.Invoke(archiveId, movieId);
             if (owner._prefetched.TryRemove((archiveId, movieId), out var ready))
             {
                 try
@@ -94,7 +107,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                 _archives.Add(archivePath, archive);
             }
             var read = profile ? Stopwatch.GetTimestamp() : 0;
-            var content = LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits);
+            var content = owner.decoded(LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits));
             if (profile)
             {
                 var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length);

@@ -16,6 +16,8 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     private readonly SDL_Window* _window;
     private readonly Dictionary<uint, bgfx.TextureHandle> _textures = [];
+    // Upscaled copies drawn in place of their originals (same id).
+    private readonly Dictionary<uint, bgfx.TextureHandle> _replacements = [];
     private readonly HashSet<uint> _borrowedTextures = [];
     private readonly List<IGpuRenderPrepass> _prepasses = [];
     private readonly bgfx.ProgramHandle _quadProgram;
@@ -79,6 +81,30 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.update_texture_2d(texture, 0, 0, 0, 0, (ushort)width, (ushort)height, BgfxSupport.Copy(pixels), ushort.MaxValue);
     }
 
+    /// <summary>
+    /// Swaps an owned texture for new pixels of any size under the same id (UVs are normalised, so
+    /// an upscaled copy drops in); false when the texture is gone. The original stays for
+    /// <see cref="ShowReplacements"/> off (a comparison toggle).
+    /// </summary>
+    public bool TryReplaceRgba8(RenderTextureId id, uint width, uint height, ReadOnlySpan<byte> pixels)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_borrowedTextures.Contains(id.Value) || !_textures.ContainsKey(id.Value))
+            return false;
+        if ((ulong)pixels.Length != checked((ulong)width * height * 4))
+            throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
+        if (_replacements.Remove(id.Value, out var previous))
+            bgfx.destroy_texture(previous);
+        _replacements[id.Value] = BgfxSupport.CreateRgba8(width, height, pixels);
+        return true;
+    }
+
+    /// <summary>Draw replaced textures (true) or their originals.</summary>
+    public bool ShowReplacements { get; set; } = true;
+
+    private bgfx.TextureHandle drawn(uint id) =>
+        ShowReplacements && _replacements.TryGetValue(id, out var replacement) ? replacement : _textures[id];
+
     public void ReleaseTexture(RenderTextureId id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -87,6 +113,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         if (!_textures.Remove(id.Value, out var texture))
             throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
         bgfx.destroy_texture(texture);
+        if (_replacements.Remove(id.Value, out var replacement))
+            bgfx.destroy_texture(replacement);
     }
 
     internal RenderTextureId RegisterBorrowedTexture(bgfx.TextureHandle texture)
@@ -231,7 +259,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             var stencil = (uint)(bgfx.StencilFlags.TestEqual | bgfx.StencilFlags.OpFailSKeep | bgfx.StencilFlags.OpFailZKeep | stencilOperation)
                 | first.MaskDepth | (0xffu << (int)bgfx.StencilFlags.FuncRmaskShift);
             bgfx.set_stencil(stencil, (uint)bgfx.StencilFlags.None);
-            bgfx.set_texture(0, _textureSampler, _textures[first.Texture.Value], samplerFor(first));
+            bgfx.set_texture(0, _textureSampler, drawn(first.Texture.Value), samplerFor(first));
             bgfx.set_transient_vertex_buffer(0, &buffer, (uint)start * 6, (uint)(index - start) * 6);
             bgfx.submit(MainView, first.MaskOperation == RenderMaskOperation.Draw ? _quadProgram : _maskProgram, 0, (byte)bgfx.DiscardFlags.All);
             start = index;
@@ -327,6 +355,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             if (!_borrowedTextures.Contains(id))
                 bgfx.destroy_texture(texture);
         _textures.Clear();
+        foreach (var replacement in _replacements.Values)
+            bgfx.destroy_texture(replacement);
+        _replacements.Clear();
         _borrowedTextures.Clear();
         _prepasses.Clear();
         bgfx.destroy_program(_quadProgram);

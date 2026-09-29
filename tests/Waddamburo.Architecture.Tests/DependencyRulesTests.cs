@@ -19,7 +19,8 @@ public sealed class DependencyRulesTests
             ["Waddamburo.Providers.OsuLazer"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Stock"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Tja"] = ["Waddamburo.Catalog"],
-            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja"],
+            ["Waddamburo.Upscale"] = [],
+            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja", "Waddamburo.Upscale"],
             ["Waddamburo.Tool"] = ["Waddamburo.Formats", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
         };
 

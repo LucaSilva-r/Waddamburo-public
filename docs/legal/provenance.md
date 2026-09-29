@@ -230,3 +230,13 @@ title, so each stock title was matched against the community ESE/TJADB TJA libra
 `TITLEJA`/`TITLE` and the match's `SUBTITLEJA`/`SUBTITLE`/`TITLE` values kept (song credits
 and title translations, no chart or game data). The generator stays in the private lab
 repository (`tools/stock_subtitles/build.py`, 2026-09-28).
+
+Texture upscaling uses the Real-ESRGAN `realesr-animevideov3` model (BSD-3-Clause, copyright
+2021 Xintao Wang): the ncnn `.param`/`.bin` files from the v0.2.5.0 release archive
+`realesrgan-ncnn-vulkan-20220424-ubuntu.zip` are vendored unchanged in
+`src/Waddamburo.App/Upscale/` with the license text beside them (hashes in
+THIRD_PARTY_NOTICES.md). The CPU inference in `Presentation/CompactUpscaler.cs` is written
+independently from the network layout in the `.param` file and the ncnn weight-file layout
+(fp16-tagged convolution weights, fp32 biases and PReLU slopes, 2026-09-29); no Real-ESRGAN
+or ncnn source is copied. Upscaled textures are derived locally from the user's own files and
+cached on their machine only.

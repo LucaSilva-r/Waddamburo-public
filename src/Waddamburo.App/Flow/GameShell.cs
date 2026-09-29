@@ -284,6 +284,19 @@ internal sealed class GameShell : IDisposable
             _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
         MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot));
         _presenter = new ScenePresenter(Application, MovieContent);
+        // Upscaling runs when the model files are installed (see UpscaleTool).
+        if (UpscaleTool.Find() is { } upscale)
+        {
+            MovieContent.Loaded = upscale.RecordUsed;
+            // Cached upscales replace textures as movies decode: the GPU only ever gets those.
+            MovieContent.Decoded = content =>
+            {
+                if (Application.ShowUpscaled)
+                    upscale.ApplyCached(content);
+            };
+            SceneTextures.Upscaler = new TextureUpscaler(upscale);
+            Console.WriteLine($"Texture upscaling: {UpscaleTool.LiveThreads} CPU thread(s), cache {upscale.Cache}.");
+        }
         _loader = new LumenGameSceneLoader(MovieContent, Hosts);
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
@@ -665,6 +678,11 @@ internal sealed class GameShell : IDisposable
                 : held.Frame);
         Titles.UploadCompleted();
         _presenter.UploadAhead();
+        if (SceneTextures.Upscaler is { } upscaler)
+        {
+            upscaler.Paused = Active.Id == FlowScenes.Gameplay;
+            upscaler.Apply(Application);
+        }
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
         var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _presenter.Textures, "Scene", ResolveSurface);
@@ -736,6 +754,7 @@ internal sealed class GameShell : IDisposable
         Audio?.Dispose();
         _audioDevice?.Dispose();
         DonRenderer?.Dispose();
+        SceneTextures.Upscaler?.Dispose();
         Application.Dispose();
         _libraries.Dispose();
         Sync.Dispose();

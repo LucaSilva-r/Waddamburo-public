@@ -59,36 +59,39 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite": "[10.0.12, )",
-          "Waddamburo.Catalog": "[1.0.0, )",
-          "Waddamburo.Formats": "[1.0.0, )",
-          "Waddamburo.Lumen": "[1.0.0, )"
+          "Waddamburo.Catalog": "[0.0.0-dev, )",
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )"
         }
       },
       "waddamburo.lumen": {
         "type": "Project",
         "dependencies": {
-          "Waddamburo.Formats": "[1.0.0, )"
+          "Waddamburo.Formats": "[0.0.0-dev, )"
         }
       },
       "waddamburo.platform.sdl": {
         "type": "Project",
         "dependencies": {
-          "Waddamburo.Formats": "[1.0.0, )",
-          "Waddamburo.Lumen": "[1.0.0, )",
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )",
           "ppy.SDL3-CS": "[2026.722.0, )"
         }
       },
       "waddamburo.providers.stock": {
         "type": "Project",
         "dependencies": {
-          "Waddamburo.Catalog": "[1.0.0, )"
+          "Waddamburo.Catalog": "[0.0.0-dev, )"
         }
       },
       "waddamburo.providers.tja": {
         "type": "Project",
         "dependencies": {
-          "Waddamburo.Catalog": "[1.0.0, )"
+          "Waddamburo.Catalog": "[0.0.0-dev, )"
         }
+      },
+      "waddamburo.upscale": {
+        "type": "Project"
       },
       "Microsoft.Data.Sqlite": {
         "type": "CentralTransitive",

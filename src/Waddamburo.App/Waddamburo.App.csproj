@@ -17,12 +17,19 @@
           CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
+  <!-- Texture upscaling model (Real-ESRGAN realesr-animevideov3, BSD-3-Clause), next to the executable. -->
+  <ItemGroup>
+    <None Include="Upscale/*" Link="upscale/%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.Stock/Waddamburo.Providers.Stock.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.Tja/Waddamburo.Providers.Tja.csproj" />
+    <ProjectReference Include="../Waddamburo.Upscale/Waddamburo.Upscale.csproj" />
   </ItemGroup>
 
   <ItemGroup>

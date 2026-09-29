@@ -124,6 +124,16 @@ public sealed unsafe class SdlApplication : IDisposable
         _renderer!.UpdateRgba8(texture, width, height, pixels);
     }
 
+    /// <summary>F9: upscaled textures shown (true) or the originals, for comparison.</summary>
+    public bool ShowUpscaled => _renderer?.ShowReplacements ?? true;
+
+    public bool TryReplaceRgba8(RenderTextureId texture, uint width, uint height, ReadOnlySpan<byte> pixels)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _renderer!.TryReplaceRgba8(texture, width, height, pixels);
+    }
+
     public void ReleaseTexture(RenderTextureId texture)
     {
         ensureOwnerThread();
@@ -249,6 +259,16 @@ public sealed unsafe class SdlApplication : IDisposable
                     // F11: borderless desktop fullscreen <-> window, like a browser.
                     if (!currentEvent.key.repeat)
                         SDL_SetWindowFullscreen(_window, (SDL_GetWindowFlags(_window) & SDL_WindowFlags.SDL_WINDOW_FULLSCREEN) == 0);
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
+                    && currentEvent.key.key == SDL_Keycode.SDLK_F9)
+                {
+                    // F9: upscaled textures <-> the originals, for comparison (the next scene loaded shows it).
+                    if (!currentEvent.key.repeat && _renderer is not null)
+                    {
+                        _renderer.ShowReplacements = !_renderer.ShowReplacements;
+                        Console.WriteLine($"Upscaled textures {(_renderer.ShowReplacements ? "on" : "off")} (F9; scenes loaded from now on).");
+                    }
                 }
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     or (uint)SDL_EventType.SDL_EVENT_KEY_UP)
