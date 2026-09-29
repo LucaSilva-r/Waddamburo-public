@@ -166,6 +166,8 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             SceneTextures.Release(application, textures);
         foreach (var (uploaded, next) in _partial.Values)
             SceneTextures.Release(application, uploaded.Take(next));
+        // Their pixels went with the upload: a later load of them must decode afresh.
+        movies.Forget(_uploadedAhead.Keys);
         _uploadedAhead.Clear();
         _partial.Clear(); // not yet released: the prefetch still holds them whole
     }

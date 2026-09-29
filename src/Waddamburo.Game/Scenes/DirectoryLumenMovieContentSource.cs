@@ -63,6 +63,14 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     public IEnumerable<LumenMovieContent> DecodedPrefetches => _prefetched.Values
         .Where(static task => task.IsCompletedSuccessfully).Select(static task => task.Result);
 
+    /// <summary>Drops these prefetched movies (their pixels were freed after an upload since released).</summary>
+    public void Forget(IReadOnlyCollection<LumenMovieContent> contents)
+    {
+        foreach (var (key, task) in _prefetched)
+            if (task.IsCompletedSuccessfully && contents.Contains(task.Result))
+                _prefetched.TryRemove(key, out _);
+    }
+
     public async ValueTask<LumenMovieContent> LoadAsync(
         string archiveId,
         string movieId,
