@@ -31,9 +31,8 @@ Offsets from the note's time, in ms (they are frame multiples at 59.94 Hz: 1.5, 
 
 | Course | 良 Great | 可 Good | 不可 Bad |
 |---|---|---|---|
-| Oni (and ura), Hard | ±25.025 | ±75.075 | ±108.442 |
-| Normal, Easy | ±41.708 | ±108.442 | ±125.125 |
-| Easy with parent-and-child support (パパママサポート) | ±41.708 | ±125.125 | ±125.125 |
+| Oni (and ura), Hard | ±25.0250 | ±75.0750 | ±108.4417 |
+| Normal, Easy | ±41.7083 | ±108.4417 | ±125.1250 |
 
 A hit between the Good and Bad windows is a Bad. A note never hit is a Bad at the end of its
 window. A wrong-colour input is ignored; the note can still be hit with the correct colour.
@@ -41,11 +40,9 @@ If it is not hit before its window ends, it counts as a Bad in the results (W2).
 Waddamburo leaves an unhit note scrolling offscreen without showing Bad text; a correctly
 coloured press in the Bad window shows that text.
 
-**Status: wrong.** The engine uses 35 / 80 / 95 ms for every course
-(`TaikoGameplayPresentation`), including Waiwai's two lanes. In particular, Hard needs the Oni
-profile, not the Normal one. These are placeholders that predate this research. The wiki gives
-nominal symmetric bounds; the exact Green frame-boundary inclusion and calibration offset have not
-been measured locally.
+The engine selects these windows per course, including each Waiwai lane. The table gives nominal
+symmetric bounds; the exact Green frame-boundary inclusion and calibration offset have not been
+measured locally. Parent-and-child support is not currently modeled.
 
 ### Big notes (W2)
 

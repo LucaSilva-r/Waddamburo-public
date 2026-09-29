@@ -37,7 +37,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     IDonPresentationController? don = null,
     Action<int?, GameplaySoundEvent, int>? playEventSound = null)
 {
-    private static readonly TimeSpan GreatWindow = TimeSpan.FromMilliseconds(35);
     private Lane[] _lanes = [];
     private WaiwaiStage? _stage;
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
@@ -85,7 +84,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
             courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage))];
-        var handNotes = new TaikoHandNoteLink(GreatWindow);
+        var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
             handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
     }
@@ -235,8 +234,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             foreach (var name in NoteMovieNames.Where(layers.ContainsKey))
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
                     throw new InvalidDataException("Gameplay note movie is missing its initial state.");
-            _session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(
-                GreatWindow, TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)),
+            _session = new TaikoJudgementSession(chart, TaikoJudgementWindows.ForCourse(course),
                 TimeSpan.FromMilliseconds(30), partnerHandNotes: players == 2);
             _longNotes = new TaikoLongNotePresentation(chart, _session, kind =>
             {

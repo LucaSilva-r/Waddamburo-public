@@ -45,6 +45,16 @@ public readonly record struct TaikoJudgementWindows
     public TimeSpan Good { get; }
     public TimeSpan Miss { get; }
 
+    // TimeSpan ticks preserve the four-decimal millisecond boundaries exactly (10,000 ticks/ms).
+    public static TaikoJudgementWindows ForCourse(TaikoCourse course) => course switch
+    {
+        TaikoCourse.Easy or TaikoCourse.Normal => new(
+            TimeSpan.FromTicks(417083), TimeSpan.FromTicks(1084417), TimeSpan.FromTicks(1251250)),
+        TaikoCourse.Hard or TaikoCourse.Oni or TaikoCourse.Ura => new(
+            TimeSpan.FromTicks(250250), TimeSpan.FromTicks(750750), TimeSpan.FromTicks(1084417)),
+        _ => throw new ArgumentOutOfRangeException(nameof(course)),
+    };
+
     public TaikoHitResult? ResultFor(TimeSpan offset)
     {
         var magnitude = offset.Duration();
@@ -92,8 +102,8 @@ public sealed class TaikoJudgementSession
     private TimeSpan? _lastJudgedInputTime;
     private readonly bool _partnerHandNotes;
 
-    /// <summary>A hand note was hit (not missed), with the input time (two-player partner matching).</summary>
-    public event Action<int, TimeSpan>? HandNoteHit;
+    /// <summary>A hand note was hit Great (two-player partner matching).</summary>
+    public event Action<int>? HandNoteHit;
 
     /// <param name="chart">The playable chart whose notes are judged.</param>
     /// <param name="windows">The timing windows for Great, Good, and Miss results.</param>
@@ -177,8 +187,11 @@ public sealed class TaikoJudgementSession
         var judgedIndex = _nextNoteIndex++;
         _lastJudgedInputTime = time;
         judge(judgedIndex, result.Value, offset);
-        if (result != TaikoHitResult.Miss && hitObject.IsHand && _partnerHandNotes)
-            HandNoteHit?.Invoke(judgedIndex, time);
+        if (hitObject.IsHand && _partnerHandNotes)
+        {
+            if (result == TaikoHitResult.Great)
+                HandNoteHit?.Invoke(judgedIndex);
+        }
         else if (result != TaikoHitResult.Miss && hitObject.IsStrong)
             _pendingStrong = new PendingStrongHit(judgedIndex, action, time);
         return TaikoInputResult.Judged;

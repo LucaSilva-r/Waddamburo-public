@@ -50,6 +50,27 @@ public sealed class TaikoJudgementSessionTests
         TimeSpan.FromMilliseconds(95));
 
     [Theory]
+    [InlineData(TaikoCourse.Easy, 417083, 1084417, 1251250)]
+    [InlineData(TaikoCourse.Normal, 417083, 1084417, 1251250)]
+    [InlineData(TaikoCourse.Hard, 250250, 750750, 1084417)]
+    [InlineData(TaikoCourse.Oni, 250250, 750750, 1084417)]
+    [InlineData(TaikoCourse.Ura, 250250, 750750, 1084417)]
+    public void CourseWindowsUseSpecifiedBoundaries(TaikoCourse course, long great, long good, long miss)
+    {
+        var windows = TaikoJudgementWindows.ForCourse(course);
+
+        Assert.Equal(great, windows.Great.Ticks);
+        Assert.Equal(good, windows.Good.Ticks);
+        Assert.Equal(miss, windows.Miss.Ticks);
+        Assert.Equal(TaikoHitResult.Great, windows.ResultFor(TimeSpan.FromTicks(-great)));
+        Assert.Equal(TaikoHitResult.Good, windows.ResultFor(TimeSpan.FromTicks(great + 1)));
+        Assert.Equal(TaikoHitResult.Good, windows.ResultFor(TimeSpan.FromTicks(-good)));
+        Assert.Equal(TaikoHitResult.Miss, windows.ResultFor(TimeSpan.FromTicks(good + 1)));
+        Assert.Equal(TaikoHitResult.Miss, windows.ResultFor(TimeSpan.FromTicks(-miss)));
+        Assert.Null(windows.ResultFor(TimeSpan.FromTicks(miss + 1)));
+    }
+
+    [Theory]
     [InlineData(-35, TaikoHitResult.Great)]
     [InlineData(35, TaikoHitResult.Great)]
     [InlineData(36, TaikoHitResult.Good)]
@@ -139,15 +160,15 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Theory]
-    [InlineData(1, true)]   // together: doubles for both
-    [InlineData(30, true)]  // within the great window
-    [InlineData(40, false)] // outside it: plain hits
-    public void TwoPlayersDoubleAHandNoteOnlyWhenBothHitItTogether(int apartMs, bool doubled)
+    [InlineData(0, 1, true)]    // together: doubles for both
+    [InlineData(-30, 30, true)] // 60 ms apart, but both Great
+    [InlineData(0, 40, false)]  // one Good: plain hits
+    public void TwoPlayersDoubleAHandNoteOnlyWhenBothHitItGreat(int leftMs, int rightMs, bool doubled)
     {
         var note = new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon, isHand: true);
         var left = createSession(partner: true, note);
         var right = createSession(partner: true, note);
-        var link = new TaikoHandNoteLink(TimeSpan.FromMilliseconds(35));
+        var link = new TaikoHandNoteLink();
         link.Add(left, [note]);
         link.Add(right, [note]);
         var strong = new List<string>();
@@ -155,9 +176,10 @@ public sealed class TaikoJudgementSessionTests
         right.Judged += judgement => { if (judgement.StrongHitCompleted) strong.Add("right"); };
 
         // One player's second hit on the same drum no longer completes it.
-        left.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
-        left.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.005));
-        right.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1) + TimeSpan.FromMilliseconds(apartMs));
+        var at = TimeSpan.FromSeconds(1) + TimeSpan.FromMilliseconds(leftMs);
+        left.SubmitInput(TaikoInputAction.LeftDon, at);
+        left.SubmitInput(TaikoInputAction.RightDon, at + TimeSpan.FromMilliseconds(5));
+        right.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1) + TimeSpan.FromMilliseconds(rightMs));
 
         Assert.Equal(doubled ? ["left", "right"] : [], strong.Order());
     }
