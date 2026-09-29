@@ -19,8 +19,8 @@ internal readonly record struct UpscaledTexture(uint Width, uint Height, ReadOnl
 /// Texture upscaling on the CPU with the realesr-animevideov3 model (3x, <see cref="CompactUpscaler"/>)
 /// and the cache of its results: one memory-mapped tar (<see cref="UpscaleCache"/>) of BC7 textures
 /// keyed by pixel hash, handed to the GPU as they are. Nothing derived leaves the user's machine.
-/// The model's ncnn files (realesr-animevideov3-x3.param / .bin) sit in an <c>upscale</c> folder next
-/// to Waddamburo, or WADDAMBURO_UPSCALE_MODEL names their folder; BC7 needs the native
+/// The model's ncnn files (realesr-animevideov3-x3.param / .bin) are embedded, or WADDAMBURO_UPSCALE_MODEL
+/// names a folder of them; BC7 needs the native
 /// waddamburo_texture library. (GPU runs of the same model through realesrgan-ncnn-vulkan stalled
 /// the desktop and returned corrupt images on an RTX 5080.)
 /// </summary>
@@ -69,12 +69,25 @@ internal sealed class UpscaleTool : IDisposable
     /// </summary>
     public static UpscaleTool? Find(string? cacheFolder)
     {
-        var folder = Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_MODEL") is { Length: > 0 } set ? set
-            : Path.Combine(AppContext.BaseDirectory, "upscale");
-        var param = Path.Combine(folder, ModelName + ".param");
-        var bin = Path.Combine(folder, ModelName + ".bin");
-        if (!File.Exists(param) || !File.Exists(bin))
-            return null;
+        // The model is embedded; WADDAMBURO_UPSCALE_MODEL names a folder of other ncnn files to try.
+        CompactUpscaler model;
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_MODEL") is { Length: > 0 } folder)
+        {
+            var param = Path.Combine(folder, ModelName + ".param");
+            var bin = Path.Combine(folder, ModelName + ".bin");
+            if (!File.Exists(param) || !File.Exists(bin))
+                return null;
+            model = CompactUpscaler.Load(param, bin);
+        }
+        else
+        {
+            var assembly = typeof(UpscaleTool).Assembly;
+            using var param = assembly.GetManifestResourceStream($"Waddamburo.Upscale.{ModelName}.param");
+            using var bin = assembly.GetManifestResourceStream($"Waddamburo.Upscale.{ModelName}.bin");
+            if (param is null || bin is null)
+                return null;
+            model = CompactUpscaler.Load(param, bin);
+        }
         if (!Bc7.Available)
         {
             Console.Error.WriteLine("Texture upscaling off: the waddamburo_texture library (BC7) is missing.");
@@ -94,7 +107,7 @@ internal sealed class UpscaleTool : IDisposable
                 File.Move(file, Path.Combine(cache, Path.GetFileName(file)));
             Console.WriteLine($"Moved the upscaled-texture cache from {userCache} to {cache}.");
         }
-        return new UpscaleTool(CompactUpscaler.Load(param, bin), cache);
+        return new UpscaleTool(model, cache);
     }
 
     /// <summary>Notes a movie the game loaded (any thread).</summary>

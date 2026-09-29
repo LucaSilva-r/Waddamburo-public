@@ -52,14 +52,26 @@ public sealed class CompactUpscaler : IDisposable
     /// <summary>The output size over the input size (3 for realesr-animevideov3-x3).</summary>
     public double Scale => _shuffle * _resize;
 
-    public static CompactUpscaler Load(string paramPath, string binPath)
+    public static CompactUpscaler Load(string paramPath, string binPath) =>
+        Load(File.ReadAllLines(paramPath), File.ReadAllBytes(binPath));
+
+    /// <summary>From the ncnn files' contents (e.g. embedded resources).</summary>
+    public static CompactUpscaler Load(Stream param, Stream bin)
     {
-        var lines = File.ReadAllLines(paramPath).Skip(2).Select(static line =>
+        using var reader = new StreamReader(param);
+        using var bytes = new MemoryStream();
+        bin.CopyTo(bytes);
+        return Load(reader.ReadToEnd().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries), bytes.ToArray());
+    }
+
+    private static CompactUpscaler Load(string[] paramLines, byte[] bin)
+    {
+        var lines = paramLines.Skip(2).Select(static line =>
             line.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToArray();
         static Dictionary<int, string> options(string[] parts) => parts.Skip(4 + int.Parse(parts[2], CultureInfo.InvariantCulture)
                 + int.Parse(parts[3], CultureInfo.InvariantCulture))
             .Select(static option => option.Split('=')).ToDictionary(static kv => int.Parse(kv[0], CultureInfo.InvariantCulture), static kv => kv[1]);
-        var data = File.ReadAllBytes(binPath).AsSpan();
+        var data = bin.AsSpan();
         var offset = 0;
         var layers = new List<Layer>();
         int shuffle = 1;
