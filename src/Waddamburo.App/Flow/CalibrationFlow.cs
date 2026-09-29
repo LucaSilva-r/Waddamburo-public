@@ -25,8 +25,7 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
     // A big don (both centres this close) confirms: drumming along cannot.
     private static readonly TimeSpan BigHitWindow = TimeSpan.FromMilliseconds(60);
 
-    private ClickTrack? _clicks;
-    private AudioStreamTransport? _transport;
+    private AudioStreamTransport? _transport; // plays the click track (the mixer disposes it)
     private GameplayTimeline? _timeline;
     private readonly Stopwatch _clock = new(); // without audio (headless)
     private TimeSpan _lastLeftCentre, _lastRightCentre;
@@ -60,11 +59,11 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
             // BIP bap bap bap, from a drum tone's cues; plain tones without the sound banks. Only the master
             // volume applies.
             var bank = Shell.Sounds?.Bank;
-            _clicks = new ClickTrack(audio.Mixer.Format, LatencyCalibration.Beat,
+            var clicks = new ClickTrack(audio.Mixer.Format, LatencyCalibration.Beat,
                 bank?.Clip(ClickBank, AccentCue) ?? ClickTrack.Tone(audio.Mixer.Format, 2000),
                 bank?.Clip(ClickBank, BeatCue) ?? ClickTrack.Tone(audio.Mixer.Format, 1000));
-            _clicks.SetAudibleFrom(Calibration.FirstClick + _timeline.LeadIn);
-            _transport = audio.PlayTransport(new ScheduledAudioSource(_clicks, TimeSpan.Zero, TimeSpan.Zero), AudioBus.Metronome);
+            clicks.SetAudibleFrom(Calibration.FirstClick + _timeline.LeadIn);
+            _transport = audio.PlayTransport(new ScheduledAudioSource(clicks, TimeSpan.Zero, TimeSpan.Zero), AudioBus.Metronome);
         }
         Console.WriteLine($"Audio calibration started at tick {Shell.Tick}.");
     }
@@ -163,6 +162,5 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
         if (_transport is { } transport)
             Shell.Audio?.Mixer.Stop(transport.Handle);
         _transport = null;
-        _clicks = null;
     }
 }
