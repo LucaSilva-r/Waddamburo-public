@@ -1,4 +1,6 @@
-<h1><img src="eng/packaging/waddamburo.svg" alt="" width="56" align="middle"> Waddamburo</h1>
+<p align="center"><img src="eng/packaging/waddamburo.svg" alt="Waddamburo logo" width="128"></p>
+<h1 align="center">Waddamburo</h1>
+<p align="center"><i>Play the Taiko no Tatsujin arcade data you own, on Windows and Linux.</i></p>
 
 Waddamburo is an independent, open-source engine that plays **Taiko no Tatsujin** arcade
 data you already own. Point it at the game files and you get the arcade experience on a
