@@ -162,8 +162,15 @@ public sealed class TaikoJudgementSession
                 timedOut: true);
             _nextNoteIndex++;
             missed++;
+            skipJudged();
         }
         return missed;
+    }
+
+    private void skipJudged()
+    {
+        while (_nextNoteIndex < _chart.NoteCount && _results[_nextNoteIndex] is not null)
+            _nextNoteIndex++;
     }
 
     public TaikoInputResult SubmitInput(TaikoInputAction action, TimeSpan time)
@@ -176,17 +183,35 @@ public sealed class TaikoJudgementSession
         if (_nextNoteIndex >= _chart.NoteCount)
             return hitLongNote(action, time);
 
-        var hitObject = _chart.HitObjects[_nextNoteIndex];
-        var offset = time - hitObject.StartTime;
-        var result = _windows.ResultFor(offset);
-        if (result is null)
+        // The input judges the nearest note of its colour inside the window, so an unhit note of
+        // the other colour (or a late one) does not hold up the rest of a stream; skipped notes
+        // stay hittable until their window ends. Wrong colour alone is still ignored.
+        // ponytail: nearest-note choice is ours, not measured on Green (scoring.md research item 1).
+        var judgedIndex = -1;
+        var anyInWindow = false;
+        for (var index = _nextNoteIndex; index < _chart.NoteCount; index++)
+        {
+            var candidateOffset = time - _chart.HitObjects[index].StartTime;
+            if (candidateOffset < -_windows.Miss)
+                break;
+            if (_results[index] is not null)
+                continue;
+            anyInWindow = true;
+            if (matches(action, _chart.HitObjects[index].Kind)
+                && (judgedIndex < 0 || candidateOffset.Duration() < (time - _chart.HitObjects[judgedIndex].StartTime).Duration()))
+                judgedIndex = index;
+        }
+        if (!anyInWindow)
             return hitLongNote(action, time);
-        if (!matches(action, hitObject.Kind))
+        if (judgedIndex < 0)
             return TaikoInputResult.Ignored;
 
-        var judgedIndex = _nextNoteIndex++;
+        var hitObject = _chart.HitObjects[judgedIndex];
+        var offset = time - hitObject.StartTime;
+        var result = _windows.ResultFor(offset)!;
         _lastJudgedInputTime = time;
         judge(judgedIndex, result.Value, offset);
+        skipJudged();
         if (hitObject.IsHand && _partnerHandNotes)
         {
             if (result == TaikoHitResult.Great)

@@ -36,6 +36,8 @@ Offsets from the note's time, in ms (they are frame multiples at 59.94 Hz: 1.5, 
 
 A hit between the Good and Bad windows is a Bad. A note never hit is a Bad at the end of its
 window. A wrong-colour input is ignored; the note can still be hit with the correct colour.
+An input judges the nearest unjudged note of its colour in the window, so an unhit note does not
+hold up the notes behind it (Waddamburo choice, not measured on Green).
 If it is not hit before its window ends, it counts as a Bad in the results (W2).
 Waddamburo leaves an unhit note scrolling offscreen without showing Bad text; a correctly
 coloured press in the Bad window shows that text.

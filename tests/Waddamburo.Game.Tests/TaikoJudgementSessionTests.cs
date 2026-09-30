@@ -119,6 +119,25 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
+    public void AnUnhitNoteDoesNotHoldUpTheStream()
+    {
+        var session = createSession(
+            new PlayableHitObject(TimeSpan.FromSeconds(1.000), PlayableNoteKind.Ka),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.075), PlayableNoteKind.Don),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.150), PlayableNoteKind.Don),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.225), PlayableNoteKind.Don));
+
+        // The unhit ka is skipped; at 1.226 the unhit 1.150 don is still in its window but 1.225 is nearer.
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.075));
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.226));
+        session.AdvanceTo(TimeSpan.FromSeconds(2));
+
+        var results = session.CreateSnapshot().Select(judgement => judgement.Result).ToArray();
+        Assert.Equal([TaikoHitResult.Miss, TaikoHitResult.Great, TaikoHitResult.Miss, TaikoHitResult.Great], results);
+        Assert.True(session.IsComplete);
+    }
+
+    [Fact]
     public void WrongSurfaceLeavesNoteToMissWhenItsWindowExpires()
     {
         var session = createSession(new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.Ka));
