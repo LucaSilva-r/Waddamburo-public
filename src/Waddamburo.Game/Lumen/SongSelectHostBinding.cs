@@ -192,6 +192,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The players decided the mode-switch folder (to the other song select).</summary>
     public bool ModeSwitchRequested { get; private set; }
 
+    /// <summary>The players decided the how-to-play folder (the tutorial movie).</summary>
+    public bool TutorialRequested { get; private set; }
+
     /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
     public SongSourceKind? LibraryRequested { get; private set; }
 
@@ -285,6 +288,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     var genre = (int)call.Arguments[0].AsNumber();
                     if (genre == _session.Catalog.ModeSwitchCategory)
                         ModeSwitchRequested = true;
+                    // Traced SetSelectedMusic(0, -1), Terminate, then the tutorial scene.
+                    else if (genre == _session.Catalog.TutorialCategory)
+                        TutorialRequested = true;
                     else if ((uint)genre < (uint)_session.Catalog.Categories.Length)
                         LibraryRequested = _session.Catalog.Categories[genre].Link;
                 }

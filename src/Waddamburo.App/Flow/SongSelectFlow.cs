@@ -2,6 +2,7 @@ using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
@@ -13,12 +14,25 @@ namespace Waddamburo.App.Flow;
 /// <summary>
 /// Song Select (normal or Waiwai): the mode-switch folder, and a chosen song's handoff: the rainbow
 /// intermission covers the screen (song title in it), the charts load under it, gameplay starts.
+/// Also the how-to-play folder's tutorial movie, which returns here.
 /// </summary>
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
     public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.SongSelect;
 
-    public override void Enter(SceneId scene) => Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
+    public override void Enter(SceneId scene)
+    {
+        if (scene == FlowScenes.SongSelect)
+            Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
+        else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)
+            Shell.Sounds?.Bank.PlayMusic("Tutorial", "JINGLE_DOJO", loop: true);
+    }
+
+    public override void Exit(SceneId scene)
+    {
+        if (scene == FlowScenes.Tutorial)
+            Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
+    }
 
     // The gameplay layout picked (skin included) when a song is chosen, its movies decoding and going
     // up to the GPU while the rainbow plays; the rainbow holds covered until they are all ready, as the
@@ -52,7 +66,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     // The list's fast scrolling (when set) sees the tick's input before the movie and what it did after.
     public override void Advance(LumenInputSnapshot input)
     {
-        var scroll = Shell.Arcade.FastSongScroll ? Shell.Hosts.SongSelect?.Scroll : null;
+        var scroll = Shell.Arcade.FastSongScroll && Shell.Active.Id == FlowScenes.SongSelect ? Shell.Hosts.SongSelect?.Scroll : null;
         base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null) ?? input);
         scroll?.After();
     }
@@ -62,6 +76,20 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     public override void Tick(FlowInput input)
     {
+        // Traced: the tutorial cuts in and out (its movie fades itself); Song Select comes back
+        // without the folder, the cursor on the first genre.
+        if (Shell.Active.Id == FlowScenes.Tutorial)
+        {
+            if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player))
+                showSongSelect();
+            return;
+        }
+        if (Shell.Hosts.SongSelect?.TutorialRequested == true)
+        {
+            Shell.Hosts.TutorialSeen = true;
+            Shell.Show(FlowScenes.Tutorial);
+            return;
+        }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the
         // difficulty selector opens, so it is there when the rainbow closes.
         if (Shell.Hosts.SongSelect?.CourseSelectSong is { } picked && _titled != picked.Descriptor.Key)
@@ -83,8 +111,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (Shell.Hosts.SongSelect?.ModeSwitchRequested == true)
         {
             Shell.Hosts.Waiwai = !Shell.Hosts.Waiwai;
-            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
-            Shell.Show(FlowScenes.SongSelect);
+            showSongSelect();
             return;
         }
         if (switchLibrary() || calibrate())
@@ -192,6 +219,14 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Show(FlowScenes.Calibration);
         Shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
         return true;
+    }
+
+    private void showSongSelect()
+    {
+        // A launch straight into Song Select joined nobody: keep the player's own board.
+        Shell.Catalog.Replace(FlowScenes.SongSelectScene(
+            Shell.JoinedSides.Count > 0 ? [.. Shell.JoinedSides] : [Shell.Hosts.PlayerSide], Shell.Hosts.Waiwai));
+        Shell.Show(FlowScenes.SongSelect);
     }
 
     private (string Category, SongSelectSong Song) find(SongKey song) => Shell.SongCatalog.Categories

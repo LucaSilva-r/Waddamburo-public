@@ -69,7 +69,9 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             "Classical" => 3,
             "Variety" => 4,
             "Anime" => 5,
+            "Children and Folk" or "Kids" => 6,
             "Vocaloid" => 7,
+            "How to Play" => 12, // the tutorial folder (traced session22)
             // The mode-switch folder (traced 65 in normal Song Select, 66 in Waiwai's).
             "To Waiwai" => 65,
             "To Normal" => 66,

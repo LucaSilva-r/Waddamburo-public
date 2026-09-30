@@ -19,11 +19,13 @@ order, which can vary by provider.
 | 3 | Classical |
 | 4 | Variety |
 | 5 | Anime |
+| 6 | Kids / Children's Songs |
 | 7 | Vocaloid |
+| 12 | How to Play (tutorial folder) |
 
-Green's stock browser also contains Kids/Children's Songs and Medley. Cues 6 and
-8 are the two unresolved candidates for those categories; neither assignment
-has been confirmed by listening, so neither is enabled in code. `VO_SELECT.nub` contains
+Kids (cue 6) and the tutorial folder (cue 12) were observed in a trace of the stock
+browser. Green's Medley category remains unresolved (cue 8 is the remaining
+candidate) and is not enabled in code. `VO_SELECT.nub` contains
 additional category, event, prompt, and navigation voices after this range.
 Those cues remain intentionally unmapped until both their spoken meaning and
 trigger conditions are identified. Unknown catalog categories likewise remain
@@ -33,6 +35,23 @@ The root browser reports a settled category through
 `NotifyGenreFolder(category, -1, false)`. The host resolves that category index
 against the pinned catalog, then plays its cue once. Opening a folder does not
 cut off the announcement; an explicit `StopVoice` or leaving Song Select does.
+
+## Tutorial
+
+The how-to-play movie asks for its sounds through `LumenMethod`. Observed routing:
+
+| Request | Bank | Cue |
+| --- | --- | ---: |
+| Scene load (host) | `VO_HOWTOPLAY.nub` | 0 |
+| `VOICE_REQUEST(0, n)` | `VO_HOWTOPLAY.nub` | n - 1 |
+| `SE_REQUEST(0, 0)` (Don) | `SE_COM.nub` | 0 |
+| `SE_REQUEST(0, 1)` (Ka) | `SE_COM.nub` | 3 |
+| `SE_REQUEST(0, 2)` (rim) | `SE_HOWTOPLAY.nub` | 0 |
+| `SE_REQUEST(0, 4)` (balloon) | `SE_HOWTOPLAY.nub` | 2 |
+| `SE_REQUEST(0, 5)` (kusudama) | `SE_HOWTOPLAY.nub` | 3 |
+
+Its music is `bgm/nub/JINGLE_DOJO.nub`, looped while it plays. Requests 3 (clear)
+and 6 were not observed; the engine sends them to cues 1 and 4 by the same pattern.
 
 ## Common effects
 

@@ -288,6 +288,19 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
+    public async Task TutorialFolderComesFirstInNormalSelectOnly()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var view = new SongSelectCatalogView(snapshot, tutorial: true);
+        Assert.Equal(0, view.TutorialCategory);
+        Assert.Equal(SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
+            view.Categories[0].Presentation);
+        Assert.Equal(-1, new SongSelectCatalogView(snapshot).TutorialCategory);
+        Assert.Equal(-1, new SongSelectCatalogView(snapshot, SongSelectMode.Waiwai, tutorial: true).TutorialCategory);
+    }
+
+    [Fact]
     public async Task FavouritesFolderComesFirstPerLibraryAndPersists()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);

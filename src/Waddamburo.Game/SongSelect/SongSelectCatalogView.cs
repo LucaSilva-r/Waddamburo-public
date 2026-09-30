@@ -58,6 +58,9 @@ public sealed class SongSelectCatalogView
     /// <summary>The spine art of library folders (its name goes in the movie's feature_board_* slots).</summary>
     public const string FeatureLabel = "イベント";
 
+    /// <summary>The how-to-play folder (GenreResource id 0): deciding it plays the tutorial movie.</summary>
+    public const string TutorialLabel = "あそびかた説明";
+
     /// <summary>The favourites folder's art (GenreResource.FAVORITE).</summary>
     public const string FavouritesLabel = "お気に入り";
 
@@ -69,11 +72,12 @@ public sealed class SongSelectCatalogView
     /// with two players (traced last in both selects).
     /// <paramref name="favourites"/> lists the marked songs of the shown library in a folder first
     /// (where the game assigns お気に入り, after おすすめ); see <see cref="RefreshFavourites"/>.
+    /// <paramref name="tutorial"/> puts the how-to-play folder first (traced: normal select, until watched).
     /// </summary>
-    // ponytail: Waiwai's "how to play" folder (id 21, before the switch) is left out until tutorials exist.
+    // ponytail: Waiwai's "how to play" folder (id 21, before the switch; waiwai_tutorial) is left out, untraced.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
-        IEnumerable<SongKey>? favourites = null)
+        IEnumerable<SongKey>? favourites = null, bool tutorial = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -85,7 +89,12 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(new CategoryKey(library ?? SongSourceKind.Stock, "favourites"), "Favourites",
                 FavouritesLabel, SongCategoryPresentation.AlwaysVisible, boardStyle(""), marked(favourites)),
         };
-        var categories = favouriteFolder.Concat(snapshot.Categories
+        var tutorialFolder = !tutorial || mode != SongSelectMode.Normal ? [] : new[]
+        {
+            new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "tutorial"), "How to Play", TutorialLabel,
+                SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), []),
+        };
+        var categories = tutorialFolder.Concat(favouriteFolder).Concat(snapshot.Categories
             .Where(category => library is null || category.Key.Source == library)
             .Select(category => new SongSelectCategory(
             category.Key,
@@ -154,6 +163,9 @@ public sealed class SongSelectCatalogView
 
     /// <summary>Index of the mode-switch folder, or -1.</summary>
     public int ModeSwitchCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == ModeSwitchLabel);
+
+    /// <summary>Index of the how-to-play folder, or -1.</summary>
+    public int TutorialCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == TutorialLabel);
 
     public long Revision { get; }
 

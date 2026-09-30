@@ -109,7 +109,7 @@ When a root category settles, authored `NotifyGenreFolder(category, -1, false)`
 is resolved through the pinned catalog's semantic category name rather than its
 display index. The audio adapter maps the verified `VO_SELECT` cues as Namco
 Original (0), J-POP (1), Game Music (2), Classical (3), Variety (4), Anime (5),
-and Vocaloid (7). Kids and Medley remain unresolved. The
+Kids (6), Vocaloid (7) and the tutorial folder (12). Medley remains unresolved. The
 category announcement plays once on the voice bus and can finish after its
 folder opens. The
 verified mappings and intentionally unresolved ranges are maintained in

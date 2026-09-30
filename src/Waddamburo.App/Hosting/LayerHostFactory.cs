@@ -102,6 +102,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Two players browse Waiwai's song select (and may switch to the normal one).</summary>
     public bool Waiwai { get; set; }
 
+    /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
+    public bool TutorialSeen { get; set; }
+
     /// <summary>The song library normal Song Select lists (home mode switches between them).</summary>
     public SongSourceKind Library
     {
@@ -215,6 +218,7 @@ internal sealed class LayerHostFactory(
             "waiwai-result-board-1" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 1)),
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
+            "tutorial" => tutorialHost(),
             "gameover" => gameOverHost(),
             "attract" => attractHost(),
             "boot" => new LumenLayerHost(null),
@@ -264,7 +268,7 @@ internal sealed class LayerHostFactory(
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
-            links: linked.Where(library => library != Library), favourites: Favourites?.Songs);
+            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
@@ -330,6 +334,12 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost retryHost()
     {
         var binding = Retry = new RetryGameHostBinding(don, sounds?.Retry);
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    private LumenLayerHost tutorialHost()
+    {
+        var binding = new TutorialHostBinding(PlayerSide, TwoPlayers, sounds is null ? null : sounds.Frontend.PlayCue, don);
         return new LumenLayerHost(binding, binding.Attach);
     }
 

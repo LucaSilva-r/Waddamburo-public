@@ -21,6 +21,7 @@ internal static class FlowScenes
     public static readonly SceneId Result = new("result");
     public static readonly SceneId Retry = new("retry");
     public static readonly SceneId GameOver = new("gameover");
+    public static readonly SceneId Tutorial = new("tutorial");
 
     public static SceneDefinition Rainbow { get; } = RainbowTransitionComposition.Create(new SceneId("rainbow-transition"));
 
@@ -84,6 +85,10 @@ internal static class FlowScenes
         // Traced end of a credit: the revival drum roll after a failed first song, then game over.
         new SceneDefinition(SceneDefinition.CurrentVersion, Retry, [
             new SceneLayerDefinition("enso_result/packeddata.ddp", "retry_game/retry_game.lm", LumenMatrix.Identity, "retry"),
+        ]),
+        // Traced: the how-to-play folder cuts straight to the tutorial movie, full screen.
+        new SceneDefinition(SceneDefinition.CurrentVersion, Tutorial, [
+            new SceneLayerDefinition("tutorial/packeddata.ddp", "tutorial/tutorial.lm", LumenMatrix.Identity, "tutorial"),
         ]),
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),

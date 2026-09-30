@@ -130,7 +130,17 @@ internal sealed class GameShell : IDisposable
     public TaikoSongInfo SongInfo { get; set; } = new(0, 1);
 
     /// <summary>Songs played this credit.</summary>
-    public int SongsPlayed { get; set; }
+    // A new credit (0) offers the tutorial again.
+    public int SongsPlayed
+    {
+        get;
+        set
+        {
+            field = value;
+            if (value == 0)
+                Hosts.TutorialSeen = false;
+        }
+    }
 
     /// <summary>The credit's joined drums (0 left, 1 right).</summary>
     public SortedSet<int> JoinedSides { get; } = [];
@@ -384,6 +394,7 @@ internal sealed class GameShell : IDisposable
         _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this, _gameplay);
+        var songSelect = new SongSelectFlow(this, _gameplay, calibration);
         _scenes = new()
         {
             [FlowScenes.Boot] = _attract,
@@ -392,7 +403,8 @@ internal sealed class GameShell : IDisposable
             [FlowScenes.Caution] = _attract,
             [FlowScenes.Movie] = _attract,
             [FlowScenes.Entry] = entry,
-            [FlowScenes.SongSelect] = new SongSelectFlow(this, _gameplay, calibration),
+            [FlowScenes.SongSelect] = songSelect,
+            [FlowScenes.Tutorial] = songSelect,
             [FlowScenes.Gameplay] = _gameplay,
             [FlowScenes.Calibration] = calibration,
             [FlowScenes.Result] = ending,
@@ -457,7 +469,7 @@ internal sealed class GameShell : IDisposable
                 if (Don is null) return;
                 if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
                     Don.MapPlayerZero = Hosts.PlayerSide == 1;
-                else if (host is "player-entry" or "song-select" or "gameover")
+                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial")
                     Don.MapPlayerZero = false;
             };
             Hosts.CardDialog = open => _indicators.CardDialog(open);
