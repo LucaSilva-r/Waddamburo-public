@@ -57,9 +57,9 @@ public sealed class FriendPairingClient(HttpClient http)
     public async Task<PairingState> PollAsync(bool accepting, CancellationToken cancellationToken = default)
     {
         using var response = await http.PostAsJsonAsync("api/wdb/pairing",
-            new { accepting, session = _session, ack = _ack }, ScoreClient.Json, cancellationToken).ConfigureAwait(false);
+            new Request(accepting, _session, _ack), ScoreJson.Default.Request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        var reply = (await response.Content.ReadFromJsonAsync<Reply>(ScoreClient.Json, cancellationToken).ConfigureAwait(false))!;
+        var reply = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.Reply, cancellationToken).ConfigureAwait(false))!;
         return Apply(reply);
     }
 
@@ -85,6 +85,8 @@ public sealed class FriendPairingClient(HttpClient http)
                 return new PairingState.Closed();
         }
     }
+
+    internal sealed record Request(bool Accepting, string? Session, string? Ack);
 
     public sealed record Reply(string Status, string? Session, string? Code, int? ExpiresIn, string? CommandId, ScoreProfile? Friend);
 }
@@ -151,14 +153,16 @@ public sealed class PairingClient(HttpClient http, string cabinetId)
         return new PairingState.Closed();
     }
 
+    internal sealed record CardRequest(string AccessCode);
+
     /// <summary>The profile behind a paired card (cabinet token; POST api/wdb/cards).</summary>
     public async Task<ScoreProfile?> ResolveCardAsync(string accessCode, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PostAsJsonAsync("api/wdb/cards", new { access_code = accessCode },
-            ScoreClient.Json, cancellationToken).ConfigureAwait(false);
+        using var response = await http.PostAsJsonAsync("api/wdb/cards", new CardRequest(accessCode),
+            ScoreJson.Default.CardRequest, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ScoreProfile>(ScoreClient.Json, cancellationToken).ConfigureAwait(false);
+        return await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoreProfile, cancellationToken).ConfigureAwait(false);
     }
 }

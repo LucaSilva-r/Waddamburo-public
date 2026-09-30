@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Waddamburo.App;
 
@@ -58,6 +59,9 @@ internal static class Strings
         if (name is null)
             return null;
         using var stream = assembly.GetManifestResourceStream(name)!;
-        return JsonSerializer.Deserialize<Dictionary<string, string>>(stream);
+        return JsonSerializer.Deserialize(stream, StringsJson.Default.DictionaryStringString);
     }
 }
+
+[JsonSerializable(typeof(Dictionary<string, string>))]
+internal sealed partial class StringsJson : JsonSerializerContext;

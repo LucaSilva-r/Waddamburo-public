@@ -53,14 +53,14 @@ public sealed class AccountBook
         var path = Path.Combine(directory, FileName);
         if (File.Exists(path))
         {
-            var file = JsonSerializer.Deserialize<StoredBook>(File.ReadAllText(path), ScoreClient.Json)!;
+            var file = JsonSerializer.Deserialize(File.ReadAllText(path), ScoreJson.Default.StoredBook)!;
             return new AccountBook(path, [.. file.Accounts], file.Default);
         }
         var book = new AccountBook(path, [], null);
         var legacy = Path.Combine(directory, LegacyFileName);
         if (File.Exists(legacy))
         {
-            var account = JsonSerializer.Deserialize<ScoreAccount>(File.ReadAllText(legacy), ScoreClient.Json)!;
+            var account = JsonSerializer.Deserialize(File.ReadAllText(legacy), ScoreJson.Default.ScoreAccount)!;
             book.Add(account, makeDefault: true);
             File.Delete(legacy);
         }
@@ -131,8 +131,8 @@ public sealed class AccountBook
         if (!OperatingSystem.IsWindows())
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         using var stream = new FileStream(_path, options);
-        JsonSerializer.Serialize(stream, new StoredBook(_accounts, DefaultBaid), ScoreClient.Json);
+        JsonSerializer.Serialize(stream, new StoredBook(_accounts, DefaultBaid), ScoreJson.Default.StoredBook);
     }
 
-    private sealed record StoredBook(List<ScoreAccount> Accounts, long? Default);
+    internal sealed record StoredBook(List<ScoreAccount> Accounts, long? Default);
 }

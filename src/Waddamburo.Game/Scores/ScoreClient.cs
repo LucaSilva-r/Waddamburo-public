@@ -33,10 +33,8 @@ public sealed class ScoreClient(HttpClient http)
 {
     private const int BatchSize = 50;
 
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-    };
+    /// <summary>The API's JSON options (snake_case), backed by the generated <see cref="ScoreJson"/>.</summary>
+    public static JsonSerializerOptions Json => ScoreJson.Default.Options;
 
     private int _syncing;
 
@@ -64,40 +62,40 @@ public sealed class ScoreClient(HttpClient http)
         CancellationToken cancellationToken = default)
     {
         using var response = await http.PostAsJsonAsync("api/wdb/login",
-            new { login, password, code, device }, Json, cancellationToken).ConfigureAwait(false);
+            new LoginRequest(login, password, code, device), ScoreJson.Default.LoginRequest, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
         {
-            var error = await response.Content.ReadFromJsonAsync<JsonElement>(Json, cancellationToken).ConfigureAwait(false);
+            var error = await response.Content.ReadFromJsonAsync(ScoreJson.Default.JsonElement, cancellationToken).ConfigureAwait(false);
             if (error.TryGetProperty("two_factor", out _))
                 throw new TwoFactorRequiredException();
             throw new InvalidOperationException(error.TryGetProperty("message", out var message)
                 ? message.GetString() : "Login failed.");
         }
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<ScoreAccount>(Json, cancellationToken).ConfigureAwait(false))!;
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoreAccount, cancellationToken).ConfigureAwait(false))!;
     }
 
     /// <summary>In-game login without a password, step 1: a code for the player to enter on the website.</summary>
     public async Task<DeviceLoginStart> StartDeviceLoginAsync(string device, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PostAsJsonAsync("api/wdb/device", new { device }, Json, cancellationToken)
+        using var response = await http.PostAsJsonAsync("api/wdb/device", new DeviceRequest(device), ScoreJson.Default.DeviceRequest, cancellationToken)
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<DeviceLoginStart>(Json, cancellationToken).ConfigureAwait(false))!;
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DeviceLoginStart, cancellationToken).ConfigureAwait(false))!;
     }
 
     /// <summary>Step 2 (polled every Interval seconds): the account once approved; null while pending.</summary>
     /// <exception cref="InvalidOperationException">Denied or expired.</exception>
     public async Task<ScoreAccount?> PollDeviceLoginAsync(string deviceCode, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PostAsJsonAsync("api/wdb/device/token", new { device_code = deviceCode }, Json,
+        using var response = await http.PostAsJsonAsync("api/wdb/device/token", new DeviceTokenRequest(deviceCode), ScoreJson.Default.DeviceTokenRequest,
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        var reply = await response.Content.ReadFromJsonAsync<JsonElement>(Json, cancellationToken).ConfigureAwait(false);
+        var reply = await response.Content.ReadFromJsonAsync(ScoreJson.Default.JsonElement, cancellationToken).ConfigureAwait(false);
         return reply.GetProperty("status").GetString() switch
         {
             "pending" => null,
-            "approved" => reply.Deserialize<ScoreAccount>(Json),
+            "approved" => reply.Deserialize(ScoreJson.Default.ScoreAccount),
             var status => throw new InvalidOperationException(status == "denied" ? "The login was refused." : "The code expired."),
         };
     }
@@ -109,17 +107,17 @@ public sealed class ScoreClient(HttpClient http)
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             return null;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ScoreProfile>(Json, cancellationToken).ConfigureAwait(false);
+        return await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoreProfile, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The top three players' bests per chart hash (song select's score windows).</summary>
     public async Task<Dictionary<string, List<RankingEntry>>> RankingsAsync(IReadOnlyCollection<string> charts,
         CancellationToken cancellationToken = default)
     {
-        using var response = await http.PostAsJsonAsync("api/wdb/rankings", new { charts }, Json, cancellationToken)
+        using var response = await http.PostAsJsonAsync("api/wdb/rankings", new RankingsRequest(charts), ScoreJson.Default.RankingsRequest, cancellationToken)
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<RankingsResult>(Json, cancellationToken).ConfigureAwait(false))!
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.RankingsResult, cancellationToken).ConfigureAwait(false))!
             .Rankings;
     }
 
@@ -129,7 +127,7 @@ public sealed class ScoreClient(HttpClient http)
         var path = baid is { } cabinetBaid ? $"api/wdb/bests?baid={cabinetBaid}" : "api/wdb/bests";
         using var response = await http.GetAsync(path, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<BestsResult>(Json, cancellationToken).ConfigureAwait(false))!.Bests;
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.BestsResult, cancellationToken).ConfigureAwait(false))!.Bests;
     }
 
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
@@ -149,15 +147,15 @@ public sealed class ScoreClient(HttpClient http)
         var sent = 0;
         while (store.PendingPlays(baid, BatchSize) is { Count: > 0 } batch)
         {
-            using var response = await http.PostAsJsonAsync("api/wdb/plays", new { plays = batch }, Json, cancellationToken)
+            using var response = await http.PostAsJsonAsync("api/wdb/plays", new PlaysRequest(batch), ScoreJson.Default.PlaysRequest, cancellationToken)
                 .ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            var result = (await response.Content.ReadFromJsonAsync<PlaysResult>(Json, cancellationToken).ConfigureAwait(false))!;
+            var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.PlaysResult, cancellationToken).ConfigureAwait(false))!;
             foreach (var sha in result.MissingCharts)
             {
                 if (store.Chart(sha) is not { } chart)
                     continue;
-                using var upload = await http.PutAsJsonAsync($"api/wdb/charts/{sha}", chart, Json, cancellationToken)
+                using var upload = await http.PutAsJsonAsync($"api/wdb/charts/{sha}", chart, ScoreJson.Default.ChartUpload, cancellationToken)
                     .ConfigureAwait(false);
                 upload.EnsureSuccessStatusCode();
             }
@@ -194,9 +192,19 @@ public sealed class ScoreClient(HttpClient http)
         });
     }
 
-    private sealed record BestsResult(List<RemoteBest> Bests);
+    internal sealed record LoginRequest(string Login, string Password, string? Code, string Device);
 
-    private sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
+    internal sealed record DeviceRequest(string Device);
 
-    private sealed record PlaysResult(List<Guid> Accepted, List<string> MissingCharts);
+    internal sealed record DeviceTokenRequest(string DeviceCode);
+
+    internal sealed record RankingsRequest(IReadOnlyCollection<string> Charts);
+
+    internal sealed record PlaysRequest(List<UploadPlay> Plays);
+
+    internal sealed record BestsResult(List<RemoteBest> Bests);
+
+    internal sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
+
+    internal sealed record PlaysResult(List<Guid> Accepted, List<string> MissingCharts);
 }
