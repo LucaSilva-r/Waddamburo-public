@@ -5,10 +5,28 @@ namespace Waddamburo.Game.Tests;
 public sealed class ArcadeTests
 {
     [Fact]
-    public void TitleLanguageDefaultsToEnglish()
+    public void LanguagesDefaultToTheSystems()
     {
-        Assert.True(ArcadeSettings.Parse("").EnglishTitles);
+        var japanese = ArcadeSettings.SystemLanguage == "ja";
+        Assert.Equal((ArcadeSettings.SystemLanguage, !japanese), (ArcadeSettings.Parse("").Language, ArcadeSettings.Parse("").EnglishTitles));
         Assert.False(ArcadeSettings.Parse("title_language = japanese").EnglishTitles);
+        Assert.Equal("ja", ArcadeSettings.Parse("language = JA").Language);
+    }
+
+    [Fact]
+    public void UpgradeReplacesTheOldTitleLanguageWithTheSystems()
+    {
+        var upgraded = ArcadeSettings.Upgrade("""
+            config_version = 13
+            # Song titles in english (translated, when known) or japanese (the original).
+            title_language = english
+            music_volume = 40
+            """);
+        var settings = ArcadeSettings.Parse(upgraded);
+        Assert.Equal((ArcadeSettings.SystemLanguage, ArcadeSettings.SystemLanguage != "ja", 40),
+            (settings.Language, settings.EnglishTitles, settings.MusicVolume));
+        Assert.Single(upgraded.Split('\n'), static line => line.StartsWith("title_language", StringComparison.Ordinal));
+        Assert.Single(upgraded.Split('\n'), static line => line.StartsWith("# Song titles", StringComparison.Ordinal));
     }
 
     [Fact]

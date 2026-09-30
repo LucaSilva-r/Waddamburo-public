@@ -24,6 +24,11 @@
                       LogicalName="Waddamburo.Upscale.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- UI text per language (Strings.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Languages/*.json" LogicalName="Waddamburo.Languages.%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />

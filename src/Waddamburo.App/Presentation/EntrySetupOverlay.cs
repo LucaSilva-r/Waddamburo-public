@@ -58,8 +58,8 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
                 else
                 {
                     // Two lines, so it fits between the arrows.
-                    quads.Add(text("Join with", StandX[side], StandY - 26, 200, 48, tagStyle: false, scale));
-                    quads.Add(text("code", StandX[side], StandY + 28, 200, 48, tagStyle: false, scale));
+                    quads.Add(text(Strings.T("setup.join_with"), StandX[side], StandY - 26, 200, 48, tagStyle: false, scale));
+                    quads.Add(text(Strings.T("setup.code"), StandX[side], StandY + 28, 200, 48, tagStyle: false, scale));
                 }
             }
             if (column.Message is { } message)

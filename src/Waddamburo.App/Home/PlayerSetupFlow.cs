@@ -262,11 +262,11 @@ internal sealed class PlayerSetupFlow : IDisposable
         var online = _server is not null;
         return
         [
-            new(SetupChoiceKind.Guest, "Guest"),
+            new(SetupChoiceKind.Guest, Strings.T("setup.guest")),
             .. _book.Accounts.Select(account => new SetupChoice(SetupChoiceKind.Account,
                 account.Profile.DisplayName, account.Baid, account.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null,
                 account.Baid == _book.DefaultBaid) { Look = account.Look }),
-            .. online ? [new SetupChoice(SetupChoiceKind.Friend, "Join with code"), new(SetupChoiceKind.AddAccount, "Sign in")]
+            .. online ? [new SetupChoice(SetupChoiceKind.Friend, Strings.T("setup.join_with_code")), new(SetupChoiceKind.AddAccount, Strings.T("setup.sign_in"))]
                 : Array.Empty<SetupChoice>(),
         ];
     }
@@ -304,7 +304,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var side = _sides[index];
         int? seconds = side.Code is null ? null
             : Math.Max(0, (int)Math.Ceiling((side.CodeDeadline - DateTime.UtcNow).TotalSeconds));
-        var message = !side.Ready && sameAccount() ? "Already chosen by the other player" : side.Message;
+        var message = !side.Ready && sameAccount() ? Strings.T("setup.already_chosen") : side.Message;
         return new SetupColumn(current(index), side.Ready, side.Code, seconds, message) { QrUrl = side.Code is null ? null : side.QrUrl };
     }
 
@@ -334,12 +334,12 @@ internal sealed class PlayerSetupFlow : IDisposable
     {
         if (_workSide >= 0 && _workSide != index)
         {
-            _sides[index].Message = "Wait for the other player's code first.";
+            _sides[index].Message = Strings.T("setup.wait_for_code");
             return null;
         }
         cancelWork();
         _workSide = index;
-        _sides[index].Message = "Connecting...";
+        _sides[index].Message = Strings.T("setup.connecting");
         return _work = new CancellationTokenSource();
     }
 
@@ -397,7 +397,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             }
             catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
             {
-                post(() => finishWork(work, index, $"Login failed: {exception.Message}"));
+                post(() => finishWork(work, index, Strings.T("setup.login_failed", exception.Message)));
             }
             catch (OperationCanceledException)
             {
@@ -411,7 +411,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var owner = _book.Default ?? (_book.Accounts is [var first, ..] ? first : null);
         if (owner is null || _clientFor(owner.Token) is not { } ownerClient)
         {
-            _sides[index].Message = "Friends can join once this PC has an account (Sign in).";
+            _sides[index].Message = Strings.T("setup.friends_need_account");
             return;
         }
         if (beginWork(index) is not { } work)
@@ -444,7 +444,7 @@ internal sealed class PlayerSetupFlow : IDisposable
                                     loadAvatar(url);
                                 break;
                             case PairingState.Rejected:
-                                finishWork(work, index, "That card has no TaikOnline account.");
+                                finishWork(work, index, Strings.T("setup.no_account"));
                                 break;
                         }
                     });
@@ -458,7 +458,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             }
             catch (HttpRequestException exception)
             {
-                post(() => finishWork(work, index, $"Pairing failed: {exception.Message}"));
+                post(() => finishWork(work, index, Strings.T("setup.pairing_failed", exception.Message)));
             }
             catch (OperationCanceledException)
             {

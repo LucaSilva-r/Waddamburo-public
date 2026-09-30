@@ -348,7 +348,7 @@ internal sealed class GameShell : IDisposable
             // A card given to the drum, or the account chosen for it in the home player setup.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
-            PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : TaikoGuest.Profiles[side]?.Name,
+            PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
         };
         if (Arcade.Home && Options.Accounts is { } setupBook)
             _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);

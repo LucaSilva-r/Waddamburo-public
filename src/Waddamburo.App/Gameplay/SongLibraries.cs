@@ -65,7 +65,7 @@ internal sealed class SongLibraries : IDisposable
 
     /// <summary>Null when vgmstream-cli is found, else what to do about it.</summary>
     public static string? VgmstreamProblem => VgmstreamCli.IsInstalled ? null
-        : "The music needs vgmstream-cli next to the game: get it from github.com/vgmstream/vgmstream/releases.";
+        : Strings.T("library.no_vgmstream");
 
     private static bool usable(NijiiroCatalogProvider installation)
     {

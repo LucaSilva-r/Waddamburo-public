@@ -202,7 +202,7 @@ internal sealed class PlayerSetupController : IDisposable
         bool[] standVisible = [shell.Tick >= _revealAt[0], shell.Tick >= _revealAt[1]];
         string?[] tags = live is not null
             ? [.. live.Select(static column => column.Choice.Label)]
-            : [.. Enumerable.Range(0, 2).Select(side => shell.JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? "Guest" : null)];
+            : [.. Enumerable.Range(0, 2).Select(side => shell.JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : null)];
         var quads = overlay.Quads(columns, tags, standVisible);
         if (columns is null)
             return quads;

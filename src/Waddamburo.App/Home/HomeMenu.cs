@@ -5,6 +5,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Providers.Stock;
+using static Waddamburo.App.Strings;
 
 namespace Waddamburo.App.Home;
 
@@ -56,8 +57,6 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         public Func<ArcadeSettings, string>? FormatFor { get; init; }
     }
 
-    private const string Restart = " Applies after a restart.";
-
     /// <summary>A song library the player points at a folder (picked in the system's folder dialog).</summary>
     private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, bool Nijiiro);
 
@@ -96,99 +95,98 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     private static readonly Row[] Rows_ =
     [
-        new("Songs"),
-        new(Library: new("Custom TJA songs", static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, Nijiiro: false)),
-        new(Library: new("Nijiiro songs", static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, Nijiiro: true)),
-        new(Setting: toggle("Fast Song Scrolling", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v },
-            "Song Select: the list keeps up with quick rim hits and the mouse wheel; Page Up/Down or three quick rim hits skip ten songs. Off: the original.")),
-        new("Volume"),
-        new(Setting: volume("Master Volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm,
-            "Everything the game plays.")),
-        new(Setting: volume("Music Volume", static s => s.MusicVolume, static (s, v) => s with { MusicVolume = v }, AudioBus.Bgm,
-            "Songs, previews and menu music.")),
-        new(Setting: volume("Drum Volume", static s => s.DrumVolume, static (s, v) => s with { DrumVolume = v }, null,
-            "Your drum hits.")),
-        new(Setting: volume("Effects Volume", static s => s.EffectsVolume, static (s, v) => s with { EffectsVolume = v },
-            AudioBus.MenuSound, "Menu and game sound effects.")),
-        new(Setting: volume("Don-chan Voice", static s => s.VoiceVolume, static (s, v) => s with { VoiceVolume = v }, AudioBus.Voice,
-            "Don-chan's calls and cheers.")),
-        new("Timing"),
-        new(Command: new("Calibrate Audio", HomeMenuAction.Calibrate,
-            "Sets the Audio Offset: move the notes until each click lands as its note reaches the circle.")),
-        new(Setting: offset("Audio Offset", static s => s.AudioOffsetMs, static (s, v) => s with { AudioOffsetMs = v },
-            "+ if you hear the music late: notes and judgement move later to meet it. - if you hear it early.")),
-        new(Setting: offset("Input Offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v },
-            "+ if your hits land late (mostly LATE): they are judged earlier. - if they land early.")),
-        new(Setting: new("Drum Debounce", static s => s.DrumDebounceMs, static (s, v) => s with { DrumDebounceMs = v },
+        new(T("section.language")),
+        // Each language by its own name, so a player who cannot read the current one still finds theirs.
+        new(Setting: new(T("settings.language"),
+            static s => Math.Max(0, Array.IndexOf(Available, s.Language == "auto" ? Language : s.Language)),
+            static (s, v) => s with { Language = Available[v] }, static (value, step) => value + Math.Sign(step), 0,
+            static value => Name(Available[value]), Available.Length - 1, Hint: T("settings.language.hint"))),
+        new(Setting: new(T("settings.title_language"), static s => s.EnglishTitles ? 0 : 1, static (s, v) => s with { EnglishTitles = v == 0 },
+            static (value, _) => 1 - value, 0, static value => Name(value == 0 ? "en" : "ja"), 1, Hint: T("settings.title_language.hint"))),
+        new(T("section.songs")),
+        new(Library: new(T("library.tja"), static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, Nijiiro: false)),
+        new(Library: new(T("library.nijiiro"), static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, Nijiiro: true)),
+        new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
+        new(T("section.volume")),
+        new(Setting: volume("settings.master_volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm)),
+        new(Setting: volume("settings.music_volume", static s => s.MusicVolume, static (s, v) => s with { MusicVolume = v }, AudioBus.Bgm)),
+        new(Setting: volume("settings.drum_volume", static s => s.DrumVolume, static (s, v) => s with { DrumVolume = v }, null)),
+        new(Setting: volume("settings.effects_volume", static s => s.EffectsVolume, static (s, v) => s with { EffectsVolume = v },
+            AudioBus.MenuSound)),
+        new(Setting: volume("settings.voice_volume", static s => s.VoiceVolume, static (s, v) => s with { VoiceVolume = v }, AudioBus.Voice)),
+        new(T("section.timing")),
+        new(Command: new(T("settings.calibrate"), HomeMenuAction.Calibrate, T("settings.calibrate.hint"))),
+        new(Setting: offset("settings.audio_offset", static s => s.AudioOffsetMs, static (s, v) => s with { AudioOffsetMs = v })),
+        new(Setting: offset("settings.input_offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v })),
+        new(Setting: new(T("settings.drum_debounce"), static s => s.DrumDebounceMs, static (s, v) => s with { DrumDebounceMs = v },
             static (value, step) => value + step, 0,
-            static value => value == 0 ? "Off" : $"{value} ms (rolls up to {2000 / value}/s)", 100,
-            Hint: "For a drum that sends double hits: every pad ignores a hit this soon after its last one. "
-                + "Rolls are capped too: each pad hits at most 1000 / this times a second, a two-hand roll twice that.")),
-        new("Controls"),
-        new(Command: new("Drum Controls", HomeMenuAction.Controls, "The keys, controller buttons and MIDI notes that hit each drum pad.")),
-        new("Sound"),
-        new(Setting: toggle("Stereo Panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v },
-            "With two players, each side's sounds come from its own speaker.")),
-        new(Setting: toggle("Mute in Background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v },
-            "Fade the sound out while the window is in the background.")),
-        new(Setting: new("Audio Buffer", static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
+            static value => value == 0 ? T("value.off") : T("settings.drum_debounce.value", value, 2000 / value), 100,
+            Hint: T("settings.drum_debounce.hint"))),
+        new(T("section.controls")),
+        new(Command: new(T("settings.drum_controls"), HomeMenuAction.Controls, T("settings.drum_controls.hint"))),
+        new(T("section.sound")),
+        new(Setting: toggle("settings.stereo_panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v })),
+        new(Setting: toggle("settings.mute_in_background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v })),
+        new(Setting: new(T("settings.audio_buffer"), static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
-            static value => $"{value} frames", 2048, Hint: "Smaller is lower latency; raise it if the sound crackles." + Restart)),
-        new(Setting: new("Exclusive Audio", static s => s.AudioExclusive ? 1 : 0, static (s, v) => s with { AudioExclusive = v != 0 },
-            static (value, _) => 1 - value, 0, static value => value != 0 ? "On" : "Off", 1,
-            Hint: "Windows: the sound device for the game alone, for the lowest latency." + Restart)),
-        new("Display"),
-        new(Setting: new("Fullscreen", static s => !s.Fullscreen ? 0 : exclusive(s) ? 2 : 1,
+            static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint"))),
+        new(Setting: toggle("settings.exclusive_audio", static s => s.AudioExclusive, static (s, v) => s with { AudioExclusive = v })),
+        new(T("section.display")),
+        new(Setting: new(T("settings.fullscreen"), static s => !s.Fullscreen ? 0 : exclusive(s) ? 2 : 1,
             static (s, v) => s with { Fullscreen = v != 0, ExclusiveFullscreen = v == 2 ? true : v == 1 ? false : s.ExclusiveFullscreen },
-            static (value, step) => value + Math.Sign(step), 0, static value => value switch { 0 => "Off", 1 => "Borderless", _ => "Exclusive" },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => T(value switch { 0 => "value.off", 1 => "settings.fullscreen.borderless", _ => "settings.fullscreen.exclusive" }),
             ExclusiveAvailable ? 2 : 1,
-            Hint: ExclusiveAvailable ? "Exclusive takes the screen at its own resolution: lighter on older PCs. F11 switches to a window and back."
-                : "F11 switches to a window and back.")),
-        new(Shown: exclusive, Setting: new("Resolution",
+            Hint: T(ExclusiveAvailable ? "settings.fullscreen.hint_exclusive" : "settings.fullscreen.hint"))),
+        new(Shown: exclusive, Setting: new(T("settings.resolution"),
             static s => Array.IndexOf(resolutions, (s.FullscreenWidth, s.FullscreenHeight)) + 1,
             static (s, v) => (v = Math.Min(v, resolutions.Length)) == 0
                 ? s with { FullscreenWidth = 0, FullscreenHeight = 0, RefreshRate = 0 }
                 : s with { FullscreenWidth = resolutions[v - 1].Width, FullscreenHeight = resolutions[v - 1].Height, RefreshRate = 0 },
             static (value, step) => value + Math.Sign(step), 0,
-            static value => value == 0 || value > resolutions.Length ? "Native" : $"{resolutions[value - 1].Width}x{resolutions[value - 1].Height}",
-            int.MaxValue, Hint: "Also the size upscaled textures load at (screens loaded next). A 4:3 one shows the game letterboxed.")),
-        new(Shown: static s => exclusive(s) && s.FullscreenWidth > 0, Setting: new("Refresh Rate",
+            static value => value == 0 || value > resolutions.Length ? T("settings.resolution.native") : $"{resolutions[value - 1].Width}x{resolutions[value - 1].Height}",
+            int.MaxValue, Hint: T("settings.resolution.hint"))),
+        new(Shown: static s => exclusive(s) && s.FullscreenWidth > 0, Setting: new(T("settings.refresh_rate"),
             static s => Array.IndexOf(rates(s), s.RefreshRate) + 1,
             static (s, v) => s with { RefreshRate = Math.Min(v, rates(s).Length) is var index and > 0 ? rates(s)[index - 1] : 0 },
             static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue,
-            Hint: "The screen's refresh rate at this resolution.") { FormatFor = static s => s.RefreshRate == 0 ? "Highest" : $"{s.RefreshRate} Hz" }),
-        new(Setting: toggle("VSync", static s => s.Vsync, static (s, v) => s with { Vsync = v },
-            "Wait for the screen's refresh: no tearing. Off draws as fast as the PC can (or up to the frame limit).")),
-        new(Shown: static s => !exclusive(s), Setting: new("Frame Limit",
+            Hint: T("settings.refresh_rate.hint"))
+        {
+            FormatFor = static s => s.RefreshRate == 0 ? T("settings.refresh_rate.highest") : T("settings.refresh_rate.value", s.RefreshRate),
+        }),
+        new(Setting: toggle("settings.vsync", static s => s.Vsync, static (s, v) => s with { Vsync = v })),
+        new(Shown: static s => !exclusive(s), Setting: new(T("settings.frame_limit"),
             static s => Math.Max(0, Array.IndexOf(FpsCaps, s.FpsCap)),
             static (s, v) => s with { FpsCap = FpsCaps[Math.Min(v, FpsCaps.Length - 1)] },
-            static (value, step) => value + Math.Sign(step), 0, static value => value == 0 ? "Off" : $"{FpsCaps[value]} FPS", FpsCaps.Length - 1,
-            Hint: "Frames drawn per second at most (window and borderless): less heat and power.")),
-        new(Setting: new("Letterbox Size", static s => s.LetterboxSize, static (s, v) => s with { LetterboxSize = v },
-            static (value, step) => value + step, 20, static value => value == 100 ? "Off" : $"{value}%", 100,
-            Hint: "Shrink the game inside the screen, as in osu!.")),
-        new(Shown: static s => s.LetterboxSize < 100, Setting: new("Letterbox X", static s => s.LetterboxX, static (s, v) => s with { LetterboxX = v },
-            static (value, step) => value + step, 0, static value => $"{value}%", 100, Hint: "Where the shrunk game sits: 0% left, 100% right.")),
-        new(Shown: static s => s.LetterboxSize < 100, Setting: new("Letterbox Y", static s => s.LetterboxY, static (s, v) => s with { LetterboxY = v },
-            static (value, step) => value + step, 0, static value => $"{value}%", 100, Hint: "Where the shrunk game sits: 0% top, 100% bottom.")),
-        new("Graphics"),
-        new(Setting: toggle("Upscaled Textures", static s => s.UpscaleTextures, static (s, v) => s with { UpscaleTextures = v },
-            "Sharper textures, upscaled 3x on this PC and kept in its cache. Applies to screens loaded next.")),
-        new(Setting: new("Background Upscaling", static s => s.UpscaleThreads, static (s, v) => s with { UpscaleThreads = v },
             static (value, step) => value + Math.Sign(step), 0,
-            static value => value == 0 ? "Off" : value == 1 ? "1 thread" : $"{value} threads", UpscaleThreadsMaximum,
-            Hint: "CPU threads that upscale textures not in the cache yet while you play (paused during songs).")),
-        new(Setting: new("Long Titles", static s => s.SquashTitles ? 1 : 0, static (s, v) => s with { SquashTitles = v != 0 },
-            static (value, _) => 1 - value, 0, static value => value != 0 ? "Squash" : "Shrink", 1,
-            Hint: "Song titles too long for their column: shrink the text, or squash it at full width like the arcade.")),
-        new(Command: new("Bake All Textures", HomeMenuAction.BakeTextures,
-            "Upscale every texture the game uses now, with most of the CPU. Stop at any time; finished ones are kept.")),
+            static value => value == 0 ? T("value.off") : T("settings.frame_limit.value", FpsCaps[value]), FpsCaps.Length - 1,
+            Hint: T("settings.frame_limit.hint"))),
+        new(Setting: new(T("settings.letterbox_size"), static s => s.LetterboxSize, static (s, v) => s with { LetterboxSize = v },
+            static (value, step) => value + step, 20, static value => value == 100 ? T("value.off") : T("value.percent", value), 100,
+            Hint: T("settings.letterbox_size.hint"))),
+        new(Shown: static s => s.LetterboxSize < 100, Setting: new(T("settings.letterbox_x"), static s => s.LetterboxX,
+            static (s, v) => s with { LetterboxX = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
+            Hint: T("settings.letterbox_x.hint"))),
+        new(Shown: static s => s.LetterboxSize < 100, Setting: new(T("settings.letterbox_y"), static s => s.LetterboxY,
+            static (s, v) => s with { LetterboxY = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
+            Hint: T("settings.letterbox_y.hint"))),
+        new(T("section.graphics")),
+        new(Setting: toggle("settings.upscaled_textures", static s => s.UpscaleTextures, static (s, v) => s with { UpscaleTextures = v })),
+        new(Setting: new(T("settings.background_upscaling"), static s => s.UpscaleThreads, static (s, v) => s with { UpscaleThreads = v },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => value == 0 ? T("value.off") : value == 1 ? T("settings.background_upscaling.one")
+                : T("settings.background_upscaling.many", value), UpscaleThreadsMaximum,
+            Hint: T("settings.background_upscaling.hint"))),
+        new(Setting: new(T("settings.long_titles"), static s => s.SquashTitles ? 1 : 0, static (s, v) => s with { SquashTitles = v != 0 },
+            static (value, _) => 1 - value, 0, static value => T(value != 0 ? "settings.long_titles.squash" : "settings.long_titles.shrink"), 1,
+            Hint: T("settings.long_titles.hint"))),
+        new(Command: new(T("settings.bake"), HomeMenuAction.BakeTextures, T("settings.bake.hint"))),
         new(),
     ];
 
     // The controls page: one player's pads on one kind of device at a time.
-    private static readonly string[] Devices = ["Keyboard", "Controller", "MIDI"];
-    private static readonly string[] Prompts = ["Press a key...", "Press a button...", "Hit the pad..."];
+    private static readonly string[] Devices = ["controls.device.keyboard", "controls.device.controller", "controls.device.midi"];
+    private static readonly string[] Prompts = ["controls.prompt.keyboard", "controls.prompt.controller", "controls.prompt.midi"];
     // A pad takes two keyboard keys at most (controllers and MIDI: any number).
     private const int MaximumKeys = 2;
     private bool _controlsPage;
@@ -199,23 +197,22 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     private Row[] controlRows => _controlRows ??=
     [
-        new(Setting: new("Player", _ => _player, (s, v) => { _player = v; return s; }, static (value, _) => 1 - value, 0,
-            static value => value == 0 ? "1" : "2", 1, Hint: "Whose drum to set up.")),
-        new(Setting: new("Device", _ => _device, (s, v) => { _device = v; return s; },
-            static (value, step) => value + Math.Sign(step), 0, static value => Devices[value], Devices.Length - 1,
-            Hint: "Keyboard keys, a controller's buttons, or a MIDI drum's notes.")),
-        new(Shown: _ => _device == 1, Setting: new("In Menus", static s => s.PadMenusAsDrum ? 1 : 0,
+        new(Setting: new(T("controls.player"), _ => _player, (s, v) => { _player = v; return s; }, static (value, _) => 1 - value, 0,
+            static value => value == 0 ? "1" : "2", 1, Hint: T("controls.player.hint"))),
+        new(Setting: new(T("controls.device"), _ => _device, (s, v) => { _device = v; return s; },
+            static (value, step) => value + Math.Sign(step), 0, static value => T(Devices[value]), Devices.Length - 1,
+            Hint: T("controls.device.hint"))),
+        new(Shown: _ => _device == 1, Setting: new(T("controls.in_menus"), static s => s.PadMenusAsDrum ? 1 : 0,
             static (s, v) => s with { PadMenusAsDrum = v != 0 }, static (value, _) => 1 - value, 0,
-            static value => value != 0 ? "Drum" : "Gamepad", 1,
-            Hint: "Gamepad: the D-pad moves, the bottom button picks, the right one or Start is Escape; the pads below count in songs only. Drum: the pads below everywhere.")),
-        new("Pads"),
-        new(Binding: new("Left Ka", 0)),
-        new(Binding: new("Left Don", 1)),
-        new(Binding: new("Right Don", 2)),
-        new(Binding: new("Right Ka", 3)),
-        new(Command: new("Set Up All Pads", HomeMenuAction.BindAllPads,
-            "Asks for each pad in turn; what you hit replaces what the pad had on this device. Escape stops.")),
-        new(Command: new("Reset to Default", HomeMenuAction.ResetControls, "This player's pads on this device back to their defaults.")),
+            static value => T(value != 0 ? "controls.in_menus.drum" : "controls.in_menus.gamepad"), 1,
+            Hint: T("controls.in_menus.hint"))),
+        new(T("controls.pads")),
+        new(Binding: new(T("controls.left_ka"), 0)),
+        new(Binding: new(T("controls.left_don"), 1)),
+        new(Binding: new(T("controls.right_don"), 2)),
+        new(Binding: new(T("controls.right_ka"), 3)),
+        new(Command: new(T("controls.set_up_all"), HomeMenuAction.BindAllPads, T("controls.set_up_all.hint"))),
+        new(Command: new(T("controls.reset"), HomeMenuAction.ResetControls, T("controls.reset.hint"))),
         new(),
     ];
 
@@ -244,7 +241,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public int Selection { get; private set; }
 
-    public string Title => Bake is not null ? "Upscaling Textures" : Calibration is not null ? "Audio Calibration" : _restartPrompt ? "Restart?" : _controlsPage ? "Drum Controls" : _settingsPage ? "Settings" : "Paused";
+    public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
+        : _restartPrompt ? "menu.title.restart" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
+        : "menu.title.paused");
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
     public Presentation.TextureBake? Bake
@@ -267,7 +266,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private long _calibrationDoneAt;
 
     /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
-    public string? Message => _restartPrompt ? "Some changes need a restart to apply." : null;
+    public string? Message => _restartPrompt ? T("menu.restart_message") : null;
 
     // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
@@ -279,13 +278,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         var now = get();
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
-            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder;
+            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder
+            || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The pause page's choices (the settings page draws <see cref="Items"/>).</summary>
-    public string[] Rows => _choices;
+    public string[] Rows => [.. _choices.Select(static choice => T(choice))];
 
     public bool SettingsPage => _settingsPage;
 
@@ -309,16 +309,15 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
         { Binding: { } binding } => new(ItemKind.Binding, binding.Label,
-            _listening && rows[Selection].Binding == binding ? Prompts[_device]
+            _listening && rows[Selection].Binding == binding ? T(Prompts[_device])
             : inputs(get().Controls[_player * 4 + binding.Pad]).Where(onDevice).ToArray() is { Length: > 0 } bound
-                ? string.Join(", ", bound.Select(describe)) : "None",
-            "Centre, then what should hit this pad: adds it (removes it if listed). Delete: clear."
-                + (_device == 0 ? " Two keys at most: a third replaces the oldest." : "")),
+                ? string.Join(", ", bound.Select(describe)) : T("value.none"),
+            T(_device == 0 ? "controls.pad.hint_keyboard" : "controls.pad.hint")),
         { Command: { Action: not HomeMenuAction.BakeTextures } command } => new(ItemKind.Command, command.Label, null, command.Hint),
         { Command: { } command } => cachedTextures() is { } cached
-            ? new(ItemKind.Command, command.Label, $"{cached:N0} cached", command.Hint)
-            : new(ItemKind.Command, command.Label, "Unavailable", "Upscaling is unavailable on this machine."),
-        _ => new(ItemKind.Back, "Back", null, "Save and return."),
+            ? new(ItemKind.Command, command.Label, T("settings.bake.cached", cached), command.Hint)
+            : new(ItemKind.Command, command.Label, T("settings.bake.unavailable"), T("settings.bake.unavailable_hint")),
+        _ => new(ItemKind.Back, T("menu.back"), null, T("menu.back.hint")),
     };
 
     private static string[] inputs(string list) =>
@@ -379,19 +378,19 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         var chosen = library.Get(get());
         var path = chosen ?? (library.Nijiiro ? null : defaultTjaFolder);
-        var what = library.Nijiiro ? "your Nijiiro installation" : "the folder with your .tja songs";
+        var choose = T("library.choose", T(library.Nijiiro ? "library.nijiiro.what" : "library.tja.what"));
         if (path is null)
-            return new(ItemKind.Library, library.Label, "Not set up", $"Centre: choose {what}.", LibraryState.Missing);
+            return new(ItemKind.Library, library.Label, T("library.not_set_up"), choose, LibraryState.Missing);
         path = Path.TrimEndingDirectorySeparator(path);
         // Nijiiro: the same checks as loading it (a library that cannot play is left out of Song Select).
         if (library.Nijiiro && nijiiroProblem(path) is { } problem)
-            return new(ItemKind.Library, library.Label, "Not usable", $"{problem} Centre: choose {what}.",
+            return new(ItemKind.Library, library.Label, T("library.not_usable"), $"{problem} {choose}",
                 LibraryState.Missing);
         if (!library.Nijiiro && !valid(path))
-            return new(ItemKind.Library, library.Label, "Not set up", $"No .tja songs there. Centre: choose {what}.",
+            return new(ItemKind.Library, library.Label, T("library.not_set_up"), $"{T("library.no_tja")} {choose}",
                 LibraryState.Missing);
         return new(ItemKind.Library, library.Label, Path.GetFileName(path),
-            chosen != library.Get(_atStart) ? "Restart the game to load these songs." : "Centre: choose another folder.",
+            T(chosen != library.Get(_atStart) ? "library.restart" : "library.choose_another"),
             LibraryState.Ready);
     }
 
@@ -419,7 +418,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private string? nijiiroProblem(string path)
     {
         if (!_nijiiroProblems.TryGetValue(path, out var problem))
-            _nijiiroProblems[path] = problem = new NijiiroCatalogProvider(path).Problem;
+            _nijiiroProblems[path] = problem = new NijiiroCatalogProvider(path) is var installation && !installation.Exists
+                ? T("library.no_nijiiro") : installation.Problem;
         return problem ?? SongLibraries.VgmstreamProblem;
     }
 
@@ -432,8 +432,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public void Open(bool gameplay, bool attract = false, bool songSelect = false)
     {
         _calibrationOffered = songSelect;
-        _choices = gameplay ? ["Resume", "Restart Song", "Settings", "Song Select"]
-            : attract ? ["Resume", "Settings"] : ["Resume", "Settings", "Return to Title"];
+        _choices = gameplay ? ["menu.resume", "menu.restart_song", "menu.settings", "menu.song_select"]
+            : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
         IsOpen = true;
         Selection = 0;
         _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = false;
@@ -493,7 +493,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 _declined = restartState();
                 _restartPrompt = false;
                 _choices = _pauseChoices;
-                Selection = Array.IndexOf(_choices, "Settings");
+                Selection = Array.IndexOf(_choices, "menu.settings");
             }
             return HomeMenuAction.None;
         }
@@ -506,13 +506,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             else if (decide)
                 switch (_choices[Selection])
                 {
-                    case "Settings":
+                    case "menu.settings":
                         _settingsPage = true;
                         Selection = move(0, 1);
                         break;
-                    case "Restart Song": return close(HomeMenuAction.Restart);
-                    case "Song Select": return close(HomeMenuAction.SongSelect);
-                    case "Return to Title": return close(HomeMenuAction.Title);
+                    case "menu.restart_song": return close(HomeMenuAction.Restart);
+                    case "menu.song_select": return close(HomeMenuAction.SongSelect);
+                    case "menu.return_to_title": return close(HomeMenuAction.Title);
                     default: return close(HomeMenuAction.Resume);
                 }
             return HomeMenuAction.None;
@@ -554,13 +554,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         else if (escape || decide && row == Rows_[^1])
         {
             _settingsPage = false;
-            Selection = Array.IndexOf(_choices, "Settings");
+            Selection = Array.IndexOf(_choices, "menu.settings");
             save();
             if (restartState() is { Length: > 0 } state && state != _declined)
             {
                 _restartPrompt = true;
                 _pauseChoices = _choices;
-                _choices = ["Restart Now", "Later"];
+                _choices = ["menu.restart_now", "menu.later"];
                 Selection = 0;
             }
         }
@@ -675,17 +675,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         return action;
     }
 
-    private static Setting volume(string label, Func<ArcadeSettings, int> read, Func<ArcadeSettings, int, ArcadeSettings> write,
-        AudioBus? bus, string hint) =>
-        new(label, read, write, static (value, step) => value + step, 0, static value => $"{value}%", 100, bus, hint);
+    // The label is key's text and the hint key.hint's.
+    private static Setting volume(string key, Func<ArcadeSettings, int> read, Func<ArcadeSettings, int, ArcadeSettings> write,
+        AudioBus? bus) =>
+        new(T(key), read, write, static (value, step) => value + step, 0, static value => T("value.percent", value), 100, bus,
+            T(key + ".hint"));
 
-    private static Setting toggle(string label, Func<ArcadeSettings, bool> read, Func<ArcadeSettings, bool, ArcadeSettings> write,
-        string hint) =>
-        new(label, s => read(s) ? 1 : 0, (s, v) => write(s, v != 0), static (value, _) => 1 - value, 0,
-            static value => value != 0 ? "On" : "Off", 1, Hint: hint);
+    private static Setting toggle(string key, Func<ArcadeSettings, bool> read, Func<ArcadeSettings, bool, ArcadeSettings> write) =>
+        new(T(key), s => read(s) ? 1 : 0, (s, v) => write(s, v != 0), static (value, _) => 1 - value, 0,
+            static value => T(value != 0 ? "value.on" : "value.off"), 1, Hint: T(key + ".hint"));
 
-    private static Setting offset(string label, Func<ArcadeSettings, int> read, Func<ArcadeSettings, int, ArcadeSettings> write,
-        string hint) =>
-        new(label, read, write, static (value, step) => value + step, -500,
-            static value => value.ToString("+0;-0;0", CultureInfo.InvariantCulture) + " ms", 500, Hint: hint);
+    private static Setting offset(string key, Func<ArcadeSettings, int> read, Func<ArcadeSettings, int, ArcadeSettings> write) =>
+        new(T(key), read, write, static (value, step) => value + step, -500,
+            static value => T("value.ms", value.ToString("+0;-0;0", CultureInfo.InvariantCulture)), 500, Hint: T(key + ".hint"));
 }

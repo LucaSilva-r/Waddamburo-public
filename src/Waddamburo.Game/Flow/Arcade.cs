@@ -13,10 +13,13 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 13;
+    public const int CurrentVersion = 14;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
+
+    // Version 14's languages: the system's (Japanese or English), for the menus and the song titles alike.
+    private const string LanguagePlaceholder = "{language}", TitleLanguagePlaceholder = "{title_language}";
 
     /// <summary>Settings added in each version (index = version - 1), as they are appended to older files.</summary>
     private static readonly string[] Additions =
@@ -36,11 +39,8 @@ public sealed record ArcadeSettings
         mode = {mode}
 
         """,
-        """
-        # Song titles in english (translated, when known) or japanese (the original).
-        title_language = english
-
-        """,
+        // Version 3's title_language moved to version 14 (which replaces it with the system's language).
+        "",
         """
         # Volumes in percent (0-100). These and the timing settings below can also be changed in
         # home mode's Escape menu > Settings, which saves them here.
@@ -151,6 +151,13 @@ public sealed record ArcadeSettings
         drum_debounce_ms = 0
 
         """,
+        """
+        # The game's menus and messages: en (English) or ja (Japanese). First set from the system's language.
+        language = {language}
+        # Song titles in english (translated, when known) or japanese (the original).
+        title_language = {title_language}
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -248,7 +255,13 @@ public sealed record ArcadeSettings
     public bool FreePlay { get; init; } = true;
 
     /// <summary>Song titles and subtitles in English when a song has them; false: the Japanese originals.</summary>
-    public bool EnglishTitles { get; init; } = true;
+    public bool EnglishTitles { get; init; } = SystemLanguage != "ja";
+
+    /// <summary>The menus' language code ("en", "ja"); "auto" follows the system's at each start.</summary>
+    public string Language { get; init; } = SystemLanguage;
+
+    /// <summary>"ja" on a Japanese system, else "en": the languages Waddamburo and the song titles both have.</summary>
+    public static string SystemLanguage => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ja" ? "ja" : "en";
 
     public int MasterVolume { get; init; } = 50;
 
@@ -338,7 +351,10 @@ public sealed record ArcadeSettings
         # cabinet_token: a cabinet token from the server admin; players then log in with a 6-digit code.
         # cabinet_token =
 
-        """ + string.Concat(Additions).Replace(ModePlaceholder, "home");
+        """ + placeholders(string.Concat(Additions), "home");
+
+    private static string placeholders(string text, string mode) => text.Replace(ModePlaceholder, mode)
+        .Replace(LanguagePlaceholder, SystemLanguage).Replace(TitleLanguagePlaceholder, SystemLanguage == "ja" ? "japanese" : "english");
 
     /// <summary>Reads the file, writing the defaults first when it does not exist and upgrading an older one.</summary>
     public static ArcadeSettings LoadOrCreate(string path)
@@ -363,12 +379,16 @@ public sealed record ArcadeSettings
         var version = settings.Version;
         if (version >= CurrentVersion)
             return text;
-        var kept = text.Split('\n').Where(static line => !isKey(line, "config_version"));
+        // Version 14 replaces the older title_language (and its comment) with the system's language.
+        var kept = text.Split('\n').Where(line => !isKey(line, "config_version")
+            && !(version < 14 && (isKey(line, "title_language") || line.Trim() == TitleLanguageComment)));
         var mode = settings.CabinetToken is not null || !settings.FreePlay ? "arcade" : "home";
         return string.Join('\n', kept).TrimEnd() + "\n\n"
-            + string.Concat(Additions[version..]).Replace(ModePlaceholder, mode)
+            + placeholders(string.Concat(Additions[version..]), mode)
             + $"config_version = {CurrentVersion}\n";
     }
+
+    private const string TitleLanguageComment = "# Song titles in english (translated, when known) or japanese (the original).";
 
     private static bool isKey(string line, string key)
     {
@@ -426,6 +446,7 @@ public sealed record ArcadeSettings
                     "japanese" => false,
                     _ => throw new InvalidDataException($"{FileName} line {index}: title_language is english or japanese, not '{value}'."),
                 } },
+                "language" => settings with { Language = value.Length > 0 ? value.ToLowerInvariant() : SystemLanguage },
                 "master_volume" => settings with { MasterVolume = integer(value, index, 0, 100) },
                 "music_volume" => settings with { MusicVolume = integer(value, index, 0, 100) },
                 "drum_volume" => settings with { DrumVolume = integer(value, index, 0, 100) },
@@ -523,6 +544,8 @@ public sealed record ArcadeSettings
             ["drum_debounce_ms"] = settings.DrumDebounceMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
+            ["language"] = settings.Language,
+            ["title_language"] = settings.EnglishTitles ? "english" : "japanese",
         };
         for (var pad = 0; pad < ControlKeys.Length; pad++)
             values[ControlKeys[pad]] = settings.Controls[pad];

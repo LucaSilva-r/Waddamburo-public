@@ -4,6 +4,7 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
 using Waddamburo.Game.Flow;
+using static Waddamburo.App.Strings;
 
 namespace Waddamburo.App.Presentation;
 
@@ -185,7 +186,7 @@ internal sealed class HomePauseOverlay : IDisposable
             bake.Phase == TextureBake.BakePhase.Scanning ? new(0.55f, 0.75f, 0.95f, 1) : new(1, 0.55f, 0.1f, 1)));
         quads.Add(slot("percent", $"{Math.Floor(fraction * 100):0}%", 640, barY + barHeight / 2, 200, 30));
         quads.Add(slot("speed", _bakeText[1], 640, 404, 860, 30));
-        quads.Add(slot("hint", bake.Running ? "Escape or centre: stop (finished textures are kept)." : "Escape or centre: back.",
+        quads.Add(slot("hint", T(bake.Running ? "bake.hint.running" : "bake.hint.done"),
             640, 550, 860, 27));
     }
 
@@ -194,37 +195,37 @@ internal sealed class HomePauseOverlay : IDisposable
     {
         quads.Add(rect(_white, 0, 580, 1280, 100, new(0, 0, 0, 0.7f)));
         quads.Add(slot("calibration",
-            $"Make each click land as its note reaches the circle. ({signed(calibration.AudioOffsetMs)})", 640, 612, 1100, 36));
+            T("calibration.instructions", signed(calibration.AudioOffsetMs)), 640, 612, 1100, 36));
         quads.Add(slot("calibration-hint",
-            "Don't drum along. Left rim: notes earlier, right rim: later. Big don (both centres): done.", 640, 652, 1100, 28));
+            T("calibration.controls"), 640, 652, 1100, 28));
     }
 
-    private static string signed(int ms) => ms.ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture) + " ms";
+    private static string signed(int ms) => T("value.ms", ms.ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture));
 
     // The finished calibration in the menu panel: the offset, save or discard.
     private void calibrationResult(List<RenderQuad> quads, LatencyCalibration calibration)
     {
-        quads.Add(label($"Audio Offset {signed(calibration.AudioOffsetMs)}", 640, 320, 860, 40));
-        quads.Add(label("Centre or Enter: save it. Escape: discard.", 640, 550, 860, 27));
+        quads.Add(label(T("calibration.result", signed(calibration.AudioOffsetMs)), 640, 320, 860, 40));
+        quads.Add(label(T("calibration.save"), 640, 550, 860, 27));
     }
 
     private static string[] bakeText(TextureBake bake)
     {
-        static string time(TimeSpan span) => span.TotalHours >= 1 ? $"{(int)span.TotalHours} h {span.Minutes} min"
-            : span.TotalMinutes >= 1 ? $"{(int)span.TotalMinutes} min" : $"{Math.Max(1, (int)span.TotalSeconds)} s";
+        static string time(TimeSpan span) => span.TotalHours >= 1 ? T("time.hours", (int)span.TotalHours, span.Minutes)
+            : span.TotalMinutes >= 1 ? T("time.minutes", (int)span.TotalMinutes) : T("time.seconds", Math.Max(1, (int)span.TotalSeconds));
         return bake.Phase switch
         {
-            TextureBake.BakePhase.Scanning => [$"Finding the textures to upscale ({bake.ArchivesScanned} of {bake.ArchivesTotal})",
-                $"{bake.TexturesCached:N0} already upscaled"],
-            TextureBake.BakePhase.Upscaling => [$"{bake.TexturesDone:N0} of {bake.TexturesTotal:N0} textures",
+            TextureBake.BakePhase.Scanning => [T("bake.scanning", bake.ArchivesScanned, bake.ArchivesTotal),
+                T("bake.already", bake.TexturesCached)],
+            TextureBake.BakePhase.Upscaling => [T("bake.progress", bake.TexturesDone, bake.TexturesTotal),
                 bake.Remaining is { } left
-                    ? $"{bake.MegapixelsPerSecond:F2} MP/s on {bake.Threads} threads, about {time(left)} left"
-                    : $"Starting on {bake.Threads} threads"],
-            TextureBake.BakePhase.Done => [bake.TexturesTotal == 0 ? "Every texture is already upscaled"
-                : $"Done: {bake.TexturesDone:N0} textures upscaled", $"in {time(bake.Elapsed)}"],
-            TextureBake.BakePhase.Stopped => [$"Stopped: {bake.TexturesDone:N0} textures upscaled and kept",
-                $"{bake.TexturesTotal - bake.TexturesDone:N0} left for the next bake"],
-            _ => ["The bake failed", bake.Error ?? ""],
+                    ? T("bake.speed", bake.MegapixelsPerSecond, bake.Threads, time(left))
+                    : T("bake.starting", bake.Threads)],
+            TextureBake.BakePhase.Done => [bake.TexturesTotal == 0 ? T("bake.nothing")
+                : T("bake.done", bake.TexturesDone), T("bake.took", time(bake.Elapsed))],
+            TextureBake.BakePhase.Stopped => [T("bake.stopped", bake.TexturesDone),
+                T("bake.left", bake.TexturesTotal - bake.TexturesDone)],
+            _ => [T("bake.failed"), bake.Error ?? ""],
         };
     }
 

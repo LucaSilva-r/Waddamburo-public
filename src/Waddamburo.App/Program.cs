@@ -1,3 +1,4 @@
+using Waddamburo.App;
 using Waddamburo.App.Cli;
 using Waddamburo.App.Flow;
 using Waddamburo.App.Hosting;
@@ -88,6 +89,8 @@ try
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         ReleaseConsole.Show(arcade.ShowConsole);
+        Strings.Use(arcade.Language);
+        Console.WriteLine($"Language: {Strings.Language}");
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
         if (arcade.Renderer is not null && Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER") is null)
             Environment.SetEnvironmentVariable("WADDAMBURO_RENDERER", arcade.Renderer);
