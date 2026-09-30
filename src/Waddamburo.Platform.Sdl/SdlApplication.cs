@@ -16,6 +16,19 @@ public sealed unsafe class SdlApplication : IDisposable
     private bool _sdlInitialized;
     private bool _disposed;
     private readonly HashSet<SdlKeyboardKey> _pressedKeys = [];
+    // The physical inputs held down; _pressedKeys is what they translate to.
+    private readonly HashSet<SdlInput> _heldInputs = [];
+    private readonly (SDL_JoystickID Id, IntPtr Pad)[] _pads = new (SDL_JoystickID, IntPtr)[MaximumPads];
+    private readonly MidiInput _midi = new();
+    private SdlInputBindings _bindings = SdlInputBindings.Keyboard;
+    private bool _capturing;
+    private SdlInput? _captured;
+
+    /// <summary>Controllers numbered for bindings (pad1..), in the order they were connected.</summary>
+    public const int MaximumPads = 4;
+
+    // A trigger is pressed past the first value and released under the second (of 32767).
+    private const int TriggerPress = 16000, TriggerRelease = 12000;
 
     public SdlApplication(
         string title,
@@ -36,6 +49,9 @@ public sealed unsafe class SdlApplication : IDisposable
             if (!SDL_Init(SDL_InitFlags.SDL_INIT_VIDEO))
                 throw sdlFailure("initialize SDL video");
             _sdlInitialized = true;
+            // Controllers are optional: without the subsystem the keyboard still plays.
+            if (!SDL_InitSubSystem(SDL_InitFlags.SDL_INIT_GAMEPAD))
+                Console.Error.WriteLine($"Controllers unavailable: {SDL_GetError()}");
 
             var windowFlags = highPixelDensity
                 ? SDL_WindowFlags.SDL_WINDOW_HIGH_PIXEL_DENSITY
@@ -232,6 +248,164 @@ public sealed unsafe class SdlApplication : IDisposable
         return new SdlDonRenderer(_renderer!, assetRoot);
     }
 
+    /// <summary>What hits each drum pad (the keyboard alone until set).</summary>
+    public SdlInputBindings Bindings
+    {
+        get => _bindings;
+        set
+        {
+            _bindings = value ?? throw new ArgumentNullException(nameof(value));
+            refreshPressedKeys();
+        }
+    }
+
+    /// <summary>
+    /// Takes the next key, button, trigger or MIDI note pressed out of the input, for a binding (see
+    /// <see cref="TakeCaptured"/>). Escape or a controller's Start cancels; the other keys the menus
+    /// need (Enter, the arrows, ...) are ignored.
+    /// </summary>
+    public void BeginCapture()
+    {
+        _capturing = true;
+        _captured = null;
+    }
+
+    /// <summary>Still waiting for the input <see cref="BeginCapture"/> asked for.</summary>
+    public bool Capturing => _capturing;
+
+    /// <summary>The captured input (once), or null when the capture was cancelled.</summary>
+    public SdlInput? TakeCaptured()
+    {
+        var captured = _captured;
+        _captured = null;
+        return captured;
+    }
+
+    public void CancelCapture() => _capturing = false;
+
+    /// <summary>The input's name for the player: a key as the keyboard's layout prints it, "Pad1 L1", "MIDI 36".</summary>
+    public static string Describe(SdlInput input) => input.Kind switch
+    {
+        SdlInputKind.Key => SDL_GetKeyName(keycode(input))
+            is { Length: > 0 } key ? key
+            : SDL_GetScancodeName((SDL_Scancode)input.Code) is { Length: > 0 } scancode ? scancode : input.Token,
+        SdlInputKind.PadButton => $"Pad{input.Device} " + (SDL_GamepadButton)input.Code switch
+        {
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP => "Up",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN => "Down",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT => "Left",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT => "Right",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER => "L1",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER => "R1",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_LEFT_STICK => "L3",
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_RIGHT_STICK => "R3",
+            // South, East, ...: the face buttons by place (their letters differ between controllers).
+            _ => System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
+                input.Token[(input.Token.IndexOf(':') + 1)..].Replace('_', ' ')),
+        },
+        SdlInputKind.PadTrigger => $"Pad{input.Device} "
+            + ((SDL_GamepadAxis)input.Code == SDL_GamepadAxis.SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? "L2" : "R2"),
+        _ => $"MIDI {input.Code}",
+    };
+
+    /// <summary>
+    /// Controllers work as gamepads while <see cref="MenuInput"/> is set (D-pad moves, the bottom button
+    /// picks, the right one and Start are Escape) and hit their bound pads in songs only. False: a drum
+    /// that shows up as a controller, its bound pads everywhere.
+    /// </summary>
+    public bool PadsAsGamepad { get; set; } = true;
+
+    /// <summary>The game is in a menu, not on a gameplay lane (set by the host each tick).</summary>
+    public bool MenuInput
+    {
+        get => _menuInput;
+        set
+        {
+            if (_menuInput == value)
+                return;
+            _menuInput = value;
+            refreshPressedKeys();
+        }
+    }
+
+    private bool _menuInput;
+
+    // A controller in a menu: the first drives player 1's drum, the second player 2's (left ka, left don, right ka).
+    private static SdlKeyboardKey? menuButton(SdlInput input)
+    {
+        var drum = input.Device == 2 ? 4 : 0;
+        return input.Kind != SdlInputKind.PadButton ? null : (SDL_GamepadButton)input.Code switch
+        {
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP => SdlInputBindings.Pads[drum],
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN => SdlInputBindings.Pads[drum + 3],
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH => SdlInputBindings.Pads[drum + 1],
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START => SdlKeyboardKey.Escape,
+            _ => null,
+        };
+    }
+
+    // What an input is to the game: its pad when bound; else a key is itself (but a pad's own letter,
+    // unbound, is nothing) and a controller's Start is Escape.
+    private SdlKeyboardKey? translate(SdlInput input) => _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
+        : _bindings.Pad(input) ?? input.Kind switch
+    {
+        SdlInputKind.Key => mapKey(keycode(input))
+            is { } key && !SdlInputBindings.Pads.Contains(key) ? key : null,
+        SdlInputKind.PadButton when input.Code == (int)SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START => SdlKeyboardKey.Escape,
+        _ => null,
+    };
+
+    // The key at that place in the keyboard's layout.
+    private static SDL_Keycode keycode(SdlInput input) =>
+        SDL_GetKeyFromScancode((SDL_Scancode)input.Code, SDL_Keymod.SDL_KMOD_NONE, false);
+
+    private void refreshPressedKeys()
+    {
+        _pressedKeys.Clear();
+        foreach (var input in _heldInputs)
+            if (translate(input) is { } key)
+                _pressedKeys.Add(key);
+    }
+
+    // An input went down: the key it presses, or null (held already, not bound, or taken by a capture).
+    private SdlKeyboardKey? inputDown(SdlInput input)
+    {
+        if (_capturing)
+        {
+            // The menus' own keys (neither letters nor digits) and a controller's Start cannot be bound.
+            var reserved = input.Kind switch
+            {
+                SdlInputKind.Key => mapKey(keycode(input)) is { } key && key is < SdlKeyboardKey.Digit0 or > SdlKeyboardKey.Z
+                    ? key : (SdlKeyboardKey?)null,
+                SdlInputKind.PadButton when input.Code == (int)SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START => SdlKeyboardKey.Escape,
+                _ => null,
+            };
+            if (reserved == SdlKeyboardKey.Escape)
+                _capturing = false;
+            else if (reserved is null)
+            {
+                _captured = input;
+                _capturing = false;
+            }
+            return null;
+        }
+        // A MIDI drum sends hits, not holds.
+        if (input.Kind != SdlInputKind.Midi && !_heldInputs.Add(input))
+            return null;
+        var pressed = translate(input);
+        if (pressed is { } held && input.Kind != SdlInputKind.Midi)
+            _pressedKeys.Add(held);
+        return pressed;
+    }
+
+    private void inputUp(SdlInput input)
+    {
+        if (_heldInputs.Remove(input))
+            refreshPressedKeys();
+    }
+
+    private int padNumber(SDL_JoystickID id) => Array.FindIndex(_pads, pad => pad.Pad != IntPtr.Zero && pad.Id == id) + 1;
+
     private volatile bool _quitRequested;
     private bool _discardElapsed;
 
@@ -305,6 +479,15 @@ public sealed unsafe class SdlApplication : IDisposable
         var previousTimestamp = Stopwatch.GetTimestamp();
         var running = true;
         var pendingPresses = new List<SdlKeyPress>();
+        void press(SdlInput input, ulong timestamp)
+        {
+            if (inputDown(input) is not { } key)
+                return;
+            if (key == SdlKeyboardKey.F5)
+                togglePerformanceOverlay?.Invoke();
+            else
+                pendingPresses.Add(new SdlKeyPress(key, TimeSpan.FromTicks(checked((long)(timestamp / 100)))));
+        }
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
         (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
         using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
@@ -326,6 +509,7 @@ public sealed unsafe class SdlApplication : IDisposable
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST)
                 {
+                    _heldInputs.Clear();
                     _pressedKeys.Clear();
                     windowFocused = false;
                     Focused = false;
@@ -358,29 +542,63 @@ public sealed unsafe class SdlApplication : IDisposable
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     or (uint)SDL_EventType.SDL_EVENT_KEY_UP)
                 {
-                    var key = mapKey(currentEvent.key.key);
-                    if (key is SdlKeyboardKey mapped)
+                    var input = new SdlInput(SdlInputKind.Key, (int)currentEvent.key.scancode);
+                    if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
+                        inputUp(input);
+                    else if (!currentEvent.key.repeat)
+                        press(input, currentEvent.key.timestamp);
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_ADDED)
+                {
+                    // The first free number: a controller plugged back in takes its old one.
+                    var free = Array.FindIndex(_pads, static pad => pad.Pad == IntPtr.Zero);
+                    if (free >= 0 && padNumber(currentEvent.gdevice.which) == 0
+                        && SDL_OpenGamepad(currentEvent.gdevice.which) is var pad && pad is not null)
                     {
-                        if (mapped == SdlKeyboardKey.F5)
-                        {
-                            if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && _pressedKeys.Add(mapped))
-                                togglePerformanceOverlay?.Invoke();
-                            else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
-                                _pressedKeys.Remove(mapped);
-                            continue;
-                        }
-                        if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
-                        {
-                            if (!_pressedKeys.Contains(mapped))
-                                pendingPresses.Add(new SdlKeyPress(mapped,
-                                    TimeSpan.FromTicks(checked((long)(currentEvent.key.timestamp / 100)))));
-                            _pressedKeys.Add(mapped);
-                        }
+                        _pads[free] = (currentEvent.gdevice.which, (IntPtr)pad);
+                        Console.WriteLine($"Controller pad{free + 1}: {SDL_GetGamepadName(pad)}");
+                    }
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_REMOVED)
+                {
+                    if (padNumber(currentEvent.gdevice.which) is var number and > 0)
+                    {
+                        SDL_CloseGamepad((SDL_Gamepad*)_pads[number - 1].Pad);
+                        _pads[number - 1] = default;
+                        _heldInputs.RemoveWhere(input => input.Device == number);
+                        refreshPressedKeys();
+                    }
+                }
+                else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_GAMEPAD_BUTTON_DOWN
+                    or (uint)SDL_EventType.SDL_EVENT_GAMEPAD_BUTTON_UP)
+                {
+                    if (padNumber(currentEvent.gbutton.which) is var number and > 0)
+                    {
+                        var input = new SdlInput(SdlInputKind.PadButton, currentEvent.gbutton.button, number);
+                        if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_BUTTON_DOWN)
+                            press(input, currentEvent.gbutton.timestamp);
                         else
-                            _pressedKeys.Remove(mapped);
+                            inputUp(input);
+                    }
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_AXIS_MOTION
+                    && (SDL_GamepadAxis)currentEvent.gaxis.axis is SDL_GamepadAxis.SDL_GAMEPAD_AXIS_LEFT_TRIGGER
+                        or SDL_GamepadAxis.SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
+                {
+                    if (padNumber(currentEvent.gaxis.which) is var number and > 0)
+                    {
+                        var input = new SdlInput(SdlInputKind.PadTrigger, currentEvent.gaxis.axis, number);
+                        if (currentEvent.gaxis.value > TriggerPress)
+                            press(input, currentEvent.gaxis.timestamp);
+                        else if (currentEvent.gaxis.value < TriggerRelease)
+                            inputUp(input);
                     }
                 }
             }
+            // MIDI arrives on its own threads, focused or not: the background's hits are dropped.
+            while (MidiInput.TryTake(out var note))
+                if (windowFocused)
+                    press(new SdlInput(SdlInputKind.Midi, note.Note), note.Timestamp);
 
             if (!running)
                 break;
@@ -605,6 +823,11 @@ public sealed unsafe class SdlApplication : IDisposable
 
     private void disposeNativeResources()
     {
+        _midi.Dispose();
+        foreach (var (_, pad) in _pads)
+            if (pad != IntPtr.Zero)
+                SDL_CloseGamepad((SDL_Gamepad*)pad);
+        Array.Clear(_pads);
         _renderer?.Dispose();
         _renderer = null;
         if (_bgfxInitialized)

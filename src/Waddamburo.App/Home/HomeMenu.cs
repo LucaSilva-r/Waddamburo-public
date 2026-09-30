@@ -27,17 +27,24 @@ internal enum HomeMenuAction
     Calibrate,
     /// <summary>The calibration page closed (saved or not): its sound stops.</summary>
     EndCalibration,
+    /// <summary>Open the drum controls page (this and the next two are done by the menu itself).</summary>
+    Controls,
+    /// <summary>Ask for each of the player's pads in turn on the chosen device.</summary>
+    BindAllPads,
+    /// <summary>The player's pads on the chosen device back to their defaults.</summary>
+    ResetControls,
 }
 
 /// <summary>
 /// Home mode's Escape menu: the pause choices (gameplay) or the session choices (entry, Song Select),
 /// and a settings page. Rims or Up/Down move, centre or Enter picks; on a setting, centre starts
 /// editing and the rims (or Left/Right at any time) change it: by 1, or by 5 then 10 when pressed
-/// quickly again and again. Each move plays a Ka, each pick a Don.
+/// quickly again and again. Each move plays a Ka, each pick a Don. The drum controls have their own
+/// page: one player's four pads on one device (keyboard, controller, MIDI) at a time.
 /// </summary>
 /// <remarks><paramref name="cachedTextures"/>: Textures in the upscale cache; null when upscaling is unavailable.</remarks>
 internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> apply, Action save, Action<bool> drum,
-    string defaultTjaFolder, Func<int?> cachedTextures)
+    string defaultTjaFolder, Func<int?> cachedTextures, SdlApplication input)
 {
     // Presses closer together than this keep a streak going; its length picks the step.
     private static readonly TimeSpan StreakGap = TimeSpan.FromMilliseconds(200);
@@ -57,10 +64,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>A row that starts something (the texture bake, the audio calibration).</summary>
     private sealed record Command(string Label, HomeMenuAction Action, string Hint);
 
-    // One settings row: a section header, a setting, a song library, a command, or Back (all null).
+    /// <summary>A drum pad's inputs on the controls page (Pad: 0-3 of the chosen player).</summary>
+    private sealed record Binding(string Label, int Pad);
+
+    // One settings row: a section header, a setting, a song library, a command, a drum pad, or Back (all null).
     // Shown: whether the row applies to the current settings (hidden rows are skipped); null = always.
     private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null, Command? Command = null,
-        Func<ArcadeSettings, bool>? Shown = null);
+        Func<ArcadeSettings, bool>? Shown = null, Binding? Binding = null);
+
 
     // Background upscaling may take all threads but one (the game needs its own).
     private static readonly int UpscaleThreadsMaximum = Math.Max(1, Environment.ProcessorCount - 1);
@@ -106,6 +117,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             "+ if you hear the music late: notes and judgement move later to meet it. - if you hear it early.")),
         new(Setting: offset("Input Offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v },
             "+ if your hits land late (mostly LATE): they are judged earlier. - if they land early.")),
+        new("Controls"),
+        new(Command: new("Drum Controls", HomeMenuAction.Controls, "The keys, controller buttons and MIDI notes that hit each drum pad.")),
         new("Sound"),
         new(Setting: toggle("Stereo Panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v },
             "With two players, each side's sounds come from its own speaker.")),
@@ -166,7 +179,40 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(),
     ];
 
-    public enum ItemKind { Header, Setting, Library, Command, Back }
+    // The controls page: one player's pads on one kind of device at a time.
+    private static readonly string[] Devices = ["Keyboard", "Controller", "MIDI"];
+    private static readonly string[] Prompts = ["Press a key...", "Press a button...", "Hit the pad..."];
+    // A pad takes two keyboard keys at most (controllers and MIDI: any number).
+    private const int MaximumKeys = 2;
+    private bool _controlsPage;
+    private int _player, _device;
+    // Pads still to ask for in Set Up All Pads, the selected one included; 0: one pad was picked.
+    private int _guided;
+    private Row[]? _controlRows;
+
+    private Row[] controlRows => _controlRows ??=
+    [
+        new(Setting: new("Player", _ => _player, (s, v) => { _player = v; return s; }, static (value, _) => 1 - value, 0,
+            static value => value == 0 ? "1" : "2", 1, Hint: "Whose drum to set up.")),
+        new(Setting: new("Device", _ => _device, (s, v) => { _device = v; return s; },
+            static (value, step) => value + Math.Sign(step), 0, static value => Devices[value], Devices.Length - 1,
+            Hint: "Keyboard keys, a controller's buttons, or a MIDI drum's notes.")),
+        new(Shown: _ => _device == 1, Setting: new("In Menus", static s => s.PadMenusAsDrum ? 1 : 0,
+            static (s, v) => s with { PadMenusAsDrum = v != 0 }, static (value, _) => 1 - value, 0,
+            static value => value != 0 ? "Drum" : "Gamepad", 1,
+            Hint: "Gamepad: the D-pad moves, the bottom button picks, the right one or Start is Escape; the pads below count in songs only. Drum: the pads below everywhere.")),
+        new("Pads"),
+        new(Binding: new("Left Ka", 0)),
+        new(Binding: new("Left Don", 1)),
+        new(Binding: new("Right Don", 2)),
+        new(Binding: new("Right Ka", 3)),
+        new(Command: new("Set Up All Pads", HomeMenuAction.BindAllPads,
+            "Asks for each pad in turn; what you hit replaces what the pad had on this device. Escape stops.")),
+        new(Command: new("Reset to Default", HomeMenuAction.ResetControls, "This player's pads on this device back to their defaults.")),
+        new(),
+    ];
+
+    public enum ItemKind { Header, Setting, Library, Command, Binding, Back }
 
     /// <summary>A song library's state: red (not set up), orange (set up, something missing), green.</summary>
     public enum LibraryState { Missing, Warning, Ready }
@@ -182,6 +228,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private string[] _choices = [];
     private bool _settingsPage;
     private bool _editing;
+    // Waiting for the input to bind to the selected pad.
+    private bool _listening;
     private long _lastChangeAt;
     private int _streak;
 
@@ -189,7 +237,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public int Selection { get; private set; }
 
-    public string Title => Bake is not null ? "Upscaling Textures" : Calibration is not null ? "Audio Calibration" : _restartPrompt ? "Restart?" : _settingsPage ? "Settings" : "Paused";
+    public string Title => Bake is not null ? "Upscaling Textures" : Calibration is not null ? "Audio Calibration" : _restartPrompt ? "Restart?" : _controlsPage ? "Drum Controls" : _settingsPage ? "Settings" : "Paused";
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
     public Presentation.TextureBake? Bake
@@ -241,7 +289,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // The rows shown for the current settings; Selection indexes these. Only rows below the one being
     // changed come and go, so the selection stays on it.
-    private Row[] rows => [.. Rows_.Where(row => (row.Shown?.Invoke(get()) ?? true)
+    private Row[] rows => [.. (_controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
         && (row.Command?.Action != HomeMenuAction.Calibrate || _calibrationOffered))];
 
     // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
@@ -253,12 +301,72 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         { Setting: { } setting } => new(ItemKind.Setting, setting.Label,
             setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
+        { Binding: { } binding } => new(ItemKind.Binding, binding.Label,
+            _listening && rows[Selection].Binding == binding ? Prompts[_device]
+            : inputs(get().Controls[_player * 4 + binding.Pad]).Where(onDevice).ToArray() is { Length: > 0 } bound
+                ? string.Join(", ", bound.Select(describe)) : "None",
+            "Centre, then what should hit this pad: adds it (removes it if listed). Delete: clear."
+                + (_device == 0 ? " Two keys at most: a third replaces the oldest." : "")),
         { Command: { Action: not HomeMenuAction.BakeTextures } command } => new(ItemKind.Command, command.Label, null, command.Hint),
         { Command: { } command } => cachedTextures() is { } cached
             ? new(ItemKind.Command, command.Label, $"{cached:N0} cached", command.Hint)
             : new(ItemKind.Command, command.Label, "Unavailable", "Upscaling is unavailable on this machine."),
         _ => new(ItemKind.Back, "Back", null, "Save and return."),
     };
+
+    private static string[] inputs(string list) =>
+        list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static string describe(string token) =>
+        SdlInput.TryParse(token, out var parsed) ? SdlApplication.Describe(parsed) : token;
+
+    // Keyboard 0, controller 1, MIDI 2 (the Devices).
+    private static int deviceOf(SdlInput input) => input.Kind switch { SdlInputKind.Key => 0, SdlInputKind.Midi => 2, _ => 1 };
+
+    private bool onDevice(string token) => SdlInput.TryParse(token, out var parsed) && deviceOf(parsed) == _device;
+
+    // The input joins the pad, leaving any other pad it hit (either player's). replace: the pad's others
+    // on this device go; else one already on the pad leaves it instead, and the oldest keys over the limit.
+    private void bind(int pad, SdlInput captured, bool replace)
+    {
+        var controls = get().Controls;
+        for (var other = 0; other < controls.Count; other++)
+        {
+            var bound = inputs(controls[other]);
+            var kept = bound.Where(token => token != captured.Token && !(replace && other == pad && onDevice(token)));
+            if (other == pad && (replace || !bound.Contains(captured.Token)))
+                kept = kept.Append(captured.Token);
+            if (other == pad && _device == 0)
+            {
+                var surplus = kept.Where(onDevice).SkipLast(MaximumKeys).ToHashSet();
+                kept = kept.Where(token => !surplus.Contains(token));
+            }
+            controls = controls.With(other, string.Join(", ", kept));
+        }
+        apply(get() with { Controls = controls });
+    }
+
+    // The player's pads get their default inputs of this device back (taken from wherever they are now).
+    private void resetControls()
+    {
+        var defaults = new ArcadeSettings().Controls;
+        var controls = get().Controls;
+        var restored = Enumerable.Range(_player * 4, 4).SelectMany(pad => inputs(defaults[pad]).Where(onDevice)).ToHashSet();
+        for (var pad = 0; pad < controls.Count; pad++)
+        {
+            var mine = pad / 4 == _player;
+            var kept = inputs(controls[pad]).Where(token => !restored.Contains(token) && !(mine && onDevice(token)));
+            controls = controls.With(pad, string.Join(", ", mine ? kept.Concat(inputs(defaults[pad]).Where(onDevice)) : kept));
+        }
+        apply(get() with { Controls = controls });
+    }
+
+    private void listen(int pads)
+    {
+        _guided = pads;
+        _listening = true;
+        input.BeginCapture();
+    }
 
     private Item libraryItem(Library library)
     {
@@ -321,7 +429,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             : attract ? ["Resume", "Settings"] : ["Resume", "Settings", "Return to Title"];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = _restartPrompt = false;
+        _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = false;
+        input.CancelCapture();
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
 
@@ -330,6 +439,30 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         if (Calibration is { } calibration)
             return calibrationInput(calibration, keys, escape);
+        // The platform holds the next input back for the pad (Escape there cancels, ending a guided setup).
+        if (_listening)
+        {
+            if (input.Capturing)
+                return HomeMenuAction.None;
+            if (input.TakeCaptured() is not { } captured)
+                _listening = false;
+            // Another device's input is not for this page: keep waiting.
+            else if (deviceOf(captured) != _device)
+                input.BeginCapture();
+            else
+            {
+                drum(true);
+                bind(_player * 4 + rows[Selection].Binding!.Pad, captured, replace: _guided > 0);
+                if (_guided > 1)
+                {
+                    Selection++;
+                    listen(_guided - 1);
+                }
+                else
+                    _listening = false;
+            }
+            return HomeMenuAction.None;
+        }
         var up = keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Z);
         var down = keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K) || keys.IsDown(SdlKeyboardKey.V);
         var decide = keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.Space)
@@ -403,6 +536,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 change(arrows != 0 ? arrows : keys.IsDown(SdlKeyboardKey.Up) ? 1 : keys.IsDown(SdlKeyboardKey.Down) ? -1
                     : up ? -1 : 1);
         }
+        else if (_controlsPage && (escape || decide && row == Rows_[^1]))
+        {
+            _controlsPage = false;
+            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.Controls);
+            save();
+        }
         else if (escape || decide && row == Rows_[^1])
         {
             _settingsPage = false;
@@ -426,6 +565,26 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _settingsPage = false;
             save();
             return close(HomeMenuAction.Calibrate);
+        }
+        else if (decide && row.Command is { Action: HomeMenuAction.Controls })
+        {
+            _controlsPage = true;
+            Selection = 0;
+        }
+        else if (decide && row.Command is { Action: HomeMenuAction.BindAllPads })
+        {
+            Selection = Array.FindIndex(rows, static shown => shown.Binding is not null);
+            listen(pads: 4);
+        }
+        else if (decide && row.Command is { Action: HomeMenuAction.ResetControls })
+            resetControls();
+        else if (decide && row.Binding is not null)
+            listen(pads: 0);
+        else if (keys.IsDown(SdlKeyboardKey.Delete) && row.Binding is { } binding)
+        {
+            drum(false);
+            var pad = _player * 4 + binding.Pad;
+            apply(get() with { Controls = get().Controls.With(pad, string.Join(", ", inputs(get().Controls[pad]).Where(token => !onDevice(token)))) });
         }
         else if (decide && row.Command is { } command && cachedTextures() is not null)
             return command.Action;

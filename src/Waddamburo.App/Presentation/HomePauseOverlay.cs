@@ -138,9 +138,11 @@ internal sealed class HomePauseOverlay : IDisposable
                 quads.Add(label(item.Label, ListX + ListWidth / 2, y + RowHeight / 2, 400, 30));
                 continue;
             }
-            quads.Add(label(item.Label, ListX + 22, y + RowHeight / 2, 420, 30, anchor: 0));
+            // A drum pad's inputs are a long list under a short name.
+            var wide = item.Kind == HomeMenu.ItemKind.Binding;
+            quads.Add(label(item.Label, ListX + 22, y + RowHeight / 2, wide ? 180 : 420, 30, anchor: 0));
             var value = selected && menu.Editing ? $"<  {item.Value}  >" : item.Value;
-            quads.Add(label(value, ListX + ListWidth - 22, y + RowHeight / 2, 320, 30, anchor: 1));
+            quads.Add(label(value, ListX + ListWidth - 22, y + RowHeight / 2, wide ? 540 : 320, 30, anchor: 1));
         }
         // Scrollbar: the visible part of the list.
         if (items.Length > VisibleRows)

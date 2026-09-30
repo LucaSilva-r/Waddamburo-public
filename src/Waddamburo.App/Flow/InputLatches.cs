@@ -76,7 +76,8 @@ internal sealed class InputLatches
 
     private static int? drumSide(IEnumerable<SdlKeyPress> presses) => presses.Select(static press => press.Key switch
     {
-        SdlKeyboardKey.D or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K => 0,
+        // Enter starts from the attract loop like a hit of the left drum.
+        SdlKeyboardKey.D or SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.K or SdlKeyboardKey.Enter => 0,
         SdlKeyboardKey.Z or SdlKeyboardKey.X or SdlKeyboardKey.C or SdlKeyboardKey.V => 1,
         _ => (int?)null,
     }).FirstOrDefault(static side => side is not null);

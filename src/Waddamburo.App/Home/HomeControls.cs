@@ -47,8 +47,9 @@ internal sealed class HomeControls : IDisposable
             shell.Arcade = settings;
             _audio.Apply(settings);
             shell.ApplyDisplay();
+            shell.ApplyControls();
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
-            shell.Options.TjaRoot, () => shell.Upscale?.CachedCount);
+            shell.Options.TjaRoot, () => shell.Upscale?.CachedCount, shell.Application);
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
@@ -57,6 +58,9 @@ internal sealed class HomeControls : IDisposable
     }
 
     private bool home => _shell.Arcade.Home;
+
+    /// <summary>The Escape menu is up (over a song too: controllers are gamepads in it).</summary>
+    public bool MenuOpen => _menu.IsOpen;
 
     private SceneId active => _shell.Active.Id;
 

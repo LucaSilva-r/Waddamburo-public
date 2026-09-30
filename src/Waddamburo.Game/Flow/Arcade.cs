@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 11;
+    public const int CurrentVersion = 12;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -121,7 +121,75 @@ public sealed record ArcadeSettings
         letterbox_y = 50
 
         """,
+        """
+        # Drum controls (also in the Settings menu): what hits each pad, separated by commas, any number
+        # per pad. A key is named by its place on a US keyboard (d, semicolon, kp_1), whatever yours prints
+        # there. pad1: to pad4: = a button of the first to fourth controller connected (dpad_left, south,
+        # east, west, north, left_shoulder, left_trigger, left_stick, ...). midi:<note> = a MIDI drum's note.
+        p1_left_ka = d, pad1:dpad_left, pad1:left_shoulder, pad1:left_trigger, midi:31
+        p1_left_don = f, pad1:dpad_down, pad1:dpad_right, pad1:left_stick, midi:35
+        p1_right_don = j, pad1:south, pad1:west, pad1:right_stick, midi:36
+        p1_right_ka = k, pad1:east, pad1:right_shoulder, pad1:right_trigger, midi:37
+        p2_left_ka = z, pad2:dpad_left, pad2:left_shoulder, pad2:left_trigger
+        p2_left_don = x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick
+        p2_right_don = c, pad2:south, pad2:west, pad2:right_stick
+        p2_right_ka = v, pad2:east, pad2:right_shoulder, pad2:right_trigger
+        # pad_menus: gamepad = in the menus a controller's D-pad moves, its bottom button picks and its
+        # right button or Start is Escape, and the pads above count in songs only; drum = a drum that
+        # shows up as a controller: the pads above everywhere.
+        pad_menus = gamepad
+
+        """,
     ];
+
+    /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
+    public static readonly string[] ControlKeys =
+    [
+        "p1_left_ka", "p1_left_don", "p1_right_don", "p1_right_ka",
+        "p2_left_ka", "p2_left_don", "p2_right_don", "p2_right_ka",
+    ];
+
+    /// <summary>
+    /// What hits each drum pad (<see cref="ControlKeys"/> order): inputs separated by ", " (a key by its
+    /// place, padN:button, midi:note). The platform layer reads them.
+    /// </summary>
+    public EquatableList Controls { get; init; } = new(
+    [
+        "d, pad1:dpad_left, pad1:left_shoulder, pad1:left_trigger, midi:31",
+        "f, pad1:dpad_down, pad1:dpad_right, pad1:left_stick, midi:35",
+        "j, pad1:south, pad1:west, pad1:right_stick, midi:36",
+        "k, pad1:east, pad1:right_shoulder, pad1:right_trigger, midi:37",
+        "z, pad2:dpad_left, pad2:left_shoulder, pad2:left_trigger",
+        "x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick",
+        "c, pad2:south, pad2:west, pad2:right_stick",
+        "v, pad2:east, pad2:right_shoulder, pad2:right_trigger",
+    ]);
+
+    /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
+    public bool PadMenusAsDrum { get; init; }
+
+    /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>
+    public sealed class EquatableList(IEnumerable<string> items) : IReadOnlyList<string>, IEquatable<EquatableList>
+    {
+        private readonly string[] _items = [.. items];
+
+        public string this[int index] => _items[index];
+
+        public int Count => _items.Length;
+
+        /// <summary>The list with one entry replaced.</summary>
+        public EquatableList With(int index, string item) => new(_items.Select((old, at) => at == index ? item : old));
+
+        public bool Equals(EquatableList? other) => other is not null && _items.SequenceEqual(other._items);
+
+        public override bool Equals(object? obj) => Equals(obj as EquatableList);
+
+        public override int GetHashCode() => _items.Aggregate(0, static (hash, item) => HashCode.Combine(hash, item));
+
+        public IEnumerator<string> GetEnumerator() => ((IEnumerable<string>)_items).GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => _items.GetEnumerator();
+    }
 
     /// <summary>The file's config_version (0: written before versioning).</summary>
     public int Version { get; init; }
@@ -370,6 +438,17 @@ public sealed record ArcadeSettings
                     "arcade" => false,
                     _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
                 } },
+                "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
+                {
+                    "gamepad" => false,
+                    "drum" => true,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: pad_menus is gamepad or drum, not '{value}'."),
+                } },
+                _ when Array.IndexOf(ControlKeys, key) is var pad and >= 0 => settings with
+                {
+                    Controls = settings.Controls.With(pad, string.Join(", ",
+                        value.ToLowerInvariant().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))),
+                },
                 _ => unknownSetting($"{FileName} line {index}: unknown setting '{key}'."),
             };
         }
@@ -422,7 +501,10 @@ public sealed record ArcadeSettings
             ["letterbox_size"] = settings.LetterboxSize,
             ["letterbox_x"] = settings.LetterboxX,
             ["letterbox_y"] = settings.LetterboxY,
+            ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
         };
+        for (var pad = 0; pad < ControlKeys.Length; pad++)
+            values[ControlKeys[pad]] = settings.Controls[pad];
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)
             foreach (var (key, value) in values)

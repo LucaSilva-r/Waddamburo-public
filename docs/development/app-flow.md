@@ -6,7 +6,7 @@ front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, 
 | Folder | Contents |
 |---|---|
 | `Cli/` | Command-line parsing (`--start-scene`, `--press`, `--invoke`, game data layout). |
-| `Flow/` | `GameShell` and one `FlowScene` per scene group (see below); `InputLatches` (presses between ticks, key pulses). |
+| `Flow/` | `GameShell` and one `FlowScene` per scene group (see below); `InputLatches` (presses between ticks, key pulses). Drum bindings: [input](input.md). |
 | `Home/` | Home mode: `HomeControls` (Escape menu, pause and resume countdown, quick restart, folder picker), `HomeMenu`, `MenuAudio`, `QuickRestart`, the player setup (`PlayerSetupController`, `PlayerSetupFlow`). |
 | `Online/` | `ScoreSync` (score database, uploads, server bests, rankings), cabinet pairing, server health, chart hashes. |
 | `Scenes/` | Scene ids and traced compositions (`FlowScenes`), gameplay layout, intermission, system indicators. |

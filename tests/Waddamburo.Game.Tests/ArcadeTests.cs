@@ -41,6 +41,7 @@ public sealed class ArcadeTests
         }, ArcadeSettings.Parse(upgraded));
         Assert.Contains("# my cabinet", upgraded, StringComparison.Ordinal);
         Assert.Contains("auto_update = true", upgraded, StringComparison.Ordinal);
+        Assert.Contains("p1_left_ka = d,", upgraded, StringComparison.Ordinal);
         Assert.Same(upgraded, ArcadeSettings.Upgrade(upgraded));
         Assert.Equal(ArcadeSettings.DefaultFileText, ArcadeSettings.Upgrade(ArcadeSettings.DefaultFileText));
     }
@@ -94,6 +95,8 @@ public sealed class ArcadeTests
         var path = Path.GetTempFileName();
         try
         {
+            // Two keys on one pad, as the settings menu binds them.
+            settings = settings with { Controls = settings.Controls.With(1, "f, g, pad1:south") };
             ArcadeSettings.SaveMenuSettings(path, settings);
             Assert.Equal(settings, ArcadeSettings.Parse(File.ReadAllText(path)) with { Version = settings.Version });
         }

@@ -170,6 +170,30 @@ internal sealed class GameShell : IDisposable
         Application.RequestQuit();
     }
 
+    /// <summary>Applies the drum pads' keys, buttons and MIDI notes (<paramref name="warn"/>: report the ones not understood).</summary>
+    public void ApplyControls(bool warn = false)
+    {
+        Application.Bindings = SdlInputBindings.Parse(Arcade.Controls,
+            warn ? problem => Console.Error.WriteLine($"Warning CONTROLS: {ArcadeSettings.FileName}: {problem}.") : null);
+        Application.PadsAsGamepad = !Arcade.PadMenusAsDrum;
+    }
+
+    // In the menus the arrows and Enter also work the drum: Left/Up and Right/Down are its rims, Enter its
+    // centre (player 1's, or player 2's when they play alone; the revival is always driven as player 1's).
+    private SdlKeyboardSnapshot menuKeys(SdlKeyboardSnapshot keys)
+    {
+        var drum = Hosts.PlayerSide == 1 && !Hosts.TwoPlayers && Active.Id != FlowScenes.Retry ? 4 : 0;
+        IEnumerable<SdlKeyboardKey> drumToo(SdlKeyboardKey key) => key switch
+        {
+            SdlKeyboardKey.Left or SdlKeyboardKey.Up => [key, SdlInputBindings.Pads[drum]],
+            SdlKeyboardKey.Right or SdlKeyboardKey.Down => [key, SdlInputBindings.Pads[drum + 3]],
+            SdlKeyboardKey.Enter => [key, SdlInputBindings.Pads[drum + 1]],
+            _ => [key],
+        };
+        return new SdlKeyboardSnapshot(keys.PressedKeys.SelectMany(drumToo),
+            keys.Presses.SelectMany(press => drumToo(press.Key).Select(key => press with { Key = key })), keys.Timestamp);
+    }
+
     /// <summary>Applies the display settings (vsync, fullscreen, letterbox) and sizes the upscaled textures for them.</summary>
     public void ApplyDisplay()
     {
@@ -227,6 +251,7 @@ internal sealed class GameShell : IDisposable
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"Renderer: {Application.GpuDriver}");
+        ApplyControls(warn: true);
         DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
         Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
         // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
@@ -505,11 +530,14 @@ internal sealed class GameShell : IDisposable
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
+        Application.MenuInput = !onLane || _home.MenuOpen;
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         var escape = _input.EscapePressed(keys);
         if (_home.Tick(keys, held, escape))
             return;
+        if (!onLane)
+            keys = menuKeys(keys);
         // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
         if (_playerSetup is not null && _playerSetup.Tick(ref keys))
             return;
