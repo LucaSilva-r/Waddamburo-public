@@ -30,6 +30,17 @@ replacing what the pad had on that device. `SdlApplication.BeginCapture` holds t
 the game. Escape cancels; Enter, the arrows and the other keys the menus need cannot be bound.
 Delete clears a pad on that device, and Reset to Default restores the player's defaults for it.
 
+## Drum debounce
+
+Every press is a hit, judged at its own time: nothing limits how fast a pad can be hit. A drum
+whose sensor bounces, or that answers one hit twice, then sends double hits, and in a dense stream
+the second one takes the next note early. For those drums `drum_debounce_ms` (Settings: Drum
+Debounce, off by default) makes a pad ignore a hit that soon after its last accepted one
+(`DrumDebounce`). One value for every pad; the pads are independent, so one pad is limited to
+1000 / value hits a second and a two-hand roll to twice that, which the setting shows. Dropped hits never reach judgement or the replay.
+`WADDAMBURO_DRUM_TRACE=1` prints every drum hit with the time since the pad's last one, to see
+what a drum sends and pick a value.
+
 ## Menus
 
 The drum navigates every menu (rims move, centre picks), and so do the usual controls:

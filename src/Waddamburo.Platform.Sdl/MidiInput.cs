@@ -55,8 +55,21 @@ internal sealed unsafe class MidiInput : IDisposable
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsWindows())
             return;
-        new Thread(OperatingSystem.IsLinux() ? scanLinux : scanWindows) { IsBackground = true, Name = "MIDI scan" }.Start();
+        new Thread(guarded(OperatingSystem.IsLinux() ? scanLinux : scanWindows)) { IsBackground = true, Name = "MIDI scan" }.Start();
     }
+
+    // An exception on a background thread would end the game: MIDI stops instead, and says why.
+    private static ThreadStart guarded(Action body) => () =>
+    {
+        try
+        {
+            body();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Warning MIDI_INPUT: MIDI input stopped: {exception.Message}");
+        }
+    };
 
     /// <summary>The next note-on received, with its arrival time in SDL nanoseconds.</summary>
     public static bool TryTake(out (int Note, ulong Timestamp) note) => Notes.TryDequeue(out note);
@@ -79,7 +92,7 @@ internal sealed unsafe class MidiInput : IDisposable
             }
             foreach (var device in devices)
                 if (open.TryAdd(device, true))
-                    new Thread(() =>
+                    new Thread(guarded(() =>
                     {
                         try
                         {
@@ -93,7 +106,7 @@ internal sealed unsafe class MidiInput : IDisposable
                         {
                             open.TryRemove(device, out _);
                         }
-                    }) { IsBackground = true, Name = "MIDI " + device }.Start();
+                    })) { IsBackground = true, Name = "MIDI " + device }.Start();
         }
         while (!_stop.Token.WaitHandle.WaitOne(RescanInterval));
     }

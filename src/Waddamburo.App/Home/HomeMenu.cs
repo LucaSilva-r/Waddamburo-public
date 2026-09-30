@@ -119,6 +119,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             "+ if you hear the music late: notes and judgement move later to meet it. - if you hear it early.")),
         new(Setting: offset("Input Offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v },
             "+ if your hits land late (mostly LATE): they are judged earlier. - if they land early.")),
+        new(Setting: new("Drum Debounce", static s => s.DrumDebounceMs, static (s, v) => s with { DrumDebounceMs = v },
+            static (value, step) => value + step, 0,
+            static value => value == 0 ? "Off" : $"{value} ms (rolls up to {2000 / value}/s)", 100,
+            Hint: "For a drum that sends double hits: every pad ignores a hit this soon after its last one. "
+                + "Rolls are capped too: each pad hits at most 1000 / this times a second, a two-hand roll twice that.")),
         new("Controls"),
         new(Command: new("Drum Controls", HomeMenuAction.Controls, "The keys, controller buttons and MIDI notes that hit each drum pad.")),
         new("Sound"),

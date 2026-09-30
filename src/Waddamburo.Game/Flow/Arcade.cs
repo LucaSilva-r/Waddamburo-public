@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 12;
+    public const int CurrentVersion = 13;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -144,6 +144,13 @@ public sealed record ArcadeSettings
         fast_song_scroll = false
 
         """,
+        """
+        # drum_debounce_ms: for a drum that sends double hits. Every pad ignores a hit this many
+        # milliseconds after its last one, which caps rolls: each pad hits at most 1000 / this times a
+        # second, a two-hand roll twice that (the Settings menu shows it). 0 = off.
+        drum_debounce_ms = 0
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -171,6 +178,9 @@ public sealed record ArcadeSettings
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
     public bool PadMenusAsDrum { get; init; }
+
+    /// <summary>Milliseconds a drum pad ignores hits for after one (a drum that sends double hits); 0 = off.</summary>
+    public int DrumDebounceMs { get; init; }
 
     /// <summary>Song select's list keeps up with quick rim hits and the wheel, and skips ten songs at a time.</summary>
     public bool FastSongScroll { get; init; }
@@ -445,6 +455,7 @@ public sealed record ArcadeSettings
                     "arcade" => false,
                     _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
                 } },
+                "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
                 {
@@ -509,6 +520,7 @@ public sealed record ArcadeSettings
             ["letterbox_size"] = settings.LetterboxSize,
             ["letterbox_x"] = settings.LetterboxX,
             ["letterbox_y"] = settings.LetterboxY,
+            ["drum_debounce_ms"] = settings.DrumDebounceMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
         };

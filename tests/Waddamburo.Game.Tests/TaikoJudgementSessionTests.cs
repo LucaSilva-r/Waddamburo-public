@@ -18,6 +18,20 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
+    public void DrumDebounceDropsAPadsQuickSecondHitOnly()
+    {
+        var debounce = new DrumDebounce();
+        var window = TimeSpan.FromMilliseconds(20);
+        TimeSpan ms(int value) => TimeSpan.FromMilliseconds(value);
+        Assert.True(debounce.Accept(TaikoInputAction.LeftKa, ms(100), window));
+        Assert.False(debounce.Accept(TaikoInputAction.LeftKa, ms(105), window));  // the bounce
+        Assert.True(debounce.Accept(TaikoInputAction.RightKa, ms(106), window));  // the other hand is free
+        Assert.False(debounce.Accept(TaikoInputAction.LeftKa, ms(119), window));  // counted from the accepted hit
+        Assert.True(debounce.Accept(TaikoInputAction.LeftKa, ms(120), window));
+        Assert.True(debounce.Accept(TaikoInputAction.LeftKa, ms(121), TimeSpan.Zero));  // off
+    }
+
+    [Fact]
     public void PreRollAllowsEarlyInputOnAChartZeroNote()
     {
         var session = createSession(new PlayableHitObject(TimeSpan.Zero, PlayableNoteKind.Don));

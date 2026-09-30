@@ -35,7 +35,7 @@ internal enum GameplaySoundEvent
 /// </summary>
 internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? playHitSound = null,
     IDonPresentationController? don = null,
-    Action<int?, GameplaySoundEvent, int>? playEventSound = null)
+    Action<int?, GameplaySoundEvent, int>? playEventSound = null, Func<TimeSpan>? drumDebounce = null)
 {
     private Lane[] _lanes = [];
     private WaiwaiStage? _stage;
@@ -126,8 +126,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {
+        var debounce = drumDebounce?.Invoke() ?? TimeSpan.Zero;
         foreach (var lane in _lanes)
-            lane.Advance(keyboard, chartTime);
+            lane.Advance(keyboard, chartTime, debounce);
         _stage?.Update(chartTime);
     }
 
@@ -460,7 +461,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     Console.Error.WriteLine($"Long-note presentation: {diagnostic.Code}: {diagnostic.Message}");
         }
 
-        public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
+        // Diagnostic: WADDAMBURO_DRUM_TRACE=1 prints each drum hit with the time since the pad's last one
+        // (a drum that sends double hits shows pairs a few milliseconds apart) and the ones the debounce drops.
+        private static readonly bool TraceDrum = Environment.GetEnvironmentVariable("WADDAMBURO_DRUM_TRACE") == "1";
+        private readonly TimeSpan[] _lastPadPress = new TimeSpan[4];
+        private readonly DrumDebounce _debounce = new();
+
+        public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default)
         {
             if (_stopped) return;
             foreach (var press in keyboard.Presses)
@@ -475,6 +482,15 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     _ => null,
                 };
                 if (action is not { } hit)
+                    continue;
+                var accepted = _debounce.Accept(hit, press.Timestamp, debounce);
+                if (TraceDrum)
+                {
+                    Console.WriteLine($"[drum] P{_side + 1} {hit} +{(press.Timestamp - _lastPadPress[(int)hit]).TotalMilliseconds:F1} ms"
+                        + (accepted ? "" : " dropped"));
+                    _lastPadPress[(int)hit] = press.Timestamp;
+                }
+                if (!accepted)
                     continue;
                 var eventTime = chartTime - (keyboard.Timestamp - press.Timestamp);
                 eventTime = eventTime < _session.CurrentTime ? _session.CurrentTime : eventTime;
