@@ -138,6 +138,10 @@ public sealed record ArcadeSettings
         # right button or Start is Escape, and the pads above count in songs only; drum = a drum that
         # shows up as a controller: the pads above everywhere.
         pad_menus = gamepad
+        # fast_song_scroll: in song select the list keeps up with quick rim hits and the mouse wheel, and
+        # Page Up/Down or three quick rim hits one way skip ten songs; false = the original, one board
+        # at a time.
+        fast_song_scroll = false
 
         """,
     ];
@@ -167,6 +171,9 @@ public sealed record ArcadeSettings
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
     public bool PadMenusAsDrum { get; init; }
+
+    /// <summary>Song select's list keeps up with quick rim hits and the wheel, and skips ten songs at a time.</summary>
+    public bool FastSongScroll { get; init; }
 
     /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>
     public sealed class EquatableList(IEnumerable<string> items) : IReadOnlyList<string>, IEquatable<EquatableList>
@@ -438,6 +445,7 @@ public sealed record ArcadeSettings
                     "arcade" => false,
                     _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
                 } },
+                "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
                 {
                     "gamepad" => false,
@@ -501,6 +509,7 @@ public sealed record ArcadeSettings
             ["letterbox_size"] = settings.LetterboxSize,
             ["letterbox_x"] = settings.LetterboxX,
             ["letterbox_y"] = settings.LetterboxY,
+            ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
         };
         for (var pad = 0; pad < ControlKeys.Length; pad++)

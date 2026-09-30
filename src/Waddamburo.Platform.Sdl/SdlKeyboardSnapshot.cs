@@ -35,6 +35,8 @@ public enum SdlKeyboardKey
     Enter = 13,
     Escape = 27,
     Space = 32,
+    PageUp = 33,
+    PageDown = 34,
     Left = 37,
     Up = 38,
     Right = 39,
@@ -79,4 +81,7 @@ public enum SdlKeyboardKey
     F1 = 112,
     F2 = 113,
     F5 = 116,
+    // Not keys: a notch of the mouse wheel, as a press (menus only).
+    WheelUp = 1001,
+    WheelDown = 1002,
 }

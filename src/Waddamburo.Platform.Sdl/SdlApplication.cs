@@ -522,6 +522,15 @@ public sealed unsafe class SdlApplication : IDisposable
                     if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
                         pointerMoved(currentEvent.motion.x / width, currentEvent.motion.y / height);
                 }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
+                {
+                    // In the menus each wheel notch is a press (the Escape menu moves a row, Song Select a board).
+                    // ponytail: the menus read one press per key and tick, so a flick faster than 60 notches a second loses some.
+                    if (_menuInput && !_capturing && currentEvent.wheel.y != 0)
+                        for (var notch = 0; notch < Math.Max(1, (int)Math.Abs(currentEvent.wheel.y)); notch++)
+                            pendingPresses.Add(new SdlKeyPress(currentEvent.wheel.y > 0 ? SdlKeyboardKey.WheelUp : SdlKeyboardKey.WheelDown,
+                                TimeSpan.FromTicks(checked((long)(currentEvent.wheel.timestamp / 100)))));
+                }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     && currentEvent.key.key == SDL_Keycode.SDLK_F11)
                 {
@@ -798,6 +807,8 @@ public sealed unsafe class SdlApplication : IDisposable
         SDL_Keycode.SDLK_RETURN => SdlKeyboardKey.Enter,
         SDL_Keycode.SDLK_ESCAPE => SdlKeyboardKey.Escape,
         SDL_Keycode.SDLK_SPACE => SdlKeyboardKey.Space,
+        SDL_Keycode.SDLK_PAGEUP => SdlKeyboardKey.PageUp,
+        SDL_Keycode.SDLK_PAGEDOWN => SdlKeyboardKey.PageDown,
         SDL_Keycode.SDLK_F1 => SdlKeyboardKey.F1,
         SDL_Keycode.SDLK_F2 => SdlKeyboardKey.F2,
         SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,

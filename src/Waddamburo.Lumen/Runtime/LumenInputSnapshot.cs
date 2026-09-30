@@ -16,4 +16,6 @@ public sealed class LumenInputSnapshot
     }
 
     public bool IsDown(int keyCode) => _pressedKeyCodes.Contains(keyCode);
+
+    public ImmutableHashSet<int> PressedKeyCodes => _pressedKeyCodes;
 }

@@ -4,6 +4,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 
@@ -46,6 +47,14 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers);
             return new Prefetched(request.Song, side, twoPlayers, waiwai, theme, scene);
         });
+    }
+
+    // The list's fast scrolling (when set) sees the tick's input before the movie and what it did after.
+    public override void Advance(LumenInputSnapshot input)
+    {
+        var scroll = Shell.Arcade.FastSongScroll ? Shell.Hosts.SongSelect?.Scroll : null;
+        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null) ?? input);
+        scroll?.After();
     }
 
     private SongKey? _titled;

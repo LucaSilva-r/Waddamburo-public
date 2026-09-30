@@ -44,6 +44,31 @@ The drum navigates every menu (rims move, centre picks), and so do the usual con
 - `pad_menus = drum` (In Menus: Drum on the Controller page): for a drum that shows up as a
   controller, whose buttons are its pads: the bindings apply everywhere.
 
+In the menus a mouse wheel notch is a press of its own (`WheelUp`/`WheelDown`): a row in the Escape
+menu, a board in Song Select with fast scrolling on.
+
+## Song Select fast scrolling
+
+`fast_song_scroll` (Settings: Fast Song Scrolling, off by default) changes how the list in Song
+Select takes input, without changing the movie (`SongSelectScroll`). The movie moves one board per
+rim hit with an eased eight-frame slide and only reads the next hit once it is over, about six
+boards a second; hits in between are lost. With the setting on:
+
+- Rim hits during a slide and wheel notches are queued. While steps are queued, the list clip alone
+  is run ahead (`LumenPlayer.TryFastForward`) so its slide takes 1 to 4 ticks at an even speed, and
+  the next hit is handed to the movie as soon as it reads input again: 12 to 30 boards a second.
+  The queue is cut to one step once no hit has come for 5 ticks, so the list stops with the wheel.
+- Page Up/Down skip ten boards in a folder (three among the folders): the movie is advanced with a
+  rim hit, inside the tick, until it has taken them; the last slide plays out. The steps' rim sounds
+  are replaced by one costume-change cue.
+- Three rim hits one way, each within 100 ms of the last, start skipping: from then each rim hit
+  skips ten its way, at least 250 ms after the last skip (hits before that do nothing), until the
+  drum is left alone for 750 ms.
+- A single hit on a list at rest is the movie's own. Queued steps and skips inside a folder stop
+  at its first or last song; the next hit from there moves on (a skip from there is a short one).
+
+The movie is never written to: it gets the same key presses and plays the same frames, sooner.
+
 MIDI (`MidiInput`) uses no library: Linux reads the raw devices (`/dev/snd/midiC*D*`), Windows uses
 winmm. Devices are looked for again every two seconds. Note-ons are stamped on arrival with SDL's
 clock, like key presses, and are not "held": a MIDI pad gives presses only.

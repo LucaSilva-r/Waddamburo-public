@@ -99,6 +99,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new("Songs"),
         new(Library: new("Custom TJA songs", static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, Nijiiro: false)),
         new(Library: new("Nijiiro songs", static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, Nijiiro: true)),
+        new(Setting: toggle("Fast Song Scrolling", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v },
+            "Song Select: the list keeps up with quick rim hits and the mouse wheel; Page Up/Down or three quick rim hits skip ten songs. Off: the original.")),
         new("Volume"),
         new(Setting: volume("Master Volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm,
             "Everything the game plays.")),
@@ -463,8 +465,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             }
             return HomeMenuAction.None;
         }
-        var up = keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Z);
-        var down = keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K) || keys.IsDown(SdlKeyboardKey.V);
+        var up = keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Z)
+            || keys.IsDown(SdlKeyboardKey.WheelUp);
+        var down = keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K) || keys.IsDown(SdlKeyboardKey.V)
+            || keys.IsDown(SdlKeyboardKey.WheelDown);
         var decide = keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.Space)
             || keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J)
             || keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C);

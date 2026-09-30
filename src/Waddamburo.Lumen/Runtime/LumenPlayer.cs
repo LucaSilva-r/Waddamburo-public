@@ -172,11 +172,17 @@ public sealed class LumenPlayer
     public void Advance()
         => Advance(LumenInputSnapshot.Empty);
 
+    // TryFastForward already recorded the transforms this tick's interpolation starts from.
+    private bool _tickSnapshotTaken;
+
     public void Advance(LumenInputSnapshot inputSnapshot)
     {
         ArgumentNullException.ThrowIfNull(inputSnapshot);
         _inputSnapshot = inputSnapshot;
-        snapshotInstances(_root);
+        // A clip run ahead for this tick already recorded where the tick's motion starts.
+        if (!_tickSnapshotTaken)
+            snapshotInstances(_root);
+        _tickSnapshotTaken = false;
         advanceSubtree(_root, queueActions: true);
         drainActions();
         dispatchEnterFrameHandlers();
@@ -229,6 +235,54 @@ public sealed class LumenPlayer
         jumpInstance(instance, frame, play);
         drainActions();
         resetInterpolation(instance);
+        return true;
+    }
+
+    /// <summary>The frame a named clip is on and whether it is playing; null when there is no such clip.</summary>
+    public (int Frame, bool Playing)? InstanceFrame(string instancePath)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        return findInstance(instancePath) is { } instance ? (instance.Frame, instance.Playing) : null;
+    }
+
+    /// <summary>The frame a label names on a named clip's timeline.</summary>
+    public bool TryGetLabelFrame(string instancePath, string label, out int frame)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        frame = 0;
+        return findInstance(instancePath) is { } instance && _sprites.TryGetValue(instance.CharacterId, out var timeline)
+            && timeline.Labels.TryGetValue(label, out frame);
+    }
+
+    /// <summary>
+    /// Runs a named clip ahead of the rest of the movie, until it is on <paramref name="frame"/>: each
+    /// step is a whole frame for the clip and everything in it (timelines, frame scripts, enter-frame
+    /// handlers), so its animations stay consistent with each other; a script that stops the clip or moves
+    /// its playhead ends it. Call it before <see cref="Advance(LumenInputSnapshot)"/>: the tick then
+    /// interpolates from where the clip was shown last, through the frames run here.
+    /// False when the clip is missing, stopped, or already there.
+    /// </summary>
+    public bool TryFastForward(string instancePath, int frame)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        var instance = findInstance(instancePath);
+        if (instance is null || !instance.Playing || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
+            || frame <= instance.Frame || frame >= timeline.Frames.Length)
+            return false;
+        if (!_tickSnapshotTaken)
+            snapshotInstances(_root);
+        _tickSnapshotTaken = true;
+        while (instance.Playing && !instance.Removed && instance.Frame < frame)
+        {
+            var next = instance.Frame + 1;
+            advanceSubtree(instance, queueActions: true);
+            drainActions();
+            dispatchEnterFrameHandlers(instance);
+            drainActions();
+            if (instance.Frame != next)
+                break;
+        }
         return true;
     }
 
@@ -700,10 +754,10 @@ public sealed class LumenPlayer
         }
     }
 
-    private void dispatchEnterFrameHandlers()
+    private void dispatchEnterFrameHandlers(DisplayInstance? subtree = null)
     {
         var instances = new List<DisplayInstance>();
-        collectInstancesPostOrder(_root, instances);
+        collectInstancesPostOrder(subtree ?? _root, instances);
         if (instances.Count > _limits.MaxPendingActions)
         {
             reportOnce(

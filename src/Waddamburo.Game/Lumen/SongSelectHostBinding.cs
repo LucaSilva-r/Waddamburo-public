@@ -142,6 +142,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly ISongSelectSoundController? _sounds;
     private readonly IDonPresentationController? _don;
     private LumenPlayer? _player;
+
+    /// <summary>The list's fast scrolling (see <see cref="SongSelectScroll"/>), once the movie is attached.</summary>
+    public SongSelectScroll? Scroll { get; private set; }
     private bool _assigned;
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
@@ -204,6 +207,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public void Attach(LumenPlayer player)
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
+        // A page jump sounds like a costume change (as the later games do), not like its ten rim hits.
+        Scroll = new SongSelectScroll(player, () => _openFolder, side => PlayCue?.Invoke("SE_COM", side == 0 ? 19 : 20));
         if (_don is null)
             return;
         // Like entry, the movie's 2P slot already turns Katsu-chan inward (user-confirmed: the
@@ -493,7 +498,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue requestSound(SongSelectSoundRequestKind kind, LumenHostCall call)
     {
-        _sounds?.RequestSound(new SongSelectSoundRequest(kind, call.Arguments));
+        if (Scroll?.Jumping != true || kind != SongSelectSoundRequestKind.PlayerEffect)
+            _sounds?.RequestSound(new SongSelectSoundRequest(kind, call.Arguments));
         return LumenHostValue.Undefined;
     }
 

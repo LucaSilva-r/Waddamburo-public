@@ -71,6 +71,34 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void FastForwardRunsANamedClipAheadOfTheRest()
+    {
+        var movie = createMovie(placementNameStringIndex: 31, actionBytecode: [0x00]);
+        var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var wrapper = child with
+        {
+            CharacterId = 99,
+            DeclaredFrameCount = 1,
+            DeclaredLabelCount = 0,
+            RepeatedLabelCount = 0,
+            Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(),
+                child.Timeline.OfType<LmbPlaceObjectCommand>().First() with { CharacterId = 7 }],
+        };
+        var player = new LumenPlayer(movie with { Sprites = movie.Sprites.Add(wrapper) }, 1280, 720, rootCharacterId: 99);
+        Assert.Equal((0, true), player.InstanceFrame("placed"));
+        Assert.True(player.TryGetLabelFrame("placed", "end", out var end));
+        Assert.Equal(2, end);
+        Assert.True(player.TryFastForward("placed", end));
+        Assert.Equal((end, true), player.InstanceFrame("placed"));
+        Assert.Equal(0, player.CurrentFrame);
+        // Already there, or no such clip or label.
+        Assert.False(player.TryFastForward("placed", end));
+        Assert.False(player.TryFastForward("missing", 1));
+        Assert.False(player.TryGetLabelFrame("placed", "missing", out _));
+        Assert.Null(player.InstanceFrame("missing"));
+    }
+
+    [Fact]
     public void NamedClipBoundsUseItsAuthoredTransform()
     {
         var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
