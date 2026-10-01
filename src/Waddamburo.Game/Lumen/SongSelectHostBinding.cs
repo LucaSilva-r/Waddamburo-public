@@ -1,8 +1,10 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
+using Waddamburo.Game.Patching;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
@@ -185,6 +187,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The songs marked favourite: their boards show the red coin icon (P toggles, see <see cref="ToggleFavourite"/>).</summary>
     public SongFavourites? Favourites { get; init; }
 
+    /// <summary>The movie was patched with custom genres (Patching.SongSelectGenrePatch).</summary>
+    public bool PatchedGenres { get; init; }
+
     /// <summary>The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)).</summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
 
@@ -361,21 +366,27 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         _assigned = true;
         installFavouriteIcon();
         _featureFolders.Clear();
+        var genres = registerCustomGenres();
+        var custom = 0;
         for (var index = 0; index < _session.Catalog.Categories.Length; index++)
         {
             var category = _session.Catalog.Categories[index];
+            var label = category.AuthoredLabel;
             // AssignMusic's last argument picks a feature folder's slot (00-09) whose spine and banner
-            // show host-drawn text; -1 = none (the baked イベント art). More than ten feature folders
-            // share the slots (see nameFeatureFolders).
+            // show host-drawn text; -1 = none (the baked イベント art). Named folders take a custom genre
+            // (the patched ボーカロイド art: own colour and name slots) while there are slots; more than ten
+            // left on feature art share its slots (see nameFeatureFolders).
             var featureSlot = -1;
-            if (category.AuthoredLabel == SongSelectCatalogView.FeatureLabel)
+            if (label == SongSelectCatalogView.FeatureLabel && custom < genres)
+                label = customGenre(custom++, category);
+            else if (label == SongSelectCatalogView.FeatureLabel)
             {
                 featureSlot = _featureFolders.Count % FeatureSlots;
                 _featureFolders.Add((index, featureSlot));
             }
             invoke(
                 "AssignMusic",
-                LumenHostValue.FromString(category.AuthoredLabel),
+                LumenHostValue.FromString(label),
                 // A folder that decides at once still counts one item (traced 1 for the mode switch).
                 LumenHostValue.FromNumber((category.Presentation & SongCategoryPresentation.FolderEnd) != 0
                     ? 1 : category.Songs.Length),
@@ -565,6 +576,40 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (Scroll?.Jumping != true || kind != SongSelectSoundRequestKind.PlayerEffect)
             _sounds?.RequestSound(new SongSelectSoundRequest(kind, call.Arguments));
         return LumenHostValue.Undefined;
+    }
+
+    // The patched custom genres (SongSelectGenrePatch) become genres the movie knows: their labels join
+    // GenreResource.MUSICINFO_KEY (AssignMusic looks a folder's key up there). Their count, 0 unpatched.
+    private int registerCustomGenres()
+    {
+        const string keys = "_global.GenreResource.MUSICINFO_KEY";
+        var player = requirePlayer();
+        if (!PatchedGenres)
+            return 0;
+        if (player.ReadScriptValue(keys + ".length") is not double length)
+            return 0;
+        for (var slot = 0; slot < SongSelectGenrePatch.Slots; slot++)
+            if (!player.TryWriteScriptValue($"{keys}.{(int)length + slot}", SongSelectGenrePatch.Label(slot)))
+                return 0;
+        return SongSelectGenrePatch.Slots;
+    }
+
+    // A named folder on custom genre <paramref name="slot"/>: its colour and names. Its label.
+    private string customGenre(int slot, SongSelectCategory category)
+    {
+        var player = requirePlayer();
+        // The recoloured art's body layer is multiplied by the folder's colour (its highlights stay light).
+        var colour = category.Tint ?? (255, 255, 255);
+        player.SetColorTransform((uint)(player.ColorTransformCount - SongSelectGenrePatch.Slots + slot),
+            new LumenRenderColor(colour.R / 255f, colour.G / 255f, colour.B / 255f, 1));
+        // Genres outline their spine name in a dark shade of their colour.
+        var outline = (uint)(colour.R * 2 / 5) << 16 | (uint)(colour.G * 2 / 5) << 8 | (uint)(colour.B * 2 / 5);
+        player.SetNativeFill(SongSelectGenrePatch.Slot("tate", slot),
+            _session.GetFolderName(category.Name, SongBoardTextureKind.Compact, outline));
+        // The J-POP header quad sits right of its tab's visual centre (short "J-POP" hides it): shifted back.
+        player.SetNativeFill(SongSelectGenrePatch.Slot("yoko", slot), _session.GetFolderName(category.Name, SongBoardTextureKind.Expanded),
+            new LumenNativeSurfacePlacement(-128 - SongSelectGenrePatch.HeaderShift, -28, 256, 56));
+        return SongSelectGenrePatch.Label(slot);
     }
 
     // The movie has ten feature name slots (feature_board_{tate,yoko}_00-09); folder i uses slot

@@ -48,7 +48,14 @@ public sealed record SongSelectCategory(
     SongBoardTextureStyle BoardStyle,
     ImmutableArray<SongSelectSong> Songs,
     SongSourceKind? Link = null,
-    SongBrowseControl? Control = null);
+    SongBrowseControl? Control = null)
+{
+    /// <summary>
+    /// A named folder's colour (custom genre art, see Patching.SongSelectGenrePatch); null keeps the
+    /// white art.
+    /// </summary>
+    public (byte R, byte G, byte B)? Tint { get; init; }
+}
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
 public sealed record SongSearchResults(string Query, IReadOnlyList<SongKey> Songs);
@@ -115,7 +122,7 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(SearchKey, $"Search: {search.Query}", FeatureLabel, SongCategoryPresentation.AlwaysVisible,
                 boardStyle(""), [.. search.Songs.Where(snapshot.Songs.ContainsKey).Select(key => snapshot.Songs[key])
                     .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-                    .Select(createSong)]),
+                    .Select(createSong)]) { Tint = (255, 200, 40) },
         };
         var categories = searchFolder.Concat(tutorialFolder).Concat(favouriteFolder).Concat(listed
             .Select(category => new SongSelectCategory(
@@ -126,7 +133,7 @@ public sealed class SongSelectCatalogView
             boardStyle(category.Name),
             [.. category.Songs
                 .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-                .Select(createSong)]))
+                .Select(createSong)]) { Tint = library == SongSourceKind.OsuLazer && browse is not null ? LibraryTint(SongSourceKind.OsuLazer) : null })
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
             .Concat(library == SongSourceKind.OsuLazer && browse is not null ? new[]
             {
@@ -135,7 +142,7 @@ public sealed class SongSelectCatalogView
             } : [])
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
-                boardStyle(""), [], link)));
+                boardStyle(""), [], link) { Tint = LibraryTint(link) }));
         if (modeSwitch)
             categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "mode-switch"),
                 mode == SongSelectMode.Waiwai ? "To Normal" : "To Waiwai", ModeSwitchLabel,
@@ -144,6 +151,15 @@ public sealed class SongSelectCatalogView
     }
 
     public SongSelectMode Mode { get; }
+
+    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet.</summary>
+    public static (byte R, byte G, byte B) LibraryTint(SongSourceKind library) => library switch
+    {
+        SongSourceKind.Tja => (130, 210, 60),
+        SongSourceKind.OsuLazer => (255, 102, 171),
+        SongSourceKind.Nijiiro => (170, 110, 255),
+        _ => (60, 170, 240),
+    };
 
     /// <summary>The search results folder's key (see the constructor's search).</summary>
     public static readonly CategoryKey SearchKey = new(SongSourceKind.Stock, "search");

@@ -62,12 +62,14 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return register(song, TitleTextureKind.Transition, 0U);
     }
 
-    public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind)
+    /// <summary>A folder name; <paramref name="outlineRgb"/> outlines a spine (Compact) name, as genres do.</summary>
+    public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         var textureKind = kind == SongBoardTextureKind.Compact ? TitleTextureKind.Compact : TitleTextureKind.Banner;
-        var key = new LumenNativeSurfaceKey($"folder-name:{name}:{textureKind}");
-        _requests[key] = new TitleRequest(name, null, textureKind, 0U);
+        var outline = textureKind == TitleTextureKind.Compact ? outlineRgb : 0U;
+        var key = new LumenNativeSurfaceKey($"folder-name:{name}:{textureKind}:{outline:x6}");
+        _requests[key] = new TitleRequest(name, null, textureKind, outline);
         return key;
     }
 

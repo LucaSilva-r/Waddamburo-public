@@ -164,6 +164,17 @@ public sealed class LumenPlayer
         return null;
     }
 
+    private readonly Dictionary<uint, LumenRenderColor> _colorOverrides = [];
+
+    /// <summary>The movie's colour-pool size (a patch's entries come last).</summary>
+    public int ColorTransformCount => _movie.ColorTransforms.Length;
+
+    /// <summary>
+    /// Sets colour-pool entry <paramref name="index"/> (as a placement's multiply or add) for placements made from
+    /// now on; a patch reserves such entries for colours the host picks (e.g. custom genre tints).
+    /// </summary>
+    public void SetColorTransform(uint index, LumenRenderColor color) => _colorOverrides[index] = color;
+
     public bool RemoveNativeFill(string instanceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
@@ -2094,13 +2105,21 @@ public sealed class LumenPlayer
         if (instance.ScriptColored) return;
         var color = instance.Color;
         if (placement.ColorMultiplyIndex < _movie.ColorTransforms.Length)
-            color = color with { Multiply = convertColor(_movie.ColorTransforms[checked((int)placement.ColorMultiplyIndex)]) };
+            color = color with
+            {
+                Multiply = _colorOverrides.TryGetValue(placement.ColorMultiplyIndex, out var multiply) ? multiply
+                    : convertColor(_movie.ColorTransforms[checked((int)placement.ColorMultiplyIndex)]),
+            };
         else if (placement.ColorMultiplyIndex != uint.MaxValue)
             reportOnce("LUM_COLOR_NOT_FOUND", instance.CharacterId, 0, $"Multiply color {placement.ColorMultiplyIndex} was left unchanged.");
         else if (isNew)
             color = color with { Multiply = LumenRenderColor.White };
         if (placement.ColorAddIndex < _movie.ColorTransforms.Length)
-            color = color with { Add = convertColor(_movie.ColorTransforms[checked((int)placement.ColorAddIndex)]) };
+            color = color with
+            {
+                Add = _colorOverrides.TryGetValue(placement.ColorAddIndex, out var add) ? add
+                    : convertColor(_movie.ColorTransforms[checked((int)placement.ColorAddIndex)]),
+            };
         else if (placement.ColorAddIndex != uint.MaxValue)
             reportOnce("LUM_COLOR_NOT_FOUND", instance.CharacterId, 0, $"Add color {placement.ColorAddIndex} was left unchanged.");
         else if (isNew)

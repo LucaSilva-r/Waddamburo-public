@@ -27,7 +27,7 @@ public sealed class LumenMovieContent
 
     public string Name { get; }
 
-    public LmbMovieDefinition Definition { get; }
+    public LmbMovieDefinition Definition { get; private set; }
 
     public ImmutableArray<LumenTextureContent> Textures { get; private set; }
 
@@ -78,6 +78,14 @@ public sealed class LumenMovieContent
     {
         ArgumentNullException.ThrowIfNull(replace);
         Textures = [.. Textures.Select(replace)];
+    }
+
+    /// <summary>A patched definition and texture set (see Patching.LumenMovieEditor), before upload.</summary>
+    public void Replace(LmbMovieDefinition definition, ImmutableArray<LumenTextureContent> textures)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        Definition = definition;
+        Textures = textures;
     }
 
     /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>

@@ -393,7 +393,7 @@ public sealed class SongSelectSessionTests
 
     private sealed class RecordingTextureService : ISongBoardTextureService
     {
-        public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind) =>
+        public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0) =>
             new($"folder:{name}:{kind}");
 
         public SongSelectSong? LastSong { get; private set; }

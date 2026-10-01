@@ -367,7 +367,8 @@ internal sealed class GameShell : IDisposable
         };
         if (Arcade.Home && Options.Accounts is { } setupBook)
             _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
-        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot));
+        // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
+        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = patch };
         _presenter = new ScenePresenter(Application, MovieContent);
         // Upscaling runs when the model files are installed (see UpscaleTool).
         // The settings file sits in USRDIR/waddamburo, the caches under it.
@@ -378,6 +379,7 @@ internal sealed class GameShell : IDisposable
             // Cached upscales replace textures as movies decode (opt-in): the GPU only ever gets those.
             MovieContent.Decoded = content =>
             {
+                patch(content);
                 if (Arcade.UpscaleTextures && Application.ShowUpscaled)
                     upscale.ApplyCached(content, Application.SupportsBc7);
             };
@@ -794,6 +796,12 @@ internal sealed class GameShell : IDisposable
         Console.WriteLine($"Inspect at stage ({px:0}, {py:0}): {hits.Length} quads, topmost first.");
         foreach (var quad in hits)
             Console.WriteLine($"  {quad.Source ?? "?"}{(quad.NativeSurface is { } surface ? $" -> surface {surface.Value}" : $" (scene texture {quad.TextureIndex})")}");
+    }
+
+    private static void patch(Waddamburo.Game.LumenMovieContent content)
+    {
+        if (Waddamburo.Game.Patching.SongSelectGenrePatch.AppliesTo(content))
+            Waddamburo.Game.Patching.SongSelectGenrePatch.Apply(content);
     }
 
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>

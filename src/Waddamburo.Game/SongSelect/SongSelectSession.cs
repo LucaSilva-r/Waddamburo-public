@@ -29,7 +29,7 @@ public interface ISongBoardTextureService
         SongBoardTextureKind kind);
 
     /// <summary>A folder name: Compact = vertical spine text, Expanded = horizontal banner.</summary>
-    LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind);
+    LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0);
 }
 
 public sealed record SongPreviewRequest(
@@ -106,8 +106,8 @@ public sealed class SongSelectSession
         return _textures.GetSongTitle(selected, Catalog.BoardStyle(category, selected), kind);
     }
 
-    public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind) =>
-        _textures.GetFolderName(name, kind);
+    public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0) =>
+        _textures.GetFolderName(name, kind, outlineRgb);
 
     public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse)
     {
