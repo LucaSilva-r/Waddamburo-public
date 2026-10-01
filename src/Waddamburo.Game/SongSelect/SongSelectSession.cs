@@ -103,7 +103,7 @@ public sealed class SongSelectSession
             throw new ArgumentOutOfRangeException(
                 nameof(song),
                 $"Song Select referenced category {category}, song {song} outside the pinned catalog.");
-        return _textures.GetSongTitle(selected, Catalog.Categories[category].BoardStyle, kind);
+        return _textures.GetSongTitle(selected, Catalog.BoardStyle(category, selected), kind);
     }
 
     public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind) =>

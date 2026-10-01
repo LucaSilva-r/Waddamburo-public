@@ -155,6 +155,10 @@ internal sealed class GameShell : IDisposable
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly HomeControls _home;
+    private readonly SongSearch _search;
+
+    /// <summary>Song Select's quick reload (library, grouping, order, search).</summary>
+    public SongSelectReload Reload { get; }
     private readonly Dictionary<SceneId, FlowScene> _scenes;
     private readonly WaiwaiOutcome? _diagnosticWaiwai;
     private SystemIndicators? _indicators;
@@ -393,6 +397,8 @@ internal sealed class GameShell : IDisposable
         _gameplay = new GameplayFlow(this);
         var calibration = new CalibrationFlow(this);
         _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
+        _search = new SongSearch(this, _libraries.Snapshot, options.FontPath);
+        Reload = new SongSelectReload(this);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this, _gameplay);
         var songSelect = new SongSelectFlow(this, _gameplay, calibration);
@@ -550,6 +556,12 @@ internal sealed class GameShell : IDisposable
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         var escape = _input.EscapePressed(keys);
+        // Song Select's search field takes the keyboard while open (its Escape closes it, not the menu).
+        if (Reload.Tick() || !_home.MenuOpen && _search.Tick(keys, escape))
+        {
+            advance(scene, SdlKeyboardSnapshot.Empty);
+            return;
+        }
         if (_home.Tick(keys, held, escape))
             return;
         if (!onLane)
@@ -823,6 +835,7 @@ internal sealed class GameShell : IDisposable
                 .. _playerSetup?.Quads(interpolation) ?? [],
                 .. indicatorQuads(false),
                 .. Overlay.Quads(interpolation, Titles.Resolve),
+                .. _search.Quads(),
                 .. indicatorQuads(true),
                 .. pill(),
                 .. _performance.Quads(),
@@ -873,6 +886,7 @@ internal sealed class GameShell : IDisposable
     {
         _playerSetup?.Dispose();
         _textFields.Dispose();
+        _search.Dispose();
         Hosts?.Rankings?.Dispose();
         _pill.Dispose();
         _performance.Dispose();

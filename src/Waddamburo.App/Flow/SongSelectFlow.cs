@@ -117,26 +117,27 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (switchLibrary() || calibrate())
             return;
-        // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, and Song
-        // Select reloads at once on that spine (its music plays on).
+        // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, Song Select
+        // reloading on that spine.
         if (Shell.Hosts.SongSelect?.BrowseRequested is { } control)
         {
-            var browse = Shell.Hosts.CycleBrowse(control);
-            Shell.Arcade = Shell.Arcade with { OsuBrowse = browse };
-            if (Shell.Options.ArcadePath is { } path)
+            Shell.Reload.Start(() =>
             {
-                try
+                var browse = Shell.Hosts.CycleBrowse(control);
+                Shell.Arcade = Shell.Arcade with { OsuBrowse = browse };
+                if (Shell.Options.ArcadePath is { } path)
                 {
-                    ArcadeSettings.SaveMenuSettings(path, Shell.Arcade);
+                    try
+                    {
+                        ArcadeSettings.SaveMenuSettings(path, Shell.Arcade);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+                    }
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
-                }
-            }
-            Console.WriteLine($"osu!lazer library: group by {SongBrowse.Name(browse.Group)}, sort by {SongBrowse.Name(browse.Sort)}.");
-            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
-            Shell.Show(FlowScenes.SongSelect);
+                Console.WriteLine($"osu!lazer library: group by {SongBrowse.Name(browse.Group)}, sort by {SongBrowse.Name(browse.Sort)}.");
+            });
             return;
         }
         // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
@@ -187,35 +188,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
     }
 
-    // A library folder (home mode): the plain rainbow covers the screen, Song Select reloads listing
-    // that library under it (its music plays on), then the rainbow opens.
-    private SongSourceKind? _switching;
-    private bool _switched;
-
+    // A library folder (home mode): Song Select reloads listing that library.
     private bool switchLibrary()
     {
-        if (_switching is null)
-        {
-            if (Shell.Hosts.SongSelect?.LibraryRequested is not { } library)
-                return false;
-            _switching = library;
-            _switched = false;
-            Shell.Overlay.Show(FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
-            return true;
-        }
-        if (Shell.Overlay.Player is { IsPlaying: true })
-            return true;
-        if (!_switched)
-        {
-            Shell.Hosts.Library = _switching.Value;
-            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
-            Shell.Show(FlowScenes.SongSelect);
-            Shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
-            _switched = true;
-            return true;
-        }
-        Shell.Overlay.Clear();
-        _switching = null;
+        if (Shell.Hosts.SongSelect?.LibraryRequested is not { } library)
+            return false;
+        Shell.Reload.Start(() => Shell.Hosts.Library = library);
         return true;
     }
 

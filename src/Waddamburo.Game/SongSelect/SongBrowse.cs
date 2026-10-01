@@ -72,6 +72,24 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
         return folders;
     }
 
+    /// <summary>
+    /// Whether every word of <paramref name="query"/> appears (ignoring case) in the song's titles,
+    /// subtitles, artist or mapper.
+    /// </summary>
+    public static bool Matches(SongDescriptor song, string query)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length == 0)
+            return false;
+        var text = string.Join('\n', new[]
+        {
+            song.Title.Primary, song.Title.English, song.Title.Japanese, song.Subtitle, song.EnglishSubtitle,
+            song.Artist, song.Creator,
+        }.Where(static value => value is not null));
+        return words.All(word => text.Contains(word, StringComparison.OrdinalIgnoreCase));
+    }
+
     private IOrderedEnumerable<SongDescriptor> sort(IEnumerable<SongDescriptor> songs)
     {
         var ordered = Sort switch

@@ -62,3 +62,18 @@ and the host names each spine per board: the 13 recycled boards (`musicBoard_lef
 names that board's spine. The centre banner follows the cursor (`container.GetCurrentMusicInfo()`),
 polled each tick because `NotifyGenreFolder` only reports it once the list settles.
 
+## Search and reloads
+
+Tab in Song Select opens a search field (`SongSearch`, drawn by the host): every library's songs
+whose titles, subtitles, artist or mapper contain every typed word; Enter lists them in a
+"Search: …" folder before the others, Escape closes the field. In that folder each board shows its
+song's library (`SongSelectCatalogView.SourceLabel`): the host wraps `MusicBoard.ResetMusicInfo`
+(genre, board) and answers `GetGenreLabel` during it with stock J-POP blue, custom TJA Variety
+green, osu! Kids pink or Nijiiro おすすめ (`LumenPlayer.TryWrapScriptMethod`); the title outlines
+follow (`SongSelectCatalogView.BoardStyle`).
+
+Library switches, the Group/Sort spines and search results all reload Song Select through
+`SongSelectReload`: the plain rainbow (Don-chan) covers at three ticks per tick while the scene's
+movies are prefetched on worker threads, the change runs, Song Select reloads with its music playing
+on (`SongSelectHostBinding.Reloading`), and the rainbow opens.
+

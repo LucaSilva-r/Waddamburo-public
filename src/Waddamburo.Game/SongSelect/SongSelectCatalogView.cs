@@ -50,6 +50,9 @@ public sealed record SongSelectCategory(
     SongSourceKind? Link = null,
     SongBrowseControl? Control = null);
 
+/// <summary>A search's query and matching songs, in order (any library).</summary>
+public sealed record SongSearchResults(string Query, IReadOnlyList<SongKey> Songs);
+
 /// <summary>A spine that cycles the library's folder grouping or song order (decides at once).</summary>
 public enum SongBrowseControl { Group, Sort }
 
@@ -77,13 +80,15 @@ public sealed class SongSelectCatalogView
     /// <paramref name="favourites"/> lists the marked songs of the shown library in a folder first
     /// (where the game assigns お気に入り, after おすすめ); see <see cref="RefreshFavourites"/>.
     /// <paramref name="tutorial"/> puts the how-to-play folder first (traced: normal select, until watched).
+    /// <paramref name="search"/> lists a search's songs (any library) in a folder before the others.
     /// <paramref name="browse"/> (the osu!lazer library only) groups its songs into folders and sorts
     /// them, with a Group and a Sort spine after the folders to change either.
     /// </summary>
     // ponytail: Waiwai's "how to play" folder (id 21, before the switch; waiwai_tutorial) is left out, untraced.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
-        IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null)
+        IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
+        SongSearchResults? search = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -105,7 +110,14 @@ public sealed class SongSelectCatalogView
             : snapshot.Categories
                 .Where(category => library is null || category.Key.Source == library)
                 .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key])));
-        var categories = tutorialFolder.Concat(favouriteFolder).Concat(listed
+        var searchFolder = search is null ? [] : new[]
+        {
+            new SongSelectCategory(SearchKey, $"Search: {search.Query}", FeatureLabel, SongCategoryPresentation.AlwaysVisible,
+                boardStyle(""), [.. search.Songs.Where(snapshot.Songs.ContainsKey).Select(key => snapshot.Songs[key])
+                    .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
+                    .Select(createSong)]),
+        };
+        var categories = searchFolder.Concat(tutorialFolder).Concat(favouriteFolder).Concat(listed
             .Select(category => new SongSelectCategory(
             category.Key,
             category.Name,
@@ -133,6 +145,9 @@ public sealed class SongSelectCatalogView
 
     public SongSelectMode Mode { get; }
 
+    /// <summary>The search results folder's key (see the constructor's search).</summary>
+    public static readonly CategoryKey SearchKey = new(SongSourceKind.Stock, "search");
+
     // The osu!lazer library's folders by the browse's grouping; its collections come from the provider's
     // collection categories. A grouping with no folder (no collections) lists every song.
     private static IEnumerable<(CategoryKey Key, string Name, IEnumerable<SongDescriptor> Songs)> browsed(
@@ -149,6 +164,28 @@ public sealed class SongSelectCatalogView
         return folders.Select(folder => (new CategoryKey(SongSourceKind.OsuLazer, $"{browse.Group}:{folder.Name}"),
             folder.Name, folder.Songs.AsEnumerable()));
     }
+
+    /// <summary>
+    /// A library's genre art for boards in a folder of mixed songs (search results): stock J-POP blue,
+    /// custom TJA Variety green, osu!lazer Kids pink, Nijiiro おすすめ.
+    /// </summary>
+    public static string SourceLabel(SongSourceKind source) => source switch
+    {
+        SongSourceKind.Tja => "バラエティ",
+        SongSourceKind.OsuLazer => "童謡",
+        SongSourceKind.Nijiiro => "おすすめ",
+        _ => "J-POP",
+    };
+
+    /// <summary>The title outline a song's board gets: its folder's, or in the search folder its library's.</summary>
+    public SongBoardTextureStyle BoardStyle(int category, SongSelectSong song) =>
+        Categories[category].Key == SearchKey ? boardStyle(song.Descriptor.Key.Source switch
+        {
+            SongSourceKind.Tja => "Variety",
+            SongSourceKind.OsuLazer => "Kids",
+            SongSourceKind.Nijiiro => "",
+            _ => "J-POP",
+        }) : Categories[category].BoardStyle;
 
     private static SongSelectCategory control(SongBrowseControl control, string name) =>
         new(new CategoryKey(SongSourceKind.OsuLazer, $"control:{control}"), name, FeatureLabel,

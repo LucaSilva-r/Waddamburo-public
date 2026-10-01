@@ -57,7 +57,14 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
         _scene = null;
     }
 
-    public void Advance() => _scene?.Player.Advance();
+    /// <summary>Ticks the intermission advances per game tick (a quick rainbow for search results).</summary>
+    public int Speed { get; set; } = 1;
+
+    public void Advance()
+    {
+        for (var tick = 0; tick < Speed; tick++)
+            _scene?.Player.Advance();
+    }
 
     public IEnumerable<RenderQuad> Quads(float interpolation, Func<LumenNativeSurfaceKey, RenderTextureId?> surfaces) =>
         _scene is null ? [] : SceneTextures.Compose(_scene.Player.CreateRenderSnapshot(interpolation), _textures, "Intermission",

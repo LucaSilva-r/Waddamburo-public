@@ -57,6 +57,16 @@ public sealed class SongBrowseTests
     }
 
     [Fact]
+    public void SearchNeedsEveryWordInTitleArtistOrMapper()
+    {
+        var target = song("Senbonzakura", artist: "Kurousa-P") with { Creator = "mapper" };
+        Assert.True(SongBrowse.Matches(target, "senbon kurousa"));
+        Assert.True(SongBrowse.Matches(target, "MAPPER"));
+        Assert.False(SongBrowse.Matches(target, "senbon other"));
+        Assert.False(SongBrowse.Matches(target, "   "));
+    }
+
+    [Fact]
     public void CyclingWrapsAround()
     {
         Assert.Equal(SongGroupMode.All, new SongBrowse(SongGroupMode.Length).NextGroup().Group);

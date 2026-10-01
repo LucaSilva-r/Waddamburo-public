@@ -133,4 +133,10 @@ internal sealed class Avm1NativeFunction(string name, LumenHostCallback callback
     public LumenHostCallback Callback { get; } = callback;
 }
 
+/// <summary>A host wrapper standing in for a script method (see LumenPlayer.TryWrapScriptMethod); gets the real this.</summary>
+internal sealed class Avm1MethodWrapper(Func<object?, IReadOnlyList<object?>, Avm1Lookup> invoke) : Avm1Object
+{
+    public Avm1Lookup Invoke(object? thisValue, IReadOnlyList<object?> arguments) => invoke(thisValue, arguments);
+}
+
 internal sealed record Avm1SuperValue(object? ThisValue, Avm1Object? Level);

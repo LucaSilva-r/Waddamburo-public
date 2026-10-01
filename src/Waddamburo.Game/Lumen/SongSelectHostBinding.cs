@@ -222,6 +222,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
     public SongBrowseControl? BrowseRequested { get; private set; }
 
+    /// <summary>Song Select reloads for the host (library, grouping, order, search): its music plays on.</summary>
+    public bool Reloading { get; set; }
+
     /// <summary>The folder the cursor starts on.</summary>
     public int StartCategory { get; init; }
 
@@ -343,8 +346,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        // A library switch reloads Song Select under the rainbow, a browse change at once: its music plays on.
-        if (LibraryRequested is null && BrowseRequested is null)
+        // A host reload (library, grouping, order, search) keeps the music playing.
+        if (!Reloading)
             _session.StopMusic();
         _sounds?.StopVoice();
     }
@@ -380,6 +383,31 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber(featureSlot));
         }
         nameFeatureFolders(StartCategory);
+        // A song board takes its colours from GetGenreLabel(its folder) in MusicBoard.ResetMusicInfo(genre,
+        // music): the search folder's boards show their song's library instead (see SongSelectCatalogView.SourceLabel).
+        if (!requirePlayer().TryWrapScriptMethod("_global.MusicBoard.prototype", "ResetMusicInfo", (call, original) =>
+            {
+                // ResetMusicInfo(genre, board): the board index counts the ✕ back boards; Board2MusicIndex maps it.
+                _boardLabel = call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
+                    && call.Arguments[1].Kind == LumenHostValueKind.Number
+                    && (uint)call.Arguments[0].AsNumber() < (uint)_session.Catalog.Categories.Length
+                    && _session.Catalog.Categories[(int)call.Arguments[0].AsNumber()].Key == SongSelectCatalogView.SearchKey
+                    && requirePlayer().CallScriptNumber("_global.CppConnection.resource", "Board2MusicIndex", null,
+                        call.Arguments[0].AsNumber(), call.Arguments[1].AsNumber()) is { } music
+                    && _session.Catalog.TryGetSong((int)call.Arguments[0].AsNumber(), (int)music, out var song)
+                        ? SongSelectCatalogView.SourceLabel(song.Descriptor.Key.Source) : null;
+                try
+                {
+                    return original();
+                }
+                finally
+                {
+                    _boardLabel = null;
+                }
+            })
+            || !requirePlayer().TryWrapScriptMethod("_global.CppConnection.resource", "GetGenreLabel",
+                (_, original) => _boardLabel is { } label ? LumenHostValue.FromString(label) : original()))
+            Console.Error.WriteLine("Song Select has no MusicBoard.ResetMusicInfo; search results keep the folder's colour.");
         // Callback_SetSelectedMusic(genre, music) resets the movie's selection onto that song's board.
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(StartSong));
         // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
@@ -501,6 +529,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         invoke("UpdateMusicBoard", LumenHostValue.FromNumber(slot));
         return LumenHostValue.Undefined;
     }
+
+    private string? _boardLabel;
+
 
     // Answered inside the call (the movie only stores RankingScore while it waits): per course 0-4
     // (ura 4), ranks 0-2, empty ones as (course, rank, 0, "") (traced).

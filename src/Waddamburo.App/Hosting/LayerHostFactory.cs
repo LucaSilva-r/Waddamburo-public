@@ -123,6 +123,15 @@ internal sealed class LayerHostFactory(
         return OsuBrowse = control == SongBrowseControl.Group ? OsuBrowse.NextGroup() : OsuBrowse.NextSort();
     }
     private SongBrowseControl? _browseLeft;
+
+    /// <summary>The last search's results, listed first in Song Select (null: no search folder).</summary>
+    public SongSearchResults? Search
+    {
+        get => _search;
+        set => (_search, _searchShown) = (value, value is not null);
+    }
+    private SongSearchResults? _search;
+    private bool _searchShown;
     private (CategoryKey Category, SongKey Song)? _lastPick;
 
     // Home mode keeps each source in its own library (arcade lists the stock songs as the game does);
@@ -280,12 +289,14 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
-            browse: OsuBrowse);
+            browse: OsuBrowse, search: Search);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
         var (start, startSong) = (0, -1);
-        if (_browseLeft is { } control)
+        if (_searchShown)
+            start = Math.Max(view.Categories.ToList().FindIndex(category => category.Key == SongSelectCatalogView.SearchKey), 0);
+        else if (_browseLeft is { } control)
             start = Math.Max(view.Categories.ToList().FindIndex(category => category.Control == control), 0);
         else if (_libraryLeft is { } left)
             start = Math.Max(view.LinkCategory(left), 0);
@@ -293,6 +304,7 @@ internal sealed class LayerHostFactory(
             (start, startSong) = found;
         _libraryLeft = null;
         _browseLeft = null;
+        _searchShown = false;
         var binding = SongSelect = new SongSelectHostBinding(
             new SongSelectSession(
                 view,

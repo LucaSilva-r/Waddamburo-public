@@ -210,18 +210,39 @@ public sealed class LumenPlayer
     }
 
     /// <summary>
+    /// Wraps a script method of the object at <paramref name="targetPath"/> (set on that object, so a
+    /// class prototype wraps every instance's): <paramref name="host"/> gets each call's arguments and a
+    /// delegate that runs the original (with the real this) and returns its result. False when the
+    /// object or method is missing.
+    /// </summary>
+    public bool TryWrapScriptMethod(string targetPath, string method,
+        Func<LumenHostCall, Func<LumenHostValue>, LumenHostValue> host)
+    {
+        ArgumentNullException.ThrowIfNull(targetPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        ArgumentNullException.ThrowIfNull(host);
+        if (ReadScriptValue(targetPath) is not Avm1Object target
+            || target.GetProperty(method).Value is not Avm1FunctionValue original)
+            return false;
+        target.Properties[method] = new Avm1MethodWrapper((self, arguments) => new Avm1Lookup(true, fromHostValue(host(
+            new LumenHostCall([.. arguments.Select(toHostValue)]),
+            () => toHostValue(invokeFunction(_root, original, self, arguments, _activeContext).Value)))));
+        return true;
+    }
+
+    /// <summary>
     /// Calls a script method without arguments on the object at <paramref name="targetPath"/> and returns
     /// its result, or the result's <paramref name="member"/>, when that is a number; null otherwise.
     /// For polling authored state the movie reports to no callback (e.g. Song Select's folder cursor).
     /// </summary>
-    public double? CallScriptNumber(string targetPath, string method, string? member = null)
+    public double? CallScriptNumber(string targetPath, string method, string? member = null, params double[] arguments)
     {
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         if (ReadScriptValue(targetPath) is not Avm1Object target
             || target.GetProperty(method).Value is not Avm1FunctionValue function)
             return null;
-        var result = invokeFunction(_root, function, target, [], _activeContext).Value;
+        var result = invokeFunction(_root, function, target, [.. arguments.Select(static argument => (object?)argument)], _activeContext).Value;
         if (member is not null)
             result = result is Avm1Object returned ? returned.GetProperty(member).Value : null;
         return result is double number ? number : null;
@@ -934,6 +955,8 @@ public sealed class LumenPlayer
                 var candidate = context!.GetVariable(name);
                 if (candidate.Found && candidate.Value is Avm1FunctionValue function)
                     return invokeFunction(instance, function, instance, arguments, context);
+                if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
+                    return wrapper.Invoke(instance, arguments);
                 if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
                     return invokeHost(instance, nativeFunction, arguments);
                 if (name == "ASSetPropFlags")
@@ -1154,6 +1177,8 @@ public sealed class LumenPlayer
                     : context!.GetMember(target, name);
                 if (candidate.Found && candidate.Value is Avm1FunctionValue function)
                     return invokeFunction(instance, function, receiver, arguments, context);
+                if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
+                    return wrapper.Invoke(receiver, arguments);
                 if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
                     return invokeHost(instance, nativeFunction, arguments);
                 if (target is Avm1SuperValue && name.Length == 0)

@@ -316,6 +316,31 @@ public sealed unsafe class SdlApplication : IDisposable
     public bool PadsAsGamepad { get; set; } = true;
 
     /// <summary>The game is in a menu, not on a gameplay lane (set by the host each tick).</summary>
+    private readonly System.Text.StringBuilder _typed = new();
+
+    /// <summary>Starts taking typed text (the system's text input, IME included); see <see cref="TakeTypedText"/>.</summary>
+    public void StartTextInput()
+    {
+        ensureOwnerThread();
+        _typed.Clear();
+        SDL_StartTextInput(_window);
+    }
+
+    public void StopTextInput()
+    {
+        ensureOwnerThread();
+        SDL_StopTextInput(_window);
+        _typed.Clear();
+    }
+
+    /// <summary>The text typed since the last call (empty when none or text input is off).</summary>
+    public string TakeTypedText()
+    {
+        var text = _typed.ToString();
+        _typed.Clear();
+        return text;
+    }
+
     public bool MenuInput
     {
         get => _menuInput;
@@ -524,6 +549,8 @@ public sealed unsafe class SdlApplication : IDisposable
                     if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
                         pointerMoved(currentEvent.motion.x / width, currentEvent.motion.y / height);
                 }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT)
+                    _typed.Append(currentEvent.text.GetText());
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN && pointerClicked is not null
                     && currentEvent.button.button == SDL_BUTTON_LEFT)
                 {
