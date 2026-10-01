@@ -58,6 +58,9 @@ public sealed record SongSelectCategory(
 
     /// <summary>A named folder's spine name outline as 0xRRGGBB; null derives a dark shade of <see cref="Tint"/>.</summary>
     public uint? Outline { get; init; }
+
+    /// <summary>Pictures in place of the drawn names (spine 56x400, header 256x56) and on the open folder (192x360).</summary>
+    public (string? Spine, string? Header, string? Box) Images { get; init; }
 }
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
@@ -146,6 +149,7 @@ public sealed class SongSelectCatalogView
                     Tint = library == SongSourceKind.OsuLazer && browse is not null ? LibraryTint(SongSourceKind.OsuLazer)
                         : category.Descriptor?.Colour is { } rgb ? ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) : null,
                     Outline = category.Descriptor?.OutlineColour,
+                    Images = (category.Descriptor?.SpineImage, category.Descriptor?.HeaderImage, category.Descriptor?.BoxImage),
                 };
             })
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))

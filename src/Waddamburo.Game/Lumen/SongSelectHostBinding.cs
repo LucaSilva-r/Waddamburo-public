@@ -620,11 +620,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             new LumenRenderColor(colour.R / 255f, colour.G / 255f, colour.B / 255f, 1));
         // Genres outline their spine name in a dark shade of their colour.
         var outline = category.Outline ?? ((uint)(colour.R * 2 / 5) << 16 | (uint)(colour.G * 2 / 5) << 8 | (uint)(colour.B * 2 / 5));
-        player.SetNativeFill(SongSelectGenrePatch.Slot("tate", slot),
-            _session.GetFolderName(category.Name, SongBoardTextureKind.Compact, outline));
+        // Pictures (event-folder style) replace the drawn names.
+        var (spine, header, box) = category.Images;
+        player.SetNativeFill(SongSelectGenrePatch.Slot("tate", slot), spine is not null ? _session.GetImage(spine)
+            : _session.GetFolderName(category.Name, SongBoardTextureKind.Compact, outline));
         // The J-POP header quad sits right of its tab's visual centre (short "J-POP" hides it): shifted back.
-        player.SetNativeFill(SongSelectGenrePatch.Slot("yoko", slot), _session.GetFolderName(category.Name, SongBoardTextureKind.Expanded),
+        player.SetNativeFill(SongSelectGenrePatch.Slot("yoko", slot), header is not null ? _session.GetImage(header)
+            : _session.GetFolderName(category.Name, SongBoardTextureKind.Expanded),
             new LumenNativeSurfacePlacement(-128 - SongSelectGenrePatch.HeaderShift, -28, 256, 56));
+        if (box is not null)
+            player.SetNativeFill(SongSelectGenrePatch.Slot("image", slot), _session.GetImage(box));
         return SongSelectGenrePatch.Label(slot);
     }
 

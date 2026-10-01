@@ -180,6 +180,15 @@ public sealed record SongCategoryDescriptor
 
     /// <summary>The folder's description lines (box.def #BOXEXPLANATION1-3).</summary>
     public ImmutableArray<string> Description { get; init; } = [];
+
+    /// <summary>Event-folder style pictures (box.def #SPINEIMAGE/#HEADERIMAGE/#BOXIMAGE): full paths, when given.</summary>
+    public string? SpineImage { get; init; }
+
+    /// <inheritdoc cref="SpineImage"/>
+    public string? HeaderImage { get; init; }
+
+    /// <inheritdoc cref="SpineImage"/>
+    public string? BoxImage { get; init; }
 }
 
 public enum CatalogDiagnosticSeverity

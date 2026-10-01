@@ -30,6 +30,9 @@ public interface ISongBoardTextureService
 
     /// <summary>A folder name: Compact = vertical spine text, Expanded = horizontal banner.</summary>
     LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0);
+
+    /// <summary>A picture file (a folder's spine/header/box image).</summary>
+    LumenNativeSurfaceKey GetImage(string path);
 }
 
 public sealed record SongPreviewRequest(
@@ -108,6 +111,8 @@ public sealed class SongSelectSession
 
     public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0) =>
         _textures.GetFolderName(name, kind, outlineRgb);
+
+    public LumenNativeSurfaceKey GetImage(string path) => _textures.GetImage(path);
 
     public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse)
     {

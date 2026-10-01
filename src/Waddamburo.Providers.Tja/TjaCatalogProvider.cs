@@ -413,6 +413,9 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         static uint? colour(string? value) => value is { Length: 7 } && value[0] == '#'
             && uint.TryParse(value.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb) ? rgb : null;
         var title = values.GetValueOrDefault("TITLE");
+        var folder = Path.GetDirectoryName(path)!;
+        string? image(string key) => values.GetValueOrDefault(key) is { Length: > 0 } name
+            && Path.GetFullPath(Path.Combine(folder, name.Replace('\\', '/'))) is var full && File.Exists(full) ? full : null;
         return new SongCategoryDescriptor(category.Key, string.IsNullOrWhiteSpace(title) ? category.Name : title,
             category.SortOrder, category.Songs)
         {
@@ -422,6 +425,9 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             Description = [.. Enumerable.Range(1, 3)
                 .Select(index => values.GetValueOrDefault($"BOXEXPLANATION{index}"))
                 .OfType<string>().Where(static line => line.Length > 0)],
+            SpineImage = image("SPINEIMAGE"),
+            HeaderImage = image("HEADERIMAGE"),
+            BoxImage = image("BOXIMAGE"),
         };
     }
 

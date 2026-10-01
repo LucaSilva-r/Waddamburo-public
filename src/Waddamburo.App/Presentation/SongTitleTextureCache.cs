@@ -73,6 +73,15 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return key;
     }
 
+    /// <summary>A picture file, as it is (8-bit RGB/RGBA PNG; anything else fails to load and draws nothing).</summary>
+    public LumenNativeSurfaceKey GetImage(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var key = new LumenNativeSurfaceKey($"image:{path}");
+        _requests[key] = new TitleRequest(path, null, TitleTextureKind.Image, 0);
+        return key;
+    }
+
     /// <summary>Title for gameplay song_info's 720x64 song_name slot.</summary>
     public LumenNativeSurfaceKey GetGameplayTitle(SongSelectSong song)
     {
@@ -147,7 +156,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 TitleTextureKind.Compact => SongTitleTextProfile.Compact,
                 TitleTextureKind.Expanded => SongTitleTextProfile.Expanded,
                 TitleTextureKind.Transition => SongTitleTextProfile.Transition,
-                TitleTextureKind.Gameplay or TitleTextureKind.Banner => SongTitleTextProfile.GameplayTitle,
+                TitleTextureKind.Gameplay or TitleTextureKind.Banner or TitleTextureKind.Image => SongTitleTextProfile.GameplayTitle,
                 _ => throw new ArgumentOutOfRangeException(nameof(key)),
             };
             if (!_asynchronous)
@@ -216,6 +225,12 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
 
     private RgbaTextSurface rasterize(TitleRequest request, SongTitleTextProfile profile, uint rasterScale, bool squash)
     {
+        if (request.Kind == TitleTextureKind.Image)
+        {
+            // ponytail: the repo's own PNG reader (8-bit RGB/RGBA, no palette/16-bit); a real decoder when users hit it.
+            var (width, height, rgba) = Waddamburo.Upscale.PngFile.Read(request.Text);
+            return new RgbaTextSurface(width, height, rgba);
+        }
         if (request.Kind != TitleTextureKind.Banner)
             return NativeVerticalTextRasterizer.RenderSongTitle(
                 _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale, squash);
@@ -254,6 +269,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         Transition,
         Gameplay,
         Banner,
+        Image,
     }
     private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale, bool Squash);
     private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<RasterKey> Node);

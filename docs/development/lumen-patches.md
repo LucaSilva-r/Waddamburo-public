@@ -35,3 +35,9 @@ header name shifted onto the tab's visual centre). Folders beyond 32 keep the ã‚
 
 Texture indices come from song_select.lm (Green); the F3 click inspector (see diagnostics.md)
 shows them at runtime.
+
+A custom TJA folder's `box.def` (TJAPlayer3/OpenTaiko) sets its folder: `#TITLE`, `#GENRE` (a known
+genre uses the game's own art), `#BACKCOLOR`/`#BOXCOLOR`, `#FORECOLOR` (name outline),
+`#BOXEXPLANATION1-3`, and event-folder style pictures in place of the drawn names, relative to the
+folder: `#SPINEIMAGE` (56x400), `#HEADERIMAGE` (256x56), `#BOXIMAGE` (192x360, open folder). Pictures
+are 8-bit RGB/RGBA PNG.
