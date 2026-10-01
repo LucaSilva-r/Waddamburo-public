@@ -83,7 +83,11 @@ public static class OsuLazerRealmReader
                     beatmap.DynamicApi.Get<string>("Hash") ?? "",
                     beatmap.DynamicApi.Get<string>("MD5Hash") ?? "",
                     beatmap.DynamicApi.Get<double>("StarRating"),
-                    beatmap.DynamicApi.Get<bool>("Hidden"));
+                    beatmap.DynamicApi.Get<bool>("Hidden"))
+                {
+                    Bpm = beatmap.DynamicApi.Get<double>("BPM"),
+                    Length = TimeSpan.FromMilliseconds(beatmap.DynamicApi.Get<double>("Length")),
+                };
             })
             .ToArray();
 
@@ -91,7 +95,10 @@ public static class OsuLazerRealmReader
             set.DynamicApi.Get<Guid>("ID"),
             set.DynamicApi.Get<bool>("DeletePending"),
             files,
-            beatmaps);
+            beatmaps)
+        {
+            DateAdded = set.DynamicApi.Get<DateTimeOffset>("DateAdded"),
+        };
     }
 }
 
@@ -109,7 +116,10 @@ public sealed record OsuLazerBeatmapSet(
     Guid Id,
     bool DeletePending,
     IReadOnlyList<OsuLazerFile> Files,
-    IReadOnlyList<OsuLazerBeatmap> Beatmaps);
+    IReadOnlyList<OsuLazerBeatmap> Beatmaps)
+{
+    public DateTimeOffset? DateAdded { get; init; }
+}
 
 public sealed record OsuLazerFile(string Filename, string Hash);
 
@@ -131,7 +141,12 @@ public sealed record OsuLazerBeatmap(
     string FileHash,
     string Md5Hash,
     double StarRating,
-    bool Hidden);
+    bool Hidden)
+{
+    public double Bpm { get; init; }
+
+    public TimeSpan Length { get; init; }
+}
 
 public sealed class OsuLazerRealmReadException : Exception
 {

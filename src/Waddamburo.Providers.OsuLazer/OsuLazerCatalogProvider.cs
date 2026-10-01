@@ -121,7 +121,13 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                         charts,
                         new CatalogAssetKey(provider, $"file:{audioHash}"),
                         first.PreviewTime > 0 ? TimeSpan.FromMilliseconds(first.PreviewTime) : null,
-                        subtitle));
+                        subtitle)
+                    {
+                        Creator = nullIfBlank(first.Creator),
+                        DateAdded = set.DateAdded,
+                        Bpm = first.Bpm > 0 ? first.Bpm : null,
+                        Length = entry.Values.Max(static beatmap => beatmap.Length) is { } length && length > TimeSpan.Zero ? length : null,
+                    });
                     foreach (var beatmap in entry.Values.Where(static beatmap => beatmap.Md5Hash.Length != 0))
                         songByMd5.TryAdd(beatmap.Md5Hash, songKey);
                 }

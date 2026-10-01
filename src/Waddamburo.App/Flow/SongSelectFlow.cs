@@ -69,6 +69,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var scroll = Shell.Arcade.FastSongScroll && Shell.Active.Id == FlowScenes.SongSelect ? Shell.Hosts.SongSelect?.Scroll : null;
         base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null) ?? input);
         scroll?.After();
+        Shell.Hosts.SongSelect?.Poll();
     }
 
     private SongKey? _titled;
@@ -116,6 +117,28 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (switchLibrary() || calibrate())
             return;
+        // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, and Song
+        // Select reloads at once on that spine (its music plays on).
+        if (Shell.Hosts.SongSelect?.BrowseRequested is { } control)
+        {
+            var browse = Shell.Hosts.CycleBrowse(control);
+            Shell.Arcade = Shell.Arcade with { OsuBrowse = browse };
+            if (Shell.Options.ArcadePath is { } path)
+            {
+                try
+                {
+                    ArcadeSettings.SaveMenuSettings(path, Shell.Arcade);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+                }
+            }
+            Console.WriteLine($"osu!lazer library: group by {SongBrowse.Name(browse.Group)}, sort by {SongBrowse.Name(browse.Sort)}.");
+            Shell.Catalog.Replace(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
+            Shell.Show(FlowScenes.SongSelect);
+            return;
+        }
         // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
         if (input.Keys.IsDown(SdlKeyboardKey.P) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
             Console.WriteLine("Favourite: the cursor is on no song.");

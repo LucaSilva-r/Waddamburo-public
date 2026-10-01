@@ -105,11 +105,17 @@ public sealed class LumenPlayer
                         ? _movie.Strings[parameter.NameStringIndex].Value
                         : $"arg{parameter.Register ?? 0}")]))];
 
-    /// <summary>Maps one authored fill-zero clip name to a host-owned texture surface.</summary>
+    /// <summary>
+    /// Maps one authored fill-zero clip name to a host-owned texture surface. "ancestor/name" maps it only
+    /// under the clip named ancestor (e.g. one board of several that each carry the same slot names).
+    /// </summary>
     public void SetNativeFill(string instanceName, LumenNativeSurfaceKey surface)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
-        _nativeFills[instanceName] = new NativeFillBinding(surface, null);
+        if (_nativeFills.TryAdd(instanceName, new NativeFillBinding(surface, null)))
+            _scopedFills += instanceName.Contains('/') ? 1 : 0;
+        else
+            _nativeFills[instanceName] = new NativeFillBinding(surface, null);
     }
 
     public void SetNativeFill(
@@ -145,10 +151,26 @@ public sealed class LumenPlayer
         return $"{Name ?? "movie"}: {what}, frame {instance.Frame}: {string.Join(" < ", chain)}";
     }
 
+    // Fills set as "ancestor/slot" (see SetNativeFill) apply under that ancestor only, before the plain slot.
+    private int _scopedFills;
+
+    private NativeFillBinding? scopedFill(DisplayInstance instance, string slot)
+    {
+        if (_scopedFills == 0)
+            return null;
+        for (var ancestor = instance.Parent; ancestor is not null; ancestor = ancestor.Parent)
+            if (ancestor.Name.Length > 0 && _nativeFills.TryGetValue($"{ancestor.Name}/{slot}", out var fill))
+                return fill;
+        return null;
+    }
+
     public bool RemoveNativeFill(string instanceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
-        return _nativeFills.Remove(instanceName);
+        var removed = _nativeFills.Remove(instanceName);
+        if (removed && instanceName.Contains('/'))
+            _scopedFills--;
+        return removed;
     }
 
     public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments)
@@ -185,6 +207,24 @@ public sealed class LumenPlayer
         if (invoked)
             drainActions();
         return invoked;
+    }
+
+    /// <summary>
+    /// Calls a script method without arguments on the object at <paramref name="targetPath"/> and returns
+    /// its result, or the result's <paramref name="member"/>, when that is a number; null otherwise.
+    /// For polling authored state the movie reports to no callback (e.g. Song Select's folder cursor).
+    /// </summary>
+    public double? CallScriptNumber(string targetPath, string method, string? member = null)
+    {
+        ArgumentNullException.ThrowIfNull(targetPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        if (ReadScriptValue(targetPath) is not Avm1Object target
+            || target.GetProperty(method).Value is not Avm1FunctionValue function)
+            return null;
+        var result = invokeFunction(_root, function, target, [], _activeContext).Value;
+        if (member is not null)
+            result = result is Avm1Object returned ? returned.GetProperty(member).Value : null;
+        return result is double number ? number : null;
     }
 
     public void Advance()
@@ -2081,7 +2121,7 @@ public sealed class LumenPlayer
                 if ((geometry.Flags >> 16) == 0)
                 {
                     var slot = instance.Name.Length > 0 ? instance.Name : instance.Parent?.Name ?? "";
-                    if (_nativeFills.TryGetValue(slot, out var nativeFill))
+                    if (scopedFill(instance, slot) is { } nativeFill || _nativeFills.TryGetValue(slot, out nativeFill))
                     {
                         var minX = geometry.Vertices.Min(static vertex => vertex.X);
                         var maxX = geometry.Vertices.Max(static vertex => vertex.X);

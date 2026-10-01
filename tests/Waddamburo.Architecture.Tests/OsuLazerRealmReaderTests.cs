@@ -34,6 +34,7 @@ public sealed class OsuLazerRealmReaderTests
             var beatmap = Assert.Single(set.Beatmaps);
             Assert.Equal("taiko", beatmap.Ruleset);
             Assert.Equal(4.5, beatmap.StarRating);
+            Assert.Equal(180, beatmap.Bpm);
             Assert.Equal("Synthetic Song", beatmap.Title);
             Assert.Equal("song.ogg", beatmap.AudioFilename);
             Assert.Equal("audio-hash", set.Files.Single(file => file.Filename == beatmap.AudioFilename).Hash);
@@ -127,12 +128,15 @@ public sealed class OsuLazerRealmReaderTests
                 Property.Primitive("Hash", RealmValueType.String),
                 Property.Primitive("MD5Hash", RealmValueType.String),
                 Property.Primitive("StarRating", RealmValueType.Double),
+                Property.Primitive("BPM", RealmValueType.Double),
+                Property.Primitive("Length", RealmValueType.Double),
                 Property.Primitive("Hidden", RealmValueType.Bool),
             },
             new ObjectSchema.Builder("BeatmapSet", ObjectSchema.ObjectType.RealmObject)
             {
                 Property.Primitive("ID", RealmValueType.Guid, isPrimaryKey: true),
                 Property.Primitive("DeletePending", RealmValueType.Bool),
+                Property.Primitive("DateAdded", RealmValueType.Date),
                 Property.ObjectList("Beatmaps", "Beatmap"),
                 Property.ObjectList("Files", "RealmNamedFileUsage"),
             },
@@ -152,6 +156,7 @@ public sealed class OsuLazerRealmReaderTests
             beatmap.DynamicApi.Set("Metadata", RealmValue.Object(metadata));
             beatmap.DynamicApi.Set("Hash", "chart-hash");
             beatmap.DynamicApi.Set("StarRating", 4.5);
+            beatmap.DynamicApi.Set("BPM", 180.0);
             var set = realm.DynamicApi.CreateObject("BeatmapSet", Guid.NewGuid());
             set.DynamicApi.GetList<IRealmObjectBase>("Beatmaps").Add(beatmap);
             var usage = realm.DynamicApi.AddEmbeddedObjectToList(set.DynamicApi.GetList<IEmbeddedObject>("Files"));

@@ -127,6 +127,18 @@ public sealed record SongDescriptor
     /// game's own songs author it (fumen/&lt;id&gt;/composition.xml).
     /// </summary>
     public CatalogAssetKey? WaiwaiComposition { get; init; }
+
+    /// <summary>The chart author (osu! mapper), when the source names one; for browsing.</summary>
+    public string? Creator { get; init; }
+
+    /// <summary>When the song joined the player's library, when the source records it; for browsing.</summary>
+    public DateTimeOffset? DateAdded { get; init; }
+
+    /// <summary>The song's main tempo, when the source states it; for browsing.</summary>
+    public double? Bpm { get; init; }
+
+    /// <summary>The song's playable length, when the source states it; for browsing.</summary>
+    public TimeSpan? Length { get; init; }
 }
 
 public sealed record SongCategoryDescriptor

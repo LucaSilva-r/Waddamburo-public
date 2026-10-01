@@ -312,6 +312,9 @@ public sealed record ArcadeSettings
     /// <summary>An osu!lazer data folder (null: the default install's, when there is one).</summary>
     public string? OsuFolder { get; init; }
 
+    /// <summary>The osu!lazer library's folder grouping and song order (its Group and Sort spines change them).</summary>
+    public SongSelect.SongBrowse OsuBrowse { get; init; } = new();
+
     public int CreditsPerCoin { get; init; } = 1;
 
     /// <summary>Credits one player needs to start a session.</summary>
@@ -468,6 +471,14 @@ public sealed record ArcadeSettings
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
+                "osu_group" => settings with { OsuBrowse = settings.OsuBrowse with
+                {
+                    Group = Enum.TryParse<SongSelect.SongGroupMode>(value, true, out var group) ? group : settings.OsuBrowse.Group,
+                } },
+                "osu_sort" => settings with { OsuBrowse = settings.OsuBrowse with
+                {
+                    Sort = Enum.TryParse<SongSelect.SongSortMode>(value, true, out var sort) ? sort : settings.OsuBrowse.Sort,
+                } },
                 "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
                 {
                     "auto" => null,
@@ -537,6 +548,8 @@ public sealed record ArcadeSettings
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",
+            ["osu_group"] = settings.OsuBrowse.Group.ToString().ToLowerInvariant(),
+            ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),
             ["fullscreen"] = settings.Fullscreen ? "true" : "false",
             ["vsync"] = settings.Vsync ? "true" : "false",
             ["fps_cap"] = settings.FpsCap,

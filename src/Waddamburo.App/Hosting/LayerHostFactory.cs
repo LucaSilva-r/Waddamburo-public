@@ -112,6 +112,17 @@ internal sealed class LayerHostFactory(
         set => (_libraryLeft, _library) = (Library, value);
     }
     private SongSourceKind? _library, _libraryLeft;
+
+    /// <summary>The osu!lazer library's grouping and order (from the settings; its spines cycle them).</summary>
+    public SongBrowse OsuBrowse { get; set; } = arcade.OsuBrowse;
+
+    /// <summary>Cycles the grouping or order a spine names; the reloaded Song Select starts on that spine.</summary>
+    public SongBrowse CycleBrowse(SongBrowseControl control)
+    {
+        _browseLeft = control;
+        return OsuBrowse = control == SongBrowseControl.Group ? OsuBrowse.NextGroup() : OsuBrowse.NextSort();
+    }
+    private SongBrowseControl? _browseLeft;
     private (CategoryKey Category, SongKey Song)? _lastPick;
 
     // Home mode keeps each source in its own library (arcade lists the stock songs as the game does);
@@ -268,16 +279,20 @@ internal sealed class LayerHostFactory(
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
-            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen);
+            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
+            browse: OsuBrowse);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
         var (start, startSong) = (0, -1);
-        if (_libraryLeft is { } left)
+        if (_browseLeft is { } control)
+            start = Math.Max(view.Categories.ToList().FindIndex(category => category.Control == control), 0);
+        else if (_libraryLeft is { } left)
             start = Math.Max(view.LinkCategory(left), 0);
         else if (_lastPick is { } pick && view.Find(pick.Category, pick.Song) is { } found)
             (start, startSong) = found;
         _libraryLeft = null;
+        _browseLeft = null;
         var binding = SongSelect = new SongSelectHostBinding(
             new SongSelectSession(
                 view,

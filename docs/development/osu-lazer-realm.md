@@ -43,3 +43,22 @@ sliders are drumrolls (length × spans / (100 × SliderMultiplier × SV) beats),
 (OD-scaled hits per second × 1.65), green points set the scroll and red ones reset it, kiai is
 Go-Go, bar lines every measure from each red point, files before v5 shifted 24 ms. A slider
 multiplier of 1.4 (the usual taiko base) is scroll 1.
+
+## Browsing
+
+The library is listed by `SongBrowse` (Game/SongSelect) after osu!'s own song select groups: Group
+None/Title/Artist/Mapper/Difficulty/Collections/Date Added/BPM/Length (Title, Artist and Mapper by
+first letter with "0-9" and "Other"; Difficulty lists a song under each star level of its charts),
+sorted by Title/Artist/Mapper/Difficulty/Date Added/BPM/Length. A folder over 999 songs (the count
+label has three digits) splits into numbered parts. Two spines after the folders, "Group: …" and
+"Sort: …", cycle the modes; Song Select reloads at once on that spine and the choice is saved as
+`osu_group` / `osu_sort` in config.cfg.
+
+Folder names use the movie's feature folders (`イベント` art), which name themselves from ten fill
+slots (`feature_board_{tate,yoko}_00-09`). With more folders than slots, folder i uses slot i % 10
+and the host names each spine per board: the 13 recycled boards (`musicBoard_left6_` … `center_` …
+`right6_`, in `resource.musicboardList` order) each report the folder they show
+(`musicInfo.genreIndex`), and an ancestor-scoped native fill (`"musicBoard_right2_/feature_board_tate_03"`)
+names that board's spine. The centre banner follows the cursor (`container.GetCurrentMusicInfo()`),
+polled each tick because `NotifyGenreFolder` only reports it once the list settles.
+

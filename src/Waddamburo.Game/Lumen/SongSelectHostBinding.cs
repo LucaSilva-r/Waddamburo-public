@@ -219,6 +219,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
     public SongSourceKind? LibraryRequested { get; private set; }
 
+    /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
+    public SongBrowseControl? BrowseRequested { get; private set; }
+
     /// <summary>The folder the cursor starts on.</summary>
     public int StartCategory { get; init; }
 
@@ -313,7 +316,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     else if (genre == _session.Catalog.TutorialCategory)
                         TutorialRequested = true;
                     else if ((uint)genre < (uint)_session.Catalog.Categories.Length)
+                    {
                         LibraryRequested = _session.Catalog.Categories[genre].Link;
+                        BrowseRequested = _session.Catalog.Categories[genre].Control;
+                    }
                 }
                 return LumenHostValue.FromBoolean(true);
             });
@@ -337,8 +343,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        // A library switch reloads Song Select under the rainbow: its music plays on.
-        if (LibraryRequested is null)
+        // A library switch reloads Song Select under the rainbow, a browse change at once: its music plays on.
+        if (LibraryRequested is null && BrowseRequested is null)
             _session.StopMusic();
         _sounds?.StopVoice();
     }
@@ -351,19 +357,18 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             return false;
         _assigned = true;
         installFavouriteIcon();
-        var feature = 0;
-        foreach (var category in _session.Catalog.Categories)
+        _featureFolders.Clear();
+        for (var index = 0; index < _session.Catalog.Categories.Length; index++)
         {
+            var category = _session.Catalog.Categories[index];
             // AssignMusic's last argument picks a feature folder's slot (00-09) whose spine and banner
-            // show host-drawn text; -1 = none (the baked イベント art).
+            // show host-drawn text; -1 = none (the baked イベント art). More than ten feature folders
+            // share the slots (see nameFeatureFolders).
             var featureSlot = -1;
-            if (category.AuthoredLabel == SongSelectCatalogView.FeatureLabel && feature < 10)
+            if (category.AuthoredLabel == SongSelectCatalogView.FeatureLabel)
             {
-                featureSlot = feature++;
-                requirePlayer().SetNativeFill($"feature_board_tate_{featureSlot:00}",
-                    _session.GetFolderName(category.Name, SongBoardTextureKind.Compact));
-                requirePlayer().SetNativeFill($"feature_board_yoko_{featureSlot:00}",
-                    _session.GetFolderName(category.Name, SongBoardTextureKind.Expanded));
+                featureSlot = _featureFolders.Count % FeatureSlots;
+                _featureFolders.Add((index, featureSlot));
             }
             invoke(
                 "AssignMusic",
@@ -374,6 +379,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber((int)category.Presentation),
                 LumenHostValue.FromNumber(featureSlot));
         }
+        nameFeatureFolders(StartCategory);
         // Callback_SetSelectedMusic(genre, music) resets the movie's selection onto that song's board.
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(StartSong));
         // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
@@ -530,11 +536,83 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return LumenHostValue.Undefined;
     }
 
+    // The movie has ten feature name slots (feature_board_{tate,yoko}_00-09); folder i uses slot
+    // i % 10, and each slot shows the folder nearest the cursor that uses it. Fewer than ten spines are
+    // on screen at once, so two folders sharing a slot are never both visible.
+    private const int FeatureSlots = 10;
+    private readonly List<(int Category, int Slot)> _featureFolders = [];
+    private readonly string?[] _slotNames = new string?[FeatureSlots];
+
+    private void nameFeatureFolders(int cursor)
+    {
+        var count = _session.Catalog.Categories.Length;
+        foreach (var group in _featureFolders.GroupBy(static folder => folder.Slot))
+        {
+            var nearest = group.MinBy(folder =>
+            {
+                var distance = Math.Abs(folder.Category - cursor);
+                return Math.Min(distance, count - distance);
+            });
+            var name = _session.Catalog.Categories[nearest.Category].Name;
+            if (_slotNames[group.Key] == name)
+                continue;
+            _slotNames[group.Key] = name;
+            requirePlayer().SetNativeFill($"feature_board_tate_{group.Key:00}",
+                _session.GetFolderName(name, SongBoardTextureKind.Compact));
+            requirePlayer().SetNativeFill($"feature_board_yoko_{group.Key:00}",
+                _session.GetFolderName(name, SongBoardTextureKind.Expanded));
+        }
+    }
+
+    /// <summary>
+    /// Once per tick: while more feature folders than name slots are listed, follows the folder cursor
+    /// as it moves (NotifyGenreFolder only reports it once the list settles) so the spines coming into
+    /// view already carry their names.
+    /// </summary>
+    public void Poll()
+    {
+        if (_featureFolders.Count <= FeatureSlots || _player is null)
+            return;
+        // Each spine is one of the 13 recycled boards; its own folder names it (scoped native fill).
+        for (var board = 0; board < Boards.Length; board++)
+        {
+            if (_player.ReadScriptValue($"_global.CppConnection.resource.musicboardList.{board}.musicInfo.genreIndex")
+                    is not double shown || (int)shown == _boardFolders[board])
+                continue;
+            _boardFolders[board] = (int)shown;
+            var folder = _featureFolders.FindIndex(entry => entry.Category == (int)shown);
+            if (folder < 0)
+                continue;
+            _player.SetNativeFill($"{Boards[board]}/feature_board_tate_{_featureFolders[folder].Slot:00}",
+                _session.GetFolderName(_session.Catalog.Categories[(int)shown].Name, SongBoardTextureKind.Compact));
+        }
+        // The banner over the centre (feature_board_yoko_*) follows the cursor.
+        if (_player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") is { } cursor
+            && (int)cursor != _polledCursor)
+        {
+            _polledCursor = (int)cursor;
+            if ((uint)_polledCursor < (uint)_session.Catalog.Categories.Length)
+                nameFeatureFolders(_polledCursor);
+        }
+    }
+
+    // BoardContainer's boards in musicboardList order (traced: song_name12 is in musicBoard_right6_).
+    private static readonly string[] Boards =
+    [
+        "musicBoard_left6_", "musicBoard_left5_", "musicBoard_left4_", "musicBoard_left3_", "musicBoard_left2_",
+        "musicBoard_left1_", "musicBoard_center_", "musicBoard_right1_", "musicBoard_right2_", "musicBoard_right3_",
+        "musicBoard_right4_", "musicBoard_right5_", "musicBoard_right6_",
+    ];
+    private readonly int[] _boardFolders = [.. Enumerable.Repeat(-1, 13)];
+    private int _polledCursor = -1;
+
     private LumenHostValue notifyGenreFolder(LumenHostCall call)
     {
         var category = integer(call, 0);
         var song = integer(call, 1);
         var isFolderOpen = boolean(call, 2);
+        if (_featureFolders.Count > FeatureSlots && (uint)category < (uint)_session.Catalog.Categories.Length)
+            nameFeatureFolders(category);
         if (song == -1 && !isFolderOpen && (uint)category < (uint)_session.Catalog.Categories.Length)
             _sounds?.SelectCategoryVoice(_session.Catalog.Categories[category].Name);
         return LumenHostValue.Undefined;

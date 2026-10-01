@@ -47,7 +47,11 @@ public sealed record SongSelectCategory(
     SongCategoryPresentation Presentation,
     SongBoardTextureStyle BoardStyle,
     ImmutableArray<SongSelectSong> Songs,
-    SongSourceKind? Link = null);
+    SongSourceKind? Link = null,
+    SongBrowseControl? Control = null);
+
+/// <summary>A spine that cycles the library's folder grouping or song order (decides at once).</summary>
+public enum SongBrowseControl { Group, Sort }
 
 /// <summary>Source-neutral, revision-pinned data consumed by the authored Song Select host.</summary>
 public sealed class SongSelectCatalogView
@@ -73,11 +77,13 @@ public sealed class SongSelectCatalogView
     /// <paramref name="favourites"/> lists the marked songs of the shown library in a folder first
     /// (where the game assigns お気に入り, after おすすめ); see <see cref="RefreshFavourites"/>.
     /// <paramref name="tutorial"/> puts the how-to-play folder first (traced: normal select, until watched).
+    /// <paramref name="browse"/> (the osu!lazer library only) groups its songs into folders and sorts
+    /// them, with a Group and a Sort spine after the folders to change either.
     /// </summary>
     // ponytail: Waiwai's "how to play" folder (id 21, before the switch; waiwai_tutorial) is left out, untraced.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
-        IEnumerable<SongKey>? favourites = null, bool tutorial = false)
+        IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -94,18 +100,27 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "tutorial"), "How to Play", TutorialLabel,
                 SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), []),
         };
-        var categories = tutorialFolder.Concat(favouriteFolder).Concat(snapshot.Categories
-            .Where(category => library is null || category.Key.Source == library)
+        var listed = library == SongSourceKind.OsuLazer && browse is not null
+            ? browsed(snapshot, browse)
+            : snapshot.Categories
+                .Where(category => library is null || category.Key.Source == library)
+                .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key])));
+        var categories = tutorialFolder.Concat(favouriteFolder).Concat(listed
             .Select(category => new SongSelectCategory(
             category.Key,
             category.Name,
             authoredLabel(category.Name),
             SongCategoryPresentation.AlwaysVisible,
             boardStyle(category.Name),
-            [.. category.Songs.Select(key => snapshot.Songs[key])
+            [.. category.Songs
                 .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
                 .Select(createSong)]))
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
+            .Concat(library == SongSourceKind.OsuLazer && browse is not null ? new[]
+            {
+                control(SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}"),
+                control(SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}"),
+            } : [])
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
                 boardStyle(""), [], link)));
@@ -117,6 +132,27 @@ public sealed class SongSelectCatalogView
     }
 
     public SongSelectMode Mode { get; }
+
+    // The osu!lazer library's folders by the browse's grouping; its collections come from the provider's
+    // collection categories. A grouping with no folder (no collections) lists every song.
+    private static IEnumerable<(CategoryKey Key, string Name, IEnumerable<SongDescriptor> Songs)> browsed(
+        SongCatalogSnapshot snapshot, SongBrowse browse)
+    {
+        var songs = snapshot.Songs.Values.Where(static song => song.Key.Source == SongSourceKind.OsuLazer).ToArray();
+        var collections = snapshot.Categories
+            .Where(static category => category.Key.Source == SongSourceKind.OsuLazer
+                && category.Key.StableId.StartsWith("collection:", StringComparison.Ordinal))
+            .Select(category => (category.Name, (IReadOnlyList<SongDescriptor>)[.. category.Songs.Select(key => snapshot.Songs[key])]));
+        var folders = browse.Folders(songs, collections, DateTimeOffset.UtcNow);
+        if (folders.Count == 0)
+            folders = (browse with { Group = SongGroupMode.All }).Folders(songs, [], DateTimeOffset.UtcNow);
+        return folders.Select(folder => (new CategoryKey(SongSourceKind.OsuLazer, $"{browse.Group}:{folder.Name}"),
+            folder.Name, folder.Songs.AsEnumerable()));
+    }
+
+    private static SongSelectCategory control(SongBrowseControl control, string name) =>
+        new(new CategoryKey(SongSourceKind.OsuLazer, $"control:{control}"), name, FeatureLabel,
+            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control);
 
     private readonly SongCatalogSnapshot _snapshot;
     private readonly SongSourceKind? _library;
