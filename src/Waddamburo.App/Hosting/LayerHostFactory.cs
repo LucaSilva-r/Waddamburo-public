@@ -321,7 +321,7 @@ internal sealed class LayerHostFactory(
             StartCategory = start,
             StartSong = startSong,
             Favourites = Favourites,
-            PatchedGenres = true,
+            PatchedGenres = Waddamburo.Game.Patching.SongSelectGenrePatch.LastApplied,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,

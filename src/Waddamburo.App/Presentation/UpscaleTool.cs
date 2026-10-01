@@ -196,6 +196,12 @@ internal sealed class UpscaleTool : IDisposable
     public bool IsUpscaled(byte[] rgba) => _upscaled.TryGetValue(rgba, out _);
 
     /// <summary>
+    /// Marks pixels as needing no upscale (textures a Lumen patch derived from upscaled ones: upscaling a
+    /// derived layer on its own would sharpen its edges).
+    /// </summary>
+    public void MarkUpscaled(byte[] rgba) => _upscaled.AddOrUpdate(rgba, this);
+
+    /// <summary>
     /// Swaps a freshly decoded movie's textures for their cached upscales before upload (on the
     /// decoding thread), so the game shows them at once: BC7 slices of the mapped cache, or decoded
     /// to RGBA when the renderer has no BC7.

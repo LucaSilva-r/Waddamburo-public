@@ -168,6 +168,18 @@ public sealed record SongCategoryDescriptor
     public int SortOrder { get; }
 
     public ImmutableArray<SongKey> Songs { get; }
+
+    /// <summary>The genre the folder declares (a TJA box.def #GENRE), when it does.</summary>
+    public string? Genre { get; init; }
+
+    /// <summary>The folder's colour as 0xRRGGBB (box.def #BACKCOLOR), when it declares one.</summary>
+    public uint? Colour { get; init; }
+
+    /// <summary>The folder name's outline colour as 0xRRGGBB (box.def #FORECOLOR), when it declares one.</summary>
+    public uint? OutlineColour { get; init; }
+
+    /// <summary>The folder's description lines (box.def #BOXEXPLANATION1-3).</summary>
+    public ImmutableArray<string> Description { get; init; } = [];
 }
 
 public enum CatalogDiagnosticSeverity

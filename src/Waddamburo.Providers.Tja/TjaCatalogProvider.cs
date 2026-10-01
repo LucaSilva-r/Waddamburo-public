@@ -153,11 +153,11 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             .ToDictionary(static item => item.Key, static item => item.index);
         var orderedCategories = categories
             .OrderBy(static category => category.Key, StringComparer.Ordinal)
-            .Select((category, index) => new SongCategoryDescriptor(
+            .Select((category, index) => withBox(new SongCategoryDescriptor(
                 new CategoryKey(Source, stableCategoryId(category.Key)),
                 category.Key,
                 index,
-                category.Value.OrderBy(key => songOrder[key])))
+                category.Value.OrderBy(key => songOrder[key]))))
             .ToArray();
 
         progress?.Report(new CatalogScanProgress(Id, "complete", paths.Length, paths.Length));
@@ -386,6 +386,44 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
     private static string? firstMetadata(IEnumerable<InspectedTjaFile> files, string name) =>
         files.Select(file => file.Metadata.Get(name)).FirstOrDefault(static value => value is not null);
+
+    // A top folder's box.def (TJAPlayer3/OpenTaiko): its title (#TITLE), genre, colours and description.
+    private SongCategoryDescriptor withBox(SongCategoryDescriptor category)
+    {
+        var path = Path.Combine(_root, category.Name, "box.def");
+        if (!File.Exists(path))
+            return category;
+        string text;
+        try
+        {
+            text = TjaMetadataReader.Decode(File.ReadAllBytes(path));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        {
+            return category;
+        }
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim().TrimStart('\uFEFF');
+            var colon = line.IndexOf(':');
+            if (line.StartsWith('#') && colon > 1)
+                values.TryAdd(line[1..colon].Trim(), line[(colon + 1)..].Trim());
+        }
+        static uint? colour(string? value) => value is { Length: 7 } && value[0] == '#'
+            && uint.TryParse(value.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb) ? rgb : null;
+        var title = values.GetValueOrDefault("TITLE");
+        return new SongCategoryDescriptor(category.Key, string.IsNullOrWhiteSpace(title) ? category.Name : title,
+            category.SortOrder, category.Songs)
+        {
+            Genre = values.GetValueOrDefault("GENRE") is { Length: > 0 } genre ? genre : null,
+            Colour = colour(values.GetValueOrDefault("BACKCOLOR")) ?? colour(values.GetValueOrDefault("BOXCOLOR")),
+            OutlineColour = colour(values.GetValueOrDefault("FORECOLOR")),
+            Description = [.. Enumerable.Range(1, 3)
+                .Select(index => values.GetValueOrDefault($"BOXEXPLANATION{index}"))
+                .OfType<string>().Where(static line => line.Length > 0)],
+        };
+    }
 
     private static string categoryFor(string relativePath, string? genre)
     {

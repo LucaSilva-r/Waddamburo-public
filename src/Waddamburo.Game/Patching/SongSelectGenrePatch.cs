@@ -31,8 +31,30 @@ public static class SongSelectGenrePatch
     /// <summary>A custom genre's host surface slot: tate (spine name), yoko (header name), desc, image.</summary>
     public static string Slot(string part, int slot) => $"wd_{part}_{slot:00}";
 
-    public static bool AppliesTo(LumenMovieContent content) =>
-        content.Name == MovieName || content.Name.EndsWith("/" + MovieName, StringComparison.Ordinal);
+    // Green's layout of what the patch uses (texture → size): another movie version with other numbering
+    // fails the check and is left alone rather than patched with the wrong art.
+    private static readonly (uint Texture, int Width, int Height)[] Layout =
+    [
+        (423, 8, 64), (424, 64, 64), (547, 24, 560), (548, 8, 560), (555, 8, 480), (556, 32, 480), (557, 32, 480),
+        (643, 88, 24), (704, 8, 560), (705, 40, 560), (736, 8, 72), (737, 48, 72), (772, 640, 720),
+        (642, 56, 400), (450, 256, 56), (508, 160, 400), (507, 192, 360),
+    ];
+
+    /// <summary>Whether the last song_select.lm decoded was patched (its custom genres exist).</summary>
+    public static bool LastApplied { get; private set; }
+
+    public static bool AppliesTo(LumenMovieContent content)
+    {
+        if (content.Name != MovieName && !content.Name.EndsWith("/" + MovieName, StringComparison.Ordinal))
+            return false;
+        var matches = Layout.All(entry => entry.Texture < content.Textures.Length
+            && content.Textures[(int)entry.Texture] is { } texture
+            && texture.Width == entry.Width && texture.Height == entry.Height);
+        if (!matches)
+            Console.Error.WriteLine("Warning LUMEN_PATCH: song_select.lm is not Green's layout; custom genre colours are off.");
+        LastApplied = matches;
+        return matches;
+    }
 
     public static void Apply(LumenMovieContent content)
     {

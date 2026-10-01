@@ -594,16 +594,32 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return SongSelectGenrePatch.Slots;
     }
 
+    // Colours for folders that bring none (no box.def colour): picked by name, so a folder keeps its colour.
+    private static readonly (byte R, byte G, byte B)[] Palette =
+    [
+        (60, 170, 240), (130, 210, 60), (255, 102, 171), (170, 110, 255), (255, 150, 30),
+        (40, 200, 170), (230, 70, 70), (210, 170, 20), (90, 120, 230), (240, 110, 200),
+    ];
+
+    /// <summary>A folder's default colour, stable for its name.</summary>
+    public static (byte R, byte G, byte B) PaletteColour(string name)
+    {
+        var hash = 2166136261u;
+        foreach (var character in name)
+            hash = (hash ^ character) * 16777619u;
+        return Palette[hash % (uint)Palette.Length];
+    }
+
     // A named folder on custom genre <paramref name="slot"/>: its colour and names. Its label.
     private string customGenre(int slot, SongSelectCategory category)
     {
         var player = requirePlayer();
         // The recoloured art's body layer is multiplied by the folder's colour (its highlights stay light).
-        var colour = category.Tint ?? (255, 255, 255);
+        var colour = category.Tint ?? PaletteColour(category.Name);
         player.SetColorTransform((uint)(player.ColorTransformCount - SongSelectGenrePatch.Slots + slot),
             new LumenRenderColor(colour.R / 255f, colour.G / 255f, colour.B / 255f, 1));
         // Genres outline their spine name in a dark shade of their colour.
-        var outline = (uint)(colour.R * 2 / 5) << 16 | (uint)(colour.G * 2 / 5) << 8 | (uint)(colour.B * 2 / 5);
+        var outline = category.Outline ?? ((uint)(colour.R * 2 / 5) << 16 | (uint)(colour.G * 2 / 5) << 8 | (uint)(colour.B * 2 / 5));
         player.SetNativeFill(SongSelectGenrePatch.Slot("tate", slot),
             _session.GetFolderName(category.Name, SongBoardTextureKind.Compact, outline));
         // The J-POP header quad sits right of its tab's visual centre (short "J-POP" hides it): shifted back.

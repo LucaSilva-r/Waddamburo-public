@@ -55,6 +55,9 @@ public sealed record SongSelectCategory(
     /// white art.
     /// </summary>
     public (byte R, byte G, byte B)? Tint { get; init; }
+
+    /// <summary>A named folder's spine name outline as 0xRRGGBB; null derives a dark shade of <see cref="Tint"/>.</summary>
+    public uint? Outline { get; init; }
 }
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
@@ -116,7 +119,8 @@ public sealed class SongSelectCatalogView
             ? browsed(snapshot, browse)
             : snapshot.Categories
                 .Where(category => library is null || category.Key.Source == library)
-                .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key])));
+                .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key]),
+                    Descriptor: (SongCategoryDescriptor?)category));
         var searchFolder = search is null ? [] : new[]
         {
             new SongSelectCategory(SearchKey, $"Search: {search.Query}", FeatureLabel, SongCategoryPresentation.AlwaysVisible,
@@ -125,15 +129,25 @@ public sealed class SongSelectCatalogView
                     .Select(createSong)]) { Tint = (255, 200, 40) },
         };
         var categories = searchFolder.Concat(tutorialFolder).Concat(favouriteFolder).Concat(listed
-            .Select(category => new SongSelectCategory(
-            category.Key,
-            category.Name,
-            authoredLabel(category.Name),
-            SongCategoryPresentation.AlwaysVisible,
-            boardStyle(category.Name),
-            [.. category.Songs
-                .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-                .Select(createSong)]) { Tint = library == SongSourceKind.OsuLazer && browse is not null ? LibraryTint(SongSourceKind.OsuLazer) : null })
+            .Select(category =>
+            {
+                // A declared genre (box.def #GENRE) picks the game's own art first, then the folder's name.
+                var label = genreLabel(category.Descriptor?.Genre) ?? authoredLabel(category.Name);
+                return new SongSelectCategory(
+                    category.Key,
+                    category.Name,
+                    label,
+                    SongCategoryPresentation.AlwaysVisible,
+                    category.Descriptor?.OutlineColour is { } outline ? new SongBoardTextureStyle(outline) : boardStyle(label == FeatureLabel ? category.Name : label),
+                    [.. category.Songs
+                        .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
+                        .Select(createSong)])
+                {
+                    Tint = library == SongSourceKind.OsuLazer && browse is not null ? LibraryTint(SongSourceKind.OsuLazer)
+                        : category.Descriptor?.Colour is { } rgb ? ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) : null,
+                    Outline = category.Descriptor?.OutlineColour,
+                };
+            })
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
             .Concat(library == SongSourceKind.OsuLazer && browse is not null ? new[]
             {
@@ -166,7 +180,7 @@ public sealed class SongSelectCatalogView
 
     // The osu!lazer library's folders by the browse's grouping; its collections come from the provider's
     // collection categories. A grouping with no folder (no collections) lists every song.
-    private static IEnumerable<(CategoryKey Key, string Name, IEnumerable<SongDescriptor> Songs)> browsed(
+    private static IEnumerable<(CategoryKey Key, string Name, IEnumerable<SongDescriptor> Songs, SongCategoryDescriptor? Descriptor)> browsed(
         SongCatalogSnapshot snapshot, SongBrowse browse)
     {
         var songs = snapshot.Songs.Values.Where(static song => song.Key.Source == SongSourceKind.OsuLazer).ToArray();
@@ -178,7 +192,7 @@ public sealed class SongSelectCatalogView
         if (folders.Count == 0)
             folders = (browse with { Group = SongGroupMode.All }).Folders(songs, [], DateTimeOffset.UtcNow);
         return folders.Select(folder => (new CategoryKey(SongSourceKind.OsuLazer, $"{browse.Group}:{folder.Name}"),
-            folder.Name, folder.Songs.AsEnumerable()));
+            folder.Name, folder.Songs.AsEnumerable(), (SongCategoryDescriptor?)null));
     }
 
     /// <summary>
@@ -287,6 +301,21 @@ public sealed class SongSelectCatalogView
         return new SongSelectSong(descriptor, bits, [.. levels]);
     }
 
+    // TJA box.def #GENRE values (TJAPlayer3/OpenTaiko spellings) and the game's own labels.
+    private static string? genreLabel(string? genre) => genre?.Trim().ToUpperInvariant() switch
+    {
+        null or "" => null,
+        "J-POP" or "POP" or "JPOP" => "J-POP",
+        "アニメ" or "ANIME" => "アニメ",
+        "どうよう" or "童謡" or "キッズ" or "KIDS" or "CHILDREN" => "童謡",
+        "バラエティ" or "バラエティー" or "VARIETY" => "バラエティ",
+        "クラシック" or "CLASSIC" or "CLASSICAL" => "クラシック",
+        "ゲームミュージック" or "GAME MUSIC" or "GAME" => "ゲームミュージック",
+        "ナムコオリジナル" or "NAMCO ORIGINAL" or "NAMCO" => "ナムコオリジナル",
+        "ボーカロイド" or "ボーカロイド曲" or "VOCALOID" => "ボーカロイド",
+        _ => null,
+    };
+
     private static string authoredLabel(string category) => category switch
     {
         "Pop" or "J-POP" => "J-POP",
@@ -303,6 +332,13 @@ public sealed class SongSelectCatalogView
     private static SongBoardTextureStyle boardStyle(string category) => new(category switch
     {
         "Pop" or "J-POP" => 0x015059U,
+        "アニメ" => 0x9e4309U,
+        "童謡" => 0xbb015dU,
+        "バラエティ" => 0x374702U,
+        "クラシック" => 0x734f02U,
+        "ゲームミュージック" => 0x4b1a70U,
+        "ナムコオリジナル" => 0xa22302U,
+        "ボーカロイド" => 0x596585U,
         "Children and Folk" or "Kids" => 0xbb015dU,
         "Variety" => 0x374702U,
         "Anime" => 0x9e4309U,

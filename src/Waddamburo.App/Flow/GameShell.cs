@@ -368,7 +368,7 @@ internal sealed class GameShell : IDisposable
         if (Arcade.Home && Options.Accounts is { } setupBook)
             _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
         // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
-        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = patch };
+        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = content => patch(content, null) };
         _presenter = new ScenePresenter(Application, MovieContent);
         // Upscaling runs when the model files are installed (see UpscaleTool).
         // The settings file sits in USRDIR/waddamburo, the caches under it.
@@ -377,12 +377,8 @@ internal sealed class GameShell : IDisposable
             Upscale = upscale;
             MovieContent.Loaded = upscale.RecordUsed;
             // Cached upscales replace textures as movies decode (opt-in): the GPU only ever gets those.
-            MovieContent.Decoded = content =>
-            {
-                patch(content);
-                if (Arcade.UpscaleTextures && Application.ShowUpscaled)
-                    upscale.ApplyCached(content, Application.SupportsBc7);
-            };
+            MovieContent.Decoded = content => patch(content,
+                Arcade.UpscaleTextures && Application.ShowUpscaled ? (upscale, Application.SupportsBc7) : null);
             SceneTextures.Upscaler = new TextureUpscaler(upscale, () => Arcade);
             Console.WriteLine($"Texture upscaling {(Arcade.UpscaleTextures ? "on" : "off")}, "
                 + $"{Arcade.UpscaleThreads} background thread(s), cache {upscale.Cache}.");
@@ -798,10 +794,20 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"  {quad.Source ?? "?"}{(quad.NativeSurface is { } surface ? $" -> surface {surface.Value}" : $" (scene texture {quad.TextureIndex})")}");
     }
 
-    private static void patch(Waddamburo.Game.LumenMovieContent content)
+    // A decoded movie: cached upscales, then its Lumen patch. The layout check comes first (upscales change
+    // texture sizes); a patched movie keeps its upscales as RGBA (the patch derives textures from them) and
+    // its derived textures are not upscaled again (a split layer upscaled alone gets sharpened edges).
+    private static void patch(Waddamburo.Game.LumenMovieContent content, (UpscaleTool Tool, bool Bc7)? upscale)
     {
-        if (Waddamburo.Game.Patching.SongSelectGenrePatch.AppliesTo(content))
-            Waddamburo.Game.Patching.SongSelectGenrePatch.Apply(content);
+        var patching = Waddamburo.Game.Patching.SongSelectGenrePatch.AppliesTo(content);
+        upscale?.Tool.ApplyCached(content, upscale.Value.Bc7 && !patching);
+        if (!patching)
+            return;
+        var own = content.Textures.Length;
+        Waddamburo.Game.Patching.SongSelectGenrePatch.Apply(content);
+        for (var index = own; index < content.Textures.Length; index++)
+            if (System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsArray(content.Textures[index].Rgba8) is { } pixels)
+                upscale?.Tool.MarkUpscaled(pixels);
     }
 
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>

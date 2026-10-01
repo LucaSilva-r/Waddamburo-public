@@ -6,6 +6,22 @@ namespace Waddamburo.Providers.Tja.Tests;
 public sealed class TjaCatalogProviderTests
 {
     [Fact]
+    public async Task BoxDefNamesAndColoursItsFolder()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("Mine/box.def", "\uFEFF#TITLE:My Songs\n#GENRE:Custom\n#BACKCOLOR:#8ED41E\n#FORECOLOR:#3c6800\n#BOXEXPLANATION1:First line\n");
+        library.WriteText("Mine/song.tja", "TITLE:Song\nBPM:120\nCOURSE:Oni\nLEVEL:8\n#START\n1000,\n#END\n");
+
+        var category = Assert.Single((await new TjaCatalogProvider(library.Path).ScanAsync(null, CancellationToken.None)).Categories);
+
+        Assert.Equal("My Songs", category.Name);
+        Assert.Equal("Custom", category.Genre);
+        Assert.Equal(0x8ED41Eu, category.Colour);
+        Assert.Equal(0x3C6800u, category.OutlineColour);
+        Assert.Equal("First line", Assert.Single(category.Description));
+    }
+
+    [Fact]
     public async Task FolderLibraryPublishesMetadataCoursesAndReadableAudio()
     {
         using var library = new TemporaryLibrary();
