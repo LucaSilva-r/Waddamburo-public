@@ -616,7 +616,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var player = requirePlayer();
         // The recoloured art's body layer is multiplied by the folder's colour (its highlights stay light).
         var colour = category.Tint ?? PaletteColour(category.Name);
-        player.SetColorTransform((uint)(player.ColorTransformCount - SongSelectGenrePatch.Slots + slot),
+        player.SetColorTransform(SongSelectGenrePatch.Colours[slot],
             new LumenRenderColor(colour.R / 255f, colour.G / 255f, colour.B / 255f, 1));
         // Genres outline their spine name in a dark shade of their colour.
         var outline = category.Outline ?? ((uint)(colour.R * 2 / 5) << 16 | (uint)(colour.G * 2 / 5) << 8 | (uint)(colour.B * 2 / 5));
@@ -624,12 +624,21 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var (spine, header, box) = category.Images;
         player.SetNativeFill(SongSelectGenrePatch.Slot("tate", slot), spine is not null ? _session.GetImage(spine)
             : _session.GetFolderName(category.Name, SongBoardTextureKind.Compact, outline));
+        // Built-in folders' pattern over the front (revealed as it opens); none: plain.
+        if (category.Art is { } art)
+        {
+            player.SetNativeFill(SongSelectGenrePatch.Slot("pattern", slot), _session.GetFolderArt(art, FolderArtPart.Pattern));
+        }
         // The J-POP header quad sits right of its tab's visual centre (short "J-POP" hides it): shifted back.
         player.SetNativeFill(SongSelectGenrePatch.Slot("yoko", slot), header is not null ? _session.GetImage(header)
             : _session.GetFolderName(category.Name, SongBoardTextureKind.Expanded),
             new LumenNativeSurfacePlacement(-128 - SongSelectGenrePatch.HeaderShift, -28, 256, 56));
-        if (box is not null)
-            player.SetNativeFill(SongSelectGenrePatch.Slot("image", slot), _session.GetImage(box));
+        if ((category.Description ?? category.Art?.Lines) is { Length: > 0 } description)
+            // Text inside an open folder is outlined in black (the genres' own descriptions).
+            player.SetNativeFill(SongSelectGenrePatch.Slot("desc", slot), _session.GetFolderDescription(description, 0x000000));
+        if (box is not null || category.Art is not null)
+            player.SetNativeFill(SongSelectGenrePatch.Slot("image", slot),
+                box is not null ? _session.GetImage(box) : _session.GetFolderArt(category.Art!, FolderArtPart.Box));
         return SongSelectGenrePatch.Label(slot);
     }
 

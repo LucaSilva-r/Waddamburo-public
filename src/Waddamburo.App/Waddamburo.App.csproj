@@ -17,6 +17,11 @@
           CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
+  <!-- The osu! logo for the osu!lazer library folder (osu! brand guidelines: the logo, unaltered). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources/osu-logo.png" LogicalName="Waddamburo.Resources.osu-logo.png" />
+  </ItemGroup>
+
   <!-- Texture upscaling model (Real-ESRGAN realesr-animevideov3, BSD-3-Clause), embedded: the Windows
        release is a single file. Its license text ships in licenses.zip (eng/package.sh). -->
   <ItemGroup>

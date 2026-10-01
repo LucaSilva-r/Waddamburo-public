@@ -82,6 +82,21 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return key;
     }
 
+    public LumenNativeSurfaceKey GetFolderArt(FolderArt art, FolderArtPart part)
+    {
+        ArgumentNullException.ThrowIfNull(art);
+        var key = new LumenNativeSurfaceKey($"folder-art:{art}:{part}");
+        _requests[key] = new TitleRequest(art.Name, null, TitleTextureKind.Art, 0) { Art = art, Part = part };
+        return key;
+    }
+
+    public LumenNativeSurfaceKey GetFolderDescription(string lines, uint outlineRgb)
+    {
+        var key = new LumenNativeSurfaceKey($"folder-description:{lines}:{outlineRgb:x6}");
+        _requests[key] = new TitleRequest(lines, null, TitleTextureKind.Description, outlineRgb);
+        return key;
+    }
+
     /// <summary>Title for gameplay song_info's 720x64 song_name slot.</summary>
     public LumenNativeSurfaceKey GetGameplayTitle(SongSelectSong song)
     {
@@ -156,7 +171,8 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 TitleTextureKind.Compact => SongTitleTextProfile.Compact,
                 TitleTextureKind.Expanded => SongTitleTextProfile.Expanded,
                 TitleTextureKind.Transition => SongTitleTextProfile.Transition,
-                TitleTextureKind.Gameplay or TitleTextureKind.Banner or TitleTextureKind.Image => SongTitleTextProfile.GameplayTitle,
+                TitleTextureKind.Gameplay or TitleTextureKind.Banner or TitleTextureKind.Image
+                    or TitleTextureKind.Art or TitleTextureKind.Description => SongTitleTextProfile.GameplayTitle,
                 _ => throw new ArgumentOutOfRangeException(nameof(key)),
             };
             if (!_asynchronous)
@@ -231,6 +247,12 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             var (width, height, rgba) = Waddamburo.Upscale.PngFile.Read(request.Text);
             return new RgbaTextSurface(width, height, rgba);
         }
+        if (request.Kind == TitleTextureKind.Description)
+            return FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)rasterScale, squash);
+        if (request.Art is { } art)
+            return request.Part == FolderArtPart.Box
+                ? FolderArtPainter.Box(art, _fontPath, (int)rasterScale)
+                : FolderArtPainter.Pattern(art, _fontPath, (int)rasterScale);
         if (request.Kind != TitleTextureKind.Banner)
             return NativeVerticalTextRasterizer.RenderSongTitle(
                 _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale, squash);
@@ -261,7 +283,11 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         string Text,
         string? Subtitle,
         TitleTextureKind Kind,
-        uint OutlineRgb);
+        uint OutlineRgb)
+    {
+        public FolderArt? Art { get; init; }
+        public FolderArtPart Part { get; init; }
+    }
     private enum TitleTextureKind
     {
         Compact,
@@ -270,6 +296,8 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         Gameplay,
         Banner,
         Image,
+        Art,
+        Description,
     }
     private readonly record struct RasterKey(LumenNativeSurfaceKey Surface, uint RasterScale, bool Squash);
     private sealed record ResidentTexture(RenderTextureId Texture, LinkedListNode<RasterKey> Node);

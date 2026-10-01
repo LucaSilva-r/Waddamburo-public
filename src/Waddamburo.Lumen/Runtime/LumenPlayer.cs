@@ -166,8 +166,6 @@ public sealed class LumenPlayer
 
     private readonly Dictionary<uint, LumenRenderColor> _colorOverrides = [];
 
-    /// <summary>The movie's colour-pool size (a patch's entries come last).</summary>
-    public int ColorTransformCount => _movie.ColorTransforms.Length;
 
     /// <summary>
     /// Sets colour-pool entry <paramref name="index"/> (as a placement's multiply or add) for placements made from
@@ -2060,7 +2058,7 @@ public sealed class LumenPlayer
             instance.ClipDepth = placement.ClipDepth == 0 ? null : TimelineDepthBase + placement.ClipDepth;
         if (isNew || placement.BlendMode != 0)
             instance.BlendMode = placement.BlendMode;
-        if (instance.BlendMode > 2 && instance.BlendMode is not (4 or 8))
+        if (instance.BlendMode > 3 && instance.BlendMode is not (4 or 8))
         {
             reportOnce(
                 "LUM_BLEND_MODE_DEFERRED",
@@ -2147,6 +2145,7 @@ public sealed class LumenPlayer
         var color = local.Color.Then(parentColor);
         var blend = instance.BlendMode switch
         {
+            3 => LumenRenderBlend.Multiply,
             4 => LumenRenderBlend.Screen,
             8 => LumenRenderBlend.Add,
             _ => parentBlend,

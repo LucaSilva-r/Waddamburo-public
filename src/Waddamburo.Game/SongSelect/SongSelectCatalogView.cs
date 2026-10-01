@@ -61,10 +61,28 @@ public sealed record SongSelectCategory(
 
     /// <summary>Pictures in place of the drawn names (spine 56x400, header 256x56) and on the open folder (192x360).</summary>
     public (string? Spine, string? Header, string? Box) Images { get; init; }
+
+    /// <summary>Drawn spine and open-folder art (built-in folders); file <see cref="Images"/> come first.</summary>
+    public FolderArt? Art { get; init; }
+
+    /// <summary>The open folder's description lines ('\n'); null takes <see cref="Art"/>'s lines.</summary>
+    public string? Description { get; init; }
 }
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
 public sealed record SongSearchResults(string Query, IReadOnlyList<SongKey> Songs);
+
+/// <summary>The host-drawn look of a built-in folder (a library or the search results).</summary>
+public enum FolderArtStyle { Osu, Nijiiro, Tja, Search }
+
+/// <summary>A drawn part of a built-in folder: its open-folder emblem, or its front's pattern.</summary>
+public enum FolderArtPart { Box, Pattern }
+
+/// <summary>
+/// A built-in folder's drawn front pattern, open-folder emblem and description
+/// <paramref name="Lines"/> (one column per '\n').
+/// </summary>
+public sealed record FolderArt(FolderArtStyle Style, string Name, string Lines);
 
 /// <summary>A spine that cycles the library's folder grouping or song order (decides at once).</summary>
 public enum SongBrowseControl { Group, Sort }
@@ -129,7 +147,12 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(SearchKey, $"Search: {search.Query}", FeatureLabel, SongCategoryPresentation.AlwaysVisible,
                 boardStyle(""), [.. search.Songs.Where(snapshot.Songs.ContainsKey).Select(key => snapshot.Songs[key])
                     .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-                    .Select(createSong)]) { Tint = (255, 200, 40) },
+                    .Select(createSong)])
+            {
+                Tint = (255, 200, 40),
+                Art = new FolderArt(FolderArtStyle.Search, $"Search: {search.Query}",
+                    $"{search.Query}\n{searchLines(snapshot, search)}"),
+            },
         };
         var categories = searchFolder.Concat(tutorialFolder).Concat(favouriteFolder).Concat(listed
             .Select(category =>
@@ -150,6 +173,8 @@ public sealed class SongSelectCatalogView
                         : category.Descriptor?.Colour is { } rgb ? ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) : null,
                     Outline = category.Descriptor?.OutlineColour,
                     Images = (category.Descriptor?.SpineImage, category.Descriptor?.HeaderImage, category.Descriptor?.BoxImage),
+                    Description = category.Descriptor is { Description.IsEmpty: false } descriptor
+                        ? string.Join('\n', descriptor.Description) : null,
                 };
             })
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
@@ -160,7 +185,11 @@ public sealed class SongSelectCatalogView
             } : [])
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
-                boardStyle(""), [], link) { Tint = LibraryTint(link) }));
+                boardStyle(""), [], link)
+            {
+                Tint = LibraryTint(link),
+                Art = libraryArt(snapshot, link),
+            }));
         if (modeSwitch)
             categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "mode-switch"),
                 mode == SongSelectMode.Waiwai ? "To Normal" : "To Waiwai", ModeSwitchLabel,
@@ -257,6 +286,33 @@ public sealed class SongSelectCatalogView
         var index = Categories.ToList().FindIndex(entry => entry.Key == category);
         var position = index < 0 ? -1 : Categories[index].Songs.ToList().FindIndex(entry => entry.Descriptor.Key == song);
         return position < 0 ? null : (index, position);
+    }
+
+    private static string songs(int count) => count == 1 ? "1 song" : $"{count} songs";
+
+    private static FolderArt? libraryArt(SongCatalogSnapshot snapshot, SongSourceKind library)
+    {
+        FolderArtStyle? style = library switch
+        {
+            SongSourceKind.OsuLazer => FolderArtStyle.Osu,
+            SongSourceKind.Nijiiro => FolderArtStyle.Nijiiro,
+            SongSourceKind.Tja => FolderArtStyle.Tja,
+            _ => null,
+        };
+        if (style is null)
+            return null;
+        var listed = snapshot.Songs.Values.Where(song => song.Key.Source == library).ToArray();
+        return new FolderArt(style.Value, LibraryName(library),
+            $"{songs(listed.Length)}\n{listed.Sum(static song => song.Charts.Length)} charts");
+    }
+
+    // The search's count, then its count per library.
+    private static string searchLines(SongCatalogSnapshot snapshot, SongSearchResults search)
+    {
+        var found = search.Songs.Where(snapshot.Songs.ContainsKey).ToArray();
+        return string.Join('\n', new[] { songs(found.Length) }.Concat(found
+            .GroupBy(static key => key.Source).OrderBy(static group => group.Key)
+            .Select(static group => $"{LibraryName(group.Key)}: {group.Count()}")));
     }
 
     public static string LibraryName(SongSourceKind library) => library switch

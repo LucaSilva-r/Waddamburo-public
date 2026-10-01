@@ -395,6 +395,10 @@ public sealed class SongSelectSessionTests
     {
         public LumenNativeSurfaceKey GetImage(string path) => new($"image:{path}");
 
+        public LumenNativeSurfaceKey GetFolderArt(FolderArt art, FolderArtPart part) => new($"art:{art.Name}:{part}");
+
+        public LumenNativeSurfaceKey GetFolderDescription(string lines, uint outlineRgb) => new($"description:{lines}");
+
         public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0) =>
             new($"folder:{name}:{kind}");
 

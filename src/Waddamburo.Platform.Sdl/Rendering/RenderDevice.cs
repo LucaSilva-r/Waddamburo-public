@@ -327,7 +327,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     {
         if (quad.MaskOperation != RenderMaskOperation.Draw)
             return 0; // stencil only: no colour writes
-        // Premultiplied source: normal s + d(1 - sa), add s + d, screen s + d(1 - s).
+        // Premultiplied source: normal s + d(1 - sa), add s + d, screen s + d(1 - s), multiply sd + d(1 - sa).
+        var source = quad.Blend == RenderBlend.Multiply ? bgfx.StateFlags.BlendDstColor : bgfx.StateFlags.BlendOne;
         var destination = quad.Blend switch
         {
             RenderBlend.Add => bgfx.StateFlags.BlendOne,
@@ -335,7 +336,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             _ => bgfx.StateFlags.BlendInvSrcAlpha,
         };
         return (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA)
-            | BgfxSupport.BlendSeparate(bgfx.StateFlags.BlendOne, destination, bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha);
+            | BgfxSupport.BlendSeparate(source, destination, bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha);
     }
 
     private static uint samplerFor(in RenderQuad quad)

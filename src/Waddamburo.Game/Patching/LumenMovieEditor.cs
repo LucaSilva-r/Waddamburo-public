@@ -13,6 +13,7 @@ public sealed class LumenMovieEditor
     private readonly LumenMovieContent _content;
     private readonly List<LmbString> _strings;
     private readonly List<LmbColorTransform> _colors;
+    private readonly List<LmbMatrix> _matrices;
     private readonly List<LumenTextureContent> _textures;
     private readonly Dictionary<uint, LmbShapeDefinition> _shapes;
     private readonly Dictionary<uint, LmbSpriteDefinition> _sprites;
@@ -26,6 +27,7 @@ public sealed class LumenMovieEditor
         var movie = content.Definition;
         _strings = [.. movie.Strings];
         _colors = [.. movie.ColorTransforms];
+        _matrices = [.. movie.Matrices];
         _textures = [.. content.Textures];
         _shapes = movie.Shapes.ToDictionary(static shape => shape.CharacterId);
         _sprites = movie.Sprites.ToDictionary(static sprite => sprite.CharacterId);
@@ -119,6 +121,26 @@ public sealed class LumenMovieEditor
         return (max > 0 ? (max - min) / max : 0, max);
     }
 
+    /// <summary>A matrix-pool entry; its index (a placement's PositionIndex with PositionKind 0).</summary>
+    public ushort AddMatrix(LmbMatrix matrix)
+    {
+        _matrices.Add(matrix);
+        return checked((ushort)(_matrices.Count - 1));
+    }
+
+    /// <summary>A translation-pool entry.</summary>
+    public LmbTranslation Translation(int index) => _content.Definition.Translations[index];
+
+    /// <summary>Called with (original, copy) whenever a clone copies a sprite.</summary>
+    public Action<uint, uint>? SpriteCloned { get; set; }
+
+    /// <summary>A sprite's definition (originals and copies).</summary>
+    public LmbSpriteDefinition Sprite(uint id) => _sprites[id];
+
+    /// <summary>Replaces a sprite's timeline (frame commands' counts must match what each frame holds).</summary>
+    public void SetTimeline(uint id, ImmutableArray<LmbTimelineCommand> timeline) =>
+        _sprites[id] = _sprites[id] with { Timeline = timeline };
+
     /// <summary>A colour-pool entry (256 = 1.0 per channel); its index (a placement's colour multiply).</summary>
     public uint AddColorTransform(short red, short green, short blue, short alpha = 256)
     {
@@ -183,6 +205,7 @@ public sealed class LumenMovieEditor
                 ? sprite.UninterpretedHeaderWords.SetItem(1, 0) : sprite.UninterpretedHeaderWords,
         };
         _spriteOrder.Add(copy);
+        SpriteCloned?.Invoke(character, copy);
         return done[character] = (copy, null, null);
     }
 
@@ -363,6 +386,7 @@ public sealed class LumenMovieEditor
         {
             Strings = [.. _strings],
             ColorTransforms = [.. _colors],
+            Matrices = [.. _matrices],
             Shapes = [.. _shapes.Values.OrderBy(static shape => shape.CharacterId)],
             Sprites = [.. _spriteOrder.Select(id => _sprites[id])],
         };

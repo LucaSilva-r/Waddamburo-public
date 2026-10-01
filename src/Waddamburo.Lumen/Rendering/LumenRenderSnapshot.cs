@@ -16,6 +16,7 @@ public enum LumenRenderBlend
     Normal,
     Add,
     Screen,
+    Multiply,
 }
 
 public readonly record struct LumenNativeSurfaceKey

@@ -33,6 +33,12 @@ public interface ISongBoardTextureService
 
     /// <summary>A picture file (a folder's spine/header/box image).</summary>
     LumenNativeSurfaceKey GetImage(string path);
+
+    /// <summary>A built-in folder's drawn art part.</summary>
+    LumenNativeSurfaceKey GetFolderArt(FolderArt art, FolderArtPart part);
+
+    /// <summary>An open folder's description: the lines ('\n') as vertical columns, right to left.</summary>
+    LumenNativeSurfaceKey GetFolderDescription(string lines, uint outlineRgb);
 }
 
 public sealed record SongPreviewRequest(
@@ -113,6 +119,10 @@ public sealed class SongSelectSession
         _textures.GetFolderName(name, kind, outlineRgb);
 
     public LumenNativeSurfaceKey GetImage(string path) => _textures.GetImage(path);
+
+    public LumenNativeSurfaceKey GetFolderArt(FolderArt art, FolderArtPart part) => _textures.GetFolderArt(art, part);
+
+    public LumenNativeSurfaceKey GetFolderDescription(string lines, uint outlineRgb) => _textures.GetFolderDescription(lines, outlineRgb);
 
     public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse)
     {

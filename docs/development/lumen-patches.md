@@ -33,6 +33,19 @@ looks folder keys up there), gives each named folder a slot, sets its colour
 (`SongSelectCategory.Tint`) and names (the spine name outlined in a dark shade of the colour, the
 header name shifted onto the tab's visual centre). Folders beyond 32 keep the イベント art.
 
+Each genre copy of the folder sprite also gets a pattern layer (host slot `wd_pattern_NN`, the
+built-in folders' drawn patterns at 50% alpha): one open-size surface fixed in place under a clip mask
+that follows the front's halves frame by frame, so opening reveals it rather than stretching it. The
+mask is also added to the sprite's keyframe display lists, which the movie uses when it seeks straight
+to the open state. The event folder does the same job with two pattern textures crossfaded while it
+opens.
+
+The built-in folders (OSU! LAZER, NIJIIRO, CUSTOM TJA, search results) draw their art at runtime
+(`FolderArtPainter`): the pattern, an emblem in the mascot slot (the osu! logo is embedded, per osu!'s
+brand guidelines) and description columns (counts, the search query) in black-outlined text.
+
+Renderer: Flash blend mode 3 (multiply) is drawn as a real multiply.
+
 Texture indices come from song_select.lm (Green); the F3 click inspector (see diagnostics.md)
 shows them at runtime.
 
