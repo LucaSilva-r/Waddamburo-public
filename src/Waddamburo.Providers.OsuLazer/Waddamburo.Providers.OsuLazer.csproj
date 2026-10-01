@@ -3,9 +3,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- The Realm is read through its dynamic API: no model classes for Realm's Fody weaver. -->
+    <DisableFody>true</DisableFody>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ppy.osu.Game" />
+    <PackageReference Include="Realm" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />

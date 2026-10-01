@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using Waddamburo.App.Gameplay;
+using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Providers.OsuLazer;
 using Waddamburo.Providers.Stock;
 using static Waddamburo.App.Strings;
 
@@ -20,6 +22,8 @@ internal enum HomeMenuAction
     PickTjaFolder,
     /// <summary>Open the folder picker for the Nijiiro installation.</summary>
     PickNijiiroFolder,
+    /// <summary>Open the folder picker for the osu!lazer data folder.</summary>
+    PickOsuFolder,
     /// <summary>Start upscaling every texture the game uses (the bake page shows it).</summary>
     BakeTextures,
     /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
@@ -58,7 +62,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     }
 
     /// <summary>A song library the player points at a folder (picked in the system's folder dialog).</summary>
-    private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, bool Nijiiro);
+    private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, SongSourceKind Kind);
 
     /// <summary>A row that starts something (the texture bake, the audio calibration).</summary>
     private sealed record Command(string Label, HomeMenuAction Action, string Hint);
@@ -104,8 +108,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new(T("settings.title_language"), static s => s.EnglishTitles ? 0 : 1, static (s, v) => s with { EnglishTitles = v == 0 },
             static (value, _) => 1 - value, 0, static value => Name(value == 0 ? "en" : "ja"), 1, Hint: T("settings.title_language.hint"))),
         new(T("section.songs")),
-        new(Library: new(T("library.tja"), static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, Nijiiro: false)),
-        new(Library: new(T("library.nijiiro"), static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, Nijiiro: true)),
+        new(Library: new(T("library.tja"), static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, SongSourceKind.Tja)),
+        new(Library: new(T("library.nijiiro"), static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, SongSourceKind.Nijiiro)),
+        new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(T("section.volume")),
         new(Setting: volume("settings.master_volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm)),
@@ -228,6 +233,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private readonly ArcadeSettings _atStart = get();
     private readonly Dictionary<string, bool> _valid = [];
     private readonly Dictionary<string, string?> _nijiiroProblems = [];
+    private readonly Dictionary<string, string?> _osuFolders = [];
 
     private string[] _choices = [];
     private bool _settingsPage;
@@ -278,10 +284,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         var now = get();
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
-            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder
+            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.OsuFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The pause page's choices (the settings page draws <see cref="Items"/>).</summary>
@@ -377,16 +383,27 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private Item libraryItem(Library library)
     {
         var chosen = library.Get(get());
-        var path = chosen ?? (library.Nijiiro ? null : defaultTjaFolder);
-        var choose = T("library.choose", T(library.Nijiiro ? "library.nijiiro.what" : "library.tja.what"));
+        var path = library.Kind switch
+        {
+            SongSourceKind.Tja => chosen ?? defaultTjaFolder,
+            SongSourceKind.OsuLazer => osuFolder(chosen),
+            _ => chosen,
+        };
+        var choose = T("library.choose", T(library.Kind switch
+        {
+            SongSourceKind.Nijiiro => "library.nijiiro.what",
+            SongSourceKind.OsuLazer => "library.osu.what",
+            _ => "library.tja.what",
+        }));
         if (path is null)
-            return new(ItemKind.Library, library.Label, T("library.not_set_up"), choose, LibraryState.Missing);
+            return new(ItemKind.Library, library.Label, T(chosen is null ? "library.not_set_up" : "library.not_usable"),
+                chosen is null ? choose : $"{T("library.no_osu")} {choose}", LibraryState.Missing);
         path = Path.TrimEndingDirectorySeparator(path);
         // Nijiiro: the same checks as loading it (a library that cannot play is left out of Song Select).
-        if (library.Nijiiro && nijiiroProblem(path) is { } problem)
+        if (library.Kind == SongSourceKind.Nijiiro && nijiiroProblem(path) is { } problem)
             return new(ItemKind.Library, library.Label, T("library.not_usable"), $"{problem} {choose}",
                 LibraryState.Missing);
-        if (!library.Nijiiro && !valid(path))
+        if (library.Kind == SongSourceKind.Tja && !valid(path))
             return new(ItemKind.Library, library.Label, T("library.not_set_up"), $"{T("library.no_tja")} {choose}",
                 LibraryState.Missing);
         return new(ItemKind.Library, library.Label, Path.GetFileName(path),
@@ -411,6 +428,15 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _valid[path] = ok;
         }
         return ok;
+    }
+
+    // Looked up once per chosen path like valid() (the default install when none is chosen).
+    private string? osuFolder(string? chosen)
+    {
+        var key = chosen ?? "";
+        if (!_osuFolders.TryGetValue(key, out var found))
+            _osuFolders[key] = found = OsuLazerCatalogProvider.FindDataFolder(chosen);
+        return found;
     }
 
     // The installation's own problem is remembered per path like valid() (it decrypts the song table);

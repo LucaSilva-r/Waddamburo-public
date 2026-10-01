@@ -127,6 +127,24 @@ public sealed class LumenPlayer
         _nativeFills[instanceName] = new NativeFillBinding(surface, placement);
     }
 
+    /// <summary>
+    /// Diagnostics (F3 in the game window): quads carry <see cref="LumenRenderQuad.Source"/>, what drew
+    /// them. Off by default: building the strings every frame is not free.
+    /// </summary>
+    public static bool Inspect { get; set; }
+
+    /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
+    public string? Name { get; set; }
+
+    // "movie: texture 259 — character 694 in 696 'icon' frame 3 < 744 < root".
+    private string describe(DisplayInstance instance, string what)
+    {
+        var chain = new List<string>();
+        for (var node = instance; node is not null; node = node.Parent)
+            chain.Add(node.Name.Length == 0 ? $"#{node.CharacterId}" : $"#{node.CharacterId} '{node.Name}'");
+        return $"{Name ?? "movie"}: {what}, frame {instance.Frame}: {string.Join(" < ", chain)}";
+    }
+
     public bool RemoveNativeFill(string instanceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
@@ -2091,7 +2109,8 @@ public sealed class LumenPlayer
                             color.Multiply,
                             color.Add,
                             blend,
-                            NativeSurface: nativeFill.Surface, MaskDepth: maskDepth));
+                            NativeSurface: nativeFill.Surface, MaskDepth: maskDepth,
+                            Source: Inspect ? describe(instance, $"native fill '{slot}'") : null));
                         continue;
                     }
                     reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, $"Fill-zero/native shape '{slot}' has no host surface yet.");
@@ -2106,7 +2125,8 @@ public sealed class LumenPlayer
                     transformVertex(geometry.Vertices[3], transform),
                     color.Multiply,
                     color.Add,
-                    blend, MaskDepth: maskDepth));
+                    blend, MaskDepth: maskDepth,
+                    Source: Inspect ? describe(instance, $"texture {geometry.TextureIndex}") : null));
             }
         }
 

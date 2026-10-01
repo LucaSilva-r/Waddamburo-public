@@ -14,6 +14,11 @@
         "resolved": "1.6.0",
         "contentHash": "XmPA81eo+oRxBuyVdswsSkTGTE1d3thfF11Z1PdD7oB56A6HU4G4AAOdySmGRMb/cljwlFTMWUtosGEnwpS6GA=="
       },
+      "Fody": {
+        "type": "Transitive",
+        "resolved": "6.9.1",
+        "contentHash": "Y33IOTstqsDaq2+1Cweu4s/V2iAAaRY6bPIANCre3Wlx9REc+ONyYmUdCc67Z12dy0N2Haq3t7QP4ANndsu/HA=="
+      },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
         "resolved": "10.0.12",
@@ -21,6 +26,16 @@
         "dependencies": {
           "SQLitePCLRaw.core": "2.1.12"
         }
+      },
+      "MongoDB.Bson": {
+        "type": "Transitive",
+        "resolved": "2.21.0",
+        "contentHash": "QT+D1I3Jz6r6S6kCgJD1L9dRCLVJCKlkGRkA+tJ7uLpHRmjDNcNKy4D1T+L9gQrjl95lDN9PHdwEytdvCW/jzA=="
+      },
+      "Remotion.Linq": {
+        "type": "Transitive",
+        "resolved": "2.2.0",
+        "contentHash": "fK/76UmpC0FXBlGDFVPLJHQlDLYnGC+XY3eoDgCgbtrhi0vzbXDQ3n/IYHhqSKqXQfGw/u04A1drWs7rFVkRjw=="
       },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
@@ -78,6 +93,13 @@
           "ppy.SDL3-CS": "[2026.722.0, )"
         }
       },
+      "waddamburo.providers.osulazer": {
+        "type": "Project",
+        "dependencies": {
+          "Realm": "[20.1.0, )",
+          "Waddamburo.Catalog": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.providers.stock": {
         "type": "Project",
         "dependencies": {
@@ -109,6 +131,17 @@
         "requested": "[2026.722.0, )",
         "resolved": "2026.722.0",
         "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
+      },
+      "Realm": {
+        "type": "CentralTransitive",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
       }
     },
     "net10.0/linux-x64": {
@@ -122,6 +155,17 @@
         "requested": "[2026.722.0, )",
         "resolved": "2026.722.0",
         "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
+      },
+      "Realm": {
+        "type": "CentralTransitive",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
       }
     },
     "net10.0/win-x64": {
@@ -135,6 +179,17 @@
         "requested": "[2026.722.0, )",
         "resolved": "2026.722.0",
         "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
+      },
+      "Realm": {
+        "type": "CentralTransitive",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
       }
     }
   }

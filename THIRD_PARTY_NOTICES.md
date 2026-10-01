@@ -7,7 +7,7 @@ as architectural references (MIT, copyright ppy Pty Ltd). No source was copied;
 the independent implementation and source links are recorded in
 `docs/development/gameplay-integration.md` and `docs/legal/provenance.md`.
 
-The test project and isolated osu!lazer provider prototype also restore:
+The test project and the osu!lazer library provider also restore:
 
 | Component | Version | License | Use |
 | --- | --- | --- | --- |
@@ -19,10 +19,8 @@ The test project and isolated osu!lazer provider prototype also restore:
 | SDL | bundled native revision `SDL-3.5.0-a8591d9`; <https://github.com/libsdl-org/SDL/tree/a8591d9>; copyright 1997-2026 Sam Lantinga | Zlib | Platform-native shared library bundled by SDL3-CS and loaded dynamically; distributions must retain SDL's copyright and Zlib license text |
 | bgfx C# bindings | `bgfx/bindings/cs/bgfx.cs` from the bgfx.cmake v1.161.9510-579 release archive (below); copyright 2011-2026 Branimir Karadzic | BSD-2-Clause | Generated P/Invoke bindings vendored unchanged as `src/Waddamburo.Platform.Sdl/Rendering/Bgfx/bgfx.generated.cs` except for a first line marking it generated and disabling compiler warnings |
 | bgfx shaderc | built from the bgfx.cmake v1.161.9510-579 archive (below); bundles glslang, SPIRV-Cross, SPIRV-Tools, glsl-optimizer, fcpp and DirectXShaderCompiler under their own permissive licenses | BSD-2-Clause plus bundled tool licenses | Build tool only: `eng/build-shaders.*` runs it to compile the `.sc` shaders; D3D11 bytecode uses the Windows SDK's `d3dcompiler_47.dll` on Windows. Not packaged at runtime. |
-| ppy.osu.Game | 2026.916.0; <https://www.nuget.org/packages/ppy.osu.Game/2026.916.0>; upstream commit `98fb49876c0242fcf649e0250d6f6b3458769a9e` | MIT | Official osu!lazer Realm model assembly used by the isolated provider prototype |
-| ppy.osu.Framework | 2026.914.0; transitive from `ppy.osu.Game` | MIT | Framework types required by the official game model assembly |
 | osu!lazer Taiko gameplay reference | upstream commit `48c4800e3ae4ee752452cdff83bd3787ccf3105f`; <https://github.com/ppy/osu/tree/48c4800e3ae4ee752452cdff83bd3787ccf3105f>; copyright 2025 ppy Pty Ltd | MIT | Architectural reference for Waddamburo's independently written timestamped hit-object and separate control-point model. Consulted files include `osu.Game/Beatmaps/ControlPoints/ControlPointInfo.cs`, `TimingControlPoint.cs`, `osu.Game/Rulesets/Scoring/HitWindows.cs`, and Taiko `DrawableHit.cs` / `TaikoHitWindows.cs`; no osu! source is packaged or copied verbatim. |
-| Realm .NET | 20.1.0; <https://www.nuget.org/packages/Realm/20.1.0> | Apache-2.0; bundled Realm Core/native notices must be retained | Read-only managed database API and dynamically loaded platform-native wrapper |
+| Realm .NET | 20.1.0; <https://www.nuget.org/packages/Realm/20.1.0> | Apache-2.0; bundled Realm Core/native notices must be retained | Read-only dynamic access to osu!lazer's `client.realm` (no osu! model assembly) and the dynamically loaded platform-native wrapper |
 | MongoDB.Bson | 2.21.0; transitive from `Realm` | Apache-2.0 | Realm value support |
 | tja2fumen soul-gauge table | `hp_values.csv` from <https://github.com/vivaria/tja2fumen> as vendored in TaikoRecomp `tools/vendor/tja2fumen` (2026-09-19); SHA-256 `990ccdcf0b6866c39eedd92e444bd16ea01f81129dbc4923badc16a33370557b`; copyright 2023 Vivaria | MIT | Data file embedded unchanged in `Waddamburo.Game` as `Gameplay/Data/soul-gauge-rates.csv` (per-note soul-gauge amounts by course, star band and note count); the MIT text sits beside it as `soul-gauge-rates.LICENSE.txt` and must accompany release notices. |
 | tja2fumen note syllables | `fix_dk_note_types` / `replace_alternate_don_kas` in `tja2fumen/converters.py` from <https://github.com/vivaria/tja2fumen> as vendored in the Waddamburo lab `tools/tja2fumen` (2026-09-27); copyright 2023 Vivaria | MIT | Clustering rule reimplemented in `Waddamburo.Game/Gameplay/TaikoNoteText.cs` to give TJA notes their do/ko/ka text; no source copied. |

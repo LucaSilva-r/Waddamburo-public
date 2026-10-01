@@ -1,6 +1,4 @@
-using osu.Game.Beatmaps;
 using Realms;
-using System.Runtime.CompilerServices;
 
 namespace Waddamburo.Providers.OsuLazer;
 
@@ -8,12 +6,12 @@ namespace Waddamburo.Providers.OsuLazer;
 /// Reads the song-library portion of an existing osu!lazer Realm without
 /// creating, migrating, recovering, or writing the database.
 /// </summary>
+/// <remarks>
+/// The Realm is opened dynamically: the schema comes from the file itself, so any lazer version whose
+/// beatmap tables keep the fields read here works, without pinning osu!'s own model assembly.
+/// </remarks>
 public static class OsuLazerRealmReader
 {
-    // ppy.osu.Game 2026.916.0 uses schema 52. Keep this value paired with the
-    // package version so an incompatible database fails instead of migrating.
-    public const ulong SupportedSchemaVersion = 52;
-
     public static OsuLazerSnapshot Read(string databasePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
@@ -22,66 +20,76 @@ public static class OsuLazerRealmReader
         if (!File.Exists(fullPath))
             throw new FileNotFoundException("The osu!lazer Realm database does not exist.", fullPath);
 
-        // Realm models register through osu.Game's generated module initializer.
-        // It must run before the process opens its first default-schema Realm.
-        RuntimeHelpers.RunModuleConstructor(typeof(BeatmapSetInfo).Module.ModuleHandle);
-
+        // ponytail: read-only Realms skip the lock-file protocol; a scan while osu! is saving a beatmap
+        // could read a half-written version. Copy-on-scan if that ever bites.
         var configuration = new RealmConfiguration(fullPath)
         {
             IsReadOnly = true,
-            SchemaVersion = SupportedSchemaVersion,
+            IsDynamic = true,
         };
 
         try
         {
             using var realm = Realm.GetInstance(configuration);
-
-            var sets = realm.All<BeatmapSetInfo>()
+            var sets = realm.DynamicApi.All("BeatmapSet")
                 .AsEnumerable()
                 .Select(copySet)
                 .ToArray();
-
-            return new OsuLazerSnapshot(SupportedSchemaVersion, sets);
+            var collections = realm.Schema.TryFindObjectSchema("BeatmapCollection", out _)
+                ? realm.DynamicApi.All("BeatmapCollection").AsEnumerable()
+                    .Select(static collection => new OsuLazerCollectionInfo(
+                        collection.DynamicApi.Get<Guid>("ID"),
+                        collection.DynamicApi.Get<string>("Name") ?? "",
+                        [.. collection.DynamicApi.GetList<string>("BeatmapMD5Hashes")]))
+                    .ToArray()
+                : [];
+            return new OsuLazerSnapshot(realm.Config.SchemaVersion, sets) { Collections = collections };
         }
         catch (Exception exception) when (exception is not OsuLazerRealmReadException)
         {
             throw new OsuLazerRealmReadException(
-                "The osu!lazer database could not be opened read-only with the supported official schema.",
+                "The osu!lazer database could not be opened read-only.",
                 exception);
         }
     }
 
-    private static OsuLazerBeatmapSet copySet(BeatmapSetInfo set)
+    private static OsuLazerBeatmapSet copySet(IRealmObjectBase set)
     {
-        var files = set.Files
-            .Select(file => new OsuLazerFile(file.Filename, file.File.Hash))
+        var files = set.DynamicApi.GetList<IRealmObjectBase>("Files")
+            .Where(static file => file.DynamicApi.Get<IRealmObjectBase?>("File") is not null)
+            .Select(static file => new OsuLazerFile(
+                file.DynamicApi.Get<string>("Filename"),
+                file.DynamicApi.Get<IRealmObjectBase>("File").DynamicApi.Get<string>("Hash")))
             .ToArray();
 
-        var beatmaps = set.Beatmaps
-            .Select(beatmap => new OsuLazerBeatmap(
-                beatmap.ID,
-                beatmap.OnlineID,
-                beatmap.DifficultyName,
-                beatmap.Ruleset.ShortName,
-                beatmap.Metadata.Title,
-                beatmap.Metadata.TitleUnicode,
-                beatmap.Metadata.Artist,
-                beatmap.Metadata.ArtistUnicode,
-                beatmap.Metadata.Author.Username,
-                beatmap.Metadata.AudioFile,
-                beatmap.Metadata.BackgroundFile,
-                beatmap.Hash,
-                beatmap.MD5Hash,
-                beatmap.Length,
-                beatmap.BPM))
+        var beatmaps = set.DynamicApi.GetList<IRealmObjectBase>("Beatmaps")
+            .Where(static beatmap => beatmap.DynamicApi.Get<IRealmObjectBase?>("Metadata") is not null
+                && beatmap.DynamicApi.Get<IRealmObjectBase?>("Ruleset") is not null)
+            .Select(static beatmap =>
+            {
+                var metadata = beatmap.DynamicApi.Get<IRealmObjectBase>("Metadata");
+                var author = metadata.DynamicApi.Get<IRealmObjectBase?>("Author");
+                return new OsuLazerBeatmap(
+                    beatmap.DynamicApi.Get<Guid>("ID"),
+                    beatmap.DynamicApi.Get<string>("DifficultyName") ?? "",
+                    beatmap.DynamicApi.Get<IRealmObjectBase>("Ruleset").DynamicApi.Get<string>("ShortName"),
+                    metadata.DynamicApi.Get<string>("Title") ?? "",
+                    metadata.DynamicApi.Get<string>("TitleUnicode") ?? "",
+                    metadata.DynamicApi.Get<string>("Artist") ?? "",
+                    metadata.DynamicApi.Get<string>("ArtistUnicode") ?? "",
+                    author?.DynamicApi.Get<string>("Username") ?? "",
+                    metadata.DynamicApi.Get<string>("AudioFile") ?? "",
+                    metadata.DynamicApi.Get<int>("PreviewTime"),
+                    beatmap.DynamicApi.Get<string>("Hash") ?? "",
+                    beatmap.DynamicApi.Get<string>("MD5Hash") ?? "",
+                    beatmap.DynamicApi.Get<double>("StarRating"),
+                    beatmap.DynamicApi.Get<bool>("Hidden"));
+            })
             .ToArray();
 
         return new OsuLazerBeatmapSet(
-            set.ID,
-            set.OnlineID,
-            set.DateAdded,
-            set.Hash,
-            set.DeletePending,
+            set.DynamicApi.Get<Guid>("ID"),
+            set.DynamicApi.Get<bool>("DeletePending"),
             files,
             beatmaps);
     }
@@ -89,22 +97,28 @@ public static class OsuLazerRealmReader
 
 public sealed record OsuLazerSnapshot(
     ulong SchemaVersion,
-    IReadOnlyList<OsuLazerBeatmapSet> BeatmapSets);
+    IReadOnlyList<OsuLazerBeatmapSet> BeatmapSets)
+{
+    /// <summary>The player's collections (lazer lists them by beatmap MD5).</summary>
+    public IReadOnlyList<OsuLazerCollectionInfo> Collections { get; init; } = [];
+}
+
+public sealed record OsuLazerCollectionInfo(Guid Id, string Name, IReadOnlyList<string> BeatmapMd5Hashes);
 
 public sealed record OsuLazerBeatmapSet(
     Guid Id,
-    int OnlineId,
-    DateTimeOffset DateAdded,
-    string Hash,
     bool DeletePending,
     IReadOnlyList<OsuLazerFile> Files,
     IReadOnlyList<OsuLazerBeatmap> Beatmaps);
 
 public sealed record OsuLazerFile(string Filename, string Hash);
 
+/// <summary>
+/// One beatmap. FileHash: SHA-256 of the .osu file, also its name in lazer's file store; PreviewTime:
+/// song preview start in milliseconds, negative when unset; StarRating: negative when not computed yet.
+/// </summary>
 public sealed record OsuLazerBeatmap(
     Guid Id,
-    int OnlineId,
     string DifficultyName,
     string Ruleset,
     string Title,
@@ -113,11 +127,11 @@ public sealed record OsuLazerBeatmap(
     string ArtistUnicode,
     string Creator,
     string AudioFilename,
-    string BackgroundFilename,
+    int PreviewTime,
     string FileHash,
     string Md5Hash,
-    double Length,
-    double Bpm);
+    double StarRating,
+    bool Hidden);
 
 public sealed class OsuLazerRealmReadException : Exception
 {

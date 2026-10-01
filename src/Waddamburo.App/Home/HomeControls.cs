@@ -195,8 +195,12 @@ internal sealed class HomeControls : IDisposable
         // A folder picked in the system dialog opened from the settings.
         if (_pickingFolder is { } picking && SdlApplication.TryTakePickedFolder(out var folder))
         {
-            _shell.Arcade = picking == HomeMenuAction.PickTjaFolder ? _shell.Arcade with { TjaFolder = folder }
-                : _shell.Arcade with { NijiiroFolder = folder };
+            _shell.Arcade = picking switch
+            {
+                HomeMenuAction.PickTjaFolder => _shell.Arcade with { TjaFolder = folder },
+                HomeMenuAction.PickOsuFolder => _shell.Arcade with { OsuFolder = folder },
+                _ => _shell.Arcade with { NijiiroFolder = folder },
+            };
             save();
             _pickingFolder = null;
         }
@@ -220,10 +224,14 @@ internal sealed class HomeControls : IDisposable
                 resumeSong();
                 _gameplay.Abandon();
                 break;
-            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder:
+            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder or HomeMenuAction.PickOsuFolder:
                 _pickingFolder = action;
-                _shell.Application.PickFolder(action == HomeMenuAction.PickTjaFolder
-                    ? _shell.Arcade.TjaFolder ?? _shell.Options.TjaRoot : _shell.Arcade.NijiiroFolder);
+                _shell.Application.PickFolder(action switch
+                {
+                    HomeMenuAction.PickTjaFolder => _shell.Arcade.TjaFolder ?? _shell.Options.TjaRoot,
+                    HomeMenuAction.PickOsuFolder => _shell.Arcade.OsuFolder,
+                    _ => _shell.Arcade.NijiiroFolder,
+                });
                 break;
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();

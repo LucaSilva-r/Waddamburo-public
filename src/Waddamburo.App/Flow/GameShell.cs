@@ -16,6 +16,7 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
@@ -498,6 +499,8 @@ internal sealed class GameShell : IDisposable
                 togglePerformanceOverlay: _performance.Toggle,
                 pointerMoved: _performance.SetPointer,
                 performanceVisible: () => _performance.Visible,
+                pointerClicked: inspectAt,
+                toggleInspect: () => Console.WriteLine($"Inspect {((LumenPlayer.Inspect = !LumenPlayer.Inspect) ? "on: left-click lists what is drawn there" : "off")}."),
                 performanceSample: _performance.Record);
 
             Console.WriteLine($"Active scene: {Active.Id}");
@@ -757,6 +760,30 @@ internal sealed class GameShell : IDisposable
                     + $"at character {diagnostic.CharacterId} frame {diagnostic.Frame}: {diagnostic.Message}");
     }
 
+    private LumenRenderSnapshot? _inspected;
+
+    // Inspect mode: every scene quad under the click, topmost first (the stage is assumed to fill the window).
+    private void inspectAt(float x, float y)
+    {
+        if (!LumenPlayer.Inspect || _inspected is not { } scene)
+            return;
+        float px = x * scene.StageWidth, py = y * scene.StageHeight;
+        static float cross(LumenRenderVertex a, LumenRenderVertex b, float px, float py) =>
+            (b.X - a.X) * (py - a.Y) - (b.Y - a.Y) * (px - a.X);
+        var hits = scene.Quads.Where(quad => quad.MaskOperation == LumenRenderMaskOperation.Draw).Where(quad =>
+        {
+            var edges = new[]
+            {
+                cross(quad.TopLeft, quad.TopRight, px, py), cross(quad.TopRight, quad.BottomRight, px, py),
+                cross(quad.BottomRight, quad.BottomLeft, px, py), cross(quad.BottomLeft, quad.TopLeft, px, py),
+            };
+            return edges.All(static edge => edge >= 0) || edges.All(static edge => edge <= 0);
+        }).Reverse().ToArray();
+        Console.WriteLine($"Inspect at stage ({px:0}, {py:0}): {hits.Length} quads, topmost first.");
+        foreach (var quad in hits)
+            Console.WriteLine($"  {quad.Source ?? "?"}{(quad.NativeSurface is { } surface ? $" -> surface {surface.Value}" : $" (scene texture {quad.TextureIndex})")}");
+    }
+
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
         ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface)
@@ -782,7 +809,10 @@ internal sealed class GameShell : IDisposable
         }
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
-        var frame = SceneTextures.Compose(flowOf(Active.Id).CreateSnapshot(interpolation), _presenter.Textures, "Scene", ResolveSurface);
+        var scene = flowOf(Active.Id).CreateSnapshot(interpolation);
+        if (LumenPlayer.Inspect)
+            _inspected = scene;
+        var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads;

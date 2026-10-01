@@ -1,53 +1,45 @@
-# osu!lazer Realm access
+# osu!lazer library
 
-The BLD-009 prototype uses osu!'s published managed model assembly rather than a
-custom native bridge. The database models and `RealmAccess` implementation are in
-`ppy.osu.Game`; `ppy.osu.Framework` is a transitive dependency and does not itself
-provide the lazer database schema.
+`Waddamburo.Providers.OsuLazer` lists the native osu!taiko beatmaps of an installed osu!lazer. Home
+mode loads it from the folder set in Settings (`osu_folder`), or else from the default install:
+`$XDG_DATA_HOME/osu` (`~/.local/share/osu`), the Flatpak's `~/.var/app/sh.ppy.osu/data/osu`, or
+`%APPDATA%/osu`, following `storage.ini`'s `FullPath` when the data was moved.
 
-## Pinned compatibility boundary
+## Reading the Realm
 
-| Component | Version | Purpose |
-| --- | --- | --- |
-| `ppy.osu.Game` | 2026.916.0, upstream commit `98fb49876c0242fcf649e0250d6f6b3458769a9e` | Official Realm model types |
-| `ppy.osu.Framework` | 2026.914.0 | Transitive osu! framework dependency |
-| `Realm` | 20.1.0 | Managed Realm API and platform-native wrapper |
+The provider depends only on the `Realm` package (20.1.0, the version osu! itself ships), not on
+osu!'s own model assembly. `client.realm` is opened with `IsReadOnly` and `IsDynamic`: the schema
+comes from the file, so there is no schema version to pin and any lazer release whose beatmap tables
+keep the fields read here works. The reader rejects a missing path before Realm could create it,
+never writes, migrates or compacts, and copies what it needs (sets, beatmaps, metadata, named files,
+collections) into records before closing the Realm. A read-only open does not take part in Realm's
+lock-file protocol and leaves no files behind (tested byte for byte); a scan while osu! is saving
+could in principle see a half-written version.
 
-`Waddamburo.Providers.OsuLazer` contains the dependency graph so the core game,
-formats, Lumen host, SDL adapter, application, and tool remain independent of it.
-The exact transitive graph is locked in that project's `packages.lock.json`.
+Charts and audio are read straight from lazer's content-addressed store,
+`files/<h>/<hh>/<sha-256>`; a beatmap's `Hash` is its `.osu` file's name there.
 
-The reader supports osu!'s schema version 52, paired with the pinned game package.
-Updating `ppy.osu.Game` requires checking the schema version in the matching
-`osu.Game/Database/RealmAccess.cs`, updating the constant if necessary, regenerating
-the lock files, and rerunning the byte-preservation tests.
+Tests that write a Realm fixture must not let Realm deliver the post-commit notification on another
+thread (xunit's SynchronizationContext did, and Realm aborted the test host in `verify_thread`); the
+fixture parks those notifications.
 
-## Read-only contract
+## From beatmaps to songs
 
-The reader:
+A set's taiko beatmaps (osu!standard, catch and mania are left out; hidden ones too) are grouped per
+audio file. osu! difficulties follow no Taiko course scheme, so `OsuCourseLayout` uses the courses
+as plain slots: the charts in star order fill Easy, Normal, Hard and Oni, four per entry; further
+charts open another song entry, and entries of a split set name their charts in the subtitle. Ura is
+never used (the song select only reveals it by pressing right on Oni). Stars are osu!'s own rating,
+rounded (1-10), and every osu! chart plays with Oni's judgement windows whatever its slot.
 
-- rejects a missing path before Realm can create a database;
-- initializes osu!'s generated Realm models before opening the first Realm;
-- sets `RealmConfiguration.IsReadOnly` and schema version 52;
-- does not construct osu!'s `RealmAccess`, install a migration callback, compact,
-  recover, or start a write transaction; and
-- copies set, beatmap, metadata, and named-file values into Waddamburo records
-  before disposing the Realm context.
+For osu! songs only, the host marks every course an entry lacks invalid (`SetInvalidCourse`, hidden
+Easy/Normal/Hard/Oni included). That puts the board in the movie's restricted mode
+(`MusicInfo.HasInvalidCourse` → `CheckMania`): Oni shows at once without the right-ka presses, and
+missing courses are greyed and cannot be picked. Other libraries keep zero bits: a song with Ura in
+that mode shows Ura in Oni's place.
 
-Synthetic tests are intended to create an official-schema fixture, remove Realm
-coordination artifacts, and compare every directory entry and SHA-256 before and
-after reading. They also cover missing-database behavior and rejection of an older
-schema without migration.
-
-## Current blocker
-
-The managed prototype is not yet accepted. On Linux x64 with .NET runtime 10.0.5,
-Realm 20.1.0 terminates the VSTest host during both matching-schema and older-schema
-synthetic cases, before test assertions run. The missing-database test and all
-non-Realm managed tests remain healthy. Until this is resolved, the provider must
-not be composed into the application or treated as a safe read-only implementation.
-BLD-009 is active again; investigation may replace this prototype with the planned
-narrow native bridge.
-
-Schema incompatibility is an expected provider-level error. A future scan must
-report it for the osu!lazer source without affecting other song providers.
+`OsuTaikoChartReader` follows lazer's decoder and taiko converter: whistle/clap = ka, finish = big,
+sliders are drumrolls (length × spans / (100 × SliderMultiplier × SV) beats), spinners are balloons
+(OD-scaled hits per second × 1.65), green points set the scroll and red ones reset it, kiai is
+Go-Go, bar lines every measure from each red point, files before v5 shifted 24 ms. A slider
+multiplier of 1.4 (the usual taiko base) is scroll 1.

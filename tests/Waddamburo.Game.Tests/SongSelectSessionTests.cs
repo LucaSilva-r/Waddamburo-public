@@ -65,6 +65,23 @@ public sealed class SongSelectSessionTests
             ])));
     }
 
+    [Fact]
+    public void OsuSongsMarkMissingCoursesInvalidSoOniShowsAtOnce()
+    {
+        var key = new SongKey(SongSourceKind.OsuLazer, "osu-set");
+        var descriptor = new SongDescriptor(key, new SongTitle("osu"), null,
+        [
+            new SongChartDescriptor(new ChartKey(key, "hard"), "Muzukashii",
+                new CatalogAssetKey(new CatalogProviderId("synthetic"), "hard"), TaikoCourse.Hard, 5),
+            new SongChartDescriptor(new ChartKey(key, "oni"), "Oni",
+                new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"), TaikoCourse.Oni, 7),
+        ]);
+        var song = new SongSelectSong(descriptor, SongCourseBits.Hard | SongCourseBits.Oni, [null, null, 5, 7, null]);
+
+        Assert.Equal(AuthoredSongCourseBits.All & ~(AuthoredSongCourseBits.Hard | AuthoredSongCourseBits.Oni),
+            SongSelectCoursePresentation.FromSong(song).SelectionRestrictions);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

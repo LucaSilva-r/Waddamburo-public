@@ -57,7 +57,8 @@ public readonly record struct LumenRenderQuad(
     bool UseNearestSampling = false,
     LumenNativeSurfaceKey? NativeSurface = null,
     LumenRenderMaskOperation MaskOperation = LumenRenderMaskOperation.Draw,
-    byte MaskDepth = 0);
+    byte MaskDepth = 0,
+    string? Source = null);
 
 /// <summary>
 /// Immutable renderer-independent output from one Lumen player state. Coordinates

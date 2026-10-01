@@ -37,9 +37,7 @@ public readonly record struct SongSelectCoursePresentation(
     {
         ArgumentNullException.ThrowIfNull(song);
         return new SongSelectCoursePresentation(
-            // Nonzero restrictions activate a different authored selection mode.
-            // Missing charts are represented by zero stars, not restriction bits.
-            AuthoredSongCourseBits.None,
+            restrictions(song),
             song.Level(TaikoCourse.Easy) ?? 0,
             song.Level(TaikoCourse.Normal) ?? 0,
             song.Level(TaikoCourse.Hard) ?? 0,
@@ -48,6 +46,29 @@ public readonly record struct SongSelectCoursePresentation(
             0,
             0,
             song.Level(TaikoCourse.Ura) ?? 0);
+    }
+
+    // osu!lazer songs only (every other library keeps the game's board, zero bits): every slot the song
+    // lacks is marked invalid, hidden Easy/Normal/Hard and Oni always (osu! entries never use Ura). The
+    // nonzero bits put the board in the movie's restricted mode (MusicInfo.HasInvalidCourse): Oni shows
+    // at once (CheckMania, no right-ka presses) and missing courses are greyed and cannot be picked. A
+    // song with Ura in that mode would show Ura in Oni's place, hence not for the other libraries.
+    private static AuthoredSongCourseBits restrictions(SongSelectSong song)
+    {
+        if (song.Descriptor.Key.Source != SongSourceKind.OsuLazer)
+            return AuthoredSongCourseBits.None;
+        var available = AuthoredSongCourseBits.None;
+        foreach (var (course, bit) in new[]
+        {
+            (TaikoCourse.Easy, AuthoredSongCourseBits.Easy), (TaikoCourse.Normal, AuthoredSongCourseBits.Normal),
+            (TaikoCourse.Hard, AuthoredSongCourseBits.Hard), (TaikoCourse.Oni, AuthoredSongCourseBits.Oni),
+            (TaikoCourse.Ura, AuthoredSongCourseBits.HiddenOni),
+        })
+        {
+            if (song.HasCourse(course))
+                available |= bit;
+        }
+        return AuthoredSongCourseBits.All & ~available;
     }
 
 }

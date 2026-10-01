@@ -1,6 +1,7 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Providers.OsuLazer;
 using Waddamburo.Providers.Stock;
 using Waddamburo.Providers.Tja;
 
@@ -39,6 +40,9 @@ internal sealed class SongLibraries : IDisposable
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
             .. arcade.Home && arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is var installed
                 && usable(installed) ? [installed] : Array.Empty<ISongCatalogProvider>(),
+            // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
+            .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
+                ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
         ]);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)

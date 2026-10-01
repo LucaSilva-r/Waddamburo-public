@@ -309,6 +309,9 @@ public sealed record ArcadeSettings
     /// <summary>A Nijiiro installation (null: none).</summary>
     public string? NijiiroFolder { get; init; }
 
+    /// <summary>An osu!lazer data folder (null: the default install's, when there is one).</summary>
+    public string? OsuFolder { get; init; }
+
     public int CreditsPerCoin { get; init; } = 1;
 
     /// <summary>Credits one player needs to start a session.</summary>
@@ -464,6 +467,7 @@ public sealed record ArcadeSettings
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
+                "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
                 "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
                 {
                     "auto" => null,
@@ -532,6 +536,7 @@ public sealed record ArcadeSettings
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
+            ["osu_folder"] = settings.OsuFolder ?? "",
             ["fullscreen"] = settings.Fullscreen ? "true" : "false",
             ["vsync"] = settings.Vsync ? "true" : "false",
             ["fps_cap"] = settings.FpsCap,

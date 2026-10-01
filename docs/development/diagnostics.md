@@ -135,6 +135,12 @@ newer build appends the settings it added, with their defaults, keeping the user
 mode F2 inserts a coin; the first coin opens player Entry, and joining pays the credits. Space
 skips the startup screens.
 
+F3 toggles inspect mode: a left click then prints every scene quad under the pointer, topmost
+first, with its movie, runtime texture index (or native surface) and clip chain (character ids and
+instance names up to `_level0`). Texture indices are the runtime ones, which can differ from an
+offline texture dump's order. The click maps the window to the stage directly, so a letterboxed
+window is off by the bars.
+
 ```sh
 dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"
 ```

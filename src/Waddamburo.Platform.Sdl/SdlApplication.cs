@@ -459,6 +459,8 @@ public sealed unsafe class SdlApplication : IDisposable
         Action? togglePerformanceOverlay = null,
         Action<float, float>? pointerMoved = null,
         Func<bool>? performanceVisible = null,
+        Action<float, float>? pointerClicked = null,
+        Action? toggleInspect = null,
         Action<SdlFrameMetrics>? performanceSample = null)
     {
         ensureOwnerThread();
@@ -521,6 +523,20 @@ public sealed unsafe class SdlApplication : IDisposable
                     int width, height;
                     if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
                         pointerMoved(currentEvent.motion.x / width, currentEvent.motion.y / height);
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN && pointerClicked is not null
+                    && currentEvent.button.button == SDL_BUTTON_LEFT)
+                {
+                    int width, height;
+                    if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
+                        pointerClicked(currentEvent.button.x / width, currentEvent.button.y / height);
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
+                    && currentEvent.key.key == SDL_Keycode.SDLK_F3 && toggleInspect is not null)
+                {
+                    // F3: inspect mode (a left click lists what is drawn under the pointer).
+                    if (!currentEvent.key.repeat)
+                        toggleInspect();
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
                 {

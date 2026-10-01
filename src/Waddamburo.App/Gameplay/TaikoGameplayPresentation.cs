@@ -249,7 +249,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             foreach (var name in NoteMovieNames.Where(layers.ContainsKey))
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
                     throw new InvalidDataException("Gameplay note movie is missing its initial state.");
-            _session = new TaikoJudgementSession(chart, TaikoJudgementWindows.ForCourse(course),
+            // osu! charts sit in course slots by star order only: all play with Oni's windows.
+            _session = new TaikoJudgementSession(chart,
+                TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course),
                 TimeSpan.FromMilliseconds(30), partnerHandNotes: players == 2);
             _longNotes = new TaikoLongNotePresentation(chart, _session, kind =>
             {

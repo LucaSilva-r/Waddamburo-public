@@ -1,9 +1,6 @@
 using System.Security.Cryptography;
-using System.Runtime.CompilerServices;
-using osu.Game.Beatmaps;
-using osu.Game.Models;
-using osu.Game.Rulesets;
 using Realms;
+using Realms.Schema;
 using Waddamburo.Providers.OsuLazer;
 
 namespace Waddamburo.Architecture.Tests;
@@ -17,9 +14,12 @@ public sealed class OsuLazerRealmReaderTests
 
         try
         {
+            // Written elsewhere and copied: the writer's lock files and in-process coordinator stay with
+            // the source, so the read meets a bare database like another process's (osu!'s) would be.
+            var source = Directory.CreateTempSubdirectory("waddamburo-realm-source-");
             var databasePath = Path.Combine(directory.FullName, "client.realm");
-            createSyntheticRealm(databasePath);
-            removeRealmCoordinationFiles(databasePath);
+            createSyntheticRealm(Path.Combine(source.FullName, "client.realm"));
+            File.Copy(Path.Combine(source.FullName, "client.realm"), databasePath);
 
             var before = snapshotDirectory(directory.FullName);
             var snapshot = OsuLazerRealmReader.Read(databasePath);
@@ -29,11 +29,11 @@ public sealed class OsuLazerRealmReaderTests
 
             var set = Assert.Single(snapshot.BeatmapSets);
             Assert.False(set.DeletePending);
-            Assert.Equal("set-hash", set.Hash);
             Assert.Contains(set.Files, file => file is { Filename: "song.ogg", Hash: "audio-hash" });
 
             var beatmap = Assert.Single(set.Beatmaps);
             Assert.Equal("taiko", beatmap.Ruleset);
+            Assert.Equal(4.5, beatmap.StarRating);
             Assert.Equal("Synthetic Song", beatmap.Title);
             Assert.Equal("song.ogg", beatmap.AudioFilename);
             Assert.Equal("audio-hash", set.Files.Single(file => file.Filename == beatmap.AudioFilename).Hash);
@@ -62,83 +62,102 @@ public sealed class OsuLazerRealmReaderTests
         }
     }
 
-    [Fact]
-    public void OlderSchemaIsRejectedWithoutMigration()
+    /// <summary>Takes the change notifications Realm posts after a write and never delivers them.</summary>
+    private sealed class DroppedNotifications : SynchronizationContext
     {
-        var directory = Directory.CreateTempSubdirectory("waddamburo-realm-");
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+        }
+    }
 
+    private static void createSyntheticRealm(string databasePath)
+    {
+        // Realm posts a notification after the write to the thread's SynchronizationContext; under
+        // xunit's (or none) it ran on another thread and Realm aborted the process (verify_thread).
+        var context = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DroppedNotifications());
         try
         {
-            var databasePath = Path.Combine(directory.FullName, "client.realm");
-            createSyntheticRealm(databasePath, OsuLazerRealmReader.SupportedSchemaVersion - 1);
-            removeRealmCoordinationFiles(databasePath);
-
-            var before = snapshotDirectory(directory.FullName);
-            Assert.Throws<OsuLazerRealmReadException>(() => OsuLazerRealmReader.Read(databasePath));
-            Assert.Equal(before, snapshotDirectory(directory.FullName));
+            writeSyntheticRealm(databasePath);
         }
         finally
         {
-            directory.Delete(recursive: true);
+            SynchronizationContext.SetSynchronizationContext(context);
         }
     }
 
-    private static void createSyntheticRealm(
-        string databasePath,
-        ulong schemaVersion = OsuLazerRealmReader.SupportedSchemaVersion)
+    private static void writeSyntheticRealm(string databasePath)
     {
-        RuntimeHelpers.RunModuleConstructor(typeof(BeatmapSetInfo).Module.ModuleHandle);
-
-        var configuration = new RealmConfiguration(databasePath)
+        // The slice of lazer's schema the reader uses, written through Realm's dynamic API.
+        var schema = new RealmSchema.Builder
         {
-            SchemaVersion = schemaVersion,
-        };
+            new ObjectSchema.Builder("File", ObjectSchema.ObjectType.RealmObject)
+            {
+                Property.Primitive("Hash", RealmValueType.String, isPrimaryKey: true),
+            },
+            new ObjectSchema.Builder("RealmNamedFileUsage", ObjectSchema.ObjectType.EmbeddedObject)
+            {
+                Property.Object("File", "File"),
+                Property.Primitive("Filename", RealmValueType.String),
+            },
+            new ObjectSchema.Builder("RealmUser", ObjectSchema.ObjectType.EmbeddedObject)
+            {
+                Property.Primitive("Username", RealmValueType.String),
+            },
+            new ObjectSchema.Builder("BeatmapMetadata", ObjectSchema.ObjectType.RealmObject)
+            {
+                Property.Primitive("Title", RealmValueType.String),
+                Property.Primitive("TitleUnicode", RealmValueType.String),
+                Property.Primitive("Artist", RealmValueType.String),
+                Property.Primitive("ArtistUnicode", RealmValueType.String),
+                Property.Object("Author", "RealmUser"),
+                Property.Primitive("AudioFile", RealmValueType.String),
+                Property.Primitive("PreviewTime", RealmValueType.Int),
+            },
+            new ObjectSchema.Builder("Ruleset", ObjectSchema.ObjectType.RealmObject)
+            {
+                Property.Primitive("ShortName", RealmValueType.String, isPrimaryKey: true),
+            },
+            new ObjectSchema.Builder("Beatmap", ObjectSchema.ObjectType.RealmObject)
+            {
+                Property.Primitive("ID", RealmValueType.Guid, isPrimaryKey: true),
+                Property.Primitive("DifficultyName", RealmValueType.String),
+                Property.Object("Ruleset", "Ruleset"),
+                Property.Object("Metadata", "BeatmapMetadata"),
+                Property.Primitive("Hash", RealmValueType.String),
+                Property.Primitive("MD5Hash", RealmValueType.String),
+                Property.Primitive("StarRating", RealmValueType.Double),
+                Property.Primitive("Hidden", RealmValueType.Bool),
+            },
+            new ObjectSchema.Builder("BeatmapSet", ObjectSchema.ObjectType.RealmObject)
+            {
+                Property.Primitive("ID", RealmValueType.Guid, isPrimaryKey: true),
+                Property.Primitive("DeletePending", RealmValueType.Bool),
+                Property.ObjectList("Beatmaps", "Beatmap"),
+                Property.ObjectList("Files", "RealmNamedFileUsage"),
+            },
+        }.Build();
 
-        using var realm = Realm.GetInstance(configuration);
+        using var realm = Realm.GetInstance(new RealmConfiguration(databasePath) { IsDynamic = true, Schema = schema, SchemaVersion = 51 });
         realm.Write(() =>
         {
-            var metadata = new BeatmapMetadata(new RealmUser { Username = "Fixture Mapper" })
-            {
-                Title = "Synthetic Song",
-                Artist = "Fixture Artist",
-                AudioFile = "song.ogg",
-                BackgroundFile = "background.png",
-            };
-            var beatmap = new BeatmapInfo(
-                new RulesetInfo { ShortName = "taiko", Name = "osu!taiko", OnlineID = 1 },
-                metadata: metadata)
-            {
-                DifficultyName = "Fixture Oni",
-                Hash = "chart-hash",
-                MD5Hash = "synthetic-md5",
-                Length = 123_000,
-                BPM = 180,
-            };
-            var set = new BeatmapSetInfo([beatmap])
-            {
-                Hash = "set-hash",
-                DateAdded = DateTimeOffset.UnixEpoch,
-            };
-            set.Files.Add(new RealmNamedFileUsage(new RealmFile { Hash = "audio-hash" }, "song.ogg"));
-            set.Files.Add(new RealmNamedFileUsage(new RealmFile { Hash = "background-hash" }, "background.png"));
-
-            realm.Add(set);
+            var metadata = realm.DynamicApi.CreateObject("BeatmapMetadata");
+            metadata.DynamicApi.Set("Title", "Synthetic Song");
+            metadata.DynamicApi.Set("Artist", "Fixture Artist");
+            metadata.DynamicApi.Set("AudioFile", "song.ogg");
+            metadata.DynamicApi.Set("PreviewTime", -1);
+            var beatmap = realm.DynamicApi.CreateObject("Beatmap", Guid.NewGuid());
+            beatmap.DynamicApi.Set("DifficultyName", "Fixture Oni");
+            beatmap.DynamicApi.Set("Ruleset", RealmValue.Object(realm.DynamicApi.CreateObject("Ruleset", "taiko")));
+            beatmap.DynamicApi.Set("Metadata", RealmValue.Object(metadata));
+            beatmap.DynamicApi.Set("Hash", "chart-hash");
+            beatmap.DynamicApi.Set("StarRating", 4.5);
+            var set = realm.DynamicApi.CreateObject("BeatmapSet", Guid.NewGuid());
+            set.DynamicApi.GetList<IRealmObjectBase>("Beatmaps").Add(beatmap);
+            var usage = realm.DynamicApi.AddEmbeddedObjectToList(set.DynamicApi.GetList<IEmbeddedObject>("Files"));
+            usage.DynamicApi.Set("Filename", "song.ogg");
+            usage.DynamicApi.Set("File", RealmValue.Object(realm.DynamicApi.CreateObject("File", "audio-hash")));
         });
-    }
-
-    private static void removeRealmCoordinationFiles(string databasePath)
-    {
-        var lockPath = databasePath + ".lock";
-        if (File.Exists(lockPath))
-            File.Delete(lockPath);
-
-        var managementPath = databasePath + ".management";
-        if (Directory.Exists(managementPath))
-            Directory.Delete(managementPath, recursive: true);
-
-        var notePath = databasePath + ".note";
-        if (File.Exists(notePath))
-            File.Delete(notePath);
     }
 
     private static string[] snapshotDirectory(string directory) => Directory

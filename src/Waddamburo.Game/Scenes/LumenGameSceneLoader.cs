@@ -137,6 +137,7 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
                 if (host.Binding is IDisposable or IAsyncDisposable)
                     lifetimes.Add(host.Binding);
                 var player = content.CreatePlayer(_stageWidth, _stageHeight, new InGameBinding(host.Binding));
+                player.Name = layer.MovieId;
                 host.Initialize?.Invoke(player);
                 var textureCount = checked((uint)content.Textures.Length);
                 loaded.Add(new LoadedLumenLayer(layer, content, textureOffset, textureCount));

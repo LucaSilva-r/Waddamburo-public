@@ -23,15 +23,8 @@
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
   <!-- Releases use the JIT, but the game must stay NativeAOT-compatible (consoles and other targets
-       without a JIT): trim/AOT analyzers run on every product project. The osu!lazer reader is excluded,
-       its ppy.osu.Game dependency is not AOT-safe and the game does not ship it. -->
-  <PropertyGroup Condition="$([MSBuild]::MakeRelative($(MSBuildThisFileDirectory), $(MSBuildProjectDirectory)).StartsWith('src'))
-      and '$(MSBuildProjectName)' != 'Waddamburo.Providers.OsuLazer'">
+       without a JIT): trim/AOT analyzers run on every product project. -->
+  <PropertyGroup Condition="$([MSBuild]::MakeRelative($(MSBuildThisFileDirectory), $(MSBuildProjectDirectory)).StartsWith('src'))">
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
-  <ItemGroup>
-    <!-- ppy.osu.Game intentionally pins AutoMapper 13.0.1. The reported issue
-         concerns configuration APIs Waddamburo never calls while reading Realm. -->
-    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-rvv3-g6hj-g44x" />
-  </ItemGroup>
 </Project>

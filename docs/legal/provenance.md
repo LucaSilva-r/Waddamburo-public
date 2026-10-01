@@ -107,9 +107,11 @@ runs a user-supplied vgmstream-cli as a separate program for files the bundled d
 rejects; licensing is recorded in `THIRD_PARTY_NOTICES.md`.
 
 `src/Waddamburo.Providers.OsuLazer/` is original integration code written against
-the public `ppy.osu.Game` 2026.916.0 and Realm 20.1.0 APIs. It consumes official
-model types through NuGet and does not copy or adapt osu! source files. The package
-records upstream osu! commit `98fb49876c0242fcf649e0250d6f6b3458769a9e`.
+the public Realm 20.1.0 API (dynamic, read-only access; no osu! model assembly). Its
+`.osu` reader and taiko conversion rules were checked against osu!lazer's
+`LegacyBeatmapDecoder.cs`, `TaikoBeatmapConverter.cs` and `BarLineGenerator.cs`
+(ppy/osu commit `48c4800e3ae4ee752452cdff83bd3787ccf3105f`, MIT) and against TaikoRecomp's
+own osu! importer; no source is copied or translated.
 
 `src/Waddamburo.Providers.Tja/` is an original managed catalog implementation.
 Its format behavior was checked against TaikoRecomp revision
