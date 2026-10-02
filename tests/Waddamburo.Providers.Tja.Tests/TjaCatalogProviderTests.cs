@@ -409,6 +409,42 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task NegativeDelayOffsetsOneNoteAndKeepsEventsOrdered()
+    {
+        // Editors' per-note "time offset": #DELAY x before the note, #DELAY -x after it.
+        var chart = await loadSynthetic("10\n#DELAY 0.1\n2\n#DELAY -0.1\n0,\n1\n#DELAY -1.5\n1,");
+        Assert.Equal([0d, 1.1d, 1.5d, 2d], chart.HitObjects.Select(n => n.StartTime.TotalSeconds));
+    }
+
+    [Fact]
+    public async Task DelayCheckSampleLoadsWithEveryNoteWhereItsCommentSays()
+    {
+        var sample = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!Directory.Exists(System.IO.Path.Combine(sample.FullName, "samples")))
+            sample = sample.Parent!;
+        var provider = new TjaCatalogProvider(System.IO.Path.Combine(sample.FullName, "samples", "delay-check"));
+        var descriptor = Assert.Single(Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs).Charts);
+        var chart = await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset);
+
+        // Section n starts on bar line 4n - 2 s (from section 8 on, 4n s); section 2 leaves everything after it 16 ms late until section 3.
+        double[] expected =
+        [
+            2, 2.5, 3, 3.5,
+            6, 6.516, 7.016, 7.516,
+            10.016, 10.5, 11, 11.5,
+            14, 14.75, 15, 15.5,
+            18, 18.25, 19, 19.5,
+            21.75, 22, 23, 23.5,
+            27, 27.5, 28, 28.5, // section 7 runs over two measures, so later sections start 2 s later
+            40, 40.125, 40.25, 40.375, 40.5625, 40.6875, 40.8125, 40.9375, // 8 and 9 are long notes
+            44, 44.5, 45, 45.5,
+        ];
+        Assert.Equal(expected, chart.HitObjects.Select(n => Math.Round(n.StartTime.TotalSeconds, 4)));
+        Assert.Equal([(32d, 34d), (36d, 36.75d)], chart.LongNotes.Select(n => (n.StartTime.TotalSeconds, n.EndTime.TotalSeconds)));
+        Assert.Equal(0.5, chart.ScrollPoints.Single(p => p.Time == TimeSpan.FromSeconds(44)).Multiplier);
+    }
+
+    [Fact]
     public async Task BranchesPlayNormalOnlyAndDoNotLeakTimingFromOtherRoutes()
     {
         var chart = await loadSynthetic("#SECTION\n#BRANCHSTART p,50,80\n#N\n1,\n#E\n#BPMCHANGE 999\n2,\n#M\n#DELAY 10\n3,\n#BRANCHEND\n4,");
@@ -472,7 +508,7 @@ public sealed class TjaCatalogProviderTests
     [InlineData("1", typeof(InvalidDataException))]
     [InlineData("#BPMCHANGE 0\n1,", typeof(InvalidDataException))]
     [InlineData("#MEASURE 0/4\n1,", typeof(InvalidDataException))]
-    [InlineData("#DELAY -1\n1,", typeof(InvalidDataException))]
+    [InlineData("#DELAY -1\n1,", typeof(InvalidDataException))] // before chart start
     public async Task MalformedAndGimmickChartsStillReportAnExplicitFailure(string body, Type exception)
     {
         await Assert.ThrowsAsync(exception, async () => await loadSynthetic(body));

@@ -47,6 +47,7 @@ internal static class TjaPlayableChartReader
         var isGoGo = false;
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
+        var maxSeconds = 0m; // latest event time; the chart ends no earlier
         int? level = null;
         int? scoreInit = null;
         int? scoreDiff = null;
@@ -131,12 +132,13 @@ internal static class TjaPlayableChartReader
                 return new PlayableChart(
                     key,
                     authoredOffset(offsetText),
-                    chartTime(cursorSeconds),
-                    hitObjects.ToImmutable(),
+                    chartTime(Math.Max(cursorSeconds, maxSeconds)),
+                    // A negative #DELAY can step back in time; OrderBy is stable, so ties keep file order.
+                    hitObjects.OrderBy(static n => n.StartTime),
                     timingPoints.ToImmutable(),
                     scrollPoints.ToImmutable(),
                     effectPoints.ToImmutable(),
-                    barLines.ToImmutable(), longNotes.ToImmutable())
+                    barLines.OrderBy(static b => b.Time), longNotes.OrderBy(static n => n.StartTime))
                 { Level = level, ScoreInit = scoreInit, ScoreDiff = scoreDiff };
             }
 
@@ -265,6 +267,7 @@ internal static class TjaPlayableChartReader
                             hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B'));
                         }
                     }
+                    maxSeconds = Math.Max(maxSeconds, cursorSeconds);
                     cursorSeconds = checked(cursorSeconds + 60m / bpm * 4m * numerator / denominator / count);
                     ensureTimeFits(cursorSeconds, "The TJA chart exceeds the supported time range.");
                 }
@@ -335,30 +338,28 @@ internal static class TjaPlayableChartReader
                 {
                     throw new InvalidDataException("TJA #MEASURE requires positive integer numerator/denominator values.");
                 }
-                appendOrReplace(timingPoints, new ChartTimingPoint(chartTime(cursorSeconds), (double)bpm, numerator, denominator));
+                appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#BPMCHANGE":
                 bpm = positiveNumber(argument, "#BPMCHANGE");
-                appendOrReplace(timingPoints, new ChartTimingPoint(chartTime(cursorSeconds), (double)bpm, numerator, denominator));
+                appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
                 scroll = finiteDouble(argument, "#SCROLL");
-                appendOrReplace(scrollPoints, new ChartScrollPoint(chartTime(cursorSeconds), scroll));
+                appendOrReplace(scrollPoints, new ChartScrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
             case "#DELAY":
-                var delaySeconds = finiteDecimal(argument, "#DELAY");
-                if (delaySeconds < 0)
-                    throw new InvalidDataException("TJA #DELAY must be non-negative.");
-                cursorSeconds = checked(cursorSeconds + delaySeconds);
+                // Negative delays are legal: editors offset one note with #DELAY x … #DELAY -x.
+                cursorSeconds = checked(cursorSeconds + finiteDecimal(argument, "#DELAY"));
                 ensureTimeFits(cursorSeconds, "TJA #DELAY places the chart outside the supported time range.");
                 break;
             case "#GOGOSTART":
                 isGoGo = true;
-                appendOrReplace(effectPoints, new ChartEffectPoint(chartTime(cursorSeconds), true));
+                appendOrReplace(effectPoints, new ChartEffectPoint(controlTime(effectPoints, cursorSeconds), true));
                 break;
             case "#GOGOEND":
                 isGoGo = false;
-                appendOrReplace(effectPoints, new ChartEffectPoint(chartTime(cursorSeconds), false));
+                appendOrReplace(effectPoints, new ChartEffectPoint(controlTime(effectPoints, cursorSeconds), false));
                 break;
             case "#BARLINEON":
                 isBarlineVisible = true;
@@ -377,28 +378,32 @@ internal static class TjaPlayableChartReader
         }
     }
 
+    // Control points stay in file order: one a negative #DELAY moves before the previous point takes
+    // effect at that point's time, so the last command written still wins for the notes after it.
+    private static TimeSpan controlTime<T>(ImmutableArray<T>.Builder points, decimal seconds)
+        where T : struct
+    {
+        var time = chartTime(seconds);
+        var previousTime = timeOf(points[^1]);
+        return time > previousTime ? time : previousTime;
+    }
+
     private static void appendOrReplace<T>(ImmutableArray<T>.Builder points, T point)
         where T : struct
     {
-        var time = point switch
-        {
-            ChartTimingPoint value => value.Time,
-            ChartScrollPoint value => value.Time,
-            ChartEffectPoint value => value.Time,
-            _ => throw new InvalidOperationException("Unsupported control point type."),
-        };
-        var previousTime = points[^1] switch
-        {
-            ChartTimingPoint value => value.Time,
-            ChartScrollPoint value => value.Time,
-            ChartEffectPoint value => value.Time,
-            _ => throw new InvalidOperationException("Unsupported control point type."),
-        };
-        if (previousTime == time)
+        if (timeOf(points[^1]) == timeOf(point))
             points[^1] = point;
         else
             points.Add(point);
     }
+
+    private static TimeSpan timeOf<T>(T point) where T : struct => point switch
+    {
+        ChartTimingPoint value => value.Time,
+        ChartScrollPoint value => value.Time,
+        ChartEffectPoint value => value.Time,
+        _ => throw new InvalidOperationException("Unsupported control point type."),
+    };
 
     private static string normalizePlayer(ReadOnlySpan<char> value) => value.Trim().ToString().ToUpperInvariant() switch
     {
