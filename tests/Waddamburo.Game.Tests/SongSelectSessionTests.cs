@@ -85,7 +85,7 @@ public sealed class SongSelectSessionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void CourseAvailabilityDoesNotActivateRestrictedSelection(bool hasUra)
+    public void MissingCoursesRestrictSelectionUnlessTheSongHasUra(bool hasUra)
     {
         var key = new SongKey(SongSourceKind.Tja, "course-projection");
         var descriptor = new SongDescriptor(
@@ -113,7 +113,9 @@ public sealed class SongSelectSessionTests
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
-        Assert.Equal(AuthoredSongCourseBits.None, presentation.SelectionRestrictions);
+        // Restricted mode would show Ura in Oni's place, so a song with Ura keeps the game's board.
+        Assert.Equal(hasUra ? AuthoredSongCourseBits.None : AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni,
+            presentation.SelectionRestrictions);
         Assert.Equal(8, presentation.OniStars);
         Assert.Equal(hasUra ? 9 : 0, presentation.HiddenOniStars);
         Assert.Equal(0, presentation.EasyStars);
