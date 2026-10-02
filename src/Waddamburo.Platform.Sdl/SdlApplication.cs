@@ -67,6 +67,8 @@ public sealed unsafe class SdlApplication : IDisposable
                 windowFlags);
             if (_window is null)
                 throw sdlFailure("create the window");
+            // The game is played with drums and keys: no pointer over the window (F3 inspect shows it).
+            SDL_HideCursor();
 
             int pixelWidth, pixelHeight;
             if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
@@ -563,7 +565,10 @@ public sealed unsafe class SdlApplication : IDisposable
                 {
                     // F3: inspect mode (a left click lists what is drawn under the pointer).
                     if (!currentEvent.key.repeat)
+                    {
                         toggleInspect();
+                        _ = SDL_CursorVisible() ? SDL_HideCursor() : SDL_ShowCursor();
+                    }
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
                 {

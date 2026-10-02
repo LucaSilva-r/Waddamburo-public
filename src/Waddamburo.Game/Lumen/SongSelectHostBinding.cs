@@ -787,11 +787,14 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     }
 
     // Starting on a song (back from a play), the movie asks for the centre board's titles and then
-    // notifies the folder open for that same song: keep them.
+    // notifies the folder open for that same song: keep them. No NotifyStopBGM follows until the cursor
+    // moves, so that song's preview starts here.
     private LumenHostValue openFolder(LumenHostCall call)
     {
         _openFolder = integer(call, 0);
-        return _centre == (integer(call, 0), integer(call, 1)) ? LumenHostValue.Undefined : clearSelectionSurfaces();
+        if (_centre != (integer(call, 0), integer(call, 1)))
+            clearSelectionSurfaces();
+        return integer(call, 1) >= 0 ? notifyPreview(call) : LumenHostValue.Undefined;
     }
 
     private LumenHostValue clearFolderSurfaces()
