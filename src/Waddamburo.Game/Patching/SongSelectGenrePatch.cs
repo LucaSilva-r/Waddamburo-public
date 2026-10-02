@@ -52,12 +52,9 @@ public static class SongSelectGenrePatch
     private const ushort LeftHalf = 6, RightHalf = 7, MaskDepth = 8, PatternDepth = 9;
     private const float MaskLeft = 4, MaskRight = 3, MaskTop = 19, MaskBottom = 470, MaskShapeWidth = 640, MaskShapeHeight = 720;
 
-    // The open front is wider on screen than the event's 368 px quad: the pattern overshoots it
-    // (the mask trims it) and is drawn at that size, so it is not stretched.
+    // The open front is wider on screen than the event's 368x448 quad: the pattern overshoots it (the mask
+    // trims it). Pattern images are stretched to 460x448 stage units: draw them in that aspect.
     private const float PatternWidthScale = 1.25f;
-
-    /// <summary>The pattern surface's size (stage units).</summary>
-    public static readonly (int Width, int Height) PatternSize = ((int)(368 * PatternWidthScale), 448);
 
     /// <summary>The pattern's opacity (a colour entry's alpha, 256 = opaque).</summary>
     private const short PatternAlpha = 128;

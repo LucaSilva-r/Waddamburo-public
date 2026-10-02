@@ -73,7 +73,7 @@ public sealed record SongSelectCategory(
 public sealed record SongSearchResults(string Query, IReadOnlyList<SongKey> Songs);
 
 /// <summary>The host-drawn look of a built-in folder (a library or the search results).</summary>
-public enum FolderArtStyle { Osu, Nijiiro, Tja, Search }
+public enum FolderArtStyle { Original, Osu, Nijiiro, Tja, Search }
 
 /// <summary>A drawn part of a built-in folder: its open-folder emblem, or its front's pattern.</summary>
 public enum FolderArtPart { Box, Pattern }
@@ -151,7 +151,7 @@ public sealed class SongSelectCatalogView
             {
                 Tint = (255, 200, 40),
                 Art = new FolderArt(FolderArtStyle.Search, $"Search: {search.Query}",
-                    $"{search.Query}\n{searchLines(snapshot, search)}"),
+                    $"Results for\n{search.Query}\n{searchLines(snapshot, search)}"),
             },
         };
         var categories = searchFolder.Concat(tutorialFolder).Concat(favouriteFolder).Concat(listed
@@ -290,29 +290,21 @@ public sealed class SongSelectCatalogView
 
     private static string songs(int count) => count == 1 ? "1 song" : $"{count} songs";
 
-    private static FolderArt? libraryArt(SongCatalogSnapshot snapshot, SongSourceKind library)
+    // The library folders' slogans: one column per line, short enough for a column (about 9 characters).
+    private static FolderArt? libraryArt(SongCatalogSnapshot snapshot, SongSourceKind library) => library switch
     {
-        FolderArtStyle? style = library switch
-        {
-            SongSourceKind.OsuLazer => FolderArtStyle.Osu,
-            SongSourceKind.Nijiiro => FolderArtStyle.Nijiiro,
-            SongSourceKind.Tja => FolderArtStyle.Tja,
-            _ => null,
-        };
-        if (style is null)
-            return null;
-        var listed = snapshot.Songs.Values.Where(song => song.Key.Source == library).ToArray();
-        return new FolderArt(style.Value, LibraryName(library),
-            $"{songs(listed.Length)}\n{listed.Sum(static song => song.Charts.Length)} charts");
-    }
+        SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library), "Play the\noriginal\nsongs!!"),
+        SongSourceKind.OsuLazer => new FolderArt(FolderArtStyle.Osu, LibraryName(library), "Play your\nosu!taiko\nmaps!!"),
+        SongSourceKind.Nijiiro => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library), "Play Taiko\nNijiiro\ncharts!!"),
+        SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library), "Play your\ncustom\ncharts!!"),
+        _ => null,
+    };
 
-    // The search's count, then its count per library.
+    // The search's count.
     private static string searchLines(SongCatalogSnapshot snapshot, SongSearchResults search)
     {
         var found = search.Songs.Where(snapshot.Songs.ContainsKey).ToArray();
-        return string.Join('\n', new[] { songs(found.Length) }.Concat(found
-            .GroupBy(static key => key.Source).OrderBy(static group => group.Key)
-            .Select(static group => $"{LibraryName(group.Key)}: {group.Count()}")));
+        return songs(found.Length);
     }
 
     public static string LibraryName(SongSourceKind library) => library switch

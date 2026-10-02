@@ -251,8 +251,8 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             return FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)rasterScale, squash);
         if (request.Art is { } art)
             return request.Part == FolderArtPart.Box
-                ? FolderArtPainter.Box(art, _fontPath, (int)rasterScale)
-                : FolderArtPainter.Pattern(art, _fontPath, (int)rasterScale);
+                ? FolderArtPainter.Box(art)
+                : FolderArtPainter.Pattern(art);
         if (request.Kind != TitleTextureKind.Banner)
             return NativeVerticalTextRasterizer.RenderSongTitle(
                 _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale, squash);
