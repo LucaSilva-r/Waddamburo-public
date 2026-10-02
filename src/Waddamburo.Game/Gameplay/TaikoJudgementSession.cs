@@ -180,29 +180,37 @@ public sealed class TaikoJudgementSession
             return TaikoInputResult.StrongHitCompleted;
         if (_lastJudgedInputTime == time)
             return TaikoInputResult.Ignored;
-        if (_nextNoteIndex >= _chart.NoteCount)
-            return hitLongNote(action, time);
 
-        // The input judges the nearest note of its colour inside the window, so an unhit note of
-        // the other colour (or a late one) does not hold up the rest of a stream; skipped notes
-        // stay hittable until their window ends. Wrong colour alone is still ignored.
-        // ponytail: nearest-note choice is ours, not measured on Green (scoring.md research item 1).
-        var judgedIndex = -1;
-        var anyInWindow = false;
+        // The input judges the oldest unjudged note of its colour inside the Good window, else the
+        // oldest one inside the Bad window: a late hit stays on its own note instead of taking the
+        // next one (which left the skipped note to miss). An active roll, balloon or kusudama takes
+        // the input unless a note older than it can still be hit Good, so drumming a roll up to its
+        // end never gives the following note an early Bad. Wrong colour alone is ignored.
+        // ponytail: OpenTaiko's order (GetChipToJudge); the arcade's own is not measured on Green.
+        int goodIndex = -1, badIndex = -1;
         for (var index = _nextNoteIndex; index < _chart.NoteCount; index++)
         {
             var candidateOffset = time - _chart.HitObjects[index].StartTime;
             if (candidateOffset < -_windows.Miss)
                 break;
-            if (_results[index] is not null)
+            if (_results[index] is not null || !matches(action, _chart.HitObjects[index].Kind))
                 continue;
-            anyInWindow = true;
-            if (matches(action, _chart.HitObjects[index].Kind)
-                && (judgedIndex < 0 || candidateOffset.Duration() < (time - _chart.HitObjects[judgedIndex].StartTime).Duration()))
-                judgedIndex = index;
+            if (candidateOffset.Duration() <= _windows.Good)
+            {
+                goodIndex = index;
+                break;
+            }
+            if (badIndex < 0)
+                badIndex = index;
         }
-        if (!anyInWindow)
-            return hitLongNote(action, time);
+        if (goodIndex < 0 || activeLongNoteStart(action, time) is { } longStart
+            && _chart.HitObjects[goodIndex].StartTime >= longStart)
+        {
+            var longHit = hitLongNote(action, time);
+            if (longHit != TaikoInputResult.Ignored)
+                return longHit;
+        }
+        var judgedIndex = goodIndex >= 0 ? goodIndex : badIndex;
         if (judgedIndex < 0)
             return TaikoInputResult.Ignored;
 
@@ -230,6 +238,14 @@ public sealed class TaikoJudgementSession
         _strongHits[noteIndex] = true;
         Judged?.Invoke(new TaikoNoteJudgement(noteIndex, _chart.HitObjects[noteIndex],
             _results[noteIndex], _offsets[noteIndex], true));
+    }
+
+    // The start of the roll, balloon or kusudama under way at this time that takes this input.
+    private TimeSpan? activeLongNoteStart(TaikoInputAction action, TimeSpan time)
+    {
+        if (_nextLongIndex >= _chart.LongNotes.Length) return null;
+        var note = _chart.LongNotes[_nextLongIndex];
+        return time >= note.StartTime && time < note.EndTime && (!note.IsBalloon || isDon(action)) ? note.StartTime : null;
     }
 
     private TaikoInputResult hitLongNote(TaikoInputAction action, TimeSpan time)

@@ -127,14 +127,62 @@ public sealed class TaikoJudgementSessionTests
             new PlayableHitObject(TimeSpan.FromSeconds(1.150), PlayableNoteKind.Don),
             new PlayableHitObject(TimeSpan.FromSeconds(1.225), PlayableNoteKind.Don));
 
-        // The unhit ka is skipped; at 1.226 the unhit 1.150 don is still in its window but 1.225 is nearer.
+        // The unhit ka is skipped; at 1.236 the unhit 1.150 don is still in its Bad window, so the
+        // 1.225 don, inside Good, takes the hit.
         session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.075));
-        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.226));
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.236));
         session.AdvanceTo(TimeSpan.FromSeconds(2));
 
         var results = session.CreateSnapshot().Select(judgement => judgement.Result).ToArray();
         Assert.Equal([TaikoHitResult.Miss, TaikoHitResult.Great, TaikoHitResult.Miss, TaikoHitResult.Great], results);
         Assert.True(session.IsComplete);
+    }
+
+    [Theory]
+    [InlineData(45, 45, 45, 45)]
+    [InlineData(0, 45, 0, 0)]
+    [InlineData(-30, 50, -20, 40)]
+    public void ALateHitInAStreamStaysOnItsOwnNote(int first, int second, int third, int fourth)
+    {
+        // A 16th-note Don stream at 180 BPM: half the spacing (42 ms) is well inside Good.
+        var session = createSession([.. Enumerable.Range(0, 4).Select(i =>
+            new PlayableHitObject(TimeSpan.FromMilliseconds(1000 + 83 * i), PlayableNoteKind.Don))]);
+        int[] offsets = [first, second, third, fourth];
+        for (var i = 0; i < 4; i++)
+            session.SubmitInput(i % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightDon,
+                TimeSpan.FromMilliseconds(1000 + 83 * i + offsets[i]));
+        session.AdvanceTo(TimeSpan.FromSeconds(2));
+
+        Assert.DoesNotContain(session.CreateSnapshot(), judgement => judgement.Result == TaikoHitResult.Miss);
+        Assert.Equal(offsets.Select(offset => (double)offset),
+            session.CreateSnapshot().Select(judgement => judgement.Offset!.Value.TotalMilliseconds));
+    }
+
+    [Fact]
+    public void DrummingARollToItsEndLeavesTheFollowingNoteAlone()
+    {
+        var session = createLongSession(
+            [new PlayableHitObject(TimeSpan.FromMilliseconds(1083), PlayableNoteKind.Don)],
+            new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Roll, 0));
+        for (var ms = 0; ms < 1000; ms += 33)
+            Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(
+                ms % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightKa, TimeSpan.FromMilliseconds(ms)));
+
+        Assert.False(session.IsJudged(0));
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromMilliseconds(1083));
+        Assert.Equal(TaikoHitResult.Great, session.CreateSnapshot()[0].Result);
+    }
+
+    [Fact]
+    public void ANoteBeforeARollCanStillBeHitLateOnceTheRollStarts()
+    {
+        var session = createLongSession(
+            [new PlayableHitObject(TimeSpan.FromMilliseconds(1000), PlayableNoteKind.Don)],
+            new PlayableLongNote(TimeSpan.FromMilliseconds(1030), TimeSpan.FromSeconds(2), PlayableLongNoteKind.Roll, 0));
+
+        Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromMilliseconds(1050)));
+        Assert.Equal(TaikoHitResult.Good, session.CreateSnapshot()[0].Result);
+        Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromMilliseconds(1060)));
     }
 
     [Fact]
@@ -218,6 +266,15 @@ public sealed class TaikoJudgementSessionTests
     }
 
     private static TaikoJudgementSession createSession(params PlayableHitObject[] notes) => createSession(false, notes);
+
+    private static TaikoJudgementSession createLongSession(PlayableHitObject[] notes, PlayableLongNote longNote)
+    {
+        var song = new SongKey(SongSourceKind.Tja, "song");
+        var chart = new PlayableChart(new ChartKey(song, "chart"), TimeSpan.Zero, TimeSpan.FromSeconds(3), notes,
+            [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4)], [new ChartScrollPoint(TimeSpan.Zero, 1)],
+            [new ChartEffectPoint(TimeSpan.Zero, false)], [new ChartBarLine(TimeSpan.Zero, true)], [longNote]);
+        return new TaikoJudgementSession(chart, Windows, TimeSpan.FromMilliseconds(30));
+    }
 
     private static TaikoJudgementSession createSession(bool partner, params PlayableHitObject[] notes)
     {

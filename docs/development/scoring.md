@@ -36,8 +36,13 @@ Offsets from the note's time, in ms (they are frame multiples at 59.94 Hz: 1.5, 
 
 A hit between the Good and Bad windows is a Bad. A note never hit is a Bad at the end of its
 window. A wrong-colour input is ignored; the note can still be hit with the correct colour.
-An input judges the nearest unjudged note of its colour in the window, so an unhit note does not
-hold up the notes behind it (Waddamburo choice, not measured on Green).
+An input judges the oldest unjudged note of its colour inside the Good window, else the oldest one
+inside the Bad window, so a late hit stays on its own note and an unhit note does not hold up the
+notes behind it. While a roll, balloon or kusudama is under way, it takes the input unless a note
+older than it can still be hit Good, so drumming a roll up to its end does not give the next note an
+early Bad. This is OpenTaiko's order, not measured on Green. The previous rule, the nearest note,
+made a hit more than half a note-gap late take the next note, and the skipped note missed (about 9%
+misses on 180 BPM 16ths hit within ±20 ms).
 If it is not hit before its window ends, it counts as a Bad in the results (W2).
 Waddamburo leaves an unhit note scrolling offscreen without showing Bad text; a correctly
 coloured press in the Bad window shows that text.
