@@ -41,6 +41,8 @@ public enum DonPresentationLayout
     Gameplay,
     Retry,
     RetrySuccess,
+    /// <summary>The balloon overlay: a closer menu-style view, the balloon at Don's mouth.</summary>
+    Balloon,
     /// <summary>The kusudama overlay: the menu view, both Dons facing the centre.</summary>
     Kusudama,
 }

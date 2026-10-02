@@ -8,7 +8,7 @@ using Waddamburo.Formats.Nut;
 
 namespace Waddamburo.Platform.Sdl.Rendering;
 
-public enum DonCameraLayout { Standard, Gameplay, Retry, RetrySuccess }
+public enum DonCameraLayout { Standard, Gameplay, Retry, RetrySuccess, Balloon }
 
 /// <summary>Shared-device Don renderer. All methods must run on the owning SDL thread.</summary>
 public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
@@ -35,6 +35,12 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         0f, 57.2952f, -0.0214f, -0.0175f,
         27.0253f, -0.8839f, -1.0776f, -0.8817f,
         0.0008f, -866.3033f, 1675.5881f, 2280.0266f));
+    // Balloon view (traced, mode 3): the menu camera moved closer and lower, Don ~9% larger.
+    private static readonly Matrix4x4 BalloonCamera = withDonDepth(new Matrix4x4(
+        50.5310f, 0.4896f, 0.5763f, 0.4715f,
+        0f, 57.2945f, -0.0221f, -0.0181f,
+        27.0253f, -0.9155f, -1.0776f, -0.8817f,
+        0.0010f, -721.9110f, 1452.6600f, 2097.6300f));
 
     private static Matrix4x4 withDonDepth(Matrix4x4 camera)
     {
@@ -283,6 +289,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             DonCameraLayout.Gameplay => GameplayCamera,
             DonCameraLayout.Retry => RetryCamera,
             DonCameraLayout.RetrySuccess => RetrySuccessCamera,
+            DonCameraLayout.Balloon => BalloonCamera,
             _ => PlayerOneCamera,
         };
         // Both gameplay lanes face the same way; only menu scenes stand the second player opposite.

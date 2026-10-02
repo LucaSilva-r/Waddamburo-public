@@ -133,6 +133,7 @@ public sealed class TaikoLongNotePresentation
         {
             var note = _chart.LongNotes[index];
             if (note.StartTime > time) break;
+            if (IsHeld(index, time)) continue; // opened by its first hit
             if (time < note.EndTime && !_session.GetLongNoteProgress(index).IsPopped && !_finished.Contains(index))
             {
                 begin(index);
@@ -151,8 +152,9 @@ public sealed class TaikoLongNotePresentation
             var note = _chart.LongNotes[index];
             // Rolls remain on screen after their scoring window closes until the tail passes left.
             if (note.IsBalloon && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
-            if (note.IsBalloon && time >= note.StartTime) continue;
-            var head = position(note.StartTime, note.StartTime);
+            var held = IsHeld(index, time);
+            if (note.IsBalloon && time >= note.StartTime && !held) continue;
+            var head = held ? hitX : position(note.StartTime, note.StartTime);
             var tail = note.IsBalloon ? head : position(note.EndTime, note.StartTime);
             if (Math.Max(head, tail) < -100 || Math.Min(head, tail) > 1380) continue;
             retained.Add(index);
@@ -183,6 +185,18 @@ public sealed class TaikoLongNotePresentation
 
     public bool BalloonVisible => _balloonVisible;
 
+    /// <summary>
+    /// A balloon waits on the target, its overlay closed, until the first don opens it (traced
+    /// session25: the overlay appeared with the quota minus that hit, and only don_balloon_nobeat).
+    /// </summary>
+    // ponytail: kusudamas still open on time; untraced, extend if a trace shows they wait too.
+    public bool IsHeld(int index, TimeSpan time)
+    {
+        var note = _chart.LongNotes[index];
+        return note.Kind == PlayableLongNoteKind.Balloon && time >= note.StartTime && time < note.EndTime
+            && _session.GetLongNoteProgress(index).Hits == 0;
+    }
+
     public IEnumerable<LumenPlayer> Players => _visible.Values.Select(layer => layer.Player)
         .Append(_counter.Player).Append(_balloon.Player)
         .Concat(_kusudama is null ? [] : [_kusudama.Player]);
@@ -204,7 +218,7 @@ public sealed class TaikoLongNotePresentation
         }
         else if (note.IsBalloon)
         {
-            _don?.SetCameraLayout(_player, DonPresentationLayout.Standard);
+            _don?.SetCameraLayout(_player, DonPresentationLayout.Balloon);
             _overlay = _balloon;
             invoke(_balloon.Player, "Reset");
             // The opening timeline creates the balloon child two ticks after 'start'.
@@ -212,7 +226,7 @@ public sealed class TaikoLongNotePresentation
             invoke(_balloon.Player, "SetGekiRendaCount", 0);
             _balloon.Player.Advance();
             _balloon.Player.Advance();
-            invoke(_balloon.Player, "SetGekiRendaCount", note.RequiredHits);
+            invoke(_balloon.Player, "SetGekiRendaCount", note.RequiredHits - _session.GetLongNoteProgress(index).Hits);
             _balloonVisible = true;
             _don?.SetMotion(new DonMotionRequest(_player, null, "don_balloon_nobeat"));
         }
@@ -224,7 +238,8 @@ public sealed class TaikoLongNotePresentation
     {
         if (_finished.Contains(progress.NoteIndex))
             return;
-        if (_active != progress.NoteIndex)
+        var opened = _active != progress.NoteIndex;
+        if (opened)
         {
             if (_active is { } previous) finish(previous);
             begin(progress.NoteIndex);
@@ -243,7 +258,7 @@ public sealed class TaikoLongNotePresentation
             }
             else if (progress.IsPopped)
                 finish(progress.NoteIndex);
-            else
+            else if (!opened || progress.Note.Kind != PlayableLongNoteKind.Balloon) // begin showed the opening hit
             {
                 var remaining = progress.Note.RequiredHits - progress.Hits;
                 if (_overlay == _kusudama)

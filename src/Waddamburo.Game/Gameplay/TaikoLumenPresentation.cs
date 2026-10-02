@@ -143,11 +143,16 @@ public sealed class TaikoLumenPresentation
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
                 addAt(texts, text, note.StartTime, time, yOffset: TaikoNoteText.Offset);
         }
-        // Balloons and kusudamas carry their text until they reach the target (then their overlay takes over).
-        foreach (var note in _chart.LongNotes)
-            if (note.IsBalloon && time < note.StartTime
+        // Balloons and kusudamas carry their text until their overlay takes over (a balloon waiting on the
+        // target keeps it there).
+        for (var index = 0; index < _chart.LongNotes.Length; index++)
+        {
+            var note = _chart.LongNotes[index];
+            var held = _longNotes?.IsHeld(index, time) == true;
+            if (note.IsBalloon && (time < note.StartTime || held)
                 && _noteTexts?.GetValueOrDefault(TaikoNoteText.Balloon(note.Kind)) is { } text)
-                addAt(texts, text, note.StartTime, time, yOffset: TaikoNoteText.Offset);
+                addAt(texts, text, held ? time : note.StartTime, time, yOffset: TaikoNoteText.Offset);
+        }
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
         layers.AddRange(texts);
         // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit

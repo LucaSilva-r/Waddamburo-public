@@ -52,6 +52,7 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
         DonPresentationLayout.Gameplay => DonCameraLayout.Gameplay,
         DonPresentationLayout.Retry => DonCameraLayout.Retry,
         DonPresentationLayout.RetrySuccess => DonCameraLayout.RetrySuccess,
+        DonPresentationLayout.Balloon => DonCameraLayout.Balloon,
         _ => DonCameraLayout.Standard,
     };
 

@@ -25,16 +25,21 @@ public sealed class TaikoLongNotePresentationTests
             don: don, onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
             onNoteStarted: started.Add);
         Assert.False(presentation.BalloonVisible);
+        // The balloon waits on the target until the first don opens it, already counting that hit.
         presentation.Update(TimeSpan.FromSeconds(1));
-        Assert.True(presentation.BalloonVisible);
+        Assert.False(presentation.BalloonVisible);
+        Assert.True(presentation.IsHeld(0, TimeSpan.FromSeconds(1.1)));
         presentation.Update(TimeSpan.FromSeconds(1.1));
         session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.2));
+        Assert.True(presentation.BalloonVisible);
+        Assert.False(presentation.IsHeld(0, TimeSpan.FromSeconds(1.2)));
+        Assert.Equal("don_balloon_nobeat", don.Motions[^1].Loop);
         if (pop) session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.3));
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(4));
         Assert.Equal(new (string, double)[] { ("Reset", double.NaN), ("SetGekiRendaCount", 0),
-            ("SetGekiRendaCount", 2), ("SetGekiRendaCount", 1), ("GekiRendaEnd", pop ? 0 : 1) }, calls);
+            ("SetGekiRendaCount", 1), ("GekiRendaEnd", pop ? 0 : 1) }, calls);
         Assert.Empty(layer.Player.Diagnostics);
         Assert.True(presentation.BalloonVisible);
         Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);

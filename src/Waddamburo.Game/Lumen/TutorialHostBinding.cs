@@ -80,7 +80,7 @@ public sealed class TutorialHostBinding(int side, bool twoPlayers, Action<string
         switch (trigger)
         {
             case 17:
-                view(DonPresentationLayout.Standard);
+                view(DonPresentationLayout.Balloon);
                 don.SetMotion(new(0, "don_balloon_loop", "don_balloon_nobeat"));
                 break;
             case 18:
