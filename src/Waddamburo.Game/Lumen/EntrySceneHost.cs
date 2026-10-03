@@ -592,7 +592,7 @@ internal static class LumenPlayerCalls
 {
     public static void Call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
-        if (!player.TryInvokeCallback(name, arguments))
+        if (!player.TryInvokeOptionalCallback("Entry", name, arguments))
             throw new InvalidDataException($"Entry movie is missing callback '{name}'.");
     }
 }

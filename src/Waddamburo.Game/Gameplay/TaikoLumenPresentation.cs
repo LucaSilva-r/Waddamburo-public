@@ -217,7 +217,7 @@ public sealed class TaikoLumenPresentation
 
     private static void callback(LumenPlayer player, string name, LumenHostValue value)
     {
-        if (!player.TryInvokeCallback(name, [value]))
+        if (!player.TryInvokeOptionalCallback("Gameplay", name, [value]))
             throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
     }
 }

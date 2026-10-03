@@ -72,6 +72,9 @@ public sealed record SceneLayerDefinition
 
     public string? AnchorId { get; }
 
+    /// <summary>A layer some releases lack (e.g. the results' waitinput overlay before White): skipped when absent.</summary>
+    public bool Optional { get; init; }
+
     private static bool isFinite(LumenMatrix value) =>
         float.IsFinite(value.M11)
         && float.IsFinite(value.M12)

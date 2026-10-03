@@ -28,7 +28,10 @@ internal static class FlowScenes
     // Traced 1P results: the results movie and its "press to continue" overlay, full screen.
     public static SceneDefinition Results { get; } = new(SceneDefinition.CurrentVersion, Result, [
         new SceneLayerDefinition("enso_result/packeddata.ddp", "result/result.lm", LumenMatrix.Identity, "result"),
-        new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
+        new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput")
+        {
+            Optional = true,
+        },
     ]);
 
     // Waiwai's results (traced): its movie full screen, the two name boards at (-580|308, 220) centred.

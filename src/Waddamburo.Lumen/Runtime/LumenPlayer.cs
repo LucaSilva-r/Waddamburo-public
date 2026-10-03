@@ -213,6 +213,27 @@ public sealed class LumenPlayer
         return removed;
     }
 
+    /// <summary>Whether the movie registered this callback (older releases lack some features' callbacks).</summary>
+    public bool HasCallback(string name) => _callbacks.ContainsKey(name);
+
+    private static readonly HashSet<string> s_reportedAbsent = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Calls a callback the host needs only when the movie has it: an unregistered one is a feature this
+    /// release's movie lacks (reported once, skipped); a registered one that fails returns false.
+    /// </summary>
+    public bool TryInvokeOptionalCallback(string owner, string name, IReadOnlyList<LumenHostValue> arguments)
+    {
+        if (!HasCallback(name))
+        {
+            lock (s_reportedAbsent)
+                if (s_reportedAbsent.Add(owner + "." + name))
+                    Console.WriteLine($"{owner} movie has no callback '{name}'; skipped (feature absent in this release).");
+            return true;
+        }
+        return TryInvokeCallback(name, arguments);
+    }
+
     public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

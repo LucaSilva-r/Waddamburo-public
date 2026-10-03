@@ -90,7 +90,7 @@ public sealed class WaiwaiResultHostBinding(
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
-        if (!player.TryInvokeCallback(name, arguments))
+        if (!player.TryInvokeOptionalCallback("Waiwai result", name, arguments))
             throw new InvalidDataException($"Waiwai result movie is missing callback '{name}'.");
     }
 }

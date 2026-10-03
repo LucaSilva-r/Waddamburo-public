@@ -80,20 +80,33 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 {
                     TaikoCreditNext.Revival => FlowScenes.Retry,
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,
-                    _ => FlowScenes.GameOver,
+                    _ => gameOver,
                 });
         }
         else if (scene == FlowScenes.Retry)
         {
             if (Shell.FinishFade()) return;
             if (RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers.Single().Player))
-                Shell.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
+                Shell.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : gameOver);
         }
         else if (Shell.Hosts.GameOver?.Ended == true)
         {
             // Traced: the credit's end returns to the attract loop at logo_namco.
             Shell.SongsPlayed = 0;
             Shell.Show(FlowScenes.Logo);
+        }
+    }
+
+    // Releases before Yellow have no reward shop (its archive holds the game-over movie): the credit
+    // then ends straight back at the attract loop.
+    private SceneId gameOver
+    {
+        get
+        {
+            if (File.Exists(Path.Combine(Shell.Options.AssetRoot, "reward_shop", "packeddata.ddp")))
+                return FlowScenes.GameOver;
+            Shell.SongsPlayed = 0;
+            return FlowScenes.Logo;
         }
     }
 }

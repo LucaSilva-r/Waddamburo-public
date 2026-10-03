@@ -208,7 +208,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _startTick = Shell.Tick;
             _music = startAudio(request);
             _clock.Restart();
-            rainbow.GotoLabel(RainbowTransitionComposition.RevealLabel, play: true);
+            RainbowTransitionComposition.Reveal(rainbow);
             Rainbow.StartReveal();
             Console.WriteLine($"Rainbow reveal and gameplay started at tick {Shell.Tick}.");
             return;

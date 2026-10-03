@@ -126,9 +126,18 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
             foreach (var layer in definition.Layers)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var content = await contentSource
-                    .LoadAsync(layer.ArchiveId, layer.MovieId, cancellationToken)
-                    .ConfigureAwait(false);
+                LumenMovieContent content;
+                try
+                {
+                    content = await contentSource
+                        .LoadAsync(layer.ArchiveId, layer.MovieId, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception) when (layer.Optional && exception is FileNotFoundException or KeyNotFoundException)
+                {
+                    Console.WriteLine($"Optional layer {layer.ArchiveId}:{layer.MovieId} is absent; skipped.");
+                    continue;
+                }
                 if (content.Diagnostics.Any(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error))
                     throw new InvalidDataException($"Lumen movie '{layer.MovieId}' contains semantic errors.");
 
@@ -147,8 +156,8 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
 
             return new LumenGameSceneInstance(
                 definition.Id,
-                new LumenScenePlayer(_stageWidth, _stageHeight, players.MoveToImmutable()),
-                loaded.MoveToImmutable(),
+                new LumenScenePlayer(_stageWidth, _stageHeight, players.ToImmutable()),
+                loaded.ToImmutable(),
                 lifetimes.ToImmutable());
         }
         catch

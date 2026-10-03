@@ -220,7 +220,7 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
-        if (!player.TryInvokeCallback(name, arguments))
+        if (!player.TryInvokeOptionalCallback("Indicator", name, arguments))
             throw new InvalidDataException($"Indicator movie is missing callback '{name}'.");
     }
 }

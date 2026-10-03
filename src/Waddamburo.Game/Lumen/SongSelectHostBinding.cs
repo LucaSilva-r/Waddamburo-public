@@ -830,7 +830,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private void invoke(string name, params LumenHostValue[] arguments)
     {
-        if (!requirePlayer().TryInvokeCallback(name, arguments))
+        if (!requirePlayer().TryInvokeOptionalCallback("Song Select", name, arguments))
             throw new InvalidOperationException($"Song Select did not accept callback '{name}'.");
     }
 

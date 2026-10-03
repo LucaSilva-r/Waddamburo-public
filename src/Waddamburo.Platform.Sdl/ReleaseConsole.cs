@@ -46,7 +46,8 @@ public static partial class ReleaseConsole
     public static unsafe void Fail(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        Console.Error.WriteLine(exception.Message);
+        // WADDAMBURO_STACK=1: the whole exception, for diagnosing a failed boot.
+        Console.Error.WriteLine(Environment.GetEnvironmentVariable("WADDAMBURO_STACK") == "1" ? exception.ToString() : exception.Message);
         if (!OperatingSystem.IsWindows() || GetConsoleWindow() != 0)
             return;
         SDL3.SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags.SDL_MESSAGEBOX_ERROR, "Waddamburo", exception.ToString(), null);

@@ -34,7 +34,7 @@ public static class GuestNameBoard
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
-        if (!player.TryInvokeCallback(name, arguments))
+        if (!player.TryInvokeOptionalCallback("Name board", name, arguments))
             throw new InvalidDataException($"Name board is missing callback '{name}'.");
     }
 }

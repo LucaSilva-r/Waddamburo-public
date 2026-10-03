@@ -162,7 +162,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             player.SetNativeFill(
                 RainbowTransitionComposition.SongTitleFill,
                 gameplay.RainbowTitle ?? throw new InvalidOperationException("Rainbow transition has no song title."));
-            player.GotoLabel(RainbowTransitionComposition.CoverLabel, play: true);
+            RainbowTransitionComposition.Cover(player);
             rainbow.StartCover();
             Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));

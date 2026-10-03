@@ -175,7 +175,7 @@ public sealed class ResultHostBinding(
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
-        if (!player.TryInvokeCallback(name, arguments))
+        if (!player.TryInvokeOptionalCallback("Result", name, arguments))
             throw new InvalidDataException($"Result movie is missing callback '{name}'.");
     }
 }
