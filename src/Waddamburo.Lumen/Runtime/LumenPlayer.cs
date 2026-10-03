@@ -328,7 +328,7 @@ public sealed class LumenPlayer
     }
 
     /// <summary>A method called on a clip holding a loaded movie: its root function or callback.</summary>
-    private Avm1Lookup callLoadedMovie(LumenPlayer child, string name, IReadOnlyList<object?> arguments)
+    private static Avm1Lookup callLoadedMovie(LumenPlayer child, string name, IReadOnlyList<object?> arguments)
     {
         var converted = arguments.Select(toHostValue).ToArray();
         if (child._root.Variables.GetValueOrDefault(name) is Avm1FunctionValue function)
