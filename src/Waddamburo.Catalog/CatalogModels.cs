@@ -128,6 +128,12 @@ public sealed record SongDescriptor
     /// </summary>
     public CatalogAssetKey? WaiwaiComposition { get; init; }
 
+    /// <summary>
+    /// Gameplay backgrounds the chart asks for by name, first preferred (OpenTaiko's TJA
+    /// <c>SCENEPRESET:</c>, e.g. IMAS, A3); they override the one picked by title or genre.
+    /// </summary>
+    public ImmutableArray<string> ScenePresets { get; init; } = [];
+
     /// <summary>The chart author (osu! mapper), when the source names one; for browsing.</summary>
     public string? Creator { get; init; }
 

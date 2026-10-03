@@ -9,7 +9,11 @@ namespace Waddamburo.App.Gameplay;
 /// <summary>
 /// Chooses a song's themed gameplay skin. The game names it per song (musicinfo.xml
 /// <c>partsset</c>, "taiko" = the random original mix). Custom charts take the skin of the stock
-/// song with the same title; otherwise a genre default (project choice: Vocaloid → miku).
+/// song with the same title; otherwise a genre default (project choice: Vocaloid → miku). A chart's
+/// own <see cref="SongDescriptor.ScenePresets"/> come first: a preset names a skin archive, with or
+/// without its enso_ prefix, case and punctuation ignored (IMAS_SIDEM, enso_imasSideM). "original"
+/// and unknown names give the regular gameplay; archives without the standard parts (dojo, tokkun,
+/// waiwai, result, system) are never used. The list: docs/development/gameplay-skins.md.
 /// Missing archives and skins without the standard parts fall back to the original mix.
 /// </summary>
 internal sealed class GameplaySkinResolver
@@ -19,16 +23,22 @@ internal sealed class GameplaySkinResolver
         ["GMT"] = "enso_gmt",
         ["butto"] = "enso_buttoburst",
     };
-    private static readonly string[] NotStandardSkins = ["taiko", "dojo"];
+    private static readonly string[] NotStandardSkins = ["taiko", "dojo", "original"];
 
     private readonly string _lumenRoot;
     private readonly Dictionary<string, string> _partsByTitle = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _partsByPreset = new(StringComparer.Ordinal);
 
     /// <param name="lumenRoot">The lumendata/packed directory.</param>
     /// <param name="musicInfoPath">Green's config musicinfo.xml, when present.</param>
     public GameplaySkinResolver(string lumenRoot, string? musicInfoPath)
     {
         _lumenRoot = lumenRoot;
+        if (Directory.Exists(lumenRoot))
+            foreach (var directory in Directory.EnumerateDirectories(lumenRoot, "enso_*"))
+                _partsByPreset.TryAdd(normalize(Path.GetFileName(directory)["enso_".Length..]), Path.GetFileName(directory)["enso_".Length..]);
+        foreach (var parts in ArchiveNames.Keys)
+            _partsByPreset[normalize(parts)] = parts;
         if (musicInfoPath is null || !File.Exists(musicInfoPath)) return;
         foreach (var song in XDocument.Load(musicInfoPath).Descendants("Data"))
             if ((string?)song.Element("musicname") is { } name && (string?)song.Element("partsset") is { } parts)
@@ -37,7 +47,11 @@ internal sealed class GameplaySkinResolver
 
     public GameplaySceneComposition.ThemedSkin? Resolve(SongDescriptor song, string category)
     {
-        var parts = new[] { song.Title.Japanese, song.Title.Primary, song.Title.English }
+        var parts = song.ScenePresets.Select(preset => normalize(preset))
+            .Select(preset => _partsByPreset.GetValueOrDefault(preset)
+                ?? (preset.StartsWith("enso", StringComparison.Ordinal) ? _partsByPreset.GetValueOrDefault(preset[4..]) : null))
+            .FirstOrDefault(value => value is not null)
+            ?? new[] { song.Title.Japanese, song.Title.Primary, song.Title.English }
             .OfType<string>()
             .Select(title => _partsByTitle.GetValueOrDefault(normalize(title)))
             .FirstOrDefault(value => value is not null)

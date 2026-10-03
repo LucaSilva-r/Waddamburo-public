@@ -25,6 +25,17 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task ScenePresetHeaderListsTheRequestedBackgrounds()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("Game/song.tja", "TITLE:Song\nSCENEPRESET: IMAS_SIDEM ,A3\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
+
+        var song = Assert.Single((await new TjaCatalogProvider(library.Path).ScanAsync(null, CancellationToken.None)).Songs);
+
+        Assert.Equal(["IMAS_SIDEM", "A3"], song.ScenePresets.ToArray());
+    }
+
+    [Fact]
     public async Task FolderLibraryPublishesMetadataCoursesAndReadableAudio()
     {
         using var library = new TemporaryLibrary();

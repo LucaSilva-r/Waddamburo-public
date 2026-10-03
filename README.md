@@ -96,7 +96,8 @@ Folders named after an arcade genre (`Pop`, `Anime`, `Vocaloid`, `Children and F
 `Variety`, `Classical`, `Game Music`, `Namco Original`) get that genre's art and colours;
 other folders get a generic one. TJA files may be in
 UTF-8 or Shift-JIS. `TITLEJA`/`TITLEEN` feed the song-title language switch, and
-`DEMOSTART` sets the preview. Rolls, balloons, BPM and scroll changes and the
+`DEMOSTART` sets the preview. `SCENEPRESET:` picks a themed gameplay background
+(`SCENEPRESET:IMAS`; see the [skin list](docs/development/gameplay-skins.md)). Rolls, balloons, BPM and scroll changes and the
 common commands are supported. Branching charts play their Normal route. See the
 [compatibility matrix](docs/development/custom-tja.md#gameplay-compatibility).
 

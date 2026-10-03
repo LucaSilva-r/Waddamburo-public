@@ -286,8 +286,10 @@ internal static class GameplaySceneComposition
     /// </summary>
     public static string Role(string layerName)
     {
-        if (System.Text.RegularExpressions.Regex.Match(layerName, "^(.+?)_[ab]_[0-9]+(?:_1p|_2p|_common)?$") is { Success: true } match)
-            return match.Groups[1].Value;
+        // Skin quirks: enso_gb/enso_kobayashi spell "bg_normal"; enso_dq10 has two dancer sets
+        // (dance_b_10_01/_02; ponytail: the first is used).
+        if (System.Text.RegularExpressions.Regex.Match(layerName, "^(.+?)_[ab]_[0-9]+(?:_[0-9]+)?(?:_1p|_2p|_common)?$") is { Success: true } match)
+            return match.Groups[1].Value == "bg_normal" ? "bg_nomal" : match.Groups[1].Value;
         // Synchro notes name the note (don / katsu), not the character.
         var name = layerName.StartsWith("onp_synchro_", StringComparison.Ordinal) ? layerName
             : layerName.Replace("_katsu_1p", "_don_1p", StringComparison.Ordinal)

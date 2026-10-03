@@ -136,6 +136,8 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                 normalizeSubtitle(japaneseSubtitle ?? firstMetadata(files, "SUBTITLE")))
             {
                 EnglishSubtitle = japaneseSubtitle is null ? null : normalizeSubtitle(firstMetadata(files, "SUBTITLE")),
+                ScenePresets = [.. (firstMetadata(files, "SCENEPRESET") ?? "")
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
             };
             songs.Add(song);
 
