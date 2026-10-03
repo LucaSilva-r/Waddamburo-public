@@ -328,14 +328,14 @@ public sealed class TaikoLongNotePresentation
 
     private static void call(LumenPlayer player, string name, LumenHostValue argument)
     {
-        if (!player.TryInvokeCallback(name, [argument]))
+        if (!player.TryInvokeOptionalCallback("Kusudama", name, [argument]))
             throw new InvalidDataException(
                 $"Kusudama movie is missing callback '{name}' (has: {string.Join(", ", player.CallbackNames)}).");
     }
 
     private static void invoke(LumenPlayer player, string name, double? argument = null)
     {
-        if (!player.TryInvokeCallback(name, argument is { } value ? [LumenHostValue.FromNumber(value)] : []))
+        if (!player.TryInvokeOptionalCallback("Long-note", name, argument is { } value ? [LumenHostValue.FromNumber(value)] : []))
             throw new InvalidDataException($"Long-note movie is missing callback '{name}'.");
     }
 }

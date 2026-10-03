@@ -510,6 +510,9 @@ internal sealed class GameShell : IDisposable
                 performanceSample: _performance.Record);
 
             Console.WriteLine($"Active scene: {Active.Id}");
+            // WADDAMBURO_INSPECT=x,y[;x,y]: what the last frame drew at those stage points (headless runs).
+            foreach (var point in s_inspectPoints)
+                inspectAt(point.X / 1280f, point.Y / 720f);
             _gameplay.ReportFinal(Active.Id);
             ReportDiagnostics();
             if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
@@ -762,6 +765,18 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>Back to the title from the menu: an open player setup closes.</summary>
     public void ClosePlayerSetup() => _playerSetup?.Close();
+
+    private static readonly (float X, float Y)[] s_inspectPoints = parseInspectPoints();
+
+    private static (float X, float Y)[] parseInspectPoints()
+    {
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_INSPECT") is not { Length: > 0 } text)
+            return [];
+        LumenPlayer.Inspect = true;
+        return [.. text.Split(';').Select(static point => point.Split(','))
+            .Select(static xy => (float.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture),
+                float.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture)))];
+    }
 
     public void ReportDiagnostics()
     {

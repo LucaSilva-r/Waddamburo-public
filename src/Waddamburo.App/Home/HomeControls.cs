@@ -160,11 +160,12 @@ internal sealed class HomeControls : IDisposable
 
     // Home: Escape opens the menu (pause in gameplay; settings and back to the title in the menus). A song
     // still unpausable when the window lost focus (under the rainbow) pauses once it can; once every note
-    // and long note is over (the song's tail), leaving the window no longer pauses.
+    // and long note is over (the song's tail), leaving the window no longer pauses. Scripted screenshot
+    // runs never have focus, so they don't pause on it.
     private bool openMenu(bool escape)
     {
         if (!home || _menu.IsOpen
-            || !(escape || !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver))
+            || !(escape || !_focused && !_shell.Headless && active == FlowScenes.Gameplay && !_gameplay.ChartOver))
             return false;
         if (active == FlowScenes.Gameplay)
         {

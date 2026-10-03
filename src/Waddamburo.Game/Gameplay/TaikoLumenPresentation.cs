@@ -21,7 +21,7 @@ public sealed class TaikoLumenPresentation
     private readonly LumenSceneLayer _bar;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
-    private readonly LumenPlayer _board;
+    private readonly TaikoBoard _board;
     private readonly float _hitX;
     private readonly float _hitY;
     private int _combo;
@@ -32,7 +32,7 @@ public sealed class TaikoLumenPresentation
     public TaikoLumenPresentation(PlayableChart chart, TaikoJudgementSession judgement,
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
-        LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
+        LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, TaikoBoard board,
         TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
@@ -65,7 +65,7 @@ public sealed class TaikoLumenPresentation
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
         judgement.Judged += onJudged;
-        callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
+        board.Call("SetComboCount", LumenHostValue.FromNumber(0));
     }
 
     public void Hit(TaikoInputAction action)
@@ -74,8 +74,7 @@ public sealed class TaikoLumenPresentation
         var left = action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa;
         if (!_target.Player.TryGotoLabel("effect", don ? "don_s" : "katsu_s"))
             throw new InvalidDataException("Gameplay lane has no drum feedback state.");
-        callback(_board, "SetTaikoHit", LumenHostValue.FromString(
-            (left ? "left_" : "right_") + (don ? "don" : "katsu")));
+        _board.Call("SetTaikoHit", LumenHostValue.FromString((left ? "left_" : "right_") + (don ? "don" : "katsu")));
     }
 
     public event Action<bool>? GoGoChanged;
@@ -200,7 +199,7 @@ public sealed class TaikoLumenPresentation
         if (result.StrongHitCompleted)
             return;
         _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
-        callback(_board, "SetComboCount", LumenHostValue.FromNumber(_combo));
+        _board.Call("SetComboCount", LumenHostValue.FromNumber(_combo));
         if (result.TimedOut)
             return;
         var label = result.Result switch

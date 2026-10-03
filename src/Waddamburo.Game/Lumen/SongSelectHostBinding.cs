@@ -820,7 +820,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
-        var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse));
+        // Movies before Green send a course for both sides even when one drum plays (Kimidori: (3, 1, 0, 0));
+        // a side nobody joined plays no course.
+        int joined(int side, int? authored) => _sides.Contains(side) ? course(authored) : -1;
+        var selection = _session.Select(request.Category, request.Song, joined(0, request.PlayerOneCourse),
+            joined(1, request.PlayerTwoCourse));
         Picked = (_session.Catalog.Categories[request.Category].Key, selection.Song);
         return LumenHostValue.Undefined;
     }

@@ -167,6 +167,37 @@ internal static class GameplaySceneComposition
         ("enso_system/base1p", "action_gogotime", 0, 500),
     ];
 
+    // Before Blue (36-entry v8 ensolayout): the lane board is split into lane_obi_don_1p, taiko (drum),
+    // score, taiko_combo_number and icon_course/icon_option, at layout entries v10 dropped (v8 is v10
+    // with 14-21 inserted for drum, combo number and icons, and 32/33 for the score). Placement and
+    // draw order from Yellow's own gameplay setup; depths here keep that order on Green's traced scale
+    // (lane_obi_don_1p 507 like lane_obi, score with song_info at 505, drum and icons 504, combo 503).
+    private const int SplitBoardLayoutEntries = 36;
+
+    private static int v8Index(int v10) => v10 switch
+    {
+        >= 14 and < 24 => v10 + 8,
+        24 => 34,
+        _ => v10,
+    };
+
+    private static readonly (string Archive, string Movie, int? Index, int Depth)[] SplitBoardLayers =
+    [
+        .. SystemLayers.Select(entry => (
+            entry.Movie == "lane_obi" ? "enso_system/don1p" : entry.Archive,
+            entry.Movie == "lane_obi" ? "lane_obi_don_1p" : entry.Movie,
+            entry.Index is { } index ? v8Index(index) : (int?)null,
+            entry.Depth)),
+        ("enso_system/common", "score", 32, 505),
+        ("enso_system/common", "taiko", 14, 504),
+        ("enso_system/common", "icon_course", 18, 504),
+        ("enso_system/common", "icon_option", 20, 504),
+        ("enso_system/common", "taiko_combo_number", 16, 503),
+    ];
+
+    // The second player's lane movie sits at the next index of each pair (see PairedIndices).
+    private static readonly int[] SplitBoardPairedIndices = [2, 7, 9, 11, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34];
+
     private static readonly string[] NoSuffix = [""];
     private static readonly string[] SideSuffixes = ["_1p", "_2p"];
 
@@ -182,6 +213,7 @@ internal static class GameplaySceneComposition
     public static int? Depth(string role) =>
         SkinRoles.FirstOrDefault(entry => entry.Role == role) is { Role: not null } skin ? skin.Depth
         : SystemLayers.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } system ? system.Depth
+        : SplitBoardLayers.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } split ? split.Depth
         : WaiwaiShared.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } shared ? shared.Depth
         : WaiwaiLane.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } waiwai ? waiwai.Depth
         : null;
@@ -215,16 +247,19 @@ internal static class GameplaySceneComposition
             var name = $"{role}_a_{variants[role]:00}{suffix}";
             return (layer($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm", at.X, at.Y, host), depth);
         }
+        var split = layout.Points.Length == SplitBoardLayoutEntries;
+        var system = split ? SplitBoardLayers : SystemLayers;
+        var paired = split ? SplitBoardPairedIndices : PairedIndices;
         // One player's lane: lane 1 = the second player below the first.
         IEnumerable<(SceneLayerDefinition Layer, int Depth)> lane(int lane, int side)
         {
             var host = lane == 1 ? PlayerTwoHostId : StaticHostId;
-            int index(int at) => lane == 1 && PairedIndices.Contains(at) ? at + 1 : at;
+            int index(int at) => lane == 1 && paired.Contains(at) ? at + 1 : at;
             var skinLayers = SkinRoles
                 .Where(entry => !twoPlayers || entry.Role is "donbg" or "chibi" or "renda")
                 .Select(entry => skin(entry.Role, index(entry.Index), entry.Depth, side == 1 ? "_2p" : "_1p", host))
                 .OfType<(SceneLayerDefinition Layer, int Depth)>();
-            var systemLayers = SystemLayers
+            var systemLayers = system
                 .Where(entry => !(twoPlayers && entry.Movie == "action_gogotime"))
                 .Where(entry => twoPlayers || !entry.Movie.StartsWith("onp_tetunagi", StringComparison.Ordinal))
                 .Where(entry => lane == 0 || !SharedRoles.Contains(entry.Movie))

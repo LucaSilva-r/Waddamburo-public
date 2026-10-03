@@ -197,7 +197,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var layers = sceneLayers.ToDictionary(entry => role(entry.Definition), entry => entry.Layer);
             LumenMovieContent content(string name) => sceneLayers.Single(entry => role(entry.Definition) == name).Content;
             LumenPlayer? skin(string role) => layers.TryGetValue(role, out var layer) ? layer.Player : null;
-            var board = layers["lane_obi"].Player;
+            // Blue merged the lane board into lane_obi; older releases split it (see TaikoBoard).
+            var board = layers.TryGetValue("lane_obi", out var laneObi) ? TaikoBoard.Merged(laneObi.Player)
+                : TaikoBoard.Split(layers["lane_obi_don_1p"].Player, layers["taiko"].Player, layers["score"].Player, layers["taiko_combo_number"].Player,
+                    layers["icon_course"].Player);
             // Waiwai has its own flights, combo bonus, roll art and backdrop in place of the normal ones.
             var flightKey = layers.ContainsKey("onp_kiseki_don_1p") ? "onp_kiseki_don_1p" : "onp_kiseki_w_00_1p";
             var flightTemplate = layers[flightKey];
@@ -215,10 +218,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             };
             // Traced SetEntryType 1 / SetPlaySide 0 for the left player, 2 / 1 for the right one alone,
             // and 3 with each lane's side for two players.
-            board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
-            if (stage is not null) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
-            if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
-                || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
+            board.Call("SetEntryType", LumenHostValue.FromNumber(players == 2 ? 3 : side + 1));
+            if (stage is not null) board.Call("SetWaiwai", LumenHostValue.FromBoolean(true));
+            if (!board.Call("SetPlaySide", LumenHostValue.FromNumber(side))
+                || !board.Call("SetCourse", LumenHostValue.FromString(courseLabel)))
                 throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
             // The three gauge movies differ in their authored clear line (60/70/80%).
             var gaugeName = course switch
@@ -234,11 +237,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gauge = new TaikoSoulGauge(course, chart.Level, chart.NoteCount);
             var score = new TaikoScore(chart);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
-            if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
+            if (!board.Call("SetScore", LumenHostValue.FromNumber(0)))
                 throw new InvalidDataException("Gameplay board is missing its score initialization callback.");
             void updateScore(long award)
             {
-                if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
+                if (!board.Call("SetScore", LumenHostValue.FromNumber(score.Value)))
                     throw new InvalidDataException("Gameplay board is missing SetScore.");
                 if (scoreAdd is null) return;
                 if (!scoreAdd.TryInvokeCallback("Create", []))
@@ -401,7 +404,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     [PlayableNoteKind.Ka] = layers["onp_katsu"],
                     [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
                     [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
-                }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
+                }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, board,
                 _flights, _longNotes, flightsAt < 0 ? null : flightsAt,
                 layers.TryGetValue("onp_tetunagidon_1p", out var handDonLayer)
                     ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
@@ -523,7 +526,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
         {
-            if (!player.TryInvokeCallback(name, arguments))
+            if (!player.TryInvokeOptionalCallback("Gameplay", name, arguments))
                 throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
         }
 
