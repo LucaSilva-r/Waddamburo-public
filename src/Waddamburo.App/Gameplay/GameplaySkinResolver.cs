@@ -28,6 +28,7 @@ internal sealed class GameplaySkinResolver
     private readonly string _lumenRoot;
     private readonly Dictionary<string, string> _partsByTitle = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _partsByPreset = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GameplaySceneComposition.ThemedSkin?> _skins = new(StringComparer.Ordinal);
 
     /// <param name="lumenRoot">The lumendata/packed directory.</param>
     /// <param name="musicInfoPath">Green's config musicinfo.xml, when present.</param>
@@ -57,14 +58,34 @@ internal sealed class GameplaySkinResolver
             .FirstOrDefault(value => value is not null)
             ?? (normalize(category) is "vocaloid" or "ボーカロイド" ? "miku" : null);
         if (parts is null || NotStandardSkins.Contains(parts)) return null;
-        var archive = $"{ArchiveNames.GetValueOrDefault(parts, "enso_" + parts)}/packeddata.ddp";
+        return _skins.GetOrAdd($"{ArchiveNames.GetValueOrDefault(parts, "enso_" + parts)}/packeddata.ddp", load);
+    }
+
+    // A skin is usable when it has the standard parts and every movie loads (enso_mh3G's Don-chan
+    // backdrops reference a texture the archive lacks). Checked once per archive, textures not decoded.
+    private GameplaySceneComposition.ThemedSkin? load(string archive)
+    {
         var path = Path.Combine(_lumenRoot, archive);
         if (!File.Exists(path)) return null;
-        var movies = DdpArchive.Open(File.ReadAllBytes(path)).Index.Movies.Select(movie => movie.Name).ToArray();
+        var ddp = DdpArchive.Open(File.ReadAllBytes(path));
+        var movies = ddp.Index.Movies.Select(movie => movie.Name).ToArray();
         // ponytail: only skins built from the standard parts are wired; others keep the original mix.
-        return movies.Any(movie => GameplaySceneComposition.Role(Path.GetFileNameWithoutExtension(movie)) == "donbg")
-            ? new(archive, movies)
-            : null;
+        if (!movies.Any(movie => GameplaySceneComposition.Role(Path.GetFileNameWithoutExtension(movie)) == "donbg"))
+            return null;
+        try
+        {
+            if (ddp.Index.Movies.Any(movie => Waddamburo.Game.LumenMovieContent.HasErrors(ddp.OpenMovie(movie))))
+            {
+                Console.Error.WriteLine($"Gameplay skin {archive} has broken movies; using the regular gameplay.");
+                return null;
+            }
+        }
+        catch (Exception exception) when (exception is FormatException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Gameplay skin {archive} is unreadable ({exception.Message}); using the regular gameplay.");
+            return null;
+        }
+        return new(archive, movies);
     }
 
     private static string normalize(string text)

@@ -67,6 +67,16 @@ public sealed class LumenMovieContent
             semantic.Diagnostics);
     }
 
+    /// <summary>Whether the movie has semantic errors (it would not load), without decoding its textures.</summary>
+    public static bool HasErrors(DdpMovieView movie, ParserLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(movie);
+        var parserLimits = limits ?? ParserLimits.Default;
+        return LmbSemanticReader.Read(LmbFile.Parse(movie.Data, parserLimits), parserLimits,
+                new LmbSemanticValidationContext(movie.Textures.Length))
+            .Diagnostics.Any(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
     public LumenPlayer CreatePlayer(
         float stageWidth = 1280,
         float stageHeight = 720,

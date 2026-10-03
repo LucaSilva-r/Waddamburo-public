@@ -166,6 +166,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly int _side;
         private readonly int? _soundLane;
         private readonly LumenSceneLayer[] _beatLayers;
+        private readonly LumenPlayer[] _noteFaces;
+        private readonly Func<int> _combo;
         private readonly LumenSceneLayer[] _fixedLayers;
         private readonly Action<TimeSpan> _onChartTime; // end-of-song banner check
         private readonly Func<TaikoPlayResult> _result;
@@ -249,6 +251,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             foreach (var name in NoteMovieNames.Where(layers.ContainsKey))
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
                     throw new InvalidDataException("Gameplay note movie is missing its initial state.");
+            _noteFaces = [.. NoteMovieNames.Where(layers.ContainsKey).Select(name => layers[name].Player)];
+            _combo = () => score.Combo;
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
             _session = new TaikoJudgementSession(chart,
                 TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course),
@@ -449,6 +453,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             foreach (var layer in _fixedLayers) layer.Player.Advance(input);
             for (var i = 0; i < _animationClock.FramesToAdvance; i++)
                 foreach (var layer in _beatLayers) layer.Player.Advance(input);
+            // Note faces by combo, at the beat's phase (TaikoNoteFaces).
+            var beat = _animationClock.Position(chartTime) * 89 / 3600;
+            var combo = _combo();
+            foreach (var note in _noteFaces) TaikoNoteFaces.Show(note, combo, beat);
+            _longNotes.ShowFaces(note => TaikoNoteFaces.ShowTier(note, combo));
             _flights.Advance();
             _longNotes.AdvanceAnimations();
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);

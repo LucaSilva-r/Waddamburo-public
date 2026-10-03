@@ -42,7 +42,7 @@ and the roll counter), so e.g. Miku and IA are separate skins, not variants of o
 | `kumamon` | Kumamon | |
 | `lovelive` | Love Live! | Background only during Go-Go |
 | `mario` | Super Mario Bros. | |
-| `mh3G` | Monster Hunter 3G | |
+| `mh3G` | Monster Hunter 3G | Unusable in Green: its Don-chan backdrops reference a missing texture, so the regular gameplay is used |
 | `mh3rd` | Monster Hunter Portable 3rd | |
 | `miku` | Hatsune Miku (Vocaloid) | |
 | `momoclo` | Momoiro Clover Z | |
@@ -65,4 +65,4 @@ Never used as a skin (they are other modes' scenes, not themes): `dojo` (dan cou
 outside `enso_` and are never considered.
 
 Other releases ship other sets; the resolver only offers archives present in the user's data
-that have the standard parts (a Don-chan backdrop).
+that have the standard parts (a Don-chan backdrop) and whose movies all load.

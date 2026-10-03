@@ -102,6 +102,14 @@ public sealed class TaikoLongNotePresentation
         session.LongNoteHit += hit;
     }
 
+    /// <summary>Applies the combo face to every long note on screen (TaikoNoteFaces).</summary>
+    public void ShowFaces(Action<LumenPlayer> show)
+    {
+        ArgumentNullException.ThrowIfNull(show);
+        foreach (var layer in _visible.Values)
+            show(layer.Player);
+    }
+
     public void AdvanceAnimations()
     {
         foreach (var layer in _visible.Values)

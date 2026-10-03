@@ -201,7 +201,12 @@ internal sealed class FilePreview : IDisposable
         loadArchive(node.Path);
         var content = LumenMovieContent.Load(_archive!.OpenMovie(node.Movie!));
         if (content.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error))
-            throw new InvalidDataException("Movie has semantic errors and cannot be presented safely.");
+        {
+            // A broken movie (e.g. enso_mh3G's Don-chan backdrop) is reported, not fatal to the browser.
+            _status = node.Movie + " has semantic errors and cannot be presented safely";
+            Console.Error.WriteLine(_status + ": " + content.Diagnostics.First(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).Message);
+            return;
+        }
         foreach (var texture in content.Textures)
             _movieTextures.Add(_application.UploadRgba8((uint)texture.Width, (uint)texture.Height,
                 texture.Rgba8.AsSpan()));
