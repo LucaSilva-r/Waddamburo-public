@@ -146,6 +146,19 @@ internal sealed partial class AttractMovie : IDisposable
         return permitted.Length != 0 ? permitted : movies.Select(entry => entry.path).ToArray();
     }
 
+    /// <summary>
+    /// The opening movie (data/movie/OP.pam) when it is the title: releases whose title.lm still
+    /// speaks the old Command("BGMPlay") protocol play OP.pam (with its own audio) in the title's
+    /// slot instead. Green ships OP.pam too, but its title.lm replaced it.
+    /// </summary>
+    public static string? Opening(string movieDirectory, string titleArchive)
+    {
+        var path = Path.Combine(movieDirectory, "OP.pam");
+        // ponytail: raw byte search; LMB string pools are plain UTF-8.
+        return File.Exists(path) && File.Exists(titleArchive)
+            && File.ReadAllBytes(titleArchive).AsSpan().IndexOf("BGMPlay"u8) >= 0 ? path : null;
+    }
+
     [GeneratedRegex("^attract_cm_([0-9]{3})\\.pam$", RegexOptions.IgnoreCase)]
     private static partial Regex CmName();
 }

@@ -9,7 +9,7 @@ namespace Waddamburo.App.Flow;
 /// The boot screens and the attract loop (traced): kidou once, then logo_namco -> title -> keikoku ->
 /// one attract CM -> logo_namco ... A drum hit (free play) or a coin starts the entry.
 /// </summary>
-internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(shell), IDisposable
+internal sealed class AttractFlow(GameShell shell, string[] movies, string? opening = null) : FlowScene(shell), IDisposable
 {
     // movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.
     private const string MovieFill = "movie1280x720";
@@ -17,6 +17,8 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
     // Shuffled like the cabinet's rotation; refilled when every CM has played once.
     private readonly Queue<string> _queue = new();
     private string? _last;
+    // The movie scene is showing the opening (OP.pam) as the title rather than a CM.
+    private bool _openingAsTitle;
 
     /// <summary>The attract CM playing in movie.lm, if any.</summary>
     public AttractMovie? Movie { get; private set; }
@@ -33,7 +35,7 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
         if (Shell.Prefetched != FlowScenes.Entry)
             Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         if (scene == FlowScenes.Movie)
-            startMovie();
+            startMovie(_openingAsTitle ? opening : null);
     }
 
     public override void Exit(SceneId scene)
@@ -99,11 +101,22 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
         else if (Shell.Active.Id == FlowScenes.Movie)
         {
             if (Movie?.Finished != false)
-                Shell.Show(FlowScenes.Logo);
+            {
+                var next = _openingAsTitle ? FlowScenes.Caution : FlowScenes.Logo;
+                _openingAsTitle = false;
+                Shell.Show(next);
+            }
         }
         else if (Shell.Hosts.Attract?.Finished == true)
         {
             var current = Shell.Active.Id;
+            // Releases with an opening movie play it as the title (their exe's attract table).
+            if (current == FlowScenes.Logo && opening is not null)
+            {
+                _openingAsTitle = true;
+                Shell.Show(FlowScenes.Movie);
+                return;
+            }
             // Traced: keikoku is followed by one attract CM, then logo_namco again.
             Shell.Show(current == FlowScenes.Logo ? FlowScenes.Title
                 : current == FlowScenes.Title ? FlowScenes.Caution
@@ -111,9 +124,9 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
         }
     }
 
-    private void startMovie()
+    private void startMovie(string? path)
     {
-        if (_queue.Count == 0)
+        if (path is null && _queue.Count == 0)
         {
             var order = movies.ToArray();
             Random.Shared.Shuffle(order);
@@ -123,7 +136,7 @@ internal sealed class AttractFlow(GameShell shell, string[] movies) : FlowScene(
             foreach (var movie in order)
                 _queue.Enqueue(movie);
         }
-        var path = _last = _queue.Dequeue();
+        path ??= _last = _queue.Dequeue();
         try
         {
             Movie = new AttractMovie(Shell.Application, Shell.Audio, path);

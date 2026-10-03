@@ -58,6 +58,15 @@ public sealed class AttractHostBinding(IAttractSoundController? sounds = null) :
                     _streamStarted = true;
                     sounds?.PlayAttractStream(_stream);
                     break;
+                // Pre-Green title: Command("BGMPlay", name, volume, ...) then BGMStop before End.
+                case "BGMPlay" when arguments.Length > 2 && arguments[2].Kind == LumenHostValueKind.Text:
+                    _stream = arguments[2].AsString();
+                    _streamStarted = true;
+                    sounds?.PlayAttractStream(_stream);
+                    break;
+                case "BGMStop":
+                    _streamStarted = false;
+                    break;
                 case "SEPlay" when number >= 0:
                     sounds?.PlayAttractCue(voice: false, number);
                     break;
