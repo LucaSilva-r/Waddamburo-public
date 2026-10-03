@@ -11,19 +11,23 @@ public sealed class StreamingMusicPlayer : IDisposable
     private readonly Task _producer;
     private Exception? _failure;
     private bool _disposed;
+    private volatile bool _endOfStream;
 
-    public StreamingMusicPlayer(SdlAudioDevice device, string path)
+    public StreamingMusicPlayer(SdlAudioDevice device, string path, uint sourceStreamIndex = 0)
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
         _decoder = new NativeAudioDecoder(
             path,
             checked((uint)device.Format.SampleRate),
-            checked((uint)device.Format.Channels));
+            checked((uint)device.Format.Channels),
+            sourceStreamIndex);
         _producer = Task.Run(produce);
     }
 
     public DecodedAudioInfo Info => _decoder.Info;
+
+    public bool Completed => _endOfStream && _device.QueuedFrames == 0;
 
     public bool Playing { get; private set; }
 
@@ -60,6 +64,7 @@ public sealed class StreamingMusicPlayer : IDisposable
                 if (count == 0)
                 {
                     _device.Flush();
+                    _endOfStream = true;
                     break;
                 }
                 _device.Queue(samples.AsSpan(0, count));

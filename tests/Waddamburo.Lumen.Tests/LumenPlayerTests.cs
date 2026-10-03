@@ -336,6 +336,22 @@ public sealed class LumenPlayerTests
         Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
     }
 
+    [Fact]
+    public void TimelineScrubbingRestoresEarlierFrameAfterSeekingToEnd()
+    {
+        var player = new LumenPlayer(createMovie(), 1280, 720);
+        var first = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.Equal(3, player.FrameCount);
+
+        player.Seek(player.FrameCount - 1);
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        player.Seek(0);
+
+        Assert.Equal(0, player.CurrentFrame);
+        Assert.Equal(first, Assert.Single(player.CreateRenderSnapshot(0).Quads));
+        Assert.Equal(first, Assert.Single(player.CreateRenderSnapshot(1).Quads));
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(3)]

@@ -87,6 +87,8 @@ public sealed class LumenPlayer
 
     public int CurrentFrame => _root.Frame;
 
+    public int FrameCount => _sprites[_root.CharacterId].Frames.Length;
+
     public bool IsPlaying => _root.Playing;
 
     public ImmutableDictionary<string, int> Labels => _sprites[_root.CharacterId].Labels;

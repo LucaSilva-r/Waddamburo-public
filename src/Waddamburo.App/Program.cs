@@ -42,6 +42,7 @@ try
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
+    var previewPath = parseOption(args, "--preview=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
     var syntheticSmoke = args.Contains("--smoke", StringComparer.Ordinal);
     // The cabinet's countdown option (chassisinfo disable_countdowntimer); on by default.
@@ -52,6 +53,13 @@ try
     if (gameDataRoot is not null && positionalRoots.Length != 0)
         throw new ArgumentException("Supply the game-data directory either positionally or with --game-data, not both.");
     gameDataRoot ??= positionalRoots.SingleOrDefault();
+    if (args.Contains("--preview", StringComparer.Ordinal))
+    {
+        if (previewPath is not null)
+            throw new ArgumentException("Supply --preview or --preview=PATH, not both.");
+        previewPath = gameDataRoot ?? GameDataLayout.DefaultRoot();
+        gameDataRoot = null;
+    }
     if (audioPath is not null && jinglePath is not null)
         throw new ArgumentException("--play-audio and --play-jingle cannot be combined.");
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
@@ -65,10 +73,22 @@ try
         || jinglePath is not null
         || soundRoot is not null
         || donRoot is not null
-        || soundBankProbe is not null;
+        || soundBankProbe is not null
+        || previewPath is not null;
     if (syntheticSmoke && (gameDataRoot is not null || hasDiagnosticContent))
         throw new ArgumentException("--smoke cannot be combined with game data or diagnostic content.");
     var normalBoot = !syntheticSmoke && (gameDataRoot is not null || !hasDiagnosticContent);
+    if (previewPath is not null)
+    {
+        if (gameDataRoot is not null || archivePath is not null || movieName is not null || scenePath is not null
+            || assetRoot is not null || tjaRoot is not null || audioPath is not null || jinglePath is not null
+            || soundRoot is not null || donRoot is not null || soundBankProbe is not null || entrySongSelect
+            || startSceneOption is not null || seekFrame is not null || !callbackInvocations.IsEmpty)
+            throw new ArgumentException("--preview cannot be combined with game or other content options.");
+        ReleaseConsole.Show(true);
+        FilePreview.Run(previewPath, windowSize.Width, windowSize.Height, frameLimit, tickLimit, screenshotPath, inputTimeline);
+        return 0;
+    }
     if (normalBoot)
     {
         if (archivePath is not null || movieName is not null || scenePath is not null
@@ -154,7 +174,7 @@ try
         {
             throw new ArgumentException("--probe-sound-bank cannot be combined with game or content options.");
         }
-        SoundBankProbe.Run(soundBankProbe, windowSize.Width, windowSize.Height);
+        SoundBankProbe.Run(soundBankProbe, windowSize.Width, windowSize.Height, frameLimit, tickLimit, screenshotPath, inputTimeline);
         return 0;
     }
     if (entrySongSelect)

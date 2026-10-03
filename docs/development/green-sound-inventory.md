@@ -140,8 +140,9 @@ Player Entry starts its own jingle.
 
 Run the VS Code task `Waddamburo: Probe sound effects`, or invoke the app with
 `--probe-sound-bank=PATH`. A path may name one NUB or a directory of NUB banks.
-Use Up/Down to change bank, Left/Right (or D/K) to change cue, and
-Space/F/Enter to replay it. Record the bank and zero-based cue printed in the
+Select a bank with Up/Down and Enter (or click it), then use D/K
+to change cue. Type a zero-based cue number and Enter to select it directly;
+R replays it and Space pauses/resumes. Record the bank and zero-based cue printed in the
 terminal, together with the scene action that triggers it.
 
 Inventory confidence uses two levels:

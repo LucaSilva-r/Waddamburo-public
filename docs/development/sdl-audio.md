@@ -123,11 +123,14 @@ ownership, streaming-source mixing/disposal, full teardown, and format rejection
 The managed callback bridge is also checked locally with a synthetic in-memory WAV,
 including frame seek; no game audio is used by that check.
 
-`--probe-sound-bank=PATH` opens a diagnostic window for a user-owned NUB or a
-directory of NUB banks. Up/Down changes bank, Right/K and Left/D change cue, and
-Space/F/Enter replays the current cue. The console reports the bank, zero-based
-authored cue, one-based decoder stream, and duration. This supports listening-based
-identification without adding extracted media to the repository.
+`--preview=PATH` opens a file browser for a user-owned USRDIR, DDP, NUB, or audio
+file. The older `--probe-sound-bank=PATH` command opens the same browser. Select a
+bank with Up/Down and Enter (or click it); D/K changes cue. Type a
+zero-based cue number and press Enter to select it directly. Space pauses/resumes;
+R replays. Audio streams on demand rather than preloading all bank cues. Details
+appear in the window and console. See [diagnostics](diagnostics.md) for movie selection
+and timeline controls. This supports listening-based identification without adding
+extracted media to the repository.
 
 Still intentionally absent are complete system/player-effect mappings, source
 pause/resume, mixed gameplay BGM, a played-sample clock, underrun/device-change

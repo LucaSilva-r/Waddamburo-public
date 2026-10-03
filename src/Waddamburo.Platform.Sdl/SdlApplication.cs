@@ -37,7 +37,8 @@ public sealed unsafe class SdlApplication : IDisposable
         bool debugGpu = false,
         bool resizable = true,
         bool highPixelDensity = true,
-        bool fullscreen = false)
+        bool fullscreen = false,
+        bool showCursor = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -68,7 +69,7 @@ public sealed unsafe class SdlApplication : IDisposable
             if (_window is null)
                 throw sdlFailure("create the window");
             // The game is played with drums and keys: no pointer over the window (F3 inspect shows it).
-            SDL_HideCursor();
+            if (showCursor) SDL_ShowCursor(); else SDL_HideCursor();
 
             int pixelWidth, pixelHeight;
             if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
@@ -488,7 +489,9 @@ public sealed unsafe class SdlApplication : IDisposable
         Func<bool>? performanceVisible = null,
         Action<float, float>? pointerClicked = null,
         Action? toggleInspect = null,
-        Action<SdlFrameMetrics>? performanceSample = null)
+        Action<SdlFrameMetrics>? performanceSample = null,
+        Action? pointerReleased = null,
+        Action<float>? pointerScrolled = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -542,6 +545,11 @@ public sealed unsafe class SdlApplication : IDisposable
                     _pressedKeys.Clear();
                     windowFocused = false;
                     Focused = false;
+                    if (pointerReleased is not null)
+                    {
+                        SDL_CaptureMouse(false);
+                        pointerReleased();
+                    }
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED)
                     windowFocused = Focused = true;
@@ -558,7 +566,16 @@ public sealed unsafe class SdlApplication : IDisposable
                 {
                     int width, height;
                     if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
+                    {
+                        if (pointerReleased is not null) SDL_CaptureMouse(true);
                         pointerClicked(currentEvent.button.x / width, currentEvent.button.y / height);
+                    }
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP
+                    && currentEvent.button.button == SDL_BUTTON_LEFT && pointerReleased is not null)
+                {
+                    SDL_CaptureMouse(false);
+                    pointerReleased();
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     && currentEvent.key.key == SDL_Keycode.SDLK_F3 && toggleInspect is not null)
@@ -572,9 +589,11 @@ public sealed unsafe class SdlApplication : IDisposable
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
                 {
-                    // In the menus each wheel notch is a press (the Escape menu moves a row, Song Select a board).
+                    // Tools receive precise wheel deltas; game menus translate each notch into a key press.
                     // ponytail: the menus read one press per key and tick, so a flick faster than 60 notches a second loses some.
-                    if (_menuInput && !_capturing && currentEvent.wheel.y != 0)
+                    if (pointerScrolled is not null && !_capturing)
+                        pointerScrolled(currentEvent.wheel.y);
+                    else if (_menuInput && !_capturing && currentEvent.wheel.y != 0)
                         for (var notch = 0; notch < Math.Max(1, (int)Math.Abs(currentEvent.wheel.y)); notch++)
                             pendingPresses.Add(new SdlKeyPress(currentEvent.wheel.y > 0 ? SdlKeyboardKey.WheelUp : SdlKeyboardKey.WheelDown,
                                 TimeSpan.FromTicks(checked((long)(currentEvent.wheel.timestamp / 100)))));

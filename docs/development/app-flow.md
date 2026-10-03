@@ -14,7 +14,7 @@ front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, 
 | `Gameplay/` | Gameplay presentation (rules: `scoring.md`) (notes, judgement, Don slots), Waiwai's shared stage, skins, the song libraries (`SongLibraries`) and catalog asset routing. |
 | `Audio/` | `SoundBank` (the user's sound tree: cues, voices, music, coin) and one cue map per scene (`AttractSounds`, `FrontendSounds`, `GameplaySounds`, `ResultSounds`, `WaiwaiResultSounds`, `RetrySounds`, `GameOverSounds`), gathered in `GameSounds`; song previews. |
 | `Presentation/` | Native surfaces drawn into movies (Don renderer bridge, song titles, costume icons, attract CMs, Waiwai results art); the intermission overlay, `ScenePresenter` (scene textures, the frame held across a switch), Waddamburo's own overlays. |
-| `Tools/` | Movie/scene viewers, sound bank probe, screenshots. |
+| `Tools/` | File preview browser, movie/scene viewers, sound bank probe, screenshots. |
 
 ## Flow
 

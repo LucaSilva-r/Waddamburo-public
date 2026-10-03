@@ -4,6 +4,54 @@ Command-line options for probing single movies, scenes and flows from source, an
 older notes on how the game flow is composed. Normal play needs none of this: see the
 [README](../../README.md).
 
+Browse movies and audio from a user-supplied `USRDIR` (or any asset folder):
+
+```sh
+dotnet run --project src/Waddamburo.App -- --preview=/path/to/USRDIR
+```
+
+The preview scans DDP archives, NUB sound banks, and common audio files under the
+selected folder and displays an expandable folder tree. Empty folders are omitted.
+A bare `--preview` uses the normal game-data directory;
+`--preview /path/to/USRDIR` also accepts it positionally. Click a folder or archive
+(or press Enter) to expand/collapse it. Archives reveal their movies as children;
+Selecting a movie or audio file with the keyboard starts playback automatically;
+clicking a leaf row also starts it. Rows show each item's name, with the
+selected item's relative path above the preview.
+
+Up/Down selects rows; Right expands or enters a branch; Left/Backspace collapses
+it or selects its parent. PageUp/PageDown moves a page. Mouse wheel scrolls through
+rows without changing the selection; drag the scrollbar to move through a long
+tree. Over the preview pane, the wheel steps movie frames or audio-bank cues. Escape closes the preview.
+
+Space or the Pause button pauses/resumes playback; R or Replay restarts it. For movies,
+click or drag the timeline to seek to an authored root frame, or use D/K and the frame
+buttons to step backward/forward. Seeking pauses playback; Space resumes it. Dragging captures the mouse until
+release and also ends on focus loss. The
+viewer uses the same diagnostic host binding as `--archive`/`--movie`, so movies that
+need game services may require the existing callback debugger for further inspection.
+
+For NUB banks, D/K or the cue buttons select the previous/next cue. Type a
+zero-based cue number and press Enter to play it directly (decoder stream = cue + 1).
+Cues are decoded on demand, with buffered streaming playback; an unavailable cue or
+unsupported file produces an on-screen error. Normal audio files play their
+default stream.
+
+`--preview` also accepts a single DDP, NUB, or audio file. The existing
+`--probe-sound-bank=<file-or-folder>` opens this browser as well. `--frames`, `--ticks`,
+`--window-size`, `--press`, and `--screenshot` are available for bounded preview checks.
+
+An assembled gameplay preview requires a scene preset and gameplay state. The
+existing `--scene` viewer composes static movie layers, with independent timelines
+and the diagnostic host binding. For a complete enso preview, a future scene mode
+should reuse `GameplaySceneComposition` for the selected skin, player configuration,
+layout, and depth order, and `TaikoGameplayPresentation` for chart-driven notes,
+gauges, score, Go-Go effects, and Don presentation. A synthetic idle/demo chart can
+initialize a scene without choosing a song; a song preview can use a user-owned chart.
+The scene scrubber should track elapsed song time and restore/replay gameplay events
+with fixed skin choices and inputs, preserving independent movie timelines and
+callbacks. This assembled scene mode is not implemented in the file browser yet.
+
 Run the synthetic renderer smoke test until the window is closed:
 
 ```sh
