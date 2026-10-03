@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 14;
+    public const int CurrentVersion = 15;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -158,6 +158,12 @@ public sealed record ArcadeSettings
         title_language = {title_language}
 
         """,
+        """
+        # show_oni (also in the Settings menu): song select shows the Oni course at once; false = the
+        # original, where Oni appears after hitting the right rim repeatedly on the course select.
+        show_oni = true
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -191,6 +197,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Song select's list keeps up with quick rim hits and the wheel, and skips ten songs at a time.</summary>
     public bool FastSongScroll { get; init; }
+
+    /// <summary>Song select shows Oni at once instead of after repeated right-rim hits (the original).</summary>
+    public bool ShowOni { get; init; } = true;
 
     /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>
     public sealed class EquatableList(IEnumerable<string> items) : IReadOnlyList<string>, IEquatable<EquatableList>
@@ -493,6 +502,7 @@ public sealed record ArcadeSettings
                 } },
                 "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
+                "show_oni" => settings with { ShowOni = boolean(value, index) },
                 "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
                 {
                     "gamepad" => false,
@@ -561,6 +571,7 @@ public sealed record ArcadeSettings
             ["letterbox_y"] = settings.LetterboxY,
             ["drum_debounce_ms"] = settings.DrumDebounceMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
+            ["show_oni"] = settings.ShowOni ? "true" : "false",
             ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
             ["language"] = settings.Language,
             ["title_language"] = settings.EnglishTitles ? "english" : "japanese",

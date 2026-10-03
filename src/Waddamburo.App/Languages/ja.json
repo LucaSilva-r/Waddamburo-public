@@ -54,6 +54,8 @@
   "settings.title_language": "曲名",
   "settings.title_language.hint": "曲名とサブタイトルを英語（ある曲のみ）か日本語の原題で表示します。再起動後に反映されます。",
   "settings.fast_song_scroll": "高速曲スクロール",
+  "settings.show_oni": "おにを表示",
+  "settings.show_oni.hint": "曲選択: おにコースを最初から表示します。オフ: オリジナルどおり、右のふちを連打するとおにが現れます。",
   "settings.fast_song_scroll.hint": "曲選択: ふちの連打やマウスホイールにリストが追いつきます。Page Up/Downかふちを素早く3回で10曲とばします。オフ: オリジナルどおり。",
   "settings.master_volume": "マスター音量",
   "settings.master_volume.hint": "ゲームのすべての音。",

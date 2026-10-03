@@ -54,6 +54,8 @@
   "settings.title_language": "Song Titles",
   "settings.title_language.hint": "Song titles and subtitles in English (when a song has them) or the Japanese originals. Applies after a restart.",
   "settings.fast_song_scroll": "Fast Song Scrolling",
+  "settings.show_oni": "Show Oni",
+  "settings.show_oni.hint": "Song Select shows the Oni course at once. Off: the original, where Oni appears after hitting the right rim repeatedly.",
   "settings.fast_song_scroll.hint": "Song Select: the list keeps up with quick rim hits and the mouse wheel; Page Up/Down or three quick rim hits skip ten songs. Off: the original.",
   "settings.master_volume": "Master Volume",
   "settings.master_volume.hint": "Everything the game plays.",

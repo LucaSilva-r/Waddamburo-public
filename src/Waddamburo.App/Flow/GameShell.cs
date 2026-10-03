@@ -348,6 +348,7 @@ internal sealed class GameShell : IDisposable
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => SongsPlayed,
+            ShowOni = () => Arcade.ShowOni,
             PreviousBest = index => (uint)index < (uint)PreviousBests.Length ? PreviousBests[index] : null,
             // Next to the settings file (USRDIR/waddamburo); memory only without one.
             Favourites = new SongFavourites(options.ArcadePath is { } arcade

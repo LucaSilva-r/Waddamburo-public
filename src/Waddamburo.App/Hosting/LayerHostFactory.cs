@@ -105,6 +105,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
     public bool TutorialSeen { get; set; }
 
+    /// <summary>The live show_oni setting (the Settings menu changes it while the game runs).</summary>
+    public Func<bool>? ShowOni { get; init; }
+
     /// <summary>The song library normal Song Select lists (home mode switches between them).</summary>
     public SongSourceKind Library
     {
@@ -321,6 +324,7 @@ internal sealed class LayerHostFactory(
             StartCategory = start,
             StartSong = startSong,
             Favourites = Favourites,
+            ShowOni = ShowOni?.Invoke() == true,
             PatchedGenres = Waddamburo.Game.Patching.SongSelectGenrePatch.LastApplied,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,

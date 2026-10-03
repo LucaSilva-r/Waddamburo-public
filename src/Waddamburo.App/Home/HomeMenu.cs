@@ -112,6 +112,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Library: new(T("library.nijiiro"), static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, SongSourceKind.Nijiiro)),
         new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
+        new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
         new(T("section.volume")),
         new(Setting: volume("settings.master_volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm)),
         new(Setting: volume("settings.music_volume", static s => s.MusicVolume, static (s, v) => s with { MusicVolume = v }, AudioBus.Bgm)),

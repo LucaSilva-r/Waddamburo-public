@@ -194,6 +194,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The movie was patched with custom genres (Patching.SongSelectGenrePatch).</summary>
     public bool PatchedGenres { get; init; }
 
+    /// <summary>Both players' course select shows Oni at once (the movie's isMania; the original needs right-rim hits).</summary>
+    public bool ShowOni { get; init; }
+
     /// <summary>The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)).</summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
 
@@ -440,6 +443,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(carded ? 2 : 0),
                 LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(carded ? 1 : 0));
         }
+        // CourseResource.isMania[player] is what repeated right-rim hits set (Callback_SetCourse's
+        // isMania_ also writes it, but with the remembered course too); CheckMania reads it per board.
+        if (ShowOni)
+            foreach (var player in new[] { 0, 1 })
+                if (!requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.isMania.{player}", true))
+                    Console.Error.WriteLine("Song Select has no CourseResource.isMania; Oni stays hidden.");
         _parts?.ShowGuestNames(_sides);
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
         return true;
