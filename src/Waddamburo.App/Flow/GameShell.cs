@@ -68,8 +68,11 @@ internal sealed class GameShell : IDisposable
     public SongTitleTextureCache Titles { get; }
     public CoinBank? Coins { get; }
 
-    /// <summary>Per lane, the last saved play's previous best on its chart (for results).</summary>
-    public long?[] PreviousBests { get; } = new long?[2];
+    /// <summary>Per lane, the best before the last saved play on its chart, or that play's score when it is the first (for results).</summary>
+    public long?[] Bests { get; } = new long?[2];
+
+    /// <summary>Each lane's place on the chart's online top three after its play (null: not known).</summary>
+    public RankingPlacement?[] Placements { get; } = new RankingPlacement?[2];
 
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
@@ -349,7 +352,8 @@ internal sealed class GameShell : IDisposable
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => SongsPlayed,
             ShowOni = () => Arcade.ShowOni,
-            PreviousBest = index => (uint)index < (uint)PreviousBests.Length ? PreviousBests[index] : null,
+            Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
+            Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
             // Next to the settings file (USRDIR/waddamburo); memory only without one.
             Favourites = new SongFavourites(options.ArcadePath is { } arcade
                 ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),

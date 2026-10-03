@@ -43,7 +43,9 @@ internal sealed class LayerHostFactory(
     public SongFavourites? Favourites { get; init; }
 
     /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
-    public Func<int, long?>? PreviousBest { get; init; }
+    public Func<int, long?>? Best { get; init; }
+
+    public Func<int, Waddamburo.Game.Scores.RankingPlacement?>? Placement { get; init; }
 
     /// <summary>Songs started this credit (song select shows the next one's number).</summary>
     public Func<int>? SongsStarted { get; init; }
@@ -342,7 +344,8 @@ internal sealed class LayerHostFactory(
         var binding = new ResultHostBinding(() => plays, songInfo().Stage, endMessage,
             don, sounds?.Results, PlayerSide)
         {
-            PreviousBest = PreviousBest,
+            Best = Best,
+            Placement = Placement,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }

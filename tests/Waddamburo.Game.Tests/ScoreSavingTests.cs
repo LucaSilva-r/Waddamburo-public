@@ -37,6 +37,18 @@ public sealed class ScoreSavingTests
     }
 
     [Fact]
+    public void RankingBoardPlacesAPlayOnlyWhenItBeatsThePlayersLine()
+    {
+        RankingEntry[] top = [new(1, "a", 900), new(2, "b", 800), new(3, "c", 700)];
+        var placed = RankingBoard.Place(top, 3, "c", 850);
+        Assert.Equal(1, placed.RankIn);
+        Assert.Equal([1L, 3, 2], placed.Top.Select(line => line.Baid));
+        Assert.Equal(-1, RankingBoard.Place(top, 2, "b", 750).RankIn);
+        Assert.Equal(-1, RankingBoard.Place(top, 9, "z", 700).RankIn); // a tie stays behind
+        Assert.Equal(0, RankingBoard.Place([], 9, "z", 10).RankIn);
+    }
+
+    [Fact]
     public void ReplayReproducesTheJudgementAfterEncoding()
     {
         var played = new TaikoJudgementSession(chart(), Windows, TimeSpan.FromMilliseconds(30));

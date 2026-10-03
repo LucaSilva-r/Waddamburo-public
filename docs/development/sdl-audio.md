@@ -72,6 +72,9 @@ user-owned nuSound2 tree containing `config/nuSound2BankStr.bin` and `se/*.nub`.
 The bounded table parser maps authored numeric bank IDs to sanitized bank names;
 `RequestSE(bank, cue)` selects the one-based NUB substream `cue + 1`. `VO_` banks
 play exclusively on the voice bus, while other banks play on the menu-sound bus.
+A `vag` stream header carries a start delay in milliseconds at `+0x4C` (e.g. the
+end-of-song full-combo voice waits 1200 ms for its banner text); the cue plays after
+that much silence.
 An authored loop notification replays the latest voice once only when it is no
 longer active; it does not create an unbounded PCM loop. Category announcements
 also play once and continue when their folder opens. `StopVoice` stops any active

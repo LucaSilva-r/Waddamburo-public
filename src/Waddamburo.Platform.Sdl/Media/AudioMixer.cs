@@ -127,6 +127,18 @@ public sealed class AudioClip
     }
 
     internal ReadOnlySpan<float> Samples => _samples;
+
+    /// <summary>This clip after <paramref name="delay"/> of silence (a loop region moves with it).</summary>
+    public AudioClip WithLeadingSilence(TimeSpan delay)
+    {
+        var frames = (int)Math.Round(delay.TotalSeconds * Format.SampleRate);
+        if (frames <= 0)
+            return this;
+        var samples = new float[_samples.Length + frames * Format.Channels];
+        _samples.CopyTo(samples, frames * Format.Channels);
+        return new AudioClip(Format, samples, LoopRegion is { } loop
+            ? new AudioLoopRegion(loop.StartFrame + frames, loop.EndFrame + frames) : null);
+    }
 }
 
 /// <summary>Thread-safe software mixer whose output format is fixed at construction.</summary>

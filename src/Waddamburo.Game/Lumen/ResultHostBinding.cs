@@ -1,5 +1,6 @@
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Scores;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Lumen;
@@ -36,8 +37,15 @@ public sealed class ResultHostBinding(
     IResultSoundController? sounds = null,
     int side = 0) : ILumenHostBinding
 {
-    /// <summary>The player's best on the chart before this play, by play index (null: none).</summary>
-    public Func<int, long?>? PreviousBest { get; init; }
+    /// <summary>
+    /// The player's best on the chart before this play, by play index; a first play sends its own
+    /// score (traced). null: a guest, nothing saved. result.lm shows its "自己ベスト" puff (the old
+    /// best, then the new score) only for 0 &lt;= best &lt; score, so a first play shows none.
+    /// </summary>
+    public Func<int, long?>? Best { get; init; }
+
+    /// <summary>The play's place on the chart's online top three, by play index (null: none, nothing sent).</summary>
+    public Func<int, RankingPlacement?>? Placement { get; init; }
 
     private LumenHostContext? _context;
 
@@ -105,18 +113,22 @@ public sealed class ResultHostBinding(
         call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(two || side == 0), LumenHostValue.FromBoolean(two || side == 1));
         call(player, "SetEndMessage", number(endMessage));
         for (var index = 0; index < plays.Count; index++)
-            sendPlay(player, plays[index], two ? index : side, PreviousBest?.Invoke(index));
+        {
+            sendPlay(player, plays[index], two ? index : side, Best?.Invoke(index));
+            if (Placement?.Invoke(index) is { } placement)
+                sendRanking(player, two ? index : side, placement);
+        }
         for (var index = 0; index < plays.Count; index++)
             sendName(player, two ? index : side, boardIndex: two ? index : 0);
     }
 
-    private static void sendPlay(LumenPlayer player, TaikoPlayResult play, int side, long? previousBest)
+    private static void sendPlay(LumenPlayer player, TaikoPlayResult play, int side, long? best)
     {
         var p = number(side);
         var no = LumenHostValue.FromBoolean(false);
         call(player, "SetCourse", p, number(play.CourseIndex));
         call(player, "SetScore", p, number(play.Score));
-        call(player, "SetBestScore", p, number(previousBest ?? -10)); // -10: no previous best
+        call(player, "SetBestScore", p, number(best ?? -10)); // -10: a guest
         call(player, "SetRyo", p, number(play.Great));
         call(player, "SetKa", p, number(play.Good));
         call(player, "SetFuka", p, number(play.Miss));
@@ -130,6 +142,19 @@ public sealed class ResultHostBinding(
         call(player, "SetOptionAbekobe", p, no);
         call(player, "SetOptionRandomLevel", p, number(0));
         call(player, "SetOptionShinuchi", p, no);
+    }
+
+    // Traced (card player): after the numbers, each top-three slot (empty ones as 0, "") then the
+    // play's slot; the movie shows its rank-in panel for slots 0-2. A guest's results send neither.
+    private static void sendRanking(LumenPlayer player, int side, RankingPlacement placement)
+    {
+        var p = number(side);
+        for (var rank = 0; rank < RankingBoard.Size; rank++)
+        {
+            var line = rank < placement.Top.Count ? placement.Top[rank] : null;
+            call(player, "SetRanking", p, number(rank), number(line?.Score ?? 0), LumenHostValue.FromString(line?.Name ?? ""));
+        }
+        call(player, "SetRankIn", p, number(placement.RankIn));
     }
 
     // The name board calls end with the board index (0 for one player), not the player.

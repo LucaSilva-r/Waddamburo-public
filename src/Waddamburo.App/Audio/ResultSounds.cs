@@ -30,6 +30,9 @@ internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
         var sound = (request.Kind, group, request.Cue) switch
         {
             (ResultSoundRequestKind.Voice, 1, 1) => (Bank: "VO_RESULT", Cue: 1),
+            // New personal best (VO_JIKO_BEST, SE_NEWRECORD): untraced, cues follow the traced
+            // steps (voice n -> 2n - 1, effect n -> 3n); VO_RESULT 3 user-confirmed as 自己ベスト.
+            (ResultSoundRequestKind.Voice, 1, 2) => (Bank: "VO_RESULT", Cue: 3),
             (ResultSoundRequestKind.Voice, 1, 3) => (Bank: "VO_RESULT", Cue: 5), // Katsu (2, 3) -> 6 traced
             (ResultSoundRequestKind.Voice, 1, 4) => (Bank: "VO_RESULT", Cue: 7), // Katsu (2, 4) -> 8 traced
             (ResultSoundRequestKind.Voice, 1, 5) => (Bank: "VO_RESULT", Cue: 9),
@@ -41,6 +44,7 @@ internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
             (ResultSoundRequestKind.Effect, 1, 0) => (Bank: "SE_RESULT", Cue: 0),
             (ResultSoundRequestKind.Effect, 1, 1) => (Bank: "SE_RESULT", Cue: 3),
             (ResultSoundRequestKind.Effect, 1, 2) => (Bank: "SE_RESULT", Cue: 6),
+            (ResultSoundRequestKind.Effect, 1, 4) => (Bank: "SE_RESULT", Cue: 12),
             (ResultSoundRequestKind.Effect, 1, 5) => (Bank: "SE_RESULT", Cue: 15),
             // Two players: 22 whenever either cleared (traced one failed + one cleared, and both full
             // combo); both failed takes the one-player failure cue (user-confirmed: no applause).
@@ -48,6 +52,8 @@ internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
                 Cue: request.TwoPlayers ? request.Cleared ? 22 : 20
                     : request.FullCombo ? 22 : request.Cleared ? 18 : 20),
             (ResultSoundRequestKind.Effect, 0, 7) => (Bank: "SE_RESULT", Cue: 24),
+            // The rank-in panel (SE_LOCAL_RANKIN), traced (0, 8) -> 25.
+            (ResultSoundRequestKind.Effect, 0, 8) => (Bank: "SE_RESULT", Cue: 25),
             _ => default,
         };
         if (sound.Bank is null)

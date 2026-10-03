@@ -194,9 +194,26 @@ internal sealed class SoundBank
         if (_clips.TryGetValue(key, out var clip))
             return clip;
         var path = Path.Combine(_bankRoot, key.Bank + ".nub");
-        clip = AudioClip.Load(path, _audio.Mixer.Format, sourceStreamIndex: checked((uint)key.Cue + 1U));
+        clip = AudioClip.Load(path, _audio.Mixer.Format, sourceStreamIndex: checked((uint)key.Cue + 1U))
+            .WithLeadingSilence(NubCueDelay.Read(bankHeader(path, key.Cue), key.Cue));
         _clips.Add(key, clip);
         return clip;
+    }
+
+    // The bank's header up to the cue's stream header (NubCueDelay reads no further).
+    private static byte[] bankHeader(string path, int cue)
+    {
+        using var file = File.OpenRead(path);
+        var table = new byte[0x20 + (cue + 1) * 4];
+        if (file.Read(table) < table.Length)
+            return table;
+        var header = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(table.AsSpan(^4));
+        if (header > file.Length)
+            return table;
+        var bytes = new byte[(int)Math.Min(file.Length, header + 0x50L)];
+        file.Position = 0;
+        file.ReadExactly(bytes);
+        return bytes;
     }
 
     private void reportUnavailable((string Bank, int Cue) key, Exception exception)

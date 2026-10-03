@@ -54,6 +54,19 @@ internal sealed class SongRankings(Func<ScoreClient?> client, ChartHashes hashes
 
     public void Dispose() => _current?.Cancel(); // ponytail: sources are left to the GC; their fetches may still run
 
+    /// <summary>
+    /// A play ranked in: its course's board becomes <paramref name="top"/> and stays fresh, so song
+    /// select shows it at once (the upload may not have reached the server yet).
+    /// </summary>
+    public void Record(SongSelectSong song, int course, IReadOnlyList<RankingEntry> top)
+    {
+        if (!_songs.TryGetValue(song.Descriptor.Key, out var known) || (uint)course >= (uint)known.Courses.Length)
+            return;
+        var courses = (IReadOnlyList<RankingEntry>?[])known.Courses.Clone();
+        courses[course] = top;
+        _songs[song.Descriptor.Key] = (DateTime.UtcNow, courses);
+    }
+
     /// <summary>What is known for the song now (null: nothing yet).</summary>
     public IReadOnlyList<RankingEntry>?[]? For(SongSelectSong song) =>
         _songs.TryGetValue(song.Descriptor.Key, out var known) ? known.Courses : null;

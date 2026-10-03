@@ -287,7 +287,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // results) is not saved until its mode is worked out.
     private void saveScore(PlayRequest request)
     {
-        Array.Clear(Shell.PreviousBests);
+        Array.Clear(Shell.Bests);
+        Array.Clear(Shell.Placements);
         if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
@@ -301,8 +302,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             {
                 var sha = ChartHash.Compute(_charts[lane], player.Course);
                 var id = Guid.NewGuid();
-                if (lane < Shell.PreviousBests.Length)
-                    Shell.PreviousBests[lane] = scores.PreviousBest(profile.Baid, sha, id);
+                if (lane < Shell.Bests.Length)
+                    Shell.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id) ?? Shell.Gameplay.Results[lane].Score;
+                // Online players only (the guest's baid is never uploaded), from the board song select fetched.
+                if (lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null
+                    && Shell.Hosts.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
+                {
+                    var top = boards[(int)player.Course] ?? []; // fetched, nobody on it yet
+                    var placement = Shell.Placements[lane] = RankingBoard.Place(top, profile.Baid, profile.Name,
+                        (int)Shell.Gameplay.Results[lane].Score);
+                    if (placement.RankIn >= 0)
+                        Shell.Hosts.Rankings.Record(_song, (int)player.Course, placement.Top);
+                }
                 scores.Save(new PlayRecord(id, profile.Baid, sha,
                     player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
                     Shell.Gameplay.Replays[lane].Encode()),
