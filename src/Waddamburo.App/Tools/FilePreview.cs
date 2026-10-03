@@ -29,6 +29,12 @@ internal sealed class FilePreview : IDisposable
     private string _location = "", _status = "Select a file to preview", _title = "FILE PREVIEW";
     private DdpArchive? _archive;
     private LumenPlayer? _movie;
+    private PreviewTree.Node? _movieNode;
+    // M: run movies without the Lumen game object, i.e. their developer branch, which loads its
+    // indicator parts itself through MovieClipLoader.
+    private bool _developerMode;
+    // Terminal lines ("SetTime 30") call the playing movie's callbacks.
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _commands = new();
     private SdlAudioDevice? _device;
     private StreamingMusicPlayer? _audio;
     private string? _audioPath;
@@ -47,6 +53,11 @@ internal sealed class FilePreview : IDisposable
 
     private FilePreview(int width, int height)
     {
+        new Thread(() =>
+        {
+            while (Console.ReadLine() is { } line)
+                _commands.Enqueue(line);
+        }) { IsBackground = true, Name = "Preview callback console" }.Start();
         _application = new SdlApplication("Waddamburo - File Preview", width, height, resizable: true, showCursor: true);
         _glyphs = _application.UploadRgba8(96, 32, BitmapFont.CreateAtlas());
         _white = _application.UploadRgba8(1, 1, new byte[] { 255, 255, 255, 255 });
@@ -93,6 +104,7 @@ internal sealed class FilePreview : IDisposable
         _device?.Clear();
         _audioPath = null;
         _movie = null;
+        _movieNode = null;
         foreach (var texture in _movieTextures)
             _application.ReleaseTexture(texture);
         _movieTextures.Clear();
@@ -193,8 +205,52 @@ internal sealed class FilePreview : IDisposable
         foreach (var texture in content.Textures)
             _movieTextures.Add(_application.UploadRgba8((uint)texture.Width, (uint)texture.Height,
                 texture.Rgba8.AsSpan()));
-        _movie = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
-        _status = node.Movie + " - playing";
+        _movie = content.CreatePlayer(hostBinding: _developerMode ? null : ViewerHostBinding.Instance,
+            movieLoader: url => loadClip(node.Path, url));
+        _movieNode = node;
+        Console.WriteLine($"{node.Movie} callbacks (type 'Name arg ...' here): {string.Join(", ", _movie.CallbackNames)}");
+        _status = node.Movie + (_developerMode ? " - playing (developer mode)" : " - playing");
+    }
+
+    private static void invoke(LumenPlayer movie, string line)
+    {
+        var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return;
+        try
+        {
+            var invocation = Cli.CallbackInvocation.ParseExpression(string.Join('|', parts));
+            Console.WriteLine(movie.TryInvokeCallback(invocation.Name, invocation.Arguments)
+                ? $"Invoked {invocation.Name}" : $"Callback '{invocation.Name}' is not registered.");
+        }
+        catch (ArgumentException exception)
+        {
+            Console.WriteLine($"Rejected: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// MovieClipLoader.loadClip for the developer branch: "../indicator/time_counter.lm" is resolved
+    /// beside the requesting archive's folder (packed/indicator/packeddata.ddp, movie time_counter.lm).
+    /// </summary>
+    private LumenLoadedMovie? loadClip(string archivePath, string url)
+    {
+        var folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(archivePath)!, Path.GetDirectoryName(url) ?? ""));
+        var file = Path.Combine(folder, "packeddata.ddp");
+        if (!File.Exists(file))
+            return null;
+        var archive = DdpArchive.Open(File.ReadAllBytes(file));
+        var entry = archive.Index.Movies.FirstOrDefault(movie =>
+            Path.GetFileName(movie.Name).Equals(Path.GetFileName(url), StringComparison.OrdinalIgnoreCase));
+        if (entry is null)
+            return null;
+        var content = LumenMovieContent.Load(archive.OpenMovie(entry));
+        var offset = (uint)_movieTextures.Count;
+        foreach (var texture in content.Textures)
+            _movieTextures.Add(_application.UploadRgba8((uint)texture.Width, (uint)texture.Height, texture.Rgba8.AsSpan()));
+        var player = content.CreatePlayer(movieLoader: nested => loadClip(file, nested));
+        Console.WriteLine($"loadClip {url} -> {Path.GetRelativePath(Path.GetDirectoryName(folder)!, file)}:{entry.Name}");
+        return new LumenLoadedMovie(player, offset);
     }
 
     private void playAudio(string path, int cue)
@@ -346,8 +402,13 @@ internal sealed class FilePreview : IDisposable
         else if (pressed(SdlKeyboardKey.R)) replay();
         else if (pressed(SdlKeyboardKey.Left)) back();
         else if (pressed(SdlKeyboardKey.Right)) navigateRight();
-        else if (pressed(SdlKeyboardKey.D)) changeCue(-1);
-        else if (pressed(SdlKeyboardKey.K)) changeCue(1);
+        else if (pressed(SdlKeyboardKey.D) && _movie is null || pressed(SdlKeyboardKey.Q)) changeCue(-1);
+        else if (pressed(SdlKeyboardKey.K) && _movie is null || pressed(SdlKeyboardKey.E)) changeCue(1);
+        else if (pressed(SdlKeyboardKey.M) && _movieNode is { } node)
+        {
+            _developerMode = !_developerMode;
+            attempt(() => playMovie(node));
+        }
         if (_audioPath is { } bank && Path.GetExtension(bank).Equals(".nub", StringComparison.OrdinalIgnoreCase))
             for (var digit = 0; digit <= 9; digit++)
                 if (pressed((SdlKeyboardKey)((int)SdlKeyboardKey.Digit0 + digit)))
@@ -362,7 +423,12 @@ internal sealed class FilePreview : IDisposable
             if (_movie?.CurrentFrame != requestedFrame) seek(requestedFrame);
         }
         if (_movie is { } movie && !_paused)
-            movie.Advance();
+        {
+            // Drum keys reach the movie as the game maps them (D/K ka, F/J don -> authored A/S/Z).
+            while (_commands.TryDequeue(out var command))
+                invoke(movie, command);
+            movie.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
+        }
         if (_audio?.Failure is { } failure) _status = "Error: " + failure.Message;
         _previous = keyboard;
     }
@@ -411,6 +477,8 @@ internal sealed class FilePreview : IDisposable
         _scroll = Math.Clamp(_scroll, 0, maximumScroll);
         var quads = new List<RenderQuad>();
         var labels = new List<RenderQuad>();
+        // The movie goes underneath, then the background covers whatever it draws outside its box.
+        var movieQuads = new List<RenderQuad>();
         rect(quads, 0, 0, 384, 720, new RenderColor(.07f, .09f, .13f, 1));
         text(labels, _title, 20, 24, 3, 68);
         text(labels, Path.GetFileName(_location.TrimEnd(Path.DirectorySeparatorChar)), 20, 66, 2, 29);
@@ -432,7 +500,7 @@ internal sealed class FilePreview : IDisposable
         text(labels, $"{_selected + 1} / {_rows.Count} VISIBLE", 20, 608, 2, 29);
         text(labels, "ARROWS SELECT/AUTOPLAY  ENTER EXPAND", 20, 640, 1, 58);
         text(labels, "WHEEL SCROLL  DRAG SCROLLBAR/TIMELINE", 20, 662, 1, 58);
-        text(labels, "BACKSPACE COLLAPSE  D/K CUE/FRAME", 20, 684, 1, 58);
+        text(labels, "BACKSPACE COLLAPSE  D/K CUE  Q/E FRAME", 20, 684, 1, 58);
         if (selectedNode is { } selected)
         {
             text(labels, selected.Label, 420, 25, 2, 69);
@@ -452,7 +520,13 @@ internal sealed class FilePreview : IDisposable
             else h *= (float)(panelAspect / aspect);
             float left = 410f / 1280 + (850f / 1280 - w) / 2, top = 105f / 720 + (450f / 720 - h) / 2;
             RenderVertex fit(RenderVertex vertex) => vertex with { X = left + vertex.X * w, Y = top + vertex.Y * h };
-            quads.AddRange(frame.Quads.Select(quad => quad with
+            var background = new RenderColor(.025f, .03f, .05f, 1);
+            int x0 = (int)(left * 1280), y0 = (int)(top * 720), x1 = (int)MathF.Ceiling((left + w) * 1280), y1 = (int)MathF.Ceiling((top + h) * 720);
+            rect(movieQuads, 0, 0, 1280, y0, background);
+            rect(movieQuads, 0, y1, 1280, 720 - y1, background);
+            rect(movieQuads, 0, y0, x0, y1 - y0, background);
+            rect(movieQuads, x1, y0, 1280 - x1, y1 - y0, background);
+            movieQuads.InsertRange(0, frame.Quads.Select(quad => quad with
             {
                 TopLeft = fit(quad.TopLeft), TopRight = fit(quad.TopRight),
                 BottomLeft = fit(quad.BottomLeft), BottomRight = fit(quad.BottomRight)
@@ -481,11 +555,12 @@ internal sealed class FilePreview : IDisposable
         button(quads, labels, "REPLAY", 580, 145);
         button(quads, labels, _movie is null ? "PREVIOUS CUE" : "PREVIOUS FRAME", 740, 200);
         button(quads, labels, _movie is null ? "NEXT CUE" : "NEXT FRAME", 955, 200);
-        text(labels, _movie is null ? "SPACE PAUSE  R REPLAY  D/K CUE" : "SPACE PAUSE  R START  D/K FRAME", 420, 665, 2, 69);
+        text(labels, _movie is null ? "SPACE PAUSE  R REPLAY  D/K CUE" : "SPACE PAUSE  R START  Q/E FRAME  M DEV  DFJK DRUM", 420, 665, 2, 69);
         var state = _paused ? "PAUSED - " : _audio?.Completed == true ? "FINISHED - " : "";
         text(labels, state + _status, 420, 695, 1, 137);
         quads.AddRange(labels);
-        return new RenderFrame(new RenderColor(.025f, .03f, .05f, 1), quads);
+        movieQuads.AddRange(quads);
+        return new RenderFrame(new RenderColor(.025f, .03f, .05f, 1), movieQuads);
     }
 
     private void button(List<RenderQuad> quads, List<RenderQuad> labels, string label, int x, int width)

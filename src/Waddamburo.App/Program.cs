@@ -39,6 +39,7 @@ try
     var startSceneOption = parseOption(args, "--start-scene=");
     var login = args.Contains("--login", StringComparer.Ordinal);
     var logout = args.Contains("--logout", StringComparer.Ordinal);
+    var exportCharts = parseOption(args, "--export-charts=");
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
@@ -127,6 +128,9 @@ try
             return TextureCacheBuilder.Run(layout.UpscaleCache, layout.LumenRoot, upscale.Split('=') is [_, var count]
                 ? int.Parse(count, System.Globalization.CultureInfo.InvariantCulture)
                 : Math.Max(1, Environment.ProcessorCount - 2));
+        // One-off: every stock and Nijiiro chart, hashed, for the server to import as ranked (see ChartExport).
+        if (exportCharts is not null)
+            return ChartExport.Run(Path.GetFullPath(Path.Combine(layout.LumenRoot, "..", "..")), arcade, exportCharts);
         var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
         if (login || logout)
             return AccountCommands.Run(arcade, accounts, login);

@@ -41,9 +41,11 @@ public sealed class LumenPlayer
         float stageHeight,
         uint? rootCharacterId = null,
         LumenRuntimeLimits? limits = null,
-        ILumenHostBinding? hostBinding = null)
+        ILumenHostBinding? hostBinding = null,
+        Func<string, LumenLoadedMovie?>? movieLoader = null)
     {
         ArgumentNullException.ThrowIfNull(movie);
+        MovieLoader = movieLoader;
         if (!float.IsFinite(stageWidth) || stageWidth <= 0)
             throw new ArgumentOutOfRangeException(nameof(stageWidth));
         if (!float.IsFinite(stageHeight) || stageHeight <= 0)
@@ -69,9 +71,28 @@ public sealed class LumenPlayer
         _globals["Object"] = createBuiltinConstructor();
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
+        _globals["MovieClipLoader"] = new MovieClipLoaderConstructor();
         installKeyObject();
         installMathObject();
         installExternalInterface();
+        _globals["parseInt"] = new Avm1NativeFunction("parseInt", call =>
+        {
+            var text = call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Text
+                ? call.Arguments[0].AsString().Trim() : call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number
+                    ? ((long)call.Arguments[0].AsNumber()).ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
+            var radix = call.Arguments.Length > 1 && call.Arguments[1].Kind == LumenHostValueKind.Number ? (int)call.Arguments[1].AsNumber() : 10;
+            // ponytail: radix 10 and 16 only (leading digits, optional sign), NaN otherwise.
+            var sign = text.StartsWith('-') ? -1 : 1;
+            text = text.TrimStart('-', '+');
+            if (radix == 16 || text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                radix = 16;
+                if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) text = text[2..];
+            }
+            var digits = new string(text.TakeWhile(c => radix == 16 ? Uri.IsHexDigit(c) : char.IsAsciiDigit(c)).ToArray());
+            return LumenHostValue.FromNumber(digits.Length == 0 || radix is not (10 or 16) ? double.NaN
+                : sign * (double)Convert.ToInt64(digits, radix));
+        });
         hostBinding?.Install(new LumenHostContext(_globals, _externalInterface, findNumericVariableName));
         bootstrapPackageClasses();
         enterFrame(_root, 0, queueActions: true);
@@ -79,6 +100,14 @@ public sealed class LumenPlayer
     }
 
     public float StageWidth { get; }
+
+    /// <summary>
+    /// Resolves MovieClipLoader.loadClip URLs (as authored, e.g. "../indicator/time_counter.lm") to a
+    /// player whose textures the host placed at <see cref="LumenLoadedMovie.TextureOffset"/> in this
+    /// player's texture namespace. Null (the default): loadClip is reported and ignored. Only the
+    /// movies' standalone developer branch (no Lumen object) loads movies this way.
+    /// </summary>
+    public Func<string, LumenLoadedMovie?>? MovieLoader { get; set; }
 
     /// <summary>Authored host notifications. No browser, process, or network action is performed.</summary>
     public event Action<string, string>? HostCommand;
@@ -277,6 +306,39 @@ public sealed class LumenPlayer
         drainActions();
         dispatchEnterFrameHandlers();
         drainActions();
+        advanceLoadedMovies(inputSnapshot);
+    }
+
+    private readonly List<DisplayInstance> _loadedClips = [];
+    private readonly List<(Avm1Object Listener, DisplayInstance Target)> _pendingLoadInits = [];
+
+    private void advanceLoadedMovies(LumenInputSnapshot inputSnapshot)
+    {
+        _loadedClips.RemoveAll(static clip => clip.Removed);
+        foreach (var clip in _loadedClips.ToArray())
+            clip.LoadedMovie!.Player.Advance(inputSnapshot);
+        // Flash calls onLoadInit once the loaded movie's first frame has run.
+        var pending = _pendingLoadInits.ToArray();
+        _pendingLoadInits.Clear();
+        foreach (var (listener, target) in pending)
+            if (listener.GetProperty("onLoadInit").Value is Avm1FunctionValue onLoadInit)
+                invokeFunction(_root, onLoadInit, listener, [target], _activeContext);
+        if (pending.Length != 0)
+            drainActions();
+    }
+
+    /// <summary>A method called on a clip holding a loaded movie: its root function or callback.</summary>
+    private Avm1Lookup callLoadedMovie(LumenPlayer child, string name, IReadOnlyList<object?> arguments)
+    {
+        var converted = arguments.Select(toHostValue).ToArray();
+        if (child._root.Variables.GetValueOrDefault(name) is Avm1FunctionValue function)
+        {
+            var result = child.invokeFunction(child._root, function, child._root,
+                [.. converted.Select(fromHostValue)], child._activeContext);
+            child.drainActions();
+            return new Avm1Lookup(true, fromHostValue(toHostValue(result.Value)));
+        }
+        return new Avm1Lookup(child.TryInvokeCallback(name, converted), Avm1Undefined.Instance);
     }
 
     public void Seek(int frame)
@@ -1060,6 +1122,34 @@ public sealed class LumenPlayer
                     context.SetMember(listArray, "length", (double)(count - 1));
                     return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
                 }
+                if (target is MovieClipLoaderObject loader && name == "addListener"
+                    && arguments.Count > 0 && arguments[0] is Avm1Object listener)
+                {
+                    loader.Listeners.Add(listener);
+                    return new Avm1Lookup(true, true);
+                }
+                if (target is MovieClipLoaderObject clipLoader && name == "loadClip" && arguments.Count >= 2
+                    && arguments[0] is string url && arguments[1] is DisplayInstance loadTarget)
+                {
+                    if (MovieLoader?.Invoke(url) is not { } loaded)
+                    {
+                        reportOnce("LUM_AVM_LOADCLIP_UNRESOLVED", instance.CharacterId, instance.Frame,
+                            $"MovieClipLoader.loadClip could not resolve '{url}'.");
+                        return new Avm1Lookup(true, false);
+                    }
+                    loadTarget.LoadedMovie = loaded;
+                    _loadedClips.Add(loadTarget);
+                    foreach (var each in clipLoader.Listeners)
+                        _pendingLoadInits.Add((each, loadTarget));
+                    return new Avm1Lookup(true, true);
+                }
+                if (target is DisplayInstance { LoadedMovie: { } loadedMovie } && name.Length != 0
+                    && context!.GetMember(target, name).Value is not (Avm1FunctionValue or Avm1NativeFunction or Avm1MethodWrapper))
+                {
+                    var forwarded = callLoadedMovie(loadedMovie.Player, name, arguments);
+                    if (forwarded.Found)
+                        return forwarded;
+                }
                 if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
                 {
                     var nextDepth = context!.GetNextHighestDepth(depthTarget, depthTarget.Children.Keys);
@@ -1220,6 +1310,8 @@ public sealed class LumenPlayer
                     else
                         value = new Avm1ArrayObject(arguments);
                 }
+                else if (candidate.Value is MovieClipLoaderConstructor)
+                    return new Avm1Lookup(true, new MovieClipLoaderObject());
                 else
                     value = new Avm1Object();
                 value.Properties["__constructor__"] = name;
@@ -1805,6 +1897,11 @@ public sealed class LumenPlayer
 
     private sealed record ClipTransform(DisplayInstance Instance);
     private sealed class ColorTransformConstructor;
+    private sealed class MovieClipLoaderConstructor;
+    private sealed class MovieClipLoaderObject : Avm1Object
+    {
+        public List<Avm1Object> Listeners { get; } = [];
+    }
     private static readonly string[] ColorTransformProperties =
         ["redMultiplier", "greenMultiplier", "blueMultiplier", "alphaMultiplier",
          "redOffset", "greenOffset", "blueOffset", "alphaOffset"];
@@ -2215,6 +2312,29 @@ public sealed class LumenPlayer
             }
         }
 
+        if (instance.LoadedMovie is { } loadedMovie)
+        {
+            // ponytail: the loaded movie's colour offsets ignore this clip's; multiply only.
+            LumenRenderVertex place(LumenRenderVertex vertex)
+            {
+                var position = transform.Transform(vertex.X, vertex.Y);
+                return vertex with { X = position.X, Y = position.Y };
+            }
+            foreach (var quad in loadedMovie.Player.CreateRenderSnapshot(interpolationFraction).Quads)
+                quads.Add(quad with
+                {
+                    TextureIndex = quad.NativeSurface is null ? checked(loadedMovie.TextureOffset + quad.TextureIndex) : 0,
+                    TopLeft = place(quad.TopLeft),
+                    TopRight = place(quad.TopRight),
+                    BottomRight = place(quad.BottomRight),
+                    BottomLeft = place(quad.BottomLeft),
+                    MultiplyColor = new LumenRenderColor(quad.MultiplyColor.Red * color.Multiply.Red,
+                        quad.MultiplyColor.Green * color.Multiply.Green, quad.MultiplyColor.Blue * color.Multiply.Blue,
+                        quad.MultiplyColor.Alpha * color.Multiply.Alpha),
+                    MaskDepth = maskDepth,
+                });
+        }
+
         if (instance.Children.Count == 0) return;
 
         // Masks apply only to following siblings through the inclusive authored depth.
@@ -2433,6 +2553,8 @@ public sealed class LumenPlayer
         public string Name { get; set; } = "";
 
         public bool ScriptColored { get; set; }
+
+        public LumenLoadedMovie? LoadedMovie { get; set; }
         public long? ClipDepth { get; set; }
         public uint PlacementId { get; set; } = uint.MaxValue;
 
@@ -2520,3 +2642,6 @@ public sealed class LumenPlayer
 public sealed record LumenCallbackDescriptor(
     string Name,
     ImmutableArray<string> Parameters);
+
+/// <summary>A movie loaded into a clip by MovieClipLoader, with its textures at TextureOffset.</summary>
+public sealed record LumenLoadedMovie(LumenPlayer Player, uint TextureOffset);

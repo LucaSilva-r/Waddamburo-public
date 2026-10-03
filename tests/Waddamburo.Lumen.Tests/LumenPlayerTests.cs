@@ -1862,6 +1862,53 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void MovieClipLoaderDrawsTheLoadedMovieInsideItsTargetClip()
+    {
+        var child = new LumenPlayer(createMovie(), 1280, 720);
+        string? requested = null;
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            // var loader = new MovieClipLoader() (register 1)
+            0x96, 0x08, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x09, 0x3A, 0x00,
+            0x40,
+            0x87, 0x01, 0x00, 0x01,
+            0x17,
+            // var clip = this.createEmptyMovieClip("copy", 1000) (register 0)
+            0x96, 0x0D, 0x00,
+                0x07, 0xE8, 0x03, 0x00, 0x00,
+                0x09, 0x27, 0x00,
+                0x07, 0x02, 0x00, 0x00, 0x00,
+            0x96, 0x03, 0x00, 0x09, 0x09, 0x00,
+            0x1C,
+            0x96, 0x03, 0x00, 0x09, 0x2F, 0x00,
+            0x52,
+            0x87, 0x01, 0x00, 0x00,
+            0x17,
+            // loader.loadClip("child.lm", clip)
+            0x96, 0x0A, 0x00, 0x04, 0x00, 0x09, 0x3C, 0x00, 0x07, 0x02, 0x00, 0x00, 0x00,
+            0x96, 0x05, 0x00, 0x04, 0x01, 0x09, 0x3B, 0x00,
+            0x52,
+            0x17,
+            0x00,
+        ]), 1280, 720)
+        {
+            MovieLoader = url =>
+            {
+                requested = url;
+                return new LumenLoadedMovie(child, 100);
+            },
+        };
+
+        player.Advance();
+
+        Assert.Equal("child.lm", requested);
+        var childIndices = child.CreateRenderSnapshot().Quads.Select(quad => quad.TextureIndex + 100).ToArray();
+        Assert.NotEmpty(childIndices);
+        Assert.Equal(childIndices, player.CreateRenderSnapshot().Quads.Select(quad => quad.TextureIndex).Where(index => index >= 100));
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code is "LUM_AVM_METHOD_UNRESOLVED"
+            or "LUM_AVM_CONSTRUCTOR_UNRESOLVED" or "LUM_AVM_LOADCLIP_UNRESOLVED");
+    }
+
+    [Fact]
     public void NewObjectInvokesAuthoredConstructorWithPrototype()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [
@@ -2096,7 +2143,8 @@ public sealed class LumenPlayerTests
                 "HostVisible", "gotoAndStop", "toString", "0", "7", "length", "charAt", "7",
                 "alias", "Ping", "_global", "placed", "Key", "isDown", "D", "charCodeAt", "Array",
                 "call", "Confirm", "copy", "push", "Math", "floor", "__Packages.Synthetic", "_root", "abs", "_x",
-                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random", "transform", "colorTransform", "geom", "ColorTransform", "Boolean")),
+                "createEmptyMovieClip", "removeMovieClip", "DON_SELECT_LOOP", "/:3", "placed:3", "random", "transform", "colorTransform", "geom", "ColorTransform", "Boolean",
+                "MovieClipLoader", "loadClip", "child.lm")),
             words(LmbTags.ColorTransformPool, 2, 0x00800100, 0x01000080, 0, 0),
             words(LmbTags.MatrixPool, 1, bits(1), bits(0), bits(0), bits(1), bits(secondX), bits(40)),
             words(LmbTags.TranslationPool, 1, bits(10), bits(20)),

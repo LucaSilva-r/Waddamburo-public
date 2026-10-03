@@ -70,8 +70,9 @@ public sealed class LumenMovieContent
     public LumenPlayer CreatePlayer(
         float stageWidth = 1280,
         float stageHeight = 720,
-        ILumenHostBinding? hostBinding = null) =>
-        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding);
+        ILumenHostBinding? hostBinding = null,
+        Func<string, LumenLoadedMovie?>? movieLoader = null) =>
+        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader);
 
     /// <summary>Replaces textures before upload (upscaled copies; UVs are normalised, so any size fits).</summary>
     public void ReplaceTextures(Func<LumenTextureContent, int, LumenTextureContent> replace)
