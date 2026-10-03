@@ -1,0 +1,2 @@
+# Shell scripts run in bash (also WSL on a Windows checkout): keep LF endings.
+*.sh text eol=lf

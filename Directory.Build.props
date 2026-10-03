@@ -22,6 +22,13 @@
     <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
+  <!-- Developer builds use the self-contained native libraries of the linux-package / windows-package
+       CMake preset once it has been built (BUILDING.md); eng/package.sh passes the directory explicitly. -->
+  <PropertyGroup Condition="'$(WaddamburoNativeDir)' == ''">
+    <WaddamburoPackageNativeDir Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)out/build/native/win-x64/windows-package/stage/Release/bin</WaddamburoPackageNativeDir>
+    <WaddamburoPackageNativeDir Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)out/build/native/linux-x64/linux-package/stage/Release/lib</WaddamburoPackageNativeDir>
+    <WaddamburoNativeDir Condition="Exists('$(WaddamburoPackageNativeDir)')">$(WaddamburoPackageNativeDir)</WaddamburoNativeDir>
+  </PropertyGroup>
   <!-- Releases use the JIT, but the game must stay NativeAOT-compatible (consoles and other targets
        without a JIT): trim/AOT analyzers run on every product project. -->
   <PropertyGroup Condition="$([MSBuild]::MakeRelative($(MSBuildThisFileDirectory), $(MSBuildProjectDirectory)).StartsWith('src'))">

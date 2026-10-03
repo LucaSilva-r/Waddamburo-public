@@ -113,13 +113,8 @@
     },
     {
       "name": "windows-package",
-      "displayName": "Windows x64 self-contained release libraries (mingw-w64 cross build on Linux)",
+      "displayName": "Windows x64 self-contained release libraries (mingw-w64: cross build on Linux, or an MSYS2 MINGW64 shell)",
       "inherits": "base",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
       "binaryDir": "${sourceDir}/../out/build/native/win-x64/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/mingw-w64.cmake",
       "cacheVariables": {

@@ -141,22 +141,19 @@ Scoring, judgement and soul gauge follow the arcade's rules; see
 
 ## Building from source
 
-You need the .NET 10 SDK, CMake 3.25+, Ninja and a C17/C++20 compiler (GCC or Clang on
-Linux; Visual Studio 2022 C/C++ tools on Windows).
+You need git and the .NET SDK **10.0.201** (exactly; see [BUILDING.md](BUILDING.md#1-install-the-net-sdk)).
+The native libraries (FFmpeg, vgmstream, FreeType, bgfx) are downloaded from the latest
+release:
 
 ```sh
 git clone https://github.com/LucaSilva-r/Waddamburo-public.git
 cd Waddamburo-public
-./eng/bootstrap.sh --configuration Debug     # builds everything and runs the tests
+./eng/fetch-native.sh       # Windows: powershell -ExecutionPolicy Bypass -File eng/fetch-native.ps1
 dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"
 ```
 
-On Windows, run `./eng/bootstrap.ps1 -Configuration Debug` from a Visual Studio x64
-developer PowerShell.
-
-`./eng/package.sh [linux|windows]` builds the single-file releases on a Linux host (it
-also needs `make` and the mingw-w64 cross compiler). Pushing a `vX.Y.Z` tag builds both
-releases on GitHub Actions and drafts the release.
+[BUILDING.md](BUILDING.md) explains how to build the native libraries yourself (Linux, or
+MSYS2 on Windows), build the release files with `eng/package.sh`, and run the tests.
 
 Further reading:
 - [native builds](docs/development/native-builds.md)

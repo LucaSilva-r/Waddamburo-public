@@ -1,7 +1,12 @@
-# Cross-compiles the Windows x64 release libraries from Linux with mingw-w64.
+# Builds the Windows x64 release libraries with mingw-w64: cross from Linux, or natively in MSYS2.
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
-set(WADDAMBURO_CROSS_PREFIX x86_64-w64-mingw32-)
+if(CMAKE_HOST_WIN32)
+  # An MSYS2 MINGW64 shell on Windows: the same toolchain, unprefixed.
+  set(WADDAMBURO_CROSS_PREFIX "")
+else()
+  set(WADDAMBURO_CROSS_PREFIX x86_64-w64-mingw32-)
+endif()
 set(CMAKE_C_COMPILER ${WADDAMBURO_CROSS_PREFIX}gcc)
 set(CMAKE_CXX_COMPILER ${WADDAMBURO_CROSS_PREFIX}g++)
 set(CMAKE_RC_COMPILER ${WADDAMBURO_CROSS_PREFIX}windres)

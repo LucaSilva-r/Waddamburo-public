@@ -51,6 +51,7 @@ jobs:
             out/package/Waddamburo.exe
             out/package/Waddamburo-x86_64.AppImage
             out/package/licenses.zip
+            out/package/native-*.zip
 
   release:
     if: github.ref_type == 'tag'
@@ -66,4 +67,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
-          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip
+          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip native-*.zip

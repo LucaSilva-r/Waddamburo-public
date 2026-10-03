@@ -14,6 +14,11 @@ set(_ffmpeg_platform_options --arch=x86_64 --disable-x86asm)
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
 if(MINGW AND CMAKE_CROSSCOMPILING)
+  if(CMAKE_HOST_WIN32)
+    # MSYS2: Windows cannot run the configure script itself.
+    find_program(WADDAMBURO_BASH_EXECUTABLE NAMES bash REQUIRED)
+    set(_ffmpeg_configure_command ${WADDAMBURO_BASH_EXECUTABLE} <SOURCE_DIR>/configure)
+  endif()
   list(APPEND _ffmpeg_platform_options
     --enable-cross-compile
     --cross-prefix=${WADDAMBURO_CROSS_PREFIX}

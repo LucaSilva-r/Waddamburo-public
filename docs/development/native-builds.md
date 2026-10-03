@@ -6,6 +6,10 @@ not alter compiled product behavior.
 
 ## Developer bootstrap
 
+To build and run the game, see [BUILDING.md](../../BUILDING.md): it needs the
+`linux-package` / `windows-package` preset (or its libraries from a release, via
+`eng/fetch-native`), not the debug presets below.
+
 The supported bootstrap commands validate the host architecture and required
 tools, restore locked managed dependencies, build with CI warning policy, run the
 managed and native tests, and use the same `bin/`, `obj/`, and `out/build/` layout
@@ -87,14 +91,16 @@ pinned FreeType below statically instead.
 ## Release packages
 
 `eng/package.sh` builds both releases on a Linux x64 host (it additionally needs
-`make` and the mingw-w64 GCC cross compiler, `x86_64-w64-mingw32-gcc`):
+`make` and the mingw-w64 GCC cross compiler, `x86_64-w64-mingw32-gcc`), or the Windows
+release in an MSYS2 MINGW64 shell on Windows ([BUILDING.md](../../BUILDING.md)):
 
 ```sh
 ./eng/package.sh            # both; or: ./eng/package.sh linux|windows
 ```
 
 The `linux-package` and `windows-package` presets (`WADDAMBURO_PACKAGE=ON`; the
-Windows one cross-compiles with `native/cmake/mingw-w64.cmake`) build the pinned FFmpeg,
+Windows one uses mingw-w64 through `native/cmake/mingw-w64.cmake`, cross from Linux or
+natively in an MSYS2 MINGW64 shell) build the pinned FFmpeg,
 vgmstream (G.719 disabled) and FreeType 2.14.2 as static libraries and fold them into
 `waddamburo_media` and `waddamburo_text`. The result depends only on the C runtime and
 system libraries (`libc`/`libm`; `kernel32`/`msvcrt`/`bcrypt`), and exports only the
@@ -103,6 +109,9 @@ libraries:
 
 - `out/package/Waddamburo.exe`: a single-file publish; .NET extracts the native
   libraries (SDL3, SQLite and ours) on first run.
+- `out/package/native-{win,linux}-x64.zip`: those libraries alone, which
+  `eng/fetch-native.{ps1,sh}` unpacks into the package preset's stage folder so source
+  builds work without a C toolchain.
 - `out/package/Waddamburo-x86_64.AppImage`: a plain self-contained publish in an
   AppDir, packed with a pinned appimagetool and the static type-2 runtime (no FUSE 2
   needed on the target). It needs the glibc it was built with or newer, hence the

@@ -4,16 +4,24 @@
 #                                            self-extract on first run)
 #   out/package/Waddamburo-x86_64.AppImage  the Linux build
 #   out/package/licenses.zip                every license and notice both releases need
+#   out/package/native-{win,linux}-x64.zip  the native libraries alone, for building from source
+#                                            without a C toolchain (eng/fetch-native.sh / .ps1)
 # Both are dropped into the game's USRDIR and find the game next to themselves.
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
+# On Windows it runs in an MSYS2 MINGW64 shell and builds the Windows release only (BUILDING.md).
 #
-# usage: eng/package.sh [linux|windows]   (default: both)
+# usage: eng/package.sh [linux|windows]   (default: both; windows on Windows)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-root=$PWD
+case $(uname -s) in
+MINGW* | MSYS*) msys=true ;;
+*) msys=false ;;
+esac
+# MSYS2: dotnet is a Windows program and needs C:/... paths, not /c/...
+root=$(if $msys; then pwd -W; else pwd; fi)
 out=$root/out/package
-targets=${1:-linux windows}
+targets=${1:-$(if $msys; then echo windows; else echo linux windows; fi)}
 # Release version from a vX.Y.Z tag on HEAD; untagged builds are development builds, which never self-update.
 version=${WADDAMBURO_VERSION:-$(git describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)}
 version=${version:-0.0.0-dev}
@@ -28,8 +36,11 @@ fetch() { # url file sha256
     echo "$3  $2" | sha256sum --check --status || { echo "error: checksum mismatch: $2" >&2; exit 1; }
 }
 
-native() { # preset
+native() { # preset stage-dir rid: build the preset, zip its libraries for eng/fetch-native
     (cd native && cmake --preset "$1" && cmake --build --preset "$1")
+    rm -f "$out/native-$3.zip"
+    (cd "$2" && cmake -E tar cf "$out/native-$3.zip" --format=zip $(ls waddamburo_*.dll libwaddamburo_*.so bgfx*.dll libbgfx*.so 2>/dev/null))
+    echo "$out/native-$3.zip"
 }
 
 licenses() { # native-build-dir out-dir: every notice the releases need, beside Waddamburo's own
@@ -70,7 +81,7 @@ mkdir -p "$out" out/downloads
 for target in $targets; do
     case $target in
     windows)
-        native windows-package
+        native windows-package "$root/out/build/native/win-x64/windows-package/stage/Release/bin" win-x64
         publish win-x64 "$root/out/build/native/win-x64/windows-package/stage/Release/bin" "$out/win-x64" \
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true
@@ -78,7 +89,7 @@ for target in $targets; do
         echo "$out/Waddamburo.exe"
         ;;
     linux)
-        native linux-package
+        native linux-package "$root/out/build/native/linux-x64/linux-package/stage/Release/lib" linux-x64
         tool=out/downloads/appimagetool-$appimagetool_version-x86_64.AppImage
         runtime=out/downloads/appimage-runtime-$runtime_version-x86_64
         fetch "https://github.com/AppImage/appimagetool/releases/download/$appimagetool_version/appimagetool-x86_64.AppImage" \

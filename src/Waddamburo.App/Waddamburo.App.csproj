@@ -10,11 +10,11 @@
     <ApplicationIcon>../../eng/packaging/waddamburo.ico</ApplicationIcon>
   </PropertyGroup>
 
-  <!-- Release builds (eng/package.sh): the self-contained native libraries from the
-       linux-package / windows-package CMake presets ship next to the executable. -->
+  <!-- The self-contained native libraries from the linux-package / windows-package CMake presets
+       run next to the executable (releases via eng/package.sh, developer builds via Directory.Build.props). -->
   <ItemGroup Condition="'$(WaddamburoNativeDir)' != ''">
     <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/libwaddamburo_*.so;$(WaddamburoNativeDir)/bgfx*.dll;$(WaddamburoNativeDir)/libbgfx*.so"
-          CopyToPublishDirectory="PreserveNewest" Visible="false" />
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <!-- Built-in folder art (patterns, emblems; osu/box.png is the osu! logo, unaltered per osu!'s brand guidelines). -->
