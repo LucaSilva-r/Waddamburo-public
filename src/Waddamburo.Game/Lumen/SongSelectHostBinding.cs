@@ -176,6 +176,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
+    private (LumenHostValue Genre, LumenHostValue Song)? _selectedMusic;
+    private readonly LumenHostValue[] _selectedCourses = [LumenHostValue.Undefined, LumenHostValue.Undefined];
     private readonly IReadOnlyDictionary<string, TaikoCrown>?[] _crowns; // per drum; null: a guest
     private readonly CountdownCues _countdownCues = new();
 
@@ -325,6 +327,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number)
                 {
                     var genre = (int)call.Arguments[0].AsNumber();
+                    _selectedMusic = (call.Arguments[0], call.Arguments.Length > 1 ? call.Arguments[1] : LumenHostValue.Undefined);
                     if (genre == _session.Catalog.ModeSwitchCategory)
                         ModeSwitchRequested = true;
                     // Traced SetSelectedMusic(0, -1), Terminate, then the tutorial scene.
@@ -341,6 +344,23 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod(
                 "NotifyGenreFolder",
                 notifyGenreFolder);
+            // 2011 has no NotifyEndCourseSelect: SetSelectedMusic(genre, song), SetSelectedCourse(side, course)
+            // for both sides, SetSelectedTone, then Terminate ends the selection.
+            lumen.RegisterMethod("SetSelectedCourse", call =>
+            {
+                if (call.Arguments.Length > 1 && call.Arguments[0].Kind == LumenHostValueKind.Number
+                    && (int)call.Arguments[0].AsNumber() is 0 or 1)
+                    _selectedCourses[(int)call.Arguments[0].AsNumber()] = call.Arguments[1];
+                return LumenHostValue.Undefined;
+            });
+            lumen.RegisterMethod("SetSelectedTone", _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("Terminate", _ =>
+            {
+                if (Picked is null && _selectedMusic is { } music && music.Song.Kind == LumenHostValueKind.Number
+                    && music.Song.AsNumber() >= 0 && _selectedCourses.Any(static course => course.Kind == LumenHostValueKind.Number))
+                    notifySelection(new LumenHostCall([music.Genre, music.Song, _selectedCourses[0], _selectedCourses[1]]));
+                return LumenHostValue.Undefined;
+            });
             if (_don is not null)
                 DonLumenBinding.RegisterMotion(context, lumen, _don);
             lumen.RegisterMethod("RequestSE", call => requestSound(SongSelectSoundRequestKind.Effect, call));
@@ -729,7 +749,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     {
         var category = integer(call, 0);
         var song = integer(call, 1);
-        var isFolderOpen = boolean(call, 2);
+        // 2011 sends (genre, music) only: a folder there is reported closed.
+        var isFolderOpen = call.Arguments.Length > 2 && boolean(call, 2);
         if (_featureFolders.Count > FeatureSlots && (uint)category < (uint)_session.Catalog.Categories.Length)
             nameFeatureFolders(category);
         if (song == -1 && !isFolderOpen && (uint)category < (uint)_session.Catalog.Categories.Length)
@@ -817,6 +838,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue notifySelection(LumenHostCall call)
     {
+        // Katsudon sends (genre, music, p1None, p2None): true when that side's
+        // CppConnection.resource.course.selected[side] is past the last course, which otherwise holds it.
+        if (call.Arguments.Length > 3 && call.Arguments[2].Kind == LumenHostValueKind.Boolean)
+        {
+            LumenHostValue chosen(int side) => !call.Arguments[2 + side].AsBoolean()
+                && requirePlayer().ReadScriptValue($"_global.CppConnection.resource.course.selected.{side}") is double course
+                ? LumenHostValue.FromNumber(course) : LumenHostValue.FromString("");
+            call = new LumenHostCall([call.Arguments[0], call.Arguments[1], chosen(0), chosen(1)]);
+        }
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);

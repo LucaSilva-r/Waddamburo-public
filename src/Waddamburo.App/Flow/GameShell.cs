@@ -57,7 +57,17 @@ internal sealed class GameShell : IDisposable
 {
     public GameOptions Options { get; }
     /// <summary>The settings (the home menu changes them while the game runs).</summary>
-    public ArcadeSettings Arcade { get; set; }
+    public ArcadeSettings Arcade
+    {
+        get => _arcade;
+        set
+        {
+            _arcade = value;
+            LumenPlayer.KeepMarkerScale = value.LongDon;
+        }
+    }
+
+    private ArcadeSettings _arcade = new();
 
     public SdlApplication Application { get; }
     public SdlDonRenderer? DonRenderer { get; }
@@ -389,8 +399,17 @@ internal sealed class GameShell : IDisposable
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
         // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
-        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade })
+        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter })
             Overlay.Preload(intermission);
+        // 2011 has no fade movie: its fades are cuts.
+        try
+        {
+            Overlay.Preload(FlowScenes.Fade);
+        }
+        catch (KeyNotFoundException)
+        {
+            _noFade = true;
+        }
 
         _attract = new AttractFlow(this, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
             AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
@@ -687,7 +706,7 @@ internal sealed class GameShell : IDisposable
     {
         if (_fadeTarget is not null) return;
         // Results -> revival opens on the revival's own shutter.
-        if (scene == FlowScenes.Retry)
+        if (scene == FlowScenes.Retry || _noFade)
         {
             Show(scene);
             return;
@@ -696,6 +715,8 @@ internal sealed class GameShell : IDisposable
         _fadeTarget = scene;
         _fadeStartTick = Tick;
     }
+
+    private bool _noFade;
 
     /// <summary>True while a fade is under way; shows its scene once the screen is black.</summary>
     public bool FinishFade()

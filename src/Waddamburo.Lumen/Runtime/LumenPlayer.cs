@@ -1537,7 +1537,8 @@ public sealed class LumenPlayer
                 "LUM_HOST_CALL_FAILED",
                 instance.CharacterId,
                 instance.Frame,
-                $"Host call '{function.Name}' failed with {exception.GetType().Name}: {exception.Message} Undefined was returned.");
+                $"Host call '{function.Name}({string.Join(", ", arguments.Select(toHostValue).Select(describe))})' failed with "
+                + $"{exception.GetType().Name}: {exception.Message} Undefined was returned.");
             return new Avm1Lookup(true, Avm1Undefined.Instance);
         }
     }
@@ -2297,7 +2298,7 @@ public sealed class LumenPlayer
                         }
                         var nativeVertices = geometry.Vertices.Select(vertex => transformNativeVertex(
                             vertex,
-                            transform,
+                            nativeFill.Placement is null || KeepMarkerScale ? transform : uniformScale(transform),
                             minX,
                             maxX,
                             minY,
@@ -2533,6 +2534,20 @@ public sealed class LumenPlayer
         quads.Add(new LumenRenderQuad(0, corner(box.Left, box.Top, 0, 0), corner(box.Right, box.Top, 1, 0),
             corner(box.Right, box.Bottom, 1, 1), corner(box.Left, box.Bottom, 0, 1), color.Multiply, color.Add, blend,
             NativeSurface: key, MaskDepth: maskDepth));
+    }
+
+    /// <summary>
+    /// Keeps a placed native fill's marker scale as authored. 2011's Don marker is a 96x400 placeholder
+    /// scaled (2.08, 0.5) into a square, which stretches the Don into a long drum; off (the default),
+    /// placed fills take the marker's average scale. On only through the config file (long_don).
+    /// </summary>
+    public static bool KeepMarkerScale { get; set; }
+
+    // ponytail: markers carry no rotation, so only the scale's area is kept.
+    private static LumenMatrix uniformScale(LumenMatrix transform)
+    {
+        var scale = MathF.Sqrt(MathF.Abs(transform.M11 * transform.M22 - transform.M12 * transform.M21));
+        return transform with { M11 = scale, M12 = 0, M21 = 0, M22 = scale };
     }
 
     private static LumenRenderVertex transformNativeVertex(

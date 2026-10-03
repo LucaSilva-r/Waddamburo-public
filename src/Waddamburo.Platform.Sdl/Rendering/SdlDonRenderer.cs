@@ -69,7 +69,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private readonly List<GpuMesh> _ownedMeshes = [];
     // Slots 0 and 1: the players; 2: the entry's card dialog Don (donExM), drawn only while shown.
     private readonly Player[] _players = [new(), new(), new()];
-    private readonly float[] _pose = new float[DonSkeleton.CharacterValuesPerFrame];
+    private readonly float[] _pose; // one frame of the release's motions (294 or 234 values)
 
     /// <summary>Display-rate position between the last two ticks (0 = previous, 1 = latest).</summary>
     public float Interpolation { get; set; } = 1;
@@ -133,6 +133,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             }
         }
         _skeleton = DonSkeleton.ForAnimation(_bindAnimation);
+        _pose = new float[_bindAnimation.ValuesPerFrame];
         _bindWorld = _skeleton.EvaluateWorld(_bindAnimation.GetFrame(0));
         _modelProgram = BgfxSupport.LoadProgram("vs_don", "fs_don");
         _postProgram = BgfxSupport.LoadProgram("vs_don_post", "fs_don_post");
@@ -409,11 +410,16 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
         var meshes = new List<GpuMesh>();
         string face;
+        // Releases before Kimidori have no divided parts; Sorairo and older keep whole costumes in
+        // cos/ and face/ (faceNNN000.nut) instead of full/cos/ and full/face/ (face_NNN000.nut).
+        if (whole is null && !Directory.Exists(Path.Combine(_assetRoot, "parts")))
+            whole = 0;
         if (whole is { } costume)
         {
-            meshes.AddRange(model($"full/cos/cos_{costume:000}000.nud"));
-            face = assetExists($"full/face/face_{costume:000}000.nut")
-                ? $"full/face/face_{costume:000}000.nut" : "full/face/face_000000.nut";
+            var full = assetExists("full/cos/cos_000000.nud");
+            meshes.AddRange(model(full ? $"full/cos/cos_{costume:000}000.nud" : $"cos/cos_{costume:000}000.nud"));
+            string facePath(int id) => full ? $"full/face/face_{id:000}000.nut" : $"face/face{id:000}000.nut";
+            face = assetExists(facePath(costume)) ? facePath(costume) : facePath(0);
         }
         else
         {
@@ -532,8 +538,9 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         if (_animations.TryGetValue(name, out var animation))
             return animation;
         animation = readAnimation($"ani/{name}.bin");
-        if (animation.ValuesPerFrame != DonSkeleton.CharacterValuesPerFrame)
-            throw new InvalidDataException($"Don motion '{name}' has stride {animation.ValuesPerFrame}, expected {DonSkeleton.CharacterValuesPerFrame}.");
+        // The release's own stride (294, or 234 for Katsudon and 2011): every motion matches the bind pose.
+        if (animation.ValuesPerFrame != _bindAnimation.ValuesPerFrame)
+            throw new InvalidDataException($"Don motion '{name}' has stride {animation.ValuesPerFrame}, expected {_bindAnimation.ValuesPerFrame}.");
         _animations.Add(name, animation);
         return animation;
     }

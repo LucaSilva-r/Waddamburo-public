@@ -306,6 +306,9 @@ public sealed record ArcadeSettings
     /// <summary>Long song-select titles squashed vertically at full width (the arcade's way) instead of shrunk.</summary>
     public bool SquashTitles { get; init; }
 
+    /// <summary>2011's long Don-chan: keep the stretched marker scale (config file only, for fun).</summary>
+    public bool LongDon { get; init; }
+
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
 
@@ -474,6 +477,7 @@ public sealed record ArcadeSettings
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "upscale_textures" => settings with { UpscaleTextures = boolean(value, index) },
                 "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
+                "long_don" => settings with { LongDon = boolean(value, index) },
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
@@ -554,6 +558,7 @@ public sealed record ArcadeSettings
             ["upscale_textures"] = settings.UpscaleTextures ? "true" : "false",
             ["upscale_threads"] = settings.UpscaleThreads,
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
+            ["long_don"] = settings.LongDon ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",

@@ -13,6 +13,9 @@ public readonly record struct DonBoneChannel(int ValueOffset, int ValueCount, in
 public sealed class DonSkeleton
 {
     public const int CharacterValuesPerFrame = 294;
+
+    /// <summary>Katsudon and 2011: each limb stops after its end bone (54 values, not 69).</summary>
+    public const int ShortLimbCharacterValuesPerFrame = 234;
     public const int AccessoryValuesPerFrame = 15;
 
     private DonSkeleton(ImmutableArray<DonBoneChannel> channels, int? expressionOffset)
@@ -30,7 +33,8 @@ public sealed class DonSkeleton
         ArgumentNullException.ThrowIfNull(animation);
         return animation.ValuesPerFrame switch
         {
-            CharacterValuesPerFrame => createCharacter(),
+            CharacterValuesPerFrame => createCharacter(limbValues: 69),
+            ShortLimbCharacterValuesPerFrame => createCharacter(limbValues: 54),
             AccessoryValuesPerFrame => new DonSkeleton(
                 [new(0, 6, -1), new(6, 9, 0)],
                 expressionOffset: null),
@@ -92,25 +96,29 @@ public sealed class DonSkeleton
             : index;
     }
 
-    private static DonSkeleton createCharacter()
+    // Root, body, then per limb a base, four segments and an end bone; the 69-value layout adds two
+    // 6-value channels and a 3-value one (left at identity in the 54-value one, which lacks them). The
+    // expression follows the limbs.
+    private static DonSkeleton createCharacter(int limbValues)
     {
         var channels = ImmutableArray.CreateBuilder<DonBoneChannel>(39);
         channels.Add(new(0, 6, -1));
         channels.Add(new(6, 9, 0));
         for (var limb = 0; limb < 4; limb++)
         {
-            var valueOffset = 15 + 69 * limb;
+            var valueOffset = 15 + limbValues * limb;
             var boneOffset = channels.Count;
             channels.Add(new(valueOffset, 9, 0));
             for (var segment = 1; segment <= 4; segment++)
                 channels.Add(new(valueOffset + 9 * segment, 9, boneOffset + segment - 1));
             channels.Add(new(valueOffset + 45, 9, boneOffset + 4));
-            channels.Add(new(valueOffset + 54, 6, boneOffset + 4));
-            channels.Add(new(valueOffset + 60, 6, 0));
-            channels.Add(new(valueOffset + 66, 3, boneOffset + 7));
+            var extras = limbValues == 69;
+            channels.Add(new(extras ? valueOffset + 54 : -1, extras ? 6 : 0, boneOffset + 4));
+            channels.Add(new(extras ? valueOffset + 60 : -1, extras ? 6 : 0, 0));
+            channels.Add(new(extras ? valueOffset + 66 : -1, extras ? 3 : 0, boneOffset + 7));
         }
         channels.Add(new(-1, 0, 1));
-        return new DonSkeleton(channels.MoveToImmutable(), 291);
+        return new DonSkeleton(channels.MoveToImmutable(), 15 + 4 * limbValues);
     }
 
     private static Matrix4x4 localTransform(ReadOnlySpan<float> frame, DonBoneChannel channel)
