@@ -13,7 +13,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 15;
+    public const int CurrentVersion = 16;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -162,6 +162,15 @@ public sealed record ArcadeSettings
         # show_oni (also in the Settings menu): song select shows the Oni course at once; false = the
         # original, where Oni appears after hitting the right rim repeatedly on the course select.
         show_oni = true
+
+        """,
+        """
+        # cache_folder (also in the Settings menu): where decoded songs (vgmstream) and upscaled textures
+        # are kept. user (or empty) = this PC's own cache folder (%LOCALAPPDATA%\Waddamburo on Windows,
+        # ~/.cache/Waddamburo on Linux), found again on any PC the game is started from, so a game on a
+        # USB stick never writes its cache to the stick; game = waddamburo/cache beside the game data;
+        # or any folder path. A cache left in waddamburo/cache moves to the chosen one at start.
+        cache_folder = user
 
         """,
     ];
@@ -317,6 +326,35 @@ public sealed record ArcadeSettings
 
     /// <summary>A Nijiiro installation (null: none).</summary>
     public string? NijiiroFolder { get; init; }
+
+    /// <summary>
+    /// The cache folder for decoded songs and upscaled textures: null or <see cref="UserCacheValue"/> =
+    /// the running user's cache folder on this PC (the default: a game on a USB stick keeps its cache off
+    /// the stick), <see cref="GameCacheValue"/> = waddamburo/cache in the game data, else a path.
+    /// </summary>
+    public string? CacheFolder { get; init; } = UserCacheValue;
+
+    public const string UserCacheValue = "user";
+
+    public const string GameCacheValue = "game";
+
+    public static bool IsUserCache(string? value) =>
+        value is null || value.Length == 0 || string.Equals(value, UserCacheValue, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsGameCache(string? value) => string.Equals(value, GameCacheValue, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The running user's cache folder on this PC: %LOCALAPPDATA%\Waddamburo, or $XDG_CACHE_HOME (~/.cache)/Waddamburo.</summary>
+    public static string UserCacheFolder => Path.Combine(OperatingSystem.IsWindows()
+        ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+        : Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg ? xdg
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"),
+        "Waddamburo");
+
+    /// <summary>The cache folder in use, given Waddamburo's home folder (USRDIR/waddamburo).</summary>
+    public static string CacheRoot(string home, string? cacheFolder) =>
+        IsUserCache(cacheFolder) ? UserCacheFolder
+        : IsGameCache(cacheFolder) ? Path.Combine(home, "cache")
+        : Path.GetFullPath(cacheFolder!);
 
     /// <summary>An osu!lazer data folder (null: the default install's, when there is one).</summary>
     public string? OsuFolder { get; init; }
@@ -480,6 +518,7 @@ public sealed record ArcadeSettings
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
+                "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
                 "osu_group" => settings with { OsuBrowse = settings.OsuBrowse with
                 {
                     Group = Enum.TryParse<SongSelect.SongGroupMode>(value, true, out var group) ? group : settings.OsuBrowse.Group,
@@ -558,6 +597,7 @@ public sealed record ArcadeSettings
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",
+            ["cache_folder"] = settings.CacheFolder ?? "",
             ["osu_group"] = settings.OsuBrowse.Group.ToString().ToLowerInvariant(),
             ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),
             ["fullscreen"] = settings.Fullscreen ? "true" : "false",

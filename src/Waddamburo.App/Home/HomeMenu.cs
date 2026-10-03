@@ -113,6 +113,20 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
+        // Cache folder: this PC's user cache (the default; follows the user wherever the game is), the game
+        // folder, or a path written in config.cfg (shown as custom, kept when chosen again).
+        new(Setting: new(T("settings.cache_folder"),
+            static s => ArcadeSettings.IsUserCache(s.CacheFolder) ? 0 : ArcadeSettings.IsGameCache(s.CacheFolder) ? 1 : 2,
+            static (s, v) => v switch
+            {
+                0 => s with { CacheFolder = ArcadeSettings.UserCacheValue },
+                1 => s with { CacheFolder = ArcadeSettings.GameCacheValue },
+                _ => ArcadeSettings.IsUserCache(s.CacheFolder) || ArcadeSettings.IsGameCache(s.CacheFolder)
+                    ? s with { CacheFolder = ArcadeSettings.GameCacheValue } : s,
+            },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => T(value switch { 0 => "settings.cache_folder.user", 1 => "settings.cache_folder.game", _ => "settings.cache_folder.custom" }),
+            2, Hint: T("settings.cache_folder.hint"))),
         new(T("section.volume")),
         new(Setting: volume("settings.master_volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm)),
         new(Setting: volume("settings.music_volume", static s => s.MusicVolume, static (s, v) => s with { MusicVolume = v }, AudioBus.Bgm)),
@@ -286,9 +300,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         var now = get();
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
             || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder
+            || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.OsuFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.OsuFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The pause page's choices (the settings page draws <see cref="Items"/>).</summary>

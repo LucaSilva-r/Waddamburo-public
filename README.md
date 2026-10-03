@@ -37,7 +37,8 @@ per platform.
 3. Run it. On Linux, first make the file executable (`chmod +x Waddamburo-x86_64.AppImage`).
 
 Nothing else needs installing. Waddamburo keeps its own files in a `waddamburo` folder
-next to `data`: settings (`config.cfg`), accounts, scores, and caches.
+next to `data`: settings (`config.cfg`), accounts and scores. Caches go in this PC's user cache
+folder (see [Nijiiro songs](#nijiiro-songs)).
 
 Releases update themselves. At start the game checks for a new version, downloads it and
 restarts into it. Set `auto_update = false` in `waddamburo/config.cfg` to turn this off.
@@ -116,8 +117,14 @@ Green songs.
 The row turns green when the installation can be played. Otherwise it says what is
 missing: no data in that folder, a song table that cannot be read (the `Executable`
 folder must be there too), or no vgmstream-cli. The installation is only read, never
-changed. Decoded music is cached in `waddamburo/cache/vgmstream` so later plays start
-quickly.
+changed. Decoded music is cached so later plays start quickly.
+
+The cache (decoded music and upscaled textures) lives in this PC's user cache folder:
+`%LOCALAPPDATA%\Waddamburo` on Windows, `~/.cache/Waddamburo` on Linux. A game kept on a USB
+stick therefore never decodes onto the stick, and finds (or rebuilds) its cache on whichever PC
+starts it. **Settings → Songs → Cache Folder** (`cache_folder` in `config.cfg`) can put it back in
+the game folder (`game`) or in any folder; a cache left in `waddamburo/cache` by older versions
+moves to the chosen place at start.
 
 ## TaikOnline
 

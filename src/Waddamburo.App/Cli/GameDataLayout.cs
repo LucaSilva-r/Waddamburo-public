@@ -38,10 +38,61 @@ internal sealed record GameDataLayout(
         return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font);
     }
 
-    /// <summary>The upscaled-texture and decoded-audio caches.</summary>
-    public string UpscaleCache => Path.Combine(Home, "cache", "upscaled");
+    /// <summary>
+    /// The cache folder: <paramref name="chosen"/> (config cache_folder, e.g. an internal disk when the
+    /// game runs from a USB stick) or waddamburo/cache. Upscaled textures and decoded audio go inside it.
+    /// </summary>
+    public string Cache(string? chosen) => Waddamburo.Game.Flow.ArcadeSettings.CacheRoot(Home, chosen);
 
-    public string AudioCache => Path.Combine(Home, "cache", "vgmstream");
+    /// <summary>
+    /// Moves a cache left in waddamburo/cache (where every cache lived before cache_folder) into
+    /// <paramref name="root"/>, file by file (across drives too), keeping files already there. Runs at
+    /// start, before anything opens the caches; a file that cannot move stays and is reported.
+    /// </summary>
+    public void MoveGameCacheTo(string root)
+    {
+        var from = Path.Combine(Home, "cache");
+        if (!Directory.Exists(from) || Path.GetFullPath(from).TrimEnd(Path.DirectorySeparatorChar)
+            .Equals(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar), OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            return;
+        var files = Directory.GetFiles(from, "*", SearchOption.AllDirectories);
+        if (files.Length > 0)
+            Console.WriteLine($"Moving the cache from {from} to {root} ({files.Length} files)...");
+        var failed = 0;
+        foreach (var file in files)
+        {
+            var target = Path.Combine(root, Path.GetRelativePath(from, file));
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                if (File.Exists(target))
+                    File.Delete(file);
+                else
+                    File.Move(file, target);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                failed++;
+                Console.Error.WriteLine($"Cache file {file} stays: {exception.Message}");
+            }
+        }
+        if (failed == 0)
+        {
+            try
+            {
+                Directory.Delete(from, recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"Old cache folder {from} stays: {exception.Message}");
+            }
+        }
+    }
+
+    public string UpscaleCache(string? chosen) => Path.Combine(Cache(chosen), "upscaled");
+
+    public string AudioCache(string? chosen) => Path.Combine(Cache(chosen), "vgmstream");
 
     // Files from before the waddamburo folder move in once (never over newer ones).
     private static readonly string[] HomeFiles =

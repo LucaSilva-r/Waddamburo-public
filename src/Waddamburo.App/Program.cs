@@ -106,9 +106,12 @@ try
         Console.WriteLine($"Title font: {layout.FontPath}");
         // Cabinet settings (free play, credits, songs per session) beside the game data.
         var arcadePath = Path.Combine(layout.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
-        Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache;
-        Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
+        // The cache defaults to this PC's user cache (a game on a USB stick must not decode onto it).
+        layout.MoveGameCacheTo(layout.Cache(arcade.CacheFolder));
+        Console.WriteLine($"Cache: {layout.Cache(arcade.CacheFolder)}");
+        Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache(arcade.CacheFolder);
+        Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
         ReleaseConsole.Show(arcade.ShowConsole);
         Strings.Use(arcade.Language);
         Console.WriteLine($"Language: {Strings.Language}");
@@ -125,7 +128,7 @@ try
                 + $"{arcade.SongsPerSession} songs per session).");
         // Fills the texture upscale cache ahead of play, with no game window (see TextureCacheBuilder).
         if (args.FirstOrDefault(static arg => arg.StartsWith("--upscale-textures", StringComparison.Ordinal)) is { } upscale)
-            return TextureCacheBuilder.Run(layout.UpscaleCache, layout.LumenRoot, upscale.Split('=') is [_, var count]
+            return TextureCacheBuilder.Run(layout.UpscaleCache(arcade.CacheFolder), layout.LumenRoot, upscale.Split('=') is [_, var count]
                 ? int.Parse(count, System.Globalization.CultureInfo.InvariantCulture)
                 : Math.Max(1, Environment.ProcessorCount - 2));
         // One-off: every stock and Nijiiro chart, hashed, for the server to import as ranked (see ChartExport).

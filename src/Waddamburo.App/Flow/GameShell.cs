@@ -376,8 +376,10 @@ internal sealed class GameShell : IDisposable
         MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = content => patch(content, null) };
         _presenter = new ScenePresenter(Application, MovieContent);
         // Upscaling runs when the model files are installed (see UpscaleTool).
-        // The settings file sits in USRDIR/waddamburo, the caches under it.
-        if (UpscaleTool.Find(options.ArcadePath is { } settings ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settings))!, "cache", "upscaled") : null) is { } upscale)
+        // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
+        var cacheRoot = options.ArcadePath is { } settings
+            ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
+        if (UpscaleTool.Find(cacheRoot is null ? null : Path.Combine(cacheRoot, "upscaled")) is { } upscale)
         {
             Upscale = upscale;
             MovieContent.Loaded = upscale.RecordUsed;

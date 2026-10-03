@@ -125,6 +125,19 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void CacheFolderDefaultsToThisPcsUserCache()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "usb", "waddamburo");
+        string root(string text) => ArcadeSettings.CacheRoot(home, ArcadeSettings.Parse(text).CacheFolder);
+        Assert.Equal(ArcadeSettings.UserCacheFolder, root(ArcadeSettings.DefaultFileText));
+        Assert.Equal(ArcadeSettings.UserCacheFolder, root("cache_folder =\n"));
+        Assert.Equal(ArcadeSettings.UserCacheFolder, root("cache_folder = User\n"));
+        Assert.Equal(Path.Combine(home, "cache"), root("cache_folder = game\n"));
+        var custom = Path.Combine(Path.GetTempPath(), "fast-cache");
+        Assert.Equal(custom, root($"cache_folder = {custom}\n"));
+    }
+
+    [Fact]
     public void AFileFromANewerBuildMayHoldUnknownSettings() =>
         Assert.True(ArcadeSettings.Parse($"config_version = {ArcadeSettings.CurrentVersion + 1}\nfuture = 1").FreePlay);
 
