@@ -22,12 +22,18 @@ public readonly record struct DonCostume(int? Whole, int Head, int Body, int Pai
 /// </summary>
 public sealed record DonLook(int[] Costume, string Face, string Body, string Limb)
 {
+    /// <summary>The entry's three costume sets, [kigurumi, head, body, puchi] each; null: none served.</summary>
+    public int[][]? Presets { get; init; }
+
     public DonCostume ToCostume() => Costume switch
     {
         [> 0 and var whole, ..] => DonCostume.FromWhole(whole),
         [_, var head, var body, var paint, ..] => new DonCostume(null, head, body, paint),
         _ => DonCostume.Default,
     };
+
+    /// <summary>The puchi chara (costume slot 5; 0 = none). A whole costume does not hide it.</summary>
+    public int Puchi => Costume is [_, _, _, _, var puchi, ..] ? puchi : 0;
 
     public (uint Face, uint Body, uint Limb) Colors => (rgb(Face), rgb(Body), rgb(Limb));
 
@@ -80,6 +86,12 @@ public interface IDonPresentationController
     void SetLook(int playerIndex, DonLook? look)
     {
         SetCostume(playerIndex, look?.ToCostume() ?? DonCostume.Default);
+        SetAccessory(playerIndex, look?.Puchi ?? 0);
+    }
+
+    /// <summary>The puchi chara floating beside a player's Don (0 = none); kept across scenes.</summary>
+    void SetAccessory(int playerIndex, int puchi)
+    {
     }
 
     /// <summary>The entry's card dialog Don (the donExM marker, slot 2): shown while a read card waits for a drum.</summary>
@@ -147,7 +159,10 @@ public static class DonLumenBinding
             motionName(context, arguments[2], motionFallback)));
     }
 
-    /// <summary>Entry costume picker: ChangeCostume(player, id) / ChangeDivideCostume(player, head, body, paint).</summary>
+    /// <summary>
+    /// Entry costume picker: ChangeCostume(player, id) / ChangeDivideCostume(player, head, body, paint),
+    /// and ChangeAccessory(player, puchi, 0) (traced session27-puchi, after the costume call).
+    /// </summary>
     public static void RegisterCostume(LumenHostObject lumen, IDonPresentationController presentation,
         Action<int>? changed = null)
     {
@@ -158,6 +173,15 @@ public static class DonLumenBinding
             if (call.Arguments.Length >= 2 && integer(call.Arguments[0]) is var player and (0 or 1))
             {
                 presentation.SetCostume(player, DonCostume.FromWhole(integer(call.Arguments[1])));
+                changed?.Invoke(player);
+            }
+            return LumenHostValue.Undefined;
+        });
+        lumen.RegisterMethod("ChangeAccessory", call =>
+        {
+            if (call.Arguments.Length >= 2 && integer(call.Arguments[0]) is var player and (0 or 1))
+            {
+                presentation.SetAccessory(player, integer(call.Arguments[1]));
                 changed?.Invoke(player);
             }
             return LumenHostValue.Undefined;

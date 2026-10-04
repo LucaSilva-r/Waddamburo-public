@@ -76,9 +76,22 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
         }
     }
 
+    public void SetAccessory(int playerIndex, int puchi)
+    {
+        try
+        {
+            _renderer.SetAccessory(playerIndex, puchi);
+        }
+        catch (FileNotFoundException exception)
+        {
+            Console.Error.WriteLine($"Don puchi {puchi}: {exception.Message}");
+        }
+    }
+
     public void SetLook(int playerIndex, DonLook? look)
     {
         SetCostume(playerIndex, look?.ToCostume() ?? DonCostume.Default);
+        SetAccessory(playerIndex, look?.Puchi ?? 0);
         _renderer.SetColors(playerIndex, look?.Colors);
     }
 

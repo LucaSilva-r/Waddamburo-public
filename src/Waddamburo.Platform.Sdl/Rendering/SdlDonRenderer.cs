@@ -70,6 +70,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     // Slots 0 and 1: the players; 2: the entry's card dialog Don (donExM), drawn only while shown.
     private readonly Player[] _players = [new(), new(), new()];
     private readonly float[] _pose = new float[DonSkeleton.CharacterValuesPerFrame];
+    // Per player: the puchi chara (parts/acc) and its own loop position in ticks.
+    private readonly Accessory?[] _accessories = new Accessory?[3];
+    private readonly double[] _accessoryTicks = new double[3];
+    private readonly Dictionary<int, Accessory> _accessoryCache = [];
+    private readonly float[] _accessoryUniforms = new float[16 * (PaletteSize + 1)];
 
     /// <summary>Display-rate position between the last two ticks (0 = previous, 1 = latest).</summary>
     public float Interpolation { get; set; } = 1;
@@ -247,6 +252,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             throw new ArgumentOutOfRangeException(nameof(frames));
         foreach (var player in _players)
             player.Advance(frames);
+        for (var index = 0; index < _accessoryTicks.Length; index++)
+            _accessoryTicks[index] += frames;
     }
 
     void IGpuRenderPrepass.Record(uint width, uint height)
@@ -310,6 +317,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                 matrices[index + 1] = Matrix4x4.Identity;
         }
 
+        var accessory = _accessories[playerIndex];
+        var accessoryMeshes = accessory?.Pose(_accessoryTicks[playerIndex], matrices[1], matrices[0],
+            MemoryMarshal.Cast<float, Matrix4x4>(_accessoryUniforms.AsSpan()));
+
         var modelView = (ushort)(playerIndex * 2);
         var postView = (ushort)(modelView + 1);
         var (pixelWidth, pixelHeight) = ((ushort)target.Pixels.Width, (ushort)target.Pixels.Height);
@@ -327,67 +338,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var replaceGreen = _colors[playerIndex] is { } ownFace ? rgb(ownFace.Face)
             : playerIndex != 1 ? color(0xF9, 0x4C, 0x2C) : color(0x6C, 0xC3, 0xC6);
         var replaceBlue = _colors[playerIndex] is { } ownLimb ? rgb(ownLimb.Limb) : color(0xF8, 0xF0, 0xDC);
-        foreach (var blended in new[] { false, true })
-        {
-            foreach (var mesh in _meshes[playerIndex])
-            {
-                foreach (var material in mesh.Materials)
-                {
-                    if ((material.SourceBlend != 0) != blended)
-                        continue;
-                    var kind = material.ShaderKind;
-                    // Kind 8 is a head back-face pass, not the normal-mesh inverted hull.
-                    // The silhouette post-pass supplies its visible outer edge.
-                    if (kind == 8)
-                        continue;
-                    // bgfx keeps uniforms per draw, so every draw carries its pose.
-                    fixed (float* pose = _poseUniforms)
-                    {
-                        bgfx.set_uniform(_cameraUniform, pose, 1);
-                        bgfx.set_uniform(_bonesUniform, pose + 16, PaletteSize);
-                    }
-                    // Hull line: 3 stage pixels, offset per axis (clip units per stage pixel).
-                    var outline = new Float4(kind is 3 or 8 ? 3f : 0, 2f / targetSize.Width, 2f / targetSize.Height, 0);
-                    bgfx.set_uniform(_outlineUniform, &outline, 1);
-                    var parameters = new Float4(material.AlphaFunction != 0 || kind == 8
-                        ? Math.Max(material.AlphaReference, (byte)6) / 255f
-                        : 0, kind, 0, 0);
-                    bgfx.set_uniform(_materialUniform, &parameters, 1);
-                    bgfx.set_uniform(_replaceRedUniform, &replaceRed, 1);
-                    bgfx.set_uniform(_replaceGreenUniform, &replaceGreen, 1);
-                    bgfx.set_uniform(_replaceBlueUniform, &replaceBlue, 1);
-                    // CCW-front culling; reflecting the 2P camera reverses projected winding, so
-                    // swap the culled side to keep the authored visible side.
-                    var cull = material.CullMode switch
-                    {
-                        0x405 => reflectedCamera ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
-                        0x404 => reflectedCamera ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
-                        _ => bgfx.StateFlags.None,
-                    };
-                    // Blended decals (face disc, costume prints) are tested against the opaque body so the
-                    // ones on its far side stay hidden, but do not write depth.
-                    var state = (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA | bgfx.StateFlags.DepthTestLequal | cull);
-                    state |= blended
-                        ? BgfxSupport.BlendSeparate(bgfx.StateFlags.BlendSrcAlpha, bgfx.StateFlags.BlendInvSrcAlpha,
-                            bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha)
-                        : (ulong)bgfx.StateFlags.WriteZ;
-                    bgfx.set_state(state, 0);
-                    var texture = kind == 2
-                        ? face
-                        : material.TextureIds.Length > 0 && mesh.Textures.TryGetValue(material.TextureIds[0], out var materialTexture)
-                            ? materialTexture
-                            : _whiteTexture;
-                    bgfx.set_texture(0, _materialSampler, texture,
-                        kind == 1 ? (uint)(bgfx.SamplerFlags.MinPoint | bgfx.SamplerFlags.MagPoint | bgfx.SamplerFlags.MipPoint) : 0);
-                    bgfx.set_vertex_buffer(0, mesh.VertexBuffer, 0, uint.MaxValue);
-                    bgfx.set_index_buffer(mesh.IndexBuffer, 0, uint.MaxValue);
-                    bgfx.submit(modelView, _modelProgram, 0, (byte)bgfx.DiscardFlags.All);
-                }
-            }
-        }
+        submitMeshes(modelView, _meshes[playerIndex], _poseUniforms, overlay: false);
 
         bgfx.set_view_frame_buffer(postView, target.Post);
         bgfx.set_view_rect(postView, 0, 0, pixelWidth, pixelHeight, 0, 1);
+        bgfx.set_view_mode(postView, bgfx.ViewMode.Sequential);
         bgfx.set_state((ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA), 0);
         bgfx.set_texture(0, _characterSampler, bgfx.get_texture(target.Model, 0), uint.MaxValue);
         var postParameters = new Float4(3f * target.Pixels.Width / targetSize.Width,
@@ -395,6 +350,74 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         bgfx.set_uniform(_postUniform, &postParameters, 1);
         bgfx.set_vertex_buffer(0, _postTriangle, 0, 3);
         bgfx.submit(postView, _postProgram, 0, (byte)bgfx.DiscardFlags.All);
+        // The puchi goes on top after the silhouette pass: no thick outline (its sprite has its own),
+        // and no depth, so its flat quad never cuts into Don where they overlap.
+        if (accessoryMeshes is not null)
+            submitMeshes(postView, accessoryMeshes, _accessoryUniforms, overlay: true);
+
+        void submitMeshes(ushort view, List<GpuMesh> meshes, float[] uniforms, bool overlay)
+        {
+            foreach (var blended in new[] { false, true })
+            {
+                foreach (var mesh in meshes)
+                {
+                    foreach (var material in mesh.Materials)
+                    {
+                        if ((material.SourceBlend != 0) != blended)
+                            continue;
+                        var kind = material.ShaderKind;
+                        // Kind 8 is a head back-face pass, not the normal-mesh inverted hull.
+                        // The silhouette post-pass supplies its visible outer edge.
+                        if (kind == 8)
+                            continue;
+                        // bgfx keeps uniforms per draw, so every draw carries its pose.
+                        fixed (float* pose = uniforms)
+                        {
+                            bgfx.set_uniform(_cameraUniform, pose, 1);
+                            bgfx.set_uniform(_bonesUniform, pose + 16, PaletteSize);
+                        }
+                        // Hull line: 3 stage pixels, offset per axis (clip units per stage pixel).
+                        var outline = new Float4(kind is 3 or 8 ? 3f : 0, 2f / targetSize.Width, 2f / targetSize.Height, 0);
+                        bgfx.set_uniform(_outlineUniform, &outline, 1);
+                        var parameters = new Float4(material.AlphaFunction != 0 || kind == 8
+                            ? Math.Max(material.AlphaReference, (byte)6) / 255f
+                            : 0, kind, 0, 0);
+                        bgfx.set_uniform(_materialUniform, &parameters, 1);
+                        var (red, green, blue) = (replaceRed, replaceGreen, replaceBlue);
+                        bgfx.set_uniform(_replaceRedUniform, &red, 1);
+                        bgfx.set_uniform(_replaceGreenUniform, &green, 1);
+                        bgfx.set_uniform(_replaceBlueUniform, &blue, 1);
+                        // CCW-front culling; reflecting the 2P camera reverses projected winding, so
+                        // swap the culled side to keep the authored visible side.
+                        var cull = material.CullMode switch
+                        {
+                            0x405 => reflectedCamera ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
+                            0x404 => reflectedCamera ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
+                            _ => bgfx.StateFlags.None,
+                        };
+                        // Blended decals (face disc, costume prints) are tested against the opaque body so the
+                        // ones on its far side stay hidden, but do not write depth.
+                        var state = (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA | cull
+                            | (overlay ? bgfx.StateFlags.DepthTestAlways : bgfx.StateFlags.DepthTestLequal));
+                        state |= blended
+                            ? BgfxSupport.BlendSeparate(bgfx.StateFlags.BlendSrcAlpha, bgfx.StateFlags.BlendInvSrcAlpha,
+                                bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha)
+                            : (ulong)bgfx.StateFlags.WriteZ;
+                        bgfx.set_state(state, 0);
+                        var texture = kind == 2
+                            ? face
+                            : material.TextureIds.Length > 0 && mesh.Textures.TryGetValue(material.TextureIds[0], out var materialTexture)
+                                ? materialTexture
+                                : _whiteTexture;
+                        bgfx.set_texture(0, _materialSampler, texture,
+                            kind == 1 ? (uint)(bgfx.SamplerFlags.MinPoint | bgfx.SamplerFlags.MagPoint | bgfx.SamplerFlags.MipPoint) : 0);
+                        bgfx.set_vertex_buffer(0, mesh.VertexBuffer, 0, uint.MaxValue);
+                        bgfx.set_index_buffer(mesh.IndexBuffer, 0, uint.MaxValue);
+                        bgfx.submit(view, _modelProgram, 0, (byte)bgfx.DiscardFlags.All);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -427,6 +450,43 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         _faceTextures[playerIndex] = faces(playerTwoVariant ? mirrored : face, recolor: playerIndex == 1 && !playerTwoVariant);
     }
 
+    /// <summary>
+    /// The puchi chara floating beside a player's Don (parts/acc/acc_NNN000; 0 = none). Kept apart
+    /// from the costume: a whole costume replaces head and body but not the puchi.
+    /// </summary>
+    public void SetAccessory(int playerIndex, int puchi)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
+        if (puchi <= 0)
+        {
+            _accessories[playerIndex] = null;
+            return;
+        }
+        if (!_accessoryCache.TryGetValue(puchi, out var accessory))
+            _accessoryCache[puchi] = accessory = loadAccessory($"parts/acc/acc_{puchi:000}000");
+        if (_accessories[playerIndex] != accessory)
+            _accessoryTicks[playerIndex] = 0;
+        _accessories[playerIndex] = accessory;
+    }
+
+    // _info.bin word 19 is the sprite count: 2 = a 512x256 sheet of two frames side by side, the quad
+    // mapping the left one (U 0-0.5); 1 = a single 256x256 sprite (U 0-1), never shifted.
+    private Accessory loadAccessory(string basePath)
+    {
+        var info = File.ReadAllBytes(resolveAsset(basePath + "_info.bin"));
+        var sprites = info.Length >= 80 ? System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(info.AsSpan(76)) : 1;
+        var bind = readAnimation(basePath + "_bind.bin");
+        var loop = readAnimation(basePath + "_loop.bin");
+        var skeleton = DonSkeleton.ForAnimation(bind);
+        var inverseBind = skeleton.EvaluateWorld(bind.GetFrame(0))
+            .Select(static world => Matrix4x4.Invert(world, out var inverse) ? inverse : Matrix4x4.Identity).ToArray();
+        var frames = sprites == 2 ? new[] { loadModel(basePath + ".nud"), loadModel(basePath + ".nud", uShift: 0.5f) }
+            : [loadModel(basePath + ".nud")];
+        return new Accessory(frames, skeleton, inverseBind, loop);
+    }
+
     private bool assetExists(string relativePath) => File.Exists(Path.Combine(_assetRoot, relativePath));
 
     private List<GpuMesh> model(string relativePath)
@@ -443,7 +503,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return textures;
     }
 
-    private List<GpuMesh> loadModel(string relativePath)
+    private List<GpuMesh> loadModel(string relativePath, float uShift = 0)
     {
         var meshes = new List<GpuMesh>();
         var path = resolveAsset(relativePath);
@@ -455,10 +515,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             {
                 if (polygon.TriangleIndices.IsEmpty)
                     continue;
-                var vertices = polygon.Vertices.Select(static vertex => new GpuVertex(
+                var vertices = polygon.Vertices.Select(vertex => new GpuVertex(
                     vertex.Position,
                     vertex.Normal,
-                    vertex.TextureCoordinate,
+                    vertex.TextureCoordinate + new Vector2(uShift, 0),
                     vertex.Color,
                     vertex.BoneWeights,
                     vertex.BoneIndices)).ToArray();
@@ -685,6 +745,35 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             }
             if (expressionOffset is int offset)
                 pose[offset] = current[offset];
+        }
+    }
+
+    /// <summary>A puchi chara: its sprite frames' meshes and its own two-bone loop.</summary>
+    private sealed record Accessory(List<GpuMesh>[] Frames, DonSkeleton Skeleton, Matrix4x4[] InverseBind, DonAnimationFile Loop)
+    {
+        // ponytail: the game sets the sprite step at runtime (shiftuv); _info.bin's 0.02 read as one
+        // step per 50 ticks. Retune if it flips too fast or slow next to the game.
+        private const double TicksPerSprite = 50;
+
+        /// <summary>
+        /// Writes the camera and the accessory palette (its bones on top of Don's placement bone) and
+        /// returns the current sprite's meshes.
+        /// </summary>
+        public List<GpuMesh> Pose(double ticks, Matrix4x4 donPlacement, Matrix4x4 camera, Span<Matrix4x4> uniforms)
+        {
+            var position = ticks % Loop.FrameCount;
+            var index = (int)position;
+            var current = Loop.GetFrame(index);
+            var next = Loop.GetFrame((index + 1) % Loop.FrameCount);
+            Span<float> frame = stackalloc float[current.Length];
+            var weight = (float)(position - index);
+            for (var i = 0; i < frame.Length; i++)
+                frame[i] = current[i] + (next[i] - current[i]) * weight;
+            var world = Skeleton.EvaluateWorld(frame);
+            uniforms[0] = camera;
+            for (var bone = 0; bone < PaletteSize; bone++)
+                uniforms[bone + 1] = bone < world.Length ? InverseBind[bone] * world[bone] * donPlacement : Matrix4x4.Identity;
+            return Frames[(int)(ticks / TicksPerSprite) % Frames.Length];
         }
     }
 
