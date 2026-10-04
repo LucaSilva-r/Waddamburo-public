@@ -71,6 +71,34 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void InstanceOverlaysFollowTheirClipAndMatchByAncestorPath()
+    {
+        var movie = createMovie(placementNameStringIndex: 31);
+        var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var wrapper = child with
+        {
+            CharacterId = 99,
+            DeclaredFrameCount = 1,
+            DeclaredLabelCount = 0,
+            RepeatedLabelCount = 0,
+            Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(),
+                child.Timeline.OfType<LmbPlaceObjectCommand>().First() with { CharacterId = 7 }],
+        };
+        var player = new LumenPlayer(movie with { Sprites = movie.Sprites.Add(wrapper) }, 1280, 720, rootCharacterId: 99);
+        var surface = new LumenNativeSurfaceKey("name:test");
+        int overlays() => player.CreateRenderSnapshot(1).Quads.Count(quad => quad.NativeSurface == surface);
+
+        player.SetInstanceOverlay("placed/placed", surface, new LumenNativeSurfacePlacement(0, 0, 10, 10));
+        Assert.Equal(1, overlays()); // only the inner clip
+        player.SetInstanceOverlay("placed/placed", null);
+        player.SetInstanceOverlay("placed", surface, new LumenNativeSurfacePlacement(0, 0, 10, 10));
+        Assert.Equal(2, overlays()); // every clip with that name
+        player.SetInstanceOverlay("placed", null);
+        player.SetInstanceOverlay("other/placed", surface, new LumenNativeSurfacePlacement(0, 0, 10, 10));
+        Assert.Equal(0, overlays());
+    }
+
+    [Fact]
     public void FastForwardRunsANamedClipAheadOfTheRest()
     {
         var movie = createMovie(placementNameStringIndex: 31, actionBytecode: [0x00]);

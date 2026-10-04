@@ -41,19 +41,28 @@ internal sealed class ScoreSync : IDisposable
             Upload(account.Profile);
             RefreshBests(account.Profile);
         }
-        // Names, looks and avatars as the website has them now (revoked logins drop out).
-        if (accounts is not null)
-            _ = Task.Run(async () =>
+        RefreshProfiles();
+    }
+
+    /// <summary>
+    /// Names, looks, titles and avatars as the website has them now, in the background (revoked logins
+    /// drop out). At startup and at every credit start, so website changes show by the next entry.
+    /// </summary>
+    public void RefreshProfiles()
+    {
+        if (_accounts is not { } accounts || !Online)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
             {
-                try
-                {
-                    await accounts.RefreshAsync(account => ClientFor(account.Token)!).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-                {
-                    Console.Error.WriteLine($"Warning ACCOUNT: profiles not refreshed ({exception.Message}).");
-                }
-            });
+                await accounts.RefreshAsync(account => ClientFor(account.Token)!).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                Console.Error.WriteLine($"Warning ACCOUNT: profiles not refreshed ({exception.Message}).");
+            }
+        });
     }
 
     /// <summary>The local score database, open when a profile plays (null: guests, nothing saved).</summary>

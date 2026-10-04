@@ -309,7 +309,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                     && Shell.Hosts.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
                 {
                     var top = boards[(int)player.Course] ?? []; // fetched, nobody on it yet
-                    var placement = Shell.Placements[lane] = RankingBoard.Place(top, profile.Baid, profile.Name,
+                    var placement = Shell.Placements[lane] = RankingBoard.Place(top, profile.Baid, profile.DisplayName,
                         (int)Shell.Gameplay.Results[lane].Score);
                     if (placement.RankIn >= 0)
                         Shell.Hosts.Rankings.Record(_song, (int)player.Course, placement.Top);

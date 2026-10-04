@@ -5,6 +5,17 @@ namespace Waddamburo.Game.Tests;
 public sealed class AccountBookTests
 {
     [Fact]
+    public void ReadsTheNameBoardTitleAndCostumeSets()
+    {
+        var account = System.Text.Json.JsonSerializer.Deserialize<ScoreAccount>("""
+            {"token":"t","baid":1,"name":"どん","title":"ほんのきもち","title_plate":3,
+               "look":{"costume":[32,0,0,0,0],"presets":[[32,0,0,0],[0,10,2,4],[0,0,0,0]],"face":"#000000","body":"#000000","limb":"#000000"}}
+            """, ScoreClient.Json)!;
+        Assert.Equal(("ほんのきもち", 3), (account.Profile.Title, account.Profile.TitlePlate));
+        Assert.Equal([0, 10, 2, 4], account.Profile.Look!.Presets![1]);
+    }
+
+    [Fact]
     public void MigratesTheSingleAccountFileAndKeepsTheDefaultRules()
     {
         var directory = Directory.CreateTempSubdirectory("waddamburo-accounts").FullName;

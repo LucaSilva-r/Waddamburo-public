@@ -16,6 +16,9 @@ internal sealed record SetupChoice(SetupChoiceKind Kind, string Label, long Baid
     /// <summary>The Don-chan look on the stand (an account's or a visitor's; null: the default Don).</summary>
     public Waddamburo.Game.Don.DonLook? Look { get; init; }
 
+    /// <summary>The account's or visitor's profile (its title goes on the stand's name board); null: none.</summary>
+    public ScoreProfile? Profile { get; init; }
+
     /// <summary>Whether a Don stands for this choice (the options show as text instead).</summary>
     public bool HasDon => Kind is SetupChoiceKind.Guest or SetupChoiceKind.Account
         || Kind == SetupChoiceKind.Friend && Baid != 0;
@@ -265,7 +268,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             new(SetupChoiceKind.Guest, Strings.T("setup.guest")),
             .. _book.Accounts.Select(account => new SetupChoice(SetupChoiceKind.Account,
                 account.Profile.DisplayName, account.Baid, account.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null,
-                account.Baid == _book.DefaultBaid) { Look = account.Look }),
+                account.Baid == _book.DefaultBaid) { Look = account.Look, Profile = account.Profile }),
             .. online ? [new SetupChoice(SetupChoiceKind.Friend, Strings.T("setup.join_with_code")), new(SetupChoiceKind.AddAccount, Strings.T("setup.sign_in"))]
                 : Array.Empty<SetupChoice>(),
         ];
@@ -294,7 +297,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var side = _sides[index];
         var choice = choices[position(index, choices)];
         return choice.Kind == SetupChoiceKind.Friend && side.Visitor is { } visitor
-            ? choice with { Label = visitor.DisplayName, Baid = visitor.Baid, Look = visitor.Look,
+            ? choice with { Label = visitor.DisplayName, Baid = visitor.Baid, Look = visitor.Look, Profile = visitor,
                 Avatar = visitor.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null }
             : choice;
     }

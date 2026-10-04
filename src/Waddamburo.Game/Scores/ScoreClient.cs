@@ -17,7 +17,13 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
     /// <summary>The website account's display name.</summary>
     public string? AccountName { get; init; }
 
-    public ScoreProfile Profile => new(Baid, Name) { Look = Look, Avatar = Avatar, Token = Token, AccountName = AccountName };
+    /// <summary>The name board's title (empty: none) and its plate (player_name TITLE_LABEL: 0 normal, 1 rainbow, 2 gold, 3 platinum).</summary>
+    public string? Title { get; init; }
+
+    public int TitlePlate { get; init; }
+
+    public ScoreProfile Profile => new(Baid, Name)
+        { Look = Look, Avatar = Avatar, Token = Token, AccountName = AccountName, Title = Title, TitlePlate = TitlePlate };
 }
 
 /// <summary>A device login in progress: the code to show and where to enter it.</summary>

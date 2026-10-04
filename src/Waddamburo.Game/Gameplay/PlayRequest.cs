@@ -18,8 +18,20 @@ public static class TaikoGuest
     // ponytail: process-wide, set by the shell per credit; every name board and save reads it.
     public static Scores.ScoreProfile?[] Profiles { get; } = new Scores.ScoreProfile?[2];
 
-    public static string Name(int side) => Profiles[side] is { Name.Length: > 0 } profile ? profile.Name
+    /// <summary>The name on a side's boards: the account's public name, else the Don-chan's, else the default.</summary>
+    public static string Name(int side) => Profiles[side] is { DisplayName.Length: > 0 } profile ? profile.DisplayName
         : side == 1 ? "かっちゃん" : "どんちゃん";
+
+    /// <summary>The longest official title; the name board is laid out for it (servers may send more).</summary>
+    public const int MaxTitleLength = 20;
+
+    public static string Title(int side)
+    {
+        var title = new System.Globalization.StringInfo(Profiles.ElementAtOrDefault(side)?.Title ?? "");
+        return title.LengthInTextElements > MaxTitleLength ? title.SubstringByTextElements(0, MaxTitleLength) : title.String;
+    }
+
+    public static int TitlePlate(int side) => Profiles.ElementAtOrDefault(side)?.TitlePlate ?? 0;
 }
 
 public sealed record PlayerChartRequest

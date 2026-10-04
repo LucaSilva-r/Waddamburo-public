@@ -164,6 +164,7 @@ internal sealed class PlayerSetupController : IDisposable
         _shownChoice[side] = choice;
         if (choice.HasDon)
             shell.Don?.SetLook(side, choice.Look);
+        shell.Hosts.Entry?.SetSetupProfile(side, choice.Profile);
     }
 
     // Two choices look the same on the stand: the same Don look, or the same option text.

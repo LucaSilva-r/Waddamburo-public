@@ -178,6 +178,17 @@ public sealed class GameFlowSessionTests
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
     }
 
+    [Fact]
+    public void FrontendBindingWithDonAndEntryRegistersEachHostMethodOnce()
+    {
+        // The game's entry wiring: Don calls (ChangeAccessory...) and the entry host's own must not collide.
+        var player = new LumenPlayer(createDonMotionMovie(), 1280, 720,
+            hostBinding: new LumenFrontendHostBinding(new SyntheticFrontendServices(), new GameFlowSession(),
+                new SyntheticDonPresentation(), new EntrySceneHost(new IndicatorParts(IndicatorPartsScene.Entry, countdown: false))));
+
+        player.Advance();
+    }
+
     [Theory]
     [InlineData(0, 30, 31, "don_result_in", "don_result_loop")]
     [InlineData(0, 32, 33, "don_result_clear", "don_result_clear_loop")]

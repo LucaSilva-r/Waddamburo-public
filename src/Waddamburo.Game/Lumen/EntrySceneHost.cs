@@ -141,6 +141,17 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     public bool SetupMode { get; set; }
 
     private readonly bool[] _donHidden = new bool[2], _boardShown = new bool[2];
+    private readonly ScoreProfile?[] _setupProfiles = new ScoreProfile?[2];
+
+    /// <summary>Setup: the profile on a side's stand; its title and plate go on that side's name board.</summary>
+    public void SetSetupProfile(int side, ScoreProfile? profile)
+    {
+        if (side is not (0 or 1))
+            return;
+        _setupProfiles[side] = profile;
+        if (_boardShown[side])
+            Parts.RetitleEntryName(side, profile ?? ScoreProfile.LocalGuest);
+    }
 
     /// <summary>
     /// Setup: whether a side's Don and name board show (an option replaces the Don with text; a drum
@@ -156,7 +167,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _donHidden[side] = !don;
         if (board && !_boardShown[side])
         {
-            Parts.ShowEntryName(side, "", joined: true);
+            Parts.ShowEntryName(side, "", joined: true, _setupProfiles[side] ?? ScoreProfile.LocalGuest);
             entry.TrySetInstanceAlpha($"name_bg/touch_msg_{side + 1}p", 0);
         }
         else if (!board && _boardShown[side])
@@ -439,7 +450,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 CardDialog?.Invoke(true);
                 Parts.ShowCardBand(IndicatorParts.CardBand.Reading);
                 call(entry, "SetCardInfo", number(2), number(0), no, no);
-                Parts.ShowCardName(TaikoPlayerName(card));
+                Parts.ShowCardName(TaikoPlayerName(card), card);
                 Don?.SetLook(2, card.Look); // the dialog's Don, before its costume "loads"
                 _cardReadAt = _ticks; // Advance: dialog Don, green band, ReplyServer
             }
@@ -495,11 +506,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         });
         lumen.RegisterMethod("Terminate", _ => LumenHostValue.FromBoolean(true));
         // Traced calls with no visible effect on the entry movies (card reader, indicator lamps,
-        // mode notifications, counter reports). ponytail: accessories are accepted but not shown yet.
+        // mode notifications, counter reports). ChangeAccessory (the puchi) is DonLumenBinding's.
         foreach (var name in new[]
         {
             "SetCardReaderEvent", "Wakeup", "SetTouchMode",
-            "ChangeAccessory",
             "NotifyDecide", "NotifyModeSelectEnd", "Apply", "SelectCommonSound", "NotifyTimeSec",
         })
             lumen.RegisterMethod(name, static _ => LumenHostValue.Undefined);
@@ -561,20 +571,29 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     private static void assignCostumes(LumenPlayer entry, int player, DonLook? look)
     {
         var p = number(player);
-        // ponytail: traced guest costume set; a profile player gets their current look in slot 0, which
-        // the movie then puts on (traced carded join: slot 0 = kigurumi 32, then ChangeCostume(0, 32)).
-        // Their owned lists and presets (slots 1-2) are not served yet.
-        int[] worn = look?.Costume is [var wornWhole, var wornHead, var wornBody, var wornPaint, ..] ? [wornWhole, wornHead, wornBody, wornPaint] : [0, 0, 0, 0];
+        // ponytail: traced guest costume set and lists. A profile player's slots are their costume sets
+        // (TaikOnline presets, the worn one first; ponytail: confirm by trace whether the game's slot 0 is
+        // the current outfit), else their current look in slot 0, which the movie then puts on (traced:
+        // slot 0 head 5 body 6 acce 5, then ChangeDivideCostume(0, 5, 6, 0) and ChangeAccessory(0, 5, 0)).
+        // Owned lists are not served yet: the guest lists plus what the slots wear. The sets keep no face
+        // paint (the worn one is used); acce is the puchi chara.
+        (int Whole, int Head, int Body, int Puchi) wornLook = look?.Costume is [var wornWhole, var wornHead, var wornBody, ..]
+            ? (wornWhole, wornHead, wornBody, look.Puchi) : (0, 0, 0, 0);
+        var paint = look?.Costume is [_, _, _, var wornPaint, ..] ? wornPaint : 0;
+        (int Whole, int Head, int Body, int Puchi)[] slots = look?.Presets is { Length: 3 } presets && presets.All(static set => set.Length >= 4)
+            ? [.. presets.Select(static set => (set[0], set[1], set[2], set[3]))
+                .OrderBy(set => set != wornLook)] // the worn set first: the movie puts on slot 0
+            : look is not null ? [wornLook, (0, 21, 20, 0), (0, 10, 2, 0)]
+            : [(0, 22, 21, 0), (0, 21, 20, 0), (0, 10, 2, 0)];
         call(entry, "ReleaseCostume", p);
-        foreach (var id in new[] { 0, 4, 7, 14, worn[0] }.Distinct()) call(entry, "AssignCostume", p, number(id));
-        foreach (var id in new[] { 0, 10, 21, 22, worn[1] }.Distinct()) call(entry, "AssignCosHead", p, number(id));
-        foreach (var id in new[] { 0, 2, 20, 21, worn[2] }.Distinct()) call(entry, "AssignCosBody", p, number(id));
-        foreach (var (slot, head, body) in new[] { (0, 22, 21), (1, 21, 20), (2, 10, 2) })
+        foreach (var id in new[] { 0, 4, 7, 14, wornLook.Whole }.Concat(slots.Select(static s => s.Whole)).Distinct()) call(entry, "AssignCostume", p, number(id));
+        foreach (var id in new[] { 0, 10, 21, 22, wornLook.Head }.Concat(slots.Select(static s => s.Head)).Distinct()) call(entry, "AssignCosHead", p, number(id));
+        foreach (var id in new[] { 0, 2, 20, 21, wornLook.Body }.Concat(slots.Select(static s => s.Body)).Distinct()) call(entry, "AssignCosBody", p, number(id));
+        for (var slot = 0; slot < slots.Length; slot++)
         {
-            var current = slot == 0 && look is not null;
-            call(entry, "AssignSlotCostume", p, number(slot), number(current ? worn[0] : 0));
-            call(entry, "AssignSlotHeadBody", p, number(slot), number(current ? worn[1] : head), number(current ? worn[2] : body));
-            call(entry, "AssignSlotPaintAcce", p, number(slot), number(current ? worn[3] : 0), number(0));
+            call(entry, "AssignSlotCostume", p, number(slot), number(slots[slot].Whole));
+            call(entry, "AssignSlotHeadBody", p, number(slot), number(slots[slot].Head), number(slots[slot].Body));
+            call(entry, "AssignSlotPaintAcce", p, number(slot), number(paint), number(slots[slot].Puchi));
         }
         call(entry, "AssignRandomCostume", p, number(0));
         call(entry, "AssignRandomHeadBody", p, number(5), number(21));

@@ -3,6 +3,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -194,7 +195,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _soundLane = players == 2 ? lane : null;
             _playHitSound = playHitSound;
             void sound(GameplaySoundEvent cue, int combo = 0) => playEventSound?.Invoke(_soundLane, cue, combo);
-            var PlayerName = TaikoGuest.Name(side); // no title (traced)
             // Skin parts are addressed by role ("bg_nomal"), whatever variant the composition picked.
             var layers = sceneLayers.ToDictionary(entry => role(entry.Definition), entry => entry.Layer);
             LumenMovieContent content(string name) => sceneLayers.Single(entry => role(entry.Definition) == name).Content;
@@ -304,20 +304,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
             };
             var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
-            // Player name board (traced call sequence; one SetChar per character).
+            // Player name board (traced call sequence; the name is host text, see NameText).
             var nameBoard = layers["player_name"].Player;
-            var characters = System.Globalization.StringInfo.GetTextElementEnumerator(PlayerName);
-            var nameLength = new System.Globalization.StringInfo(PlayerName).LengthInTextElements;
-            call(nameBoard, "SetPlayer", LumenHostValue.FromNumber(side));
-            call(nameBoard, "SetKinotake", LumenHostValue.FromNumber(-1));
-            call(nameBoard, "SetTitleName", LumenHostValue.FromString(""));
-            call(nameBoard, "SetTitlePanelID", LumenHostValue.FromNumber(0));
-            call(nameBoard, "SetDani", LumenHostValue.FromNumber(0), LumenHostValue.FromBoolean(false));
-            call(nameBoard, "SetCover", LumenHostValue.FromBoolean(false));
-            call(nameBoard, "SetNameSize", LumenHostValue.FromNumber(nameLength));
-            for (var index = 0; characters.MoveNext(); index++)
-                call(nameBoard, "SetChar", LumenHostValue.FromNumber(index), LumenHostValue.FromString(characters.GetTextElement()));
-            call(nameBoard, "Apply");
+            GuestNameBoard.Show(nameBoard, side, visible: false);
             // Host label jumps traced in the game: gauge fire on full gauge, splash at Go-Go start
             // (one player only; two-player gameplay loads no splash), and the end-of-song banner.
             var gaugeFire = skin("gage_fire_1p"); // none in Waiwai

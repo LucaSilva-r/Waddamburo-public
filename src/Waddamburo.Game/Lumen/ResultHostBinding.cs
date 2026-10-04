@@ -165,14 +165,13 @@ public sealed class ResultHostBinding(
         var p = number(side);
         var no = LumenHostValue.FromBoolean(false);
         call(player, "SetPlayerForPlayerName", p, board);
-        call(player, "SetTitleForPlayerName", LumenHostValue.FromString(""), board);
-        call(player, "SetTitlePanelForPlayerName", number(0), board);
+        call(player, "SetTitleForPlayerName", LumenHostValue.FromString(TaikoGuest.Title(side)), board);
+        call(player, "SetTitlePanelForPlayerName", number(TaikoGuest.TitlePlate(side)), board);
         call(player, "SetDaniForPlayerName", number(0), no, board);
-        var characters = System.Globalization.StringInfo.GetTextElementEnumerator(playerName);
-        call(player, "SetNameSizeForPlayerName", number(new System.Globalization.StringInfo(playerName).LengthInTextElements), board);
-        for (var index = 0; characters.MoveNext(); index++)
-            call(player, "SetCharForPlayerName", number(index), LumenHostValue.FromString(characters.GetTextElement()), board);
+        // Kana-only glyphs: the name is host text over this board's names clip (see NameText).
+        call(player, "SetNameSizeForPlayerName", number(0), board);
         call(player, "ApplyForPlayerName");
+        NameText.Show(player, $"board{boardIndex + 1}p/name_board/names", playerName);
     }
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);

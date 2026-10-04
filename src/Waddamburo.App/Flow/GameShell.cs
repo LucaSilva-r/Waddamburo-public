@@ -155,6 +155,7 @@ internal sealed class GameShell : IDisposable
     private readonly CostumeIconTextures _costumeIcons;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
+    private readonly NameTextTextures _nameTexts;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly HomeControls _home;
@@ -278,6 +279,15 @@ internal sealed class GameShell : IDisposable
             var ids = costumeSetting.Split(',').Select(int.Parse).ToArray();
             Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
         }
+        // Diagnostic: WADDAMBURO_TITLE=plate:text and/or WADDAMBURO_NAME=name give P1 a guest profile with them.
+        var diagnosticName = Environment.GetEnvironmentVariable("WADDAMBURO_NAME");
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_TITLE") is [var plate, ':', .. var titleText])
+            TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { Title = titleText, TitlePlate = plate - '0', AccountName = diagnosticName };
+        else if (diagnosticName is { Length: > 0 })
+            TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { AccountName = diagnosticName };
+        // Diagnostic: WADDAMBURO_DON_PUCHI=id puts that puchi chara beside P1 at start.
+        if (Don is not null && int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DON_PUCHI"), out var puchiSetting))
+            Don.SetAccessory(0, puchiSetting);
         var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
         _audioDevice = needsAudio ? openAudio() : null;
         if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
@@ -293,6 +303,7 @@ internal sealed class GameShell : IDisposable
             squash: () => Arcade.SquashTitles);
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
+        _nameTexts = new NameTextTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
@@ -729,8 +740,10 @@ internal sealed class GameShell : IDisposable
 
     public void ResetPlayers()
     {
-        // A credit starts with guests (default Dons); cards and the home account attach as players join.
+        // A credit starts with guests (default Dons); cards and the home account attach as players join,
+        // with the website's current looks.
         Array.Clear(TaikoGuest.Profiles);
+        Sync.RefreshProfiles();
         for (var slot = 0; slot < 3; slot++)
             Don?.SetLook(slot, null);
         JoinedSides.Clear();
@@ -820,7 +833,7 @@ internal sealed class GameShell : IDisposable
 
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface)
+        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface)
         ?? Titles.Resolve(surface);
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),
@@ -908,6 +921,7 @@ internal sealed class GameShell : IDisposable
     {
         _playerSetup?.Dispose();
         _textFields.Dispose();
+        _nameTexts.Dispose();
         _search.Dispose();
         Hosts?.Rankings?.Dispose();
         _pill.Dispose();

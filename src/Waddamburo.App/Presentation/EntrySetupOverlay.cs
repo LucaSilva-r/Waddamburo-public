@@ -15,7 +15,8 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
     // Stage positions (1280x720), per side: the Don on its stand, the board's name line, the status line.
     private static readonly float[] StandX = [150, 1130];
     private const float StandY = 420, QrY = 368, QrSize = 150;
-    private static readonly float[] TagX = [222, 1112];
+    // The board centres its own kana names at 214.75 (measured on 1-, 5- and 7-character names).
+    private static readonly float[] TagX = [215, 1105];
     private const float TagY = 683, TagWidth = 176, TagHeight = 24;
     private const float MessageY = 560;
 

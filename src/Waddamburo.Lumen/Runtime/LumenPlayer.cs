@@ -28,6 +28,8 @@ public sealed class LumenPlayer
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeFillBinding> _nativeFills = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box)> _overlays =
+        new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
     private LumenInputSnapshot _inputSnapshot = LumenInputSnapshot.Empty;
@@ -536,6 +538,49 @@ public sealed class LumenPlayer
         }
         visit(_root, 0);
         return lines;
+    }
+
+    /// <summary>
+    /// Draws a host surface over every clip named <paramref name="instancePath"/> ("a/b/name" scopes it to
+    /// clips under those ancestors),
+    /// in that clip's own coordinates: it follows the clip's transform, colour and visibility, like a text
+    /// field would. Used for the name boards' names (the board's own glyphs are kana only). Null removes it.
+    /// </summary>
+    public void SetInstanceOverlay(string instancePath, LumenNativeSurfaceKey? surface, LumenNativeSurfacePlacement box = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+        if (surface is { } key)
+            _overlays[instancePath] = (key, box);
+        else
+            _overlays.Remove(instancePath);
+    }
+
+    // The overlay whose path ends with this clip and its nearest ancestors ("board1p/name_board/names").
+    private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box)? findOverlay(DisplayInstance instance)
+    {
+        foreach (var (path, overlay) in _overlays)
+        {
+            var node = instance;
+            var matched = true;
+            foreach (var name in path.Split('/', StringSplitOptions.RemoveEmptyEntries).Reverse())
+            {
+                if (node is null || node.Name != name) { matched = false; break; }
+                node = node.Parent;
+            }
+            if (matched) return overlay;
+        }
+        return null;
+    }
+
+    /// <summary>A named clip's transform to movie coordinates (its own and its parents').</summary>
+    public bool TryGetInstanceTransform(string instancePath, out LumenMatrix transform)
+    {
+        transform = LumenMatrix.Identity;
+        if (findInstance(instancePath) is not { } instance)
+            return false;
+        for (var node = instance; node is not null; node = node.Parent)
+            transform = transform.Then(node.Transform);
+        return true;
     }
 
     /// <summary>Returns the rendered bounds of a named clip in movie coordinates.</summary>
@@ -2333,6 +2378,19 @@ public sealed class LumenPlayer
                         quad.MultiplyColor.Alpha * color.Multiply.Alpha),
                     MaskDepth = maskDepth,
                 });
+        }
+
+        if (_overlays.Count > 0 && instance.Name.Length > 0 && findOverlay(instance) is { } overlay)
+        {
+            var (x0, y0) = (overlay.Box.X, overlay.Box.Y);
+            var (x1, y1) = (x0 + overlay.Box.Width, y0 + overlay.Box.Height);
+            LumenRenderVertex corner(float x, float y, float u, float v)
+            {
+                var position = transform.Transform(x, y);
+                return new LumenRenderVertex(position.X, position.Y, u, v);
+            }
+            quads.Add(new LumenRenderQuad(0, corner(x0, y0, 0, 0), corner(x1, y0, 1, 0), corner(x1, y1, 1, 1),
+                corner(x0, y1, 0, 1), color.Multiply, color.Add, blend, NativeSurface: overlay.Surface, MaskDepth: maskDepth));
         }
 
         if (instance.Children.Count == 0) return;

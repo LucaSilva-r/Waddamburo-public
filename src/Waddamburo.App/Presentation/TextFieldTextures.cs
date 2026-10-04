@@ -23,7 +23,9 @@ internal sealed class TextFieldTextures(SdlApplication application, string fontP
         int w = Math.Max(1, (int)MathF.Ceiling(width)), h = Math.Max(1, (int)MathF.Ceiling(height));
         var canvas = new VectorCanvas(w, h, scale, fontPath);
         var anchor = align switch { 'r' => 1f, 'c' => 0.5f, _ => 0f };
-        canvas.Text(text, anchor * w, h / 2f, w, Math.Min(h, size), anchorX: anchor,
+        // Flash sets text 2 px below the box top with the font's leading above the capitals, so its ink sits
+        // about 0.1 em below the box centre (player_name's title: box -2..22, size 20, ink ~3..21).
+        canvas.Text(text, anchor * w, h / 2f + 0.1f * size, w, Math.Min(h, size), anchorX: anchor,
             tint: ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
         return _uploaded[(key, scale)] = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
     }

@@ -18,6 +18,11 @@ public sealed record ScoreProfile(long Baid, string Name)
     /// <summary>The website account's display name (Latin letters too, unlike the Don-chan's); null for none.</summary>
     public string? AccountName { get; init; }
 
+    /// <summary>The name board's title (empty: none) and its plate (player_name TITLE_LABEL: 0 normal, 1 rainbow, 2 gold, 3 platinum).</summary>
+    public string? Title { get; init; }
+
+    public int TitlePlate { get; init; }
+
     /// <summary>What the home entry's name board shows: the account name, else the Don-chan's.</summary>
     public string DisplayName => AccountName is { Length: > 0 } account ? account : Name;
 

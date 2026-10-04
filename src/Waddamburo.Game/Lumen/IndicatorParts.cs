@@ -120,10 +120,17 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     }
 
     /// <summary>A card was read: its name goes on the centre board (SetPlayer 2), shown by <see cref="FadeInCardName"/>.</summary>
-    public void ShowCardName(string name)
+    public void ShowCardName(string name, Scores.ScoreProfile? card = null)
     {
         if (_nameBoards.Count > 0)
-            GuestNameBoard.Show(_nameBoards[0], 2, name, visible: false);
+            GuestNameBoard.Show(_nameBoards[0], 2, name, visible: false, profile: card);
+    }
+
+    /// <summary>Home setup: the choice on a drum's stand changed; its board shows that profile's title (no fade).</summary>
+    public void RetitleEntryName(int side, Scores.ScoreProfile profile)
+    {
+        if (_nameBoards.Count >= 3)
+            GuestNameBoard.Show(_nameBoards[1 + side], side, "", profile: profile);
     }
 
     /// <summary>NotifyDataSelect(1): the card waits for a drum; its board fades in.</summary>
@@ -137,12 +144,12 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     /// EntryData(side): the card's name moves to that drum's board, greyed until that player joins
     /// (<see cref="UncoverEntryName"/>).
     /// </summary>
-    public void ShowEntryName(int side, string name, bool joined)
+    public void ShowEntryName(int side, string name, bool joined, Scores.ScoreProfile? profile = null)
     {
         if (_nameBoards.Count < 3)
             return;
         var board = _nameBoards[1 + side];
-        GuestNameBoard.Show(board, side, name, visible: false, cover: !joined);
+        GuestNameBoard.Show(board, side, name, visible: false, cover: !joined, profile: profile);
         call(board, "Fadein");
         _claimedBoards.Add(1 + side);
         call(_nameBoards[0], "SetVisible", LumenHostValue.FromBoolean(false));
