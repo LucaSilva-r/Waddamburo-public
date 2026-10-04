@@ -2,6 +2,7 @@ using Waddamburo.App.Presentation;
 using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Diagnostics;
+using Waddamburo.Formats.Nut;
 using Waddamburo.Game;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
@@ -30,6 +31,10 @@ internal sealed class FilePreview : IDisposable
     private DdpArchive? _archive;
     private LumenPlayer? _movie;
     private PreviewTree.Node? _movieNode;
+    // A .nut texture being shown: index into _movieTextures and its pixel size.
+    private (int Index, int Width, int Height)? _image;
+    private long _lastClickTicks;
+    private int _lastClickRow = -1;
     // M: run movies without the Lumen game object, i.e. their developer branch, which loads its
     // indicator parts itself through MovieClipLoader.
     private bool _developerMode;
@@ -105,6 +110,7 @@ internal sealed class FilePreview : IDisposable
         _audioPath = null;
         _movie = null;
         _movieNode = null;
+        _image = null;
         foreach (var texture in _movieTextures)
             _application.ReleaseTexture(texture);
         _movieTextures.Clear();
@@ -123,6 +129,7 @@ internal sealed class FilePreview : IDisposable
                 AttributesToSkip = FileAttributes.ReparsePoint
             })
             .Where(path => Path.GetExtension(path).Equals(".ddp", StringComparison.OrdinalIgnoreCase)
+                || Path.GetExtension(path).Equals(".nut", StringComparison.OrdinalIgnoreCase)
                 || AudioExtensions.Contains(Path.GetExtension(path))).ToArray();
         var tree = new PreviewTree(directory, files);
         stopPlayback();
@@ -133,7 +140,8 @@ internal sealed class FilePreview : IDisposable
         _selected = _scroll = 0;
         refreshRows(tree.Root);
         _title = "ASSET BROWSER";
-        _status = files.Length == 0 ? "No supported files in this folder" : "Expand a folder to browse movies and audio";
+        _status = files.Length == 0 ? "No supported files in this folder"
+            : "Expand a folder to browse movies, textures and audio; double-click a folder to open it";
     }
 
     private PreviewTree.Node? selectedNode => _rows.Count == 0 ? null : _rows[_selected].Node;
@@ -163,6 +171,9 @@ internal sealed class FilePreview : IDisposable
             loadArchive(node.Path);
             PreviewTree.SetMovies(node, _archive!.Index.Movies.Select(movie => movie.Name));
         }
+        else if (node.IsTexturePack && !node.MoviesLoaded)
+            PreviewTree.SetTextures(node, readNut(node.Path).Textures
+                .Select(texture => (texture.Index, $"#{texture.Index} {texture.Width}X{texture.Height}")));
         else node.Expanded = true;
         refreshRows(node);
     }
@@ -187,6 +198,7 @@ internal sealed class FilePreview : IDisposable
             else expand(node);
         }
         else if (node.Movie is not null) playMovie(node);
+        else if (node.Texture is { } index) showTexture(node, index);
         else
         {
             stopPlayback();
@@ -216,6 +228,30 @@ internal sealed class FilePreview : IDisposable
         Console.WriteLine($"{node.Movie} callbacks (type 'Name arg ...' here): {string.Join(", ", _movie.CallbackNames)}");
         _status = node.Movie + (_developerMode ? " - playing (developer mode)" : " - playing");
     }
+
+    private static NutFile readNut(string path)
+    {
+        if (new FileInfo(path).Length > ParserLimits.Default.MaxFileBytes)
+            throw new InvalidDataException("Texture file exceeds the configured parser size limit.");
+        return NutFile.Parse(File.ReadAllBytes(path));
+    }
+
+    private void showTexture(PreviewTree.Node node, int index)
+    {
+        stopPlayback();
+        var texture = readNut(node.Path).Textures.First(texture => texture.Index == index);
+        var pixels = NutTextureDecoder.DecodeRgba8(texture);
+        _movieTextures.Add(_application.UploadRgba8((uint)texture.Width, (uint)texture.Height, pixels));
+        _image = (_movieTextures.Count - 1, texture.Width, texture.Height);
+        _status = $"{Path.GetFileName(node.Path)} texture {index}: {texture.Width}x{texture.Height}";
+    }
+
+    /// <summary>Opens a folder as the browser root (double-click; the root row or Backspace there goes up).</summary>
+    private void openFolder(string directory) => attempt(() =>
+    {
+        browse(directory);
+        VgmstreamCli.GameFolder = directory;
+    });
 
     private static void invoke(LumenPlayer movie, string line)
     {
@@ -331,7 +367,9 @@ internal sealed class FilePreview : IDisposable
     private void back()
     {
         if (selectedNode is not { } node) return;
-        if (node.CanExpand && node.Expanded)
+        if (node.Parent is null && Path.GetDirectoryName(node.Path) is { } up)
+            openFolder(up);
+        else if (node.CanExpand && node.Expanded)
         {
             node.Expanded = false;
             refreshRows(node);
@@ -464,8 +502,18 @@ internal sealed class FilePreview : IDisposable
             var row = _scroll + (int)((y * 720 - 100) / 26);
             if (row < _rows.Count)
             {
+                var node = _rows[row].Node;
+                var doubleClick = row == _lastClickRow && Environment.TickCount64 - _lastClickTicks < 400;
+                _lastClickRow = doubleClick ? -1 : row;
+                _lastClickTicks = Environment.TickCount64;
+                var arrowLeft = 20 + Math.Min(_rows[row].Depth, 12) * 12;
                 select(row, autoplay: false);
-                activate();
+                // The arrow expands/collapses; double-clicking a folder opens it (the root row goes up);
+                // a click on anything else plays it.
+                if (node.CanExpand && x * 1280 >= arrowLeft && x * 1280 < arrowLeft + 24) activate();
+                else if (doubleClick && node.Parent is null && Path.GetDirectoryName(node.Path) is { } up) openFolder(up);
+                else if (doubleClick && node.IsFolder) openFolder(node.Path);
+                else if (doubleClick || !node.CanExpand) activate();
             }
         }
         else if (y >= 620f / 720 && y < 657f / 720)
@@ -504,12 +552,14 @@ internal sealed class FilePreview : IDisposable
         }
         text(labels, $"{_selected + 1} / {_rows.Count} VISIBLE", 20, 608, 2, 29);
         text(labels, "ARROWS SELECT/AUTOPLAY  ENTER EXPAND", 20, 640, 1, 58);
+        text(labels, "DOUBLE-CLICK FOLDER OPEN  ROOT ROW UP", 20, 651, 1, 58);
         text(labels, "WHEEL SCROLL  DRAG SCROLLBAR/TIMELINE", 20, 662, 1, 58);
         text(labels, "BACKSPACE COLLAPSE  D/K CUE  Q/E FRAME", 20, 684, 1, 58);
         if (selectedNode is { } selected)
         {
             text(labels, selected.Label, 420, 25, 2, 69);
-            var path = selected.Movie ?? Path.GetRelativePath(_location, selected.Path);
+            var path = selected.Movie ?? Path.GetRelativePath(_location, selected.Path)
+                + (selected.Texture is { } textureIndex ? $" #{textureIndex}" : "");
             text(labels, path, 420, 58, 1, 137);
         }
         if (_movie is { } movie)
@@ -542,9 +592,21 @@ internal sealed class FilePreview : IDisposable
             rect(quads, 420 + (int)(820 * progress) - 3, 580, 6, 18, RenderColor.White);
             text(labels, $"FRAME {movie.CurrentFrame} / {movie.FrameCount - 1} - DRAG TIMELINE TO SEEK", 420, 559, 1, 137);
         }
+        else if (_image is { } image)
+        {
+            // Aspect-fit, at most 4x, nearest-sampled so small textures stay crisp (drawable pixels).
+            var surface = _application.GetPixelSize();
+            var scale = Math.Min(4f, Math.Min(850f / 1280 * surface.Width / image.Width, 450f / 720 * surface.Height / image.Height));
+            float w = image.Width * scale / surface.Width, h = image.Height * scale / surface.Height;
+            float left = 410f / 1280 + (850f / 1280 - w) / 2, top = 105f / 720 + (450f / 720 - h) / 2;
+            rect(quads, 410, 105, 850, 450, new RenderColor(.18f, .2f, .24f, 1));
+            quads.Add(RenderQuad.FromRectangles(_movieTextures[image.Index], new RenderRectangle(left, top, w, h),
+                RenderRectangle.Full, RenderColor.White, RenderColor.Transparent, RenderSampling.Nearest));
+            text(labels, $"{image.Width} X {image.Height}", 420, 559, 1, 137);
+        }
         else
         {
-            text(labels, _audio is null ? "SELECT A MOVIE OR AUDIO FILE" : "AUDIO PREVIEW", 430, 260, 3, 43);
+            text(labels, _audio is null ? "SELECT A MOVIE, TEXTURE OR AUDIO FILE" : "AUDIO PREVIEW", 430, 260, 3, 43);
             if (_audioPath is { } path)
             {
                 text(labels, Path.GetFileName(path), 430, 310, 2, 67);

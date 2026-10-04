@@ -3,19 +3,23 @@ namespace Waddamburo.App.Tools;
 /// <summary>Browser hierarchy independent of rendering, decoders, and user-owned file contents.</summary>
 internal sealed class PreviewTree
 {
-    internal sealed class Node(string label, string path, bool folder = false, string? movie = null)
+    internal sealed class Node(string label, string path, bool folder = false, string? movie = null, int? texture = null)
     {
         public string Label { get; } = label;
         public string Path { get; } = path;
         public bool IsFolder { get; } = folder;
         public string? Movie { get; } = movie;
+        /// <summary>A texture inside a .nut file (its index), or null.</summary>
+        public int? Texture { get; } = texture;
         public Node? Parent { get; private set; }
         public List<Node> Children { get; } = [];
         public bool Expanded { get; set; }
         public bool MoviesLoaded { get; set; }
         public bool IsArchive => !IsFolder && Movie is null
             && System.IO.Path.GetExtension(Path).Equals(".ddp", StringComparison.OrdinalIgnoreCase);
-        public bool CanExpand => IsFolder || IsArchive;
+        public bool IsTexturePack => !IsFolder && Texture is null
+            && System.IO.Path.GetExtension(Path).Equals(".nut", StringComparison.OrdinalIgnoreCase);
+        public bool CanExpand => IsFolder || IsArchive || IsTexturePack;
 
         public void Add(Node child)
         {
@@ -72,7 +76,7 @@ internal sealed class PreviewTree
     {
         Node? find(Node node)
         {
-            if (!node.IsFolder && node.Movie is null && node.Path == path) return node;
+            if (!node.IsFolder && node.Movie is null && node.Texture is null && node.Path == path) return node;
             foreach (var child in node.Children)
                 if (find(child) is { } found) return found;
             return null;
@@ -87,6 +91,15 @@ internal sealed class PreviewTree
             archive.Add(new Node(System.IO.Path.GetFileName(name.Replace('\\', '/')), archive.Path, movie: name));
         archive.MoviesLoaded = true;
         archive.Expanded = true;
+    }
+
+    public static void SetTextures(Node pack, IEnumerable<(int Index, string Label)> textures)
+    {
+        pack.Children.Clear();
+        foreach (var (index, label) in textures)
+            pack.Add(new Node(label, pack.Path, texture: index));
+        pack.MoviesLoaded = true;
+        pack.Expanded = true;
     }
 
     private static void sort(Node node)
