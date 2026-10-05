@@ -24,6 +24,7 @@ public sealed class TaikoLumenPresentation
     private readonly LumenPlayer _board;
     private readonly float _hitX;
     private readonly float _hitY;
+    private readonly float _hitRadius;
     private int _combo;
     private readonly TaikoGoGoPresentation _gogo;
     private readonly TaikoHitFlights? _flights;
@@ -64,6 +65,7 @@ public sealed class TaikoLumenPresentation
         if (!target.Player.TryGetInstanceBounds("target", out var bounds))
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+        _hitRadius = _hitY - target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y).Y;
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
     }
@@ -79,6 +81,12 @@ public sealed class TaikoLumenPresentation
     }
 
     public event Action<bool>? GoGoChanged;
+
+    /// <summary>The centre of the lane's hit target on the 1280x720 stage.</summary>
+    public (float X, float Y) HitPoint => (_hitX, _hitY);
+
+    /// <summary>Half the hit target's height on the stage.</summary>
+    public float HitRadius => _hitRadius;
 
     public void Update(TimeSpan time)
     {

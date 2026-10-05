@@ -2,6 +2,9 @@ using System.Globalization;
 
 namespace Waddamburo.Game.Flow;
 
+/// <summary>Which hits get the early/late glow: none, Goods and Bads, or every hit (Greats too).</summary>
+public enum TimingIndicator { Off, GoodBad, Always }
+
 /// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
@@ -13,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 16;
+    public const int CurrentVersion = 17;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -173,6 +176,13 @@ public sealed record ArcadeSettings
         cache_folder = user
 
         """,
+        """
+        # timing_indicator (also in the Settings menu): a glow under the judgement circle after a hit,
+        # blue when early, red when late. good_bad = after a Good or Bad only; always = after every hit
+        # (Greats too); off.
+        timing_indicator = good_bad
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -209,6 +219,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Song select shows Oni at once instead of after repeated right-rim hits (the original).</summary>
     public bool ShowOni { get; init; } = true;
+
+    /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
+    public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
 
     /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>
     public sealed class EquatableList(IEnumerable<string> items) : IReadOnlyList<string>, IEquatable<EquatableList>
@@ -542,6 +555,13 @@ public sealed record ArcadeSettings
                 "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
+                "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
+                {
+                    "off" => TimingIndicator.Off,
+                    "good_bad" => TimingIndicator.GoodBad,
+                    "always" => TimingIndicator.Always,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: timing_indicator is off, good_bad or always, not '{value}'."),
+                } },
                 "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
                 {
                     "gamepad" => false,
@@ -612,6 +632,12 @@ public sealed record ArcadeSettings
             ["drum_debounce_ms"] = settings.DrumDebounceMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
+            ["timing_indicator"] = settings.TimingIndicator switch
+            {
+                TimingIndicator.Off => "off",
+                TimingIndicator.Always => "always",
+                _ => "good_bad",
+            },
             ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
             ["language"] = settings.Language,
             ["title_language"] = settings.EnglishTitles ? "english" : "japanese",

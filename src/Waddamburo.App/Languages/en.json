@@ -200,5 +200,10 @@
   "notices.source.player": "For {0}",
   "job.hash_library": "Preparing the song library for online scores",
   "job.upload_scores": "Uploading scores",
-  "job.failed": "{0}: failed ({1})"
+  "job.failed": "{0}: failed ({1})",
+
+  "settings.timing_indicator": "Timing Indicator",
+  "settings.timing_indicator.good_bad": "Good/Bad",
+  "settings.timing_indicator.always": "Always",
+  "settings.timing_indicator.hint": "A glow under the judgement circle after a hit: blue when early, red when late. Good/Bad: only after a Good or Bad. Always: after Greats too."
 }

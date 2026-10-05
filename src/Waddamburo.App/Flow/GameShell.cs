@@ -93,6 +93,7 @@ internal sealed class GameShell : IDisposable
     private readonly PerformanceOverlay _performance;
     // Home only: a cabinet's notices are for its operator (their view comes later).
     private readonly NoticeOverlay? _notices;
+    private readonly TimingMarkOverlay _timingMarks;
 
     public CatalogAssetRouter Assets { get; }
     public SongSelectCatalogView SongCatalog { get; }
@@ -307,6 +308,7 @@ internal sealed class GameShell : IDisposable
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _nameTexts = new NameTextTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);
+        _timingMarks = new TimingMarkOverlay(Application);
         if (Arcade.Home)
             _notices = new NoticeOverlay(Application, options.FontPath, Sync.Notices, Sync.Jobs,
                 baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
@@ -875,6 +877,7 @@ internal sealed class GameShell : IDisposable
             frame.ClearColor,
             [
                 .. frame.Quads,
+                .. Active.Id == FlowScenes.Gameplay ? _timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator) : [],
                 .. _playerSetup?.Quads(interpolation) ?? [],
                 .. indicatorQuads(false),
                 .. Overlay.Quads(interpolation, Titles.Resolve),
@@ -936,6 +939,7 @@ internal sealed class GameShell : IDisposable
         _pill.Dispose();
         _performance.Dispose();
         _notices?.Dispose();
+        _timingMarks.Dispose();
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();

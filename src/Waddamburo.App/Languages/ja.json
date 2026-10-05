@@ -200,5 +200,10 @@
   "notices.source.player": "{0}さんへ",
   "job.hash_library": "オンラインスコアのために曲を準備中",
   "job.upload_scores": "スコアを送信中",
-  "job.failed": "{0}：失敗（{1}）"
+  "job.failed": "{0}：失敗（{1}）",
+
+  "settings.timing_indicator": "タイミング表示",
+  "settings.timing_indicator.good_bad": "可/不可",
+  "settings.timing_indicator.always": "すべて",
+  "settings.timing_indicator.hint": "叩いたあと判定枠の下が光ります：早いと青、遅いと赤。可/不可：可と不可のときだけ。すべて：良でも。"
 }

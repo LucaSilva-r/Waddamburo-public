@@ -104,6 +104,25 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void TimingIndicatorDefaultsToGoodAndBadAndSavesBack()
+    {
+        Assert.Equal(TimingIndicator.GoodBad, ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).TimingIndicator);
+        Assert.Equal(TimingIndicator.Always, ArcadeSettings.Parse("timing_indicator = Always").TimingIndicator);
+        Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("timing_indicator = sometimes"));
+        var path = Path.GetTempFileName();
+        try
+        {
+            var settings = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText) with { TimingIndicator = TimingIndicator.Off };
+            ArcadeSettings.SaveMenuSettings(path, settings);
+            Assert.Equal(TimingIndicator.Off, ArcadeSettings.Parse(File.ReadAllText(path)).TimingIndicator);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void DisplaySettingsParseAndSaveBack()
     {
         var settings = ArcadeSettings.Parse("fullscreen_mode = exclusive\nfullscreen_resolution = 1920x1080\nrefresh_rate = 144\nvsync = false\nletterbox_size = 80");

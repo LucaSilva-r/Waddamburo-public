@@ -133,6 +133,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _stage?.Update(chartTime);
     }
 
+    /// <summary>Each lane's latest judged hit, early or late, for the timing glow.</summary>
+    public IEnumerable<TimingMark> TimingMarks => _lanes.Select(static lane => lane.LastTiming).OfType<TimingMark>();
+
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
     {
         if (_lanes.Length == 0)
@@ -180,6 +183,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public TaikoJudgementSession Session => _session;
 
         public TaikoReplay Replay { get; } = new();
+
+        public TimingMark? LastTiming { get; private set; }
 
         /// <summary>
         /// <paramref name="lane"/> 0 = the top lane, 1 = the second player's lower lane;
@@ -331,8 +336,18 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
                 if (cleared && !missed) _character?.React("don_full_combo");
             };
+            (float X, float Y) hitPoint = default; // the lane's target, once its presentation exists below
+            var hitRadius = 0f;
             _session.Judged += judgement =>
             {
+                // Every hit was early or late (the setting picks which are shown); a note that passed
+                // unhit has no hit to time.
+                if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is { } result)
+                {
+                    var (x, y) = hitPoint;
+                    LastTiming = new TimingMark(offset < TimeSpan.Zero, result == TaikoHitResult.Great, x, y, hitRadius,
+                        System.Diagnostics.Stopwatch.GetTimestamp());
+                }
                 stage?.Apply(judgement);
                 var previousScore = score.Value;
                 if (score.Apply(judgement, _session.CurrentTime)) updateScore(score.Value - previousScore);
@@ -421,6 +436,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                             throw new InvalidDataException($"Note text movie is missing label '{label}'.");
                         return text;
                     }));
+            hitPoint = _presentation.HitPoint;
+            hitRadius = _presentation.HitRadius;
+            Console.WriteLine($"Gameplay lane {lane}: hit target at ({hitPoint.X:F1}, {hitPoint.Y:F1}), radius {hitRadius:F1}.");
             _presentation.GoGoChanged += active =>
             {
                 if (active && goGoSplash is not null) label(goGoSplash, "splash");
@@ -532,3 +550,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         }
     }
 }
+
+/// <summary>
+/// A judged hit, early or late (<paramref name="Great"/>: within the Great window), at a lane's hit
+/// target (X, Y and Radius on the 1280x720 stage); <paramref name="At"/> is a Stopwatch timestamp.
+/// </summary>
+internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At);
