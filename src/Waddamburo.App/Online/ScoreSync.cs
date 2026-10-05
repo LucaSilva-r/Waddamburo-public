@@ -222,6 +222,12 @@ internal sealed class ScoreSync : IDisposable
                     };
                     realtime.Received += (channel, name, data) =>
                     {
+                        // An admin ended or deleted a system notice: it leaves the board.
+                        if (name == "notice-ended" && data.TryGetProperty("id", out var ended) && ended.GetString() is { } endedId)
+                        {
+                            Notices.Dismiss($"{NoticeSource.System}:{endedId}");
+                            return;
+                        }
                         if (name != "notice" || NoticeClient.ParseNotice(data) is not { } notice)
                             return;
                         Notices.Add(ownerOf(channel) is { } owner
