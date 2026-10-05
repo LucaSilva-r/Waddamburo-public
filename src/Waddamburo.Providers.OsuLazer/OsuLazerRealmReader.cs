@@ -86,6 +86,7 @@ public static class OsuLazerRealmReader
                     beatmap.DynamicApi.Get<bool>("Hidden"))
                 {
                     Bpm = beatmap.DynamicApi.Get<double>("BPM"),
+                    OnlineId = beatmap.DynamicApi.Get<int>("OnlineID"),
                     Length = TimeSpan.FromMilliseconds(beatmap.DynamicApi.Get<double>("Length")),
                 };
             })
@@ -98,6 +99,7 @@ public static class OsuLazerRealmReader
             beatmaps)
         {
             DateAdded = set.DynamicApi.Get<DateTimeOffset>("DateAdded"),
+            OnlineId = set.DynamicApi.Get<int>("OnlineID"),
         };
     }
 }
@@ -119,6 +121,9 @@ public sealed record OsuLazerBeatmapSet(
     IReadOnlyList<OsuLazerBeatmap> Beatmaps)
 {
     public DateTimeOffset? DateAdded { get; init; }
+
+    /// <summary>The set's id on osu.ppy.sh; zero or negative when it was never submitted.</summary>
+    public int OnlineId { get; init; }
 }
 
 public sealed record OsuLazerFile(string Filename, string Hash);
@@ -146,6 +151,9 @@ public sealed record OsuLazerBeatmap(
     public double Bpm { get; init; }
 
     public TimeSpan Length { get; init; }
+
+    /// <summary>The beatmap's id on osu.ppy.sh; zero or negative when it was never submitted.</summary>
+    public int OnlineId { get; init; }
 }
 
 public sealed class OsuLazerRealmReadException : Exception

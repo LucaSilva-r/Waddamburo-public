@@ -70,6 +70,9 @@ public sealed record SongChartDescriptor
     /// game's own songs author them apart from the solo chart (different parts, hand notes).
     /// </summary>
     public ImmutableArray<CatalogAssetKey> DuetChartAssets { get; }
+
+    /// <summary>The chart's id on its online source (an osu.ppy.sh beatmap id), when known.</summary>
+    public int? OnlineId { get; init; }
 }
 
 public sealed record SongDescriptor
@@ -136,6 +139,9 @@ public sealed record SongDescriptor
 
     /// <summary>The chart author (osu! mapper), when the source names one; for browsing.</summary>
     public string? Creator { get; init; }
+
+    /// <summary>The song's id on its online source (an osu.ppy.sh beatmap set id), when known.</summary>
+    public int? OnlineSetId { get; init; }
 
     /// <summary>When the song joined the player's library, when the source records it; for browsing.</summary>
     public DateTimeOffset? DateAdded { get; init; }

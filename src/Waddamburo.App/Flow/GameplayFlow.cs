@@ -317,7 +317,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 scores.Save(new PlayRecord(id, profile.Baid, sha,
                     player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
                     Shell.Gameplay.Replays[lane].Encode()),
-                    ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor.Title.Primary, _song?.Descriptor.Subtitle));
+                    ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor));
                 saved.Add(profile);
             }
             catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)

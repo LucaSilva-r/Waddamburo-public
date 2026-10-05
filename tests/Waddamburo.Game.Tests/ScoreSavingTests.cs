@@ -11,8 +11,8 @@ public sealed class ScoreSavingTests
     private static readonly TaikoJudgementWindows Windows = new(
         TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108));
 
-    private static PlayableChart chart(string key = "chart", double secondNote = 1.5) => new(
-        new ChartKey(new SongKey(SongSourceKind.Tja, "song"), key),
+    private static PlayableChart chart(string key = "chart", double secondNote = 1.5, SongSourceKind source = SongSourceKind.Tja) => new(
+        new ChartKey(new SongKey(source, "song"), key),
         TimeSpan.Zero,
         TimeSpan.FromSeconds(3),
         [
@@ -80,10 +80,14 @@ public sealed class ScoreSavingTests
         try
         {
             using var store = new ScoreStore(path);
-            var sha = ChartHash.Compute(chart(), TaikoCourse.Oni);
-            store.Save(new PlayRecord(Guid.NewGuid(), 42, sha, chart().Key, "normal",
+            var osu = chart(source: SongSourceKind.OsuLazer);
+            var song = new SongDescriptor(osu.Key.Song, new SongTitle("千本桜", "千本桜", "Senbonzakura"), "Kurousa-P",
+                [new SongChartDescriptor(osu.Key, "Inner Oni", new CatalogAssetKey(new CatalogProviderId("osu-lazer"), "chart"),
+                    TaikoCourse.Oni) { OnlineId = 123 }]) { OnlineSetId = 45 };
+            var sha = ChartHash.Compute(osu, TaikoCourse.Oni);
+            store.Save(new PlayRecord(Guid.NewGuid(), 42, sha, osu.Key, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
-                new TaikoReplay().Encode()), ChartUpload.From(chart(), TaikoCourse.Oni, "Song", null));
+                new TaikoReplay().Encode()), ChartUpload.From(osu, TaikoCourse.Oni, song));
             var server = new StubServer(sha);
             using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
             var client = new ScoreClient(http);
@@ -92,6 +96,13 @@ public sealed class ScoreSavingTests
             Assert.Equal(0, await client.SyncAsync(store, 42));
             Assert.Contains("\"chart_sha256\":\"" + sha, server.Plays);
             Assert.Contains("\"max_combo\":3", server.Plays);
+            // The website's metadata survives the local database.
+            var uploaded = JsonDocument.Parse(server.Chart!).RootElement;
+            Assert.Equal("Senbonzakura", uploaded.GetProperty("title_en").GetString());
+            Assert.Equal("Inner Oni", uploaded.GetProperty("difficulty").GetString());
+            Assert.Equal(123, uploaded.GetProperty("osu_beatmap_id").GetInt32());
+            Assert.Equal(45, uploaded.GetProperty("osu_beatmapset_id").GetInt32());
+            Assert.Equal("set:45", uploaded.GetProperty("song_key").GetString());
             // The imported notes are the hashed canonical bytes.
             using var gzip = new System.IO.Compression.GZipStream(
                 new MemoryStream(Convert.FromBase64String(JsonDocument.Parse(server.Chart!).RootElement.GetProperty("notes").GetString()!)),
@@ -168,7 +179,7 @@ public sealed class ScoreSavingTests
             PlayRecord play(bool cleared, int miss) => new(Guid.NewGuid(), 42, "sha", key, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 1000, 3 - miss, 0, miss, 3 - miss, 0, 50, cleared),
                 DateTimeOffset.UtcNow, new TaikoReplay().Encode());
-            var upload = ChartUpload.From(chart(), TaikoCourse.Oni, "Song", null);
+            var upload = ChartUpload.From(chart(), TaikoCourse.Oni, null);
             using (var store = new ScoreStore(path))
             {
                 store.Save(play(cleared: true, miss: 1), upload);
@@ -211,7 +222,7 @@ public sealed class ScoreSavingTests
             Assert.Equal(500, store.PreviousBest(42, "sha", id));
             store.Save(new PlayRecord(id, 42, "sha", played, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 700, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
-                new TaikoReplay().Encode()), ChartUpload.From(chart(), TaikoCourse.Oni, "Song", null));
+                new TaikoReplay().Encode()), ChartUpload.From(chart(), TaikoCourse.Oni, null));
             Assert.Equal(TaikoCrown.FullCombo, store.Crowns(42)[played.ToString()]);
             Assert.Equal(500, store.PreviousBest(42, "sha", id));
             Assert.Equal(700, store.PreviousBest(42, "sha", Guid.NewGuid()));

@@ -109,7 +109,10 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                         pair.Value.DifficultyName.Length == 0 ? "Taiko" : pair.Value.DifficultyName,
                         new CatalogAssetKey(provider, $"chart:{pair.Value.FileHash}:{OsuCourseLayout.Level(pair.Value.StarRating)}"),
                         pair.Key,
-                        OsuCourseLayout.Level(pair.Value.StarRating))).ToArray();
+                        OsuCourseLayout.Level(pair.Value.StarRating))
+                    {
+                        OnlineId = pair.Value.OnlineId > 0 ? pair.Value.OnlineId : null,
+                    }).ToArray();
                     var artist = orEnglish(first.ArtistUnicode, first.Artist);
                     // A set dealt into several entries names each entry's charts so they can be told apart.
                     var subtitle = entries.Count == 1 ? artist : $"{artist} [{string.Join(" / ", entry.Values.Select(static b => b.DifficultyName))}]";
@@ -124,6 +127,7 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                         subtitle)
                     {
                         Creator = nullIfBlank(first.Creator),
+                        OnlineSetId = set.OnlineId > 0 ? set.OnlineId : null,
                         DateAdded = set.DateAdded,
                         Bpm = first.Bpm > 0 ? first.Bpm : null,
                         Length = entry.Values.Max(static beatmap => beatmap.Length) is { } length && length > TimeSpan.Zero ? length : null,

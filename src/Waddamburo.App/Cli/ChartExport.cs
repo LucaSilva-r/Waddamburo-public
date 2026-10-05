@@ -47,7 +47,7 @@ internal static class ChartExport
                     skipped++;
                     continue;
                 }
-                var upload = ChartUpload.From(playable, course, song.Title.Primary, song.Subtitle);
+                var upload = ChartUpload.From(playable, course, song);
                 using (var writer = new Utf8JsonWriter(output))
                 {
                     writer.WriteStartObject();
@@ -57,6 +57,14 @@ internal static class ChartExport
                     writer.WriteString("subtitle", upload.Subtitle);
                     writer.WriteString("source", upload.Source);
                     writer.WriteNumber("course", upload.Course);
+                    writer.WriteString("song_key", upload.SongKey);
+                    writer.WriteString("title_en", upload.TitleEn);
+                    writer.WriteString("subtitle_en", upload.SubtitleEn);
+                    writer.WriteString("difficulty", upload.Difficulty);
+                    if (upload.OsuBeatmapId is { } beatmap)
+                        writer.WriteNumber("osu_beatmap_id", beatmap);
+                    if (upload.OsuBeatmapsetId is { } beatmapset)
+                        writer.WriteNumber("osu_beatmapset_id", beatmapset);
                     if (upload.Level is { } level)
                         writer.WriteNumber("level", level);
                     else

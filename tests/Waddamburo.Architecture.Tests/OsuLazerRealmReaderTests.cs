@@ -29,12 +29,14 @@ public sealed class OsuLazerRealmReaderTests
 
             var set = Assert.Single(snapshot.BeatmapSets);
             Assert.False(set.DeletePending);
+            Assert.Equal(45, set.OnlineId);
             Assert.Contains(set.Files, file => file is { Filename: "song.ogg", Hash: "audio-hash" });
 
             var beatmap = Assert.Single(set.Beatmaps);
             Assert.Equal("taiko", beatmap.Ruleset);
             Assert.Equal(4.5, beatmap.StarRating);
             Assert.Equal(180, beatmap.Bpm);
+            Assert.Equal(123, beatmap.OnlineId);
             Assert.Equal("Synthetic Song", beatmap.Title);
             Assert.Equal("song.ogg", beatmap.AudioFilename);
             Assert.Equal("audio-hash", set.Files.Single(file => file.Filename == beatmap.AudioFilename).Hash);
@@ -131,12 +133,14 @@ public sealed class OsuLazerRealmReaderTests
                 Property.Primitive("BPM", RealmValueType.Double),
                 Property.Primitive("Length", RealmValueType.Double),
                 Property.Primitive("Hidden", RealmValueType.Bool),
+                Property.Primitive("OnlineID", RealmValueType.Int),
             },
             new ObjectSchema.Builder("BeatmapSet", ObjectSchema.ObjectType.RealmObject)
             {
                 Property.Primitive("ID", RealmValueType.Guid, isPrimaryKey: true),
                 Property.Primitive("DeletePending", RealmValueType.Bool),
                 Property.Primitive("DateAdded", RealmValueType.Date),
+                Property.Primitive("OnlineID", RealmValueType.Int),
                 Property.ObjectList("Beatmaps", "Beatmap"),
                 Property.ObjectList("Files", "RealmNamedFileUsage"),
             },
@@ -157,7 +161,9 @@ public sealed class OsuLazerRealmReaderTests
             beatmap.DynamicApi.Set("Hash", "chart-hash");
             beatmap.DynamicApi.Set("StarRating", 4.5);
             beatmap.DynamicApi.Set("BPM", 180.0);
+            beatmap.DynamicApi.Set("OnlineID", 123);
             var set = realm.DynamicApi.CreateObject("BeatmapSet", Guid.NewGuid());
+            set.DynamicApi.Set("OnlineID", 45);
             set.DynamicApi.GetList<IRealmObjectBase>("Beatmaps").Add(beatmap);
             var usage = realm.DynamicApi.AddEmbeddedObjectToList(set.DynamicApi.GetList<IEmbeddedObject>("Files"));
             usage.DynamicApi.Set("Filename", "song.ogg");

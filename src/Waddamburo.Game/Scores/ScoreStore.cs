@@ -16,17 +16,52 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
     int Great, int Good, int Miss, int MaxCombo, int Rolls, int Gauge, bool Cleared, int ScoringVersion,
     string EngineVersion, DateTimeOffset PlayedAt, string Replay);
 
-/// <summary>A chart import: gzipped canonical notes (<see cref="ChartHash.Serialize"/>), base64, plus display metadata.</summary>
+/// <summary>
+/// A chart import: gzipped canonical notes (<see cref="ChartHash.Serialize"/>), base64, plus display metadata.
+/// Difficulty is the chart's own name where courses are not named (osu!); the osu ids link it on osu.ppy.sh.
+/// SongKey groups the charts into songs on the website: the game's song id (stock, Nijiiro), the beatmap set
+/// (osu!); null for TJA, whose paths differ between machines (the website falls back to the titles).
+/// </summary>
 public sealed record ChartUpload(string Notes, string? Title, string? Subtitle, string? Source, int Course, int? Level)
 {
-    public static ChartUpload From(PlayableChart chart, TaikoCourse course, string? title, string? subtitle)
+    public string? SongKey { get; init; }
+
+    public string? TitleEn { get; init; }
+
+    public string? SubtitleEn { get; init; }
+
+    public string? Difficulty { get; init; }
+
+    public int? OsuBeatmapId { get; init; }
+
+    public int? OsuBeatmapsetId { get; init; }
+
+    public static ChartUpload From(PlayableChart chart, TaikoCourse course, SongDescriptor? song)
     {
         ArgumentNullException.ThrowIfNull(chart);
         using var output = new MemoryStream();
         using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal))
             gzip.Write(ChartHash.Serialize(chart, course));
-        return new ChartUpload(Convert.ToBase64String(output.ToArray()), title, subtitle,
-            chart.Key.Song.Source.ToString(), (int)course, chart.Level);
+        var source = chart.Key.Song.Source;
+        var descriptor = song?.Charts.FirstOrDefault(candidate => candidate.Key == chart.Key);
+        var osu = source == SongSourceKind.OsuLazer;
+        return new ChartUpload(Convert.ToBase64String(output.ToArray()), song?.Title.Primary, song?.Subtitle,
+            source.ToString(), (int)course, chart.Level)
+        {
+            SongKey = source switch
+            {
+                SongSourceKind.Stock or SongSourceKind.Nijiiro => chart.Key.Song.StableId,
+                // An unsubmitted set has no online id; its local key is still one song on this machine.
+                SongSourceKind.OsuLazer => song?.OnlineSetId is { } set ? $"set:{set}" : $"local:{chart.Key.Song.StableId}",
+                _ => null,
+            },
+            TitleEn = song?.Title.English,
+            SubtitleEn = song?.EnglishSubtitle,
+            // Other sources name their charts after the course (TJA: the raw COURSE value), nothing to add.
+            Difficulty = osu ? descriptor?.DifficultyName : null,
+            OsuBeatmapId = osu ? descriptor?.OnlineId : null,
+            OsuBeatmapsetId = osu ? song?.OnlineSetId : null,
+        };
     }
 }
 
@@ -118,6 +153,15 @@ public sealed class ScoreStore : IDisposable
             PRIMARY KEY (baid, sha256)
         );
         """,
+        // English titles, osu! difficulty names and online ids, for the website.
+        """
+        ALTER TABLE charts ADD COLUMN song_key TEXT;
+        ALTER TABLE charts ADD COLUMN title_en TEXT;
+        ALTER TABLE charts ADD COLUMN subtitle_en TEXT;
+        ALTER TABLE charts ADD COLUMN difficulty TEXT;
+        ALTER TABLE charts ADD COLUMN osu_beatmap_id INTEGER;
+        ALTER TABLE charts ADD COLUMN osu_beatmapset_id INTEGER;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -150,8 +194,10 @@ public sealed class ScoreStore : IDisposable
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
-                INSERT OR IGNORE INTO charts (sha256, notes, title, subtitle, source, course, level)
-                VALUES ($sha, $notes, $title, $subtitle, $source, $course, $level)
+                INSERT OR IGNORE INTO charts (sha256, notes, title, subtitle, source, course, level,
+                    song_key, title_en, subtitle_en, difficulty, osu_beatmap_id, osu_beatmapset_id)
+                VALUES ($sha, $notes, $title, $subtitle, $source, $course, $level,
+                    $song_key, $title_en, $subtitle_en, $difficulty, $beatmap, $beatmapset)
                 """;
             command.Parameters.AddWithValue("$sha", play.ChartSha256);
             command.Parameters.AddWithValue("$notes", Convert.FromBase64String(chart.Notes));
@@ -160,6 +206,12 @@ public sealed class ScoreStore : IDisposable
             command.Parameters.AddWithValue("$source", (object?)chart.Source ?? DBNull.Value);
             command.Parameters.AddWithValue("$course", chart.Course);
             command.Parameters.AddWithValue("$level", (object?)chart.Level ?? DBNull.Value);
+            command.Parameters.AddWithValue("$song_key", (object?)chart.SongKey ?? DBNull.Value);
+            command.Parameters.AddWithValue("$title_en", (object?)chart.TitleEn ?? DBNull.Value);
+            command.Parameters.AddWithValue("$subtitle_en", (object?)chart.SubtitleEn ?? DBNull.Value);
+            command.Parameters.AddWithValue("$difficulty", (object?)chart.Difficulty ?? DBNull.Value);
+            command.Parameters.AddWithValue("$beatmap", (object?)chart.OsuBeatmapId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$beatmapset", (object?)chart.OsuBeatmapsetId ?? DBNull.Value);
             command.ExecuteNonQuery();
             transaction.Commit();
         }
@@ -200,14 +252,26 @@ public sealed class ScoreStore : IDisposable
         lock (_connection)
         {
             using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT notes, title, subtitle, source, course, level FROM charts WHERE sha256 = $sha";
+            command.CommandText = """
+                SELECT notes, title, subtitle, source, course, level,
+                    title_en, subtitle_en, difficulty, osu_beatmap_id, osu_beatmapset_id, song_key
+                FROM charts WHERE sha256 = $sha
+                """;
             command.Parameters.AddWithValue("$sha", sha256);
             using var reader = command.ExecuteReader();
             if (!reader.Read())
                 return null;
             string? text(int column) => reader.IsDBNull(column) ? null : reader.GetString(column);
             return new ChartUpload(Convert.ToBase64String((byte[])reader[0]), text(1), text(2), text(3),
-                reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5));
+                reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5))
+            {
+                TitleEn = text(6),
+                SubtitleEn = text(7),
+                Difficulty = text(8),
+                OsuBeatmapId = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                OsuBeatmapsetId = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                SongKey = text(11),
+            };
         }
     }
 
