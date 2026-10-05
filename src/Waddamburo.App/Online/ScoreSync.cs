@@ -1,5 +1,6 @@
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Online;
 using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Online;
@@ -15,6 +16,9 @@ internal sealed class ScoreSync : IDisposable
     private readonly AccountBook? _accounts;
     private readonly Uri? _server;
     private readonly Dictionary<string, ScoreClient> _clients = [];
+    private readonly CancellationTokenSource _stopping = new();
+    private RealtimeConnection? _realtime;
+    private readonly Dictionary<long, NoticeClient> _noticeClients = [];
 
     // accounts: the ones stored on this PC (home mode; null in arcade).
     public ScoreSync(ArcadeSettings arcade, string? scoresPath, AccountBook? accounts)
@@ -23,6 +27,10 @@ internal sealed class ScoreSync : IDisposable
         _accounts = accounts;
         var cabinet = !arcade.Home && arcade is { Server: not null, CabinetToken: not null };
         Health = arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure)) : null;
+        // ponytail: printed until the notice sidebar draws them.
+        Notices.Added += static notice => Console.WriteLine($"Notice [{notice.Severity}] {notice.Message}");
+        if (arcade.Server is { } realtimeServer)
+            startRealtime(realtimeServer);
         Scores = (arcade.Home || cabinet) && scoresPath is not null ? new ScoreStore(scoresPath) : null;
         if (Scores is null || arcade.Server is not { } server)
             return;
@@ -65,6 +73,12 @@ internal sealed class ScoreSync : IDisposable
         });
     }
 
+    /// <summary>The server's notices: for every client, and for the home accounts stored here.</summary>
+    public NoticeBoard Notices { get; } = new();
+
+    /// <summary>Background work on this PC (uploads, library hashing), shown with the notices.</summary>
+    public JobBoard Jobs { get; } = new();
+
     /// <summary>The local score database, open when a profile plays (null: guests, nothing saved).</summary>
     public ScoreStore? Scores { get; }
 
@@ -91,11 +105,11 @@ internal sealed class ScoreSync : IDisposable
             return;
         if (CabinetServer is { } cabinet)
         {
-            cabinet.SyncInBackground(Scores, null);
+            cabinet.SyncInBackground(Scores, null, Jobs.Start(Strings.T("job.upload_scores")));
             return;
         }
         if (profile.Token is { } token && ClientFor(token) is { } uploader)
-            uploader.SyncInBackground(Scores, profile.Baid);
+            uploader.SyncInBackground(Scores, profile.Baid, Jobs.Start(Strings.T("job.upload_scores")));
     }
 
     /// <summary>
@@ -146,8 +160,134 @@ internal sealed class ScoreSync : IDisposable
         .Append(_accounts?.Default?.Token).Concat(_accounts?.Accounts.Select(static account => account.Token) ?? [])
         .OfType<string>().Select(ClientFor).FirstOrDefault(static client => client is not null);
 
+    /// <summary>
+    /// Stays connected to the server's realtime channel (Reverb) for notices: wdb.notices for everyone,
+    /// a private channel per stored account. Every (re)connect first loads what is showing and what is
+    /// unread, so nothing posted while offline is missed; setup retries each minute while the server
+    /// is unreachable. ponytail: accounts added after startup get theirs from the next start; cabinets
+    /// get system notices only (their operator view comes later).
+    /// </summary>
+    private void startRealtime(Uri server)
+    {
+        var anonymous = new NoticeClient(ScoreClient.CreateHttp(server, _arcade.ServerInsecure));
+        var accounts = (_accounts?.Accounts ?? [])
+            .Select(account => (Client: new NoticeClient(ScoreClient.CreateHttp(server, _arcade.ServerInsecure, account.Token)), account.Baid))
+            .ToArray();
+        lock (_noticeClients)
+            foreach (var (client, baid) in accounts)
+                _noticeClients[baid] = client;
+        var personal = new Dictionary<string, (NoticeClient Client, long Baid)>(StringComparer.Ordinal);
+        async Task loadBacklogAsync()
+        {
+            foreach (var notice in await anonymous.NoticesAsync().ConfigureAwait(false))
+                Notices.Add(Notice.From(notice, NoticeSource.System));
+            foreach (var (client, baid) in accounts)
+            {
+                // One account's trouble (a revoked token) must not keep the others' or the system notices away.
+                try
+                {
+                    var (channel, backlog) = await client.NotificationsAsync().ConfigureAwait(false);
+                    foreach (var notice in backlog)
+                        Notices.Add(Notice.From(notice, NoticeSource.Personal, baid));
+                    if (channel is not null)
+                        lock (personal)
+                            personal[channel] = (client, baid);
+                }
+                catch (HttpRequestException exception)
+                {
+                    Console.Error.WriteLine($"Warning NOTICES: account {baid}'s notices not loaded ({exception.Message}).");
+                }
+            }
+        }
+        (NoticeClient Client, long Baid)? ownerOf(string channel)
+        {
+            lock (personal)
+                return personal.TryGetValue(channel, out var owner) ? owner : null;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            while (!_stopping.IsCancellationRequested)
+            {
+                try
+                {
+                    await loadBacklogAsync().ConfigureAwait(false);
+                    if (await anonymous.RealtimeAsync(_stopping.Token).ConfigureAwait(false) is not { } url)
+                        return; // a server without realtime: the backlog is all there is
+                    var realtime = new RealtimeConnection(url, _arcade.ServerInsecure)
+                    {
+                        Authorize = (socketId, channel, cancellationToken) => ownerOf(channel) is { } owner
+                            ? owner.Client.AuthorizeChannelAsync(socketId, channel, cancellationToken)
+                            : Task.FromResult<string?>(null),
+                    };
+                    realtime.Received += (channel, name, data) =>
+                    {
+                        if (name != "notice" || NoticeClient.ParseNotice(data) is not { } notice)
+                            return;
+                        Notices.Add(ownerOf(channel) is { } owner
+                            ? Notice.From(notice, NoticeSource.Personal, owner.Baid)
+                            : Notice.From(notice, NoticeSource.System));
+                    };
+                    realtime.SubscriptionFailed += static channel =>
+                        Console.Error.WriteLine($"Warning NOTICES: {channel} refused; retried on the next connection.");
+                    var first = true;
+                    realtime.ConnectionChanged += connected =>
+                    {
+                        Console.WriteLine($"Notices: realtime {(connected ? "connected" : "disconnected, reconnecting")}.");
+                        if (connected && !first)
+                            _ = loadBacklogAsync().ContinueWith(static task => Console.Error.WriteLine(
+                                $"Warning NOTICES: {task.Exception?.GetBaseException().Message}"), TaskContinuationOptions.OnlyOnFaulted);
+                        first &= !connected;
+                    };
+                    realtime.Subscribe("wdb.notices");
+                    lock (personal)
+                        foreach (var channel in personal.Keys)
+                            realtime.Subscribe(channel);
+                    realtime.Start();
+                    _realtime = realtime;
+                    return;
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
+                    or System.Text.Json.JsonException)
+                {
+                    if (_stopping.IsCancellationRequested)
+                        return;
+                    Console.Error.WriteLine($"Warning NOTICES: not connected ({exception.Message}); retrying in a minute.");
+                }
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(1), _stopping.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        });
+    }
+
+    /// <summary>Notices the player has seen: personal ones are marked read on the server (in the background).</summary>
+    public void MarkShown(IReadOnlyList<Notice> notices)
+    {
+        foreach (var group in notices.Where(static notice => notice is { Source: NoticeSource.Personal, Baid: not null, ServerId: not null })
+            .GroupBy(static notice => notice.Baid!.Value))
+        {
+            NoticeClient? client;
+            lock (_noticeClients)
+                client = _noticeClients.GetValueOrDefault(group.Key);
+            if (client is null)
+                continue;
+            var ids = group.Select(static notice => notice.ServerId!).ToArray();
+            _ = client.MarkReadAsync(ids).ContinueWith(static task => Console.Error.WriteLine(
+                $"Warning NOTICES: not marked read ({task.Exception?.GetBaseException().Message})."), TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
+
     public void Dispose()
     {
+        _stopping.Cancel();
+        _realtime?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+        _stopping.Dispose();
         Pairing?.Dispose();
         Health?.Dispose();
         Scores?.Dispose();

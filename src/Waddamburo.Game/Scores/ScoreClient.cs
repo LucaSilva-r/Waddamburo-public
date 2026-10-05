@@ -173,22 +173,30 @@ public sealed class ScoreClient(HttpClient http)
         return sent;
     }
 
-    /// <summary>Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.</summary>
-    public void SyncInBackground(ScoreStore store, long? baid)
+    /// <summary>
+    /// Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.
+    /// <paramref name="job"/> reports it on the notice sidebar.
+    /// </summary>
+    public void SyncInBackground(ScoreStore store, long? baid, Flow.JobBoard.Job? job = null)
     {
         if (Interlocked.Exchange(ref _syncing, 1) == 1)
+        {
+            job?.Complete();
             return;
+        }
         _ = Task.Run(async () =>
         {
             try
             {
                 var sent = await SyncAsync(store, baid).ConfigureAwait(false);
+                job?.Complete();
                 if (sent > 0)
                     Console.WriteLine($"Uploaded {sent} play(s).");
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
             {
                 // Offline or server trouble: the plays stay pending for the next sync.
+                job?.Fail(exception.Message);
                 Console.Error.WriteLine($"Warning SCORE_SYNC: {exception.Message}");
             }
             finally

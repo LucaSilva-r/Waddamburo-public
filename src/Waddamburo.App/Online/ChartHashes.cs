@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Online;
@@ -14,6 +15,9 @@ internal sealed class ChartHashes(ScoreStore? store,
     Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>> loadChart)
 {
     private readonly ConcurrentDictionary<ChartKey, string> _known = new();
+
+    /// <summary>Where the library hashing shows its progress (the notice sidebar).</summary>
+    public JobBoard? Jobs { get; init; }
 
     /// <summary>The chart's hash (null: no course, so never played on its own).</summary>
     public async ValueTask<string?> HashAsync(SongChartDescriptor chart, CancellationToken cancellationToken = default)
@@ -43,9 +47,12 @@ internal sealed class ChartHashes(ScoreStore? store,
             if (missing.Count == 0)
                 return;
             var clock = Stopwatch.StartNew();
+            var job = Jobs?.Start(Strings.T("job.hash_library"), missing.Count);
             var batch = new List<(string, string)>();
+            var done = 0;
             foreach (var chart in missing)
             {
+                job?.Report(done++);
                 try
                 {
                     var hash = ChartHash.Compute(await loadChart(chart.Key, chart.ChartAsset, CancellationToken.None)
@@ -64,6 +71,7 @@ internal sealed class ChartHashes(ScoreStore? store,
                 }
             }
             store.SaveChartHashes(batch);
+            job?.Complete();
             Console.WriteLine($"Hashed {missing.Count} library charts in {clock.Elapsed.TotalSeconds:0.0} s.");
         });
     }

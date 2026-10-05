@@ -91,6 +91,8 @@ internal sealed class GameShell : IDisposable
 
     private readonly PairingPill _pill;
     private readonly PerformanceOverlay _performance;
+    // Home only: a cabinet's notices are for its operator (their view comes later).
+    private readonly NoticeOverlay? _notices;
 
     public CatalogAssetRouter Assets { get; }
     public SongSelectCatalogView SongCatalog { get; }
@@ -255,7 +257,7 @@ internal sealed class GameShell : IDisposable
         _libraries = SongLibraries.Load(dataRoot, Arcade, options.TjaRoot);
         var snapshot = _libraries.Snapshot;
         Assets = new CatalogAssetRouter(_libraries.Providers);
-        ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync);
+        ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
         SongCatalog = new SongSelectCatalogView(snapshot);
         // Server crowns need every chart's hash before song select lists it.
         if (Sync.Online)
@@ -305,6 +307,9 @@ internal sealed class GameShell : IDisposable
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _nameTexts = new NameTextTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);
+        if (Arcade.Home)
+            _notices = new NoticeOverlay(Application, options.FontPath, Sync.Notices, Sync.Jobs,
+                baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
             Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
@@ -516,6 +521,9 @@ internal sealed class GameShell : IDisposable
                 updateFrame: keyboard =>
                 {
                     _input.Frame(keyboard);
+                    // F8: the notice sidebar (live presses only reach this callback; not over a lane).
+                    if (_notices is not null && !onLane && keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.F8))
+                        _notices.Toggle();
                     flowOf(Active.Id).UpdateFrame(keyboard);
                 },
                 profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown,
@@ -873,6 +881,7 @@ internal sealed class GameShell : IDisposable
                 .. _search.Quads(),
                 .. indicatorQuads(true),
                 .. pill(),
+                .. _notices?.Quads(onLane) ?? [],
                 .. _performance.Quads(),
             ],
             frame.ContentAspectRatio);
@@ -926,6 +935,7 @@ internal sealed class GameShell : IDisposable
         Hosts?.Rankings?.Dispose();
         _pill.Dispose();
         _performance.Dispose();
+        _notices?.Dispose();
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();

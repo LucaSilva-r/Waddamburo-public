@@ -190,5 +190,15 @@
   "setup.login_failed": "ログインに失敗しました: {0}",
   "setup.friends_need_account": "このPCにアカウントがあるとフレンドが参加できます（ログイン）。",
   "setup.no_account": "そのカードにはTaikOnlineアカウントがありません。",
-  "setup.pairing_failed": "ペアリングに失敗しました: {0}"
+  "setup.pairing_failed": "ペアリングに失敗しました: {0}",
+
+  "notices.title": "お知らせ",
+  "notices.close_hint": "F8で閉じる",
+  "notices.empty": "新しいお知らせはありません。",
+  "notices.source.server": "TaikOnline",
+  "notices.source.local": "このPC",
+  "notices.source.player": "{0}さんへ",
+  "job.hash_library": "オンラインスコアのために曲を準備中",
+  "job.upload_scores": "スコアを送信中",
+  "job.failed": "{0}：失敗（{1}）"
 }

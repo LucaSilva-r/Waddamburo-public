@@ -190,5 +190,15 @@
   "setup.login_failed": "Login failed: {0}",
   "setup.friends_need_account": "Friends can join once this PC has an account (Sign in).",
   "setup.no_account": "That card has no TaikOnline account.",
-  "setup.pairing_failed": "Pairing failed: {0}"
+  "setup.pairing_failed": "Pairing failed: {0}",
+
+  "notices.title": "Notices",
+  "notices.close_hint": "F8 to close",
+  "notices.empty": "Nothing new.",
+  "notices.source.server": "TaikOnline",
+  "notices.source.local": "This PC",
+  "notices.source.player": "For {0}",
+  "job.hash_library": "Preparing the song library for online scores",
+  "job.upload_scores": "Uploading scores",
+  "job.failed": "{0}: failed ({1})"
 }
