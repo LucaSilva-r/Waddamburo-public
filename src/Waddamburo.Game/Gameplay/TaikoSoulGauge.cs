@@ -30,6 +30,9 @@ public sealed class TaikoSoulGauge
 
     public int Clear { get; }
     public int Value { get; private set; }
+
+    /// <summary>Sets the gauge to a point of a reviewed play.</summary>
+    public void Restore(int value) => Value = Math.Clamp(value, 0, Max);
     public int FilledSegments => Value * Segments / Max;
 
     public TaikoGaugeState State => Value >= Max ? TaikoGaugeState.Full

@@ -8,7 +8,7 @@ namespace Waddamburo.Game.Gameplay;
 public sealed class TaikoLumenPresentation
 {
     private readonly PlayableChart _chart;
-    private readonly TaikoJudgementSession _judgement;
+    private readonly ITaikoJudgementSource _judgement;
     private readonly LumenSceneLayer[] _background;
     private readonly LumenSceneLayer[] _foreground;
     private readonly int _flightsAt; // foreground index the hit flights are drawn at
@@ -30,7 +30,7 @@ public sealed class TaikoLumenPresentation
     private readonly TaikoHitFlights? _flights;
     private readonly TaikoLongNotePresentation? _longNotes;
 
-    public TaikoLumenPresentation(PlayableChart chart, TaikoJudgementSession judgement,
+    public TaikoLumenPresentation(PlayableChart chart, ITaikoJudgementSource judgement,
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
@@ -68,6 +68,15 @@ public sealed class TaikoLumenPresentation
         _hitRadius = _hitY - target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y).Y;
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
+    }
+
+    /// <summary>Shows a combo count at once (a reviewed play's restored state).</summary>
+    public void SetCombo(int combo)
+    {
+        if (_combo == combo)
+            return;
+        _combo = combo;
+        callback(_board, "SetComboCount", LumenHostValue.FromNumber(combo));
     }
 
     public void Hit(TaikoInputAction action)

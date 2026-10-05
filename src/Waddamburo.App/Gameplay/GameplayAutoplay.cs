@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Gameplay;
@@ -14,33 +15,47 @@ internal sealed class GameplayAutoplay
         var presses = new List<(TimeSpan Time, SdlKeyboardKey Key)>();
         for (var lane = 0; lane < charts.Count; lane++)
         {
-            var chart = charts[lane];
             var side = charts.Count == 1 ? singlePlayerSide : lane;
-            var leftDon = side == 0 ? SdlKeyboardKey.F : SdlKeyboardKey.X;
-            var rightDon = side == 0 ? SdlKeyboardKey.J : SdlKeyboardKey.C;
-            var leftKa = side == 0 ? SdlKeyboardKey.D : SdlKeyboardKey.Z;
-            var rightKa = side == 0 ? SdlKeyboardKey.K : SdlKeyboardKey.V;
-            foreach (var note in chart.HitObjects)
+            SdlKeyboardKey key(TaikoInputAction action) => (side, action) switch
             {
-                var ka = note.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa;
-                presses.Add((note.StartTime, ka ? leftKa : leftDon));
-                if (note.IsStrong)
-                    presses.Add((note.StartTime, ka ? rightKa : rightDon));
-            }
-            foreach (var longNote in chart.LongNotes)
-            {
-                // Exercise rolls and balloon effects without inserting hits close to tap notes.
-                var hit = longNote.StartTime + TimeSpan.FromMilliseconds(25);
-                var index = 0;
-                while (hit < longNote.EndTime - TimeSpan.FromMilliseconds(25))
-                {
-                    if (!chart.HitObjects.Any(note => Math.Abs((note.StartTime - hit).TotalMilliseconds) < 40))
-                        presses.Add((hit, index++ % 2 == 0 ? leftDon : rightDon));
-                    hit += TimeSpan.FromMilliseconds(25);
-                }
-            }
+                (0, TaikoInputAction.LeftDon) => SdlKeyboardKey.F,
+                (0, TaikoInputAction.RightDon) => SdlKeyboardKey.J,
+                (0, TaikoInputAction.LeftKa) => SdlKeyboardKey.D,
+                (0, _) => SdlKeyboardKey.K,
+                (_, TaikoInputAction.LeftDon) => SdlKeyboardKey.X,
+                (_, TaikoInputAction.RightDon) => SdlKeyboardKey.C,
+                (_, TaikoInputAction.LeftKa) => SdlKeyboardKey.Z,
+                _ => SdlKeyboardKey.V,
+            };
+            presses.AddRange(InputsFor(charts[lane]).Select(input => (input.Time, key(input.Action))));
         }
         _presses = [.. presses.OrderBy(press => press.Time)];
+    }
+
+    /// <summary>The bot's drum hits for one chart, in time order: every note on time, rolls drummed every 25 ms.</summary>
+    public static IReadOnlyList<TaikoReplayInput> InputsFor(PlayableChart chart)
+    {
+        var inputs = new List<TaikoReplayInput>();
+        foreach (var note in chart.HitObjects)
+        {
+            var ka = note.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa;
+            inputs.Add(new(ka ? TaikoInputAction.LeftKa : TaikoInputAction.LeftDon, note.StartTime));
+            if (note.IsStrong)
+                inputs.Add(new(ka ? TaikoInputAction.RightKa : TaikoInputAction.RightDon, note.StartTime));
+        }
+        foreach (var longNote in chart.LongNotes)
+        {
+            // Exercise rolls and balloon effects without inserting hits close to tap notes.
+            var hit = longNote.StartTime + TimeSpan.FromMilliseconds(25);
+            var index = 0;
+            while (hit < longNote.EndTime - TimeSpan.FromMilliseconds(25))
+            {
+                if (!chart.HitObjects.Any(note => Math.Abs((note.StartTime - hit).TotalMilliseconds) < 40))
+                    inputs.Add(new(index++ % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightDon, hit));
+                hit += TimeSpan.FromMilliseconds(25);
+            }
+        }
+        return [.. inputs.OrderBy(static input => input.Time)];
     }
 
     public SdlKeyboardSnapshot Apply(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)

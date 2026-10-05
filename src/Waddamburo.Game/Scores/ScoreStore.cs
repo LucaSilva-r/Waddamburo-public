@@ -14,7 +14,14 @@ public sealed record RemoteBest(string Sha256, long Score, int Crown);
 /// <summary>A play as the server takes it (snake_case JSON); the replay is base64.</summary>
 public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string Mode, int Course, long Score,
     int Great, int Good, int Miss, int MaxCombo, int Rolls, int Gauge, bool Cleared, int ScoringVersion,
-    string EngineVersion, DateTimeOffset PlayedAt, string Replay);
+    string EngineVersion, DateTimeOffset PlayedAt, string Replay)
+{
+    /// <summary>The player's audio offset during the play (null: recorded before it was kept).</summary>
+    public int? AudioOffsetMs { get; init; }
+
+    /// <summary>The player's input offset during the play; the replay's times already have it applied.</summary>
+    public int? InputOffsetMs { get; init; }
+}
 
 /// <summary>
 /// A chart import: gzipped canonical notes (<see cref="ChartHash.Serialize"/>), base64, plus display metadata.
@@ -89,6 +96,12 @@ public sealed record PlayRecord(
 
     public string EngineVersion { get; init; } =
         typeof(PlayRecord).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+
+    /// <summary>The audio offset setting the play was made with (context for its replay; judgement does not use it).</summary>
+    public int AudioOffsetMs { get; init; }
+
+    /// <summary>The input offset setting the play was made with; the replay's input times already include it.</summary>
+    public int InputOffsetMs { get; init; }
 }
 
 /// <summary>The local score database (SQLite, one file beside the cabinet settings).</summary>
@@ -162,6 +175,11 @@ public sealed class ScoreStore : IDisposable
         ALTER TABLE charts ADD COLUMN osu_beatmap_id INTEGER;
         ALTER TABLE charts ADD COLUMN osu_beatmapset_id INTEGER;
         """,
+        // The offsets each play was made with, kept with its replay.
+        """
+        ALTER TABLE plays ADD COLUMN audio_offset_ms INTEGER;
+        ALTER TABLE plays ADD COLUMN input_offset_ms INTEGER;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -228,7 +246,7 @@ public sealed class ScoreStore : IDisposable
             using var command = _connection.CreateCommand();
             command.CommandText = """
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
-                    cleared, scoring_version, engine_version, played_at, replay
+                    cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms
                 FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND uploaded_at IS NULL
                 ORDER BY played_at LIMIT $limit
                 """;
@@ -242,7 +260,11 @@ public sealed class ScoreStore : IDisposable
                     reader.GetInt32(8), reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11), reader.GetBoolean(12),
                     reader.GetInt32(13), reader.GetString(14),
                     DateTimeOffset.Parse(reader.GetString(15), CultureInfo.InvariantCulture),
-                    Convert.ToBase64String((byte[])reader[16])));
+                    Convert.ToBase64String((byte[])reader[16]))
+                {
+                    AudioOffsetMs = reader.IsDBNull(17) ? null : reader.GetInt32(17),
+                    InputOffsetMs = reader.IsDBNull(18) ? null : reader.GetInt32(18),
+                });
             return plays;
         }
     }
@@ -301,9 +323,10 @@ public sealed class ScoreStore : IDisposable
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
-                max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay)
+                max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
+                audio_offset_ms, input_offset_ms)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
-                $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay)
+                $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset)
             """;
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -323,6 +346,8 @@ public sealed class ScoreStore : IDisposable
         command.Parameters.AddWithValue("$engine", play.EngineVersion);
         command.Parameters.AddWithValue("$at", play.PlayedAt.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$replay", play.Replay);
+        command.Parameters.AddWithValue("$audio_offset", play.AudioOffsetMs);
+        command.Parameters.AddWithValue("$input_offset", play.InputOffsetMs);
         command.ExecuteNonQuery();
     }
 

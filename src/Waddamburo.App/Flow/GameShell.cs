@@ -83,6 +83,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>The accounts stored on this PC (home mode; empty in arcade).</summary>
     public AccountBook? Accounts => Arcade.Home ? Options.Accounts : null;
 
+    /// <summary>The home pause/settings menu is open (it takes the keys).</summary>
+    public bool HomeMenuOpen => _home.MenuOpen;
+
     /// <summary>The stored account that joins the first drum by itself (home).</summary>
     public ScoreAccount? DefaultAccount => Accounts?.Default;
 
@@ -94,6 +97,7 @@ internal sealed class GameShell : IDisposable
     // Home only: a cabinet's notices are for its operator (their view comes later).
     private readonly NoticeOverlay? _notices;
     private readonly TimingMarkOverlay _timingMarks;
+    private readonly ReviewOverlay _reviewBar;
 
     public CatalogAssetRouter Assets { get; }
     public SongSelectCatalogView SongCatalog { get; }
@@ -309,6 +313,7 @@ internal sealed class GameShell : IDisposable
         _nameTexts = new NameTextTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);
         _timingMarks = new TimingMarkOverlay(Application);
+        _reviewBar = new ReviewOverlay(Application, options.FontPath);
         if (Arcade.Home)
             _notices = new NoticeOverlay(Application, options.FontPath, Sync.Notices, Sync.Jobs,
                 baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
@@ -579,7 +584,8 @@ internal sealed class GameShell : IDisposable
             foreach (var press in keys.Presses)
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
-        Application.MenuInput = !onLane || _home.MenuOpen;
+        // A reviewed play takes the mouse wheel (seeking) like a menu does.
+        Application.MenuInput = !onLane || _home.MenuOpen || _gameplay.Reviewing;
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         var escape = _input.EscapePressed(keys);
@@ -878,6 +884,7 @@ internal sealed class GameShell : IDisposable
             [
                 .. frame.Quads,
                 .. Active.Id == FlowScenes.Gameplay ? _timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator) : [],
+                .. _gameplay.Reviewing && _gameplay.Review is { } review ? _reviewBar.Quads(review) : [],
                 .. _playerSetup?.Quads(interpolation) ?? [],
                 .. indicatorQuads(false),
                 .. Overlay.Quads(interpolation, Titles.Resolve),
@@ -940,6 +947,7 @@ internal sealed class GameShell : IDisposable
         _performance.Dispose();
         _notices?.Dispose();
         _timingMarks.Dispose();
+        _reviewBar.Dispose();
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();

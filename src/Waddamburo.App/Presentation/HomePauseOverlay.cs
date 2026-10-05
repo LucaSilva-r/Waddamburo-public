@@ -92,10 +92,14 @@ internal sealed class HomePauseOverlay : IDisposable
     private void choices(List<RenderQuad> quads, HomeMenu menu)
     {
         var rows = menu.Rows;
-        const float spacing = 88, height = 69;
         if (menu.Message is { } message)
             quads.Add(label(message, 640, 262, 860, 34));
         // Centred between the title (ends at y 200) and the panel's inner bottom (592); below a message.
+        // More rows than fit (the song's pause menu with Replay) shrink together.
+        float spacing = 88, height = 69;
+        var room = menu.Message is null ? 592 - 212 : 592 - 282;
+        var fit = Math.Min(1, room / ((rows.Length - 1) * spacing + height));
+        (spacing, height) = (spacing * fit, height * fit);
         var top = (menu.Message is null ? 396 : 426) - ((rows.Length - 1) * spacing + height) / 2;
         for (var index = 0; index < rows.Length; index++)
         {

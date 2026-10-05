@@ -205,5 +205,9 @@
   "settings.timing_indicator": "タイミング表示",
   "settings.timing_indicator.good_bad": "可/不可",
   "settings.timing_indicator.always": "すべて",
-  "settings.timing_indicator.hint": "叩いたあと判定枠の下が光ります：早いと青、遅いと赤。可/不可：可と不可のときだけ。すべて：良でも。"
+  "settings.timing_indicator.hint": "叩いたあと判定枠の下が光ります：早いと青、遅いと赤。可/不可：可と不可のときだけ。すべて：良でも。",
+
+  "review.keys": "スペース 一時停止 · ←/→長押し 早送り/巻き戻し · ホイール 1秒 · ↑/↓ 速さ",
+  "review.paused": "一時停止中",
+  "menu.instant_replay": "リプレイ"
 }

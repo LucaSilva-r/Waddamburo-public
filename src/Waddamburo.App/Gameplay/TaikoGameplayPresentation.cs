@@ -58,8 +58,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// One chart: one player on <paramref name="side"/> (0 left, 1 right playing alone on the same
     /// lane). Two charts: two players, the left drum on the top lane.
     /// </summary>
+    /// <remarks><paramref name="reviews"/>: a reviewed play's baked timeline per lane (the lanes then show it, not live input).</remarks>
     public void Start(IReadOnlyList<PlayableChart> charts, LumenGameSceneInstance scene,
-        IReadOnlyList<TaikoCourse> courses, int side = 0, WaiwaiComposition? waiwai = null)
+        IReadOnlyList<TaikoCourse> courses, int side = 0, WaiwaiComposition? waiwai = null,
+        IReadOnlyList<ReviewTimeline>? reviews = null)
     {
         var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: scene.Player.Layers[index],
             layer.Content)).ToArray();
@@ -68,7 +70,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound)];
+                playHitSound, don, playEventSound, review: reviews?[0])];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -84,7 +86,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
-            courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage))];
+            courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage, reviews?[lane]))];
         var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
             handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
@@ -125,6 +127,27 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane.FlashTarget();
     }
 
+    /// <summary>Before a reviewed play's lanes are rebuilt: their open roll, balloon or kusudama overlays close.</summary>
+    public void CloseLongNotes()
+    {
+        foreach (var lane in _lanes)
+            lane.CloseLongNotes();
+    }
+
+    /// <summary>After rebuilding a reviewed play's lanes: Don back in his plain pose (a balloon may have left him stretched).</summary>
+    public void ResetCharacters()
+    {
+        foreach (var lane in _lanes)
+            lane.ResetCharacter();
+    }
+
+    /// <summary>A reviewed play's lanes at <paramref name="time"/>: played on to it, or jumped there (<see cref="Lane.Review"/>).</summary>
+    public void Review(TimeSpan time, bool play)
+    {
+        foreach (var lane in _lanes)
+            lane.Review(time, play);
+    }
+
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {
         var debounce = drumDebounce?.Invoke() ?? TimeSpan.Zero;
@@ -132,6 +155,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane.Advance(keyboard, chartTime, debounce);
         _stage?.Update(chartTime);
     }
+
+    /// <summary>A course's judgement windows (osu! charts are judged as Oni).</summary>
+    public static TaikoJudgementWindows WindowsFor(PlayableChart chart, TaikoCourse course) =>
+        TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course);
+
+    /// <summary>How soon the second hit of a big note must follow the first.</summary>
+    public static readonly TimeSpan StrongSecondHitWindow = TimeSpan.FromMilliseconds(30);
 
     /// <summary>Each lane's latest judged hit, early or late, for the timing glow.</summary>
     public IEnumerable<TimingMark> TimingMarks => _lanes.Select(static lane => lane.LastTiming).OfType<TimingMark>();
@@ -161,6 +191,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private static readonly string[] NoteTextLabels = ["don", "do", "ko", "katsu", "ka", "don_dai", "katsu_dai",
             "geki_renda", "imo"];
         private readonly TaikoJudgementSession _session;
+        // What the presentation reads: the live session, or a reviewed play's baked timeline at its playhead.
+        private readonly ITaikoJudgementSource _source;
+        private readonly ReviewJudgementSource? _review;
+        private readonly Action<ReviewState?> _restore = static _ => { };
         private readonly TaikoLumenPresentation _presentation;
         private readonly TaikoHitFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
@@ -194,7 +228,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             IReadOnlyList<(SceneLayerDefinition Definition, LumenSceneLayer Layer, LumenMovieContent Content)> sceneLayers,
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
-            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null)
+            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -259,10 +293,21 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _noteFaces = [.. NoteMovieNames.Where(layers.ContainsKey).Select(name => layers[name].Player)];
             _combo = () => score.Combo;
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
-            _session = new TaikoJudgementSession(chart,
-                TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course),
-                TimeSpan.FromMilliseconds(30), partnerHandNotes: players == 2);
-            _longNotes = new TaikoLongNotePresentation(chart, _session, kind =>
+            _session = new TaikoJudgementSession(chart, WindowsFor(chart, course), StrongSecondHitWindow, partnerHandNotes: players == 2);
+            if (review is null)
+                _source = _session;
+            else
+            {
+                _review = new ReviewJudgementSource(review);
+                _source = _review;
+                // Played on, a review's drum hits sound and animate as they did.
+                _review.Hit += hit =>
+                {
+                    _presentation!.Hit(hit);
+                    _playHitSound?.Invoke(_soundLane, hit);
+                };
+            }
+            _longNotes = new TaikoLongNotePresentation(chart, _source, kind =>
             {
                 var name = kind switch
                 {
@@ -302,10 +347,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _fixedLayers = [.. layers.Values.Except(_beatLayers)];
             var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg") ?? skin("donbg_w_00"),
                 skin("dance"), skin("bg_fever"), skin("fever"), skin("renda") ?? skin("renda_w_00")));
-            _session.LongNoteHit += progress =>
+            _source.LongNoteHit += progress =>
             {
                 var previousScore = score.Value;
-                if (score.Apply(progress, _session.CurrentTime)) updateScore(score.Value - previousScore);
+                if (score.Apply(progress, _source.CurrentTime)) updateScore(score.Value - previousScore);
                 if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
             };
             var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
@@ -338,7 +383,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             };
             (float X, float Y) hitPoint = default; // the lane's target, once its presentation exists below
             var hitRadius = 0f;
-            _session.Judged += judgement =>
+            _source.Judged += judgement =>
             {
                 // Every hit was early or late (the setting picks which are shown); a note that passed
                 // unhit has no hit to time.
@@ -350,7 +395,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 }
                 stage?.Apply(judgement);
                 var previousScore = score.Value;
-                if (score.Apply(judgement, _session.CurrentTime)) updateScore(score.Value - previousScore);
+                if (score.Apply(judgement, _source.CurrentTime)) updateScore(score.Value - previousScore);
                 // Combo bonus popup at every 100 combo (the movie picks its label from the count).
                 if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
                     comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
@@ -383,6 +428,27 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 _character?.OnJudged(judgement);
                 skinPresentation.OnJudged(judgement, gauge);
             };
+            // A reviewed play shows the baked state of its moment: the score, combo and gauge are set
+            // from it after every move (a seek, or playing on: a Go-Go edge timed by the playhead
+            // could otherwise score differently from the play itself).
+            _restore = state =>
+            {
+                var shown = score.Value;
+                var segments = gauge.FilledSegments;
+                score.Restore(state?.Score ?? new TaikoScoreState(0, 0, 0, 0, -1, 0));
+                gauge.Restore(state?.Gauge ?? 0);
+                if (score.Value != shown && !board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
+                    throw new InvalidDataException("Gameplay board is missing SetScore.");
+                _presentation!.SetCombo(score.Combo);
+                if (gauge.FilledSegments != segments)
+                    gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(gauge.FilledSegments)]);
+                _character?.SetGauge(gauge.State);
+                if (gaugeFire is not null && gauge.State == TaikoGaugeState.Full != full)
+                {
+                    full = !full;
+                    label(gaugeFire, full ? "fever_start" : "fever_end");
+                }
+            };
             // Static layers in the scene's traced depth order: behind the bar lines (2000) and notes (1002+),
             // or in front of them. Host-placed templates, Don (drawn by his presentation), the other
             // courses' gauges and the movies both players share are left out; so are skin movies
@@ -400,7 +466,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _characterSlot = stage is not null
                 ? background.Count(pair => GameplaySceneComposition.Depth(pair.Key) >= 3000)
                 : Array.FindIndex(background, pair => pair.Key is "donbg" or "donbg_w_00") + 1;
-            _presentation = new TaikoLumenPresentation(chart, _session,
+            _presentation = new TaikoLumenPresentation(chart, _source,
                 background.Select(pair => pair.Value),
                 foreground.Where(pair => pair.Key != flightKey).Select(pair => pair.Value),
                 new Dictionary<PlayableNoteKind, LumenSceneLayer>
@@ -438,13 +504,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     }));
             hitPoint = _presentation.HitPoint;
             hitRadius = _presentation.HitRadius;
-            Console.WriteLine($"Gameplay lane {lane}: hit target at ({hitPoint.X:F1}, {hitPoint.Y:F1}), radius {hitRadius:F1}.");
             _presentation.GoGoChanged += active =>
             {
                 if (active && goGoSplash is not null) label(goGoSplash, "splash");
                 _character?.SetBalloonVisible(_longNotes.BalloonVisible);
                 _character?.SetGoGo(active);
-                Console.WriteLine($"Gameplay Go-Go (lane {lane}): {(active ? "start" : "end")} at {_session.CurrentTime.TotalSeconds:F3}s.");
+                Console.WriteLine($"Gameplay Go-Go (lane {lane}): {(active ? "start" : "end")} at {_source.CurrentTime.TotalSeconds:F3}s.");
             };
         }
 
@@ -466,7 +531,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             foreach (var note in _noteFaces) TaikoNoteFaces.Show(note, combo, beat);
             _longNotes.ShowFaces(note => TaikoNoteFaces.ShowTier(note, combo));
             _flights.Advance();
-            _longNotes.AdvanceAnimations();
+            _longNotes.AdvanceAnimations(note => TaikoNoteFaces.LongNoteSteps(note, combo, beat));
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
             // Balloon one-shots follow their authored real-time overlay.
             return _longNotes.BalloonVisible ? 1 : delta;
@@ -484,6 +549,24 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private static readonly bool TraceDrum = Environment.GetEnvironmentVariable("WADDAMBURO_DRUM_TRACE") == "1";
         private readonly TimeSpan[] _lastPadPress = new TimeSpan[4];
         private readonly DrumDebounce _debounce = new();
+
+        public void ResetCharacter() => _character?.ResetPose();
+
+        public void CloseLongNotes() => _longNotes.Abandon();
+
+        /// <summary>
+        /// A reviewed play at <paramref name="time"/>: played on to it (<paramref name="play"/>, the judgements
+        /// passed show as they did) or jumped there; either way its baked state is shown.
+        /// </summary>
+        public void Review(TimeSpan time, bool play)
+        {
+            if (_review is not { } review) return;
+            if (play) review.Play(time);
+            else review.Jump(time);
+            _restore(review.Timeline.StateAt(time));
+            _presentation.Update(time);
+            _character?.SetBalloonVisible(_longNotes.BalloonVisible);
+        }
 
         public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default)
         {

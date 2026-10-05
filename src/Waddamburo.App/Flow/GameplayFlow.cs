@@ -30,6 +30,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private AudioStreamTransport? _music;
     private GameplayTimeline? _timeline;
     private GameplayAutoplay? _autoplay;
+    // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
+    private ReviewSession? _review;
+    // An instant replay made this play void: it is never saved.
+    private bool _voided;
     private readonly Stopwatch _clock = new();
     private int _startTick;
     private int _shutterStartTick = -1;
@@ -88,19 +92,26 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
         }
         _timeline = new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
-        _autoplay = Shell.Options.Autoplay ? new GameplayAutoplay(_charts, _side) : null;
         _startTick = Shell.Tick;
         _clock.Reset();
         _musicEndPosition = null;
         _afterMusic.Reset();
         _audioOffset = TimeSpan.FromMilliseconds(Shell.Arcade.AudioOffsetMs);
         _inputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
-        Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai);
+        _voided = false;
+        _review?.Dispose();
+        // Home autoplay is reviewed (pause, scrub, speed) rather than played live.
+        // ponytail: the autoplay is the only reviewed song start; replays from TaikOnline plug in here.
+        _review = Shell.Options.Autoplay && Shell.Arcade.Home && !Shell.Headless
+            ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2))
+            : null;
+        _autoplay = Shell.Options.Autoplay && _review is null ? new GameplayAutoplay(_charts, _side) : null;
+        Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
         {
-            _music = startAudio(request);
+            _music = _review is null ? startAudio(request) : null;
             _clock.Restart();
         }
         Console.WriteLine(
@@ -112,7 +123,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// The chart position: held at zero under the rainbow, then the music's (or the ticks', headless),
     /// less the audio offset.
     /// </summary>
-    private TimeSpan chartTime() => -_audioOffset + _timeline?.ChartTime(
+    private TimeSpan chartTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
         : _musicEndPosition is { } ended ? ended + _afterMusic.Elapsed
         : _music is not null ? Shell.Audio!.GetPosition(_music)
@@ -121,10 +132,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         : _clock.Elapsed) ?? TimeSpan.Zero;
 
     /// <summary>Every player's last note, roll, balloon and kusudama is over.</summary>
-    public bool ChartOver => _charts.Length != 0 && chartTime() >= _charts.Max(static chart =>
+    public bool ChartOver => _charts.Length != 0 && chartTime() >= chartEnd() + TimeSpan.FromMilliseconds(200);
+
+    private TimeSpan chartEnd() => _charts.Max(static chart =>
         chart.HitObjects.Select(static note => note.StartTime)
             .Concat(chart.LongNotes.Select(static note => note.EndTime))
-            .DefaultIfEmpty(TimeSpan.Zero).Max()) + TimeSpan.FromMilliseconds(200);
+            .DefaultIfEmpty(TimeSpan.Zero).Max());
+
+    /// <summary>A reviewed play is on screen (home autoplay): its clock is paused, sought and sped up by the keys.</summary>
+    public bool Reviewing => _review is not null && Shell.Active.Id == FlowScenes.Gameplay;
+
+    /// <summary>The reviewed play's clock, for the review bar (null when not reviewing).</summary>
+    public ReviewClock? Review => _review?.Clock;
 
     public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
     public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
@@ -190,12 +209,50 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
+        if (_review is { } review)
+        {
+            if (revealed && !_paused)
+                review.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
+            else
+                review.Hold();
+            return;
+        }
         if (!Shell.Headless && revealed && !_paused)
         {
             var time = chartTime() - _inputOffset;
             Shell.Gameplay.Advance(_autoplay?.Apply(keys, time) ?? keys, time);
         }
     }
+
+    /// <summary>Home: the song is under way and not already a review, so its pause menu can replay it.</summary>
+    public bool CanInstantReplay => Shell.Arcade.Home && _review is null && revealed && _charts.Length != 0
+        && Shell.Active.Id == FlowScenes.Gameplay;
+
+    /// <summary>
+    /// Turns the song under way into a review of what was played: paused where the player paused, and
+    /// it cannot go further. The play is void (never saved); Retry plays the song again.
+    /// </summary>
+    public void StartInstantReplay()
+    {
+        if (!CanInstantReplay || _lastRequest is not { } request)
+            return;
+        var at = chartTime();
+        if (_music is { } music)
+            Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
+        _music = null;
+        _voided = true;
+        var review = reviewOf(request, [.. Shell.Gameplay.Replays.Select(static replay => (IReadOnlyList<TaikoReplayInput>)[.. replay.Inputs])], at);
+        review.Clock.Seek(at);
+        review.Clock.SetPaused(true);
+        review.ShowFresh(at);
+        _review = review;
+        SetPaused(false);
+        Console.WriteLine($"Instant replay of the first {at.TotalSeconds:F1} s (the play is void).");
+    }
+
+    private ReviewSession reviewOf(PlayRequest request, IReadOnlyList<TaikoReplayInput>[] inputs, TimeSpan end) =>
+        new(Shell, request, _charts, _side, _waiwai, inputs, _timeline!.LeadIn, end, _inputOffset,
+            songStart: _timeline.AudioStart - _timeline.LeadIn - _audioOffset);
 
     public override void Tick(FlowInput input)
     {
@@ -206,7 +263,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             var request = Shell.PlayRequests.Active
                 ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
             _startTick = Shell.Tick;
-            _music = startAudio(request);
+            _music = _review is null ? startAudio(request) : null; // a review plays its own music
             _clock.Restart();
             rainbow.GotoLabel(RainbowTransitionComposition.RevealLabel, play: true);
             Rainbow.StartReveal();
@@ -218,7 +275,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             overlay.Clear();
             Console.WriteLine($"Rainbow reveal completed at tick {Shell.Tick}.");
         }
-        if (!revealed)
+        if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it
             return;
         var elapsed = chartTime();
         if (Shell.Headless)
@@ -260,6 +317,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private void end(bool finished)
     {
         _shutterStartTick = -1;
+        _review?.Dispose();
+        _review = null;
         if (_music is { } music)
             Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
         _music = null;
@@ -289,7 +348,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
-        if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        if (Shell.Options.Autoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
@@ -316,7 +375,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 }
                 scores.Save(new PlayRecord(id, profile.Baid, sha,
                     player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
-                    Shell.Gameplay.Replays[lane].Encode()),
+                    Shell.Gameplay.Replays[lane].Encode())
+                    {
+                        AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
+                        InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
+                    },
                     ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor));
                 saved.Add(profile);
             }

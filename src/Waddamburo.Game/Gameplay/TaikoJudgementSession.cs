@@ -82,10 +82,29 @@ public readonly record struct TaikoNoteJudgement(
     bool TimedOut = false);
 
 /// <summary>
+/// What the lane's presentation reads of a play's judgements: the live session's, or a reviewed play's
+/// baked timeline at its playhead (<see cref="ReviewJudgementSource"/>).
+/// </summary>
+public interface ITaikoJudgementSource
+{
+    TimeSpan CurrentTime { get; }
+
+    bool IsJudged(int index);
+
+    bool IsMissed(int index);
+
+    TaikoLongNoteProgress GetLongNoteProgress(int index);
+
+    event Action<TaikoNoteJudgement>? Judged;
+
+    event Action<TaikoLongNoteProgress>? LongNoteHit;
+}
+
+/// <summary>
 /// Deterministic Taiko judgement state. The caller owns the gameplay clock and supplies
 /// every timestamp; rendering and audio playback never advance this session implicitly.
 /// </summary>
-public sealed class TaikoJudgementSession
+public sealed class TaikoJudgementSession : ITaikoJudgementSource
 {
     private readonly PlayableChart _chart;
     private readonly TaikoJudgementWindows _windows;

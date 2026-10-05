@@ -205,5 +205,9 @@
   "settings.timing_indicator": "Timing Indicator",
   "settings.timing_indicator.good_bad": "Good/Bad",
   "settings.timing_indicator.always": "Always",
-  "settings.timing_indicator.hint": "A glow under the judgement circle after a hit: blue when early, red when late. Good/Bad: only after a Good or Bad. Always: after Greats too."
+  "settings.timing_indicator.hint": "A glow under the judgement circle after a hit: blue when early, red when late. Good/Bad: only after a Good or Bad. Always: after Greats too.",
+
+  "review.keys": "Space pause · hold ←/→ scrub · wheel 1 s · ↑/↓ speed",
+  "review.paused": "Paused",
+  "menu.instant_replay": "Replay"
 }

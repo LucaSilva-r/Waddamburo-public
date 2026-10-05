@@ -2,6 +2,9 @@ using Waddamburo.Catalog;
 
 namespace Waddamburo.Game.Gameplay;
 
+public readonly record struct TaikoScoreState(long Value, int Combo, int RollHits, int BalloonHits,
+    int PendingStrongIndex, long PendingStrongPoints);
+
 /// <summary>One-player score accumulated from accepted gameplay events.</summary>
 public sealed class TaikoScore
 {
@@ -28,6 +31,13 @@ public sealed class TaikoScore
     public int Combo { get; private set; }
     public int RollHits { get; private set; }
     public int BalloonHits { get; private set; }
+
+    /// <summary>Everything the score carries, to restore it at a point of a reviewed play.</summary>
+    public TaikoScoreState State => new(Value, Combo, RollHits, BalloonHits, _pendingStrongIndex, _pendingStrongPoints);
+
+    public void Restore(TaikoScoreState state) =>
+        (Value, Combo, RollHits, BalloonHits, _pendingStrongIndex, _pendingStrongPoints) =
+        (state.Value, state.Combo, state.RollHits, state.BalloonHits, state.PendingStrongIndex, state.PendingStrongPoints);
 
     public bool Apply(TaikoNoteJudgement judgement, TimeSpan time)
     {

@@ -46,7 +46,7 @@ public sealed class TaikoSharedKusudama(LumenSceneLayer layer, int players)
 public sealed class TaikoLongNotePresentation
 {
     private readonly PlayableChart _chart;
-    private readonly TaikoJudgementSession _session;
+    private readonly ITaikoJudgementSource _session;
     private readonly Func<PlayableLongNoteKind, LumenSceneLayer> _createNote;
     private readonly Dictionary<int, LumenSceneLayer> _visible = [];
     private readonly Func<PlayableLongNoteKind, LumenSceneLayer>? _createText;
@@ -66,7 +66,7 @@ public sealed class TaikoLongNotePresentation
     private readonly int _player; // Don slot; the second player's kusudama motions are don_kusu2P_*
     private readonly string _kusu;
 
-    public TaikoLongNotePresentation(PlayableChart chart, TaikoJudgementSession session,
+    public TaikoLongNotePresentation(PlayableChart chart, ITaikoJudgementSource session,
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
@@ -110,11 +110,16 @@ public sealed class TaikoLongNotePresentation
             show(layer.Player);
     }
 
-    public void AdvanceAnimations()
+    /// <remarks>
+    /// <paramref name="steps"/>: how many frames each long note's movie plays on this tick (its face kept at the
+    /// beat's phase: none while a reviewed play stands still, more when it runs fast); null: one.
+    /// </remarks>
+    public void AdvanceAnimations(Func<LumenPlayer, int>? steps = null)
     {
         foreach (var layer in _visible.Values)
         {
-            layer.Player.Advance();
+            for (var frame = steps?.Invoke(layer.Player) ?? 1; frame > 0; frame--)
+                layer.Player.Advance();
             if (layer.Player.CallbackNames.Contains("OnUpdate"))
                 invoke(layer.Player, "OnUpdate");
         }
@@ -284,6 +289,29 @@ public sealed class TaikoLongNotePresentation
             if (_visible.TryGetValue(progress.NoteIndex, out var layer))
                 invoke(layer.Player, "HitAction");
         }
+    }
+
+    /// <summary>
+    /// Closes the roll, balloon or kusudama under way, as the movies' own ends do but without Don's
+    /// reaction or the completion cue: a reviewed play going back drops these lanes, and the overlays
+    /// belong to the scene, so they must not stay open.
+    /// </summary>
+    public void Abandon()
+    {
+        if (_active is not { } index)
+            return;
+        var note = _chart.LongNotes[index];
+        if (note.IsBalloon)
+        {
+            if (_overlay == _kusudama)
+                call(_overlay.Player, "EndResult", LumenHostValue.FromNumber(2));
+            else
+                invoke(_balloon.Player, "GekiRendaEnd", 1);
+        }
+        else
+            invoke(_counter.Player, "RendaEnd");
+        _finished.Add(index);
+        _active = null;
     }
 
     private void finish(int index)

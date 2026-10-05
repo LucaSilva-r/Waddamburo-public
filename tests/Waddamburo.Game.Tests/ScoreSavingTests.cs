@@ -87,7 +87,7 @@ public sealed class ScoreSavingTests
             var sha = ChartHash.Compute(osu, TaikoCourse.Oni);
             store.Save(new PlayRecord(Guid.NewGuid(), 42, sha, osu.Key, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
-                new TaikoReplay().Encode()), ChartUpload.From(osu, TaikoCourse.Oni, song));
+                new TaikoReplay().Encode()) { AudioOffsetMs = 12, InputOffsetMs = -8 }, ChartUpload.From(osu, TaikoCourse.Oni, song));
             var server = new StubServer(sha);
             using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
             var client = new ScoreClient(http);
@@ -96,6 +96,8 @@ public sealed class ScoreSavingTests
             Assert.Equal(0, await client.SyncAsync(store, 42));
             Assert.Contains("\"chart_sha256\":\"" + sha, server.Plays);
             Assert.Contains("\"max_combo\":3", server.Plays);
+            Assert.Contains("\"audio_offset_ms\":12", server.Plays);
+            Assert.Contains("\"input_offset_ms\":-8", server.Plays);
             // The website's metadata survives the local database.
             var uploaded = JsonDocument.Parse(server.Chart!).RootElement;
             Assert.Equal("Senbonzakura", uploaded.GetProperty("title_en").GetString());

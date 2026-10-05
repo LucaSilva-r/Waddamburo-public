@@ -81,6 +81,17 @@ public sealed class TaikoDonPresentation
         else refreshIdle(); // leaving a full gauge has no reaction
     }
 
+    /// <summary>
+    /// Back to the plain gameplay pose: camera and idle (a reviewed play gone back before a balloon this
+    /// presentation never saw, though the shared model still wears it).
+    /// </summary>
+    public void ResetPose()
+    {
+        _balloonVisible = false;
+        _controller.SetCameraLayout(_player, DonPresentationLayout.Gameplay);
+        _controller.SetMotion(new(_player, null, idle));
+    }
+
     public void SetBalloonVisible(bool visible)
     {
         var wasVisible = _balloonVisible;

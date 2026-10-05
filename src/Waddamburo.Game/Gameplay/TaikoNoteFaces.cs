@@ -21,8 +21,8 @@ public static class TaikoNoteFaces
         combo > 300 ? "level04" : combo > 150 ? "level03" : combo > 50 ? "level02" : "level01";
 
     /// <summary>
-    /// Long notes (rolls, balloons): only jumps to the tier's label when it changes and lets the movie
-    /// loop it. ponytail: no beat phase; seeking a roll every tick rebuilt its stretched tail (flicker).
+    /// Long notes (rolls, balloons): jumps to the tier's label only when it changes; the movie then loops it,
+    /// moved on by <see cref="LongNoteSteps"/> (seeking a roll every tick rebuilt its stretched tail: flicker).
     /// </summary>
     public static void ShowTier(LumenPlayer note, int combo)
     {
@@ -33,6 +33,33 @@ public static class TaikoNoteFaces
         var current = note.Labels.Where(pair => pair.Value <= note.CurrentFrame).MaxBy(pair => pair.Value).Key;
         if (current != label)
             note.TryGotoLabel("", label);
+    }
+
+    /// <summary>
+    /// How many frames a long note's looping movie must play on to show its tier at <paramref name="beat"/>'s
+    /// phase, like the other notes (none when the beat stands still, more when it runs fast).
+    /// </summary>
+    public static int LongNoteSteps(LumenPlayer note, int combo, double beat)
+    {
+        ArgumentNullException.ThrowIfNull(note);
+        var label = Label(combo);
+        if (label == "level01" || !note.Labels.TryGetValue(label, out var start))
+            return 0;
+        var end = note.Labels.Values.Where(value => value > start).DefaultIfEmpty(note.FrameCount).Min();
+        return LoopSteps(start, end, note.CurrentFrame, beat);
+    }
+
+    /// <summary>
+    /// Frames to play on from <paramref name="current"/> in the loop [<paramref name="start"/>, <paramref name="end"/>)
+    /// to reach <paramref name="beat"/>'s phase (0 when outside the loop: not on that tier yet).
+    /// </summary>
+    public static int LoopSteps(int start, int end, int current, double beat)
+    {
+        var length = end - start;
+        if (length <= 0 || current < start || current >= end)
+            return 0;
+        var target = (int)Math.Floor(((beat * FramesPerBeat % length) + length) % length);
+        return ((target - (current - start)) % length + length) % length;
     }
 
     /// <summary>Puts a note movie on its tier's frame for <paramref name="beat"/> (beats since the chart's first timing point).</summary>
