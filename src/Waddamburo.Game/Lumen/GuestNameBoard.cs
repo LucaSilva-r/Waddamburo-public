@@ -49,8 +49,11 @@ public static class NameText
 {
     public const string Prefix = "name:";
 
-    /// <summary>The name's box in the names clip: 187x26, the entry overlay's 176x24 stage box at the board's scale.</summary>
-    public static readonly LumenNativeSurfacePlacement Box = new(155 - 93.5f, 45 - 13, 187, 26);
+    /// <summary>
+    /// The name's box in the names clip: 176x24, the player setup overlay's own box, so names are the same
+    /// size everywhere (the boards show at about their authored scale; user-preferred over a fitted 187x26).
+    /// </summary>
+    public static readonly LumenNativeSurfacePlacement Box = new(155 - 88, 45 - 12, 176, 24);
 
     public static LumenNativeSurfaceKey Key(string name) => new(Prefix + name);
 
