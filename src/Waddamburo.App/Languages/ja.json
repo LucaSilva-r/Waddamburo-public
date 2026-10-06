@@ -59,6 +59,8 @@
   "settings.fast_song_scroll.hint": "曲選択: ふちの連打やマウスホイールにリストが追いつきます。Page Up/Downかふちを素早く3回で10曲とばします。オフ: オリジナルどおり。",
   "settings.master_volume": "マスター音量",
   "settings.master_volume.hint": "ゲームのすべての音。",
+  "settings.menu_volume": "メニューの音量",
+  "settings.menu_volume.hint": "デモ・エントリー・曲選択の音量（マスター音量に対して）。演奏とリザルトはマスター音量のままです。",
   "settings.music_volume": "音楽の音量",
   "settings.music_volume.hint": "曲、試聴、メニューの音楽。",
   "settings.drum_volume": "太鼓の音量",

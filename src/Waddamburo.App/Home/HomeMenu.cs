@@ -136,6 +136,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: volume("settings.effects_volume", static s => s.EffectsVolume, static (s, v) => s with { EffectsVolume = v },
             AudioBus.MenuSound)),
         new(Setting: volume("settings.voice_volume", static s => s.VoiceVolume, static (s, v) => s with { VoiceVolume = v }, AudioBus.Voice)),
+        new(Setting: volume("settings.menu_volume", static s => s.MenuVolume, static (s, v) => s with { MenuVolume = v }, AudioBus.Bgm)),
         new(T("section.timing")),
         new(Command: new(T("settings.calibrate"), HomeMenuAction.Calibrate, T("settings.calibrate.hint"))),
         new(Setting: offset("settings.audio_offset", static s => s.AudioOffsetMs, static (s, v) => s with { AudioOffsetMs = v })),

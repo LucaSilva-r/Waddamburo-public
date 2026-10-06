@@ -183,6 +183,12 @@ public sealed record ArcadeSettings
         timing_indicator = good_bad
 
         """,
+        """
+        # menu_volume (also in the Settings menu, percent): the attract, the entry and song select, on top
+        # of the master volume; songs and their results play at the master volume.
+        menu_volume = 100
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -303,6 +309,9 @@ public sealed record ArcadeSettings
     public int EffectsVolume { get; init; } = 100;
 
     public int VoiceVolume { get; init; } = 100;
+
+    /// <summary>The attract, the entry and Song Select play at this much of the master volume (songs and results at all of it).</summary>
+    public int MenuVolume { get; init; } = 100;
 
     /// <summary>Milliseconds the heard music lags the chart clock: notes and judgement move this much later.</summary>
     public int AudioOffsetMs { get; init; }
@@ -518,6 +527,7 @@ public sealed record ArcadeSettings
                 "drum_volume" => settings with { DrumVolume = integer(value, index, 0, 100) },
                 "effects_volume" => settings with { EffectsVolume = integer(value, index, 0, 100) },
                 "voice_volume" => settings with { VoiceVolume = integer(value, index, 0, 100) },
+                "menu_volume" => settings with { MenuVolume = integer(value, index, 0, 100) },
                 "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
                 "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
@@ -605,6 +615,7 @@ public sealed record ArcadeSettings
             ["drum_volume"] = settings.DrumVolume,
             ["effects_volume"] = settings.EffectsVolume,
             ["voice_volume"] = settings.VoiceVolume,
+            ["menu_volume"] = settings.MenuVolume,
             ["audio_offset_ms"] = settings.AudioOffsetMs,
             ["input_offset_ms"] = settings.InputOffsetMs,
             ["audio_buffer_frames"] = settings.AudioBufferFrames,

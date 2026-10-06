@@ -16,13 +16,25 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
     private AudioPlaybackHandle? _sampleMusic;
     private int _sampleNextTick;
     private bool _menuMusicHeld;
+    private ArcadeSettings? _settings;
+    private bool _inMenus;
+
+    /// <summary>The attract, the entry or Song Select is on: the menu volume applies (re-applied on a change).</summary>
+    public void InMenus(bool inMenus)
+    {
+        if (_inMenus == inMenus) return;
+        _inMenus = inMenus;
+        if (_settings is { } settings)
+            Apply(settings);
+    }
 
     /// <summary>Volumes (percent) on a curve that sounds even: half way is about a quarter of the level.</summary>
     public void Apply(ArcadeSettings settings)
     {
+        _settings = settings;
         if (audio?.Mixer is not { } mixer) return;
         static float level(int percent) => percent * percent / 10000f;
-        mixer.MasterVolume = level(settings.MasterVolume);
+        mixer.MasterVolume = level(settings.MasterVolume) * (_inMenus ? level(settings.MenuVolume) : 1);
         mixer.SetBusGain(AudioBus.Bgm, level(settings.MusicVolume));
         mixer.SetBusGain(AudioBus.Preview, level(settings.MusicVolume));
         mixer.SetBusGain(AudioBus.DrumHit, level(settings.DrumVolume));

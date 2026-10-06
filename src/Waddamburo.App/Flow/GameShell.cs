@@ -596,6 +596,8 @@ internal sealed class GameShell : IDisposable
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         var escape = _input.EscapePressed(keys);
+        // Focus is followed whichever overlay takes the keys (the mute in background).
+        _home.FollowFocus();
         // Song Select's search field takes the keyboard while open (its Escape closes it, not the menu).
         if (Reload.Tick() || !_home.MenuOpen && overlaysTake(keys, escape))
         {

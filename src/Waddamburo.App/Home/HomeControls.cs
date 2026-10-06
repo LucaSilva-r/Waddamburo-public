@@ -81,7 +81,7 @@ internal sealed class HomeControls : IDisposable
     /// </summary>
     public bool Tick(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
     {
-        followFocus();
+        FollowFocus();
         return resumeCountdown(escape) || calibrationDone() || openMenu(escape) || menuInput(keys, held, escape);
     }
 
@@ -122,8 +122,13 @@ internal sealed class HomeControls : IDisposable
     }
 
     // Going to the background: the sound fades out (when set); a home song pauses (openMenu).
-    private void followFocus()
+    /// <summary>
+    /// Every tick, whoever takes it: the menus' volume follows the scene, and the output fades as the
+    /// window loses or regains focus (mute in background).
+    /// </summary>
+    public void FollowFocus()
     {
+        _audio.InMenus(AttractScenes.Contains(active) || active == FlowScenes.Entry || active == FlowScenes.SongSelect);
         if (_shell.Application.Focused == _focused)
             return;
         _focused = _shell.Application.Focused;

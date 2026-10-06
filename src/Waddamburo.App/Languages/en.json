@@ -59,6 +59,8 @@
   "settings.fast_song_scroll.hint": "Song Select: the list keeps up with quick rim hits and the mouse wheel; Page Up/Down or three quick rim hits skip ten songs. Off: the original.",
   "settings.master_volume": "Master Volume",
   "settings.master_volume.hint": "Everything the game plays.",
+  "settings.menu_volume": "Menu Volume",
+  "settings.menu_volume.hint": "The attract, the entry and song select, on top of the master volume. Songs and their results play at the master volume.",
   "settings.music_volume": "Music Volume",
   "settings.music_volume.hint": "Songs, previews and menu music.",
   "settings.drum_volume": "Drum Volume",

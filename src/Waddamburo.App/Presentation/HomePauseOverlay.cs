@@ -45,15 +45,18 @@ internal sealed class HomePauseOverlay : IDisposable
         if (menu is not null)
         {
             quads.Add(_painter.Rect(0, 0, 1280, 720, new(0, 0, 0, 0.6f)));
+            // Settings take the screen's height (a longer list, room for the hint); the rest a smaller panel.
+            var settingsPanel = menu.SettingsPage && menu.Bake is null && menu.Calibration is null;
+            var (left, top, width, height) = settingsPanel ? (60f, SettingsTop, 1160f, 660f) : (140f, 98f, 1000f, 520f);
             if (_art.TryGetValue(Panel, out var panel))
-                nineSlice(quads, panel, 140, 98, 1000, 520, PanelBorder);
+                nineSlice(quads, panel, left, top, width, height, PanelBorder);
             else
-                quads.Add(_painter.Rect(140, 98, 1000, 520, new(1, 0.98f, 0.91f, 1)));
+                quads.Add(_painter.Rect(left, top, width, height, new(1, 0.98f, 0.91f, 1)));
             // The badge just left of the title, however wide the title is.
             var titleWidth = menu.Bake is null && menu.Calibration is null ? 260 : 420;
             if (_art.TryGetValue(Badge, out var badge))
-                quads.Add(rect(badge.Texture, 640 - titleWidth / 2f - 50, 143, 58, 58));
-            quads.Add(label(menu.Title, 640, 174, titleWidth, 60));
+                quads.Add(rect(badge.Texture, 640 - titleWidth / 2f - 50, top + 45, 58, 58));
+            quads.Add(label(menu.Title, 640, top + 76, titleWidth, 60));
             if (menu.Bake is { } bake)
                 bakePage(quads, bake);
             else if (menu.Calibration is { } result)
@@ -111,9 +114,14 @@ internal sealed class HomePauseOverlay : IDisposable
         }
     }
 
-    // Settings: a scrolling list (label left, value right) and the selected row's hint under it.
-    private const int VisibleRows = 6;
-    private const float ListX = 250, ListWidth = 780, ListTop = 222, RowHeight = 40, RowSpacing = 46;
+    // Settings: a scrolling list (label left, value right) and the selected row's hint under it, on a
+    // panel from SettingsTop to 690.
+    private const int VisibleRows = 9;
+    private const float SettingsTop = 30, ListX = 250, ListWidth = 780, ListTop = SettingsTop + 126, RowHeight = 40, RowSpacing = 46;
+    // Midway between the list's last row (ends at 564) and the panel's visible bottom edge (about 666).
+    private const float HintCentre = 618;
+    // The hint's longest line (characters) across the settings panel's 1000 px of text.
+    private const int HintLine = 72;
 
     private void settings(List<RenderQuad> quads, HomeMenu menu)
     {
@@ -158,9 +166,9 @@ internal sealed class HomePauseOverlay : IDisposable
                 track * VisibleRows / items.Length, new(0.45f, 0.3f, 0.1f, 0.9f)));
         }
         // Wrapped to short lines (the title rasterizer squeezes long ones).
-        var hint = wrap(items[menu.Selection].Hint).ToArray();
+        var hint = wrap(items[menu.Selection].Hint, HintLine).ToArray();
         for (var line = 0; line < hint.Length; line++)
-            quads.Add(label(hint[line], 640, 550 + (line - (hint.Length - 1) / 2f) * 29, 860, 27));
+            quads.Add(label(hint[line], 640, HintCentre + (line - (hint.Length - 1) / 2f) * 29, 1000, 27));
     }
 
     // The texture bake: what it is doing, a progress bar, the speed and the time left (its text refreshed
@@ -230,15 +238,25 @@ internal sealed class HomePauseOverlay : IDisposable
         };
     }
 
-    // Splits at the space nearest the middle until every line is short.
-    private static IEnumerable<string> wrap(string text)
+    // Into as few lines as fit <paramref name="longest"/> characters, of about even length: each break at
+    // the space nearest its even share (text without spaces stays one squeezed line).
+    private static List<string> wrap(string text, int longest = 56)
     {
-        const int Short = 56;
-        var middle = text.Length / 2;
-        var space = text.Length <= Short ? -1
-            : new[] { text.LastIndexOf(' ', middle), text.IndexOf(' ', middle) }
-                .Where(static index => index > 0).OrderBy(index => Math.Abs(index - middle)).FirstOrDefault(-1);
-        return space < 0 ? [text] : wrap(text[..space]).Concat(wrap(text[(space + 1)..]));
+        var count = (text.Length + longest - 1) / longest;
+        var lines = new List<string>();
+        var start = 0;
+        for (var line = 1; line < count; line++)
+        {
+            var goal = (int)Math.Round(text.Length * (double)line / count);
+            var space = new[] { text.LastIndexOf(' ', Math.Min(goal, text.Length - 1)), text.IndexOf(' ', goal) }
+                .Where(index => index > start).OrderBy(index => Math.Abs(index - goal)).FirstOrDefault(-1);
+            if (space < 0)
+                break;
+            lines.Add(text[start..space]);
+            start = space + 1;
+        }
+        lines.Add(text[start..]);
+        return lines;
     }
 
     // A song library's button in its state's colour (red, orange, green); the selected one lighter
