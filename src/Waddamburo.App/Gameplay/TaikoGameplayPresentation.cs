@@ -42,6 +42,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private WaiwaiStage? _stage;
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
 
+    /// <summary>The song's clear / fail banner shows at its end (off in practice; set before <see cref="Start"/>).</summary>
+    public bool EndBanner { get; set; } = true;
+
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
 
@@ -73,7 +76,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0))];
+                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), endBanner: EndBanner)];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -90,7 +93,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
             courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage, reviews?[lane],
-            Options.ElementAtOrDefault(lane)))];
+            Options.ElementAtOrDefault(lane), EndBanner))];
         var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
             handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
@@ -240,7 +243,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
-            TaikoPlayOptions options = default)
+            TaikoPlayOptions options = default, bool endBanner = true)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -382,7 +385,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 score.RollHits + score.BalloonHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
             var bannerTime = TaikoResultBanner.Time(chart);
-            var bannerShown = false;
+            var bannerShown = !endBanner;
             _onChartTime = time =>
             {
                 if (bannerShown || time < bannerTime) return;

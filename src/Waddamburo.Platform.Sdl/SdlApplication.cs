@@ -312,9 +312,9 @@ public sealed unsafe class SdlApplication : IDisposable
     };
 
     /// <summary>
-    /// Controllers work as gamepads while <see cref="MenuInput"/> is set (D-pad moves, the bottom button
-    /// picks, the right one and Start are Escape) and hit their bound pads in songs only. False: a drum
-    /// that shows up as a controller, its bound pads everywhere.
+    /// Controllers work as gamepads while <see cref="MenuInput"/> is set (laid out as a Tatacon: see
+    /// menuButton) and hit their bound pads in songs only. False: a drum that shows up as a controller,
+    /// its bound pads everywhere.
     /// </summary>
     public bool PadsAsGamepad { get; set; } = true;
 
@@ -358,28 +358,49 @@ public sealed unsafe class SdlApplication : IDisposable
 
     private bool _menuInput;
 
-    // A controller in a menu: the first drives player 1's drum, the second player 2's (left ka, left don, right ka).
+    // A controller in a menu. The first is laid out as a Tatacon by position (its keys: D-pad arrows,
+    // bottom Enter, left P, top L, shoulders Q / E, Back Tab), which the menus also read as player 1's drum;
+    // the second drives player 2's drum (left ka, left don, right ka). Right and Start are Escape on both.
     private static SdlKeyboardKey? menuButton(SdlInput input)
     {
-        var drum = input.Device == 2 ? 4 : 0;
-        return input.Kind != SdlInputKind.PadButton ? null : (SDL_GamepadButton)input.Code switch
+        if (input.Kind != SdlInputKind.PadButton)
+            return null;
+        var button = (SDL_GamepadButton)input.Code;
+        if (button is SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START)
+            return SdlKeyboardKey.Escape;
+        if (input.Device == 2)
+            return button switch
+            {
+                SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP => SdlInputBindings.Pads[4],
+                SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN => SdlInputBindings.Pads[7],
+                SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH => SdlInputBindings.Pads[5],
+                _ => null,
+            };
+        return button switch
         {
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP => SdlInputBindings.Pads[drum],
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN => SdlInputBindings.Pads[drum + 3],
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH => SdlInputBindings.Pads[drum + 1],
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START => SdlKeyboardKey.Escape,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT => SdlKeyboardKey.Left,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT => SdlKeyboardKey.Right,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP => SdlKeyboardKey.Up,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN => SdlKeyboardKey.Down,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH => SdlKeyboardKey.Enter,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_WEST => SdlKeyboardKey.P,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_NORTH => SdlKeyboardKey.L,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER => SdlKeyboardKey.Q,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER => SdlKeyboardKey.E,
+            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_BACK => SdlKeyboardKey.Tab,
             _ => null,
         };
     }
 
     // What an input is to the game: its pad when bound; else a key is itself (but a pad's own letter,
-    // unbound, is nothing) and a controller's Start is Escape.
+    // unbound, is nothing), a controller's Start is Escape and its Back Space (a practice attempt's pause).
     private SdlKeyboardKey? translate(SdlInput input) => _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
         : _bindings.Pad(input) ?? input.Kind switch
     {
         SdlInputKind.Key => mapKey(keycode(input))
             is { } key && !SdlInputBindings.Pads.Contains(key) ? key : null,
         SdlInputKind.PadButton when input.Code == (int)SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START => SdlKeyboardKey.Escape,
+        SdlInputKind.PadButton when input.Code == (int)SDL_GamepadButton.SDL_GAMEPAD_BUTTON_BACK => SdlKeyboardKey.Space,
         _ => null,
     };
 

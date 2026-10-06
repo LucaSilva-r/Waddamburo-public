@@ -120,6 +120,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             : Shell.Options.Autoplay
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
+        // Practice ends no song: no clear / fail banner (its attempts start the gauge from empty).
+        Shell.Gameplay.EndBanner = !request.Training;
         _training = request.Training && _review is not null ? new TrainingSession(Shell, _review, _charts[0]) : null;
         _voided = request.Review is not null || request.Training;
         if (_review is not null && request.Review?.Player is { } watched)
@@ -170,6 +172,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.StopWatching();
         _voided = true;
         _review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
+        Shell.Gameplay.EndBanner = false;
         _training = new TrainingSession(Shell, _review, _charts[0]);
         _training.Begin(at);
         showMode(Strings.T("mode.practice"));
@@ -214,8 +217,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>The training under way (null when not training), for the review bar.</summary>
     public TrainingSession? Training => _training;
 
-    /// <summary>A training attempt is played live: the drum is a drum, not a menu pad.</summary>
-    public bool Attempting => Reviewing && _training is { Live: true };
+    /// <summary>
+    /// A training attempt is being played (live, not paused): the drum is a drum, not a menu pad. Paused,
+    /// a controller is its gamepad layout again (scrub, speed, loop marks).
+    /// </summary>
+    public bool Attempting => Reviewing && _training is { Live: true, Clock.Paused: false };
 
     public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
     public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;

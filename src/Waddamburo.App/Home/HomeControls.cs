@@ -62,6 +62,9 @@ internal sealed class HomeControls : IDisposable
     /// <summary>The Escape menu is up (over a song too: controllers are gamepads in it).</summary>
     public bool MenuOpen => _menu.IsOpen;
 
+    /// <summary>The menu is capturing a binding: Backspace is that binding, not Escape.</summary>
+    public bool CapturingBinding => _menu.Listening;
+
     private SceneId active => _shell.Active.Id;
 
     /// <summary>Home: loads the resume countdown drawn over a song coming out of pause.</summary>
@@ -87,7 +90,9 @@ internal sealed class HomeControls : IDisposable
 
     /// <summary>The quick restart's tick (after the player setup): true when the song restarted.</summary>
     public bool QuickRestart(SdlKeyboardSnapshot held) => _restart.Update(home && (active == FlowScenes.Result
-        || active == FlowScenes.Gameplay && _gameplay.CanQuickRestart), held);
+        || active == FlowScenes.Gameplay && _gameplay.CanQuickRestart), held,
+        // Holding Q restarts a play only: a replay or practice keeps Q (practice's loop start).
+        holdAllowed: !_gameplay.Reviewing);
 
     /// <summary>
     /// The results wait while a quick restart is being held or was asked for from the menu

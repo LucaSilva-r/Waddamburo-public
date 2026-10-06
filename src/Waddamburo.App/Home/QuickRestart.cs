@@ -31,10 +31,11 @@ internal sealed class QuickRestart(Func<bool> restart)
     public void CancelHold() => _qPressedAt = 0;
 
     /// <summary>
-    /// One tick; <paramref name="allowed"/>: home mode on a restartable song or its results. True when
-    /// the song restarted this tick (the tick stops there).
+    /// One tick; <paramref name="allowed"/>: home mode on a restartable song or its results;
+    /// <paramref name="holdAllowed"/> false: only the menu restarts (a replay or practice keeps Q for itself).
+    /// True when the song restarted this tick (the tick stops there).
     /// </summary>
-    public bool Update(bool allowed, SdlKeyboardSnapshot held)
+    public bool Update(bool allowed, SdlKeyboardSnapshot held, bool holdAllowed = true)
     {
         if (!allowed)
         {
@@ -49,7 +50,7 @@ internal sealed class QuickRestart(Func<bool> restart)
             _menuRestartAt = 0;
             return restartNow();
         }
-        if (!held.IsDown(SdlKeyboardKey.Q))
+        if (!holdAllowed || !held.IsDown(SdlKeyboardKey.Q))
         {
             if (_qPressedAt != 0)
             {

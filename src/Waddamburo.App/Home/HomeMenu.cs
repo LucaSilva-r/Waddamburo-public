@@ -318,6 +318,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public bool SettingsPage => _settingsPage;
 
+    /// <summary>A binding is waiting for its input (every key is that input then).</summary>
+    public bool Listening => IsOpen && _listening;
+
     /// <summary>The selected setting is being changed (drawn between arrows).</summary>
     public bool Editing => _editing;
 

@@ -63,26 +63,32 @@ internal sealed class TrainingSession
         var scrub = 0;
         if (keysEnabled)
         {
-            var shift = keys.IsDown(SdlKeyboardKey.Shift);
+            // A Tatacon has its own keys for these: Enter (A) plays, Q / E (its shoulders) mark the loop and
+            // clear it together, Tab held makes the arrows jump note to note.
+            var shift = keys.IsDown(SdlKeyboardKey.Shift) || keys.IsDown(SdlKeyboardKey.Tab);
             foreach (var press in keys.Presses)
                 switch (press.Key)
                 {
-                    case SdlKeyboardKey.Space: Clock.TogglePause(); break;
+                    case SdlKeyboardKey.Space or SdlKeyboardKey.Enter: Clock.TogglePause(); break;
                     case SdlKeyboardKey.WheelUp: jump(Clock.Position - TimeSpan.FromSeconds(1)); break;
                     case SdlKeyboardKey.WheelDown: jump(Clock.Position + TimeSpan.FromSeconds(1)); break;
                     case SdlKeyboardKey.Left when shift: jump(note(-1)); break;
                     case SdlKeyboardKey.Right when shift: jump(note(+1)); break;
                     case SdlKeyboardKey.Up: Clock.Faster(); break;
                     case SdlKeyboardKey.Down: Clock.Slower(); break;
-                    case SdlKeyboardKey.A:
+                    case SdlKeyboardKey.Q when keys.IsDown(SdlKeyboardKey.E):
+                    case SdlKeyboardKey.E when keys.IsDown(SdlKeyboardKey.Q):
+                    case SdlKeyboardKey.Delete:
+                        (LoopStart, LoopEnd) = (null, null);
+                        break;
+                    case SdlKeyboardKey.A or SdlKeyboardKey.Q:
                         LoopStart = Clock.Position;
                         if (LoopEnd <= LoopStart) LoopEnd = null;
                         break;
-                    case SdlKeyboardKey.B:
+                    case SdlKeyboardKey.B or SdlKeyboardKey.E:
                         LoopEnd = Clock.Position;
                         if (LoopStart >= LoopEnd) LoopStart = null;
                         break;
-                    case SdlKeyboardKey.Backspace: (LoopStart, LoopEnd) = (null, null); break;
                     case SdlKeyboardKey.L: PauseAfterAttempt = !PauseAfterAttempt; break;
                 }
             if (!shift)

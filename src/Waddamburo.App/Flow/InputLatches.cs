@@ -65,10 +65,13 @@ internal sealed class InputLatches
         return new SdlKeyboardSnapshot(pulses, keys.Presses, keys.Timestamp);
     }
 
-    /// <summary>Escape went down this tick (in the scene's mapped keys).</summary>
-    public bool EscapePressed(SdlKeyboardSnapshot keys)
+    /// <summary>
+    /// Escape went down this tick (in the scene's mapped keys); with <paramref name="backspace"/>, Backspace
+    /// too (a Tatacon's B button, which has no Escape).
+    /// </summary>
+    public bool EscapePressed(SdlKeyboardSnapshot keys, bool backspace = false)
     {
-        var down = keys.IsDown(SdlKeyboardKey.Escape);
+        var down = keys.IsDown(SdlKeyboardKey.Escape) || backspace && keys.IsDown(SdlKeyboardKey.Backspace);
         var pressed = down && !_escapeWasDown;
         _escapeWasDown = down;
         return pressed;

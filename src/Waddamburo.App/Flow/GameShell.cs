@@ -537,8 +537,10 @@ internal sealed class GameShell : IDisposable
                 updateFrame: keyboard =>
                 {
                     _input.Frame(keyboard);
-                    // F8: the notice sidebar (live presses only reach this callback; not over a lane).
-                    if (_notices is not null && !onLane && keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.F8))
+                    // F8 (or E, a Tatacon's right shoulder): the notice sidebar (live presses only reach this
+                    // callback; not over a lane, nor while the search field takes the letters).
+                    if (_notices is not null && !onLane && keyboard.Presses.Any(press => press.Key == SdlKeyboardKey.F8
+                        || press.Key == SdlKeyboardKey.E && !_search.IsOpen))
                         _notices.Toggle();
                     flowOf(Active.Id).UpdateFrame(keyboard);
                 },
@@ -597,7 +599,8 @@ internal sealed class GameShell : IDisposable
         Application.MenuInput = !onLane || _home.MenuOpen || _gameplay.Reviewing && !_gameplay.Attempting;
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
-        var escape = _input.EscapePressed(keys);
+        // Home: Backspace is Escape too (a Tatacon's B button), except while it edits text or is being bound.
+        var escape = _input.EscapePressed(keys, backspace: Arcade.Home && !_search.IsOpen && !_home.CapturingBinding);
         // Focus is followed whichever overlay takes the keys (the mute in background).
         _home.FollowFocus();
         // Song Select's search field takes the keyboard while open (its Escape closes it, not the menu).

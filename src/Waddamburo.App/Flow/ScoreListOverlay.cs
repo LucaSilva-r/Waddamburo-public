@@ -15,8 +15,8 @@ namespace Waddamburo.App.Flow;
 /// Song Select's scores (home, online), as osu! shows them: R on a song (in the list or on its
 /// difficulties) opens its leaderboard from TaikOnline, each player's best play, or the player's own
 /// plays; picking one watches its replay (a review: never saved). Left/right pick the difficulty, up/down
-/// the play, Space switches leaderboard/own plays, Tab the normal/真打 leaderboard, Enter watches, P
-/// practises, R or Escape closes.
+/// the play, Space (or Q) switches leaderboard/own plays, Tab the normal/真打 leaderboard, Enter watches,
+/// P practises, R or Escape closes. A Tatacon's L opens and closes it as R does.
 /// </summary>
 internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, OptionIcons optionIcons) : IInputOverlay
 {
@@ -42,14 +42,14 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
     public bool Tick(SdlKeyboardSnapshot keys, bool escape)
     {
         if (!IsOpen)
-            return keys.IsDown(SdlKeyboardKey.R) && open();
+            return (keys.IsDown(SdlKeyboardKey.R) || keys.IsDown(SdlKeyboardKey.L)) && open();
         if (_watching is { } watching)
         {
             if (watching.IsCompleted)
                 watch(watching);
             return true;
         }
-        if (escape || keys.IsDown(SdlKeyboardKey.R))
+        if (escape || keys.IsDown(SdlKeyboardKey.R) || keys.IsDown(SdlKeyboardKey.L))
         {
             IsOpen = false;
             return true;
@@ -59,7 +59,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             _chart = Math.Clamp(_chart + (keys.IsDown(SdlKeyboardKey.Right) ? 1 : -1), 0, _charts.Length - 1);
             _selection = 0;
         }
-        if (keys.IsDown(SdlKeyboardKey.Space))
+        if (keys.IsDown(SdlKeyboardKey.Space) || keys.IsDown(SdlKeyboardKey.Q))
         {
             _mine = !_mine;
             _selection = 0;
