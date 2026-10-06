@@ -15,9 +15,10 @@ namespace Waddamburo.App.Flow;
 /// Song Select's scores (home, online), as osu! shows them: R on a song (in the list or on its
 /// difficulties) opens its leaderboard from TaikOnline, each player's best play, or the player's own
 /// plays; picking one watches its replay (a review: never saved). Left/right pick the difficulty, up/down
-/// the play, Space switches leaderboard/own plays, Enter watches, R or Escape closes.
+/// the play, Space switches leaderboard/own plays, Tab the normal/真打 leaderboard, Enter watches, P
+/// practises, R or Escape closes.
 /// </summary>
-internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) : IInputOverlay
+internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, OptionIcons optionIcons) : IInputOverlay
 {
     private const float Left = 170, Top = 70, Width = 940, Height = 580, RowHeight = 40;
     private const int VisibleRows = 10;
@@ -27,11 +28,12 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
     private SongChartDescriptor[] _charts = [];
     private int _chart;
     private bool _mine;
+    private bool _shinuchi;
     private int _selection;
     private ScoreProfile? _profile;
     private ScoreClient? _client;
     // Per chart and list (leaderboard / own): the request under way or done.
-    private readonly Dictionary<(int Chart, bool Mine), Task<List<ScoreRow>>> _lists = [];
+    private readonly Dictionary<(int Chart, bool Mine, bool Shinuchi), Task<List<ScoreRow>>> _lists = [];
     private Task<ReplayDownload>? _watching;
     private string? _error;
 
@@ -60,6 +62,11 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
         if (keys.IsDown(SdlKeyboardKey.Space))
         {
             _mine = !_mine;
+            _selection = 0;
+        }
+        if (keys.IsDown(SdlKeyboardKey.Tab) && !_mine)
+        {
+            _shinuchi = !_shinuchi;
             _selection = 0;
         }
         var rows = Rows();
@@ -95,7 +102,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
         var played = Array.FindLastIndex(_charts, chart => crowns.ContainsKey(chart.Key.ToString()));
         _chart = played >= 0 ? played : Math.Max(0, Array.FindIndex(_charts, static chart => chart.Course == TaikoCourse.Oni));
         _lists.Clear();
-        (_mine, _selection, _watching, _error) = (false, 0, null, null);
+        (_mine, _shinuchi, _selection, _watching, _error) = (false, false, 0, null, null);
         IsOpen = true;
         return true;
     }
@@ -107,18 +114,19 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
     {
         if (_client is not { } client)
             return null;
-        var key = (_chart, _mine);
+        var key = (_chart, _mine, _mine ? false : _shinuchi);
         if (!_lists.TryGetValue(key, out var task))
         {
             var chart = _charts[_chart];
             var mine = _mine;
+            var shinuchi = _shinuchi;
             _lists[key] = task = Task.Run(async () =>
             {
                 // The server knows charts by their notes' hash.
                 var sha = await shell.ChartHashes.HashAsync(chart).ConfigureAwait(false)
                     ?? throw new InvalidOperationException("The chart has no course.");
                 return mine ? await client.MyScoresAsync(sha).ConfigureAwait(false)
-                    : (await client.LeaderboardAsync(sha).ConfigureAwait(false)).Scores;
+                    : (await client.LeaderboardAsync(sha, shinuchi: shinuchi).ConfigureAwait(false)).Scores;
             });
         }
         return task;
@@ -137,8 +145,9 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
         var chart = _charts[_chart];
         var request = new PlayRequest(shell.Hosts.SongSelect!.CatalogRevision, _song!.Descriptor.Key, _song.Descriptor.AudioAsset,
             [new PlayerChartRequest(shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne,
-                chart.Key, chart.ChartAsset, chart.Course!.Value)])
+                chart.Key, chart.ChartAsset, chart.Course!.Value) { Options = TaikoPlayOptions.FromBits(replay.Play.Options) }])
         {
+            Seed = replay.Play.Seed,
             Review = new ReviewRequest(replay.Replay.Inputs, TimeSpan.FromMilliseconds(replay.Play.InputOffsetMs ?? 0), replay.Player),
         };
         if (!shell.PlayRequests.TryRequestPlay(request))
@@ -187,7 +196,8 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
                 quads.Add(painter.Rect(x + 4, Top + 64, tabWidth - 8, 34, new RenderColor(1, 0.75f, 0.2f, 0.9f)));
             quads.Add(painter.Text(name, x + tabWidth / 2, Top + 81, tabWidth - 16, 26));
         }
-        quads.Add(painter.Text(T(_mine ? "score_list.mine" : "score_list.leaderboard"), Left + 30, Top + 122, 400, 26, anchor: 0,
+        quads.Add(painter.Text(T(_mine ? "score_list.mine" : _shinuchi ? "score_list.leaderboard_shinuchi" : "score_list.leaderboard"),
+            Left + 30, Top + 122, 400, 26, anchor: 0,
             tint: (255, 205, 80)));
         quads.Add(painter.Text(T("score_list.switch"), Left + Width - 30, Top + 122, 420, 22, anchor: 1, tint: (170, 175, 190)));
 
@@ -225,6 +235,10 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
         var when = play.PlayedAt?.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) ?? "";
         yield return painter.Text(play.Rank is { } rank ? $"#{rank}" : "", Left + 40, centreY, 70, 26, anchor: 0, tint: (170, 175, 190));
         yield return painter.Text(_mine ? when : play.Name, Left + 115, centreY, 300, 26, anchor: 0);
+        // The play's options as the lane's icons, right-aligned before the score.
+        var x = Left + 414f;
+        foreach (var icon in optionIcons.Of(TaikoPlayOptions.FromBits(play.Options)).Reverse())
+            yield return OverlayPainter.Quad(icon, x -= 36, centreY - 17, 34, 34);
         yield return painter.Text(play.Score.ToString("N0", CultureInfo.InvariantCulture), Left + 560, centreY, 140, 26, anchor: 1);
         yield return painter.Text(crown, Left + 580, centreY, 130, 22, anchor: 0, tint: play.Crown >= 2 ? ((byte)255, (byte)205, (byte)80) : ((byte)150, (byte)200, (byte)255));
         yield return painter.Text($"{play.Great} / {play.Good} / {play.Miss}", Left + Width - 40, centreY, 200, 24, anchor: 1, tint: (200, 205, 215));

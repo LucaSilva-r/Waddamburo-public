@@ -67,3 +67,28 @@ public static class NameText
     public static void Show(LumenPlayer board, string path, string name) =>
         board.SetInstanceOverlay(path, string.IsNullOrWhiteSpace(name) ? null : Key(name), Box);
 }
+
+/// <summary>
+/// A play speed's text (1.3x) on Song Select's option board, drawn in place of Green's speed art as the
+/// name tags' names are (white in a black outline, their box). Speed 1.0 keeps Green's ふつう: null.
+/// </summary>
+public static class SpeedText
+{
+    public const string Prefix = "speed:";
+
+    public static LumenNativeSurfaceKey? Key(int index, LumenNativeSurfacePlacement box) => index <= 0 ? null
+        : new(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{Prefix}{(int)Math.Round(box.Width)}x{(int)Math.Round(box.Height)}:{Gameplay.TaikoPlayOptions.SpeedText(index)}"));
+
+    public static bool TryParse(LumenNativeSurfaceKey key, out int width, out int height, out string text)
+    {
+        (width, height, text) = (0, 0, "");
+        if (!key.Value.StartsWith(Prefix, StringComparison.Ordinal))
+            return false;
+        var rest = key.Value[Prefix.Length..];
+        var colon = rest.IndexOf(':', StringComparison.Ordinal);
+        var x = rest.IndexOf('x', StringComparison.Ordinal);
+        return colon > x && x > 0 && int.TryParse(rest[..x], out width) && int.TryParse(rest[(x + 1)..colon], out height)
+            && (text = rest[(colon + 1)..]).Length > 0;
+    }
+}

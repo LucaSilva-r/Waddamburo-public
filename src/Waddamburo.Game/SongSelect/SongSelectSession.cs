@@ -124,7 +124,9 @@ public sealed class SongSelectSession
 
     public LumenNativeSurfaceKey GetFolderDescription(string lines, uint outlineRgb) => _textures.GetFolderDescription(lines, outlineRgb);
 
-    public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse)
+    /// <remarks><paramref name="options"/>: each drum's play options (left, right).</remarks>
+    public SongSelection Select(int category, int song, int playerOneCourse, int playerTwoCourse,
+        IReadOnlyList<Gameplay.TaikoPlayOptions>? options = null)
     {
         if (!Catalog.TryGetSong(category, song, out var selected))
             throw new ArgumentOutOfRangeException(nameof(song));
@@ -142,8 +144,8 @@ public sealed class SongSelectSession
         var duet = playerOne is not null && playerTwo is not null;
         var players = new[]
         {
-            playerOne is null ? null : request(LocalPlayerSlot.PlayerOne, playerOne, duet),
-            playerTwo is null ? null : request(LocalPlayerSlot.PlayerTwo, playerTwo, duet),
+            playerOne is null ? null : request(LocalPlayerSlot.PlayerOne, playerOne, duet) with { Options = options?.ElementAtOrDefault(0) ?? default },
+            playerTwo is null ? null : request(LocalPlayerSlot.PlayerTwo, playerTwo, duet) with { Options = options?.ElementAtOrDefault(1) ?? default },
         }.OfType<PlayerChartRequest>();
         var playRequest = new PlayRequest(
             Catalog.Revision,

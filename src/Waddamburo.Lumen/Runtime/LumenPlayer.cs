@@ -215,22 +215,29 @@ public sealed class LumenPlayer
         return removed;
     }
 
-    public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments)
+    public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments) =>
+        TryInvokeCallback(name, arguments, out _);
+
+    /// <summary>Calls an exported callback and hands back what it returned (song_select's GetSession).</summary>
+    public bool TryInvokeCallback(string name, IReadOnlyList<LumenHostValue> arguments, out LumenHostValue result)
     {
+        result = LumenHostValue.Undefined;
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(arguments);
         if (!_callbacks.TryGetValue(name, out var callback))
             return false;
         var converted = arguments.Select(fromHostValue).ToArray();
-        var invoked = invokeFunction(
+        var call = invokeFunction(
             callback.Instance,
             callback.Function,
             callback.ThisValue,
             converted,
-            _activeContext).Found;
-        if (invoked)
-            drainActions();
-        return invoked;
+            _activeContext);
+        if (!call.Found)
+            return false;
+        result = toHostValue(call.Value);
+        drainActions();
+        return true;
     }
 
     /// <summary>
@@ -606,16 +613,60 @@ public sealed class LumenPlayer
         return true;
     }
 
+    // A clip by its names from the root ("a/b/name"), else the first live clip anywhere whose own and
+    // nearest ancestors' names end the path (as SetInstanceOverlay matches clips).
     private DisplayInstance? findInstance(string path)
     {
+        var names = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var instance = _root;
-        foreach (var name in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var name in names)
         {
             instance = instance.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == name);
             if (instance is null)
-                return null;
+                return names.Length == 0 ? null : findBySuffix(_root, names);
         }
         return instance;
+    }
+
+    private static DisplayInstance? findBySuffix(DisplayInstance instance, string[] names)
+    {
+        foreach (var child in instance.Children.Values)
+        {
+            if (child.Removed)
+                continue;
+            if (child.Name == names[^1])
+            {
+                var node = child.Parent;
+                var matched = true;
+                for (var index = names.Length - 2; index >= 0 && matched; index--, node = node?.Parent)
+                    matched = node is not null && node.Name == names[index];
+                if (matched)
+                    return child;
+            }
+            if (findBySuffix(child, names) is { } found)
+                return found;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// A script member of a clip found by name (as <see cref="TryGetInstanceTransform"/> finds it, the path's
+    /// end matched anywhere), e.g. a selector's current index. Undefined when either is missing.
+    /// </summary>
+    /// <summary>Writes a number to a script member of a clip found as <see cref="ReadClipMember"/> finds it. False when the clip is missing.</summary>
+    public bool TryWriteClipMember(string clipPath, string member, double value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(clipPath);
+        if (findInstance(clipPath) is not { } instance)
+            return false;
+        instance.Variables[member] = value;
+        return true;
+    }
+
+    public LumenHostValue ReadClipMember(string clipPath, string member)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(clipPath);
+        return findInstance(clipPath)?.Variables.GetValueOrDefault(member) is { } value ? toHostValue(value) : LumenHostValue.Undefined;
     }
 
     private void bootstrapPackageClasses()

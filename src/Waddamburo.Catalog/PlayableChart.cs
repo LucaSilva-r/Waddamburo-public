@@ -179,6 +179,12 @@ public sealed record PlayableChart
     public int? ScoreInit { get; init; }
     public int? ScoreDiff { get; init; }
 
+    /// <summary>
+    /// Played with the 真打 (shin-uchi) option: every Great is worth this, a Good half of it (rounded up to
+    /// ten), with no combo growth, 100-combo bonus or Go-Go factor. Null: the normal scoring.
+    /// </summary>
+    public int? ShinuchiBase { get; init; }
+
     private static ImmutableArray<T> nonEmptyOrdered<T>(
         IEnumerable<T> values,
         Func<T, TimeSpan> time,

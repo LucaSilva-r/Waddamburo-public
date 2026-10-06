@@ -162,9 +162,9 @@ public sealed class TaikoLongNotePresentation
         }
     }
 
-    /// <summary>Visible long notes with their start times (for chart-order drawing).</summary>
+    /// <summary>Visible long notes with their start times (for chart-order drawing); <paramref name="bodies"/> false: their text only (ドロン).</summary>
     public IEnumerable<(TimeSpan Start, LumenSceneLayer Layer)> NoteLayers(TimeSpan time,
-        Func<TimeSpan, TimeSpan, float> position, float hitX, float hitY)
+        Func<TimeSpan, TimeSpan, float> position, float hitX, float hitY, bool bodies = true)
     {
         var retained = new HashSet<int>();
         for (var index = _chart.LongNotes.Length - 1; index >= 0; index--)
@@ -193,7 +193,8 @@ public sealed class TaikoLongNotePresentation
                 // is exact every frame (a stale blend stretched the tail, worst when scrubbing a review back).
                 layer.Player.HoldStill();
             }
-            yield return (note.StartTime, layer with { Transform = transform });
+            if (bodies)
+                yield return (note.StartTime, layer with { Transform = transform });
             // Traced: a roll spawns onp_renda(_dai)_moji below it, sized with the same SetWidth.
             if (note.IsBalloon || _createText is null) continue;
             if (!_texts.TryGetValue(index, out var text))

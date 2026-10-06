@@ -15,6 +15,8 @@ internal sealed class NameTextTextures(SdlApplication application, string fontPa
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key)
     {
+        if (SpeedText.TryParse(key, out var speedWidth, out var speedHeight, out var speed))
+            return speedLabel(speed, speedWidth, speedHeight);
         if (!NameText.TryParse(key, out var name))
             return null;
         var scale = Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
@@ -24,6 +26,18 @@ internal sealed class NameTextTextures(SdlApplication application, string fontPa
         var canvas = new VectorCanvas((int)width, (int)height, scale, fontPath);
         canvas.Text(name, width / 2, height / 2, width, height);
         return _uploaded[(name, scale)] = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
+    }
+
+    // A play speed on the option board, lettered as the names are.
+    private RenderTextureId speedLabel(string text, int width, int height)
+    {
+        var scale = Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
+        var key = ($"{SpeedText.Prefix}{width}x{height}:{text}", scale);
+        if (_uploaded.TryGetValue(key, out var texture))
+            return texture;
+        var canvas = new VectorCanvas(Math.Max(1, width), Math.Max(1, height), scale, fontPath);
+        canvas.Text(text, width / 2f, height / 2f, width, height);
+        return _uploaded[key] = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
     }
 
     public void Dispose()

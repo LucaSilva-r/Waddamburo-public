@@ -91,6 +91,9 @@ public sealed class TaikoLumenPresentation
 
     public event Action<bool>? GoGoChanged;
 
+    /// <summary>The ドロン option: notes are not drawn, only the text under them.</summary>
+    public bool Doron { get; set; }
+
     /// <summary>The centre of the lane's hit target on the 1280x720 stage.</summary>
     public (float X, float Y) HitPoint => (_hitX, _hitY);
 
@@ -140,7 +143,7 @@ public sealed class TaikoLumenPresentation
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
         if (_longNotes is not null)
             notes.AddRange(_longNotes.NoteLayers(time,
-                (noteTime, controlTime) => position(noteTime, time, controlTime), _hitX, _hitY));
+                (noteTime, controlTime) => position(noteTime, time, controlTime), _hitX, _hitY, bodies: !Doron));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
@@ -155,7 +158,7 @@ public sealed class TaikoLumenPresentation
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
             addAt(hitNotes, template, note.StartTime, time);
-            if (hitNotes.Count != 0) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
+            if (hitNotes.Count != 0 && !Doron) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
                 addAt(texts, text, note.StartTime, time, yOffset: TaikoNoteText.Offset);

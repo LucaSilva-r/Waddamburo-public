@@ -137,11 +137,13 @@ public sealed class ResultHostBinding(
         call(player, "SetGauge", p, number(play.GaugeSegments));
         call(player, "SetResultLevel", p, number(play.ResultLevel));
         call(player, "SetFullCombo", p, number(play.FullCombo ? 1 : 0));
-        call(player, "SetOptionSpeed", p, number(1));
-        call(player, "SetOptionDoron", p, no);
-        call(player, "SetOptionAbekobe", p, no);
-        call(player, "SetOptionRandomLevel", p, number(0));
-        call(player, "SetOptionShinuchi", p, no);
+        // Traced (no options): SetOptionSpeed 1, the rest false / 0.
+        var options = play.Options;
+        call(player, "SetOptionSpeed", p, number(options.SpeedIcon)); // Green's art by range
+        call(player, "SetOptionDoron", p, LumenHostValue.FromBoolean(options.Doron));
+        call(player, "SetOptionAbekobe", p, LumenHostValue.FromBoolean(options.Abekobe));
+        call(player, "SetOptionRandomLevel", p, number((int)options.Random));
+        call(player, "SetOptionShinuchi", p, LumenHostValue.FromBoolean(options.Shinuchi));
     }
 
     // Traced (card player): after the numbers, each top-three slot (empty ones as 0, "") then the

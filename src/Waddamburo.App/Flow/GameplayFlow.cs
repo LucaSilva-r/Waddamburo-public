@@ -21,7 +21,10 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 {
+    // The charts as played (each player's options applied) and as authored (hashed, uploaded, saved under).
     private PlayableChart[] _charts = [];
+    private PlayableChart[] _sourceCharts = [];
+    private int _seed;
     private SongSelectSong? _song;
 
     /// <summary>The song being (or last) played.</summary>
@@ -68,7 +71,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public void Prepare(PlayableChart[] charts, SongSelectSong song, int side, WaiwaiComposition? waiwai)
     {
         _directStart = false;
-        _charts = charts;
+        _charts = _sourceCharts = charts;
         _song = song;
         _side = side;
         _waiwai = waiwai;
@@ -80,6 +83,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         var request = Shell.PlayRequests.ActivatePending();
         _lastRequest = request;
+        // Each player's options on their chart; the random ones from the play's seed (a replay's own).
+        _seed = request.Seed ?? Random.Shared.Next();
+        _charts = [.. _sourceCharts.Select((chart, lane) => (request.Players.ElementAtOrDefault(lane)?.Options ?? default).Apply(chart, _seed + lane))];
+        Shell.Gameplay.Options = [.. request.Players.Select(static player => player.Options)];
         _paused = false;
         _pausedTicks = 0;
         _shutterStartTick = -1;
@@ -241,7 +248,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public bool Restart()
     {
         if (_lastRequest is not { } last || _charts.Length == 0) return false;
-        var request = last with { Review = null, Training = false };
+        var request = last with { Review = null, Training = false, Seed = null };
         Shell.StopWatching();
         if (_paused) SetPaused(false);
         if (_music is { } music)
@@ -437,12 +444,14 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 continue;
             try
             {
-                var sha = ChartHash.Compute(_charts[lane], player.Course);
+                var sha = ChartHash.Compute(_sourceCharts[lane], player.Course);
                 var id = Guid.NewGuid();
+                var shinuchi = player.Options.Shinuchi;
                 if (lane < Shell.Bests.Length)
-                    Shell.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id) ?? Shell.Gameplay.Results[lane].Score;
+                    Shell.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id, shinuchi) ?? Shell.Gameplay.Results[lane].Score;
                 // Online players only (the guest's baid is never uploaded), from the board song select fetched.
-                if (lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null
+                // ponytail: 真打 plays get no rank-in on the results (song select fetched the normal board only).
+                if (lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi
                     && Shell.Hosts.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
                 {
                     var top = boards[(int)player.Course] ?? []; // fetched, nobody on it yet
@@ -457,8 +466,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                     {
                         AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
                         InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
+                        Seed = player.Options.Random == TaikoRandom.None ? null : _seed + lane,
                     },
-                    ChartUpload.From(_charts[lane], player.Course, _song?.Descriptor));
+                    ChartUpload.From(_sourceCharts[lane], player.Course, _song?.Descriptor));
                 saved.Add(profile);
             }
             catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)

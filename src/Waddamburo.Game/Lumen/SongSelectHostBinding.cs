@@ -1,3 +1,4 @@
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
@@ -333,10 +334,25 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 return clearFolderSurfaces();
             });
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
+            // SetOptionMode(player, open, board): traced (0, true, 0) as a player's option board opens and
+            // (0, false, 0) as it closes; the game fades that player's name board out under it meanwhile.
+            lumen.RegisterMethod("SetOptionMode", call =>
+            {
+                var player = integer(call, 0);
+                if (Array.IndexOf(_sides, player) is var board and >= 0)
+                    _parts?.FadeSongSelectName(board, visible: !boolean(call, 1));
+                if ((uint)player < 2)
+                    (_optionOpen[player], _speedShown[player]) = (boolean(call, 1), -1);
+                return LumenHostValue.Undefined;
+            });
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
             {
                 _courseSelect = (integer(call, 0), integer(call, 1));
                 CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
+                // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.
+                foreach (var player in _sides)
+                    if (_speedRow[player] is null)
+                        extendSpeedRow(player, TaikoGuest.Options[player].SpeedIndex);
                 return LumenHostValue.Undefined;
             });
             // SetSelectedMusic(genre, song): the movie's final pick; genre = the mode-switch folder with
@@ -463,6 +479,18 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             var carded = _crowns[player] is not null && _sides.Contains(player);
             invoke("SetScoreType", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(carded ? 2 : 0),
                 LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(carded ? 1 : 0));
+            // Play options (the arcade's were for card players only; here anyone's): every item offered, the
+            // drum's last choice selected. As the movie's own developer setup: Assign(p, 0b11111111),
+            // SetDefaultSession(p, item bits, 真打), SetValidOptionMenu(p, session, tone).
+            // ponytail: no 音色 (drum sound) board until the drums have other sound sets.
+            if (_sides.Contains(player))
+            {
+                var options = TaikoGuest.Options[player];
+                tryInvoke("AssignSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0b11111111));
+                tryInvoke("SetDefaultSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(options.SessionBits),
+                    LumenHostValue.FromBoolean(options.Shinuchi));
+                tryInvoke("SetValidOptionMenu", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(false));
+            }
         }
         // CourseResource.isMania[player] is what repeated right-rim hits set (Callback_SetCourse's
         // isMania_ also writes it, but with the remembered course too); CheckMania reads it per board.
@@ -711,6 +739,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void Poll()
     {
+        showSpeeds();
         if (_featureFolders.Count <= FeatureSlots || _player is null)
             return;
         // Each spine is one of the 13 recycled boards; its own folder names it (scoped native fill).
@@ -841,13 +870,107 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
-        var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse));
+        // Each joined drum's play options (GetSession: the chosen items' bits), kept for its next song.
+        foreach (var player in _sides)
+            if (requirePlayer().TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
+                && bits.Kind == LumenHostValueKind.Number)
+                TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+        var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
+            TaikoGuest.Options);
         Picked = (_session.Catalog.Categories[request.Category].Key, selection.Song);
         return LumenHostValue.Undefined;
     }
 
+    // Nijiiro's speeds on Green's 音符のはやさ row (ふつう, ばいそく, さんばい, よんばい): the row's lists grow to
+    // every speed, each shown with Green's art for its range (its item id too, so GetSession still reports
+    // that range) and our text drawn in its place; the exact one is the row's selected index.
+    private const string SessionRoot = "_global.CppConnection.resource.session";
+    private const string SpeedRowLabel = "音符のはやさ";
+    private readonly int?[] _speedRow = new int?[2];
+    private readonly bool[] _optionOpen = new bool[2];
+    private readonly int[] _speedShown = [-1, -1];
+    private LumenNativeSurfacePlacement? _speedBox;
+
+    private void extendSpeedRow(int player, int selected)
+    {
+        var lumen = requirePlayer();
+        for (var row = 0; lumen.ReadScriptValue($"{SessionRoot}.list.{player}.{row}.label") is { } label; row++)
+        {
+            if (label.ToString() != SpeedRowLabel)
+                continue;
+            var path = $"{SessionRoot}.list.{player}.{row}";
+            for (var index = 0; index < TaikoPlayOptions.Speeds.Length; index++)
+            {
+                var icon = new TaikoPlayOptions(false, index, false, false, TaikoRandom.None).SpeedIcon;
+                (string Array, object Value)[] entries =
+                [
+                    ("itemIndex", (double)(icon - 1)),
+                    ("itemLabel", icon switch { 1 => "ふつう", 2 => "ばいそく", 3 => "さんばい", _ => "よんばい" }),
+                    ("itemID", (double)(icon == 1 ? 0 : icon)),
+                ];
+                foreach (var (array, value) in entries)
+                    lumen.TryWriteScriptValue($"{path}.{array}.{index}", value);
+            }
+            lumen.TryWriteScriptValue($"{SessionRoot}.selected.{player}.{row}", (double)selected);
+            _speedRow[player] = row;
+            return;
+        }
+        Console.Error.WriteLine("Song Select has no 音符のはやさ row; speeds stay Green's.");
+    }
+
+    private int? selectedSpeed(int player) =>
+        _speedRow[player] is { } row && requirePlayer().ReadScriptValue($"{SessionRoot}.selected.{player}.{row}") is IConvertible index
+            ? Math.Clamp((int)index.ToDouble(System.Globalization.CultureInfo.InvariantCulture), 0, TaikoPlayOptions.Speeds.Length - 1) : null;
+
+    // While a speed row is on screen: its selector's label clips (in_ the item shown, out_ the one leaving)
+    // carry the speeds' text; ふつう keeps Green's art.
+    private void showSpeeds()
+    {
+        if (_player is null)
+            return;
+        for (var player = 0; player < 2; player++)
+        {
+            if (!_optionOpen[player] || _speedRow[player] is not { } row)
+                continue;
+            var selector = $"option_{player + 1}p_/frame_/item{row}_";
+            if (_player.ReadClipMember(selector, "current") is not { Kind: LumenHostValueKind.Number } current)
+                continue;
+            // The selector counted the row's items when the board was built, before the row grew.
+            if (_player.ReadClipMember(selector, "itemNum") is { Kind: LumenHostValueKind.Number } count
+                && (int)count.AsNumber() != TaikoPlayOptions.Speeds.Length)
+                _player.TryWriteClipMember(selector, "itemNum", TaikoPlayOptions.Speeds.Length);
+            var index = (int)current.AsNumber();
+            if (index == _speedShown[player])
+                continue;
+            _speedBox ??= labelBox($"{selector}/in_");
+            var leaving = _speedShown[player];
+            _speedShown[player] = index;
+            _player.SetInstanceOverlay($"{selector}/in_", SpeedText.Key(index, _speedBox.Value), _speedBox.Value, replace: true);
+            _player.SetInstanceOverlay($"{selector}/out_", leaving < 0 ? null : SpeedText.Key(leaving, _speedBox.Value), _speedBox.Value, replace: true);
+        }
+    }
+
+    // A name tag's lettering (NameText.Box's proportions) centred on the label art, in
+    // its clip's own coordinates (measured once, before any text covers it).
+    private LumenNativeSurfacePlacement labelBox(string clip)
+    {
+        // A third larger than a name tag: the board's pill is drawn smaller than the name boards.
+        var (width, height) = (NameText.Box.Width * 1.3f, NameText.Box.Height * 1.3f);
+        if (_player!.TryGetInstanceBounds(clip, out var bounds) && _player.TryGetInstanceTransform(clip, out var transform)
+            && transform.M11 != 0 && transform.M22 != 0)
+            return new((bounds.X + bounds.Width / 2 - transform.X) / transform.M11 - width / 2,
+                (bounds.Y + bounds.Height / 2 - transform.Y) / transform.M22 - height / 2, width, height);
+        return new(-width / 2, -height / 2, width, height); // ponytail: centred on the clip when the art cannot be measured
+    }
+
     private LumenPlayer requirePlayer() =>
         _player ?? throw new InvalidOperationException("Song Select host is not attached to a Lumen player.");
+
+    private void tryInvoke(string name, params LumenHostValue[] arguments)
+    {
+        if (!requirePlayer().TryInvokeCallback(name, arguments))
+            Console.Error.WriteLine($"Song Select has no callback '{name}'.");
+    }
 
     private void invoke(string name, params LumenHostValue[] arguments)
     {

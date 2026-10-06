@@ -54,6 +54,10 @@ public record ScoreRow
     public DateTimeOffset? PlayedAt { get; init; }
     public int? AudioOffsetMs { get; init; }
     public int? InputOffsetMs { get; init; }
+
+    /// <summary>The play options (<see cref="TaikoPlayOptions.Bits"/>) and the random options' seed.</summary>
+    public int Options { get; init; }
+    public int? Seed { get; init; }
 }
 
 /// <summary>A downloaded replay: the play, its chart's hash, its inputs and who played it (name boards, Don's look).</summary>
@@ -169,10 +173,14 @@ public sealed class ScoreClient(HttpClient http)
     /// A chart's leaderboard: each player's best play, best first, and the asking player's own best with
     /// its place (null when they have none). A cabinet names the player with <paramref name="baid"/>.
     /// </summary>
+    /// <remarks><paramref name="shinuchi"/>: the 真打 plays' board (their own scale) instead of the normal one.</remarks>
     public async Task<(List<ScoreRow> Scores, ScoreRow? Mine)> LeaderboardAsync(string chartSha256, long? baid = null,
-        CancellationToken cancellationToken = default)
+        bool shinuchi = false, CancellationToken cancellationToken = default)
     {
-        using var response = await http.GetAsync($"api/wdb/charts/{chartSha256}/scores{query(baid)}", cancellationToken).ConfigureAwait(false);
+        var url = $"api/wdb/charts/{chartSha256}/scores{query(baid)}";
+        if (shinuchi)
+            url += url.Contains('?', StringComparison.Ordinal) ? "&shinuchi=1" : "?shinuchi=1";
+        using var response = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.LeaderboardResult, cancellationToken).ConfigureAwait(false))!;
         return (result.Scores, result.Mine);

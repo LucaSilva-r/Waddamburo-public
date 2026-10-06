@@ -58,6 +58,17 @@ public sealed class TaikoScore
             return false;
         }
 
+        // 真打: the same value for every hit, a Good half of it rounded up to ten; no bonuses.
+        if (_chart.ShinuchiBase is { } shinuchi)
+        {
+            var value = result == TaikoHitResult.Good ? (shinuchi / 2 + 9) / 10 * 10 : shinuchi;
+            Value += value;
+            if (judgement.HitObject.IsStrong)
+                (_pendingStrongIndex, _pendingStrongPoints) = (judgement.NoteIndex, value);
+            Combo++;
+            return true;
+        }
+
         // Gen 3 uses four score steps after 10, 30, 50 and 100 combo.
         var step = Combo >= 100 ? 8 : Combo >= 50 ? 4 : Combo >= 30 ? 2 : Combo >= 10 ? 1 : 0;
         var basic = ((long)_base + (long)_step * step) / 10 * 10;
@@ -84,7 +95,7 @@ public sealed class TaikoScore
         var points = progress.Note.IsBalloon
             ? progress.IsPopped ? 5000L : 300L
             : progress.Note.Kind == PlayableLongNoteKind.BigRoll ? 200L : 100L;
-        Value += goGo ? points * 6 / 5 : points;
+        Value += goGo && _chart.ShinuchiBase is null ? points * 6 / 5 : points;
         return Value != previous;
     }
 

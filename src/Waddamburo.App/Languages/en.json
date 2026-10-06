@@ -221,7 +221,8 @@
 
   "score_list.leaderboard": "Leaderboard",
   "score_list.mine": "Your plays",
-  "score_list.switch": "Space: leaderboard / your plays",
+  "score_list.switch": "Space: leaderboard / your plays · Tab: shin-uchi",
+  "score_list.leaderboard_shinuchi": "Leaderboard · Shin-uchi",
   "score_list.keys": "←/→ difficulty · ↑/↓ choose · Enter watch the replay · P practise · R/Esc close",
   "score_list.loading": "Loading scores…",
   "score_list.loading_replay": "Loading the replay…",

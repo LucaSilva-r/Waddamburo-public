@@ -175,6 +175,13 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         }
     }
 
+    /// <summary>Song Select: a name board fades out under its player's option board, and back (traced Fadeout / Fadein).</summary>
+    public void FadeSongSelectName(int board, bool visible)
+    {
+        if (scene == IndicatorPartsScene.SongSelect && board < _nameBoards.Count)
+            call(_nameBoards[board], visible ? "Fadein" : "Fadeout");
+    }
+
     public void PauseCountdown() => callCounter("Pause");
 
     public void ResumeCountdown() => callCounter("Resume");

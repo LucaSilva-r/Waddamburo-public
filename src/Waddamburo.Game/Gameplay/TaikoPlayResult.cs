@@ -16,6 +16,9 @@ public sealed record TaikoPlayResult(
 {
     public bool FullCombo => Cleared && Miss == 0;
 
+    /// <summary>The play options it was played with (真打 scores on its own scale).</summary>
+    public TaikoPlayOptions Options { get; init; }
+
     /// <summary>
     /// result.lm SetResultLevel: RESULT_FAILURE 0 / ALMOST 1 / SUCCESS 2 / FULL 3 (traced: a full gauge
     /// with 3 misses sent 3). ponytail: ALMOST never sent, its threshold is unknown.

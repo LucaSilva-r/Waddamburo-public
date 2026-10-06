@@ -21,6 +21,12 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
 
     /// <summary>The player's input offset during the play; the replay's times already have it applied.</summary>
     public int? InputOffsetMs { get; init; }
+
+    /// <summary>The play options (<see cref="Gameplay.TaikoPlayOptions.Bits"/>; 0 none).</summary>
+    public int Options { get; init; }
+
+    /// <summary>The random options' seed (null: none drawn).</summary>
+    public int? Seed { get; init; }
 }
 
 /// <summary>
@@ -102,6 +108,9 @@ public sealed record PlayRecord(
 
     /// <summary>The input offset setting the play was made with; the replay's input times already include it.</summary>
     public int InputOffsetMs { get; init; }
+
+    /// <summary>The seed the random options were drawn with (its replay needs the same notes).</summary>
+    public int? Seed { get; init; }
 }
 
 /// <summary>The local score database (SQLite, one file beside the cabinet settings).</summary>
@@ -180,6 +189,11 @@ public sealed class ScoreStore : IDisposable
         ALTER TABLE plays ADD COLUMN audio_offset_ms INTEGER;
         ALTER TABLE plays ADD COLUMN input_offset_ms INTEGER;
         """,
+        // The play options (TaikoPlayOptions.Bits) and the random options' seed.
+        """
+        ALTER TABLE plays ADD COLUMN options INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE plays ADD COLUMN seed INTEGER;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -246,7 +260,8 @@ public sealed class ScoreStore : IDisposable
             using var command = _connection.CreateCommand();
             command.CommandText = """
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
-                    cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms
+                    cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms,
+                    options, seed
                 FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND uploaded_at IS NULL
                 ORDER BY played_at LIMIT $limit
                 """;
@@ -264,6 +279,8 @@ public sealed class ScoreStore : IDisposable
                 {
                     AudioOffsetMs = reader.IsDBNull(17) ? null : reader.GetInt32(17),
                     InputOffsetMs = reader.IsDBNull(18) ? null : reader.GetInt32(18),
+                    Options = reader.GetInt32(19),
+                    Seed = reader.IsDBNull(20) ? null : reader.GetInt32(20),
                 });
             return plays;
         }
@@ -324,9 +341,10 @@ public sealed class ScoreStore : IDisposable
         command.CommandText = """
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
-                audio_offset_ms, input_offset_ms)
+                audio_offset_ms, input_offset_ms, options, seed)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
-                $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset)
+                $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
+                $options, $seed)
             """;
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -348,6 +366,8 @@ public sealed class ScoreStore : IDisposable
         command.Parameters.AddWithValue("$replay", play.Replay);
         command.Parameters.AddWithValue("$audio_offset", play.AudioOffsetMs);
         command.Parameters.AddWithValue("$input_offset", play.InputOffsetMs);
+        command.Parameters.AddWithValue("$options", result.Options.Bits);
+        command.Parameters.AddWithValue("$seed", (object?)play.Seed ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 
@@ -463,9 +483,10 @@ public sealed class ScoreStore : IDisposable
 
     /// <summary>
     /// The player's best score on a chart before <paramref name="excluding"/> (the play just saved):
-    /// local plays and the server's best. Null when there is none.
+    /// local plays and the server's best. Null when there is none. 真打 plays have their own bests
+    /// (another scale; the server's best here is the normal one).
     /// </summary>
-    public long? PreviousBest(long baid, string sha256, Guid excluding)
+    public long? PreviousBest(long baid, string sha256, Guid excluding, bool shinuchi = false)
     {
         lock (_connection)
         {
@@ -473,13 +494,15 @@ public sealed class ScoreStore : IDisposable
             command.CommandText = """
                 SELECT MAX(score) FROM (
                     SELECT score FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND id != $id
+                        AND ((options & 2) <> 0) = $shinuchi
                     UNION ALL
-                    SELECT score FROM remote_bests WHERE baid = $baid AND sha256 = $sha
+                    SELECT score FROM remote_bests WHERE baid = $baid AND sha256 = $sha AND NOT $shinuchi
                 )
                 """;
             command.Parameters.AddWithValue("$baid", baid);
             command.Parameters.AddWithValue("$sha", sha256);
             command.Parameters.AddWithValue("$id", excluding.ToString());
+            command.Parameters.AddWithValue("$shinuchi", shinuchi);
             return command.ExecuteScalar() is long best ? best : null;
         }
     }

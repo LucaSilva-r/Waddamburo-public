@@ -32,6 +32,9 @@ public static class TaikoGuest
     }
 
     public static int TitlePlate(int side) => Profiles.ElementAtOrDefault(side)?.TitlePlate ?? 0;
+
+    /// <summary>Each drum's last play options, offered again on its next song (a credit starts with none).</summary>
+    public static TaikoPlayOptions[] Options { get; } = new TaikoPlayOptions[2];
 }
 
 public sealed record PlayerChartRequest
@@ -57,6 +60,9 @@ public sealed record PlayerChartRequest
     public CatalogAssetKey ChartAsset { get; }
 
     public TaikoCourse Course { get; }
+
+    /// <summary>The player's play options (演奏オプション).</summary>
+    public TaikoPlayOptions Options { get; init; }
 }
 
 /// <summary>
@@ -106,6 +112,12 @@ public sealed record PlayRequest
 
     /// <summary>Watch a recorded play of the (one) player's chart instead of playing it (home only).</summary>
     public ReviewRequest? Review { get; init; }
+
+    /// <summary>
+    /// The random options' seed (きまぐれ / でたらめ): a replay passes its play's, so its notes come out the
+    /// same; null: a fresh one.
+    /// </summary>
+    public int? Seed { get; init; }
 
     /// <summary>Home: the song is practised (loops of live attempts from any point) rather than played; never saved.</summary>
     public bool Training { get; init; }

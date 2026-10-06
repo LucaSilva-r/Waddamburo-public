@@ -432,7 +432,7 @@ internal sealed class GameShell : IDisposable
         var calibration = new CalibrationFlow(this);
         _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
         _search = new SongSearch(this, _libraries.Snapshot, Painter);
-        _scores = new ScoreListOverlay(this, Painter);
+        _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
         _inputOverlays = [_search, _scores];
         Reload = new SongSelectReload(this);
         var entry = new EntryFlow(this);
@@ -793,6 +793,7 @@ internal sealed class GameShell : IDisposable
         // A credit starts with guests (default Dons); cards and the home account attach as players join,
         // with the website's current looks.
         Array.Clear(TaikoGuest.Profiles);
+        Array.Clear(TaikoGuest.Options);
         Sync.RefreshProfiles();
         for (var slot = 0; slot < 3; slot++)
             Don?.SetLook(slot, null);

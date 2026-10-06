@@ -42,6 +42,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private WaiwaiStage? _stage;
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
 
+    /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
+    public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
+
     /// <summary>The first lane's numbers for the results screen (null before a song).</summary>
     public TaikoPlayResult? Result => _lanes.Length == 0 ? null : _lanes[0].Result;
 
@@ -70,7 +73,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0])];
+                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0))];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -86,7 +89,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
-            courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage, reviews?[lane]))];
+            courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage, reviews?[lane],
+            Options.ElementAtOrDefault(lane)))];
         var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
             handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
@@ -235,7 +239,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             IReadOnlyList<(SceneLayerDefinition Definition, LumenSceneLayer Layer, LumenMovieContent Content)> sceneLayers,
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
-            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null)
+            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
+            TaikoPlayOptions options = default)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -375,7 +380,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Waiwai: both players share the voltage (clear at its norm).
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
                 score.RollHits + score.BalloonHits, stage?.Segments ?? gauge.FilledSegments,
-                (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear);
+                (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
             var bannerTime = TaikoResultBanner.Time(chart);
             var bannerShown = false;
             _onChartTime = time =>
@@ -510,6 +515,15 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         return text;
                     }));
             hitPoint = _presentation.HitPoint;
+            _presentation.Doron = options.Doron;
+            // The options' icons on the lane (traced SetSpeed(1) for none). lane_obi's setOption shows
+            // speedx<n> above 1, doron and abekobe when true, random<level> above 0 (1 きまぐれ, 2 でたらめ),
+            // and option_serious "on" for SetSeriousMode(true) (真打).
+            board.TryInvokeCallback("SetSpeed", [LumenHostValue.FromNumber(options.SpeedIcon)]); // Green's art by range
+            board.TryInvokeCallback("SetDoron", [LumenHostValue.FromBoolean(options.Doron)]);
+            board.TryInvokeCallback("SetAbekobe", [LumenHostValue.FromBoolean(options.Abekobe)]);
+            board.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
+            board.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
             hitRadius = _presentation.HitRadius;
             _presentation.GoGoChanged += active =>
             {
