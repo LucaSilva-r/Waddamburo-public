@@ -87,19 +87,37 @@ public sealed class SdlInputBindings
         SdlKeyboardKey.Z, SdlKeyboardKey.X, SdlKeyboardKey.C, SdlKeyboardKey.V,
     ];
 
-    /// <summary>Each pad on the key it is named after.</summary>
-    public static SdlInputBindings Keyboard { get; } = Parse([.. Pads.Select(static pad => pad.ToString())]);
+    /// <summary>
+    /// The buttons beside the drum (the game's menu keys: back, search, scores, practise, notices, restart,
+    /// confirm), ids like the pads': a bound input reads as its button's key, and that key unbound is nothing.
+    /// </summary>
+    public static readonly ImmutableArray<SdlKeyboardKey> Buttons =
+    [
+        SdlKeyboardKey.Backspace, SdlKeyboardKey.Tab, SdlKeyboardKey.L, SdlKeyboardKey.P,
+        SdlKeyboardKey.E, SdlKeyboardKey.Q, SdlKeyboardKey.Enter,
+    ];
+
+    /// <summary>Each pad on the key it is named after, each button on its own key.</summary>
+    public static SdlInputBindings Keyboard { get; } = Parse([.. Pads.Select(static pad => pad.ToString())],
+        ["backspace", "tab", "l", "p", "e", "q", "return"]);
 
     private readonly Dictionary<SdlInput, SdlKeyboardKey> _pads = [];
+    private readonly Dictionary<SdlInput, SdlKeyboardKey> _buttons = [];
 
     /// <summary>
     /// Reads one comma-separated input list per pad, in <see cref="Pads"/> order. An input that is not
     /// understood is reported and skipped; one listed twice hits the first pad listing it.
     /// </summary>
-    public static SdlInputBindings Parse(IReadOnlyList<string> pads, Action<string>? warn = null)
+    public static SdlInputBindings Parse(IReadOnlyList<string> pads, IReadOnlyList<string>? buttons = null, Action<string>? warn = null)
     {
         ArgumentNullException.ThrowIfNull(pads);
         var bindings = new SdlInputBindings();
+        for (var button = 0; button < Math.Min(buttons?.Count ?? 0, Buttons.Length); button++)
+            foreach (var token in buttons![button].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (SdlInput.TryParse(token, out var input))
+                    bindings._buttons.TryAdd(input, Buttons[button]);
+                else
+                    warn?.Invoke($"unknown input '{token}'");
         for (var pad = 0; pad < Math.Min(pads.Count, Pads.Length); pad++)
             foreach (var token in pads[pad].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
@@ -113,4 +131,7 @@ public sealed class SdlInputBindings
 
     /// <summary>The pad the input hits, or null when it is not bound.</summary>
     public SdlKeyboardKey? Pad(SdlInput input) => _pads.TryGetValue(input, out var pad) ? pad : null;
+
+    /// <summary>The button the input presses (<see cref="Buttons"/>), or null when it is not bound to one.</summary>
+    public SdlKeyboardKey? Button(SdlInput input) => _buttons.TryGetValue(input, out var button) ? button : null;
 }

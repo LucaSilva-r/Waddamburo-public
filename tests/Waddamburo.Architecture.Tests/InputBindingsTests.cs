@@ -9,7 +9,7 @@ public sealed class InputBindingsTests
     {
         var warnings = new List<string>();
         var bindings = SdlInputBindings.Parse(["d, S, pad1:dpad_left, pad2:left_trigger, midi:31, nonsense, pad9:south", "f, d"],
-            warnings.Add);
+            warn: warnings.Add);
         foreach (var token in new[] { "d", "s", "pad1:dpad_left", "pad2:left_trigger", "midi:31" })
         {
             Assert.True(SdlInput.TryParse(token, out var input));
@@ -25,6 +25,23 @@ public sealed class InputBindingsTests
         Assert.False(SdlInput.TryParse("pad1:leftx", out _));
         Assert.False(SdlInput.TryParse("999", out _));
         Assert.False(SdlInput.TryParse("midi:128", out _));
+    }
+
+    [Fact]
+    public void ButtonsReadAsTheirOwnKeyWhateverIsBoundToThem()
+    {
+        // The settings' defaults (ArcadeSettings.Buttons), with the scores button moved to O.
+        var bindings = SdlInputBindings.Parse([],
+            ["backspace", "tab, pad1:back", "o, pad1:north", "p, pad1:west", "e, pad1:right_shoulder", "q, pad1:left_shoulder", "return, pad1:south"]);
+        foreach (var (token, button) in new[] { ("backspace", SdlKeyboardKey.Backspace), ("tab", SdlKeyboardKey.Tab),
+            ("return", SdlKeyboardKey.Enter), ("pad1:south", SdlKeyboardKey.Enter), ("o", SdlKeyboardKey.L),
+            ("pad1:north", SdlKeyboardKey.L), ("pad1:left_shoulder", SdlKeyboardKey.Q) })
+        {
+            Assert.True(SdlInput.TryParse(token, out var input), token);
+            Assert.Equal(button, bindings.Button(input));
+        }
+        Assert.True(SdlInput.TryParse("l", out var l));
+        Assert.Null(bindings.Button(l));
     }
 
     [Fact]

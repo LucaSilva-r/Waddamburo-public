@@ -196,4 +196,15 @@ public sealed class ArcadeTests
         Assert.True(bank.TryJoin(0));
         Assert.Equal((0, 2), (bank.Credits, bank.Missing(1)));
     }
+
+    [Fact]
+    public void UpgradingKeepsASettingTheFileHasAlready()
+    {
+        // The menu saved menu_volume into a version 17 file before version 18 added it.
+        var upgraded = ArcadeSettings.Upgrade("config_version = 17\nfree_play = true\nmenu_volume = 70\n");
+
+        Assert.Equal(70, ArcadeSettings.Parse(upgraded).MenuVolume);
+        Assert.Single(upgraded.Split('\n'), static line => line.StartsWith("menu_volume", StringComparison.Ordinal));
+        Assert.Contains("button_scores = l, pad1:north", upgraded, StringComparison.Ordinal);
+    }
 }

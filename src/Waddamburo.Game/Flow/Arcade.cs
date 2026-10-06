@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 17;
+    public const int CurrentVersion = 19;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -189,6 +189,21 @@ public sealed record ArcadeSettings
         menu_volume = 100
 
         """,
+        """
+        # The buttons beside the drum (also in Settings > Drum Controls > Buttons): keys by their place and
+        # padN:button, separated by ", ". Each does several things, by where you are: back is the menu (Escape
+        # too), search also the shin-uchi board and practice's note jump, scores also practice's after-a-pass,
+        # practise also favourite, notices also the loop's end, restart (hold) also the leaderboard switch and
+        # the loop's start, confirm also play / pause.
+        button_back = backspace
+        button_search = tab, pad1:back
+        button_scores = l, pad1:north
+        button_practise = p, pad1:west
+        button_notices = e, pad1:right_shoulder
+        button_restart = q, pad1:left_shoulder
+        button_confirm = return, pad1:south
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -212,6 +227,22 @@ public sealed record ArcadeSettings
         "x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick",
         "c, pad2:south, pad2:west, pad2:right_stick",
         "v, pad2:east, pad2:right_shoulder, pad2:right_trigger",
+    ]);
+
+    /// <summary>The buttons beside the drum, in the order of <see cref="Buttons"/> (SdlInputBindings.Buttons).</summary>
+    public static readonly string[] ButtonKeys =
+        ["button_back", "button_search", "button_scores", "button_practise", "button_notices", "button_restart", "button_confirm"];
+
+    /// <summary>What presses each button (<see cref="ButtonKeys"/> order), as <see cref="Controls"/> lists a pad's.</summary>
+    public EquatableList Buttons { get; init; } = new(
+    [
+        "backspace",
+        "tab, pad1:back",
+        "l, pad1:north",
+        "p, pad1:west",
+        "e, pad1:right_shoulder",
+        "q, pad1:left_shoulder",
+        "return, pad1:south",
     ]);
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
@@ -458,8 +489,13 @@ public sealed record ArcadeSettings
         var kept = text.Split('\n').Where(line => !isKey(line, "config_version")
             && !(version < 14 && (isKey(line, "title_language") || line.Trim() == TitleLanguageComment)));
         var mode = settings.CabinetToken is not null || !settings.FreePlay ? "arcade" : "home";
+        // A setting the file has already (the menu saved it before the file was upgraded) is not added again:
+        // the later line would win with its default.
+        var present = kept.Select(static line => line.Split('#')[0].Split('=')[0].Trim()).Where(static key => key.Length > 0).ToHashSet();
+        var added = string.Concat(Additions[version..]).Split('\n')
+            .Where(line => line.TrimStart().StartsWith('#') || !present.Contains(line.Split('=')[0].Trim()));
         return string.Join('\n', kept).TrimEnd() + "\n\n"
-            + placeholders(string.Concat(Additions[version..]), mode)
+            + placeholders(string.Join('\n', added), mode)
             + $"config_version = {CurrentVersion}\n";
     }
 
@@ -578,6 +614,11 @@ public sealed record ArcadeSettings
                     "drum" => true,
                     _ => throw new InvalidDataException($"{FileName} line {index}: pad_menus is gamepad or drum, not '{value}'."),
                 } },
+                _ when Array.IndexOf(ButtonKeys, key) is var button and >= 0 => settings with
+                {
+                    Buttons = settings.Buttons.With(button, string.Join(", ",
+                        value.ToLowerInvariant().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))),
+                },
                 _ when Array.IndexOf(ControlKeys, key) is var pad and >= 0 => settings with
                 {
                     Controls = settings.Controls.With(pad, string.Join(", ",
@@ -655,6 +696,8 @@ public sealed record ArcadeSettings
         };
         for (var pad = 0; pad < ControlKeys.Length; pad++)
             values[ControlKeys[pad]] = settings.Controls[pad];
+        for (var button = 0; button < ButtonKeys.Length; button++)
+            values[ButtonKeys[button]] = settings.Buttons[button];
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)
             foreach (var (key, value) in values)

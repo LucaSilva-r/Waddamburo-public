@@ -204,7 +204,8 @@ internal sealed class GameShell : IDisposable
     /// <summary>Applies the drum pads' keys, buttons and MIDI notes (<paramref name="warn"/>: report the ones not understood).</summary>
     public void ApplyControls(bool warn = false)
     {
-        Application.Bindings = SdlInputBindings.Parse(Arcade.Controls,
+        GameActions.Buttons = Arcade.Buttons;
+        Application.Bindings = SdlInputBindings.Parse(Arcade.Controls, Arcade.Buttons,
             warn ? problem => Console.Error.WriteLine($"Warning CONTROLS: {ArcadeSettings.FileName}: {problem}.") : null);
         Application.PadsAsGamepad = !Arcade.PadMenusAsDrum;
     }

@@ -23,13 +23,14 @@ internal enum GameAction
 }
 
 /// <summary>
-/// Each action's key: one keyboard layout, the Tatacon's (a Tatacon is a keyboard), which a gamepad gets
-/// by place (SdlApplication's layout). Escape is the menu too. The code checks actions through here and
-/// the hints name the keys from here, so a change shows everywhere.
+/// Each action's button: one of the buttons beside the drum (SdlInputBindings.Buttons, each doing several
+/// things by where you are), whose key is its id; the player binds keys and controller buttons to it
+/// (Settings > Drum Controls > Buttons). Escape is the menu too. The code checks actions through here and
+/// the hints name the bound inputs from here, so a change shows everywhere.
 /// </summary>
 /// <remarks>
-/// ponytail: fixed; the settings could expose them. The hints name the keyboard's key only (controller
-/// glyphs that follow the device in use would replace <see cref="Name"/>).
+/// ponytail: the hints name the keyboard's input only (controller glyphs that follow the device in use
+/// would replace <see cref="Name"/>).
 /// </remarks>
 internal static class GameActions
 {
@@ -52,7 +53,17 @@ internal static class GameActions
         [GameAction.AfterPass] = SdlKeyboardKey.L,
     };
 
+    /// <summary>What presses each button (ArcadeSettings.Buttons, in SdlInputBindings.Buttons order).</summary>
+    public static IReadOnlyList<string> Buttons { get; set; } = new Game.Flow.ArcadeSettings().Buttons;
+
     public static SdlKeyboardKey Key(GameAction action) => Keys[action];
+
+    // The inputs bound to the action's button.
+    private static IEnumerable<SdlInput> bound(GameAction action) =>
+        SdlInputBindings.Buttons.IndexOf(Keys[action]) is var index and >= 0 && index < Buttons.Count
+            ? Buttons[index].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static token => SdlInput.TryParse(token, out var input) ? input : (SdlInput?)null).OfType<SdlInput>()
+            : [];
 
     /// <summary>Down in a snapshot (a tick's pulses: pressed this tick; a frame's: held).</summary>
     public static bool Down(SdlKeyboardSnapshot keys, GameAction action) => keys.IsDown(Keys[action]);
@@ -61,9 +72,12 @@ internal static class GameActions
     public static bool Pressed(SdlKeyboardSnapshot keys, GameAction action) =>
         keys.Presses.Any(press => press.Key == Keys[action]);
 
-    /// <summary>The key's name, as hints show it.</summary>
-    public static string Name(GameAction action) => Keys[action].ToString();
+    /// <summary>Its keyboard input's name, as hints show it ("—" when none).</summary>
+    public static string Name(GameAction action) =>
+        bound(action).Where(static input => input.Kind == SdlInputKind.Key).Select(SdlApplication.Describe).FirstOrDefault() ?? "—";
 
-    /// <summary>The gamepad's button for it (Xbox names by place), as the button guide shows it.</summary>
-    public static string Gamepad(GameAction action) => SdlApplication.GamepadName(Keys[action]) ?? "—";
+    /// <summary>Its controller button's name (Xbox's by place), as the button guide shows it; the menu's is B / Start.</summary>
+    public static string Gamepad(GameAction action) => action == GameAction.Menu ? "B / Start"
+        : bound(action).Where(static input => input.Kind is SdlInputKind.PadButton or SdlInputKind.PadTrigger)
+            .Select(SdlApplication.GamepadName).FirstOrDefault() ?? "—";
 }

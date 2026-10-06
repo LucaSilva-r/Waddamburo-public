@@ -43,6 +43,10 @@ internal enum HomeMenuAction
     ResetControls,
     /// <summary>Open the button guide (done by the menu itself).</summary>
     ButtonGuide,
+    /// <summary>Open the buttons' bindings page (done by the menu itself).</summary>
+    Buttons,
+    /// <summary>The buttons on the chosen device back to their defaults.</summary>
+    ResetButtons,
 }
 
 /// <summary>
@@ -72,8 +76,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>A row that starts something (the texture bake, the audio calibration).</summary>
     private sealed record Command(string Label, HomeMenuAction Action, string Hint);
 
-    /// <summary>A drum pad's inputs on the controls page (Pad: 0-3 of the chosen player).</summary>
-    private sealed record Binding(string Label, int Pad);
+    /// <summary>
+    /// A drum pad's inputs on the controls page (Pad: 0-3 of the chosen player), or with
+    /// <paramref name="Button"/> a button's on the buttons page (Pad: its index in ArcadeSettings.Buttons).
+    /// </summary>
+    private sealed record Binding(string Label, int Pad, bool Button = false, string? Hint = null);
 
     // One settings row: a section header, a setting, a song library, a command, a drum pad, or Back (all null).
     // Shown: whether the row applies to the current settings (hidden rows are skipped); null = always.
@@ -246,7 +253,31 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Binding: new(T("controls.right_ka"), 3)),
         new(Command: new(T("controls.set_up_all"), HomeMenuAction.BindAllPads, T("controls.set_up_all.hint"))),
         new(Command: new(T("controls.reset"), HomeMenuAction.ResetControls, T("controls.reset.hint"))),
+        new(Command: new(T("buttons.open"), HomeMenuAction.Buttons, T("buttons.open.hint"))),
         new(Command: new(T("guide.open"), HomeMenuAction.ButtonGuide, T("guide.open.hint"))),
+        new(),
+    ];
+
+    // The buttons beside the drum (ArcadeSettings.Buttons order), bound on the keyboard or a controller.
+    private bool _buttonsPage;
+    private Row[]? _buttonRows;
+    // Label and hint keys, in ArcadeSettings.Buttons order.
+    private static readonly (string Label, string Hint)[] ButtonNames =
+    [
+        ("buttons.back", "buttons.back.hint"), ("buttons.search", "buttons.search.hint"),
+        ("buttons.scores", "buttons.scores.hint"), ("buttons.practise", "buttons.practise.hint"),
+        ("buttons.notices", "buttons.notices.hint"), ("buttons.restart", "buttons.restart.hint"),
+        ("buttons.confirm", "buttons.confirm.hint"),
+    ];
+
+    private Row[] buttonRows => _buttonRows ??=
+    [
+        new(Setting: new(T("controls.device"), _ => _device, (s, v) => { _device = v; return s; },
+            static (value, step) => value + Math.Sign(step), 0, static value => T(Devices[value]), 1,
+            Hint: T("buttons.device.hint"))),
+        new(T("buttons.header")),
+        .. ButtonNames.Select((name, index) => new Row(Binding: new(T(name.Label), index, Button: true, T(name.Hint)))),
+        new(Command: new(T("controls.reset"), HomeMenuAction.ResetButtons, T("buttons.reset.hint"))),
         new(),
     ];
 
@@ -320,7 +351,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
+        : _restartPrompt ? "menu.title.restart" : _buttonsPage ? "menu.title.buttons" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
         : "menu.title.paused");
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
@@ -378,7 +409,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // The rows shown for the current settings; Selection indexes these. Only rows below the one being
     // changed come and go, so the selection stays on it.
-    private Row[] rows => [.. (_guidePage ? guideRows : _controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
+    private Row[] rows => [.. (_guidePage ? guideRows : _buttonsPage ? buttonRows : _controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
         && (row.Command?.Action != HomeMenuAction.Calibrate || _calibrationOffered))];
 
     // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
@@ -392,6 +423,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         { Setting: { } setting } => new(ItemKind.Setting, setting.Label,
             setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
+        { Binding: { Button: true } button } => new(ItemKind.Binding, button.Label,
+            _listening && rows[Selection].Binding == button ? T(Prompts[_device])
+            : inputs(get().Buttons[button.Pad]).Where(onDevice).ToArray() is { Length: > 0 } pressing
+                ? string.Join(", ", pressing.Select(describe)) : T("value.none"),
+            $"{button.Hint} {T("buttons.bind.hint")}"),
         { Binding: { } binding } => new(ItemKind.Binding, binding.Label,
             _listening && rows[Selection].Binding == binding ? T(Prompts[_device])
             : inputs(get().Controls[_player * 4 + binding.Pad]).Where(onDevice).ToArray() is { Length: > 0 } bound
@@ -434,6 +470,38 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             controls = controls.With(other, string.Join(", ", kept));
         }
         apply(get() with { Controls = controls });
+    }
+
+    // The input joins the button, leaving any other button it pressed (as a pad's; listed already: it goes).
+    private void bindButton(int button, SdlInput captured)
+    {
+        var buttons = get().Buttons;
+        for (var other = 0; other < buttons.Count; other++)
+        {
+            var bound = inputs(buttons[other]);
+            var kept = bound.Where(token => token != captured.Token);
+            if (other == button && !bound.Contains(captured.Token))
+                kept = kept.Append(captured.Token);
+            if (other == button && _device == 0)
+            {
+                var surplus = kept.Where(onDevice).SkipLast(MaximumKeys).ToHashSet();
+                kept = kept.Where(token => !surplus.Contains(token));
+            }
+            buttons = buttons.With(other, string.Join(", ", kept));
+        }
+        apply(get() with { Buttons = buttons });
+    }
+
+    // The buttons get their default inputs of this device back.
+    private void resetButtons()
+    {
+        var defaults = new ArcadeSettings().Buttons;
+        var buttons = get().Buttons;
+        var restored = defaults.SelectMany(list => inputs(list).Where(onDevice)).ToHashSet();
+        for (var button = 0; button < buttons.Count; button++)
+            buttons = buttons.With(button, string.Join(", ", inputs(buttons[button]).Where(token => !onDevice(token) && !restored.Contains(token))
+                .Concat(inputs(defaults[button]).Where(onDevice))));
+        apply(get() with { Buttons = buttons });
     }
 
     // The player's pads get their default inputs of this device back (taken from wherever they are now).
@@ -547,7 +615,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = _guidePage = false;
+        _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
         input.CancelCapture();
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
@@ -570,7 +638,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             else
             {
                 drum(true);
-                bind(_player * 4 + rows[Selection].Binding!.Pad, captured, replace: _guided > 0);
+                if (rows[Selection].Binding is { Button: true } button)
+                    bindButton(button.Pad, captured);
+                else
+                    bind(_player * 4 + rows[Selection].Binding!.Pad, captured, replace: _guided > 0);
                 if (_guided > 1)
                 {
                     Selection++;
@@ -657,6 +728,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 change(arrows != 0 ? arrows : keys.IsDown(SdlKeyboardKey.Up) ? 1 : keys.IsDown(SdlKeyboardKey.Down) ? -1
                     : up ? -1 : 1);
         }
+        else if (_buttonsPage && (escape || decide && row == Rows_[^1]))
+        {
+            _buttonsPage = false;
+            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.Buttons);
+            save();
+        }
         else if (_guidePage && (escape || decide && row == Rows_[^1]))
         {
             _guidePage = false;
@@ -692,6 +769,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             save();
             return close(HomeMenuAction.Calibrate);
         }
+        else if (decide && row.Command is { Action: HomeMenuAction.Buttons })
+        {
+            _buttonsPage = true;
+            _device = Math.Min(_device, 1); // no MIDI buttons
+            Selection = 0;
+        }
+        else if (decide && row.Command is { Action: HomeMenuAction.ResetButtons })
+            resetButtons();
         else if (decide && row.Command is { Action: HomeMenuAction.ButtonGuide })
         {
             _guidePage = true;
@@ -711,6 +796,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             resetControls();
         else if (decide && row.Binding is not null)
             listen(pads: 0);
+        else if (keys.IsDown(SdlKeyboardKey.Delete) && row.Binding is { Button: true } cleared)
+        {
+            drum(false);
+            apply(get() with { Buttons = get().Buttons.With(cleared.Pad,
+                string.Join(", ", inputs(get().Buttons[cleared.Pad]).Where(token => !onDevice(token)))) });
+        }
         else if (keys.IsDown(SdlKeyboardKey.Delete) && row.Binding is { } binding)
         {
             drum(false);
