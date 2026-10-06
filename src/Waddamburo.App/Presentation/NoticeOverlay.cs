@@ -95,7 +95,7 @@ internal sealed class NoticeOverlay : IDisposable
         quads.Add(_painter.Rect(0, 0, Stage, StageHeight, new RenderColor(0, 0, 0, 0.35f)));
         quads.Add(_painter.Rect(x, 0, PanelWidth, StageHeight, new RenderColor(0.07f, 0.07f, 0.09f, 0.94f)));
         quads.Add(_painter.Text(T("notices.title"), x + Margin, 35, PanelWidth - 2 * Margin, 30, anchor: 0));
-        quads.Add(_painter.Text(T("notices.close_hint"), Stage - Margin, 37, PanelWidth - 2 * Margin, 18, anchor: 1));
+        quads.Add(_painter.Text(T("notices.close_hint", Waddamburo.App.Flow.GameActions.Name(Waddamburo.App.Flow.GameAction.Notices)), Stage - Margin, 37, PanelWidth - 2 * Margin, 18, anchor: 1));
         var y = 70f;
 
         foreach (var job in _jobs.Visible)

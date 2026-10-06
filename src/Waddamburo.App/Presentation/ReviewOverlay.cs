@@ -31,7 +31,7 @@ internal sealed class ReviewOverlay(OverlayPainter painter)
         float at(TimeSpan time) => OverlayPainter.StageWidth * (float)Math.Clamp((time - review.Start) / length, 0, 1);
         if (training is null)
         {
-            quads.Add(painter.Text(T("review.keys"), OverlayPainter.StageWidth - Margin, centre, 760, 24, anchor: 1, tint: (200, 205, 215)));
+            quads.Add(painter.Text(T("review.keys", GameActions.Name(GameAction.Pause), GameActions.Name(GameAction.Practise)), OverlayPainter.StageWidth - Margin, centre, 760, 24, anchor: 1, tint: (200, 205, 215)));
             if (review.Paused)
                 quads.Add(painter.Text(T("review.paused"), Margin + 280, centre, 160, 26, anchor: 0, tint: (255, 205, 80)));
             return quads;
@@ -45,7 +45,8 @@ internal sealed class ReviewOverlay(OverlayPainter painter)
         var status = training.LastAttempt is var (great, good, miss) ? T("training.last", great, good, miss)
             : review.Paused ? T("review.paused") : T("training.playing");
         quads.Add(painter.Text(status, Margin + 280, centre, 220, 24, anchor: 0, tint: (255, 205, 80)));
-        quads.Add(painter.Text(T(training.PauseAfterAttempt ? "training.keys_pause" : "training.keys_loop"),
+        quads.Add(painter.Text(T(training.PauseAfterAttempt ? "training.keys_pause" : "training.keys_loop", GameActions.Name(GameAction.Pause), GameActions.Name(GameAction.NoteJump),
+                GameActions.Name(GameAction.LoopStart), GameActions.Name(GameAction.LoopEnd), GameActions.Name(GameAction.AfterPass)),
             OverlayPainter.StageWidth - Margin, centre, 740, 22, anchor: 1, tint: (200, 205, 215)));
         return quads;
     }

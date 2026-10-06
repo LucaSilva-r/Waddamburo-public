@@ -1,3 +1,4 @@
+using Waddamburo.App.Flow;
 using System.Diagnostics;
 using System.Globalization;
 using Waddamburo.App.Gameplay;
@@ -40,6 +41,8 @@ internal enum HomeMenuAction
     BindAllPads,
     /// <summary>The player's pads on the chosen device back to their defaults.</summary>
     ResetControls,
+    /// <summary>Open the button guide (done by the menu itself).</summary>
+    ButtonGuide,
 }
 
 /// <summary>
@@ -75,7 +78,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // One settings row: a section header, a setting, a song library, a command, a drum pad, or Back (all null).
     // Shown: whether the row applies to the current settings (hidden rows are skipped); null = always.
     private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null, Command? Command = null,
-        Func<ArcadeSettings, bool>? Shown = null, Binding? Binding = null);
+        Func<ArcadeSettings, bool>? Shown = null, Binding? Binding = null, Guide? Guide = null);
+
+    /// <summary>A button guide line: what it does, and its keyboard · Tatacon · gamepad buttons.</summary>
+    private sealed record Guide(string Label, string Keys);
 
 
     // Background upscaling may take all threads but one (the game needs its own).
@@ -240,6 +246,50 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Binding: new(T("controls.right_ka"), 3)),
         new(Command: new(T("controls.set_up_all"), HomeMenuAction.BindAllPads, T("controls.set_up_all.hint"))),
         new(Command: new(T("controls.reset"), HomeMenuAction.ResetControls, T("controls.reset.hint"))),
+        new(Command: new(T("guide.open"), HomeMenuAction.ButtonGuide, T("guide.open.hint"))),
+        new(),
+    ];
+
+    // The button guide: every action's keyboard (a Tatacon's) · gamepad buttons, from GameActions, by where
+    // it is used.
+    private bool _guidePage;
+    private Row[]? _guideRows;
+
+    private static Row guide(string label, GameAction action, string? gamepadNote = null) =>
+        new(Guide: new(T(label), $"{GameActions.Name(action)} · {GameActions.Gamepad(action)}{gamepadNote}"));
+
+    private static Row guide(string label, string keyboard, string gamepad) => new(Guide: new(T(label), $"{keyboard} · {gamepad}"));
+
+    private Row[] guideRows => _guideRows ??=
+    [
+        new(Guide: new("", T("guide.columns"))),
+        new(T("guide.menus")),
+        guide("guide.menu", $"Esc / {GameActions.Name(GameAction.Menu)}", GameActions.Gamepad(GameAction.Menu)),
+        guide("guide.confirm", GameAction.Confirm),
+        guide("guide.move", "← ↑ → ↓", "D-pad"),
+        guide("guide.search", GameAction.Search),
+        guide("guide.scores", GameAction.Scores),
+        guide("guide.favourite", GameAction.Favourite),
+        guide("guide.notices", GameAction.Notices),
+        guide("guide.restart", GameAction.Restart),
+        new(T("guide.score_list")),
+        guide("guide.mine", GameAction.Leaderboard),
+        guide("guide.shinuchi", GameAction.ShinuchiBoard),
+        guide("guide.watch", GameAction.Confirm),
+        guide("guide.practise", GameAction.Practise),
+        new(T("guide.replay")),
+        guide("guide.pause", GameAction.Pause),
+        guide("guide.scrub", "← →", "D-pad"),
+        guide("guide.speed", "↑ ↓", "D-pad"),
+        guide("guide.practise_here", GameAction.Practise),
+        new(T("guide.practice")),
+        guide("guide.pause", GameAction.Pause, " (Back while playing)"),
+        guide("guide.loop", $"{GameActions.Name(GameAction.LoopStart)} / {GameActions.Name(GameAction.LoopEnd)}",
+            $"{GameActions.Gamepad(GameAction.LoopStart)} / {GameActions.Gamepad(GameAction.LoopEnd)}"),
+        guide("guide.clear_loop", $"{GameActions.Name(GameAction.LoopStart)} + {GameActions.Name(GameAction.LoopEnd)}",
+            $"{GameActions.Gamepad(GameAction.LoopStart)} + {GameActions.Gamepad(GameAction.LoopEnd)}"),
+        guide("guide.notes", $"{GameActions.Name(GameAction.NoteJump)} + ← →", $"{GameActions.Gamepad(GameAction.NoteJump)} + D-pad"),
+        guide("guide.after_pass", GameAction.AfterPass),
         new(),
     ];
 
@@ -270,7 +320,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
+        : _restartPrompt ? "menu.title.restart" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
         : "menu.title.paused");
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
@@ -328,7 +378,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // The rows shown for the current settings; Selection indexes these. Only rows below the one being
     // changed come and go, so the selection stays on it.
-    private Row[] rows => [.. (_controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
+    private Row[] rows => [.. (_guidePage ? guideRows : _controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
         && (row.Command?.Action != HomeMenuAction.Calibrate || _calibrationOffered))];
 
     // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
@@ -337,6 +387,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private Item item(Row row) => row switch
     {
         { Header: { } header } => new(ItemKind.Header, header, null, ""),
+        // Wide like a pad's inputs.
+        { Guide: { } guide } => new(ItemKind.Binding, guide.Label, guide.Keys, T("guide.hint")),
         { Setting: { } setting } => new(ItemKind.Setting, setting.Label,
             setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
         { Library: { } library } => libraryItem(library),
@@ -495,7 +547,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = false;
+        _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = _guidePage = false;
         input.CancelCapture();
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
@@ -605,6 +657,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 change(arrows != 0 ? arrows : keys.IsDown(SdlKeyboardKey.Up) ? 1 : keys.IsDown(SdlKeyboardKey.Down) ? -1
                     : up ? -1 : 1);
         }
+        else if (_guidePage && (escape || decide && row == Rows_[^1]))
+        {
+            _guidePage = false;
+            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.ButtonGuide);
+        }
         else if (_controlsPage && (escape || decide && row == Rows_[^1]))
         {
             _controlsPage = false;
@@ -634,6 +691,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _settingsPage = false;
             save();
             return close(HomeMenuAction.Calibrate);
+        }
+        else if (decide && row.Command is { Action: HomeMenuAction.ButtonGuide })
+        {
+            _guidePage = true;
+            Selection = 0;
         }
         else if (decide && row.Command is { Action: HomeMenuAction.Controls })
         {

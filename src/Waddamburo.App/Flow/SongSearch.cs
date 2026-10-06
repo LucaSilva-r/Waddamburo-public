@@ -27,7 +27,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
     {
         if (!IsOpen)
         {
-            if (!keys.IsDown(SdlKeyboardKey.Tab) || shell.Active.Id != FlowScenes.SongSelect
+            if (!GameActions.Down(keys, GameAction.Search) || shell.Active.Id != FlowScenes.SongSelect
                 || shell.Hosts.SongSelect is not { CourseSelectSong: null } || shell.PlayRequests.Pending is not null)
                 return false;
             IsOpen = true;

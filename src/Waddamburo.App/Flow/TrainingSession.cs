@@ -63,35 +63,37 @@ internal sealed class TrainingSession
         var scrub = 0;
         if (keysEnabled)
         {
-            // A Tatacon has its own keys for these: Enter (A) plays, Q / E (its shoulders) mark the loop and
-            // clear it together, Tab held makes the arrows jump note to note.
-            var shift = keys.IsDown(SdlKeyboardKey.Shift) || keys.IsDown(SdlKeyboardKey.Tab);
+            var jump = GameActions.Down(keys, GameAction.NoteJump); // held: the arrows go note to note
+            bool pressed(GameAction action) => GameActions.Pressed(keys, action);
             foreach (var press in keys.Presses)
                 switch (press.Key)
                 {
-                    case SdlKeyboardKey.Space or SdlKeyboardKey.Enter: Clock.TogglePause(); break;
-                    case SdlKeyboardKey.WheelUp: jump(Clock.Position - TimeSpan.FromSeconds(1)); break;
-                    case SdlKeyboardKey.WheelDown: jump(Clock.Position + TimeSpan.FromSeconds(1)); break;
-                    case SdlKeyboardKey.Left when shift: jump(note(-1)); break;
-                    case SdlKeyboardKey.Right when shift: jump(note(+1)); break;
+                    case SdlKeyboardKey.WheelUp: this.jump(Clock.Position - TimeSpan.FromSeconds(1)); break;
+                    case SdlKeyboardKey.WheelDown: this.jump(Clock.Position + TimeSpan.FromSeconds(1)); break;
+                    case SdlKeyboardKey.Left when jump: this.jump(note(-1)); break;
+                    case SdlKeyboardKey.Right when jump: this.jump(note(+1)); break;
                     case SdlKeyboardKey.Up: Clock.Faster(); break;
                     case SdlKeyboardKey.Down: Clock.Slower(); break;
-                    case SdlKeyboardKey.Q when keys.IsDown(SdlKeyboardKey.E):
-                    case SdlKeyboardKey.E when keys.IsDown(SdlKeyboardKey.Q):
-                    case SdlKeyboardKey.Delete:
-                        (LoopStart, LoopEnd) = (null, null);
-                        break;
-                    case SdlKeyboardKey.A or SdlKeyboardKey.Q:
-                        LoopStart = Clock.Position;
-                        if (LoopEnd <= LoopStart) LoopEnd = null;
-                        break;
-                    case SdlKeyboardKey.B or SdlKeyboardKey.E:
-                        LoopEnd = Clock.Position;
-                        if (LoopStart >= LoopEnd) LoopStart = null;
-                        break;
-                    case SdlKeyboardKey.L: PauseAfterAttempt = !PauseAfterAttempt; break;
                 }
-            if (!shift)
+            if (pressed(GameAction.Pause))
+                Clock.TogglePause();
+            // The loop's two keys together clear it.
+            if (pressed(GameAction.LoopStart) && GameActions.Down(keys, GameAction.LoopEnd)
+                || pressed(GameAction.LoopEnd) && GameActions.Down(keys, GameAction.LoopStart))
+                (LoopStart, LoopEnd) = (null, null);
+            else if (pressed(GameAction.LoopStart))
+            {
+                LoopStart = Clock.Position;
+                if (LoopEnd <= LoopStart) LoopEnd = null;
+            }
+            else if (pressed(GameAction.LoopEnd))
+            {
+                LoopEnd = Clock.Position;
+                if (LoopStart >= LoopEnd) LoopStart = null;
+            }
+            if (pressed(GameAction.AfterPass))
+                PauseAfterAttempt = !PauseAfterAttempt;
+            if (!jump)
                 scrub = (keys.IsDown(SdlKeyboardKey.Right) ? 1 : 0) - (keys.IsDown(SdlKeyboardKey.Left) ? 1 : 0);
         }
         if (scrub != 0)

@@ -129,7 +129,7 @@ internal sealed class ReviewSession : IDisposable
             foreach (var press in keys.Presses)
                 switch (press.Key)
                 {
-                    case SdlKeyboardKey.Space or SdlKeyboardKey.Enter: Clock.TogglePause(); break; // Enter: a Tatacon's A
+                    case var key when key == GameActions.Key(GameAction.Pause): Clock.TogglePause(); break;
                     case SdlKeyboardKey.WheelUp: Clock.SeekBy(TimeSpan.FromSeconds(-1)); break;
                     case SdlKeyboardKey.WheelDown: Clock.SeekBy(TimeSpan.FromSeconds(1)); break;
                     case SdlKeyboardKey.Up: Clock.Faster(); break;

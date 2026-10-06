@@ -2,6 +2,7 @@ using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
+using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;
 
@@ -50,8 +51,11 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
     {
         if (Shell.Active.Id == FlowScenes.Boot)
         {
-            // Space skips the boot screens (testing convenience, not cabinet behaviour).
-            if (input.Skip || AttractHostBinding.IsBootEnd(Shell.Active.Player.Layers.Single().Player))
+            // Any key, drum hit or controller button skips the boot screens (the copyright notice); the
+            // function keys (coins, back to the attract, ...) do not. Not cabinet behaviour.
+            if (input.Skip || input.DrumSide is not null
+                || input.Keys.Presses.Any(static press => press.Key is < SdlKeyboardKey.F1 or > SdlKeyboardKey.F8)
+                || AttractHostBinding.IsBootEnd(Shell.Active.Player.Layers.Single().Player))
                 Shell.Show(FlowScenes.Logo);
             return;
         }

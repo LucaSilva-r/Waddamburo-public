@@ -297,7 +297,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             if (revealed && !_paused && _training is { } training)
                 training.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
             else if (revealed && !_paused && !Shell.HomeMenuOpen && canPractise
-                && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.P))
+                && GameActions.Pressed(keys, GameAction.Practise))
                 startPractice();
             else if (revealed && !_paused)
                 review.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);

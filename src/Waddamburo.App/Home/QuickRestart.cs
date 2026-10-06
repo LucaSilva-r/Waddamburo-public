@@ -50,7 +50,7 @@ internal sealed class QuickRestart(Func<bool> restart)
             _menuRestartAt = 0;
             return restartNow();
         }
-        if (!holdAllowed || !held.IsDown(SdlKeyboardKey.Q))
+        if (!holdAllowed || !Flow.GameActions.Down(held, Flow.GameAction.Restart))
         {
             if (_qPressedAt != 0)
             {

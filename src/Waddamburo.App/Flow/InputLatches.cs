@@ -66,12 +66,12 @@ internal sealed class InputLatches
     }
 
     /// <summary>
-    /// Escape went down this tick (in the scene's mapped keys); with <paramref name="backspace"/>, Backspace
-    /// too (a Tatacon's B button, which has no Escape).
+    /// Escape went down this tick (in the scene's mapped keys), or <paramref name="menuKey"/> (the menu's own
+    /// key, a Tatacon having no Escape).
     /// </summary>
-    public bool EscapePressed(SdlKeyboardSnapshot keys, bool backspace = false)
+    public bool EscapePressed(SdlKeyboardSnapshot keys, SdlKeyboardKey? menuKey = null)
     {
-        var down = keys.IsDown(SdlKeyboardKey.Escape) || backspace && keys.IsDown(SdlKeyboardKey.Backspace);
+        var down = keys.IsDown(SdlKeyboardKey.Escape) || menuKey is { } key && keys.IsDown(key);
         var pressed = down && !_escapeWasDown;
         _escapeWasDown = down;
         return pressed;

@@ -358,9 +358,9 @@ public sealed unsafe class SdlApplication : IDisposable
 
     private bool _menuInput;
 
-    // A controller in a menu. The first is laid out as a Tatacon by position (its keys: D-pad arrows,
-    // bottom Enter, left P, top L, shoulders Q / E, Back Tab), which the menus also read as player 1's drum;
-    // the second drives player 2's drum (left ka, left don, right ka). Right and Start are Escape on both.
+    // A controller in a menu. The first is laid out as a Tatacon by position (GamepadLayout), which the
+    // menus also read as player 1's drum; the second drives player 2's drum (left ka, left don, right ka).
+    // Right and Start are Escape on both.
     private static SdlKeyboardKey? menuButton(SdlInput input)
     {
         if (input.Kind != SdlInputKind.PadButton)
@@ -376,21 +376,30 @@ public sealed unsafe class SdlApplication : IDisposable
                 SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH => SdlInputBindings.Pads[5],
                 _ => null,
             };
-        return button switch
-        {
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT => SdlKeyboardKey.Left,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT => SdlKeyboardKey.Right,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP => SdlKeyboardKey.Up,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN => SdlKeyboardKey.Down,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH => SdlKeyboardKey.Enter,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_WEST => SdlKeyboardKey.P,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_NORTH => SdlKeyboardKey.L,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER => SdlKeyboardKey.Q,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER => SdlKeyboardKey.E,
-            SDL_GamepadButton.SDL_GAMEPAD_BUTTON_BACK => SdlKeyboardKey.Tab,
-            _ => null,
-        };
+        return GamepadLayout.FirstOrDefault(entry => entry.Button == button).Key;
     }
+
+    // The first controller outside songs: the Tatacon's keys by place, with its name (Xbox's, by place).
+    private static readonly (SDL_GamepadButton Button, SdlKeyboardKey? Key, string Name)[] GamepadLayout =
+    [
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_LEFT, SdlKeyboardKey.Left, "D-pad"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_RIGHT, SdlKeyboardKey.Right, "D-pad"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP, SdlKeyboardKey.Up, "D-pad"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN, SdlKeyboardKey.Down, "D-pad"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH, SdlKeyboardKey.Enter, "A"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_WEST, SdlKeyboardKey.P, "X"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_NORTH, SdlKeyboardKey.L, "Y"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SdlKeyboardKey.Q, "LB"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, SdlKeyboardKey.E, "RB"),
+        (SDL_GamepadButton.SDL_GAMEPAD_BUTTON_BACK, SdlKeyboardKey.Tab, "Back"),
+    ];
+
+    /// <summary>
+    /// The first controller's button for a key outside songs (its gamepad layout), e.g. Enter "A";
+    /// Escape (and Backspace, Escape too at home) "B / Start". Null: no button gives it.
+    /// </summary>
+    public static string? GamepadName(SdlKeyboardKey key) => key is SdlKeyboardKey.Escape or SdlKeyboardKey.Backspace
+        ? "B / Start" : GamepadLayout.FirstOrDefault(entry => entry.Key == key).Name;
 
     // What an input is to the game: its pad when bound; else a key is itself (but a pad's own letter,
     // unbound, is nothing), a controller's Start is Escape and its Back Space (a practice attempt's pause).

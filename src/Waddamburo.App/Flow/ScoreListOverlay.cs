@@ -15,8 +15,9 @@ namespace Waddamburo.App.Flow;
 /// Song Select's scores (home, online), as osu! shows them: R on a song (in the list or on its
 /// difficulties) opens its leaderboard from TaikOnline, each player's best play, or the player's own
 /// plays; picking one watches its replay (a review: never saved). Left/right pick the difficulty, up/down
-/// the play, Space (or Q) switches leaderboard/own plays, Tab the normal/真打 leaderboard, Enter watches,
-/// P practises, R or Escape closes. A Tatacon's L opens and closes it as R does.
+/// the play; the other keys are GameActions' (Scores opens and closes it, Leaderboard switches
+/// leaderboard/own plays, ShinuchiBoard the normal/真打 leaderboard, Confirm watches, Practise practises;
+/// Escape closes).
 /// </summary>
 internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, OptionIcons optionIcons) : IInputOverlay
 {
@@ -42,14 +43,14 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
     public bool Tick(SdlKeyboardSnapshot keys, bool escape)
     {
         if (!IsOpen)
-            return (keys.IsDown(SdlKeyboardKey.R) || keys.IsDown(SdlKeyboardKey.L)) && open();
+            return GameActions.Down(keys, GameAction.Scores) && open();
         if (_watching is { } watching)
         {
             if (watching.IsCompleted)
                 watch(watching);
             return true;
         }
-        if (escape || keys.IsDown(SdlKeyboardKey.R) || keys.IsDown(SdlKeyboardKey.L))
+        if (escape || GameActions.Down(keys, GameAction.Scores))
         {
             IsOpen = false;
             return true;
@@ -59,12 +60,12 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             _chart = Math.Clamp(_chart + (keys.IsDown(SdlKeyboardKey.Right) ? 1 : -1), 0, _charts.Length - 1);
             _selection = 0;
         }
-        if (keys.IsDown(SdlKeyboardKey.Space) || keys.IsDown(SdlKeyboardKey.Q))
+        if (GameActions.Down(keys, GameAction.Leaderboard))
         {
             _mine = !_mine;
             _selection = 0;
         }
-        if (keys.IsDown(SdlKeyboardKey.Tab) && !_mine)
+        if (GameActions.Down(keys, GameAction.ShinuchiBoard) && !_mine)
         {
             _shinuchi = !_shinuchi;
             _selection = 0;
@@ -74,9 +75,9 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             _selection = Math.Max(0, _selection - 1);
         if (keys.IsDown(SdlKeyboardKey.Down))
             _selection = Math.Min(Math.Max(0, rows.Count - 1), _selection + 1);
-        if (keys.IsDown(SdlKeyboardKey.P))
+        if (GameActions.Down(keys, GameAction.Practise))
             practise();
-        else if (keys.IsDown(SdlKeyboardKey.Enter) && _selection < rows.Count && _client is { } client)
+        else if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && _client is { } client)
         {
             var playId = rows[_selection].PlayId;
             _watching = Task.Run(() => client.ReplayAsync(playId));
@@ -199,7 +200,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         quads.Add(painter.Text(T(_mine ? "score_list.mine" : _shinuchi ? "score_list.leaderboard_shinuchi" : "score_list.leaderboard"),
             Left + 30, Top + 122, 400, 26, anchor: 0,
             tint: (255, 205, 80)));
-        quads.Add(painter.Text(T("score_list.switch"), Left + Width - 30, Top + 122, 420, 22, anchor: 1, tint: (170, 175, 190)));
+        quads.Add(painter.Text(T("score_list.switch", GameActions.Name(GameAction.Leaderboard), GameActions.Name(GameAction.ShinuchiBoard)), Left + Width - 30, Top + 122, 420, 22, anchor: 1, tint: (170, 175, 190)));
 
         var listTop = Top + 150;
         string? message = _client is null ? T("score_list.offline")
@@ -225,7 +226,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 quads.AddRange(row(rows[index], y + (RowHeight - 4) / 2));
             }
         }
-        quads.Add(painter.Text(T("score_list.keys"), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
+        quads.Add(painter.Text(T("score_list.keys", GameActions.Name(GameAction.Confirm), GameActions.Name(GameAction.Practise), GameActions.Name(GameAction.Scores)), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
         return quads;
     }
 
