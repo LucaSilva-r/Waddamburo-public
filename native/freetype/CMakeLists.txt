@@ -3,8 +3,10 @@ include(ExternalProject)
 # Minimal static FreeType for the release title rasterizer: TrueType/OpenType outlines
 # only, no system zlib/bzip2/png/brotli/HarfBuzz, so waddamburo_text has no extra deps.
 set(WADDAMBURO_FREETYPE_VERSION "2.14.2")
+# Tried in order: Savannah was unreachable from GitHub's runners for a release build.
 set(WADDAMBURO_FREETYPE_URL
-  "https://download.savannah.gnu.org/releases/freetype/freetype-${WADDAMBURO_FREETYPE_VERSION}.tar.xz")
+  "https://download.savannah.gnu.org/releases/freetype/freetype-${WADDAMBURO_FREETYPE_VERSION}.tar.xz"
+  "https://downloads.sourceforge.net/project/freetype/freetype2/${WADDAMBURO_FREETYPE_VERSION}/freetype-${WADDAMBURO_FREETYPE_VERSION}.tar.xz")
 set(WADDAMBURO_FREETYPE_SHA256
   "4b62dcab4c920a1a860369933221814362e699e26f55792516d671e6ff55b5e1")
 
@@ -19,7 +21,7 @@ if(CMAKE_TOOLCHAIN_FILE)
 endif()
 
 ExternalProject_Add(waddamburo_freetype_build
-  URL "${WADDAMBURO_FREETYPE_URL}"
+  URL ${WADDAMBURO_FREETYPE_URL}
   URL_HASH "SHA256=${WADDAMBURO_FREETYPE_SHA256}"
   DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
