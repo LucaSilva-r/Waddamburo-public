@@ -345,6 +345,24 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     (_optionOpen[player], _speedShown[player]) = (boolean(call, 1), -1);
                 return LumenHostValue.Undefined;
             });
+            // RequestFillrect(slot, tone): the tone board's name and icon (FillrectNum: 15-18 player 0's
+            // name/icon leaving, then arriving; 19-22 player 1's). The clips are tone_name_ / tone_icon_ +
+            // in_ / out_ + player; the game's art goes in them.
+            lumen.RegisterMethod("RequestFillrect", call =>
+            {
+                var slot = integer(call, 0) - 15;
+                if (slot is < 0 or >= 8)
+                    return LumenHostValue.Undefined;
+                var (player, part) = (slot / 4, slot % 4 >= 2 ? "in_" : "out_");
+                var tone = integer(call, 1);
+                var lumenPlayer = requirePlayer();
+                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone));
+                if (ToneSurfaces.Icon(tone) is { } icon)
+                    lumenPlayer.SetNativeFill($"tone_icon_{part}{player}", icon);
+                else
+                    lumenPlayer.RemoveNativeFill($"tone_icon_{part}{player}");
+                return LumenHostValue.Undefined;
+            });
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
             {
                 _courseSelect = (integer(call, 0), integer(call, 1));
@@ -383,6 +401,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSE", call => requestSound(SongSelectSoundRequestKind.Effect, call));
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("RequestPlayerSE", call => requestSound(SongSelectSoundRequestKind.PlayerEffect, call));
+            // RequestSE_Save(player, bank, cue): a player's sound on the course boards (traced (0, 5, 51));
+            // the tone board previews its drum sounds with it (SE_SELECT_NEIRO_000_005, cue = tone).
+            lumen.RegisterMethod("RequestSE_Save", call =>
+            {
+                if (call.Arguments.Length >= 3)
+                    _sounds?.RequestSound(new SongSelectSoundRequest(SongSelectSoundRequestKind.Effect, call.Arguments[1..]));
+                return LumenHostValue.Undefined;
+            });
+            // ponytail: RequestSE_Stop(player) cuts the player's last one; previews just overlap.
+            lumen.RegisterMethod("RequestSE_Stop", static _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(SongSelectSoundRequestKind.LoopVoice, call));
             lumen.RegisterMethod("StopVoice", _ =>
             {
@@ -482,14 +510,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             // Play options (the arcade's were for card players only; here anyone's): every item offered, the
             // drum's last choice selected. As the movie's own developer setup: Assign(p, 0b11111111),
             // SetDefaultSession(p, item bits, 真打), SetValidOptionMenu(p, session, tone).
-            // ponytail: no 音色 (drum sound) board until the drums have other sound sets.
+            // 音色 (drum sound): Green's tones 1-5 offered beside the plain drum (always listed), the drum's last.
             if (_sides.Contains(player))
             {
+                tryInvoke("AssignTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber((1 << TaikoGuest.ToneCount) - 2));
+                tryInvoke("SetDefaultTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(TaikoGuest.Tones[player]));
                 var options = TaikoGuest.Options[player];
                 tryInvoke("AssignSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0b11111111));
                 tryInvoke("SetDefaultSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(options.SessionBits),
                     LumenHostValue.FromBoolean(options.Shinuchi));
-                tryInvoke("SetValidOptionMenu", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(false));
+                tryInvoke("SetValidOptionMenu", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(true));
             }
         }
         // CourseResource.isMania[player] is what repeated right-rim hits set (Callback_SetCourse's
@@ -875,6 +905,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (requirePlayer().TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
                 && bits.Kind == LumenHostValueKind.Number)
                 TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+        // Each joined drum's drum sound: the tone board's selected entry (ToneResource.selected / list).
+        foreach (var player in _sides)
+            if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.selected.{player}") is IConvertible index
+                && requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.list.{player}.{(int)index.ToDouble(System.Globalization.CultureInfo.InvariantCulture)}") is IConvertible tone)
+                TaikoGuest.Tones[player] = Math.Clamp((int)tone.ToDouble(System.Globalization.CultureInfo.InvariantCulture), 0, TaikoGuest.ToneCount - 1);
         var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
             TaikoGuest.Options);
         Picked = (_session.Catalog.Categories[request.Category].Key, selection.Song);

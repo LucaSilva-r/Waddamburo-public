@@ -92,3 +92,26 @@ public static class SpeedText
             && (text = rest[(colon + 1)..]).Length > 0;
     }
 }
+
+/// <summary>
+/// A drum sound's (音色) name or icon on Song Select's tone board: the game's own art, resolved by the host
+/// (ToneArt). Green has tones 0-5; tone 0 (the plain drum) has no icon.
+/// </summary>
+public static class ToneSurfaces
+{
+    public const string Prefix = "tone-art:";
+
+    public static LumenNativeSurfaceKey Name(int tone) => new($"{Prefix}name:{tone}");
+
+    public static LumenNativeSurfaceKey? Icon(int tone) => tone <= 0 ? null : new($"{Prefix}icon:{tone}");
+
+    public static bool TryParse(LumenNativeSurfaceKey key, out bool icon, out int tone)
+    {
+        (icon, tone) = (false, 0);
+        if (!key.Value.StartsWith(Prefix, StringComparison.Ordinal))
+            return false;
+        var rest = key.Value[Prefix.Length..];
+        icon = rest.StartsWith("icon:", StringComparison.Ordinal);
+        return int.TryParse(rest[(rest.IndexOf(':', StringComparison.Ordinal) + 1)..], out tone);
+    }
+}

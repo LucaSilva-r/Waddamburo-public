@@ -35,6 +35,12 @@ public static class TaikoGuest
 
     /// <summary>Each drum's last play options, offered again on its next song (a credit starts with none).</summary>
     public static TaikoPlayOptions[] Options { get; } = new TaikoPlayOptions[2];
+
+    /// <summary>Each drum's drum sound (音色, 0-5: SE_GAME_NEIRO_00n), chosen on Song Select's tone board.</summary>
+    public static int[] Tones { get; } = new int[2];
+
+    /// <summary>Green's drum sounds: 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン.</summary>
+    public const int ToneCount = 6;
 }
 
 public sealed record PlayerChartRequest

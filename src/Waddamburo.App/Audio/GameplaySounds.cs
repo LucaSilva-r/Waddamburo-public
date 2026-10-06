@@ -22,9 +22,12 @@ internal sealed class GameplaySounds(SoundBank bank)
     /// <summary>False: two players' sounds are centred and shared (one of each at a time).</summary>
     public bool Panning { get; set; } = true;
 
-    // A drum's hit sounds: centred for one player; in two-player play the left drum's pan left and
-    // the right drum's right (traced session9-2p).
-    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100" : "SE_GAME_NEIRO_000") + (Panning ? lane : null) switch
+    /// <summary>Each lane's drum sound (音色, 0-5); one player is lane 0.</summary>
+    public int[] Tones { get; set; } = [];
+
+    // A drum's hit sounds, in its player's tone: centred for one player; in two-player play the left
+    // drum's pan left and the right drum's right (traced session9-2p).
+    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100" : $"SE_GAME_NEIRO_{Tones.ElementAtOrDefault(lane ?? 0):000}") + (Panning ? lane : null) switch
     {
         0 => "_L",
         1 => "_R",

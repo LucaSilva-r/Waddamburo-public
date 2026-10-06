@@ -163,6 +163,7 @@ internal sealed class GameShell : IDisposable
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
     private readonly NameTextTextures _nameTexts;
+    private readonly ToneArt _toneArt;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly HomeControls _home;
@@ -315,6 +316,7 @@ internal sealed class GameShell : IDisposable
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _nameTexts = new NameTextTextures(Application, options.FontPath);
+        _toneArt = new ToneArt(Application, dataRoot);
         _performance = new PerformanceOverlay(Application, () => Audio);
         _timingMarks = new TimingMarkOverlay(Application);
         Painter = new OverlayPainter(Application, options.FontPath);
@@ -796,6 +798,7 @@ internal sealed class GameShell : IDisposable
         // with the website's current looks.
         Array.Clear(TaikoGuest.Profiles);
         Array.Clear(TaikoGuest.Options);
+        Array.Clear(TaikoGuest.Tones);
         Sync.RefreshProfiles();
         for (var slot = 0; slot < 3; slot++)
             Don?.SetLook(slot, null);
@@ -886,7 +889,7 @@ internal sealed class GameShell : IDisposable
 
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface)
+        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
         ?? Titles.Resolve(surface);
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),

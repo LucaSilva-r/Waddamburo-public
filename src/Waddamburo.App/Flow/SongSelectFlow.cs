@@ -279,6 +279,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (Shell.Sounds?.Gameplay is { } sounds)
         {
             sounds.Waiwai = waiwai is not null;
+            sounds.Tones = [.. request.Players.Select(static player => TaikoGuest.Tones[(int)player.Player])];
             sounds.PrepareDrums(request.Players.Length == 2);
         }
         // The credit's song number (reset when a credit ends); a home session's endless credit stays on 1
