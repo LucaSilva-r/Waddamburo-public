@@ -8,30 +8,30 @@ using static Waddamburo.App.Strings;
 
 namespace Waddamburo.App.Presentation;
 
-/// <summary>Home-mode controls, drawn with artwork decoded at runtime from the player's archives.</summary>
+/// <summary>
+/// Home-mode controls (the pause menu, settings, the texture bake, the calibration), drawn with artwork
+/// decoded at runtime from the player's archives; text and plain rectangles through the <see cref="OverlayPainter"/>.
+/// </summary>
 internal sealed class HomePauseOverlay : IDisposable
 {
     // Texture ordinals are observed archive facts; the layout is Waddamburo's own.
     private const int Panel = 0, Badge = 11, Arrow = 1103, Button = 1352, SelectedButton = 1354;
     private readonly SdlApplication _application;
-    private readonly string _fontPath;
+    private readonly OverlayPainter _painter;
     private readonly Dictionary<int, (RenderTextureId Texture, int Width, int Height)> _art = [];
-    private readonly Dictionary<(string Text, int Width, int Height, uint Scale, float Anchor), RenderTextureId> _text = [];
-    private readonly RenderTextureId _white;
 
     private readonly UpscaleTool? _upscale;
     private readonly bool _upscaled;
 
     /// <remarks><paramref name="upscale"/>: With <paramref name="upscaled"/> on, the art comes from the upscale cache when
     /// it is there, and is queued for background upscaling when not.</remarks>
-    public HomePauseOverlay(SdlApplication application, string fontPath, string assetRoot, UpscaleTool? upscale = null,
+    public HomePauseOverlay(SdlApplication application, OverlayPainter painter, string assetRoot, UpscaleTool? upscale = null,
         bool upscaled = false)
     {
         _application = application;
-        _fontPath = fontPath;
+        _painter = painter;
         _upscale = upscale;
         _upscaled = upscaled && upscale is not null;
-        _white = application.UploadRgba8(1, 1, [255, 255, 255, 255]);
         load(Path.Combine(assetRoot, "entry_info", "packeddata.ddp"), [0, 11], 0);
         load(Path.Combine(assetRoot, "song_select", "packeddata.ddp"), [103, 352, 354], 1000);
     }
@@ -44,11 +44,11 @@ internal sealed class HomePauseOverlay : IDisposable
             calibrationBanner(quads, calibration);
         if (menu is not null)
         {
-            quads.Add(rect(_white, 0, 0, 1280, 720, new(0, 0, 0, 0.6f)));
+            quads.Add(_painter.Rect(0, 0, 1280, 720, new(0, 0, 0, 0.6f)));
             if (_art.TryGetValue(Panel, out var panel))
                 nineSlice(quads, panel, 140, 98, 1000, 520, PanelBorder);
             else
-                quads.Add(rect(_white, 140, 98, 1000, 520, new(1, 0.98f, 0.91f, 1)));
+                quads.Add(_painter.Rect(140, 98, 1000, 520, new(1, 0.98f, 0.91f, 1)));
             // The badge just left of the title, however wide the title is.
             var titleWidth = menu.Bake is null && menu.Calibration is null ? 260 : 420;
             if (_art.TryGetValue(Badge, out var badge))
@@ -64,7 +64,7 @@ internal sealed class HomePauseOverlay : IDisposable
                 choices(quads, menu);
         }
         if (black > 0)
-            quads.Add(rect(_white, 0, 0, 1280, 720, new(0, 0, 0, Math.Clamp(black, 0, 1))));
+            quads.Add(_painter.Rect(0, 0, 1280, 720, new(0, 0, 0, Math.Clamp(black, 0, 1))));
         return quads;
     }
 
@@ -129,7 +129,7 @@ internal sealed class HomePauseOverlay : IDisposable
             {
                 // A section title on the panel, with a rule under it.
                 quads.Add(label(item.Label, ListX + 4, y + RowHeight / 2 + 2, 300, 34, anchor: 0));
-                quads.Add(rect(_white, ListX + 4, y + RowHeight - 1, ListWidth - 8, 3, new(0.45f, 0.3f, 0.1f, 0.5f)));
+                quads.Add(_painter.Rect(ListX + 4, y + RowHeight - 1, ListWidth - 8, 3, new(0.45f, 0.3f, 0.1f, 0.5f)));
                 continue;
             }
             if (item.Kind == HomeMenu.ItemKind.Library)
@@ -153,8 +153,8 @@ internal sealed class HomePauseOverlay : IDisposable
         if (items.Length > VisibleRows)
         {
             var track = (VisibleRows - 1) * RowSpacing + RowHeight;
-            quads.Add(rect(_white, ListX + ListWidth + 14, ListTop, 6, track, new(0, 0, 0, 0.15f)));
-            quads.Add(rect(_white, ListX + ListWidth + 14, ListTop + track * first / items.Length, 6,
+            quads.Add(_painter.Rect(ListX + ListWidth + 14, ListTop, 6, track, new(0, 0, 0, 0.15f)));
+            quads.Add(_painter.Rect(ListX + ListWidth + 14, ListTop + track * first / items.Length, 6,
                 track * VisibleRows / items.Length, new(0.45f, 0.3f, 0.1f, 0.9f)));
         }
         // Wrapped to short lines (the title rasterizer squeezes long ones).
@@ -163,9 +163,8 @@ internal sealed class HomePauseOverlay : IDisposable
             quads.Add(label(hint[line], 640, 550 + (line - (hint.Length - 1) / 2f) * 29, 860, 27));
     }
 
-    // The texture bake: what it is doing, a progress bar, the speed and the time left. Its text changes
-    // all the time, so it is drawn in a few slots that replace their texture, refreshed 4 times a second.
-    private readonly Dictionary<string, (string Text, RenderTextureId Texture)> _slots = [];
+    // The texture bake: what it is doing, a progress bar, the speed and the time left (its text refreshed
+    // 4 times a second; the painter releases the old texts).
     private string[] _bakeText = [];
     private long _bakeTextAt;
 
@@ -182,26 +181,24 @@ internal sealed class HomePauseOverlay : IDisposable
             TextureBake.BakePhase.Done => 1,
             _ => bake.PixelsTotal == 0 ? 1 : (double)bake.PixelsDone / bake.PixelsTotal,
         };
-        quads.Add(slot("status", _bakeText[0], 640, 262, 860, 34));
+        quads.Add(label(_bakeText[0], 640, 262, 860, 34));
         const float barX = 250, barY = 312, barWidth = 780, barHeight = 40;
-        quads.Add(rect(_white, barX - 3, barY - 3, barWidth + 6, barHeight + 6, new(0.1f, 0.06f, 0.02f, 1)));
-        quads.Add(rect(_white, barX, barY, barWidth, barHeight, new(1, 0.95f, 0.82f, 1)));
-        quads.Add(rect(_white, barX, barY, (float)(barWidth * Math.Clamp(fraction, 0, 1)), barHeight,
+        quads.Add(_painter.Rect(barX - 3, barY - 3, barWidth + 6, barHeight + 6, new(0.1f, 0.06f, 0.02f, 1)));
+        quads.Add(_painter.Rect(barX, barY, barWidth, barHeight, new(1, 0.95f, 0.82f, 1)));
+        quads.Add(_painter.Rect(barX, barY, (float)(barWidth * Math.Clamp(fraction, 0, 1)), barHeight,
             bake.Phase == TextureBake.BakePhase.Scanning ? new(0.55f, 0.75f, 0.95f, 1) : new(1, 0.55f, 0.1f, 1)));
-        quads.Add(slot("percent", $"{Math.Floor(fraction * 100):0}%", 640, barY + barHeight / 2, 200, 30));
-        quads.Add(slot("speed", _bakeText[1], 640, 404, 860, 30));
-        quads.Add(slot("hint", T(bake.Running ? "bake.hint.running" : "bake.hint.done"),
+        quads.Add(label($"{Math.Floor(fraction * 100):0}%", 640, barY + barHeight / 2, 200, 30));
+        quads.Add(label(_bakeText[1], 640, 404, 860, 30));
+        quads.Add(label(T(bake.Running ? "bake.hint.running" : "bake.hint.done"),
             640, 550, 860, 27));
     }
 
     // The calibration, under the lane: what to do, and the offset being tried.
     private void calibrationBanner(List<RenderQuad> quads, LatencyCalibration calibration)
     {
-        quads.Add(rect(_white, 0, 580, 1280, 100, new(0, 0, 0, 0.7f)));
-        quads.Add(slot("calibration",
-            T("calibration.instructions", signed(calibration.AudioOffsetMs)), 640, 612, 1100, 36));
-        quads.Add(slot("calibration-hint",
-            T("calibration.controls"), 640, 652, 1100, 28));
+        quads.Add(_painter.Rect(0, 580, 1280, 100, new(0, 0, 0, 0.7f)));
+        quads.Add(label(T("calibration.instructions", signed(calibration.AudioOffsetMs)), 640, 612, 1100, 36));
+        quads.Add(label(T("calibration.controls"), 640, 652, 1100, 28));
     }
 
     private static string signed(int ms) => T("value.ms", ms.ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture));
@@ -233,22 +230,6 @@ internal sealed class HomePauseOverlay : IDisposable
         };
     }
 
-    // A label whose text changes: its old texture goes when it does.
-    private RenderQuad slot(string name, string value, float x, float centreY, int width, int height)
-    {
-        if (!_slots.TryGetValue(name, out var current) || current.Text != value)
-        {
-            if (_slots.ContainsKey(name))
-                _application.ReleaseTexture(current.Texture);
-            var scale = (uint)Math.Clamp((_application.GetPixelSize().Height + 719) / 720, 1, 3);
-            var canvas = new VectorCanvas(width, height, (int)scale, _fontPath);
-            canvas.Text(value, width / 2f, height / 2f, width, height, anchorX: 0.5f);
-            current = (value, _application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels));
-            _slots[name] = current;
-        }
-        return rect(current.Texture, x - width / 2f, centreY - height / 2f, width, height);
-    }
-
     // Splits at the space nearest the middle until every line is short.
     private static IEnumerable<string> wrap(string text)
     {
@@ -272,22 +253,22 @@ internal sealed class HomePauseOverlay : IDisposable
             _ => (0.8f, 0.16f, 0.14f),
         };
         var lift = selected ? 0.18f : 0;
-        quads.Add(rect(_white, x, y, width, height, new(0.1f, 0.06f, 0.02f, 1)));
-        quads.Add(rect(_white, x + 3, y + 3, width - 6, height - 6, new(r + lift, g + lift, b + lift, 1)));
+        quads.Add(_painter.Rect(x, y, width, height, new(0.1f, 0.06f, 0.02f, 1)));
+        quads.Add(_painter.Rect(x + 3, y + 3, width - 6, height - 6, new(r + lift, g + lift, b + lift, 1)));
         if (!selected)
             return;
         var yellow = new RenderColor(1, 0.87f, 0.2f, 1);
-        quads.Add(rect(_white, x - 3, y - 3, width + 6, 3, yellow));
-        quads.Add(rect(_white, x - 3, y + height, width + 6, 3, yellow));
-        quads.Add(rect(_white, x - 3, y, 3, height, yellow));
-        quads.Add(rect(_white, x + width, y, 3, height, yellow));
+        quads.Add(_painter.Rect(x - 3, y - 3, width + 6, 3, yellow));
+        quads.Add(_painter.Rect(x - 3, y + height, width + 6, 3, yellow));
+        quads.Add(_painter.Rect(x - 3, y, 3, height, yellow));
+        quads.Add(_painter.Rect(x + width, y, 3, height, yellow));
     }
 
     private void button(List<RenderQuad> quads, float x, float y, float width, float height, bool selected)
     {
         if (!_art.TryGetValue(selected ? SelectedButton : Button, out var art) || art.Width < 32)
         {
-            quads.Add(rect(_white, x, y, width, height, selected
+            quads.Add(_painter.Rect(x, y, width, height, selected
                 ? new RenderColor(0.19f, 0.88f, 1, 1) : new RenderColor(0.16f, 0.45f, 0.65f, 1)));
             return;
         }
@@ -301,19 +282,8 @@ internal sealed class HomePauseOverlay : IDisposable
     }
 
     // Text in a box: centred (anchor 0.5) on x, or starting (0) or ending (1) there.
-    private RenderQuad label(string value, float x, float centreY, int width, int height, float anchor = 0.5f)
-    {
-        var scale = (uint)Math.Clamp((_application.GetPixelSize().Height + 719) / 720, 1, 3);
-        // ponytail: every setting value gets its own cached texture (a few hundred at most), freed on exit.
-        var key = (value, width, height, scale, anchor);
-        if (!_text.TryGetValue(key, out var texture))
-        {
-            var canvas = new VectorCanvas(width, height, (int)scale, _fontPath);
-            canvas.Text(value, width * anchor, height / 2f, width, height, anchorX: anchor);
-            _text[key] = texture = _application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
-        }
-        return rect(texture, x - width * anchor, centreY - height / 2f, width, height);
-    }
+    private RenderQuad label(string value, float x, float centreY, int width, int height, float anchor = 0.5f) =>
+        _painter.Text(value, x, centreY, width, height, anchor);
 
     private void load(string path, int[] indices, int keyOffset)
     {
@@ -360,9 +330,6 @@ internal sealed class HomePauseOverlay : IDisposable
 
     public void Dispose()
     {
-        _application.ReleaseTexture(_white);
         foreach (var entry in _art.Values) _application.ReleaseTexture(entry.Texture);
-        foreach (var texture in _text.Values) _application.ReleaseTexture(texture);
-        foreach (var (_, texture) in _slots.Values) _application.ReleaseTexture(texture);
     }
 }

@@ -214,9 +214,10 @@
   "mode.replay": "Replay",
   "mode.replay_of": "{0}'s replay",
   "mode.practice": "Practice mode",
-  "review.keys": "Space pause · hold ←/→ scrub · wheel 1 s · ↑/↓ speed",
+  "review.keys": "Space pause · hold ←/→ scrub · wheel 1 s · ↑/↓ speed · P practise from here",
   "review.paused": "Paused",
-  "menu.instant_replay": "Replay",
+  "menu.play_song": "Play the Song",
+  "menu.instant_replay": "Replay / Practice",
 
   "score_list.leaderboard": "Leaderboard",
   "score_list.mine": "Your plays",

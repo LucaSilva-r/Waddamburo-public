@@ -54,7 +54,7 @@ internal sealed class HomeControls : IDisposable
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
         _overlay = shell.Arcade.Home
-            ? new HomePauseOverlay(shell.Application, fontPath, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures) : null;
+            ? new HomePauseOverlay(shell.Application, shell.Painter, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures) : null;
     }
 
     private bool home => _shell.Arcade.Home;
@@ -151,7 +151,7 @@ internal sealed class HomeControls : IDisposable
         if (escape || !_focused)
         {
             countdown.Cancel();
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing);
         }
         else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
             resumeSong();
@@ -173,7 +173,7 @@ internal sealed class HomeControls : IDisposable
             _restart.CancelHold();
             _pauseInterpolation = _lastInterpolation;
             _gameplay.SetPaused(true, _pauseInterpolation);
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing);
             return true;
         }
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.

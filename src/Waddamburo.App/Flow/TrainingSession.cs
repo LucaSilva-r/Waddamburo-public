@@ -46,8 +46,16 @@ internal sealed class TrainingSession
     /// <summary>The last finished loop's Good/OK/Bad counts (null before the first).</summary>
     public (int Great, int Good, int Miss)? LastAttempt { get; private set; }
 
-    /// <summary>The lanes as the song starts: live from its beginning (built by the flow, before <see cref="Frame"/>).</summary>
-    public void Begin() => goLive(Clock.Start);
+    /// <summary>
+    /// The lanes as practice starts: live from the song's beginning, or paused at <paramref name="at"/> (a
+    /// replay turned into practice; Space plays on from there).
+    /// </summary>
+    public void Begin(TimeSpan? at = null)
+    {
+        goLive(at ?? Clock.Start);
+        if (at is not null)
+            Clock.SetPaused(true);
+    }
 
     /// <summary>One display frame (<paramref name="keysEnabled"/> false: a menu has the keys).</summary>
     public void Frame(SdlKeyboardSnapshot keys, bool keysEnabled)

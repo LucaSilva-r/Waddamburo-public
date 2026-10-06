@@ -477,13 +477,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// </summary>
     public AudioBus? PreviewBus => IsOpen && _settingsPage && _editing ? rows[Selection].Setting?.Bus : null;
 
-    /// <remarks><paramref name="replayable"/>: a song's pause menu offers the instant replay of what was played.</remarks>
-    public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false)
+    /// <remarks>
+    /// <paramref name="replayable"/>: a song's pause menu offers the instant replay of what was played.
+    /// <paramref name="reviewing"/>: a replay or practice is on: restarting plays the song for real.
+    /// </remarks>
+    public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false)
     {
         _calibrationOffered = songSelect;
+        var restart = reviewing ? "menu.play_song" : "menu.restart_song";
         _choices = gameplay ? replayable
-                ? ["menu.resume", "menu.instant_replay", "menu.restart_song", "menu.settings", "menu.song_select"]
-                : ["menu.resume", "menu.restart_song", "menu.settings", "menu.song_select"]
+                ? ["menu.resume", "menu.instant_replay", restart, "menu.settings", "menu.song_select"]
+                : ["menu.resume", restart, "menu.settings", "menu.song_select"]
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
         IsOpen = true;
         Selection = 0;
@@ -561,7 +565,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                         _settingsPage = true;
                         Selection = move(0, 1);
                         break;
-                    case "menu.restart_song": return close(HomeMenuAction.Restart);
+                    case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
                     case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
                     case "menu.song_select": return close(HomeMenuAction.SongSelect);
                     case "menu.return_to_title": return close(HomeMenuAction.Title);

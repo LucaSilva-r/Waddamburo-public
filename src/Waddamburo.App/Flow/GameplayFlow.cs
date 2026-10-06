@@ -138,6 +138,37 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         : request.Training ? Strings.T("mode.practice")
         : null;
 
+    // song_info's corner says so after the song started as a play.
+    private void showMode(string text)
+    {
+        var songInfo = Shell.Active.Layers.ToList().FindIndex(layer =>
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
+        if (songInfo >= 0)
+            ModeLabel.Show(Shell.Active.Player.Layers[songInfo].Player, modeLabel(text));
+    }
+
+    /// <summary>A replay (one player's, not Waiwai) can turn into practice: P in it.</summary>
+    private bool canPractise => _review is not null && _training is null && _charts.Length == 1 && _waiwai is null;
+
+    /// <summary>
+    /// A replay becomes practice of the song, paused where it was (Space plays the drum live from there):
+    /// the whole song is open again, the player's own offsets and look apply, and nothing is saved.
+    /// </summary>
+    private void startPractice()
+    {
+        if (_lastRequest is not { } request || _review is not { } replay)
+            return;
+        var at = replay.Clock.Position;
+        replay.Dispose();
+        Shell.StopWatching();
+        _voided = true;
+        _review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
+        _training = new TrainingSession(Shell, _review, _charts[0]);
+        _training.Begin(at);
+        showMode(Strings.T("mode.practice"));
+        Console.WriteLine($"Practice from {at.TotalSeconds:F1} s.");
+    }
+
     private LumenNativeSurfaceKey? modeLabel(string? text)
     {
         if (text is null)
@@ -203,10 +234,15 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _paused = paused;
     }
 
-    /// <summary>Abandons the current round and loads the same match again without saving it.</summary>
+    /// <summary>
+    /// Abandons the current round and loads the same match again without saving it. From a replay or
+    /// practice it is the song played for real (the drum's own player again).
+    /// </summary>
     public bool Restart()
     {
-        if (_lastRequest is not { } request || _charts.Length == 0) return false;
+        if (_lastRequest is not { } last || _charts.Length == 0) return false;
+        var request = last with { Review = null, Training = false };
+        Shell.StopWatching();
         if (_paused) SetPaused(false);
         if (_music is { } music)
             Shell.Audio?.Mixer.Stop(music.Handle);
@@ -247,6 +283,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             if (revealed && !_paused && _training is { } training)
                 training.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
+            else if (revealed && !_paused && !Shell.HomeMenuOpen && canPractise
+                && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.P))
+                startPractice();
             else if (revealed && !_paused)
                 review.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
             else
@@ -261,7 +300,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     /// <summary>Home: the song is under way and not already a review, so its pause menu can replay it.</summary>
-    public bool CanInstantReplay => Shell.Arcade.Home && _review is null && revealed && _charts.Length != 0
+    public bool CanInstantReplay => Shell.Arcade.Home && _review is null && revealed && _charts.Length == 1 && _waiwai is null
         && Shell.Active.Id == FlowScenes.Gameplay;
 
     /// <summary>
@@ -282,10 +321,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         review.Clock.SetPaused(true);
         review.ShowFresh(at);
         _review = review;
-        var songInfo = Shell.Active.Layers.ToList().FindIndex(layer =>
-            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
-        if (songInfo >= 0)
-            ModeLabel.Show(Shell.Active.Player.Layers[songInfo].Player, modeLabel(Strings.T("mode.replay")));
+        showMode(Strings.T("mode.replay"));
         SetPaused(false);
         Console.WriteLine($"Instant replay of the first {at.TotalSeconds:F1} s (the play is void).");
     }

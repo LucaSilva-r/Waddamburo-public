@@ -214,9 +214,10 @@
   "mode.replay": "リプレイ",
   "mode.replay_of": "{0}のリプレイ",
   "mode.practice": "練習モード",
-  "review.keys": "スペース 一時停止 · ←/→長押し 早送り/巻き戻し · ホイール 1秒 · ↑/↓ 速さ",
+  "review.keys": "スペース 一時停止 · ←/→長押し 早送り/巻き戻し · ホイール 1秒 · ↑/↓ 速さ · P ここから練習",
   "review.paused": "一時停止中",
-  "menu.instant_replay": "リプレイ",
+  "menu.play_song": "演奏する",
+  "menu.instant_replay": "リプレイ・練習",
 
   "score_list.leaderboard": "ランキング",
   "score_list.mine": "自分のプレイ",

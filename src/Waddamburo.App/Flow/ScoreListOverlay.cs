@@ -80,7 +80,9 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
     // R on a song: its playable difficulties, starting on the highest the player has a crown on (else Oni).
     private bool open()
     {
-        if (!shell.Arcade.Home || shell.Active.Id != FlowScenes.SongSelect || shell.PlayRequests.Pending is not null
+        // Replays and practice are one player's: not in two-player, duet or Waiwai.
+        if (!shell.Arcade.Home || shell.Hosts.TwoPlayers || shell.Hosts.Waiwai
+            || shell.Active.Id != FlowScenes.SongSelect || shell.PlayRequests.Pending is not null
             || shell.Hosts.SongSelect?.SongUnderCursor is not { } song)
             return false;
         _song = song;
