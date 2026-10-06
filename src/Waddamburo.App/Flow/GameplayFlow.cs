@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Waddamburo.App.Gameplay;
+using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
@@ -32,6 +33,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private GameplayAutoplay? _autoplay;
     // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
     private ReviewSession? _review;
+    // Home, training: attempts on the review (_review is its playback).
+    private TrainingSession? _training;
     // An instant replay made this play void: it is never saved.
     private bool _voided;
     private readonly Stopwatch _clock = new();
@@ -90,6 +93,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             var title = Shell.Titles.GetGameplayTitle(_song);
             _ = Shell.Titles.Resolve(title);
             active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
+            ModeLabel.Show(active.Player.Layers[songInfoIndex].Player, modeLabel(ModeText(request)));
         }
         _timeline = new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
         _startTick = Shell.Tick;
@@ -104,14 +108,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _review = !Shell.Arcade.Home || Shell.Headless ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
+            : request.Training && request.Players.Length == 1
+                ? reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : Shell.Options.Autoplay
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
-        _voided = request.Review is not null;
+        _training = request.Training && _review is not null ? new TrainingSession(Shell, _review, _charts[0]) : null;
+        _voided = request.Review is not null || request.Training;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.WatchAs(_side, watched);
         _autoplay = Shell.Options.Autoplay && _review is null ? new GameplayAutoplay(_charts, _side) : null;
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
+        _training?.Begin();
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
@@ -122,6 +130,21 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Console.WriteLine(
             $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
             + $"{_charts.Sum(static chart => chart.NoteCount)} notes at tick {Shell.Tick}.");
+    }
+
+    /// <summary>What a replay or practice says in place of the song's subtitle and number (null: a play).</summary>
+    public static string? ModeText(PlayRequest request) =>
+        request.Review is { } review ? review.Player is { } player ? Strings.T("mode.replay_of", player.DisplayName) : Strings.T("mode.replay")
+        : request.Training ? Strings.T("mode.practice")
+        : null;
+
+    private LumenNativeSurfaceKey? modeLabel(string? text)
+    {
+        if (text is null)
+            return null;
+        var key = Shell.Titles.GetGameplayText(text);
+        _ = Shell.Titles.Resolve(key);
+        return key;
     }
 
     /// <summary>
@@ -149,6 +172,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>The reviewed play's clock, for the review bar (null when not reviewing).</summary>
     public ReviewClock? Review => _review?.Clock;
+
+    /// <summary>The training under way (null when not training), for the review bar.</summary>
+    public TrainingSession? Training => _training;
+
+    /// <summary>A training attempt is played live: the drum is a drum, not a menu pad.</summary>
+    public bool Attempting => Reviewing && _training is { Live: true };
 
     public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
     public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
@@ -216,7 +245,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (_review is { } review)
         {
-            if (revealed && !_paused)
+            if (revealed && !_paused && _training is { } training)
+                training.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
+            else if (revealed && !_paused)
                 review.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
             else
                 review.Hold();
@@ -251,6 +282,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         review.Clock.SetPaused(true);
         review.ShowFresh(at);
         _review = review;
+        var songInfo = Shell.Active.Layers.ToList().FindIndex(layer =>
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
+        if (songInfo >= 0)
+            ModeLabel.Show(Shell.Active.Player.Layers[songInfo].Player, modeLabel(Strings.T("mode.replay")));
         SetPaused(false);
         Console.WriteLine($"Instant replay of the first {at.TotalSeconds:F1} s (the play is void).");
     }
@@ -325,6 +360,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _shutterStartTick = -1;
         _review?.Dispose();
         _review = null;
+        _training = null;
         if (_music is { } music)
             Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
         _music = null;

@@ -28,7 +28,7 @@ public sealed class LumenPlayer
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeFillBinding> _nativeFills = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box)> _overlays =
+    private readonly Dictionary<string, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)> _overlays =
         new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
@@ -545,18 +545,20 @@ public sealed class LumenPlayer
     /// clips under those ancestors),
     /// in that clip's own coordinates: it follows the clip's transform, colour and visibility, like a text
     /// field would. Used for the name boards' names (the board's own glyphs are kana only). Null removes it.
+    /// <paramref name="replace"/>: drawn instead of the clip's own content (its children), not over it.
     /// </summary>
-    public void SetInstanceOverlay(string instancePath, LumenNativeSurfaceKey? surface, LumenNativeSurfacePlacement box = default)
+    public void SetInstanceOverlay(string instancePath, LumenNativeSurfaceKey? surface, LumenNativeSurfacePlacement box = default,
+        bool replace = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
         if (surface is { } key)
-            _overlays[instancePath] = (key, box);
+            _overlays[instancePath] = (key, box, replace);
         else
             _overlays.Remove(instancePath);
     }
 
     // The overlay whose path ends with this clip and its nearest ancestors ("board1p/name_board/names").
-    private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box)? findOverlay(DisplayInstance instance)
+    private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)? findOverlay(DisplayInstance instance)
     {
         foreach (var (path, overlay) in _overlays)
         {
@@ -2398,6 +2400,8 @@ public sealed class LumenPlayer
             }
             quads.Add(new LumenRenderQuad(0, corner(x0, y0, 0, 0), corner(x1, y0, 1, 0), corner(x1, y1, 1, 1),
                 corner(x0, y1, 0, 1), color.Multiply, color.Add, blend, NativeSurface: overlay.Surface, MaskDepth: maskDepth));
+            if (overlay.Replace)
+                return;
         }
 
         if (instance.Children.Count == 0) return;

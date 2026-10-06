@@ -48,15 +48,19 @@ public sealed class ReviewTimeline
 
     /// <summary>
     /// Plays <paramref name="inputs"/> (in time order) over <paramref name="chart"/> with the same rules as
-    /// a live lane, then times out whatever is left.
+    /// a live lane, then times out whatever is left. A training attempt played only
+    /// [<paramref name="from"/>, <paramref name="until"/>): nothing before or after it is judged.
     /// </summary>
     public static ReviewTimeline Build(PlayableChart chart, TaikoCourse course, TaikoJudgementWindows windows,
-        TimeSpan strongSecondHitWindow, IEnumerable<TaikoReplayInput> inputs)
+        TimeSpan strongSecondHitWindow, IEnumerable<TaikoReplayInput> inputs, TimeSpan? from = null, TimeSpan? until = null)
     {
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(inputs);
-        ImmutableArray<TaikoReplayInput> played = [.. inputs.OrderBy(static input => input.Time)];
+        ImmutableArray<TaikoReplayInput> played = [.. inputs.Where(input => (from is null || input.Time >= from) && (until is null || input.Time < until))
+            .OrderBy(static input => input.Time)];
         var session = new TaikoJudgementSession(chart, windows, strongSecondHitWindow);
+        if (from is { } start)
+            session.SkipTo(start);
         var score = new TaikoScore(chart);
         var gauge = new TaikoSoulGauge(course, chart.Level, chart.NoteCount);
         var events = new List<ReviewEvent>();
@@ -77,7 +81,7 @@ public sealed class ReviewTimeline
         };
         foreach (var input in played)
             session.SubmitInput(input.Action, input.Time < session.CurrentTime ? session.CurrentTime : input.Time);
-        var end = chart.HitObjects.Select(static note => note.StartTime).Concat(chart.LongNotes.Select(static note => note.EndTime))
+        var end = until ?? chart.HitObjects.Select(static note => note.StartTime).Concat(chart.LongNotes.Select(static note => note.EndTime))
             .DefaultIfEmpty(TimeSpan.Zero).Max() + windows.Miss + TimeSpan.FromSeconds(1);
         if (end > session.CurrentTime)
             session.AdvanceTo(end);

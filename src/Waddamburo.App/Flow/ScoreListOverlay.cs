@@ -67,7 +67,9 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
             _selection = Math.Max(0, _selection - 1);
         if (keys.IsDown(SdlKeyboardKey.Down))
             _selection = Math.Min(Math.Max(0, rows.Count - 1), _selection + 1);
-        if (keys.IsDown(SdlKeyboardKey.Enter) && _selection < rows.Count && _client is { } client)
+        if (keys.IsDown(SdlKeyboardKey.P))
+            practise();
+        else if (keys.IsDown(SdlKeyboardKey.Enter) && _selection < rows.Count && _client is { } client)
         {
             var playId = rows[_selection].PlayId;
             _watching = Task.Run(() => client.ReplayAsync(playId));
@@ -145,6 +147,20 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter) 
         // Back from the replay, Song Select opens on this song again (as after a play).
         shell.Hosts.SongSelect!.RememberCurrentSong();
         Console.WriteLine($"Watching {replay.Play.Name}'s {replay.Play.Score} on {chart.Key}.");
+        IsOpen = false;
+    }
+
+    // P: the difficulty on show is practised (training), from Song Select's handoff as for a pick.
+    private void practise()
+    {
+        var chart = _charts[_chart];
+        var request = new PlayRequest(shell.Hosts.SongSelect!.CatalogRevision, _song!.Descriptor.Key, _song.Descriptor.AudioAsset,
+            [new PlayerChartRequest(shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne,
+                chart.Key, chart.ChartAsset, chart.Course!.Value)])
+        { Training = true };
+        if (!shell.PlayRequests.TryRequestPlay(request))
+            return;
+        shell.Hosts.SongSelect!.RememberCurrentSong();
         IsOpen = false;
     }
 

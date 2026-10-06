@@ -56,10 +56,11 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return register(song, textureKind, outlineRgb);
     }
 
-    public LumenNativeSurfaceKey GetTransitionTitle(SongSelectSong song)
+    /// <remarks><paramref name="subtitle"/>: shown in place of the song's own (a replay's player, practice).</remarks>
+    public LumenNativeSurfaceKey GetTransitionTitle(SongSelectSong song, string? subtitle = null)
     {
         ArgumentNullException.ThrowIfNull(song);
-        return register(song, TitleTextureKind.Transition, 0U);
+        return register(song, TitleTextureKind.Transition, 0U, subtitle);
     }
 
     /// <summary>A folder name; <paramref name="outlineRgb"/> outlines a spine (Compact) name, as genres do.</summary>
@@ -104,17 +105,26 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return register(song, TitleTextureKind.Gameplay, 0U);
     }
 
+    /// <summary>Any text drawn as gameplay song_info's title is (a replay's or practice's mode label).</summary>
+    public LumenNativeSurfaceKey GetGameplayText(string text)
+    {
+        var key = new LumenNativeSurfaceKey($"gameplay-text:{text}");
+        _requests[key] = new TitleRequest(text, null, TitleTextureKind.Gameplay, 0U);
+        return key;
+    }
+
     private LumenNativeSurfaceKey register(
         SongSelectSong song,
         TitleTextureKind kind,
-        uint outlineRgb)
+        uint outlineRgb,
+        string? subtitle = null)
     {
         var key = new LumenNativeSurfaceKey(
-            $"song-title:{song.Descriptor.Key}:{kind}:{outlineRgb:x6}");
+            $"song-title:{song.Descriptor.Key}:{kind}:{outlineRgb:x6}{(subtitle is null ? "" : ":" + subtitle)}");
         var request = new TitleRequest(
             _english ? song.Descriptor.Title.English ?? song.Descriptor.Title.Primary
                 : song.Descriptor.Title.Japanese ?? song.Descriptor.Title.Primary,
-            _english ? song.Descriptor.EnglishSubtitle ?? song.Descriptor.Subtitle : song.Descriptor.Subtitle,
+            subtitle ?? (_english ? song.Descriptor.EnglishSubtitle ?? song.Descriptor.Subtitle : song.Descriptor.Subtitle),
             kind,
             outlineRgb);
         if (_requests.TryGetValue(key, out var existing) && existing != request)

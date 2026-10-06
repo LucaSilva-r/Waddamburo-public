@@ -33,6 +33,8 @@ public enum SdlKeyboardKey
     Backspace = 8,
     Tab = 9,
     Enter = 13,
+    // Either Shift key.
+    Shift = 16,
     Escape = 27,
     Space = 32,
     PageUp = 33,

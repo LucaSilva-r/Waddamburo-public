@@ -141,6 +141,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane.ResetCharacter();
     }
 
+    /// <summary>Fresh live lanes start judging at <paramref name="time"/>: the notes before it are passed by (a training attempt).</summary>
+    public void StartAt(TimeSpan time)
+    {
+        foreach (var lane in _lanes)
+            lane.Session.SkipTo(time);
+    }
+
     /// <summary>A reviewed play's lanes at <paramref name="time"/>: played on to it, or jumped there (<see cref="Lane.Review"/>).</summary>
     public void Review(TimeSpan time, bool play)
     {

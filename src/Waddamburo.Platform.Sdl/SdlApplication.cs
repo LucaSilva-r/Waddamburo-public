@@ -873,6 +873,7 @@ public sealed unsafe class SdlApplication : IDisposable
         SDL_Keycode.SDLK_DELETE => SdlKeyboardKey.Delete,
         SDL_Keycode.SDLK_RETURN => SdlKeyboardKey.Enter,
         SDL_Keycode.SDLK_ESCAPE => SdlKeyboardKey.Escape,
+        SDL_Keycode.SDLK_LSHIFT or SDL_Keycode.SDLK_RSHIFT => SdlKeyboardKey.Shift,
         SDL_Keycode.SDLK_SPACE => SdlKeyboardKey.Space,
         SDL_Keycode.SDLK_PAGEUP => SdlKeyboardKey.PageUp,
         SDL_Keycode.SDLK_PAGEDOWN => SdlKeyboardKey.PageDown,

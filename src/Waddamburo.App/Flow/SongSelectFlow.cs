@@ -150,7 +150,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete)
         {
             Shell.ReportDiagnostics();
-            gameplay.RainbowTitle = Shell.Titles.GetTransitionTitle(find(request.Song).Song);
+            gameplay.RainbowTitle = Shell.Titles.GetTransitionTitle(find(request.Song).Song, GameplayFlow.ModeText(request));
             _ = Shell.Titles.Resolve(gameplay.RainbowTitle.Value);
             rainbow.Begin(Shell.Tick, Shell.Hosts.Waiwai ? RainbowTransitionSequence.WaiwaiLeadInTicks : null);
             _titleReported = false;

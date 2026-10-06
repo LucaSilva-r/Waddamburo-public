@@ -72,6 +72,25 @@ public sealed class ReviewTimelineTests
     }
 
     [Fact]
+    public void ATrainingAttemptJudgesOnlyItsOwnStretch()
+    {
+        // Played from 1.4 s until 2.5 s: the Don before it and the notes after it are never judged.
+        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs, from: ms(1_400), until: ms(2_500));
+
+        Assert.Equal([null, TaikoHitResult.Good, TaikoHitResult.Miss, null],
+            Enumerable.Range(0, 4).Select(note => timeline.ResultAt(note, TimeSpan.FromSeconds(10))));
+        Assert.Equal(0, timeline.StateAt(TimeSpan.FromSeconds(10))!.Value.Score.Combo);
+
+        // Live, the skipped Don is gone (shown as done) and raises nothing.
+        var live = new TaikoJudgementSession(chart(), Windows, Strong);
+        var judged = 0;
+        live.Judged += _ => judged++;
+        live.SkipTo(ms(1_400));
+        live.AdvanceTo(ms(1_400));
+        Assert.Equal((true, false, 0), (live.IsJudged(0), live.IsMissed(0), judged));
+    }
+
+    [Fact]
     public void PlayingOnRaisesWhatItPassesAndAJumpRaisesNothing()
     {
         var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs));

@@ -592,7 +592,7 @@ internal sealed class GameShell : IDisposable
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
         // A reviewed play takes the mouse wheel (seeking) like a menu does.
-        Application.MenuInput = !onLane || _home.MenuOpen || _gameplay.Reviewing;
+        Application.MenuInput = !onLane || _home.MenuOpen || _gameplay.Reviewing && !_gameplay.Attempting;
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         var escape = _input.EscapePressed(keys);
@@ -918,7 +918,7 @@ internal sealed class GameShell : IDisposable
             [
                 .. frame.Quads,
                 .. Active.Id == FlowScenes.Gameplay ? _timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator) : [],
-                .. _gameplay.Reviewing && _gameplay.Review is { } review ? _reviewBar.Quads(review) : [],
+                .. _gameplay.Reviewing && _gameplay.Review is { } review ? _reviewBar.Quads(review, _gameplay.Training) : [],
                 .. _playerSetup?.Quads(interpolation) ?? [],
                 .. indicatorQuads(false),
                 .. Overlay.Quads(interpolation, Titles.Resolve),

@@ -113,6 +113,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private readonly TimeSpan?[] _offsets;
     private readonly bool[] _timedOut;
     private readonly bool[] _strongHits;
+    private readonly bool[] _skipped;
     private readonly int[] _longHits;
     private int _nextLongIndex;
     private TimeSpan _currentTime = TimeSpan.MinValue;
@@ -145,6 +146,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         _offsets = new TimeSpan?[chart.NoteCount];
         _timedOut = new bool[chart.NoteCount];
         _strongHits = new bool[chart.NoteCount];
+        _skipped = new bool[chart.NoteCount];
         _longHits = new int[chart.LongNotes.Length];
     }
 
@@ -161,9 +163,23 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         return new(index, note, _longHits[index], note.IsBalloon && _longHits[index] >= note.RequiredHits);
     }
 
-    public bool IsJudged(int index) => _results[index] is not null;
+    public bool IsJudged(int index) => _results[index] is not null || _skipped[index];
 
     public bool IsMissed(int index) => _results[index] == TaikoHitResult.Miss;
+
+    /// <summary>
+    /// Starts judging at <paramref name="time"/> (training from a point in the song): the notes before it and
+    /// the rolls over by then are passed by, with no judgement and nothing raised; they show as gone.
+    /// </summary>
+    public void SkipTo(TimeSpan time)
+    {
+        ensureMonotonic(time);
+        _currentTime = time;
+        for (; _nextNoteIndex < _chart.NoteCount && _chart.HitObjects[_nextNoteIndex].StartTime < time; _nextNoteIndex++)
+            _skipped[_nextNoteIndex] = true;
+        while (_nextLongIndex < _chart.LongNotes.Length && _chart.LongNotes[_nextLongIndex].EndTime <= time)
+            _nextLongIndex++;
+    }
 
     public int AdvanceTo(TimeSpan time)
     {

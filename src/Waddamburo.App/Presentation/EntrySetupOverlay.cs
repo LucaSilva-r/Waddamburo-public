@@ -20,7 +20,7 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
     private const float TagY = 683, TagWidth = 176, TagHeight = 24;
     private const float MessageY = 560;
 
-    private readonly Dictionary<(string Text, int Width, int Height, bool Tag, uint Scale), RenderTextureId> _text = [];
+    private readonly Dictionary<(string Text, int Width, int Height, uint Scale), RenderTextureId> _text = [];
     private readonly Dictionary<(string Url, uint Scale), (RenderTextureId Texture, float Size)> _qr = [];
 
     /// <param name="setup">Each side's setup column while the setup is open (null: not in setup).</param>
@@ -33,7 +33,7 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
         for (var side = 0; side < 2; side++)
         {
             if (tags[side] is { Length: > 0 } tag)
-                quads.Add(text(tag, TagX[side], TagY, TagWidth, TagHeight, tagStyle: true, scale));
+                quads.Add(text(tag, TagX[side], TagY, TagWidth, TagHeight, scale));
             if (setup?[side] is not { } column)
                 continue;
             var choice = column.Choice;
@@ -45,26 +45,26 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
                 if (column.QrUrl is { } url)
                     quads.Add(qr(url, StandX[side], QrY, QrSize, scale));
                 var codeY = column.QrUrl is null ? StandY - 20 : QrY + QrSize / 2 + 26;
-                quads.Add(text($"{code[..3]}-{code[3..]}", StandX[side], codeY, 170, 42, tagStyle: false, scale));
+                quads.Add(text($"{code[..3]}-{code[3..]}", StandX[side], codeY, 170, 42, scale));
                 if (column.Seconds is { } seconds)
-                    quads.Add(text($"{seconds}", StandX[side] + 112, codeY, 44, 30, tagStyle: false, scale));
+                    quads.Add(text($"{seconds}", StandX[side] + 112, codeY, 44, 30, scale));
             }
             else if (standVisible[side] && !choice.HasDon)
             {
                 if (choice.Kind == SetupChoiceKind.AddAccount)
                 {
-                    quads.Add(text("+", StandX[side], StandY - 35, 120, 110, tagStyle: false, scale));
-                    quads.Add(text(choice.Label, StandX[side], StandY + 45, 240, 44, tagStyle: false, scale));
+                    quads.Add(text("+", StandX[side], StandY - 35, 120, 110, scale));
+                    quads.Add(text(choice.Label, StandX[side], StandY + 45, 240, 44, scale));
                 }
                 else
                 {
                     // Two lines, so it fits between the arrows.
-                    quads.Add(text(Strings.T("setup.join_with"), StandX[side], StandY - 26, 200, 48, tagStyle: false, scale));
-                    quads.Add(text(Strings.T("setup.code"), StandX[side], StandY + 28, 200, 48, tagStyle: false, scale));
+                    quads.Add(text(Strings.T("setup.join_with"), StandX[side], StandY - 26, 200, 48, scale));
+                    quads.Add(text(Strings.T("setup.code"), StandX[side], StandY + 28, 200, 48, scale));
                 }
             }
             if (column.Message is { } message)
-                quads.Add(text(message, StandX[side], MessageY, 300, 26, tagStyle: false, scale));
+                quads.Add(text(message, StandX[side], MessageY, 300, 26, scale));
         }
         return quads;
     }
@@ -79,15 +79,14 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
         _qr.Clear();
     }
 
-    // Text centred in a box in the game's outlined title style (white in black); the name tag's letters
-    // spaced out like the board's own lettering.
-    private RenderQuad text(string value, float centreX, float centreY, float width, float height, bool tagStyle, uint scale)
+    // Text centred in a box in the game's outlined title style (white in black).
+    private RenderQuad text(string value, float centreX, float centreY, float width, float height, uint scale)
     {
-        var key = (value, (int)width, (int)height, tagStyle, scale);
+        var key = (value, (int)width, (int)height, scale);
         if (!_text.TryGetValue(key, out var texture))
         {
             var canvas = new VectorCanvas((int)width, (int)height, (int)scale, fontPath);
-            canvas.Text(value, width / 2, height / 2, width, height, spacing: tagStyle ? 0.06f : 0);
+            canvas.Text(value, width / 2, height / 2, width, height);
             _text[key] = texture = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
         }
         return quad(texture, centreX - width / 2, centreY - height / 2, width, height, RenderRectangle.Full);

@@ -12,22 +12,22 @@ public sealed class ReviewClockTests
         var clock = new ReviewClock(s(-3), s(10));
         clock.Update(s(2));
         Assert.Equal(s(-1), clock.Position);
-        clock.Slower(); // 0.75
-        clock.Slower(); // 0.5
+        clock.Slower(); // 0.9
+        clock.Slower(); // 0.8
         clock.Update(s(2));
-        Assert.Equal(s(0), clock.Position);
+        Assert.Equal(s(0.6), clock.Position);
         clock.TogglePause();
         clock.Update(s(5));
-        Assert.Equal(s(0), clock.Position);
+        Assert.Equal(s(0.6), clock.Position);
         clock.TogglePause();
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < ReviewClock.Speeds.Length; i++)
             clock.Faster();
         Assert.Equal(2, clock.Speed);
         clock.Update(s(100));
         Assert.Equal((s(10), true), (clock.Position, clock.Paused));
         clock.TogglePause(); // from the end: starts over
         Assert.Equal((s(-3), false), (clock.Position, clock.Paused));
-        for (var step = 0; step < 10; step++)
+        for (var step = 0; step < ReviewClock.Speeds.Length; step++)
             clock.Slower();
         Assert.Equal(0.05, clock.Speed); // slow enough to see a fast stream's hits one by one
     }

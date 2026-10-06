@@ -51,10 +51,7 @@ internal sealed class ReviewSession : IDisposable
         Clock.Sought += (_, _) => _jumped = true;
         _shownAt = Clock.Start;
 
-        var bake = Stopwatch.StartNew();
-        Timelines = [.. charts.Select((chart, lane) => ReviewTimeline.Build(chart, _courses[lane],
-            TaikoGameplayPresentation.WindowsFor(chart, _courses[lane]), TaikoGameplayPresentation.StrongSecondHitWindow, inputs[lane]))];
-        Console.WriteLine($"Review: baked {Timelines.Sum(static timeline => timeline.Events.Length)} events in {bake.Elapsed.TotalMilliseconds:F1} ms.");
+        Timelines = bake(inputs, null, null);
 
         // The whole song in memory for the scrubbing music, decoded meanwhile (silent until it is ready).
         if (shell.Audio is { } audio && request.AudioAsset is { } asset)
@@ -68,7 +65,41 @@ internal sealed class ReviewSession : IDisposable
     public ReviewClock Clock { get; }
 
     /// <summary>The baked play of each lane (the lanes are started on them).</summary>
-    public ReviewTimeline[] Timelines { get; }
+    public ReviewTimeline[] Timelines { get; private set; }
+
+    // from/until: a training attempt's stretch, in judgement time (nothing outside it is judged).
+    private ReviewTimeline[] bake(IReadOnlyList<TaikoReplayInput>[] inputs, TimeSpan? from, TimeSpan? until)
+    {
+        var watch = Stopwatch.StartNew();
+        ReviewTimeline[] timelines = [.. _charts.Select((chart, lane) => ReviewTimeline.Build(chart, _courses[lane],
+            TaikoGameplayPresentation.WindowsFor(chart, _courses[lane]), TaikoGameplayPresentation.StrongSecondHitWindow, inputs[lane], from, until))];
+        Console.WriteLine($"Review: baked {timelines.Sum(static timeline => timeline.Events.Length)} events in {watch.Elapsed.TotalMilliseconds:F1} ms.");
+        return timelines;
+    }
+
+    /// <summary>
+    /// Shows a training attempt played over [<paramref name="from"/>, <paramref name="until"/>) (chart time)
+    /// with these <paramref name="inputs"/> (judgement time), the playhead at its end.
+    /// </summary>
+    public void ShowAttempt(IReadOnlyList<TaikoReplayInput>[] inputs, TimeSpan from, TimeSpan until)
+    {
+        Timelines = bake(inputs, from - _inputOffset, until - _inputOffset);
+        Clock.Seek(until);
+        ShowFresh(until);
+    }
+
+    /// <summary>The lanes play live from <paramref name="from"/> (a training attempt): fresh, judging the drum from there.</summary>
+    public void StartLive(TimeSpan from)
+    {
+        var gameplay = _shell.Gameplay;
+        gameplay.CloseLongNotes();
+        gameplay.Start(_charts, _shell.Active, _courses, _side, _waiwai);
+        gameplay.ResetCharacters();
+        gameplay.StartAt(from - _inputOffset);
+        Clock.Seek(from);
+        _shownAt = from;
+        _jumped = false;
+    }
 
     /// <summary>
     /// Shows the lanes afresh at <paramref name="time"/>: the open roll/balloon overlays close (they belong
@@ -106,17 +137,27 @@ internal sealed class ReviewSession : IDisposable
                 }
             scrub = (keys.IsDown(SdlKeyboardKey.Right) ? 1 : 0) - (keys.IsDown(SdlKeyboardKey.Left) ? 1 : 0);
         }
+        Step(scrub);
+    }
+
+    /// <summary>
+    /// Moves the clock on by the frame (<paramref name="scrub"/>: a held seek key's direction) and shows the
+    /// lanes there: the bake, or, given <paramref name="live"/> (a training attempt), the drum judged live.
+    /// </summary>
+    public void Step(int scrub, SdlKeyboardSnapshot? live = null)
+    {
         Clock.Update(_frame.Elapsed, scrub);
         _frame.Restart();
         var time = Clock.Position;
-        if (time < _shownAt)
+        // ponytail: a hit's time within the frame is taken in real time, not scaled by a slowed speed (a few ms).
+        if (live is { } keys)
+            _shell.Gameplay.Advance(keys, time - _inputOffset);
+        else if (time < _shownAt)
             ShowFresh(time);
         else
-        {
             _shell.Gameplay.Review(time - _inputOffset, play: !_jumped && !Clock.Scrubbing);
-            _jumped = false;
-            _shownAt = time;
-        }
+        _jumped = false;
+        _shownAt = time;
         followMusic(Clock.Rate);
     }
 

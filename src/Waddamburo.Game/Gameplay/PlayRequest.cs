@@ -106,6 +106,9 @@ public sealed record PlayRequest
 
     /// <summary>Watch a recorded play of the (one) player's chart instead of playing it (home only).</summary>
     public ReviewRequest? Review { get; init; }
+
+    /// <summary>Home: the song is practised (loops of live attempts from any point) rather than played; never saved.</summary>
+    public bool Training { get; init; }
 }
 
 /// <summary>
