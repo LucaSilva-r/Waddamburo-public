@@ -98,13 +98,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _afterMusic.Reset();
         _audioOffset = TimeSpan.FromMilliseconds(Shell.Arcade.AudioOffsetMs);
         _inputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
-        _voided = false;
         _review?.Dispose();
-        // Home autoplay is reviewed (pause, scrub, speed) rather than played live.
-        // ponytail: the autoplay is the only reviewed song start; replays from TaikOnline plug in here.
-        _review = Shell.Options.Autoplay && Shell.Arcade.Home && !Shell.Headless
-            ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2))
+        // Home: a recorded play (a replay picked in song select) or the autoplay is reviewed (pause,
+        // scrub, speed) rather than played live; it is never saved.
+        _review = !Shell.Arcade.Home || Shell.Headless ? null
+            : request.Review is { } recorded && request.Players.Length == 1
+                ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
+            : Shell.Options.Autoplay
+                ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
+        _voided = request.Review is not null;
+        if (_review is not null && request.Review?.Player is { } watched)
+            Shell.WatchAs(_side, watched);
         _autoplay = Shell.Options.Autoplay && _review is null ? new GameplayAutoplay(_charts, _side) : null;
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         if (Shell.Sounds is { } sounds)
@@ -241,7 +246,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
         _music = null;
         _voided = true;
-        var review = reviewOf(request, [.. Shell.Gameplay.Replays.Select(static replay => (IReadOnlyList<TaikoReplayInput>)[.. replay.Inputs])], at);
+        var review = reviewOf(request, [.. Shell.Gameplay.Replays.Select(static replay => (IReadOnlyList<TaikoReplayInput>)[.. replay.Inputs])], at, _inputOffset);
         review.Clock.Seek(at);
         review.Clock.SetPaused(true);
         review.ShowFresh(at);
@@ -250,8 +255,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Console.WriteLine($"Instant replay of the first {at.TotalSeconds:F1} s (the play is void).");
     }
 
-    private ReviewSession reviewOf(PlayRequest request, IReadOnlyList<TaikoReplayInput>[] inputs, TimeSpan end) =>
-        new(Shell, request, _charts, _side, _waiwai, inputs, _timeline!.LeadIn, end, _inputOffset,
+    // inputOffset: the one the play was made with (its hits then show where its player saw them).
+    private ReviewSession reviewOf(PlayRequest request, IReadOnlyList<TaikoReplayInput>[] inputs, TimeSpan end, TimeSpan inputOffset) =>
+        new(Shell, request, _charts, _side, _waiwai, inputs, _timeline!.LeadIn, end, inputOffset,
             songStart: _timeline.AudioStart - _timeline.LeadIn - _audioOffset);
 
     public override void Tick(FlowInput input)

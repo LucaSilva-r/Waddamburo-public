@@ -675,6 +675,13 @@ public sealed class LumenPlayer
         resetInterpolation(_root);
     }
 
+    /// <summary>
+    /// What is on screen now becomes the interpolation's starting point, as <see cref="Advance(LumenInputSnapshot)"/>
+    /// would make it: the next snapshot draws the movie exactly as it is. For clips a script sets every frame
+    /// (a roll's width, following its exact place), which must not blend from the last tick's state.
+    /// </summary>
+    public void HoldStill() => snapshotInstances(_root);
+
     private void advanceSubtree(DisplayInstance root, bool queueActions)
     {
         var existing = new List<DisplayInstance>();

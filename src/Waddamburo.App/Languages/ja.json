@@ -209,5 +209,19 @@
 
   "review.keys": "スペース 一時停止 · ←/→長押し 早送り/巻き戻し · ホイール 1秒 · ↑/↓ 速さ",
   "review.paused": "一時停止中",
-  "menu.instant_replay": "リプレイ"
+  "menu.instant_replay": "リプレイ",
+
+  "score_list.leaderboard": "ランキング",
+  "score_list.mine": "自分のプレイ",
+  "score_list.switch": "スペース：ランキング／自分のプレイ",
+  "score_list.keys": "←/→ 難易度 · ↑/↓ 選ぶ · Enter リプレイを見る · R/Esc 閉じる",
+  "score_list.loading": "スコアを読み込み中…",
+  "score_list.loading_replay": "リプレイを読み込み中…",
+  "score_list.empty": "まだプレイがありません。",
+  "score_list.failed": "スコアを読み込めませんでした（{0}）。",
+  "score_list.replay_failed": "リプレイを読み込めませんでした（{0}）。",
+  "score_list.offline": "スコアを見るにはアカウントにログインしてください（オンライン）。",
+  "score_list.crown.clear": "クリア",
+  "score_list.crown.full_combo": "フルコンボ",
+  "score_list.crown.all_great": "全良"
 }

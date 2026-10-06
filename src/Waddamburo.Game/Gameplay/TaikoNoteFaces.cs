@@ -51,7 +51,7 @@ public static class TaikoNoteFaces
 
     /// <summary>
     /// Frames to play on from <paramref name="current"/> in the loop [<paramref name="start"/>, <paramref name="end"/>)
-    /// to reach <paramref name="beat"/>'s phase (0 when outside the loop: not on that tier yet).
+    /// to reach <paramref name="beat"/>'s phase (0 when outside the loop: not on that tier yet, or a frame ahead).
     /// </summary>
     public static int LoopSteps(int start, int end, int current, double beat)
     {
@@ -59,7 +59,9 @@ public static class TaikoNoteFaces
         if (length <= 0 || current < start || current >= end)
             return 0;
         var target = (int)Math.Floor(((beat * FramesPerBeat % length) + length) % length);
-        return ((target - (current - start)) % length + length) % length;
+        // Forward only, to the beat's phase: a movie a frame ahead waits instead of playing the loop round.
+        var behind = ((target - (current - start)) % length + length) % length;
+        return behind <= length / 2 ? behind : 0;
     }
 
     /// <summary>Puts a note movie on its tier's frame for <paramref name="beat"/> (beats since the chart's first timing point).</summary>

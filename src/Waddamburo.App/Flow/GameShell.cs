@@ -167,6 +167,10 @@ internal sealed class GameShell : IDisposable
     private readonly GameplayFlow _gameplay;
     private readonly HomeControls _home;
     private readonly SongSearch _search;
+    private readonly ScoreListOverlay _scores;
+    // Overlays that take the keyboard (topmost last) and the painter Waddamburo's own overlays draw with.
+    private readonly IInputOverlay[] _inputOverlays;
+    public OverlayPainter Painter { get; }
 
     /// <summary>Song Select's quick reload (library, grouping, order, search).</summary>
     public SongSelectReload Reload { get; }
@@ -313,7 +317,8 @@ internal sealed class GameShell : IDisposable
         _nameTexts = new NameTextTextures(Application, options.FontPath);
         _performance = new PerformanceOverlay(Application, () => Audio);
         _timingMarks = new TimingMarkOverlay(Application);
-        _reviewBar = new ReviewOverlay(Application, options.FontPath);
+        Painter = new OverlayPainter(Application, options.FontPath);
+        _reviewBar = new ReviewOverlay(Painter);
         if (Arcade.Home)
             _notices = new NoticeOverlay(Application, options.FontPath, Sync.Notices, Sync.Jobs,
                 baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
@@ -426,7 +431,9 @@ internal sealed class GameShell : IDisposable
         _gameplay = new GameplayFlow(this);
         var calibration = new CalibrationFlow(this);
         _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
-        _search = new SongSearch(this, _libraries.Snapshot, options.FontPath);
+        _search = new SongSearch(this, _libraries.Snapshot, Painter);
+        _scores = new ScoreListOverlay(this, Painter);
+        _inputOverlays = [_search, _scores];
         Reload = new SongSelectReload(this);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this, _gameplay);
@@ -590,7 +597,7 @@ internal sealed class GameShell : IDisposable
         keys = scene.MapKeys(_input.Pulses(keys));
         var escape = _input.EscapePressed(keys);
         // Song Select's search field takes the keyboard while open (its Escape closes it, not the menu).
-        if (Reload.Tick() || !_home.MenuOpen && _search.Tick(keys, escape))
+        if (Reload.Tick() || !_home.MenuOpen && overlaysTake(keys, escape))
         {
             advance(scene, SdlKeyboardSnapshot.Empty);
             return;
@@ -620,6 +627,12 @@ internal sealed class GameShell : IDisposable
         switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
         Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
     }
+
+    // An open overlay takes the tick's input; with none open, each may open on its own key (Tab, R).
+    private bool overlaysTake(SdlKeyboardSnapshot keys, bool escape) =>
+        _inputOverlays.LastOrDefault(static overlay => overlay.IsOpen) is { } open
+            ? open.Tick(keys, escape) || true
+            : _inputOverlays.Any(overlay => overlay.Tick(keys, escape));
 
     // A gameplay lane is on screen: a song or the audio calibration (drums drive it, not the movies' controls).
     private bool onLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration;
@@ -752,6 +765,27 @@ internal sealed class GameShell : IDisposable
     {
         JoinedSides.Add(side);
         applyPlayers();
+    }
+
+    // The drum's own player while a replay shows another's (restored back in Song Select).
+    private (int Side, ScoreProfile? Profile)? _watchedOver;
+
+    /// <summary>A replay shows its player on <paramref name="side"/>: their name boards and Don, through its results.</summary>
+    public void WatchAs(int side, ScoreProfile player)
+    {
+        _watchedOver ??= (side, TaikoGuest.Profiles[side]);
+        TaikoGuest.Profiles[side] = player;
+        Don?.SetLook(side, player.Look);
+    }
+
+    /// <summary>The drum's own player is back after a replay (nothing when none was watched).</summary>
+    public void StopWatching()
+    {
+        if (_watchedOver is not var (side, profile))
+            return;
+        _watchedOver = null;
+        TaikoGuest.Profiles[side] = profile;
+        Don?.SetLook(side, profile?.Look);
     }
 
     public void ResetPlayers()
@@ -888,7 +922,7 @@ internal sealed class GameShell : IDisposable
                 .. _playerSetup?.Quads(interpolation) ?? [],
                 .. indicatorQuads(false),
                 .. Overlay.Quads(interpolation, Titles.Resolve),
-                .. _search.Quads(),
+                .. _inputOverlays.SelectMany(static overlay => overlay.Quads()),
                 .. indicatorQuads(true),
                 .. pill(),
                 .. _notices?.Quads(onLane) ?? [],
@@ -896,6 +930,7 @@ internal sealed class GameShell : IDisposable
             ],
             frame.ContentAspectRatio);
         _presenter.Presented(result, Overlay.IsShown);
+        Painter.EndFrame();
         return _home.Draw(result);
     }
 
@@ -941,13 +976,12 @@ internal sealed class GameShell : IDisposable
         _playerSetup?.Dispose();
         _textFields.Dispose();
         _nameTexts.Dispose();
-        _search.Dispose();
+        Painter.Dispose();
         Hosts?.Rankings?.Dispose();
         _pill.Dispose();
         _performance.Dispose();
         _notices?.Dispose();
         _timingMarks.Dispose();
-        _reviewBar.Dispose();
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();

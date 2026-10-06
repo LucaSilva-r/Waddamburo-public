@@ -103,7 +103,16 @@ public sealed record PlayRequest
     public CatalogAssetKey? AudioAsset { get; }
 
     public ImmutableArray<PlayerChartRequest> Players { get; }
+
+    /// <summary>Watch a recorded play of the (one) player's chart instead of playing it (home only).</summary>
+    public ReviewRequest? Review { get; init; }
 }
+
+/// <summary>
+/// A recorded play to watch: its drum inputs (in judgement time) and the input offset it was played with,
+/// so its hits show where that player saw them; <paramref name="Player"/>, who played it (shown in their place).
+/// </summary>
+public sealed record ReviewRequest(IReadOnlyList<TaikoReplayInput> Inputs, TimeSpan InputOffset, Scores.ScoreProfile? Player = null);
 
 public interface IPlayRequestSink
 {

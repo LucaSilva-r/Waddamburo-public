@@ -118,10 +118,17 @@ public sealed class TaikoLongNotePresentation
     {
         foreach (var layer in _visible.Values)
         {
-            for (var frame = steps?.Invoke(layer.Player) ?? 1; frame > 0; frame--)
-                layer.Player.Advance();
-            if (layer.Player.CallbackNames.Contains("OnUpdate"))
-                invoke(layer.Player, "OnUpdate");
+            // Each frame played is followed by its OnUpdate, as the movie expects (it lays the tail out
+            // there); a still note still gets one a tick.
+            var update = layer.Player.CallbackNames.Contains("OnUpdate");
+            var frames = steps?.Invoke(layer.Player) ?? 1;
+            for (var frame = 0; frame < Math.Max(1, frames); frame++)
+            {
+                if (frame < frames)
+                    layer.Player.Advance();
+                if (update)
+                    invoke(layer.Player, "OnUpdate");
+            }
         }
         // Counter movies belong to the scene and are advanced exactly once by its player.
         if (_active is null)
@@ -180,13 +187,19 @@ public sealed class TaikoLongNotePresentation
             }
             var transform = LumenMatrix.Identity with { X = head, Y = hitY, M11 = tail < head ? -1 : 1 };
             if (!note.IsBalloon)
+            {
                 invoke(layer.Player, "SetWidth", Math.Abs(tail - head));
+                // Drawn as set, never blended from the last tick: the width follows the roll's place, which
+                // is exact every frame (a stale blend stretched the tail, worst when scrubbing a review back).
+                layer.Player.HoldStill();
+            }
             yield return (note.StartTime, layer with { Transform = transform });
             // Traced: a roll spawns onp_renda(_dai)_moji below it, sized with the same SetWidth.
             if (note.IsBalloon || _createText is null) continue;
             if (!_texts.TryGetValue(index, out var text))
                 _texts.Add(index, text = _createText(note.Kind));
             invoke(text.Player, "SetWidth", Math.Abs(tail - head));
+            text.Player.HoldStill();
             yield return (note.StartTime, text with { Transform = transform with { Y = hitY + TaikoNoteText.Offset } });
         }
         foreach (var index in _visible.Keys.Where(index => !retained.Contains(index)).ToArray())

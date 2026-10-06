@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.Game.Scores;
 
@@ -29,6 +30,34 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
 /// <summary>A device login in progress: the code to show and where to enter it.</summary>
 /// <summary>One line of a chart's server ranking: a player's best.</summary>
 public sealed record RankingEntry(long Baid, string Name, int Score);
+
+/// <summary>
+/// One play in a score list (snake_case JSON): its place (null in the player's own list), who played it
+/// and how (crown 0 none, 1 clear, 2 full combo, 3 all Great), and the offsets it was played with.
+/// </summary>
+public record ScoreRow
+{
+    public Guid PlayId { get; init; }
+    public int? Rank { get; init; }
+    public long Baid { get; init; }
+    public string Name { get; init; } = "";
+    public long Score { get; init; }
+    public int Great { get; init; }
+    public int Good { get; init; }
+    public int Miss { get; init; }
+    public int MaxCombo { get; init; }
+    public int Rolls { get; init; }
+    public int Gauge { get; init; }
+    public bool Cleared { get; init; }
+    public int Crown { get; init; }
+    public int Course { get; init; }
+    public DateTimeOffset? PlayedAt { get; init; }
+    public int? AudioOffsetMs { get; init; }
+    public int? InputOffsetMs { get; init; }
+}
+
+/// <summary>A downloaded replay: the play, its chart's hash, its inputs and who played it (name boards, Don's look).</summary>
+public sealed record ReplayDownload(ScoreRow Play, string ChartSha256, TaikoReplay Replay, ScoreProfile? Player);
 
 public sealed record DeviceLoginStart(string DeviceCode, string UserCode, int ExpiresIn, int Interval, string VerificationUrl);
 
@@ -136,6 +165,38 @@ public sealed class ScoreClient(HttpClient http)
         return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.BestsResult, cancellationToken).ConfigureAwait(false))!.Bests;
     }
 
+    /// <summary>
+    /// A chart's leaderboard: each player's best play, best first, and the asking player's own best with
+    /// its place (null when they have none). A cabinet names the player with <paramref name="baid"/>.
+    /// </summary>
+    public async Task<(List<ScoreRow> Scores, ScoreRow? Mine)> LeaderboardAsync(string chartSha256, long? baid = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync($"api/wdb/charts/{chartSha256}/scores{query(baid)}", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.LeaderboardResult, cancellationToken).ConfigureAwait(false))!;
+        return (result.Scores, result.Mine);
+    }
+
+    /// <summary>The player's own plays on a chart, best first.</summary>
+    public async Task<List<ScoreRow>> MyScoresAsync(string chartSha256, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync($"api/wdb/charts/{chartSha256}/scores/mine{query(baid)}", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoresResult, cancellationToken).ConfigureAwait(false))!.Scores;
+    }
+
+    /// <summary>Any play's replay, with the play it belongs to.</summary>
+    public async Task<ReplayDownload> ReplayAsync(Guid playId, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync($"api/wdb/plays/{playId}/replay", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ReplayResult, cancellationToken).ConfigureAwait(false))!;
+        return new ReplayDownload(result, result.ChartSha256, TaikoReplay.Decode(Convert.FromBase64String(result.Replay)), result.Player);
+    }
+
+    private static string query(long? baid) => baid is { } value ? $"?baid={value}" : "";
+
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         using var response = await http.DeleteAsync("api/wdb/login", cancellationToken).ConfigureAwait(false);
@@ -221,4 +282,17 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
 
     internal sealed record PlaysResult(List<Guid> Accepted, List<string> MissingCharts);
+
+    internal sealed record LeaderboardResult(List<ScoreRow> Scores, ScoreRow? Mine);
+
+    internal sealed record ScoresResult(List<ScoreRow> Scores);
+
+    internal sealed record ReplayResult : ScoreRow
+    {
+        public string ChartSha256 { get; init; } = "";
+
+        public string Replay { get; init; } = "";
+
+        public ScoreProfile? Player { get; init; }
+    }
 }

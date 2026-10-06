@@ -22,6 +22,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     public override void Enter(SceneId scene)
     {
+        Shell.StopWatching();
         if (scene == FlowScenes.SongSelect)
             Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)

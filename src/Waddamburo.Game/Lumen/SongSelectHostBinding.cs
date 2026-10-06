@@ -200,6 +200,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)).</summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
 
+    /// <summary>The song the player is on: the one whose difficulties are open, else the list's centre (null: a folder or nothing).</summary>
+    public SongSelectSong? SongUnderCursor => CourseSelectSong
+        ?? (_centre is { } centre && _session.Catalog.TryGetSong(centre.Category, centre.Song, out var song) ? song : null);
+
+    /// <summary>The catalog revision play requests are pinned to.</summary>
+    public long CatalogRevision => _session.Catalog.Revision;
+
     /// <summary>The score windows known for a song: per course (easy..ura), up to three players' bests.</summary>
     public Func<SongSelectSong, IReadOnlyList<RankingEntry>?[]?>? Rankings { get; init; }
 
@@ -245,6 +252,19 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     /// <summary>The folder and song of the last course decided (to come back to it).</summary>
     public (CategoryKey Category, SongKey Song)? Picked { get; private set; }
+
+    private (int Category, int Song)? _courseSelect;
+
+    /// <summary>
+    /// Remembers the song the player is on (its difficulties' song, else the list's centre) as picked, so
+    /// Song Select comes back to it: a play started from Waddamburo's own UI (a replay), not the movie.
+    /// </summary>
+    public void RememberCurrentSong()
+    {
+        if ((CourseSelectSong is not null ? _courseSelect : _centre) is { } at
+            && _session.Catalog.TryGetSong(at.Category, at.Song, out var song))
+            Picked = (_session.Catalog.Categories[at.Category].Key, song.Descriptor.Key);
+    }
 
     public void Attach(LumenPlayer player)
     {
@@ -315,6 +335,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
             {
+                _courseSelect = (integer(call, 0), integer(call, 1));
                 CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
                 return LumenHostValue.Undefined;
             });

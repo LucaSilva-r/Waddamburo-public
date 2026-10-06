@@ -17,11 +17,11 @@ public sealed class TaikoNoteFacesTests
     [Fact]
     public void LongNotesPlayOnToTheBeatsPhase()
     {
-        // A 20-frame level03 loop at frames 100..119: 40 frames a beat, so half a beat is 20 frames (a whole loop).
-        Assert.Equal(0, TaikoNoteFaces.LoopSteps(100, 120, 100, 0)); // on phase: stays
+        // A 20-frame level03 loop at frames 100..119 (40 frames a beat).
+        Assert.Equal(0, TaikoNoteFaces.LoopSteps(100, 120, 100, 0)); // on phase: holds (a still review)
         Assert.Equal(5, TaikoNoteFaces.LoopSteps(100, 120, 100, 5 / 40d)); // a beat running on: plays on
-        Assert.Equal(15, TaikoNoteFaces.LoopSteps(100, 120, 110, 5 / 40d)); // behind the beat: wraps forward
-        Assert.Equal(0, TaikoNoteFaces.LoopSteps(100, 120, 110, 10 / 40d)); // a still beat: nothing
+        Assert.Equal(7, TaikoNoteFaces.LoopSteps(100, 120, 118, 5 / 40d)); // behind across the loop's end: wraps forward
+        Assert.Equal(0, TaikoNoteFaces.LoopSteps(100, 120, 106, 5 / 40d)); // a frame ahead: waits (never plays the loop round)
         Assert.Equal(0, TaikoNoteFaces.LoopSteps(100, 120, 40, 0.3)); // not on this tier yet
     }
 }

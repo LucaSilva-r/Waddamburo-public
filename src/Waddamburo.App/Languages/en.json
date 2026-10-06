@@ -209,5 +209,19 @@
 
   "review.keys": "Space pause · hold ←/→ scrub · wheel 1 s · ↑/↓ speed",
   "review.paused": "Paused",
-  "menu.instant_replay": "Replay"
+  "menu.instant_replay": "Replay",
+
+  "score_list.leaderboard": "Leaderboard",
+  "score_list.mine": "Your plays",
+  "score_list.switch": "Space: leaderboard / your plays",
+  "score_list.keys": "←/→ difficulty · ↑/↓ choose · Enter watch the replay · R/Esc close",
+  "score_list.loading": "Loading scores…",
+  "score_list.loading_replay": "Loading the replay…",
+  "score_list.empty": "No plays yet.",
+  "score_list.failed": "Scores could not be loaded ({0}).",
+  "score_list.replay_failed": "The replay could not be loaded ({0}).",
+  "score_list.offline": "Log in to an account (online) to see scores.",
+  "score_list.crown.clear": "Clear",
+  "score_list.crown.full_combo": "Full combo",
+  "score_list.crown.all_great": "All Great"
 }

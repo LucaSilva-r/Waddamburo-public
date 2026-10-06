@@ -14,16 +14,13 @@ namespace Waddamburo.App.Flow;
 /// matches in a "Search: …" folder first and Song Select reloads on it (<see cref="SongSelectReload"/>),
 /// Escape closes the field. While it is open the movie gets no input.
 /// </summary>
-internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, string fontPath) : IDisposable
+internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, OverlayPainter painter) : IInputOverlay
 {
     private const int Width = 640, Height = 96;
     private string _query = "";
     private SongKey[] _matches = [];
-    private RenderTextureId? _texture;
-    private (string Text, uint Scale)? _drawn;
 
     public bool IsOpen { get; private set; }
-
 
     /// <summary>Takes the tick's input while open (or as Tab opens it); false leaves it to the scene.</summary>
     public bool Tick(SdlKeyboardSnapshot keys, bool escape)
@@ -81,25 +78,11 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, s
         if (!IsOpen)
             return [];
         var text = $"Search: {_query}_   ({(_query.Trim().Length == 0 ? "type to search" : $"{_matches.Length} songs")})";
-        var scale = (uint)Math.Clamp((shell.Application.GetPixelSize().Height + 719) / 720, 1, 4);
-        if (_drawn != (text, scale))
-        {
-            if (_texture is { } old)
-                shell.Application.ReleaseTexture(old);
-            var canvas = new VectorCanvas(Width, Height, (int)scale, fontPath);
-            canvas.RoundedRect(2, 2, Width - 4, Height - 4, 18, (254, 205, 1), outline: 4);
-            canvas.Text(text, Width / 2f, Height / 2f, Width - 48, Height - 36);
-            _texture = shell.Application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
-            _drawn = (text, scale);
-        }
-        return [RenderQuad.FromRectangles(_texture!.Value,
-            new RenderRectangle((1280f - Width) / 2 / 1280f, (720f - Height) / 2 / 720f, Width / 1280f, Height / 720f),
-            RenderRectangle.Full, RenderColor.White, RenderColor.Transparent)];
-    }
-
-    public void Dispose()
-    {
-        if (_texture is { } texture)
-            shell.Application.ReleaseTexture(texture);
+        float x = (OverlayPainter.StageWidth - Width) / 2, y = (OverlayPainter.StageHeight - Height) / 2;
+        return
+        [
+            painter.Panel(x, y, Width, Height, (254, 205, 1), (0, 0, 0), radius: 18, outlineWidth: 4),
+            painter.Text(text, OverlayPainter.StageWidth / 2, OverlayPainter.StageHeight / 2, Width - 48, Height - 36),
+        ];
     }
 }
