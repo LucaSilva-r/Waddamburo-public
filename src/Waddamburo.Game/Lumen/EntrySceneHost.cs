@@ -140,6 +140,12 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// </summary>
     public bool SetupMode { get; set; }
 
+    /// <summary>
+    /// Back from Song Select to join the other drum: this drum's player is already in (traced session28:
+    /// InitInfo's SetPlayer(side, true, true, true); the credits were paid at the first join).
+    /// </summary>
+    public int? PreJoined { get; init; }
+
     private readonly bool[] _donHidden = new bool[2], _boardShown = new bool[2];
     private readonly ScoreProfile?[] _setupProfiles = new ScoreProfile?[2];
 
@@ -283,6 +289,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     public void AttachEntry(LumenPlayer entry)
     {
         _entry = entry;
+        // Back from Song Select: the first player is in before the coin state goes out (traced
+        // UpdateCoins(-1, -1): nothing to pay).
+        if (PreJoined is { } joined)
+            _joined.Add(joined);
         CoinsChanged();
     }
 
@@ -350,8 +360,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         var no = LumenHostValue.FromBoolean(false);
         if (Card is not null)
             call(entry, "InputCardReader");
-        call(entry, "SetPlayer", number(0), no, no, no);
-        call(entry, "SetPlayer", number(1), no, no, no);
+        var yes = LumenHostValue.FromBoolean(true);
+        if (PreJoined is { } joined)
+            _joined.Add(joined);
+        foreach (var side in new[] { 0, 1 })
+            call(entry, "SetPlayer", number(side), side == PreJoined ? yes : no, side == PreJoined ? yes : no, side == PreJoined ? yes : no);
         call(entry, "BnCoinInit", number(0), no, no, no);
     }
 

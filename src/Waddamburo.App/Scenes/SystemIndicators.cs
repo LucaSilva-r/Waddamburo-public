@@ -13,6 +13,8 @@ internal enum IndicatorScene
     AttractPrompt, // caution screen / title: "hit the drum to start"
     Entry,
     SongSelect,
+    // The tutorial: the coin/free-play line stays, the join messages are hidden (traced session22).
+    Tutorial,
     Gameplay,
     Result,
 }
@@ -62,6 +64,13 @@ internal sealed class SystemIndicators
     /// <summary>Both drums have a player: nobody is left to prompt (traced session9-2p).</summary>
     public bool TwoPlayers { get; set; }
 
+    /// <summary>
+    /// The next entry is a second player joining from Song Select: its messages stay hidden until they
+    /// are in (traced session28: msg_coins SetScene 1, SetVisibieMsg false every frame, then the panel
+    /// closes on both sides at the join).
+    /// </summary>
+    public bool Rejoin { get; set; }
+
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id,
         IndicatorMovies.Select(name => new SceneLayerDefinition(
             "indicator/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity, HostId)));
@@ -81,19 +90,20 @@ internal sealed class SystemIndicators
         call(_card, "SetScene", LumenHostValue.FromNumber(scene == IndicatorScene.Entry ? 1 : 0));
         // Song Select shows the unjoined player's message; the authored indicator movie
         // positions it on the available side and runs its fade animation.
-        var prompt = scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry
-            || scene == IndicatorScene.SongSelect && !TwoPlayers;
+        var rejoin = scene == IndicatorScene.Entry && Rejoin;
+        var prompt = (scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry
+            || scene == IndicatorScene.SongSelect && !TwoPlayers) && !rejoin;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {
             IndicatorScene.Entry => 1,
             IndicatorScene.SongSelect or IndicatorScene.Gameplay => 2,
-            IndicatorScene.Result => 3,
+            IndicatorScene.Result or IndicatorScene.Tutorial => 3,
             _ => 0,
         }));
         // sic, the movie's spelling. A card read as the entry loads opens its dialog before this runs.
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt && !_cardDialog));
         call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean(!attract || prompt));
-        _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Gameplay or IndicatorScene.Result;
+        _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Tutorial or IndicatorScene.Gameplay or IndicatorScene.Result;
         if (Coins is not null)
         {
             // Coin mode (traced session2-coins): coin type 0, the credit count, and per side the
@@ -105,9 +115,11 @@ internal sealed class SystemIndicators
         // In Song Select the joined player has no prompt (-1); the unjoined drum uses
         // message 2. The indicator movie positions and animates each side itself.
         var joinedMessage = scene is IndicatorScene.Entry or IndicatorScene.SongSelect ? -1 : 0;
-        var otherMessage = scene == IndicatorScene.SongSelect ? 2 : 0;
+        // Free play: the other drum needs no coin (0), as the entry shows it. ponytail: the 1P free-play Song
+        // Select join message is not traced (session28 was in coin mode); it was 2 ("2 more coins").
+        var otherMessage = 0;
         setSideNumbers(joinedMessage, otherMessage);
-        if (scene == IndicatorScene.Entry)
+        if (scene == IndicatorScene.Entry && !rejoin)
         {
             // The entry then switches the panel to its split (per-player) scene, open on the other side.
             splitPanel();
@@ -158,6 +170,7 @@ internal sealed class SystemIndicators
             return;
         }
         // Free play, or the second player: the panel closes on both sides.
+        Rejoin = false;
         _messageDelay = -1;
         call(_coins, "SetScene", LumenHostValue.FromNumber(4));
         call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(false));
@@ -231,6 +244,10 @@ internal sealed class SystemIndicators
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
             CoinsChanged();
         }
+        // The tutorial, and an entry a second player is joining from Song Select, keep the join messages
+        // off (traced SetVisibieMsg(false) every frame).
+        if (_scene == IndicatorScene.Tutorial || _scene == IndicatorScene.Entry && Rejoin)
+            call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(false));
         // 0 good, 1 warning, 2 disconnected (network_icon LABEL); no server configured: disconnected.
         call(_network, "SetType", LumenHostValue.FromNumber(NetworkIcon?.Invoke() ?? 2));
         call(_card, "SetOnline", LumenHostValue.FromNumber(_online ? 1 : 0));

@@ -523,7 +523,7 @@ internal sealed class GameShell : IDisposable
             Hosts.EntryJoined = side =>
             {
                 JoinPlayer(side);
-                if (Coins is not null)
+                if (Coins is not null || _indicators.Rejoin)
                     _indicators.EntryJoined();
             };
             _indicatorTextures = SceneTextures.Upload(Application, _indicators.Scene);

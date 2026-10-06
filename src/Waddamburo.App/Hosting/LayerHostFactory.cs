@@ -35,6 +35,7 @@ internal sealed class LayerHostFactory(
     CoinBank? coins) : ILumenLayerHostFactory
 {
     private EntrySceneHost? _entry;
+    private int _entryPrevious;
 
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
@@ -55,6 +56,12 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The next entry is the home player setup (see <see cref="EntrySceneHost.SetupMode"/>).</summary>
     public bool EntrySetup { get; set; }
+
+    /// <summary>
+    /// The next entry comes from Song Select (SCENE_SONGSELECT, 1) with this drum's player already in: the
+    /// other drum joins there (its SetPrevious trigger, <see cref="EntryTrigger"/>). Null: from the attract.
+    /// </summary>
+    public int? EntryRejoined { get; set; }
 
     /// <summary>The loaded entry's host (null outside the entry).</summary>
     public EntrySceneHost? Entry => _entry;
@@ -209,7 +216,10 @@ internal sealed class LayerHostFactory(
                 CardDialog = open => CardDialog?.Invoke(open),
                 CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
                 SetupMode = EntrySetup,
+                PreJoined = EntryRejoined,
             };
+            _entryPrevious = EntryRejoined is null ? 0 : 1; // SCENE_ATTRACT / SCENE_SONGSELECT
+            EntryRejoined = null;
             EntryCard = null;
             if (EntryCardRejected)
                 _entry.RejectCard();
@@ -270,7 +280,7 @@ internal sealed class LayerHostFactory(
         // hit (SCENE_TRIGGER_DON_1P = 0) or a coin (SCENE_TRIGGER_COIN = 3); the movie then joins
         // P1 via EntryCoin.
         if (!player.TryInvokeCallback("SetPrevious", [
-                LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber(_entryPrevious),
                 LumenHostValue.FromNumber(EntryTrigger)]))
         {
             throw new InvalidOperationException("Entry did not export SetPrevious.");

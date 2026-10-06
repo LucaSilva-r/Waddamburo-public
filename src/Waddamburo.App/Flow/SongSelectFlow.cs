@@ -18,7 +18,8 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
-    public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.SongSelect;
+    public override IndicatorScene IndicatorsFor(SceneId scene) =>
+        scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial : IndicatorScene.SongSelect;
 
     public override void Enter(SceneId scene)
     {
@@ -84,6 +85,26 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player))
                 showSongSelect();
+            return;
+        }
+        // A second player joins from Song Select (arcade; one player in, the other drum's join paid for or
+        // free play): back to the entry, which joins them (traced session28: SE_SELECT 0 as Song Select
+        // stops, then the entry with the first player in, SetPrevious(SCENE_SONGSELECT, that drum)), under
+        // the plain rainbow a folder change uses (seen on the cabinet).
+        if (!Shell.Arcade.Home && Shell.JoinedSides.Count == 1 && input.DrumSide is { } joining
+            && !Shell.JoinedSides.Contains(joining) && Shell.PlayRequests.Pending is null
+            && Shell.Hosts.SongSelect?.CourseSelectSong is null && (Shell.Coins is null || Shell.Coins.Missing(1) == 0))
+        {
+            Shell.Sounds?.StopAll();
+            Shell.Sounds?.Bank.Play("SE_SELECT", 0);
+            var first = Shell.JoinedSides.Min;
+            Shell.Reload.Start(() =>
+            {
+                Shell.Hosts.EntryTrigger = joining; // SCENE_TRIGGER_DON_1P / _2P
+                Shell.Hosts.EntryRejoined = first;
+                if (Shell.Indicators is { } indicators)
+                    indicators.Rejoin = true;
+            }, FlowScenes.Entry);
             return;
         }
         if (Shell.Hosts.SongSelect?.TutorialRequested == true)
