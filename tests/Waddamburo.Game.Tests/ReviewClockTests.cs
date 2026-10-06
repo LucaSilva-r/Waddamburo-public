@@ -27,6 +27,9 @@ public sealed class ReviewClockTests
         Assert.Equal((s(10), true), (clock.Position, clock.Paused));
         clock.TogglePause(); // from the end: starts over
         Assert.Equal((s(-3), false), (clock.Position, clock.Paused));
+        for (var step = 0; step < 10; step++)
+            clock.Slower();
+        Assert.Equal(0.05, clock.Speed); // slow enough to see a fast stream's hits one by one
     }
 
     [Fact]

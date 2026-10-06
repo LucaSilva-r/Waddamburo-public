@@ -8,7 +8,7 @@ namespace Waddamburo.Game.Gameplay;
 public sealed class ReviewClock(TimeSpan start, TimeSpan end)
 {
     /// <summary>The speeds <see cref="Faster"/> and <see cref="Slower"/> step through.</summary>
-    public static readonly double[] Speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+    public static readonly double[] Speeds = [0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
     public TimeSpan Start { get; } = start;
 

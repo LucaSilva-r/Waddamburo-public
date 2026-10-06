@@ -320,7 +320,7 @@ internal sealed class GameShell : IDisposable
         Painter = new OverlayPainter(Application, options.FontPath);
         _reviewBar = new ReviewOverlay(Painter);
         if (Arcade.Home)
-            _notices = new NoticeOverlay(Application, options.FontPath, Sync.Notices, Sync.Jobs,
+            _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,
                 baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),

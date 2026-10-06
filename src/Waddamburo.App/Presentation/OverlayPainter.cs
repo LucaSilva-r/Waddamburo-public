@@ -62,6 +62,22 @@ internal sealed class OverlayPainter(SdlApplication application, string fontPath
         return Quad(texture, x, y, width, height, new RenderColor(1, 1, 1, alpha));
     }
 
+    /// <summary>
+    /// A picture of the caller's own (<paramref name="draw"/> on a canvas of the box's size), cached under
+    /// <paramref name="key"/>: give it everything the picture shows.
+    /// </summary>
+    public RenderQuad Canvas(object key, float x, float y, float width, float height, Action<VectorCanvas> draw, float alpha = 1)
+    {
+        var scale = Scale;
+        var texture = cached(("canvas", key, width, height, scale), () =>
+        {
+            var canvas = new VectorCanvas((int)width, (int)height, (int)scale, fontPath);
+            draw(canvas);
+            return canvas;
+        });
+        return Quad(texture, x, y, width, height, new RenderColor(1, 1, 1, alpha));
+    }
+
     public static RenderQuad Quad(RenderTextureId texture, float x, float y, float width, float height, RenderColor? tint = null) =>
         RenderQuad.FromRectangles(texture, new(x / StageWidth, y / StageHeight, width / StageWidth, height / StageHeight),
             RenderRectangle.Full, tint ?? RenderColor.White, RenderColor.Transparent);

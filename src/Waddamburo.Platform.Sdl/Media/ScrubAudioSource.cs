@@ -86,7 +86,7 @@ public sealed class ScrubAudioSource : IAudioStreamSource
         // Lean towards the playhead over about a tenth of a second.
         var correction = (target + rate * frames / 2 - _cursor) / (Format.SampleRate * 0.1);
         var step = rate + Math.Clamp(correction, -0.5, 0.5);
-        var audible = Math.Abs(rate) > 0.02 ? 1f : 0f;
+        var audible = Gain(rate);
         var ramp = 1f / (Format.SampleRate * 0.005f); // 5 ms
         for (var frame = 0; frame < frames; frame++)
         {
@@ -102,6 +102,16 @@ public sealed class ScrubAudioSource : IAudioStreamSource
             _cursor += step;
         }
         return frames * _channels;
+    }
+
+    /// <summary>
+    /// The volume at a rate: silent standing still, full up to 2x, then quieter as a scrub speeds up
+    /// (a fast scrub's chatter is noise): half at 8x, a fifth at 40x.
+    /// </summary>
+    public static float Gain(double rate)
+    {
+        var speed = Math.Abs(rate);
+        return speed <= 0.02 ? 0 : speed <= 2 ? 1 : (float)Math.Max(0.2, Math.Sqrt(2 / speed));
     }
 
     private float sampleAt(int frame, int channel) =>

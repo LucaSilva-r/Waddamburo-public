@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Online;
-using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using static Waddamburo.App.Strings;
 
@@ -16,15 +15,14 @@ namespace Waddamburo.App.Presentation;
 /// </summary>
 internal sealed class NoticeOverlay : IDisposable
 {
-    private const float Stage = 1280, StageHeight = 720;
+    private const float Stage = OverlayPainter.StageWidth, StageHeight = OverlayPainter.StageHeight;
     private const float PanelWidth = 420, CardWidth = 388, Gap = 10, Margin = 16;
     private const float ToastTop = 12;
     private const int MaxToasts = 3, MaxLines = 6, FontSize = 20, LineHeight = 24;
     private static readonly TimeSpan ToastTime = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan Fade = TimeSpan.FromMilliseconds(400);
 
-    private readonly SdlApplication _application;
-    private readonly string _fontPath;
+    private readonly OverlayPainter _painter;
     private readonly NoticeBoard _notices;
     private readonly JobBoard _jobs;
     private readonly Func<long, string?> _playerName;
@@ -32,19 +30,15 @@ internal sealed class NoticeOverlay : IDisposable
     private readonly ConcurrentQueue<Notice> _arrived = new();
     private readonly List<(Notice Notice, DateTimeOffset Since)> _toasts = [];
     private readonly HashSet<string> _reported = [];
-    private readonly Dictionary<(string Key, uint Scale), (RenderTextureId Texture, float Height)> _textures = [];
-    private readonly RenderTextureId _white;
 
-    public NoticeOverlay(SdlApplication application, string fontPath, NoticeBoard notices, JobBoard jobs,
+    public NoticeOverlay(OverlayPainter painter, NoticeBoard notices, JobBoard jobs,
         Func<long, string?> playerName, Action<IReadOnlyList<Notice>> shown)
     {
-        _application = application;
-        _fontPath = fontPath;
+        _painter = painter;
         _notices = notices;
         _jobs = jobs;
         _playerName = playerName;
         _shown = shown;
-        _white = application.UploadRgba8(1, 1, [255, 255, 255, 255]);
         notices.Added += _arrived.Enqueue;
         // Notices that arrived before the overlay existed (the backlog loads while the game starts).
         foreach (var notice in notices.Current.Reverse())
@@ -84,12 +78,10 @@ internal sealed class NoticeOverlay : IDisposable
             var y = ToastTop;
             foreach (var (notice, since) in _toasts)
             {
-                var (texture, height) = card(notice);
                 var left = now - since;
                 var alpha = (float)Math.Clamp(Math.Min(left / Fade, (ToastTime - left) / Fade), 0, 1);
                 // Slides in from the right edge.
-                var x = Stage - Margin - CardWidth + (1 - alpha) * 40;
-                quads.Add(rect(texture, x, y, CardWidth, height, new RenderColor(1, 1, 1, alpha)));
+                var height = card(quads, notice, Stage - Margin - CardWidth + (1 - alpha) * 40, y, alpha);
                 y += height + Gap;
             }
             report(_toasts.Select(static toast => toast.Notice));
@@ -100,44 +92,39 @@ internal sealed class NoticeOverlay : IDisposable
     private void sidebar(List<RenderQuad> quads)
     {
         var x = Stage - PanelWidth;
-        quads.Add(rect(_white, 0, 0, Stage, StageHeight, new RenderColor(0, 0, 0, 0.35f)));
-        quads.Add(rect(_white, x, 0, PanelWidth, StageHeight, new RenderColor(0.07f, 0.07f, 0.09f, 0.94f)));
-        var (header, headerHeight) = text("header", T("notices.title"), PanelWidth - 2 * Margin, 30, anchor: 0);
-        quads.Add(rect(header, x + Margin, 20, PanelWidth - 2 * Margin, headerHeight));
-        var (hint, hintHeight) = text("hint", T("notices.close_hint"), PanelWidth - 2 * Margin, 18, anchor: 1);
-        quads.Add(rect(hint, x + Margin, 28, PanelWidth - 2 * Margin, hintHeight));
+        quads.Add(_painter.Rect(0, 0, Stage, StageHeight, new RenderColor(0, 0, 0, 0.35f)));
+        quads.Add(_painter.Rect(x, 0, PanelWidth, StageHeight, new RenderColor(0.07f, 0.07f, 0.09f, 0.94f)));
+        quads.Add(_painter.Text(T("notices.title"), x + Margin, 35, PanelWidth - 2 * Margin, 30, anchor: 0));
+        quads.Add(_painter.Text(T("notices.close_hint"), Stage - Margin, 37, PanelWidth - 2 * Margin, 18, anchor: 1));
         var y = 70f;
 
         foreach (var job in _jobs.Visible)
         {
             var title = job.Failure is { } failure ? T("job.failed", job.Title, failure) : job.Title;
-            var (label, labelHeight) = text($"job:{title}", title, CardWidth, 18, anchor: 0);
-            quads.Add(rect(label, x + Margin, y, CardWidth, labelHeight));
-            y += labelHeight + 4;
-            quads.Add(rect(_white, x + Margin, y, CardWidth, 6, new RenderColor(1, 1, 1, 0.15f)));
+            quads.Add(_painter.Text(title, x + Margin, y + 9, CardWidth, 18, anchor: 0));
+            y += 18 + 4;
+            quads.Add(_painter.Rect(x + Margin, y, CardWidth, 6, new RenderColor(1, 1, 1, 0.15f)));
             var colour = job.Failure is not null ? new RenderColor(0.9f, 0.3f, 0.25f, 1) : new RenderColor(0.35f, 0.7f, 1, 1);
             // No count: a block sweeping across the bar.
             var (from, width) = job.Fraction is { } fraction
                 ? (0f, (float)fraction * CardWidth)
                 : ((float)(DateTimeOffset.UtcNow - job.StartedAt).TotalSeconds % 1.5f / 1.5f * (CardWidth - 80), 80f);
-            quads.Add(rect(_white, x + Margin + from, y, job.EndedAt is null || job.Failure is not null ? width : CardWidth, 6, colour));
+            quads.Add(_painter.Rect(x + Margin + from, y, job.EndedAt is null || job.Failure is not null ? width : CardWidth, 6, colour));
             y += 6 + Gap * 1.5f;
         }
 
         var notices = _notices.Current;
         if (notices.Count == 0)
         {
-            var (empty, emptyHeight) = text("empty", T("notices.empty"), CardWidth, FontSize);
-            quads.Add(rect(empty, x + Margin, y + 20, CardWidth, emptyHeight, new RenderColor(1, 1, 1, 0.6f)));
+            quads.Add(_painter.Text(T("notices.empty"), x + Margin + CardWidth / 2, y + 20 + FontSize / 2f, CardWidth, FontSize, alpha: 0.6f));
             return;
         }
         var shown = new List<Notice>();
         foreach (var notice in notices)
         {
-            var (texture, height) = card(notice);
-            if (y + height > StageHeight - Margin)
+            if (y + cardHeight(notice) > StageHeight - Margin)
                 break; // ponytail: no scrolling; the oldest that do not fit are not drawn
-            quads.Add(rect(texture, x + Margin, y, CardWidth, height));
+            var height = card(quads, notice, x + Margin, y);
             shown.Add(notice);
             y += height + Gap;
         }
@@ -152,58 +139,37 @@ internal sealed class NoticeOverlay : IDisposable
             _shown(fresh);
     }
 
-    // One notice as a card: a severity stripe, where it came from, and the message wrapped.
-    private (RenderTextureId Texture, float Height) card(Notice notice)
+    private static List<string> lines(Notice notice) => TextWrap.Lines(notice.Message, (CardWidth - 36) / (FontSize * 0.5f), MaxLines);
+
+    private static int cardHeight(Notice notice) => 16 + 20 + lines(notice).Count * LineHeight + 12;
+
+    // One notice as a card: a severity stripe, where it came from, and the message wrapped. Returns its height.
+    private float card(List<RenderQuad> quads, Notice notice, float x, float y, float alpha = 1)
     {
-        var scale = scaleNow();
-        if (_textures.TryGetValue((notice.Id, scale), out var cached))
-            return cached;
-        var lines = TextWrap.Lines(notice.Message, (CardWidth - 36) / (FontSize * 0.5f), MaxLines);
-        var height = 16 + 20 + lines.Count * LineHeight + 12;
-        var canvas = new VectorCanvas((int)CardWidth, height, (int)scale, _fontPath);
-        canvas.RoundedRect(0, 0, CardWidth, height, 8, (32, 33, 40), outline: 1.5f, outlineColour: (70, 72, 84));
-        canvas.RoundedRect(6, 8, 5, height - 16, 2.5f, notice.Severity switch
+        var height = cardHeight(notice);
+        quads.Add(_painter.Canvas(("notice", notice.Id), x, y, CardWidth, height, canvas =>
         {
-            NoticeSeverity.Critical => (235, 72, 60),
-            NoticeSeverity.Warning => (245, 180, 40),
-            _ => (90, 170, 255),
-        }, outline: 0);
-        var source = notice.Source switch
-        {
-            NoticeSource.Personal when notice.Baid is { } baid && _playerName(baid) is { } name => T("notices.source.player", name),
-            NoticeSource.Local => T("notices.source.local"),
-            _ => T("notices.source.server"),
-        };
-        var at = notice.At.ToLocalTime().ToString("t", CultureInfo.CurrentCulture);
-        canvas.Text($"{source} · {at}", 22, 16 + 9, CardWidth - 36, 16, anchorX: 0, tint: (170, 175, 190));
-        for (var line = 0; line < lines.Count; line++)
-            canvas.Text(lines[line], 22, 16 + 20 + line * LineHeight + LineHeight / 2f, CardWidth - 36, FontSize, anchorX: 0);
-        var texture = _application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
-        return _textures[(notice.Id, scale)] = (texture, height);
+            var text = lines(notice);
+            canvas.RoundedRect(0, 0, CardWidth, height, 8, (32, 33, 40), outline: 1.5f, outlineColour: (70, 72, 84));
+            canvas.RoundedRect(6, 8, 5, height - 16, 2.5f, notice.Severity switch
+            {
+                NoticeSeverity.Critical => (235, 72, 60),
+                NoticeSeverity.Warning => (245, 180, 40),
+                _ => (90, 170, 255),
+            }, outline: 0);
+            var source = notice.Source switch
+            {
+                NoticeSource.Personal when notice.Baid is { } baid && _playerName(baid) is { } name => T("notices.source.player", name),
+                NoticeSource.Local => T("notices.source.local"),
+                _ => T("notices.source.server"),
+            };
+            var at = notice.At.ToLocalTime().ToString("t", CultureInfo.CurrentCulture);
+            canvas.Text($"{source} · {at}", 22, 16 + 9, CardWidth - 36, 16, anchorX: 0, tint: (170, 175, 190));
+            for (var line = 0; line < text.Count; line++)
+                canvas.Text(text[line], 22, 16 + 20 + line * LineHeight + LineHeight / 2f, CardWidth - 36, FontSize, anchorX: 0);
+        }, alpha));
+        return height;
     }
 
-    private (RenderTextureId Texture, float Height) text(string key, string value, float width, int height, float anchor = 0.5f)
-    {
-        var scale = scaleNow();
-        if (_textures.TryGetValue(($"text:{key}:{value}", scale), out var cached))
-            return cached;
-        var canvas = new VectorCanvas((int)width, height, (int)scale, _fontPath);
-        canvas.Text(value, width * anchor, height / 2f, width, height, anchorX: anchor);
-        var texture = _application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
-        return _textures[($"text:{key}:{value}", scale)] = (texture, height);
-    }
-
-    private uint scaleNow() => (uint)Math.Clamp((_application.GetPixelSize().Height + 719) / 720, 1, 3);
-
-    private static RenderQuad rect(RenderTextureId texture, float x, float y, float width, float height, RenderColor? tint = null) =>
-        RenderQuad.FromRectangles(texture, new(x / Stage, y / StageHeight, width / Stage, height / StageHeight),
-            RenderRectangle.Full, tint ?? RenderColor.White, RenderColor.Transparent);
-
-    public void Dispose()
-    {
-        _notices.Added -= _arrived.Enqueue;
-        _application.ReleaseTexture(_white);
-        foreach (var (texture, _) in _textures.Values)
-            _application.ReleaseTexture(texture);
-    }
+    public void Dispose() => _notices.Added -= _arrived.Enqueue;
 }
