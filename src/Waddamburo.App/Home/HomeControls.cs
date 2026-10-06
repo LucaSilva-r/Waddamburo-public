@@ -53,8 +53,8 @@ internal sealed class HomeControls : IDisposable
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
-        _overlay = shell.Arcade.Home
-            ? new HomePauseOverlay(shell.Application, shell.Painter, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures) : null;
+        // A cabinet has the menu too (outside songs): its operator's settings.
+        _overlay = new HomePauseOverlay(shell.Application, shell.Painter, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures);
     }
 
     private bool home => _shell.Arcade.Home;
@@ -163,16 +163,18 @@ internal sealed class HomeControls : IDisposable
         return true;
     }
 
-    // Home: Escape opens the menu (pause in gameplay; settings and back to the title in the menus). A song
-    // still unpausable when the window lost focus (under the rainbow) pauses once it can; once every note
-    // and long note is over (the song's tail), leaving the window no longer pauses.
+    // Escape opens the menu: settings and back to the title in the attract, the entry and Song Select (a
+    // cabinet's operator too); home, a song pauses under it. A home song still unpausable when the window
+    // lost focus (under the rainbow) pauses once it can; once every note and long note is over (the song's
+    // tail), leaving the window no longer pauses. A cabinet's song keeps Escape (it ends the song).
     private bool openMenu(bool escape)
     {
-        if (!home || _menu.IsOpen
-            || !(escape || !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver))
+        if (_menu.IsOpen || !(escape || home && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver))
             return false;
         if (active == FlowScenes.Gameplay)
         {
+            if (!home)
+                return false;
             if (_restart.Black != 0 || !_gameplay.CanPause)
                 return false;
             _restart.CancelHold();

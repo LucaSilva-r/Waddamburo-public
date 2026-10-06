@@ -97,7 +97,7 @@ public sealed class FriendPairingClient(HttpClient http)
 }
 
 /// <summary>
-/// TaikOnline's six-digit cabinet pairing (POST api/zucchini/pairing, key=value lines): while the
+/// TaikOnline's six-digit cabinet pairing (POST api/wdb/cabinet/pairing with a Waddamburo cabinet token, key=value lines): while the
 /// cabinet accepts, the server hands out a code; whoever enters it on the website sends their card.
 /// A claimed card is acknowledged on the next poll so the server does not send it again.
 /// </summary>
@@ -119,7 +119,7 @@ public sealed class PairingClient(HttpClient http, string cabinetId)
             form["session"] = _session;
         if (_ack is not null)
             form["ack"] = _ack;
-        using var response = await http.PostAsync("api/zucchini/pairing", new FormUrlEncodedContent(form), cancellationToken)
+        using var response = await http.PostAsync("api/wdb/cabinet/pairing", new FormUrlEncodedContent(form), cancellationToken)
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         return Apply(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));

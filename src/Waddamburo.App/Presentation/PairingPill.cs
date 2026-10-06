@@ -62,9 +62,11 @@ internal sealed class PairingPill(SdlApplication application, string fontPath, f
                 canvas.Blend(x, y, (0, 0, 0), VectorCanvas.Coverage(disc));
                 canvas.Blend(x, y, Red, VectorCanvas.Coverage(disc + outline));
             }
-        canvas.Text(text, Disc + (Width - Disc) / 2f, Height / 2f, Width - Disc - 24, Height - 12);
+        // A little left of the yellow's middle: the capsule's round end makes its right look emptier.
+        canvas.Text(text, Disc + (Width - Disc) / 2f - 6, Height / 2f, Width - Disc - 24, Height - 12);
         if (badge is not null)
-            canvas.Text(badge, Disc / 2f, Height / 2f, Disc - 14, Height - 12);
+            // Height-bound for one digit or two alike (two 32-high digits fit the width), with room around.
+            canvas.Text(badge, Disc / 2f, Height / 2f, Disc - 16, 32);
         return canvas.Pixels;
     }
 }
