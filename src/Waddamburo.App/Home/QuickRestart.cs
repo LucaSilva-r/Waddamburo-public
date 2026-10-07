@@ -20,7 +20,7 @@ internal sealed class QuickRestart(Func<bool> restart)
     private Func<bool>? _menuThen;
     private long _restartRevealAt;
     // The menu's fade to black and the fade back after any of them (holding Q keeps its half second).
-    private static readonly TimeSpan MenuFade = TimeSpan.FromMilliseconds(250);
+    public static readonly TimeSpan MenuFade = TimeSpan.FromMilliseconds(250);
 
     /// <summary>Q is being held toward a restart.</summary>
     public bool Holding => _qPressedAt != 0;
@@ -114,6 +114,18 @@ internal sealed class QuickRestart(Func<bool> restart)
                 return Math.Clamp(1 - (float)(Stopwatch.GetElapsedTime(_restartRevealAt) / MenuFade), 0, 1);
             return 0;
         }
+    }
+
+    /// <summary>
+    /// The switch's old frame is still held (its Don already re-rendered in the new scene's state):
+    /// the fade back has not started yet.
+    /// </summary>
+    public void HoldBlack()
+    {
+        // Only a fade back still under way: a finished one's timestamp stays set outside songs (Update
+        // clears it only where a restart is allowed), and restarting it blacked out every later switch.
+        if (_restartRevealAt != 0 && Stopwatch.GetElapsedTime(_restartRevealAt) < MenuFade)
+            _restartRevealAt = Stopwatch.GetTimestamp();
     }
 
     private bool restartNow(Func<bool> action)

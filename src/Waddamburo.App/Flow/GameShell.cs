@@ -631,8 +631,9 @@ internal sealed class GameShell : IDisposable
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
         if (Sounds?.Bank.IsVoicePlaying == true)
             return;
-        // Home: the entry fades to black first, as the menu's Restart, Song Select and Title do.
-        if (Arcade.Home && Active.Id == FlowScenes.Entry)
+        // The entry and Song Select fade to black first, as the menu's Restart, Song Select and Title do;
+        // not under an intermission (the rainbow into a song covers its own switch).
+        if (!Overlay.IsShown && PlayRequests.Pending is null && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))
         {
             _home.FadeThen(() =>
             {
@@ -668,6 +669,12 @@ internal sealed class GameShell : IDisposable
         _returnToAttract = false;
         if (!toAttract || onLane || Active.Id == FlowScenes.Boot)
             return false;
+        // Fade out first; the switch below then runs under the black (Covering).
+        if (!_home.Covering)
+        {
+            _home.FadeThen(() => GoToAttract());
+            return false;
+        }
         Sounds?.StopAll();
         Overlay.Clear();
         PlayRequests.CancelPending();
@@ -905,6 +912,12 @@ internal sealed class GameShell : IDisposable
     /// <summary>Back to the attract loop on the next tick (outside the callbacks asking for it).</summary>
     public void ReturnToAttract() => _returnToAttract = true;
 
+    /// <summary>Fades picture and sound out, runs <paramref name="action"/> under the black, fades the new scene in.</summary>
+    public void FadeThen(Action action) => _home.FadeThen(action);
+
+    /// <summary>Back to the attract loop now (false when a song or boot is on: nothing happens).</summary>
+    public bool GoToAttract() => backToAttract(true);
+
     /// <summary>Back to the title from the menu: an open player setup closes.</summary>
     public void ClosePlayerSetup() => _playerSetup?.Close();
 
@@ -971,11 +984,14 @@ internal sealed class GameShell : IDisposable
     {
         var interpolation = _home.Interpolation(interpolationFraction);
         if (_presenter.Held(Tick) is { } held)
+        {
+            _home.HoldBlack();
             // The rainbow stays up across its scene switch (only a fade is cleared with it).
             return _home.Draw(held.Black && Overlay.IsShown
                 ? new RenderFrame(held.Frame.ClearColor,
                     [.. Overlay.Quads(interpolation, Titles.Resolve), .. held.Frame.Quads], held.Frame.ContentAspectRatio)
                 : held.Frame);
+        }
         Titles.UploadCompleted();
         _presenter.UploadAhead();
         if (SceneTextures.Upscaler is { } upscaler)

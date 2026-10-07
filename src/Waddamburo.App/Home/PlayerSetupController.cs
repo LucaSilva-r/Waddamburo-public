@@ -46,9 +46,13 @@ internal sealed class PlayerSetupController : IDisposable
         {
             ScoreProfile?[] profiles = [.. TaikoGuest.Profiles];
             int[] joined = [.. shell.JoinedSides];
-            shell.Sounds?.StopAll();
-            beginSetup();
-            _flow.Reopen(profiles, joined);
+            shell.FadeThen(() =>
+            {
+                if (_flow.IsOpen || shell.Active.Id != FlowScenes.Entry)
+                    return;
+                beginSetup();
+                _flow.Reopen(profiles, joined);
+            });
             return true;
         }
         var open = _flow.IsOpen;

@@ -89,17 +89,27 @@ internal sealed class HomeControls : IDisposable
             || menuInput(keys, held, escape);
     }
 
-    /// <summary>Fades to black, then runs <paramref name="action"/> (once: a fade under way is kept).</summary>
+    /// <summary>
+    /// Fades picture and sound to black, then (sounds stopped) runs <paramref name="action"/> unseen; the
+    /// new scene fades in once it draws. Once: a fade under way is kept.
+    /// </summary>
     public void FadeThen(Action action)
     {
         if (_restart.MenuPending)
             return;
+        _shell.Audio?.Mixer.FadeOutput(0, Home.QuickRestart.MenuFade);
         _restart.FromMenu(() =>
         {
+            _shell.Sounds?.StopAll();
             action();
+            if (_focused || !_shell.Arcade.MuteInBackground)
+                _shell.Audio?.Mixer.FadeOutput(1, Home.QuickRestart.MenuFade);
             return true;
         });
     }
+
+    /// <summary>A switch's held frame is up: the black stays until the new scene draws.</summary>
+    public void HoldBlack() => _restart.HoldBlack();
 
     /// <summary>The screen is black under a restart or the menu's Song Select or Title: a switch goes unseen.</summary>
     public bool Covering => _restart.Covering;
@@ -260,11 +270,7 @@ internal sealed class HomeControls : IDisposable
             // Out of a song: fade to black like Restart (the switch, and its memory clean-up, happen unseen).
             case HomeMenuAction.SongSelect when active == FlowScenes.Gameplay && _gameplay.CanQuickRestart:
                 resumeSong();
-                _restart.FromMenu(() =>
-                {
-                    _gameplay.Abandon();
-                    return true;
-                });
+                FadeThen(_gameplay.Abandon);
                 break;
             case HomeMenuAction.SongSelect:
                 resumeSong();
@@ -281,11 +287,7 @@ internal sealed class HomeControls : IDisposable
                 break;
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();
-                _restart.FromMenu(() =>
-                {
-                    _shell.ReturnToAttract();
-                    return true;
-                });
+                FadeThen(() => _shell.GoToAttract());
                 break;
             case HomeMenuAction.Calibrate:
                 _calibration.Requested = true;
