@@ -255,6 +255,9 @@ public sealed unsafe class SdlApplication : IDisposable
             }));
     }
 
+    /// <summary>Live textures against the renderer's limit ("live/max").</summary>
+    public string TextureUsage => _renderer is null ? "" : BgfxSupport.TextureUsage;
+
     public void ReleaseTexture(RenderTextureId texture)
     {
         ensureOwnerThread();

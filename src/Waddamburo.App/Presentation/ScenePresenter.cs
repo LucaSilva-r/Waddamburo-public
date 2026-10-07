@@ -19,8 +19,10 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     private readonly Dictionary<LumenMovieContent, (RenderTextureId[] Uploaded, int Next)> _partial = new(ReferenceEqualityComparer.Instance);
     // Song Select's and gameplay's movies stay decoded, their textures up, between visits: a load not
     // prefetched (leaving a song early, a retry) reuses them instead of decoding again (~0.5 s).
-    // ponytail: never evicted (bounded by the kept scenes' distinct movies); evict if more scenes keep.
-    private readonly Dictionary<(string ArchiveId, string MovieId), (LumenMovieContent Content, RenderTextureId[] Textures)> _kept = [];
+    // Each copy remembers the scene that kept it: keeping that scene again drops the copies it no longer
+    // shows (gameplay picks a random background/dancer mix per song; never evicting them leaked ~150
+    // textures a song until bgfx ran out of handles).
+    private readonly Dictionary<(string ArchiveId, string MovieId), (LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene)> _kept = [];
     private readonly HashSet<RenderTextureId> _keptTextures = [];
     private RenderTextureId[] _textures = [];
     private RenderTextureId[] _heldTextures = [];
@@ -130,6 +132,15 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     /// <summary>The old scene is gone: its textures go, unless its held frame still shows them.</summary>
     public void ReleaseScene(LumenGameSceneInstance? keep = null)
     {
+        if (keep is not null)
+        {
+            var shown = keep.Layers.Select(static layer => (layer.Definition.ArchiveId, layer.Definition.MovieId)).ToHashSet();
+            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key)).ToArray())
+            {
+                _kept.Remove(key);
+                unkeep(old.Textures);
+            }
+        }
         foreach (var layer in keep?.Layers ?? [])
         {
             var key = (layer.Definition.ArchiveId, layer.Definition.MovieId);
@@ -140,7 +151,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
                 unkeep(old.Textures);
             }
             var textures = _textures[(int)layer.TextureOffset..(int)(layer.TextureOffset + layer.TextureCount)];
-            _kept[key] = (layer.Content, textures);
+            _kept[key] = (layer.Content, textures, keep!.Id);
             _keptTextures.UnionWith(textures);
         }
         if (!ReferenceEquals(_heldTextures, _textures))
@@ -164,7 +175,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         var decoded = movies.DecodedPrefetches.Count();
         _textures = SceneTextures.Upload(application, scene, takeAhead);
         Console.WriteLine($"Scene {scene.Id}: {ahead - _uploadedAhead.Count - _partial.Count} of {scene.Layers.Length} movies "
-            + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead).");
+            + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead); textures {application.TextureUsage}.");
         if (ahead - _uploadedAhead.Count - _partial.Count > 0)
         {
             releaseUploadedAhead(); // this scene took its prefetch; the rest is unused

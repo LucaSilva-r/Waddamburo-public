@@ -26,7 +26,8 @@ internal sealed class SongSelectReload(GameShell shell)
     /// </summary>
     public void Start(Action change, Waddamburo.Game.Flow.SceneId? next = null)
     {
-        if (Busy)
+        // A scene switch still under way would make the reload's restart throw (flow not Active).
+        if (Busy || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active)
             return;
         _change = change;
         _next = next;
