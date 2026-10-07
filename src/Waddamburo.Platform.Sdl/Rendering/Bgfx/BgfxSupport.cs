@@ -112,6 +112,10 @@ namespace Waddamburo.Platform.Sdl.Rendering
         /// <summary>BGFX_RESET_* for init and every resize: vsync unless WADDAMBURO_PRESENT_MODE uncaps it.</summary>
         public static uint ResetFlags { get; private set; }
 
+        // One frame in the driver's queue: DXGI's default of three let vsync add ~50 ms of display lag
+        // (Present returns at once until the queue fills, so our own pacing never waits).
+        public const byte MaxFrameLatency = 1;
+
         /// <summary>Turns vsync on or off (the next present resets the swap chain); the diagnostic env var still wins.</summary>
         public static void SetVsync(bool vsync) =>
             ResetFlags = vsync && Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") is not ("immediate" or "mailbox")
@@ -153,6 +157,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
             init.swapChain.width = width;
             init.swapChain.height = height;
             init.swapChain.formatDepthStencil = bgfx.TextureFormat.D24S8;
+            init.swapChain.maxFrameLatency = MaxFrameLatency;
             init.reset = ResetFlags;
             fillWindow(window, &init);
             if (!bgfx.init(&init))

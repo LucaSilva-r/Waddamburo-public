@@ -224,6 +224,7 @@ internal sealed unsafe class RenderDevice : IDisposable
                 formatColor = bgfx.TextureFormat.Count,
                 formatDepthStencil = bgfx.TextureFormat.D24S8,
                 depth = BgfxSupport.InvalidTexture,
+                maxFrameLatency = BgfxSupport.MaxFrameLatency,
             };
             bgfx.reset(BgfxSupport.ResetFlags, &swapChain);
         }
