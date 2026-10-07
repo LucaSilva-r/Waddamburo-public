@@ -322,7 +322,7 @@ public sealed class TaikoLongNotePresentation
             else
                 invoke(_balloon.Player, "GekiRendaEnd", 1);
         }
-        else
+        else if (_session.GetLongNoteProgress(index).Hits > 0) // no hit: the counter never appeared
             invoke(_counter.Player, "RendaEnd");
         _finished.Add(index);
         _active = null;
@@ -350,7 +350,7 @@ public sealed class TaikoLongNotePresentation
             }, null));
             _onBalloonCompleted?.Invoke(progress.Note.Kind, popped);
         }
-        else
+        else if (progress.Hits > 0) // no hit: the counter never appeared, RendaEnd would show 0
             invoke(_counter.Player, "RendaEnd");
         _finished.Add(index);
         _active = null;

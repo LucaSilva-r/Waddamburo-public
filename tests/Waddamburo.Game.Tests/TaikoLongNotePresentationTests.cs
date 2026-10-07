@@ -100,6 +100,20 @@ public sealed class TaikoLongNotePresentationTests
         Assert.Equal([PlayableLongNoteKind.Roll], started);
     }
 
+    [Fact]
+    public void UnhitRollNeverShowsItsCounter()
+    {
+        var calls = new List<(string, double)>();
+        var chart = chartFor(PlayableLongNoteKind.Roll);
+        var session = sessionFor(chart);
+        var layer = movie(calls);
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer);
+        presentation.Update(TimeSpan.FromSeconds(1));
+        session.AdvanceTo(TimeSpan.FromSeconds(3));
+        presentation.Update(TimeSpan.FromSeconds(3));
+        Assert.DoesNotContain(calls, c => c.Item1 is "SetRendaCount" or "RendaEnd");
+    }
+
     [Theory]
     [InlineData(PlayableLongNoteKind.Roll)]
     [InlineData(PlayableLongNoteKind.BigRoll)]
