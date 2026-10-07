@@ -161,6 +161,9 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 s_renderThread.Join();
                 throw new InvalidOperationException("bgfx could not initialize a renderer.");
             }
+            // Diagnostic: the hitch trace reports GPU time per view, which needs bgfx's profiler.
+            if (Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1")
+                bgfx.set_debug((uint)bgfx.DebugFlags.Profiler, default, 0);
         }
 
         private static void renderLoop(ManualResetEventSlim started)

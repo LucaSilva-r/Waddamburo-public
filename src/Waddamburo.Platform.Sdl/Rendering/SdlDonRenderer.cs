@@ -265,6 +265,10 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         {
             if (index == 2 && !DialogVisible)
                 continue;
+            // Not on screen this frame (attract, an absent second player): skip its two passes. The
+            // first record creates the texture the scene's surface resolves to, so it always runs.
+            if (_targets[index].TextureId.Value != 0 && !_compositor.Draws(_targets[index].TextureId))
+                continue;
             resizeTarget(index, (pixels(_targetSizes[index].Width), pixels(_targetSizes[index].Height)));
             recordPlayer(index);
         }

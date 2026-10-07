@@ -19,6 +19,10 @@ internal sealed unsafe class RenderDevice : IDisposable
     // Upscaled copies drawn in place of their originals (same id).
     private readonly Dictionary<uint, bgfx.TextureHandle> _replacements = [];
     private readonly HashSet<uint> _borrowedTextures = [];
+    private readonly HashSet<uint> _drawnBorrowed = [];
+
+    /// <summary>The frame being presented draws this prepass texture.</summary>
+    internal bool Draws(RenderTextureId texture) => _drawnBorrowed.Contains(texture.Value);
     private readonly List<IGpuRenderPrepass> _prepasses = [];
     private readonly bgfx.ProgramHandle _quadProgram;
     private readonly bgfx.ProgramHandle _maskProgram;
@@ -224,6 +228,11 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.reset(BgfxSupport.ResetFlags, &swapChain);
         }
 
+        // A prepass draws only what this frame shows (an off-screen Don costs ~5 ms on integrated GPUs).
+        _drawnBorrowed.Clear();
+        foreach (var quad in frame.Quads)
+            if (_borrowedTextures.Contains(quad.Texture.Value))
+                _drawnBorrowed.Add(quad.Texture.Value);
         foreach (var prepass in _prepasses)
             prepass.Record(width, height);
 

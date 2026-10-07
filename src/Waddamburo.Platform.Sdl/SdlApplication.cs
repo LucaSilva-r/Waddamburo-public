@@ -246,7 +246,13 @@ public sealed unsafe class SdlApplication : IDisposable
         double ms(long ticks, long frequency) => frequency == 0 ? 0 : ticks * 1000.0 / frequency;
         return $"; bgfx {stats->numDraw} draws, gpu {ms(stats->gpuTimeEnd - stats->gpuTimeBegin, stats->gpuTimerFreq):F1} ms, "
             + $"submit {ms(stats->cpuTimeEnd - stats->cpuTimeBegin, stats->cpuTimerFreq):F1} ms, "
-            + $"wait render {ms(stats->waitRender, stats->cpuTimerFreq):F1} ms";
+            + $"wait render {ms(stats->waitRender, stats->cpuTimerFreq):F1} ms; "
+            + $"{stats->width}x{stats->height}, textures {stats->textureMemoryUsed / 1048576}, targets {stats->rtMemoryUsed / 1048576} MiB; "
+            + string.Join(", ", Enumerable.Range(0, stats->numViews).Select(index =>
+            {
+                var view = stats->viewStats[index];
+                return $"view {view.view} {ms(view.gpuTimeEnd - view.gpuTimeBegin, stats->gpuTimerFreq):F1} ms";
+            }));
     }
 
     public void ReleaseTexture(RenderTextureId texture)
@@ -832,6 +838,9 @@ public sealed unsafe class SdlApplication : IDisposable
                         + $"{gen0 - hitchGc.Gen0}/{gen1 - hitchGc.Gen1}/{gen2 - hitchGc.Gen2} (gen0/1/2), paused {(pause - hitchGc.Pause).TotalMilliseconds:F0} ms"
                         + $"{gpuStats()}.");
                 hitchGc = (gen0, gen1, gen2, pause);
+                // Every 300 frames, a hitch or not: where the GPU's time goes in a scene that only runs slow.
+                if (renderedFrames % 300 == 0)
+                    Console.Error.WriteLine($"GPU sample at tick {simulationTicks}{gpuStats()}.");
             }
             if (capture is not null)
                 captureFinalFrame!(capture);
