@@ -237,6 +237,18 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.TryReplaceRgba8(texture, width, height, pixels);
     }
 
+    // The last presented frame as bgfx saw it: GPU-bound, submit-bound or waiting on the swapchain.
+    private string gpuStats()
+    {
+        if (_renderer is null)
+            return "";
+        var stats = Bgfx.bgfx.get_stats();
+        double ms(long ticks, long frequency) => frequency == 0 ? 0 : ticks * 1000.0 / frequency;
+        return $"; bgfx {stats->numDraw} draws, gpu {ms(stats->gpuTimeEnd - stats->gpuTimeBegin, stats->gpuTimerFreq):F1} ms, "
+            + $"submit {ms(stats->cpuTimeEnd - stats->cpuTimeBegin, stats->cpuTimerFreq):F1} ms, "
+            + $"wait render {ms(stats->waitRender, stats->cpuTimerFreq):F1} ms";
+    }
+
     public void ReleaseTexture(RenderTextureId texture)
     {
         ensureOwnerThread();
@@ -817,7 +829,8 @@ public sealed unsafe class SdlApplication : IDisposable
                 if (updateTime + renderTime > TimeSpan.FromMilliseconds(25))
                     Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
                         + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms; GC since last "
-                        + $"{gen0 - hitchGc.Gen0}/{gen1 - hitchGc.Gen1}/{gen2 - hitchGc.Gen2} (gen0/1/2), paused {(pause - hitchGc.Pause).TotalMilliseconds:F0} ms.");
+                        + $"{gen0 - hitchGc.Gen0}/{gen1 - hitchGc.Gen1}/{gen2 - hitchGc.Gen2} (gen0/1/2), paused {(pause - hitchGc.Pause).TotalMilliseconds:F0} ms"
+                        + $"{gpuStats()}.");
                 hitchGc = (gen0, gen1, gen2, pause);
             }
             if (capture is not null)
