@@ -139,6 +139,17 @@ public sealed class AudioClip
         return new AudioClip(Format, samples, LoopRegion is { } loop
             ? new AudioLoopRegion(loop.StartFrame + frames, loop.EndFrame + frames) : null);
     }
+
+    /// <summary>The clip scaled by an amplitude factor (the mixer clamps the sum).</summary>
+    public AudioClip WithGain(float gain)
+    {
+        if (gain == 1f)
+            return this;
+        var samples = new float[_samples.Length];
+        for (var index = 0; index < samples.Length; index++)
+            samples[index] = _samples[index] * gain;
+        return new AudioClip(Format, samples, LoopRegion);
+    }
 }
 
 /// <summary>Thread-safe software mixer whose output format is fixed at construction.</summary>

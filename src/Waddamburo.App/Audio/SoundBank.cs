@@ -194,8 +194,11 @@ internal sealed class SoundBank
         if (_clips.TryGetValue(key, out var clip))
             return clip;
         var path = Path.Combine(_bankRoot, key.Bank + ".nub");
+        var header = bankHeader(path, key.Cue);
+        // vgmstream leaves the header's authored gain to the player.
         clip = AudioClip.Load(path, _audio.Mixer.Format, sourceStreamIndex: checked((uint)key.Cue + 1U))
-            .WithLeadingSilence(NubCueDelay.Read(bankHeader(path, key.Cue), key.Cue));
+            .WithLeadingSilence(NubCueDelay.Read(header, key.Cue))
+            .WithGain(NubCueDelay.ReadGain(header, key.Cue));
         _clips.Add(key, clip);
         return clip;
     }
