@@ -32,6 +32,9 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// <summary>Called with each movie once decoded, before any upload, on the decoding thread.</summary>
     public Action<LumenMovieContent>? Decoded { get; set; }
 
+    /// <summary>A movie a load reuses whole instead of decoding it (a prefetch, being fresher, wins).</summary>
+    public Func<string, string, LumenMovieContent?>? Reuse { get; set; }
+
     private LumenMovieContent decoded(LumenMovieContent content)
     {
         Decoded?.Invoke(content);
@@ -104,6 +107,8 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                     // A failed prefetch loads normally below, reporting its own error.
                 }
             }
+            if (owner.Reuse?.Invoke(archiveId, movieId) is { } kept)
+                return kept;
             var archivePath = owner.resolveArchivePath(archiveId);
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)

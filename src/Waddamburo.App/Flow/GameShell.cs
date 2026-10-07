@@ -406,6 +406,7 @@ internal sealed class GameShell : IDisposable
         // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
         MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = content => patch(content, null) };
         _presenter = new ScenePresenter(Application, MovieContent);
+        MovieContent.Reuse = _presenter.Reuse;
         // Upscaling runs when the model files are installed (see UpscaleTool).
         // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
         var cacheRoot = options.ArcadePath is { } settings
@@ -630,6 +631,21 @@ internal sealed class GameShell : IDisposable
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
         if (Sounds?.Bank.IsVoicePlaying == true)
             return;
+        // Home: the entry fades to black first, as the menu's Restart, Song Select and Title do.
+        if (Arcade.Home && Active.Id == FlowScenes.Entry)
+        {
+            _home.FadeThen(() =>
+            {
+                if (Coordinator.Flow.State == GameFlowState.TransitionPending)
+                    applyPendingTransition();
+            });
+            return;
+        }
+        applyPendingTransition();
+    }
+
+    private void applyPendingTransition()
+    {
         ReportDiagnostics();
         switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
         Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
@@ -714,14 +730,65 @@ internal sealed class GameShell : IDisposable
         Console.WriteLine($"Showing {scene} at tick {Tick}.");
     }
 
+    private long _liveAfterCollect;
+
     private void switchScene(Action transition)
     {
+        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+        var from = Active.Id;
+        var start = Stopwatch.GetTimestamp();
+        var allocated = GC.GetTotalAllocatedBytes();
+        int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         _presenter.Hold(Tick, black: Overlay.IsShown || Active.Id == FlowScenes.Movie, blackLoadingFrame);
         flowOf(Active.Id).Exit(Active.Id);
-        _presenter.ReleaseScene();
-        transition();
+        _presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay ? Active : null);
+        var released = Stopwatch.GetTimestamp();
+        _presenter.Switching = true;
+        try
+        {
+            transition();
+        }
+        finally
+        {
+            _presenter.Switching = false;
+        }
+        var loaded = Stopwatch.GetTimestamp();
         activate();
+        // The old scene's archives and decoded pixels are large-object garbage the GC neither compacts
+        // nor returns on its own, so the heap only grew across songs. The loading frame is still up.
+        // Only when there is much to give back: a collection costs 50-90 ms and most switches now free little.
+        // Into a lane (songs, replays, training, calibration) only under a restart's black: the rainbow
+        // keeps moving over a normal start, so the next switch out collects instead. On a lane the GC also
+        // avoids blocking full collections of its own.
+        // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
+        var collect = Stopwatch.GetTimestamp();
+        System.Runtime.GCSettings.LatencyMode = onLane
+            ? System.Runtime.GCLatencyMode.SustainedLowLatency
+            : System.Runtime.GCLatencyMode.Interactive;
+        if ((!onLane || _home.Covering) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            _liveAfterCollect = GC.GetTotalMemory(false);
+        }
+        // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees
+        // Song Select's leftovers (the gameplay prefetch's decoded pixels, ~500 MiB) early in the song.
+        else if (onLane)
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
         Application.DiscardElapsed();
+        if (profile)
+        {
+            using var process = Process.GetCurrentProcess();
+            Console.Error.WriteLine($"Profile switch {from} -> {Active.Id}: "
+                + $"exit {Stopwatch.GetElapsedTime(start, released).TotalMilliseconds:F0} ms, "
+                + $"load {Stopwatch.GetElapsedTime(released, loaded).TotalMilliseconds:F0} ms, "
+                + $"enter {Stopwatch.GetElapsedTime(loaded, collect).TotalMilliseconds:F0} ms, "
+                + $"collect {Stopwatch.GetElapsedTime(collect).TotalMilliseconds:F0} ms, "
+                + $"allocated {(GC.GetTotalAllocatedBytes() - allocated) / 1048576d:F1} MiB, "
+                + $"GC {GC.CollectionCount(0) - gen0}/{GC.CollectionCount(1) - gen1}/{GC.CollectionCount(2) - gen2}, "
+                + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
+                + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB (peak {process.PeakWorkingSet64 / 1048576d:F1}).");
+        }
     }
 
     private void activate()
@@ -897,6 +964,9 @@ internal sealed class GameShell : IDisposable
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),
     // network/card (-3000); then Waddamburo's own overlays and the home menu over everything.
+    private readonly System.Collections.Immutable.ImmutableArray<RenderQuad>.Builder _frameQuads =
+        System.Collections.Immutable.ImmutableArray.CreateBuilder<RenderQuad>();
+
     private RenderFrame createFrame(double interpolationFraction)
     {
         var interpolation = _home.Interpolation(interpolationFraction);
@@ -922,22 +992,27 @@ internal sealed class GameShell : IDisposable
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads;
-        var result = new RenderFrame(
-            frame.ClearColor,
-            [
-                .. frame.Quads,
-                .. Active.Id == FlowScenes.Gameplay ? _timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator) : [],
-                .. _gameplay.Reviewing && _gameplay.Review is { } review ? _reviewBar.Quads(review, _gameplay.Training) : [],
-                .. _playerSetup?.Quads(interpolation) ?? [],
-                .. indicatorQuads(false),
-                .. Overlay.Quads(interpolation, Titles.Resolve),
-                .. _inputOverlays.SelectMany(static overlay => overlay.Quads()),
-                .. indicatorQuads(true),
-                .. pill(),
-                .. _notices?.Quads(onLane) ?? [],
-                .. _performance.Quads(),
-            ],
-            frame.ContentAspectRatio);
+        // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
+        // collection expression's growing list plus RenderFrame's copy of it, every frame.
+        var quads = _frameQuads;
+        quads.Clear();
+        quads.AddRange(frame.Quads);
+        if (Active.Id == FlowScenes.Gameplay)
+            quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
+        if (_gameplay.Reviewing && _gameplay.Review is { } review)
+            quads.AddRange(_reviewBar.Quads(review, _gameplay.Training));
+        if (_playerSetup is not null)
+            quads.AddRange(_playerSetup.Quads(interpolation));
+        quads.AddRange(indicatorQuads(false));
+        quads.AddRange(Overlay.Quads(interpolation, Titles.Resolve));
+        foreach (var overlay in _inputOverlays)
+            quads.AddRange(overlay.Quads());
+        quads.AddRange(indicatorQuads(true));
+        quads.AddRange(pill());
+        if (_notices is not null)
+            quads.AddRange(_notices.Quads(onLane));
+        quads.AddRange(_performance.Quads());
+        var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio);
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);

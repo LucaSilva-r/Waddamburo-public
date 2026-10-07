@@ -17,6 +17,11 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4);
     private readonly Dictionary<LumenMovieContent, RenderTextureId[]> _uploadedAhead = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<LumenMovieContent, (RenderTextureId[] Uploaded, int Next)> _partial = new(ReferenceEqualityComparer.Instance);
+    // Song Select's and gameplay's movies stay decoded, their textures up, between visits: a load not
+    // prefetched (leaving a song early, a retry) reuses them instead of decoding again (~0.5 s).
+    // ponytail: never evicted (bounded by the kept scenes' distinct movies); evict if more scenes keep.
+    private readonly Dictionary<(string ArchiveId, string MovieId), (LumenMovieContent Content, RenderTextureId[] Textures)> _kept = [];
+    private readonly HashSet<RenderTextureId> _keptTextures = [];
     private RenderTextureId[] _textures = [];
     private RenderTextureId[] _heldTextures = [];
     private RenderFrame? _heldFrame;
@@ -33,6 +38,10 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     public void Prefetch(SceneDefinition scene)
     {
         releaseUploadedAhead();
+        // A prefetch decodes afresh (settings may have changed): it replaces the kept copies.
+        foreach (var layer in scene.Layers)
+            if (_kept.Remove((layer.ArchiveId, layer.MovieId), out var dropped))
+                unkeep(dropped.Textures);
         movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
         Prefetched = scene.Id;
         Console.WriteLine($"Prefetching {scene.Id} ({scene.Layers.Length} movies).");
@@ -71,9 +80,22 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         }
     }
 
+    /// <summary>
+    /// A scene switch is loading: only its loads reuse kept copies (an overlay's or the indicators' own
+    /// upload would find their pixels gone).
+    /// </summary>
+    public bool Switching { get; set; }
+
+    /// <summary>The kept copy of a movie, for the content source (the loading thread; the main one waits).</summary>
+    public LumenMovieContent? Reuse(string archiveId, string movieId) =>
+        Switching && _kept.TryGetValue((archiveId, movieId), out var kept) ? kept.Content : null;
+
     // A movie half uploaded ahead: the scene switch uploads the rest.
     private RenderTextureId[]? takeAhead(LumenMovieContent content)
     {
+        foreach (var kept in _kept.Values)
+            if (ReferenceEquals(kept.Content, content))
+                return kept.Textures;
         if (_uploadedAhead.Remove(content, out var textures))
             return textures;
         if (!_partial.Remove(content, out var partial))
@@ -106,11 +128,33 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     }
 
     /// <summary>The old scene is gone: its textures go, unless its held frame still shows them.</summary>
-    public void ReleaseScene()
+    public void ReleaseScene(LumenGameSceneInstance? keep = null)
     {
+        foreach (var layer in keep?.Layers ?? [])
+        {
+            var key = (layer.Definition.ArchiveId, layer.Definition.MovieId);
+            if (_kept.TryGetValue(key, out var old))
+            {
+                if (ReferenceEquals(old.Content, layer.Content))
+                    continue;
+                unkeep(old.Textures);
+            }
+            var textures = _textures[(int)layer.TextureOffset..(int)(layer.TextureOffset + layer.TextureCount)];
+            _kept[key] = (layer.Content, textures);
+            _keptTextures.UnionWith(textures);
+        }
         if (!ReferenceEquals(_heldTextures, _textures))
-            SceneTextures.Release(application, _textures);
+            SceneTextures.Release(application, _textures.Where(notKept));
         _textures = [];
+    }
+
+    private bool notKept(RenderTextureId texture) => !_keptTextures.Contains(texture);
+
+    // No longer kept: released now unless a scene still shows them (its own release frees them then).
+    private void unkeep(RenderTextureId[] textures)
+    {
+        _keptTextures.ExceptWith(textures);
+        SceneTextures.Release(application, textures.Where(texture => !_textures.Contains(texture) && !_heldTextures.Contains(texture)));
     }
 
     /// <summary>The new scene's textures: its prefetched uploads where there are any, the rest now.</summary>
@@ -140,7 +184,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         _heldNotPresented = false;
         if (first || tick < _holdUntilTick)
             return (held, _heldBlack);
-        SceneTextures.Release(application, _heldTextures);
+        SceneTextures.Release(application, _heldTextures.Where(notKept));
         _heldTextures = [];
         _heldFrame = null;
         return null;
@@ -155,8 +199,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
 
     public void Dispose()
     {
-        SceneTextures.Release(application, _textures);
-        SceneTextures.Release(application, _heldTextures);
+        SceneTextures.Release(application, _textures.Concat(_heldTextures).Concat(_keptTextures));
         releaseUploadedAhead();
     }
 

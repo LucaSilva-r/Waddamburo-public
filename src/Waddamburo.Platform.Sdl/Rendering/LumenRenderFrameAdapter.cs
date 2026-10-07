@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Waddamburo.Lumen.Rendering;
 
 namespace Waddamburo.Platform.Sdl.Rendering;
@@ -16,7 +17,8 @@ public static class LumenRenderFrameAdapter
 
         var inverseWidth = 1f / snapshot.StageWidth;
         var inverseHeight = 1f / snapshot.StageHeight;
-        var quads = new List<RenderQuad>(snapshot.Quads.Length);
+        // Exact capacity: MoveToImmutable hands the array to the frame without a copy.
+        var quads = ImmutableArray.CreateBuilder<RenderQuad>(snapshot.Quads.Length);
         foreach (var quad in snapshot.Quads)
         {
             RenderTextureId? texture = quad.NativeSurface is { } surface
@@ -46,7 +48,7 @@ public static class LumenRenderFrameAdapter
         }
         return new RenderFrame(
             clearColor,
-            quads,
+            quads.Count == quads.Capacity ? quads.MoveToImmutable() : quads.ToImmutable(),
             (double)snapshot.StageWidth / snapshot.StageHeight);
     }
 

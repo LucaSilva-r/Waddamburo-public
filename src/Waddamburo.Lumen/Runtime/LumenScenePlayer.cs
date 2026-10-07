@@ -65,7 +65,9 @@ public sealed class LumenScenePlayer
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
-        var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
+        // Gameplay builds a scene player per frame, so the reused builder is static (snapshots are made on one thread).
+        var quads = t_quads ??= ImmutableArray.CreateBuilder<LumenRenderQuad>();
+        quads.Clear();
         foreach (var layer in _layers)
         {
             var child = layer.Player.CreateRenderSnapshot(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction);
@@ -90,6 +92,8 @@ public sealed class LumenScenePlayer
         }
         return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());
     }
+
+    [ThreadStatic] private static ImmutableArray<LumenRenderQuad>.Builder? t_quads;
 
     private static LumenRenderVertex transform(LumenRenderVertex vertex, LumenMatrix matrix)
     {

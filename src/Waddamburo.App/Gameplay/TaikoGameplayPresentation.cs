@@ -188,9 +188,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         // each lane is separate on screen, and the kusudama covers both.
         var parts = _lanes.Select(lane => lane.CreateLayers(time)).ToArray();
         var layers = parts.SelectMany(part => part.Back).Concat(parts.SelectMany(part => part.Front)).Concat(_shared);
-        var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation,
-            player => _lanes.Select(lane => lane.BeatInterpolation(player)).FirstOrDefault(value => value is not null)
-                ?? interpolation);
+        var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, player =>
+        {
+            foreach (var lane in _lanes)
+                if (lane.BeatInterpolation(player) is { } beat)
+                    return beat;
+            return interpolation;
+        });
         foreach (var lane in _lanes)
             snapshot = lane.Tint(snapshot);
         return snapshot;
@@ -639,8 +643,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _presentation.CreateLayers(time, _character?.Layer, _characterSlot);
 
         /// <summary>The beat clock's interpolation for this lane's beat-driven movies, else null.</summary>
-        public float? BeatInterpolation(LumenPlayer player) =>
-            _beatLayers.Any(layer => layer.Player == player) ? _animationClock.Interpolation : null;
+        public float? BeatInterpolation(LumenPlayer player)
+        {
+            foreach (var layer in _beatLayers)
+                if (layer.Player == player)
+                    return _animationClock.Interpolation;
+            return null;
+        }
 
         public LumenRenderSnapshot Tint(LumenRenderSnapshot snapshot) => _character?.Tint(snapshot) ?? snapshot;
 

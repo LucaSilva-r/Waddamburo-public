@@ -85,8 +85,24 @@ internal sealed class HomeControls : IDisposable
     public bool Tick(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
     {
         FollowFocus();
-        return resumeCountdown(escape) || calibrationDone() || openMenu(escape) || menuInput(keys, held, escape);
+        return _restart.UpdateMenuAction() || resumeCountdown(escape) || calibrationDone() || openMenu(escape)
+            || menuInput(keys, held, escape);
     }
+
+    /// <summary>Fades to black, then runs <paramref name="action"/> (once: a fade under way is kept).</summary>
+    public void FadeThen(Action action)
+    {
+        if (_restart.MenuPending)
+            return;
+        _restart.FromMenu(() =>
+        {
+            action();
+            return true;
+        });
+    }
+
+    /// <summary>The screen is black under a restart or the menu's Song Select or Title: a switch goes unseen.</summary>
+    public bool Covering => _restart.Covering;
 
     /// <summary>The quick restart's tick (after the player setup): true when the song restarted.</summary>
     public bool QuickRestart(SdlKeyboardSnapshot held) => _restart.Update(home && (active == FlowScenes.Result
@@ -110,14 +126,19 @@ internal sealed class HomeControls : IDisposable
     }
 
     /// <summary>The resume countdown, the menu and the quick restart's black over a frame (home only).</summary>
-    public RenderFrame Draw(RenderFrame frame) => _overlay is null
-        ? frame : new RenderFrame(frame.ClearColor,
-            frame.Quads.Concat(_resume is { Running: true } countdown
-                    ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
-                    : [])
-                .Concat(_overlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black,
-                    _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)),
-            frame.ContentAspectRatio);
+    public RenderFrame Draw(RenderFrame frame)
+    {
+        if (_overlay is null)
+            return frame;
+        var extra = (_resume is { Running: true } countdown
+                ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
+                : [])
+            .Concat(_overlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black,
+                _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration))
+            .ToList();
+        // Nothing on top (most frames): keep the frame rather than copying all its quads.
+        return extra.Count == 0 ? frame : new RenderFrame(frame.ClearColor, frame.Quads.Concat(extra), frame.ContentAspectRatio);
+    }
 
     public void Dispose()
     {
@@ -191,7 +212,7 @@ internal sealed class HomeControls : IDisposable
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
         if (!AttractScenes.Contains(active) && active != FlowScenes.Entry && active != FlowScenes.SongSelect)
             return false;
-        if (_shell.Overlay.IsShown || _shell.Coordinator.Flow.State == GameFlowState.TransitionPending)
+        if (_shell.Overlay.IsShown || _shell.Coordinator.Flow.State == GameFlowState.TransitionPending || _restart.Black != 0)
             return true;
         _pauseInterpolation = _lastInterpolation;
         _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect);
@@ -236,6 +257,15 @@ internal sealed class HomeControls : IDisposable
                 resumeSong();
                 _restart.FromMenu();
                 break;
+            // Out of a song: fade to black like Restart (the switch, and its memory clean-up, happen unseen).
+            case HomeMenuAction.SongSelect when active == FlowScenes.Gameplay && _gameplay.CanQuickRestart:
+                resumeSong();
+                _restart.FromMenu(() =>
+                {
+                    _gameplay.Abandon();
+                    return true;
+                });
+                break;
             case HomeMenuAction.SongSelect:
                 resumeSong();
                 _gameplay.Abandon();
@@ -251,7 +281,11 @@ internal sealed class HomeControls : IDisposable
                 break;
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();
-                _shell.ReturnToAttract();
+                _restart.FromMenu(() =>
+                {
+                    _shell.ReturnToAttract();
+                    return true;
+                });
                 break;
             case HomeMenuAction.Calibrate:
                 _calibration.Requested = true;

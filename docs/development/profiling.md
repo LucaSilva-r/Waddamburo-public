@@ -13,7 +13,10 @@ WADDAMBURO_PROFILE=1 WADDAMBURO_HITCH_TRACE=1 \
 
 `WADDAMBURO_PROFILE` reports each movie's archive size, read and parse/decode
 time, decoded RGBA bytes, scene texture upload time, managed memory and process
-resident memory.
+resident memory. Each `Profile switch` line times one scene switch (exit, load,
+enter, and the compacting collection that follows it unseen under a fade) with
+the bytes it allocated and the GC counts. It also prints a fatal error's stack.
+The Windows release exe logs when its output is redirected (`Waddamburo.exe > log.txt`).
 
 Press **F5** in the running app to toggle the on-screen performance pill.
 Hover it to expand poll, audio, update and draw rates and average work times.

@@ -142,7 +142,8 @@ internal static class SceneTextures
 
     public static void Release(SdlApplication application, IEnumerable<RenderTextureId> textures)
     {
-        foreach (var texture in textures)
+        // Distinct: a movie shown by two layers of a scene shares one kept copy, so its ids appear twice.
+        foreach (var texture in textures.Distinct())
             application.ReleaseTexture(texture);
     }
 

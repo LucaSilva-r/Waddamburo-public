@@ -750,16 +750,19 @@ public sealed class LumenPlayer
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
-        var quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
+        // The builder keeps its capacity between frames: one exact-size array per snapshot, no regrowth.
+        _quads.Clear();
         appendInstance(
             _root,
             LumenMatrix.Identity,
             ColorState.Identity,
             LumenRenderBlend.Normal,
             interpolationFraction,
-            quads);
-        return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());
+            _quads);
+        return new LumenRenderSnapshot(StageWidth, StageHeight, _quads.ToImmutable());
     }
+
+    private readonly ImmutableArray<LumenRenderQuad>.Builder _quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
 
     private static SpriteTimeline compileTimeline(
         LmbSpriteDefinition sprite,
@@ -2379,14 +2382,8 @@ public sealed class LumenPlayer
                             reportOnce("LUM_NATIVE_FILL_EMPTY", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has empty bounds.");
                             continue;
                         }
-                        var nativeVertices = geometry.Vertices.Select(vertex => transformNativeVertex(
-                            vertex,
-                            transform,
-                            minX,
-                            maxX,
-                            minY,
-                            maxY,
-                            nativeFill.Placement)).ToArray();
+                        var nativeVertices = transformNativeVertices(geometry.Vertices, transform, minX, maxX, minY, maxY,
+                            nativeFill.Placement);
                         quads.Add(new LumenRenderQuad(
                             0,
                             nativeVertices[0],
@@ -2459,10 +2456,13 @@ public sealed class LumenPlayer
 
         // Masks apply only to following siblings through the inclusive authored depth.
         // Scope each child separately so crossing depth ranges and nested sprites compose safely.
-        var masks = new List<(long End, ImmutableArray<LumenRenderQuad> Quads)>();
+        List<(long End, ImmutableArray<LumenRenderQuad> Quads)>? masks = null;
         foreach (var child in instance.Children.Values)
         {
-            masks.RemoveAll(mask => mask.End < child.Depth);
+            // A loop, not RemoveAll: its lambda would capture `child`, a closure per child per frame.
+            for (var index = (masks?.Count ?? 0) - 1; index >= 0; index--)
+                if (masks![index].End < child.Depth)
+                    masks.RemoveAt(index);
             if (child.ClipDepth is { } end && end > child.Depth)
             {
                 var geometry = ImmutableArray.CreateBuilder<LumenRenderQuad>();
@@ -2473,7 +2473,12 @@ public sealed class LumenPlayer
                         "A mask containing its own clipped content is not supported; its range is hidden.");
                     geometry.Clear();
                 }
-                masks.Add((end, geometry.ToImmutable()));
+                (masks ??= []).Add((end, geometry.ToImmutable()));
+                continue;
+            }
+            if (masks is null)
+            {
+                appendInstance(child, transform, color, blend, childInterpolationFraction, quads, maskDepth);
                 continue;
             }
             if (maskDepth + masks.Count > byte.MaxValue)
@@ -2633,6 +2638,11 @@ public sealed class LumenPlayer
             corner(box.Right, box.Bottom, 1, 1), corner(box.Left, box.Bottom, 0, 1), color.Multiply, color.Add, blend,
             NativeSurface: key, MaskDepth: maskDepth));
     }
+
+    // Kept out of appendInstance: a lambda there captures its transform, a closure on every call.
+    private static LumenRenderVertex[] transformNativeVertices(ImmutableArray<LmbVertex> vertices, LumenMatrix transform,
+        float minX, float maxX, float minY, float maxY, LumenNativeSurfacePlacement? placement) =>
+        vertices.Select(vertex => transformNativeVertex(vertex, transform, minX, maxX, minY, maxY, placement)).ToArray();
 
     private static LumenRenderVertex transformNativeVertex(
         LmbVertex vertex,
