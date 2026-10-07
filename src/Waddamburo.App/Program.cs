@@ -102,6 +102,7 @@ try
             throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
         var layout = GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
+        ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
         // Cabinet settings (free play, credits, songs per session) beside the game data.
