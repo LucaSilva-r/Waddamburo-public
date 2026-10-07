@@ -261,9 +261,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         // Render at twice the window's stage scale and let the composite's downscale anti-alias, up to
         // twice the stage itself: above 720p the outline pass (17 samples a pixel) cost an integrated
         // GPU 10 ms a frame at 1080p for anti-aliasing the eye does not see.
-        // ponytail: 2x stage cap; a setting if a large screen shows Don's edges.
+        // Never below the window's own scale, though: above 1440p the cap upscaled Don and softened
+        // his edges (visible at 4K).
+        // ponytail: 2x stage cap with a native floor; a setting if 4K on integrated graphics is too slow.
         var scale = Math.Min(width / 1280f, height / 720f);
-        var supersample = Math.Min(scale * 2, 2);
+        var supersample = Math.Max(scale, Math.Min(scale * 2, 2));
         uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * supersample / 8) * 8, 64, 4096);
         for (var index = 0; index < _players.Length; index++)
         {
