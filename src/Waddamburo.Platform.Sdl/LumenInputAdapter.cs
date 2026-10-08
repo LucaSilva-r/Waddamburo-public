@@ -33,6 +33,10 @@ public static class LumenInputAdapter
         SdlKeyboardKey.Z => [(int)SdlKeyboardKey.D],
         SdlKeyboardKey.V => [(int)SdlKeyboardKey.F],
         SdlKeyboardKey.X or SdlKeyboardKey.C => [(int)SdlKeyboardKey.C],
+        // A wheel notch (menus only) is player 1's left/right ka in every movie (profiles, difficulties),
+        // and stays a wheel notch for song select's own list scrolling.
+        SdlKeyboardKey.WheelUp => [(int)SdlKeyboardKey.A, (int)key],
+        SdlKeyboardKey.WheelDown => [(int)SdlKeyboardKey.S, (int)key],
         _ => [(int)key],
     };
 }

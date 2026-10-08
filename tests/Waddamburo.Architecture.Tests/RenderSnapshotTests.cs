@@ -103,6 +103,17 @@ public sealed class RenderSnapshotTests
         Assert.True(LumenInputAdapter.CreateSnapshot(keyboard).IsDown(authoredKey));
     }
 
+    [Theory]
+    [InlineData(SdlKeyboardKey.WheelUp, 'A')]
+    [InlineData(SdlKeyboardKey.WheelDown, 'S')]
+    public void AWheelNotchIsPlayerOnesKaInMoviesAndStaysANotch(SdlKeyboardKey notch, char ka)
+    {
+        var movie = LumenInputAdapter.CreateSnapshot(new SdlKeyboardSnapshot([notch]));
+
+        Assert.True(movie.IsDown(ka));
+        Assert.True(movie.IsDown((int)notch));
+    }
+
     [Fact]
     public void AdapterNormalizesStageCoordinatesAndPreservesDrawOrder()
     {

@@ -164,8 +164,10 @@ internal sealed class PlayerSetupFlow : IDisposable
         // opened it, or a few more, cannot lock a drum in or start.
         if (!InputEnabled)
             return;
-        // Left drum: D/K rims, F/J centres; right drum: Z/V rims, X/C centres.
-        input(0, keys.IsDown(SdlKeyboardKey.D), keys.IsDown(SdlKeyboardKey.K),
+        // Left drum: D/K rims, F/J centres; right drum: Z/V rims, X/C centres. The left column also takes the
+        // arrows (a controller's D-pad) and the mouse wheel.
+        input(0, keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Left) || keys.IsDown(SdlKeyboardKey.WheelUp),
+            keys.IsDown(SdlKeyboardKey.K) || keys.IsDown(SdlKeyboardKey.Right) || keys.IsDown(SdlKeyboardKey.WheelDown),
             keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J));
         input(1, keys.IsDown(SdlKeyboardKey.Z), keys.IsDown(SdlKeyboardKey.V),
             keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C));

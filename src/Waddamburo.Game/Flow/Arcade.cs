@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 20;
+    public const int CurrentVersion = 21;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -212,6 +212,13 @@ public sealed record ArcadeSettings
         gameplay_skin = auto
 
         """,
+        """
+        # mouse_controls (also in the Settings menu): in the menus the mouse wheel moves as the drum's rims
+        # do (song select, player entry, difficulties, settings; replays seek) and a left click is a don;
+        # false = the mouse does nothing there.
+        mouse_controls = true
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -270,6 +277,9 @@ public sealed record ArcadeSettings
     /// a skin's name (an enso_ archive, as SCENEPRESET names them).
     /// </summary>
     public string GameplaySkin { get; init; } = "auto";
+
+    /// <summary>In the menus the mouse wheel is the rims (replays: it seeks) and a left click a don.</summary>
+    public bool MouseControls { get; init; } = true;
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
     public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
@@ -615,6 +625,7 @@ public sealed record ArcadeSettings
                 "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
+                "mouse_controls" => settings with { MouseControls = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
                 "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
                 {
@@ -699,6 +710,7 @@ public sealed record ArcadeSettings
             ["drum_debounce_ms"] = settings.DrumDebounceMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
+            ["mouse_controls"] = settings.MouseControls ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,
             ["timing_indicator"] = settings.TimingIndicator switch
             {

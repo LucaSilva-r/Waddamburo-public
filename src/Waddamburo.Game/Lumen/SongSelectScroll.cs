@@ -12,9 +12,8 @@ namespace Waddamburo.Game.Lumen;
 /// the movie as soon as it reads input again.</item>
 /// <item>Page Up/Down skip ten boards inside a folder (three among the folders): the movie is advanced
 /// through the steps within the tick.</item>
-/// <item>Three quick rim hits one way start skipping, as the later games do: from then each rim hit
-/// skips its way, a short while apart at the least, until the drum is left alone.</item>
 /// </list>
+/// (No skipping on quick rim hits, as the later games do: a roll, or a held key's repeat, scrolls fast instead.)
 /// Nothing in the movie is written to: it sees the same hits and plays the same frames, sooner. A single
 /// hit on a list at rest is left to the movie as it is. Queued steps and skips inside a folder stop at
 /// its last song rather than run out of it.
@@ -27,6 +26,7 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     // The list clip and its move tweens' labels.
     private const string List = "main/genreSelect_";
     private const string RightLabel = "カーソル右", LeftLabel = "カーソル左";
+    private const string CancelLabel = "曲キャンセル", CancelEndLabel = "music_cancel_end";
     // From a move label: the boards slide for this many frames (the movie reads input again from the
     // frame after), then the centre board opens.
     private const int SlideFrames = 8, MoveFrames = 24;
@@ -41,23 +41,19 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     private static readonly int[] LeftKeys = ['A', 'D'], RightKeys = ['S', 'F'], DecideKeys = ['Z', 'C'];
     // Page Up/Down, and the platform's codes for a wheel notch up and down.
     private const int PageUp = 33, PageDown = 34, WheelUp = 1001, WheelDown = 1002;
-    // Rim hits one way, each within SkipHitTicks of the last, that start skipping. While skipping a rim
-    // hit skips its way, but not within SkipCooldownTicks of the last skip (those hits do nothing); no
-    // hit for SkipIdleTicks ends it.
-    private const int SkipHits = 3, SkipHitTicks = 6, SkipCooldownTicks = 15, SkipIdleTicks = 45;
+
+    // Diagnostic: WADDAMBURO_SCROLL_TRACE=1 prints each tick a queued step waits for the movie.
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("WADDAMBURO_SCROLL_TRACE") == "1";
 
     /// <summary>A skip is running the movie through its steps: their rim hits are not to be heard one by one.</summary>
     public bool Jumping { get; private set; }
 
-    private int _right = -1, _left = -1;
+    private int _right = -1, _left = -1, _cancel = -1, _cancelEnd = -1;
     // Steps still to take: positive to the right.
     private int _pending;
     private int _player;
     // Ticks since the movie took the current step; ticks a queued step has waited.
     private int _age, _waited, _sinceHit;
-    // Rim hits in a row one way (_streakWay), and ticks since the last; skipping, and ticks since a skip.
-    private int _streak, _streakWay, _sinceRim, _sinceSkip;
-    private bool _skipping;
     // The step handed to the movie this tick (0: none); the list was busy with another animation then.
     private int _handed;
     private bool _busy;
@@ -72,16 +68,33 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     /// </summary>
     /// <param name="input">The tick's input for the movie.</param>
     /// <param name="listActive">The list has the input (false: the difficulty selector is open).</param>
-    public LumenInputSnapshot Before(LumenInputSnapshot input, bool listActive)
+    /// <param name="keepWheel">The difficulty boards are closing: the wheel's notches are kept for the list
+    /// (not passed on as plain rim hits), which takes them once it is active again.</param>
+    public LumenInputSnapshot Before(LumenInputSnapshot input, bool listActive, bool keepWheel = false)
     {
         ArgumentNullException.ThrowIfNull(input);
         _handed = 0;
         var keys = input.PressedKeyCodes;
+        // Backing out of the difficulty boards: the list plays its close (曲キャンセル, about half a second) and
+        // takes no step until it ends. A wheel notch then cuts it short, so the list scrolls at once.
+        if (!listActive && keepWheel && resolve() && movie.InstanceFrame(List) is { } closing)
+        {
+            var notch = (keys.Contains(WheelDown) ? 1 : 0) - (keys.Contains(WheelUp) ? 1 : 0);
+            var inClose = closing.Playing && closing.Frame >= _cancel && closing.Frame < _cancelEnd;
+            if (inClose && notch == 0)
+                return input;
+            if (inClose)
+            {
+                var skipped = movie.TryFastForward(List, _cancelEnd);
+                if (Trace)
+                    Console.WriteLine($"[scroll] close cut short at frame {closing.Frame} -> {_cancelEnd}: {skipped}");
+            }
+            listActive = true; // the list is at rest (the ranking request that ends course select may come later)
+        }
         // A centre hit picks what is under the cursor: the queue ends there.
         if (!listActive || DecideKeys.Any(keys.Contains) || !resolve() || movie.InstanceFrame(List) is not { } list)
         {
-            _pending = _streak = 0;
-            _skipping = false;
+            _pending = 0;
             return input;
         }
         var slide = list.Playing ? slideFrame(list.Frame) : -1;
@@ -98,34 +111,12 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
             rim = hit;
         }
         var wheel = (keys.Contains(WheelDown) ? 1 : 0) - (keys.Contains(WheelUp) ? 1 : 0);
+        // A notch also arrives as a ka (LumenInputAdapter): counted once, as the wheel.
+        if (wheel != 0)
+            rim = 0;
         var page = (keys.Contains(PageDown) ? 1 : 0) - (keys.Contains(PageUp) ? 1 : 0);
-        _sinceSkip++;
-        if (++_sinceRim > SkipIdleTicks)
-            _skipping = false;
-        if (rim != 0 && _skipping)
-        {
-            _sinceRim = 0;
-            // Too soon after the last skip: the hit is dropped.
-            if (_sinceSkip < SkipCooldownTicks)
-                return new LumenInputSnapshot(keys.Except(LeftKeys).Except(RightKeys));
-            page = rim;
-        }
-        else if (rim != 0)
-        {
-            _streak = rim == _streakWay && _sinceRim <= SkipHitTicks ? _streak + 1 : 1;
-            _streakWay = rim;
-            _sinceRim = 0;
-            if (_streak >= SkipHits)
-            {
-                _skipping = true;
-                _streak = 0;
-                page = rim;
-            }
-        }
         if (page != 0 && !_busy)
         {
-            if (rim != 0)
-                _sinceSkip = 0;
             _pending = 0;
             jump(page);
             return new LumenInputSnapshot(keys.Except(LeftKeys).Except(RightKeys));
@@ -153,6 +144,8 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
         }
         // The slide is over, or the list is at rest or in another animation (a folder opening): the hit
         // is offered every tick until the movie takes it, but not for ever.
+        if (Trace)
+            Console.WriteLine($"[scroll] step {_pending} waiting {_waited} tick(s): list frame {list.Frame}{(list.Playing ? " playing" : "")}, slide {slide}");
         if (++_waited > PatienceTicks || atFolderEdge(Math.Sign(_pending)))
         {
             _pending = 0;
@@ -237,6 +230,10 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     {
         if (_right < 0 && !(movie.TryGetLabelFrame(List, RightLabel, out _right) && movie.TryGetLabelFrame(List, LeftLabel, out _left)))
             _right = -1;
+        // The close tween (backing out of the difficulty boards), when the movie has it.
+        if (_right >= 0 && _cancel < 0 && !(movie.TryGetLabelFrame(List, CancelLabel, out _cancel)
+                && movie.TryGetLabelFrame(List, CancelEndLabel, out _cancelEnd)))
+            (_cancel, _cancelEnd) = (int.MaxValue, int.MaxValue);
         return _right >= 0;
     }
 }

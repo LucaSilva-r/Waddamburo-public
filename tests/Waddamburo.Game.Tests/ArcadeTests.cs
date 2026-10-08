@@ -133,6 +133,14 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void MouseControlsAreOnUnlessTurnedOff()
+    {
+        Assert.True(ArcadeSettings.Parse("").MouseControls);
+        Assert.False(ArcadeSettings.Parse("mouse_controls = false").MouseControls);
+        Assert.Contains("mouse_controls = true", ArcadeSettings.Upgrade("config_version = 20\n"));
+    }
+
+    [Fact]
     public void DisplaySettingsParseAndSaveBack()
     {
         var settings = ArcadeSettings.Parse("fullscreen_mode = exclusive\nfullscreen_resolution = 1920x1080\nrefresh_rate = 144\nvsync = false\nletterbox_size = 80");

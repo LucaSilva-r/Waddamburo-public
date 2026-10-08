@@ -204,6 +204,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
 
+    /// <summary>Backing out of the difficulty boards: they are closing, the list does not take steps yet.</summary>
+    public bool LeavingCourseSelect { get; private set; }
+
     /// <summary>The song the player is on: the one whose difficulties are open, else the list's centre (null: a folder or nothing).</summary>
     public SongSelectSong? SongUnderCursor => CourseSelectSong
         ?? (_centre is { } centre && _session.Catalog.TryGetSong(centre.Category, centre.Song, out var song) ? song : null);
@@ -370,6 +373,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             {
                 _courseSelect = (integer(call, 0), integer(call, 1));
                 CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
+                LeavingCourseSelect = false;
                 // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.
                 foreach (var player in _sides)
                     if (_speedRow[player] is null)
@@ -401,7 +405,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 notifyGenreFolder);
             if (_don is not null)
                 DonLumenBinding.RegisterMotion(context, lumen, _don);
-            lumen.RegisterMethod("RequestSE", call => requestSound(SongSelectSoundRequestKind.Effect, call));
+            lumen.RegisterMethod("RequestSE", call =>
+            {
+                // SE 5/32 is the cancel: on the difficulty boards, it is backing out to the list (traced). The
+                // list is still closing them until the ranking request about half a second later, which ends
+                // CourseSelectSong; meanwhile the scroll keeps the wheel's steps for then.
+                // ponytail: if another cancel on the boards (an option panel) turns out to play it, track that.
+                if (CourseSelectSong is not null && integer(call, 0) == 5 && integer(call, 1) == 32)
+                    LeavingCourseSelect = true;
+                return requestSound(SongSelectSoundRequestKind.Effect, call);
+            });
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("RequestPlayerSE", call => requestSound(SongSelectSoundRequestKind.PlayerEffect, call));
             // RequestSE_Save(player, bank, cue): a player's sound on the course boards (traced (0, 5, 51));
@@ -646,6 +659,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // The movie reports no cancel of course select: backing out plays SE 5/32 and asks for the centre
         // song's ranking again, which it never does while a difficulty board is open (traced).
         CourseSelectSong = null;
+        LeavingCourseSelect = false;
         var rankings = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
             ? Rankings?.Invoke(song) : null;
         for (var course = 0; course < 5; course++)

@@ -365,6 +365,9 @@ public sealed unsafe class SdlApplication : IDisposable
         return text;
     }
 
+    /// <summary>Menus turn mouse wheel notches and left clicks (a don) into presses (false: the mouse is ignored there).</summary>
+    public bool MouseControls { get; set; } = true;
+
     public bool MenuInput
     {
         get => _menuInput;
@@ -378,6 +381,42 @@ public sealed unsafe class SdlApplication : IDisposable
     }
 
     private bool _menuInput;
+
+    // Menus: a held arrow or ka (keyboard, or a controller's D-pad, which menus turn into arrows) presses
+    // again after a moment and then steadily, as a keyboard repeats in a text field (SDL's own repeats are
+    // dropped: songs must see one press per hit). Don and the buttons never repeat.
+    private static readonly SdlKeyboardKey[] RepeatingKeys =
+    [
+        SdlKeyboardKey.Left, SdlKeyboardKey.Right, SdlKeyboardKey.Up, SdlKeyboardKey.Down,
+        SdlInputBindings.Pads[0], SdlInputBindings.Pads[3], SdlInputBindings.Pads[4], SdlInputBindings.Pads[7],
+    ];
+    private const ulong RepeatDelayNs = 400_000_000, RepeatIntervalNs = 50_000_000;
+    private readonly Dictionary<SdlKeyboardKey, ulong> _repeatAt = [];
+
+    private void repeatHeld(List<SdlKeyPress> presses)
+    {
+        var now = SDL_GetTicksNS();
+        foreach (var key in RepeatingKeys)
+        {
+            if (!_menuInput || _capturing || !_pressedKeys.Contains(key))
+            {
+                _repeatAt.Remove(key);
+                continue;
+            }
+            if (!_repeatAt.TryGetValue(key, out var at))
+            {
+                _repeatAt[key] = now + RepeatDelayNs; // held from now: its own press was the first
+                continue;
+            }
+            for (; at <= now; at += RepeatIntervalNs)
+                presses.Add(new SdlKeyPress(key, TimeSpan.FromTicks(checked((long)(at / 100)))));
+            _repeatAt[key] = at;
+        }
+    }
+
+    // Clicks within this long of the window getting focus only focus it (no menu choice by accident).
+    private const ulong FocusClickGraceNs = 300_000_000;
+    private ulong _focusedAt;
 
     // A controller in a menu. The first navigates with its D-pad (arrows, which the menus also read as player
     // 1's drum) and presses the buttons it is bound to (SdlInputBindings.Buttons, the Tatacon's keys by place
@@ -614,7 +653,10 @@ public sealed unsafe class SdlApplication : IDisposable
                     }
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED)
+                {
                     windowFocused = Focused = true;
+                    _focusedAt = currentEvent.window.timestamp;
+                }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION && pointerMoved is not null)
                 {
                     int width, height;
@@ -623,9 +665,16 @@ public sealed unsafe class SdlApplication : IDisposable
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT)
                     _typed.Append(currentEvent.text.GetText());
-                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN && pointerClicked is not null
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN
                     && currentEvent.button.button == SDL_BUTTON_LEFT)
                 {
+                    // In menus a left click is a don (player 1's left don key: decide everywhere menus are).
+                    // Not the click that brings the window up: some systems send it before the focus, others just after.
+                    if (_menuInput && MouseControls && !_capturing && windowFocused && currentEvent.button.timestamp > _focusedAt + FocusClickGraceNs)
+                        pendingPresses.Add(new SdlKeyPress(SdlInputBindings.Pads[1],
+                            TimeSpan.FromTicks(checked((long)(currentEvent.button.timestamp / 100)))));
+                    if (pointerClicked is null)
+                        continue;
                     int width, height;
                     if (SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
                     {
@@ -655,7 +704,7 @@ public sealed unsafe class SdlApplication : IDisposable
                     // ponytail: the menus read one press per key and tick, so a flick faster than 60 notches a second loses some.
                     if (pointerScrolled is not null && !_capturing)
                         pointerScrolled(currentEvent.wheel.y);
-                    else if (_menuInput && !_capturing && currentEvent.wheel.y != 0)
+                    else if (_menuInput && MouseControls && !_capturing && currentEvent.wheel.y != 0)
                         for (var notch = 0; notch < Math.Max(1, (int)Math.Abs(currentEvent.wheel.y)); notch++)
                             pendingPresses.Add(new SdlKeyPress(currentEvent.wheel.y > 0 ? SdlKeyboardKey.WheelUp : SdlKeyboardKey.WheelDown,
                                 TimeSpan.FromTicks(checked((long)(currentEvent.wheel.timestamp / 100)))));
@@ -733,6 +782,7 @@ public sealed unsafe class SdlApplication : IDisposable
                     }
                 }
             }
+            repeatHeld(pendingPresses);
             // MIDI arrives on its own threads, focused or not: the background's hits are dropped.
             while (MidiInput.TryTake(out var note))
                 if (windowFocused)

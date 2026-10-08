@@ -139,6 +139,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
+        new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
         new(Setting: new(T("settings.gameplay_skin"), skinIndex,
             static (s, v) => s with { GameplaySkin = (v = Math.Min(v, Skins.Count + 1)) switch { 0 => "auto", 1 => "original", _ => Skins[v - 2] } },
             static (value, step) => Math.Min(value + Math.Sign(step), Skins.Count + 1), 0,

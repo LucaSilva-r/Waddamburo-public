@@ -208,6 +208,7 @@ internal sealed class GameShell : IDisposable
         Application.Bindings = SdlInputBindings.Parse(Arcade.Controls, Arcade.Buttons,
             warn ? problem => Console.Error.WriteLine($"Warning CONTROLS: {ArcadeSettings.FileName}: {problem}.") : null);
         Application.PadsAsGamepad = !Arcade.PadMenusAsDrum;
+        Application.MouseControls = Arcade.MouseControls;
     }
 
     // In the menus the arrows and Enter also work the drum: Left/Up and Right/Down are its rims, Enter its
@@ -320,7 +321,7 @@ internal sealed class GameShell : IDisposable
         _toneArt = new ToneArt(Application, dataRoot);
         _performance = new PerformanceOverlay(Application, () => Audio);
         _timingMarks = new TimingMarkOverlay(Application);
-        Painter = new OverlayPainter(Application, options.FontPath);
+        Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
         _reviewBar = new ReviewOverlay(Painter);
         if (Arcade.Home)
             _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,

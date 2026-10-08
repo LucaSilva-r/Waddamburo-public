@@ -68,7 +68,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     public override void Advance(LumenInputSnapshot input)
     {
         var scroll = Shell.Arcade.FastSongScroll && Shell.Active.Id == FlowScenes.SongSelect ? Shell.Hosts.SongSelect?.Scroll : null;
-        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null) ?? input);
+        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null,
+            keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input);
         scroll?.After();
         Shell.Hosts.SongSelect?.Poll();
     }
