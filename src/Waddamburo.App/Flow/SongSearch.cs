@@ -12,7 +12,7 @@ namespace Waddamburo.App.Flow;
 /// Song Select's search (after TaikoRecomp's browser): Tab opens a field over the screen, typed text
 /// searches every library (titles, subtitles, artist, mapper; every word must match), Enter lists the
 /// matches in a "Search: …" folder first and Song Select reloads on it (<see cref="SongSelectReload"/>),
-/// Escape closes the field. While it is open the movie gets no input.
+/// Escape or Tab again closes the field. While it is open the movie gets no input.
 /// </summary>
 internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, OverlayPainter painter) : IInputOverlay
 {
@@ -30,7 +30,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
             // Not during a scene switch (entry -> Song Select): the reload's restart needs an active scene.
             if (!GameActions.Down(keys, GameAction.Search) || shell.Active.Id != FlowScenes.SongSelect
                 || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active
-                || shell.Hosts.SongSelect is not { CourseSelectSong: null } || shell.PlayRequests.Pending is not null)
+                || shell.Hosts.SongSelect is null || shell.PlayRequests.Pending is not null)
                 return false;
             IsOpen = true;
             _query = "";
@@ -47,7 +47,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
             var elements = StringInfo.ParseCombiningCharacters(_query);
             search(_query[..elements[^1]]);
         }
-        if (escape)
+        if (escape || GameActions.Down(keys, GameAction.Search))
             close();
         else if (keys.IsDown(SdlKeyboardKey.Enter) && _matches.Length > 0)
         {

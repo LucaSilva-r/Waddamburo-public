@@ -198,7 +198,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>Both players' course select shows Oni at once (the movie's isMania; the original needs right-rim hits).</summary>
     public bool ShowOni { get; init; }
 
-    /// <summary>The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)).</summary>
+    /// <summary>
+    /// The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)); null again
+    /// once the list asks for a ranking (backing out).
+    /// </summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
 
     /// <summary>The song the player is on: the one whose difficulties are open, else the list's centre (null: a folder or nothing).</summary>
@@ -640,6 +643,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     // (ura 4), ranks 0-2, empty ones as (course, rank, 0, "") (traced).
     private LumenHostValue publishRanking(LumenHostCall call)
     {
+        // The movie reports no cancel of course select: backing out plays SE 5/32 and asks for the centre
+        // song's ranking again, which it never does while a difficulty board is open (traced).
+        CourseSelectSong = null;
         var rankings = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
             ? Rankings?.Invoke(song) : null;
         for (var course = 0; course < 5; course++)
