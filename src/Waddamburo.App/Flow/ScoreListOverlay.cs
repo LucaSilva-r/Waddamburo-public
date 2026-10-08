@@ -16,8 +16,8 @@ namespace Waddamburo.App.Flow;
 /// difficulties) opens its leaderboard from TaikOnline, each player's best play, or the player's own
 /// plays; picking one watches its replay (a review: never saved). Left/right pick the difficulty, up/down
 /// the play; the other keys are GameActions' (Scores opens and closes it, Leaderboard switches
-/// leaderboard/own plays, ShinuchiBoard the normal/真打 leaderboard, Confirm watches, Practise practises;
-/// Escape closes).
+/// leaderboard/own plays, ShinuchiBoard the normal/真打 leaderboard, Confirm watches; Escape closes).
+/// Practice starts from a play's pause menu instead, with its own options.
 /// </summary>
 internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, OptionIcons optionIcons) : IInputOverlay
 {
@@ -75,9 +75,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             _selection = Math.Max(0, _selection - 1);
         if (keys.IsDown(SdlKeyboardKey.Down))
             _selection = Math.Min(Math.Max(0, rows.Count - 1), _selection + 1);
-        if (GameActions.Down(keys, GameAction.Practise))
-            practise();
-        else if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && _client is { } client)
+        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && _client is { } client)
         {
             var playId = rows[_selection].PlayId;
             _watching = Task.Run(() => client.ReplayAsync(playId));
@@ -88,7 +86,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
     // R on a song: its playable difficulties, starting on the highest the player has a crown on (else Oni).
     private bool open()
     {
-        // Replays and practice are one player's: not in two-player, duet or Waiwai.
+        // Replays are one player's: not in two-player, duet or Waiwai.
         if (!shell.Arcade.Home || shell.Hosts.TwoPlayers || shell.Hosts.Waiwai
             || shell.Active.Id != FlowScenes.SongSelect || shell.PlayRequests.Pending is not null
             || shell.Hosts.SongSelect?.SongUnderCursor is not { } song)
@@ -162,20 +160,6 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         IsOpen = false;
     }
 
-    // P: the difficulty on show is practised (training), from Song Select's handoff as for a pick.
-    private void practise()
-    {
-        var chart = _charts[_chart];
-        var request = new PlayRequest(shell.Hosts.SongSelect!.CatalogRevision, _song!.Descriptor.Key, _song.Descriptor.AudioAsset,
-            [new PlayerChartRequest(shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne,
-                chart.Key, chart.ChartAsset, chart.Course!.Value)])
-        { Training = true };
-        if (!shell.PlayRequests.TryRequestPlay(request))
-            return;
-        shell.Hosts.SongSelect!.RememberCurrentSong();
-        IsOpen = false;
-    }
-
     public IEnumerable<RenderQuad> Quads()
     {
         if (!IsOpen || _song is null)
@@ -226,7 +210,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 quads.AddRange(row(rows[index], y + (RowHeight - 4) / 2));
             }
         }
-        quads.Add(painter.Text(T("score_list.keys", GameActions.Name(GameAction.Confirm), GameActions.Name(GameAction.Practise), GameActions.Name(GameAction.Scores)), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
+        quads.Add(painter.Text(T("score_list.keys", GameActions.Name(GameAction.Confirm), GameActions.Name(GameAction.Scores)), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
         return quads;
     }
 

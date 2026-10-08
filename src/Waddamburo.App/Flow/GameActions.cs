@@ -72,6 +72,9 @@ internal static class GameActions
     public static bool Pressed(SdlKeyboardSnapshot keys, GameAction action) =>
         keys.Presses.Any(press => press.Key == Keys[action]);
 
+    /// <summary>The play/pause keys of replays and practice, as hints show them (Space works there too).</summary>
+    public static string PauseKeys => $"{Name(GameAction.Pause)}/Space";
+
     /// <summary>Its keyboard input's name, as hints show it ("—" when none).</summary>
     public static string Name(GameAction action) =>
         bound(action).Where(static input => input.Kind == SdlInputKind.Key).Select(SdlApplication.Describe).FirstOrDefault() ?? "—";

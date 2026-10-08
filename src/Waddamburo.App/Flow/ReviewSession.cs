@@ -117,7 +117,7 @@ internal sealed class ReviewSession : IDisposable
     }
 
     /// <summary>
-    /// One display frame. Space pauses, up/down change the speed, the wheel seeks 1 s a notch, held
+    /// One display frame. Pause (or Space) plays and pauses, up/down change the speed, the wheel seeks 1 s a notch, held
     /// left/right scrub (<paramref name="keysEnabled"/> false: a menu has them). Playing on, the judgements
     /// passed show as they happened; any other move jumps to the baked state, going back from fresh lanes.
     /// </summary>
@@ -129,7 +129,7 @@ internal sealed class ReviewSession : IDisposable
             foreach (var press in keys.Presses)
                 switch (press.Key)
                 {
-                    case var key when key == GameActions.Key(GameAction.Pause): Clock.TogglePause(); break;
+                    case var key when key == GameActions.Key(GameAction.Pause) || key == SdlKeyboardKey.Space: Clock.TogglePause(); break;
                     case SdlKeyboardKey.WheelUp: Clock.SeekBy(TimeSpan.FromSeconds(-1)); break;
                     case SdlKeyboardKey.WheelDown: Clock.SeekBy(TimeSpan.FromSeconds(1)); break;
                     case SdlKeyboardKey.Up: Clock.Faster(); break;

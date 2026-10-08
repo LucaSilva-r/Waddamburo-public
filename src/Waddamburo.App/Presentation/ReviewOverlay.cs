@@ -7,13 +7,13 @@ namespace Waddamburo.App.Presentation;
 
 /// <summary>
 /// A reviewed play's bar along the bottom of the screen: how far it is (a progress line), the time,
-/// the speed and whether it is paused, and the keys. Only the small time label changes as it plays
-/// (once a second); the rest is drawn once and cached. Training adds its loop's marks, the last attempt
+/// the speed and whether it is paused, and the keys. Only the time changes as it plays (once a second,
+/// drawn from cached glyphs); the rest is drawn once and cached. Training adds its loop's marks, the last attempt
 /// and its own keys.
 /// </summary>
 internal sealed class ReviewOverlay(OverlayPainter painter)
 {
-    private const float Top = 672, Height = 48, Margin = 16;
+    private const float Top = 672, Height = 48, Margin = 16, ClockCell = 13;
 
     public IEnumerable<RenderQuad> Quads(ReviewClock review, TrainingSession? training = null)
     {
@@ -25,13 +25,18 @@ internal sealed class ReviewOverlay(OverlayPainter painter)
             painter.Rect(0, Top, OverlayPainter.StageWidth, Height, new RenderColor(0, 0, 0, 0.6f)),
             painter.Rect(0, Top, OverlayPainter.StageWidth, 4, new RenderColor(1, 1, 1, 0.2f)),
             painter.Rect(0, Top, OverlayPainter.StageWidth * Math.Clamp(done, 0, 1), 4, new RenderColor(1, 0.75f, 0.2f, 1)),
-            painter.Text($"{clock(review.Position)} / {clock(review.End)}", Margin, centre, 190, 26, anchor: 0),
             painter.Text($"{review.Speed:0.##}x", Margin + 200, centre, 70, 26, anchor: 0),
         };
+        // The time a character at a time: each glyph is drawn once and cached, where the whole label was
+        // a new texture every second (a visible hitch at 4K).
+        var time = $"{clock(review.Position)} / {clock(review.End)}";
+        for (var index = 0; index < time.Length; index++)
+            if (time[index] != ' ')
+                quads.Add(painter.Text(time[index].ToString(), Margin + (index + 0.5f) * ClockCell, centre, ClockCell, 26));
         float at(TimeSpan time) => OverlayPainter.StageWidth * (float)Math.Clamp((time - review.Start) / length, 0, 1);
         if (training is null)
         {
-            quads.Add(painter.Text(T("review.keys", GameActions.Name(GameAction.Pause), GameActions.Name(GameAction.Practise)), OverlayPainter.StageWidth - Margin, centre, 760, 24, anchor: 1, tint: (200, 205, 215)));
+            quads.Add(painter.Text(T("review.keys", GameActions.PauseKeys, GameActions.Name(GameAction.Practise)), OverlayPainter.StageWidth - Margin, centre, 760, 24, anchor: 1, tint: (200, 205, 215)));
             if (review.Paused)
                 quads.Add(painter.Text(T("review.paused"), Margin + 280, centre, 160, 26, anchor: 0, tint: (255, 205, 80)));
             return quads;
@@ -45,7 +50,7 @@ internal sealed class ReviewOverlay(OverlayPainter painter)
         var status = training.LastAttempt is var (great, good, miss) ? T("training.last", great, good, miss)
             : review.Paused ? T("review.paused") : T("training.playing");
         quads.Add(painter.Text(status, Margin + 280, centre, 220, 24, anchor: 0, tint: (255, 205, 80)));
-        quads.Add(painter.Text(T(training.PauseAfterAttempt ? "training.keys_pause" : "training.keys_loop", GameActions.Name(GameAction.Pause), GameActions.Name(GameAction.NoteJump),
+        quads.Add(painter.Text(T(training.PauseAfterAttempt ? "training.keys_pause" : "training.keys_loop", GameActions.PauseKeys, GameActions.Name(GameAction.NoteJump),
                 GameActions.Name(GameAction.LoopStart), GameActions.Name(GameAction.LoopEnd), GameActions.Name(GameAction.AfterPass)),
             OverlayPainter.StageWidth - Margin, centre, 740, 22, anchor: 1, tint: (200, 205, 215)));
         return quads;

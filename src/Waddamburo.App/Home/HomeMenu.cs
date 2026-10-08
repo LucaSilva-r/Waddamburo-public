@@ -307,14 +307,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         guide("guide.mine", GameAction.Leaderboard),
         guide("guide.shinuchi", GameAction.ShinuchiBoard),
         guide("guide.watch", GameAction.Confirm),
-        guide("guide.practise", GameAction.Practise),
         new(T("guide.replay")),
-        guide("guide.pause", GameAction.Pause),
+        guide("guide.pause", GameActions.PauseKeys, GameActions.Gamepad(GameAction.Pause)),
         guide("guide.scrub", "← →", "D-pad"),
         guide("guide.speed", "↑ ↓", "D-pad"),
         guide("guide.practise_here", GameAction.Practise),
         new(T("guide.practice")),
-        guide("guide.pause", GameAction.Pause, " (Back while playing)"),
+        guide("guide.pause", GameActions.PauseKeys, $"{GameActions.Gamepad(GameAction.Pause)} (Back while playing)"),
         guide("guide.loop", $"{GameActions.Name(GameAction.LoopStart)} / {GameActions.Name(GameAction.LoopEnd)}",
             $"{GameActions.Gamepad(GameAction.LoopStart)} / {GameActions.Gamepad(GameAction.LoopEnd)}"),
         guide("guide.clear_loop", $"{GameActions.Name(GameAction.LoopStart)} + {GameActions.Name(GameAction.LoopEnd)}",
@@ -610,7 +609,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         _calibrationOffered = songSelect;
         var restart = reviewing ? "menu.play_song" : "menu.restart_song";
         _choices = gameplay ? replayable
-                ? ["menu.resume", "menu.instant_replay", restart, "menu.settings", "menu.song_select"]
+                ? ["menu.resume", restart, "menu.instant_replay", "menu.settings", "menu.song_select"]
                 : ["menu.resume", restart, "menu.settings", "menu.song_select"]
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
         IsOpen = true;

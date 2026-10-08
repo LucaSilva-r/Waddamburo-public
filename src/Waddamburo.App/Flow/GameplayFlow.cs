@@ -115,20 +115,16 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _review = !Shell.Arcade.Home || Shell.Headless ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
-            : request.Training && request.Players.Length == 1
-                ? reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : Shell.Options.Autoplay
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
-        // Practice ends no song: no clear / fail banner (its attempts start the gauge from empty).
-        Shell.Gameplay.EndBanner = !request.Training;
-        _training = request.Training && _review is not null ? new TrainingSession(Shell, _review, _charts[0]) : null;
-        _voided = request.Review is not null || request.Training;
+        Shell.Gameplay.EndBanner = true;
+        _training = null;
+        _voided = request.Review is not null;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.WatchAs(_side, watched);
         _autoplay = Shell.Options.Autoplay && _review is null ? new GameplayAutoplay(_charts, _side) : null;
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
-        _training?.Begin();
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
@@ -144,7 +140,6 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>What a replay or practice says in place of the song's subtitle and number (null: a play).</summary>
     public static string? ModeText(PlayRequest request) =>
         request.Review is { } review ? review.Player is { } player ? Strings.T("mode.replay_of", player.DisplayName) : Strings.T("mode.replay")
-        : request.Training ? Strings.T("mode.practice")
         : null;
 
     // song_info's corner says so after the song started as a play.
@@ -254,7 +249,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public bool Restart()
     {
         if (_lastRequest is not { } last || _charts.Length == 0) return false;
-        var request = last with { Review = null, Training = false, Seed = null };
+        var request = last with { Review = null, Seed = null };
         Shell.StopWatching();
         if (_paused) SetPaused(false);
         if (_music is { } music)
@@ -318,7 +313,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>
     /// Turns the song under way into a review of what was played: paused where the player paused, and
-    /// it cannot go further. The play is void (never saved); Retry plays the song again.
+    /// it cannot go further; with no drum hit yet, straight into practice from there. The play is void
+    /// (never saved); Retry plays the song again.
     /// </summary>
     public void StartInstantReplay()
     {
@@ -329,11 +325,24 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
         _music = null;
         _voided = true;
-        var review = reviewOf(request, [.. Shell.Gameplay.Replays.Select(static replay => (IReadOnlyList<TaikoReplayInput>)[.. replay.Inputs])], at, _inputOffset);
+        // Taken before the review: showing it restarts the lanes, with empty replays.
+        IReadOnlyList<TaikoReplayInput>[] played = [.. Shell.Gameplay.Replays.Select(static replay => (IReadOnlyList<TaikoReplayInput>)[.. replay.Inputs])];
+        var review = reviewOf(request, played, at, _inputOffset);
         review.Clock.Seek(at);
         review.Clock.SetPaused(true);
         review.ShowFresh(at);
         _review = review;
+        // No note reached yet (hit or missed; drum presses alone judge nothing): there is nothing to
+        // watch, so the player lands in practice there.
+        // (The bake runs the whole song, so the notes after the pause are in it as misses: only what
+        // happened up to the pause counts; events are in judgement time.)
+        var judgedUntil = at - _inputOffset;
+        if (review.Timelines.All(timeline => timeline.LastEventAt(judgedUntil) < 0))
+        {
+            startPractice();
+            SetPaused(false);
+            return;
+        }
         showMode(Strings.T("mode.replay"));
         SetPaused(false);
         Console.WriteLine($"Instant replay of the first {at.TotalSeconds:F1} s (the play is void).");

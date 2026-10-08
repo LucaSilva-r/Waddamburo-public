@@ -75,7 +75,7 @@ internal sealed class TrainingSession
                     case SdlKeyboardKey.Up: Clock.Faster(); break;
                     case SdlKeyboardKey.Down: Clock.Slower(); break;
                 }
-            if (pressed(GameAction.Pause))
+            if (pressed(GameAction.Pause) || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.Space))
                 Clock.TogglePause();
             // The loop's two keys together clear it.
             if (pressed(GameAction.LoopStart) && GameActions.Down(keys, GameAction.LoopEnd)

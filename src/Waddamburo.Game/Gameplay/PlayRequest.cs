@@ -124,9 +124,6 @@ public sealed record PlayRequest
     /// same; null: a fresh one.
     /// </summary>
     public int? Seed { get; init; }
-
-    /// <summary>Home: the song is practised (loops of live attempts from any point) rather than played; never saved.</summary>
-    public bool Training { get; init; }
 }
 
 /// <summary>
