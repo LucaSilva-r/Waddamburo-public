@@ -38,7 +38,10 @@ internal sealed class CostumeIconTextures(SdlApplication application, string dat
         if (type < 0 || type >= SetNames.Length || icons(type) is not { } set || (uint)id >= (uint)set.Count)
             return null;
         var icon = set[id];
-        return _uploaded[(type, id)] = _application.UploadRgba8(icon.Width, icon.Height, NutTextureDecoder.DecodeRgba8(icon));
+        var rgba = NutTextureDecoder.DecodeRgba8(icon);
+        // The icons (not the name plates) are pixel art: whole pixels, smoothed only in between.
+        var (width, height, pixels) = type < 3 ? PixelArt.Enlarge(icon.Width, icon.Height, rgba) : (icon.Width, icon.Height, rgba);
+        return _uploaded[(type, id)] = _application.UploadRgba8((uint)width, (uint)height, pixels);
     }
 
     private List<NutTexture>? icons(int type)

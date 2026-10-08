@@ -83,7 +83,7 @@ internal sealed class TextureBake
         {
             var archives = usedMovies(tool).Concat(knownMovies(lumenRoot))
                 .Distinct()
-                .Where(movie => File.Exists(Path.Combine(lumenRoot, movie.Archive)))
+                .Where(movie => File.Exists(Path.Combine(lumenRoot, movie.Archive)) && !PixelArt.IsArchive(movie.Archive))
                 .GroupBy(static movie => movie.Archive)
                 .ToArray();
             ArchivesTotal = archives.Length;

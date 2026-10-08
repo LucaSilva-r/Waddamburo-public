@@ -29,15 +29,15 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// <summary>Called with every movie a scene loads (archive, movie); any thread.</summary>
     public Action<string, string>? Loaded { get; set; }
 
-    /// <summary>Called with each movie once decoded, before any upload, on the decoding thread.</summary>
-    public Action<LumenMovieContent>? Decoded { get; set; }
+    /// <summary>Called with each movie once decoded (archive, movie), before any upload, on the decoding thread.</summary>
+    public Action<string, LumenMovieContent>? Decoded { get; set; }
 
     /// <summary>A movie a load reuses whole instead of decoding it (a prefetch, being fresher, wins).</summary>
     public Func<string, string, LumenMovieContent?>? Reuse { get; set; }
 
-    private LumenMovieContent decoded(LumenMovieContent content)
+    private LumenMovieContent decoded(string archiveId, LumenMovieContent content)
     {
-        Decoded?.Invoke(content);
+        Decoded?.Invoke(archiveId, content);
         return content;
     }
 
@@ -53,7 +53,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var opened = Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archive.Key)), _limits));
             foreach (var movie in archive)
                 fresh[movie] = opened.ContinueWith(
-                    task => decoded(LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits)),
+                    task => decoded(archive.Key, LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits)),
                     CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         }
         _prefetched = fresh;
@@ -123,7 +123,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                 _archives.Add(archivePath, archive);
             }
             var read = profile ? Stopwatch.GetTimestamp() : 0;
-            var content = owner.decoded(LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits));
+            var content = owner.decoded(archiveId, LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits));
             if (profile)
             {
                 var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length);
