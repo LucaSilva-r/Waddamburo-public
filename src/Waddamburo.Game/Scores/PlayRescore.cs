@@ -10,7 +10,12 @@ namespace Waddamburo.Game.Scores;
 public static class PlayRescore
 {
     /// <param name="chart">The chart as stored (<see cref="ChartHash.Deserialize"/>), before the play's options.</param>
+    /// <param name="course">The chart's course (its soul gauge's rates).</param>
+    /// <param name="options">The play's options (random notes, 真打 scoring...).</param>
+    /// <param name="seed">The random options' seed (null: none drawn).</param>
+    /// <param name="replay">The play's drum inputs.</param>
     /// <param name="windows">The judgement windows the game uses for it (osu! charts play with Oni's).</param>
+    /// <param name="strongSecondHitWindow">How soon a big note's second hit must follow the first.</param>
     public static TaikoPlayResult Score(PlayableChart chart, TaikoCourse course, TaikoPlayOptions options, int? seed,
         TaikoReplay replay, TaikoJudgementWindows windows, TimeSpan strongSecondHitWindow)
     {
