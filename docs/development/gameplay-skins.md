@@ -4,6 +4,10 @@ A gameplay skin is one of the game's themed `enso_<name>` archives in
 `USRDIR/data/lumendata/packed`: its own background, dancers, Don-chan backdrop, roll
 character and so on. The game picks one per stock song. Custom charts get one in this order:
 
+0. The player's override (Settings > Gameplay skin, `gameplay_skin` in config.cfg): `original` plays
+   every song with the regular gameplay, a skin's name (from the table below) plays every song with
+   that skin. `auto`, the default, or a name the data lacks, follows the order below. It applies to
+   stock songs too; Waiwai keeps its own scene.
 1. The chart's `SCENEPRESET:` header (OpenTaiko's), e.g. `SCENEPRESET:IMAS`. Several names may
    be listed with commas; the first one that matches wins. A name matches the archive with or
    without its `enso_` prefix, ignoring case and punctuation: `IMAS`, `imas`, `Imas` and

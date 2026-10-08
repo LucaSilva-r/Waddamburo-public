@@ -51,6 +51,7 @@ internal sealed class HomeControls : IDisposable
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
             shell.Options.TjaRoot, () => shell.Upscale?.CachedCount, shell.Application);
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
+        HomeMenu.Skins = shell.Skins.Names;
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
         // A cabinet has the menu too (outside songs): its operator's settings.

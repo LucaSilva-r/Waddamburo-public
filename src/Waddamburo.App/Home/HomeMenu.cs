@@ -112,6 +112,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     private static readonly int[] FpsCaps = [0, 60, 120, 144, 165, 240, 360, 480, 1000];
 
+    /// <summary>The gameplay skins in the player's data, by name (set once by the host).</summary>
+    public static IReadOnlyList<string> Skins { get; set; } = [];
+
+    // The Gameplay Skin row's value: 0 automatic, 1 original, then each skin (a name the data lacks shows as automatic).
+    private static int skinIndex(ArcadeSettings s) => s.GameplaySkin.ToLowerInvariant() switch
+    {
+        "auto" => 0,
+        "original" => 1,
+        var name => Skins.Select(static skin => skin.ToLowerInvariant()).ToList().IndexOf(name) is var index and >= 0 ? index + 2 : 0,
+    };
+
     private static readonly Row[] Rows_ =
     [
         new(T("section.language")),
@@ -128,6 +139,16 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
+        new(Setting: new(T("settings.gameplay_skin"), skinIndex,
+            static (s, v) => s with { GameplaySkin = (v = Math.Min(v, Skins.Count + 1)) switch { 0 => "auto", 1 => "original", _ => Skins[v - 2] } },
+            static (value, step) => Math.Min(value + Math.Sign(step), Skins.Count + 1), 0,
+            static value => value switch
+            {
+                0 => T("settings.gameplay_skin.auto"),
+                1 => T("settings.gameplay_skin.original"),
+                _ => value - 2 < Skins.Count ? Skins[value - 2] : T("settings.gameplay_skin.auto"),
+            },
+            int.MaxValue, Hint: T("settings.gameplay_skin.hint"))),
         // Cache folder: this PC's user cache (the default; follows the user wherever the game is), the game
         // folder, or a path written in config.cfg (shown as custom, kept when chosen again).
         new(Setting: new(T("settings.cache_folder"),

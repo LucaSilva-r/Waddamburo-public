@@ -57,7 +57,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         _prefetch = null;
         _composing = Task.Run(() =>
         {
-            var theme = waiwai ? null : Shell.Skins.Resolve(song.Descriptor, category);
+            var theme = waiwai ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
             var scene = waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
                 : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers);
             return new Prefetched(request.Song, side, twoPlayers, waiwai, theme, scene);
@@ -295,7 +295,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         _prefetch = null;
         // Every song gets its themed skin or a fresh random original mix.
         var theme = prefetched is not null ? prefetched.Theme : waiwai is not null ? null
-            : Shell.Skins.Resolve(song.Descriptor, category);
+            : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
         if (Shell.Sounds?.Gameplay is { } sounds)
         {
             sounds.Waiwai = waiwai is not null;

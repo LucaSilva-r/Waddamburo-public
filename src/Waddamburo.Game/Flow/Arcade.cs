@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 19;
+    public const int CurrentVersion = 20;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -204,6 +204,14 @@ public sealed record ArcadeSettings
         button_confirm = return, pad1:south
 
         """,
+        """
+        # gameplay_skin (also in the Settings menu): auto = each song's own theme (its SCENEPRESET, the stock
+        # song of the same title, miku for Vocaloid, else the regular gameplay); original = the regular gameplay
+        # for every song; a skin's name (e.g. miku, imas, toho: docs/development/gameplay-skins.md) = that skin
+        # for every song.
+        gameplay_skin = auto
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -256,6 +264,12 @@ public sealed record ArcadeSettings
 
     /// <summary>Song select shows Oni at once instead of after repeated right-rim hits (the original).</summary>
     public bool ShowOni { get; init; } = true;
+
+    /// <summary>
+    /// The gameplay skin for every song: "auto" (each song's own theme), "original" (the regular gameplay) or
+    /// a skin's name (an enso_ archive, as SCENEPRESET names them).
+    /// </summary>
+    public string GameplaySkin { get; init; } = "auto";
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
     public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
@@ -601,6 +615,7 @@ public sealed record ArcadeSettings
                 "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
+                "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
                 "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
                 {
                     "off" => TimingIndicator.Off,
@@ -684,6 +699,7 @@ public sealed record ArcadeSettings
             ["drum_debounce_ms"] = settings.DrumDebounceMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
+            ["gameplay_skin"] = settings.GameplaySkin,
             ["timing_indicator"] = settings.TimingIndicator switch
             {
                 TimingIndicator.Off => "off",

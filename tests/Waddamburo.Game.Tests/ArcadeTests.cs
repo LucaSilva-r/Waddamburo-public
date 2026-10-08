@@ -123,6 +123,16 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void TheGameplaySkinDefaultsToAutoAndOlderFilesGainIt()
+    {
+        Assert.Equal("auto", ArcadeSettings.Parse("").GameplaySkin);
+        Assert.Equal("imasCG", ArcadeSettings.Parse("gameplay_skin = imasCG").GameplaySkin);
+        var upgraded = ArcadeSettings.Upgrade("config_version = 19\n");
+        Assert.Equal(("auto", ArcadeSettings.CurrentVersion), (ArcadeSettings.Parse(upgraded).GameplaySkin, ArcadeSettings.Parse(upgraded).Version));
+        Assert.Contains("gameplay_skin = auto", upgraded);
+    }
+
+    [Fact]
     public void DisplaySettingsParseAndSaveBack()
     {
         var settings = ArcadeSettings.Parse("fullscreen_mode = exclusive\nfullscreen_resolution = 1920x1080\nrefresh_rate = 144\nvsync = false\nletterbox_size = 80");

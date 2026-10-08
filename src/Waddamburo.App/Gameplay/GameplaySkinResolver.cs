@@ -24,6 +24,8 @@ internal sealed class GameplaySkinResolver
         ["butto"] = "enso_buttoburst",
     };
     private static readonly string[] NotStandardSkins = ["taiko", "dojo", "original"];
+    // The enso_ archives that are other modes' scenes, not themes (gameplay-skins.md).
+    private static readonly string[] NotSkins = ["dojo", "tokkun", "waiwai", "waiwai_effect", "result", "system", "gudetama", "original"];
 
     private readonly string _lumenRoot;
     private readonly Dictionary<string, string> _partsByTitle = new(StringComparer.Ordinal);
@@ -38,6 +40,9 @@ internal sealed class GameplaySkinResolver
         if (Directory.Exists(lumenRoot))
             foreach (var directory in Directory.EnumerateDirectories(lumenRoot, "enso_*"))
                 _partsByPreset.TryAdd(normalize(Path.GetFileName(directory)["enso_".Length..]), Path.GetFileName(directory)["enso_".Length..]);
+        // (Before the aliases below: one name per archive.)
+        Names = [.. _partsByPreset.Values.Where(static parts => !NotSkins.Contains(parts, StringComparer.OrdinalIgnoreCase))
+            .Order(StringComparer.OrdinalIgnoreCase)];
         foreach (var parts in ArchiveNames.Keys)
             _partsByPreset[normalize(parts)] = parts;
         if (musicInfoPath is null || !File.Exists(musicInfoPath)) return;
@@ -46,12 +51,18 @@ internal sealed class GameplaySkinResolver
                 _partsByTitle.TryAdd(normalize(name), parts);
     }
 
-    public GameplaySceneComposition.ThemedSkin? Resolve(SongDescriptor song, string category)
+    /// <summary>The skins the player can choose for every song (the user's enso_ archives that are themes), by name.</summary>
+    /// <remarks>ponytail: names only, not checked to load (enso_mh3G is listed, and plays as the regular gameplay).</remarks>
+    public IReadOnlyList<string> Names { get; }
+
+    /// <param name="choice">The player's setting (ArcadeSettings.GameplaySkin): "auto", "original" or a skin's
+    /// name for every song; a name the data does not have counts as auto.</param>
+    public GameplaySceneComposition.ThemedSkin? Resolve(SongDescriptor song, string category, string choice = "auto")
     {
-        var parts = song.ScenePresets.Select(preset => normalize(preset))
-            .Select(preset => _partsByPreset.GetValueOrDefault(preset)
-                ?? (preset.StartsWith("enso", StringComparison.Ordinal) ? _partsByPreset.GetValueOrDefault(preset[4..]) : null))
-            .FirstOrDefault(value => value is not null)
+        if (normalize(choice) == "original")
+            return null;
+        var parts = lookup(choice)
+            ?? song.ScenePresets.Select(lookup).FirstOrDefault(value => value is not null)
             ?? new[] { song.Title.Japanese, song.Title.Primary, song.Title.English }
             .OfType<string>()
             .Select(title => _partsByTitle.GetValueOrDefault(normalize(title)))
@@ -59,6 +70,14 @@ internal sealed class GameplaySkinResolver
             ?? (normalize(category) is "vocaloid" or "ボーカロイド" ? "miku" : null);
         if (parts is null || NotStandardSkins.Contains(parts)) return null;
         return _skins.GetOrAdd($"{ArchiveNames.GetValueOrDefault(parts, "enso_" + parts)}/packeddata.ddp", load);
+    }
+
+    // A skin's parts set by any of its names (with or without enso_, case and punctuation ignored).
+    private string? lookup(string name)
+    {
+        var key = normalize(name);
+        return _partsByPreset.GetValueOrDefault(key)
+            ?? (key.StartsWith("enso", StringComparison.Ordinal) ? _partsByPreset.GetValueOrDefault(key[4..]) : null);
     }
 
     // A skin is usable when it has the standard parts and every movie loads (enso_mh3G's Don-chan
