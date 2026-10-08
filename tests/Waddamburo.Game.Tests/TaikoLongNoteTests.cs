@@ -13,7 +13,8 @@ public sealed class TaikoLongNoteTests
         var session = create(kind);
         Assert.Equal(TaikoInputResult.Ignored, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(0.99)));
         Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1)));
-        Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(TaikoInputAction.RightKa, TimeSpan.FromSeconds(1)));
+        Assert.Equal(TaikoInputResult.RollHitCapped, session.SubmitInput(TaikoInputAction.RightKa, TimeSpan.FromSeconds(1)));
+        Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(TaikoInputAction.RightKa, TimeSpan.FromSeconds(1.02)));
         Assert.Equal(2, session.GetLongNoteProgress(0).Hits);
         Assert.False(session.IsComplete);
         Assert.Equal(TaikoInputResult.Ignored, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(2)));

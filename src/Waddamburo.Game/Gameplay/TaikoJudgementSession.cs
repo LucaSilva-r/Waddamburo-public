@@ -25,6 +25,8 @@ public enum TaikoInputResult
     StrongHitCompleted,
     LongNoteHit,
     BalloonPopped,
+    /// <summary>A roll hit in a 1/60 s frame that already counted one: taken by the roll, not scored.</summary>
+    RollHitCapped,
 }
 
 public readonly record struct TaikoJudgementWindows
@@ -115,6 +117,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private readonly bool[] _strongHits;
     private readonly bool[] _skipped;
     private readonly int[] _longHits;
+    private readonly long[] _lastRollFrame;
     private int _nextLongIndex;
     private TimeSpan _currentTime = TimeSpan.MinValue;
     private int _nextNoteIndex;
@@ -148,6 +151,8 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         _strongHits = new bool[chart.NoteCount];
         _skipped = new bool[chart.NoteCount];
         _longHits = new int[chart.LongNotes.Length];
+        _lastRollFrame = new long[chart.LongNotes.Length];
+        Array.Fill(_lastRollFrame, -1L);
     }
 
     public TimeSpan CurrentTime => _currentTime;
@@ -289,6 +294,16 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         var note = _chart.LongNotes[_nextLongIndex];
         if (time < note.StartTime || time >= note.EndTime || (note.IsBalloon && !isDon(action)))
             return TaikoInputResult.Ignored;
+        // Rolls count at most 60 hits a second of song time (Green's top speed), at any training speed:
+        // 1/60 s frames from the roll's start, the first hit in each frame scores, the rest are taken
+        // but not counted.
+        if (!note.IsBalloon)
+        {
+            var frame = (time - note.StartTime).Ticks * 60 / TimeSpan.TicksPerSecond;
+            if (frame == _lastRollFrame[_nextLongIndex])
+                return TaikoInputResult.RollHitCapped;
+            _lastRollFrame[_nextLongIndex] = frame;
+        }
         _longHits[_nextLongIndex]++;
         var progress = GetLongNoteProgress(_nextLongIndex) with { LastAction = action };
         LongNoteHit?.Invoke(progress);

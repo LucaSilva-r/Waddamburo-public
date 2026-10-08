@@ -149,9 +149,8 @@ internal sealed class ReviewSession : IDisposable
         Clock.Update(_frame.Elapsed, scrub);
         _frame.Restart();
         var time = Clock.Position;
-        // ponytail: a hit's time within the frame is taken in real time, not scaled by a slowed speed (a few ms).
         if (live is { } keys)
-            _shell.Gameplay.Advance(keys, time - _inputOffset);
+            _shell.Gameplay.Advance(keys, time - _inputOffset, Clock.Speed);
         else if (time < _shownAt)
             ShowFresh(time);
         else

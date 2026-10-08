@@ -162,11 +162,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane.Review(time, play);
     }
 
-    public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
+    /// <param name="clockSpeed">Chart time per real second (training's speed): a hit's time within the frame is scaled to chart time.</param>
+    public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, double clockSpeed = 1)
     {
         var debounce = drumDebounce?.Invoke() ?? TimeSpan.Zero;
         foreach (var lane in _lanes)
-            lane.Advance(keyboard, chartTime, debounce);
+            lane.Advance(keyboard, chartTime, debounce, clockSpeed);
         _stage?.Update(chartTime);
     }
 
@@ -596,7 +597,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
         }
 
-        public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default)
+        public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default, double clockSpeed = 1)
         {
             if (_stopped) return;
             foreach (var press in keyboard.Presses)
@@ -621,7 +622,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 }
                 if (!accepted)
                     continue;
-                var eventTime = chartTime - (keyboard.Timestamp - press.Timestamp);
+                var eventTime = chartTime - (keyboard.Timestamp - press.Timestamp) * clockSpeed;
                 eventTime = eventTime < _session.CurrentTime ? _session.CurrentTime : eventTime;
                 eventTime = eventTime > chartTime ? chartTime : eventTime;
                 _presentation.Hit(hit);

@@ -174,6 +174,40 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
+    public void ARollCountsOneHitPerSixtiethOfASecond()
+    {
+        var session = createLongSession([],
+            new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Roll, 0));
+        var counted = 0;
+        session.LongNoteHit += _ => counted++;
+        // 4 hits per frame for half a second (1 ms apart, no two at the same instant).
+        for (var ms = 0; ms < 500; ms++)
+            session.SubmitInput(ms % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightKa,
+                TimeSpan.FromMilliseconds(ms));
+
+        Assert.Equal(30, counted);
+        Assert.Equal(TaikoInputResult.RollHitCapped,
+            session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromMilliseconds(499.5)));
+        Assert.Equal(TaikoInputResult.LongNoteHit,
+            session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromMilliseconds(500)));
+    }
+
+    [Fact]
+    public void ASlowedTrainingClockStillCapsARollAtSixtyHitsASecondOfSongTime()
+    {
+        var session = createLongSession([],
+            new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Roll, 0));
+        var counted = 0;
+        session.LongNoteHit += _ => counted++;
+        // At 0.1x the 1 s roll lasts 10 real seconds: a hit every real millisecond is 10,000 hits.
+        for (var tenths = 0; tenths < 10_000; tenths++)
+            session.SubmitInput(tenths % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightKa,
+                TimeSpan.FromTicks(tenths * 1000));
+
+        Assert.Equal(60, counted);
+    }
+
+    [Fact]
     public void ANoteBeforeARollCanStillBeHitLateOnceTheRollStarts()
     {
         var session = createLongSession(
