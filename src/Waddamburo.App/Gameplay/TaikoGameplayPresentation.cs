@@ -387,7 +387,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             int great = 0, good = 0, miss = 0, maxCombo = 0;
             // Waiwai: both players share the voltage (clear at its norm).
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
-                score.RollHits + score.BalloonHits, stage?.Segments ?? gauge.FilledSegments,
+                score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
             var bannerTime = TaikoResultBanner.Time(chart);
             var bannerShown = !endBanner;

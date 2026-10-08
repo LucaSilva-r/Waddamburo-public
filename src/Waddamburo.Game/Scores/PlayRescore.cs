@@ -43,7 +43,11 @@ public static class PlayRescore
         foreach (var input in replay.Inputs.OrderBy(static input => input.Time))
             session.SubmitInput(input.Action, input.Time < session.CurrentTime ? session.CurrentTime : input.Time);
         session.AdvanceTo(TimeSpan.MaxValue);
-        return new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo, score.RollHits + score.BalloonHits,
-            gauge.FilledSegments, gauge.State != TaikoGaugeState.BelowClear) { Options = options };
+        return new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo, score.RollHits,
+            gauge.FilledSegments, gauge.State != TaikoGaugeState.BelowClear)
+        {
+            Options = options,
+            RollMax = TaikoJudgementSession.MaxRollHits(played),
+        };
     }
 }

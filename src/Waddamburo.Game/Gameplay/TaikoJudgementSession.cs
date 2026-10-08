@@ -162,6 +162,18 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     public event Action<TaikoNoteJudgement>? Judged;
     public event Action<TaikoLongNoteProgress>? LongNoteHit;
 
+    /// <summary>
+    /// The most hits a chart's drumrolls can count (the 1/60 s frames they last; balloons and kusudama
+    /// are not counted).
+    /// </summary>
+    public static int MaxRollHits(PlayableChart chart)
+    {
+        ArgumentNullException.ThrowIfNull(chart);
+        // A hit counts at time < EndTime, in frame (time - StartTime) * 60 s: frames 0 up to the one before the end.
+        return chart.LongNotes.Where(static note => !note.IsBalloon)
+            .Sum(static note => (int)(((note.EndTime - note.StartTime).Ticks * 60 + TimeSpan.TicksPerSecond - 1) / TimeSpan.TicksPerSecond));
+    }
+
     public TaikoLongNoteProgress GetLongNoteProgress(int index)
     {
         var note = _chart.LongNotes[index];

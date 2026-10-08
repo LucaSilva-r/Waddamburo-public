@@ -86,7 +86,8 @@ public sealed class ScoreSavingTests
             Windows, TimeSpan.FromMilliseconds(30));
 
         Assert.Equal((1, 1, 2, 2), (result.Great, result.Good, result.Miss, result.MaxCombo));
-        Assert.Equal(30 + 3, result.Rolls);
+        // Drumroll hits only (the balloon's 3 are not counted), beside the half-second roll's 30 frames.
+        Assert.Equal((30, 30), (result.Rolls, result.RollMax));
         // 1000 + Good in Go-Go (1000 / 20 * 10 * 1.2) doubled by the second hit, 30 rolls x 120, 2 x 360 + 6000.
         Assert.Equal(1000 + 1200 + 30 * 120 + 2 * 360 + 6000, result.Score);
         Assert.Equal(PlayRescore.Score(rescoreChart(), course, TaikoPlayOptions.None, null, replay, Windows,

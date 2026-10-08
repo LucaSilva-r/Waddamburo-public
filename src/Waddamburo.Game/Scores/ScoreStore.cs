@@ -99,7 +99,7 @@ public sealed record PlayRecord(
     /// The judgement and scoring rules a play was scored under. Bump when they change; older plays
     /// are rescored from their replays (leaderboards may then show only the current version).
     /// </summary>
-    public const int CurrentScoringVersion = 2;
+    public const int CurrentScoringVersion = 3;
 
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 

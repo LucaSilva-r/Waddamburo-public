@@ -2,7 +2,10 @@ using Waddamburo.Catalog;
 
 namespace Waddamburo.Game.Gameplay;
 
-/// <summary>One player's finished play, as the results screen shows it.</summary>
+/// <summary>
+/// One player's finished play, as the results screen shows it. <see cref="Rolls"/>: drumroll hits (balloon
+/// and kusudama hits are not counted, from scoring version 3).
+/// </summary>
 public sealed record TaikoPlayResult(
     TaikoCourse Course,
     long Score,
@@ -15,6 +18,10 @@ public sealed record TaikoPlayResult(
     bool Cleared)
 {
     public bool FullCombo => Cleared && Miss == 0;
+
+    /// <summary>The most drumroll hits the chart allows (<see cref="TaikoJudgementSession.MaxRollHits"/>), beside
+    /// <see cref="Rolls"/>; set by the rescorer for the score server (0 elsewhere).</summary>
+    public int RollMax { get; init; }
 
     /// <summary>The play options it was played with (真打 scores on its own scale).</summary>
     public TaikoPlayOptions Options { get; init; }

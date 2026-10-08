@@ -47,6 +47,7 @@ internal static class Rescore
                 writer.WriteNumber("miss", result.Miss);
                 writer.WriteNumber("max_combo", result.MaxCombo);
                 writer.WriteNumber("rolls", result.Rolls);
+                writer.WriteNumber("roll_max", result.RollMax); // the chart's, beside the play's drumroll hits
                 writer.WriteNumber("gauge", result.GaugeSegments);
                 writer.WriteBoolean("cleared", result.Cleared);
                 writer.WriteNumber("scoring_version", PlayRecord.CurrentScoringVersion);
