@@ -162,6 +162,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane.Review(time, play);
     }
 
+    /// <param name="keyboard">The frame's input, its presses with their timestamps.</param>
+    /// <param name="chartTime">The chart time the lanes are at now.</param>
     /// <param name="clockSpeed">Chart time per real second (training's speed): a hit's time within the frame is scaled to chart time.</param>
     public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, double clockSpeed = 1)
     {

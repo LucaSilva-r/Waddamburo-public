@@ -62,8 +62,8 @@ internal sealed class OverlayPainter(SdlApplication application, string fontPath
             if (!_pending.TryGetValue(key, out var drawing))
                 _pending[key] = drawing = Task.Run(draw);
             if (!drawing.IsCompleted)
-                return slot is not null && _slots.TryGetValue(slot, out var previous) && _cache.ContainsKey(previous)
-                    ? Quad(_cache[previous].Texture, x - width * anchor, centreY - height / 2, width, height, new RenderColor(1, 1, 1, alpha))
+                return slot is not null && _slots.TryGetValue(slot, out var previous) && _cache.TryGetValue(previous, out var shown)
+                    ? Quad(shown.Texture, x - width * anchor, centreY - height / 2, width, height, new RenderColor(1, 1, 1, alpha))
                     : Rect(x, centreY, 0, 0, new RenderColor(0, 0, 0, 0)); // nothing yet
             _pending.Remove(key);
             if (drawing.IsCompletedSuccessfully)

@@ -55,6 +55,8 @@ internal sealed class GameplaySkinResolver
     /// <remarks>ponytail: names only, not checked to load (enso_mh3G is listed, and plays as the regular gameplay).</remarks>
     public IReadOnlyList<string> Names { get; }
 
+    /// <param name="song">The song played (its SCENEPRESET and titles).</param>
+    /// <param name="category">Its song select category (Vocaloid's default skin).</param>
     /// <param name="choice">The player's setting (ArcadeSettings.GameplaySkin): "auto", "original" or a skin's
     /// name for every song; a name the data does not have counts as auto.</param>
     public GameplaySceneComposition.ThemedSkin? Resolve(SongDescriptor song, string category, string choice = "auto")
