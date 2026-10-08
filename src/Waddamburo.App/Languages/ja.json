@@ -251,6 +251,7 @@
   "notices.source.local": "このPC",
   "notices.source.player": "{0}さんへ",
   "job.hash_library": "オンラインスコアのために曲を準備中",
+  "job.rescore_scores": "新しい採点ルールでスコアを更新中",
   "job.upload_scores": "スコアを送信中",
   "job.failed": "{0}：失敗（{1}）",
 

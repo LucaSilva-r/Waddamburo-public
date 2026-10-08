@@ -32,6 +32,7 @@ internal sealed class ScoreSync : IDisposable
         if (arcade.Server is { } realtimeServer)
             startRealtime(realtimeServer);
         Scores = (arcade.Home || cabinet) && scoresPath is not null ? new ScoreStore(scoresPath) : null;
+        rescoreInBackground();
         if (Scores is null || arcade.Server is not { } server)
             return;
         _server = server;
@@ -93,6 +94,40 @@ internal sealed class ScoreSync : IDisposable
 
     /// <summary>Scores go to a server (charts need their hashes to match its bests).</summary>
     public bool Online => _server is not null;
+
+    // Plays kept under older rules (guests' too) are scored again from their replays, as the server does.
+    private void rescoreInBackground()
+    {
+        if (Scores is not { } scores)
+            return;
+        _ = Task.Run(() =>
+        {
+            var plays = scores.OutdatedPlays(PlayRecord.CurrentScoringVersion);
+            if (plays.Count == 0)
+                return;
+            var job = Jobs.Start(Strings.T("job.rescore_scores"), plays.Count);
+            var charts = new Cli.Rescore.ChartCache();
+            var failed = 0;
+            for (var index = 0; index < plays.Count; index++)
+            {
+                job.Report(index);
+                var play = plays[index];
+                try
+                {
+                    scores.UpdateScore(play.Id, Cli.Rescore.Score(charts, play.Notes, play.Source, play.Options, play.Seed, play.Replay),
+                        PlayRecord.CurrentScoringVersion);
+                }
+                catch (Exception exception) when (Cli.Rescore.IsBadPlay(exception))
+                {
+                    // ponytail: kept as it was and tried again next start.
+                    failed++;
+                    Console.Error.WriteLine($"Warning SCORE_RESCORE: play {play.Id} not rescored ({exception.Message}).");
+                }
+            }
+            job.Complete();
+            Console.WriteLine($"Rescored {plays.Count - failed} plays under scoring version {PlayRecord.CurrentScoringVersion}.");
+        });
+    }
 
     /// <summary>
     /// Uploads a player's pending plays in the background: a cabinet uploads everyone's with its own

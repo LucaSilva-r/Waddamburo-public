@@ -36,6 +36,63 @@ public sealed class ScoreSavingTests
         Assert.NotEqual(hash, ChartHash.Compute(chart(), TaikoCourse.Hard));
     }
 
+    private static PlayableChart rescoreChart() => new(
+        new ChartKey(new SongKey(SongSourceKind.Tja, "song"), "chart"),
+        TimeSpan.FromTicks(12345),
+        TimeSpan.FromSeconds(6),
+        [
+            new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.Don),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.5), PlayableNoteKind.BigKa) { InRun = true },
+            new PlayableHitObject(TimeSpan.FromSeconds(2), PlayableNoteKind.Don),
+            new PlayableHitObject(TimeSpan.FromSeconds(5), PlayableNoteKind.BigDon, isHand: true),
+        ],
+        [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4), new ChartTimingPoint(TimeSpan.FromSeconds(2), 150.5, 3, 4)],
+        [new ChartScrollPoint(TimeSpan.Zero, 1), new ChartScrollPoint(TimeSpan.FromSeconds(1), 1.25)],
+        [new ChartEffectPoint(TimeSpan.Zero, false), new ChartEffectPoint(TimeSpan.FromSeconds(1.4), true)],
+        [new ChartBarLine(TimeSpan.Zero, true), new ChartBarLine(TimeSpan.FromSeconds(2), false)],
+        [
+            new PlayableLongNote(TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(3), PlayableLongNoteKind.Roll),
+            new PlayableLongNote(TimeSpan.FromSeconds(3.5), TimeSpan.FromSeconds(4.5), PlayableLongNoteKind.Balloon, 3),
+        ]) { Level = 8, ScoreInit = 1000, ScoreDiff = 250 };
+
+    [Fact]
+    public void AStoredChartReadsBackToTheSameHash()
+    {
+        var bytes = ChartHash.Serialize(rescoreChart(), TaikoCourse.Ura);
+        var (read, course) = ChartHash.Deserialize(bytes, SongSourceKind.OsuLazer);
+
+        Assert.Equal(TaikoCourse.Ura, course);
+        Assert.Equal(bytes, ChartHash.Serialize(read, course));
+        Assert.Equal(SongSourceKind.OsuLazer, read.Key.Song.Source);
+        Assert.True(read.HitObjects[3].IsHand);
+        Assert.Throws<InvalidDataException>(() => ChartHash.Deserialize([.. bytes, 0], SongSourceKind.Tja));
+    }
+
+    [Fact]
+    public void RescoringAReplayGivesThePlaysResult()
+    {
+        var replay = new TaikoReplay();
+        replay.Add(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        replay.Add(TaikoInputAction.LeftKa, TimeSpan.FromSeconds(1.55)); // Good, then its second hit
+        replay.Add(TaikoInputAction.RightKa, TimeSpan.FromSeconds(1.56));
+        for (var ms = 2500; ms < 3000; ms += 5) // 200 hits a second: 60 a second count
+            replay.Add(ms % 10 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightDon, TimeSpan.FromMilliseconds(ms));
+        for (var ms = 3600; ms < 3900; ms += 100)
+            replay.Add(TaikoInputAction.LeftDon, TimeSpan.FromMilliseconds(ms));
+        // The don at 2 s and the big don at 5 s pass unhit.
+        var (chart, course) = ChartHash.Deserialize(ChartHash.Serialize(rescoreChart(), TaikoCourse.Oni), SongSourceKind.Tja);
+
+        var result = PlayRescore.Score(chart, course, TaikoPlayOptions.None, null, TaikoReplay.Decode(replay.Encode()),
+            Windows, TimeSpan.FromMilliseconds(30));
+
+        Assert.Equal((1, 1, 2, 2), (result.Great, result.Good, result.Miss, result.MaxCombo));
+        Assert.Equal(30 + 3, result.Rolls);
+        // 1000 + Good in Go-Go (1000 / 20 * 10 * 1.2) doubled by the second hit, 30 rolls x 120, 2 x 360 + 6000.
+        Assert.Equal(1000 + 1200 + 30 * 120 + 2 * 360 + 6000, result.Score);
+        Assert.Equal(PlayRescore.Score(rescoreChart(), course, TaikoPlayOptions.None, null, replay, Windows,
+            TimeSpan.FromMilliseconds(30)), result);
+    }
+
     [Fact]
     public void RankingBoardPlacesAPlayOnlyWhenItBeatsThePlayersLine()
     {
@@ -71,6 +128,39 @@ public sealed class ScoreSavingTests
         var expected = played.CreateSnapshot();
         Assert.Equal(expected.Take(2).ToArray(), actual.Take(2).ToArray());
         Assert.Equal(TaikoHitResult.Miss, actual[2].Result); // wrong colour was ignored; note timed out
+    }
+
+    [Fact]
+    public void PlaysUnderOlderRulesAreListedWithTheirChartUntilRescored()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new ScoreStore(path);
+            var osu = chart(source: SongSourceKind.OsuLazer);
+            var sha = ChartHash.Compute(osu, TaikoCourse.Oni);
+            var replay = new TaikoReplay();
+            replay.Add(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+            var (old, current) = (Guid.NewGuid(), Guid.NewGuid());
+            foreach (var (id, version) in new[] { (old, PlayRecord.CurrentScoringVersion - 1), (current, PlayRecord.CurrentScoringVersion) })
+                store.Save(new PlayRecord(id, 0, sha, osu.Key, "normal", new TaikoPlayResult(TaikoCourse.Oni, 999, 3, 0, 0, 3, 50, 50, true)
+                    { Options = TaikoPlayOptions.FromBits(64) }, DateTimeOffset.UtcNow, replay.Encode()) { ScoringVersion = version, Seed = 7 },
+                    ChartUpload.From(osu, TaikoCourse.Oni, null));
+
+            var outdated = Assert.Single(store.OutdatedPlays(PlayRecord.CurrentScoringVersion));
+            Assert.Equal((old, "OsuLazer", 64, 7), (outdated.Id, outdated.Source, outdated.Options, outdated.Seed));
+            Assert.Equal(replay.Encode(), outdated.Replay);
+            Assert.Equal(Convert.FromBase64String(ChartUpload.From(osu, TaikoCourse.Oni, null).Notes), outdated.Notes);
+
+            store.UpdateScore(old, new TaikoPlayResult(TaikoCourse.Oni, 500, 1, 0, 2, 1, 0, 3, false), PlayRecord.CurrentScoringVersion);
+            Assert.Empty(store.OutdatedPlays(PlayRecord.CurrentScoringVersion));
+            Assert.Equal(500, store.PreviousBest(0, sha, current));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
     }
 
     [Fact]

@@ -251,6 +251,7 @@
   "notices.source.local": "This PC",
   "notices.source.player": "For {0}",
   "job.hash_library": "Preparing the song library for online scores",
+  "job.rescore_scores": "Updating scores to the new scoring rules",
   "job.upload_scores": "Uploading scores",
   "job.failed": "{0}: failed ({1})",
 

@@ -29,6 +29,9 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
     public int? Seed { get; init; }
 }
 
+/// <summary>A stored play to rescore: its chart's gzipped canonical notes and source, options, seed and replay.</summary>
+public sealed record OutdatedPlay(Guid Id, byte[] Notes, string? Source, int Options, int? Seed, byte[] Replay);
+
 /// <summary>
 /// A chart import: gzipped canonical notes (<see cref="ChartHash.Serialize"/>), base64, plus display metadata.
 /// Difficulty is the chart's own name where courses are not named (osu!); the osu ids link it on osu.ppy.sh.
@@ -96,7 +99,7 @@ public sealed record PlayRecord(
     /// The judgement and scoring rules a play was scored under. Bump when they change; older plays
     /// are rescored from their replays (leaderboards may then show only the current version).
     /// </summary>
-    public const int CurrentScoringVersion = 1;
+    public const int CurrentScoringVersion = 2;
 
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 
@@ -283,6 +286,57 @@ public sealed class ScoreStore : IDisposable
                     Seed = reader.IsDBNull(20) ? null : reader.GetInt32(20),
                 });
             return plays;
+        }
+    }
+
+    /// <summary>
+    /// Plays scored under older rules than <paramref name="version"/>, with what rescoring them needs: the
+    /// chart's stored notes (gzipped canonical form) and its source.
+    /// </summary>
+    public List<OutdatedPlay> OutdatedPlays(int version)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT plays.id, charts.notes, charts.source, plays.options, plays.seed, plays.replay
+                FROM plays JOIN charts ON charts.sha256 = plays.chart_sha256
+                WHERE plays.scoring_version < $version ORDER BY plays.played_at
+                """;
+            command.Parameters.AddWithValue("$version", version);
+            using var reader = command.ExecuteReader();
+            var plays = new List<OutdatedPlay>();
+            while (reader.Read())
+                plays.Add(new OutdatedPlay(Guid.Parse(reader.GetString(0)), (byte[])reader[1],
+                    reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetInt32(3),
+                    reader.IsDBNull(4) ? null : reader.GetInt32(4), (byte[])reader[5]));
+            return plays;
+        }
+    }
+
+    /// <summary>Keeps a play's numbers as rescored under <paramref name="version"/>.</summary>
+    public void UpdateScore(Guid id, TaikoPlayResult result, int version)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                UPDATE plays SET course = $course, score = $score, great = $great, good = $good, miss = $miss,
+                    max_combo = $max_combo, rolls = $rolls, gauge = $gauge, cleared = $cleared, scoring_version = $version
+                WHERE id = $id
+                """;
+            command.Parameters.AddWithValue("$id", id.ToString());
+            command.Parameters.AddWithValue("$course", (int)result.Course);
+            command.Parameters.AddWithValue("$score", result.Score);
+            command.Parameters.AddWithValue("$great", result.Great);
+            command.Parameters.AddWithValue("$good", result.Good);
+            command.Parameters.AddWithValue("$miss", result.Miss);
+            command.Parameters.AddWithValue("$max_combo", result.MaxCombo);
+            command.Parameters.AddWithValue("$rolls", result.Rolls);
+            command.Parameters.AddWithValue("$gauge", result.GaugeSegments);
+            command.Parameters.AddWithValue("$cleared", result.Cleared);
+            command.Parameters.AddWithValue("$version", version);
+            command.ExecuteNonQuery();
         }
     }
 

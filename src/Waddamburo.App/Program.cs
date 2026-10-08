@@ -9,6 +9,9 @@ using Waddamburo.Platform.Sdl.Rendering;
 
 try
 {
+    // TaikOnline's scorer: stdin to stdout, before anything that touches the console, updates or game data.
+    if (args is ["--rescore"])
+        return Rescore.Run(Console.OpenStandardInput(), Console.OpenStandardOutput());
     ReleaseConsole.Begin();
     if (SelfUpdate.HandOff(ref args))
         return 0;
