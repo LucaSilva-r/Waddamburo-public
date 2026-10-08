@@ -83,7 +83,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
         float x = (OverlayPainter.StageWidth - Width) / 2, y = (OverlayPainter.StageHeight - Height) / 2;
         return
         [
-            painter.Panel(x, y, Width, Height, (254, 205, 1), (0, 0, 0), radius: 18, outlineWidth: 4),
+            .. painter.Panel(x, y, Width, Height, (254, 205, 1), (0, 0, 0), radius: 18, outlineWidth: 4),
             painter.Text(text, OverlayPainter.StageWidth / 2, OverlayPainter.StageHeight / 2, Width - 48, Height - 36),
         ];
     }

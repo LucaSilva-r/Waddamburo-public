@@ -164,12 +164,12 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
     {
         if (!IsOpen || _song is null)
             return [];
-        var quads = new List<RenderQuad>
-        {
+        List<RenderQuad> quads =
+        [
             painter.Rect(0, 0, OverlayPainter.StageWidth, OverlayPainter.StageHeight, new RenderColor(0, 0, 0, 0.55f)),
-            painter.Panel(Left, Top, Width, Height, (30, 31, 38), (90, 92, 104), radius: 16),
+            .. painter.Panel(Left, Top, Width, Height, (30, 31, 38), (90, 92, 104), radius: 16),
             painter.Text(_song.Descriptor.Title.English ?? _song.Descriptor.Title.Primary, Left + 30, Top + 34, Width - 60, 36, anchor: 0),
-        };
+        ];
         // Difficulties, then leaderboard / own plays.
         var tabWidth = (Width - 60) / _charts.Length;
         for (var index = 0; index < _charts.Length; index++)

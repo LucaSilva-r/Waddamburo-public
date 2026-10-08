@@ -7,13 +7,13 @@ namespace Waddamburo.App.Presentation;
 
 /// <summary>
 /// A reviewed play's bar along the bottom of the screen: how far it is (a progress line), the time,
-/// the speed and whether it is paused, and the keys. Only the time changes as it plays (once a second,
-/// drawn from cached glyphs); the rest is drawn once and cached. Training adds its loop's marks, the last attempt
+/// the speed and whether it is paused, and the keys. Only the small time label changes as it plays
+/// (once a second); the rest is drawn once and cached. Training adds its loop's marks, the last attempt
 /// and its own keys.
 /// </summary>
 internal sealed class ReviewOverlay(OverlayPainter painter)
 {
-    private const float Top = 672, Height = 48, Margin = 16, ClockCell = 13;
+    private const float Top = 672, Height = 48, Margin = 16;
 
     public IEnumerable<RenderQuad> Quads(ReviewClock review, TrainingSession? training = null)
     {
@@ -27,12 +27,8 @@ internal sealed class ReviewOverlay(OverlayPainter painter)
             painter.Rect(0, Top, OverlayPainter.StageWidth * Math.Clamp(done, 0, 1), 4, new RenderColor(1, 0.75f, 0.2f, 1)),
             painter.Text($"{review.Speed:0.##}x", Margin + 200, centre, 70, 26, anchor: 0),
         };
-        // The time a character at a time: each glyph is drawn once and cached, where the whole label was
-        // a new texture every second (a visible hitch at 4K).
-        var time = $"{clock(review.Position)} / {clock(review.End)}";
-        for (var index = 0; index < time.Length; index++)
-            if (time[index] != ' ')
-                quads.Add(painter.Text(time[index].ToString(), Margin + (index + 0.5f) * ClockCell, centre, ClockCell, 26));
+        // A new text every second, drawn on a worker (the painter keeps the last one up meanwhile).
+        quads.Add(painter.Text($"{clock(review.Position)} / {clock(review.End)}", Margin, centre, 190, 26, anchor: 0, slot: this));
         float at(TimeSpan time) => OverlayPainter.StageWidth * (float)Math.Clamp((time - review.Start) / length, 0, 1);
         if (training is null)
         {

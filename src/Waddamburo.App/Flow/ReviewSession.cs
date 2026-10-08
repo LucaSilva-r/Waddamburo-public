@@ -64,6 +64,9 @@ internal sealed class ReviewSession : IDisposable
 
     public ReviewClock Clock { get; }
 
+    // Scrubbed back without a rebuild: the lanes' forward-only parts are behind the playhead.
+    private bool _stale;
+
     /// <summary>The baked play of each lane (the lanes are started on them).</summary>
     public ReviewTimeline[] Timelines { get; private set; }
 
@@ -91,6 +94,7 @@ internal sealed class ReviewSession : IDisposable
     /// <summary>The lanes play live from <paramref name="from"/> (a training attempt): fresh, judging the drum from there.</summary>
     public void StartLive(TimeSpan from)
     {
+        _stale = false;
         var gameplay = _shell.Gameplay;
         gameplay.CloseLongNotes();
         gameplay.Start(_charts, _shell.Active, _courses, _side, _waiwai);
@@ -107,6 +111,7 @@ internal sealed class ReviewSession : IDisposable
     /// </summary>
     public void ShowFresh(TimeSpan time)
     {
+        _stale = false;
         var gameplay = _shell.Gameplay;
         gameplay.CloseLongNotes();
         gameplay.Start(_charts, _shell.Active, _courses, _side, _waiwai, Timelines);
@@ -151,8 +156,20 @@ internal sealed class ReviewSession : IDisposable
         var time = Clock.Position;
         if (live is { } keys)
             _shell.Gameplay.Advance(keys, time - _inputOffset, Clock.Speed);
-        else if (time < _shownAt)
+        // Held scrubbing back only jumps: the notes, score, combo and gauge follow the playhead as they
+        // are; the rest (roll/balloon overlays, notes in flight, Don's pose, the dancers) only plays
+        // forward, so the lanes are built afresh once, when the scrub lets go (a rebuild every frame
+        // held it near 80 fps).
+        else if (Clock.Scrubbing && (time < _shownAt || _stale))
+        {
+            _shell.Gameplay.Review(time - _inputOffset, play: false);
+            _stale = true;
+        }
+        else if (time < _shownAt || _stale)
+        {
             ShowFresh(time);
+            _stale = false;
+        }
         else
             _shell.Gameplay.Review(time - _inputOffset, play: !_jumped && !Clock.Scrubbing);
         _jumped = false;
