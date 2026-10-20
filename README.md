@@ -1,6 +1,6 @@
 <p align="center"><img src="eng/packaging/waddamburo.svg" alt="Waddamburo logo" width="128"></p>
 <h1 align="center">Waddamburo</h1>
-<p align="center"><i>Relive the Gen3 Taiko experience on Windows and Linux.<br>WindowsとLinuxで、Gen3時代の太鼓体験をもう一度。</i></p>
+<p align="center"><i>Relive the Gen3 Taiko experience on Windows and Linux.<br>WindowsとLinuxで、AC15時代の太鼓体験をもう一度。</i></p>
 <h2 align="center"><a href="#日本語ガイド">日本語ガイド</a></h2>
 <p align="center"><a href="https://github.com/LucaSilva-r/Waddamburo-public/releases">Download</a> · <a href="#getting-started">Setup</a> · <a href="#basic-controls">Controls</a> · <a href="#play-online-with-taikonline">Online</a> · <a href="BUILDING.md">Build from source</a></p>
 
@@ -123,7 +123,7 @@ contributions, see the [Build and development guide](BUILDING.md).
 **Waddamburoは、独自に新規開発した、まったく新しいエンジンを使用しています。
 バンダイナムコのソースコードやコンパイル済みのゲームコードは一切含まれていません。**
 
-WindowsとLinuxで、**Gen3時代（2011〜2019年）**のアーケード体験を楽しめます。
+WindowsとLinuxで、**AC15時代（2011〜2019年）**のアーケード体験を楽しめます。
 FPS制限の解除、グラフィックのアップスケーリング、2人プレイ、
 カスタム操作設定、TaikOnlineでのスコア保存とランキングに対応しています。
 
