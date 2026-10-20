@@ -114,13 +114,6 @@ Open **Escape → Settings** to change language, volume, graphics, controls, and
 For build instructions on Windows and Linux, tests, release packaging, and
 contributions, see the [Build and development guide](BUILDING.md).
 
-## Legal
-
-Waddamburo is not affiliated with or endorsed by Bandai Namco Entertainment Inc.
-"Taiko no Tatsujin" and related names and marks belong to their respective owners.
-Source code is available under the [MIT License](LICENSE); dependencies retain
-their own licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
 ## 日本語ガイド
 
 <h3 align="center">Waddamburoは、独立して開発されたオープンソースの「太鼓の達人」シミュレーターです。</h3>
@@ -207,4 +200,35 @@ chmod +x Waddamburo-x86_64.AppImage
 
 Windows・Linuxでのビルド、テスト、リリース用ファイルの作成、開発・翻訳への参加については、
 [ビルド・開発ガイド（英語）](BUILDING.md)を参照してください。
-Waddamburoはバンダイナムコエンターテインメントの公式製品ではなく、同社の公認・後援を受けていません。
+
+## Legal
+
+Waddamburo is an independent project. It is not affiliated with, authorized by,
+sponsored by, or endorsed by Bandai Namco Entertainment Inc. or its affiliates.
+"Taiko no Tatsujin" and other referenced names and trademarks belong to their
+respective owners and are used only to describe compatibility.
+
+Waddamburo's source code is licensed under the [MIT License](LICENSE).
+Third-party components retain their own copyrights and licenses, listed in
+[Third-party notices](THIRD_PARTY_NOTICES.md). The MIT license does not replace
+those licenses or apply to original game data or commercial fonts.
+
+Original game data and commercial fonts are not distributed with Waddamburo.
+You must provide your own legitimately obtained files; their rights remain with
+their respective owners.
+
+### 法的情報
+
+Waddamburoは独立したプロジェクトであり、株式会社バンダイナムコエンターテインメントや
+その関連会社とは関係がなく、各社の公認・許諾・後援を受けた製品ではありません。
+「太鼓の達人」および記載されているその他の名称・商標は、それぞれの権利者に帰属し、
+互換性を説明する目的でのみ使用しています。
+
+Waddamburoのソースコードには[MITライセンス](LICENSE)が適用されます。
+サードパーティ製コンポーネントの著作権とライセンスはそれぞれ維持され、
+[サードパーティの権利表記](THIRD_PARTY_NOTICES.md)に記載されています。
+MITライセンスは、これらのライセンスを置き換えるものではなく、
+オリジナルのゲームデータや商用フォントにも適用されません。
+
+オリジナルのゲームデータや商用フォントはWaddamburoに同梱・配布されていません。
+正規に入手したファイルを各自で用意してください。それらの権利は、それぞれの権利者に帰属します。
