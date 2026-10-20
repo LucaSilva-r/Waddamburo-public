@@ -8,11 +8,13 @@
 
 <p align="center"><strong>NOT A RECOMPILATION OR A MOD!!</strong></p>
 
+**Waddamburo uses a completely new, independently developed engine. No Bandai
+Namco source code or compiled game code is included in Waddamburo.**
+
 It brings the **Gen3 arcade experience (2011–2019)** to your PC, with:
 
 - **Online scores and rankings** through [TaikOnline](https://taikonline.com).
 - Uncapped FPS and upscaled graphics.
-- Classic or Vertical Song Select, including a curved scrolling option.
 - One- and two-player support, custom drum bindings, and extra song libraries.
 
 **You need legitimately obtained original game files. Game data and commercial
@@ -42,8 +44,8 @@ fonts are not included.**
    | 2018 | Taiko no Tatsujin Blue Ver. |
    | **2019** | **Taiko no Tatsujin Green Ver.** |
 
-   **Enhancements such as Vertical Song Select and other extra features have
-   only been tested with Green Ver.** Their behavior on other versions is unverified.
+   **Development and testing currently focus on Green Ver.** Behavior on other
+   versions is unverified.
 
 3. To use the original font, place your legitimately obtained **DFPKanTeiRyu-XB**
    at **`USRDIR/data/font/font.ttf`**. Create the `font` folder if needed.
@@ -106,22 +108,11 @@ To change keys or set up a controller or MIDI drum, open **Escape → Settings �
 
 Open **Escape → Settings** to change language, volume, graphics, controls, and timing.
 
-- **Vertical menu:** under **Songs → Song Select scrolling**, choose Classic or Vertical.
-  Vertical offers Linear and Curved paths. Resume the game to apply it.
-- **Waiwai:** two players use Normal mode by default. Enable **Songs → Waiwai (2P)**
-  if you want the option to switch to Waiwai.
 - **Extra songs:** put TJA charts in `USRDIR/custom_songs`, or choose your TJA,
   osu!lazer, or Nijiiro library in **Settings → Songs**.
 
 For build instructions on Windows and Linux, tests, release packaging, and
 contributions, see the [Build and development guide](BUILDING.md).
-
-## Legal
-
-Waddamburo is not affiliated with or endorsed by Bandai Namco Entertainment Inc.
-"Taiko no Tatsujin" and related names and marks belong to their respective owners.
-Source code is available under the [MIT License](LICENSE); dependencies retain
-their own licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## 日本語ガイド
 
@@ -129,8 +120,11 @@ their own licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <p align="center"><strong>再コンパイル版・改造版（MOD）ではありません!!</strong></p>
 
+**Waddamburoは、独自に新規開発した、まったく新しいエンジンを使用しています。
+バンダイナムコのソースコードやコンパイル済みのゲームコードは一切含まれていません。**
+
 WindowsとLinuxで、**Gen3時代（2011〜2019年）**のアーケード体験を楽しめます。
-FPS制限の解除、グラフィックのアップスケーリング、縦型の曲選択、2人プレイ、
+FPS制限の解除、グラフィックのアップスケーリング、2人プレイ、
 カスタム操作設定、TaikOnlineでのスコア保存とランキングに対応しています。
 
 **正規に入手したオリジナルのゲームデータが必要です。ゲームデータや商用フォントは同梱されていません。**
@@ -155,7 +149,7 @@ chmod +x Waddamburo-x86_64.AppImage
 ./Waddamburo-x86_64.AppImage
 ```
 
-**縦型の曲選択メニューやその他の追加機能は、グリーンVer.でのみ動作確認しています。**
+**開発と動作確認は現在、主にグリーンVer.を対象にしています。**
 他のバージョンでの動作は未確認です。
 
 ### TaikOnlineでオンラインプレイ
@@ -201,13 +195,40 @@ chmod +x Waddamburo-x86_64.AppImage
 
 **Escape → Settings**から言語、音量、画質、操作、タイミングを変更できます。
 
-- **縦型メニュー：** **Songs → Song Select scrolling**でClassicまたはVerticalを選びます。
-  縦型にはLinearとCurvedがあります。ゲームに戻ると変更が反映されます。
-- **ワイワイモード：** 2人プレイは通常モードで始まります。
-  **Songs → Waiwai (2P)**を有効にすると、ワイワイに切り替える選択肢が表示されます。
 - **追加楽曲：** TJA譜面を`USRDIR/custom_songs`に配置するか、**Settings → Songs**で
   TJA、osu!lazer、ニジイロの楽曲フォルダーを指定してください。
 
 Windows・Linuxでのビルド、テスト、リリース用ファイルの作成、開発・翻訳への参加については、
 [ビルド・開発ガイド（英語）](BUILDING.md)を参照してください。
-Waddamburoはバンダイナムコエンターテインメントの公式製品ではなく、同社の公認・後援を受けていません。
+
+## Legal
+
+Waddamburo is an independent project. It is not affiliated with, authorized by,
+sponsored by, or endorsed by Bandai Namco Entertainment Inc. or its affiliates.
+"Taiko no Tatsujin" and other referenced names and trademarks belong to their
+respective owners and are used only to describe compatibility.
+
+Waddamburo's source code is licensed under the [MIT License](LICENSE).
+Third-party components retain their own copyrights and licenses, listed in
+[Third-party notices](THIRD_PARTY_NOTICES.md). The MIT license does not replace
+those licenses or apply to original game data or commercial fonts.
+
+Original game data and commercial fonts are not distributed with Waddamburo.
+You must provide your own legitimately obtained files; their rights remain with
+their respective owners.
+
+### 法的情報
+
+Waddamburoは独立したプロジェクトであり、株式会社バンダイナムコエンターテインメントや
+その関連会社とは関係がなく、各社の公認・許諾・後援を受けた製品ではありません。
+「太鼓の達人」および記載されているその他の名称・商標は、それぞれの権利者に帰属し、
+互換性を説明する目的でのみ使用しています。
+
+Waddamburoのソースコードには[MITライセンス](LICENSE)が適用されます。
+サードパーティ製コンポーネントの著作権とライセンスはそれぞれ維持され、
+[サードパーティの権利表記](THIRD_PARTY_NOTICES.md)に記載されています。
+MITライセンスは、これらのライセンスを置き換えるものではなく、
+オリジナルのゲームデータや商用フォントにも適用されません。
+
+オリジナルのゲームデータや商用フォントはWaddamburoに同梱・配布されていません。
+正規に入手したファイルを各自で用意してください。それらの権利は、それぞれの権利者に帰属します。
