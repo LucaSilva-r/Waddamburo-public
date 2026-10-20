@@ -1,199 +1,213 @@
 <p align="center"><img src="eng/packaging/waddamburo.svg" alt="Waddamburo logo" width="128"></p>
 <h1 align="center">Waddamburo</h1>
-<p align="center"><i>Play the Taiko no Tatsujin arcade data you own, on Windows and Linux.</i></p>
+<p align="center"><i>Relive the Gen3 Taiko experience on Windows and Linux.<br>WindowsとLinuxで、Gen3時代の太鼓体験をもう一度。</i></p>
+<h2 align="center"><a href="#日本語ガイド">日本語ガイド</a></h2>
+<p align="center"><a href="https://github.com/LucaSilva-r/Waddamburo-public/releases">Download</a> · <a href="#getting-started">Setup</a> · <a href="#basic-controls">Controls</a> · <a href="#play-online-with-taikonline">Online</a> · <a href="BUILDING.md">Build from source</a></p>
 
-Waddamburo is an independent, open-source engine that plays **Taiko no Tatsujin** arcade
-data you already own. Point it at the game files and you get the arcade experience on a
-PC, from the attract loop to the result screen, running natively on Windows and Linux at
-your monitor's refresh rate. It can also play your own TJA charts and the songs from a
-Nijiiro installation, and it can save scores online to TaikOnline.
+<h3 align="center">Waddamburo is an independent, open-source Taiko no Tatsujin simulator.</h3>
 
-It is written from scratch in C# (.NET 10), is MIT-licensed, and ships as a single file
-per platform.
+<p align="center"><strong>NOT A RECOMPILATION OR A MOD!!</strong></p>
 
-## What it is and what it isn't
+It brings the **Gen3 arcade experience (2011–2019)** to your PC, with:
 
-**It is**
-- An engine: it runs the game's own Lumen (Flash) screens, textures, sounds and charts,
-  read in place from your installation. Nothing is modified.
-- A home and arcade game: free play with endless songs and a settings menu on a PC, or
-  cabinet rules (coins, credits, songs per session, revival) on a cabinet.
-- A player for custom charts (TJA) and Nijiiro songs, shown in the arcade's own song select.
-- Available in English and Japanese (日本語), picked from your system language.
+- **Online scores and rankings** through [TaikOnline](https://taikonline.com).
+- Uncapped FPS and upscaled graphics.
+- Classic or Vertical Song Select, including a curved scrolling option.
+- One- and two-player support, custom drum bindings, and extra song libraries.
 
-**It isn't**
-- A copy of the game. No game files, music, fonts or videos come with Waddamburo, and
-  none can be downloaded from here. It does nothing without your own copy of the data.
-- An emulator or a recompilation. No original program code runs or is included.
-- Affiliated with Bandai Namco (see [Legal](#legal)).
-- Finished. Some things are still missing or approximate; bug reports are welcome.
+**You need legitimately obtained original game files. Game data and commercial
+fonts are not included.**
 
 ## Getting started
 
-1. Get the latest `Waddamburo.exe` (Windows x64) or `Waddamburo-x86_64.AppImage`
-   (Linux x64) from [Releases](https://github.com/LucaSilva-r/Waddamburo-public/releases).
-2. Put it in the game's `USRDIR` folder (the one that contains `data`). Waddamburo is
-   developed against the **Green** version's data.
-3. Run it. On Linux, first make the file executable (`chmod +x Waddamburo-x86_64.AppImage`).
+1. Download `Waddamburo.exe` for Windows x64 or `Waddamburo-x86_64.AppImage` for
+   Linux x64 from [Releases](https://github.com/LucaSilva-r/Waddamburo-public/releases).
+2. Open your legitimately obtained game data folder for a [compatible version](#compatible-gen3-arcade-versions)
+   and drag Waddamburo into the **`USRDIR` folder**, next to the `data` folder.
 
-Nothing else needs installing. Waddamburo keeps its own files in a `waddamburo` folder
-next to `data`: settings (`config.cfg`), accounts and scores. Caches go in this PC's user cache
-folder (see [Nijiiro songs](#nijiiro-songs)).
+   <a name="compatible-gen3-arcade-versions"></a>
 
-Releases update themselves. At start the game checks for a new version, downloads it and
-restarts into it. Set `auto_update = false` in `waddamburo/config.cfg` to turn this off.
-Without an internet connection the game just starts.
+   **Compatible Gen3 arcade versions**
 
-### Controls
+   | Year | Arcade version |
+   | --- | --- |
+   | 2012 | Taiko no Tatsujin KATSU-DON |
+   | 2013 | Taiko no Tatsujin Sorairo Ver. |
+   | 2013 | Taiko no Tatsujin Momoiro Ver. |
+   | 2014 | Taiko no Tatsujin Kimidori Ver. |
+   | 2015 | Taiko no Tatsujin Murasaki Ver. |
+   | 2015 | Taiko no Tatsujin White Ver. |
+   | 2016 | Taiko no Tatsujin Red Ver. |
+   | 2017 | Taiko no Tatsujin Yellow Ver. |
+   | 2018 | Taiko no Tatsujin Blue Ver. |
+   | **2019** | **Taiko no Tatsujin Green Ver.** |
 
-| | Player 1 | Player 2 |
-| --- | --- | --- |
-| Left rim (Ka) | D | Z |
-| Left centre (Don) | F | X |
-| Right centre (Don) | J | C |
-| Right rim (Ka) | K | V |
+   **Enhancements such as Vertical Song Select and other extra features have
+   only been tested with Green Ver.** Their behavior on other versions is unverified.
 
-- In menus, the rims move and a centre hit picks.
-- **Escape** opens the menu: Resume, Restart Song, Settings, Song Select or Return to Title.
-- **F11** switches between fullscreen and a window.
-- Holding **Q** during a song or its results fades out and restarts the song.
-- **Space** skips the startup screens.
+3. To use the original font, place your legitimately obtained **DFPKanTeiRyu-XB**
+   at **`USRDIR/data/font/font.ttf`**. Create the `font` folder if needed.
+4. Launch Waddamburo, choose your player account or **Guest**, and play!
 
-You can bind each pad to other keys, controller buttons or a MIDI drum in
-**Settings → Drum Controls**. More details: [input](docs/development/input.md).
+On Windows, the font path is `USRDIR\data\font\font.ttf`. Restart after adding it.
 
-### Settings
+<details>
+<summary>First launch on Linux</summary>
 
-Open **Escape → Settings** to set:
-- language and song-title language
-- song folders
-- volumes
-- audio and input offset, with a guided **Calibrate Audio**
-- a debounce for drums that send double hits
-- fullscreen, resolution, VSync, frame limit and letterboxing
-- sharper upscaled textures
-
-Changes are saved to `waddamburo/config.cfg`. That file also holds the cabinet settings
-(`mode = home` or `arcade`, `free_play`, `credits_1p`, `songs_per_session`, …). Each
-setting in it is explained in a comment. In coin mode, **F2** inserts a coin.
-
-## Custom songs (TJA)
-
-Put your `.tja` charts in a `custom_songs` folder in `USRDIR`, or choose any folder in
-**Settings → Songs → Custom TJA songs**. Each chart's audio (`WAVE`) must be inside that
-folder. The first folder level becomes a category in song select:
-
-```text
-custom_songs/
-  Vocaloid/
-    Senbonzakura/
-      Senbonzakura.tja
-      Senbonzakura.ogg
-  Anime/
-    ...
-```
-
-Folders named after an arcade genre (`Pop`, `Anime`, `Vocaloid`, `Children and Folk`,
-`Variety`, `Classical`, `Game Music`, `Namco Original`) get that genre's art and colours;
-other folders get a generic one. TJA files may be in
-UTF-8 or Shift-JIS. `TITLEJA`/`TITLEEN` feed the song-title language switch, and
-`DEMOSTART` sets the preview. `SCENEPRESET:` picks a themed gameplay background
-(`SCENEPRESET:IMAS`; see the [skin list](docs/development/gameplay-skins.md)). Rolls, balloons, BPM and scroll changes and the
-common commands are supported. Branching charts play their Normal route. See the
-[compatibility matrix](docs/development/custom-tja.md#gameplay-compatibility).
-
-## Nijiiro songs
-
-Waddamburo can list and play the songs of a Nijiiro installation you own, alongside the
-Green songs.
-
-1. Get **vgmstream-cli** from [vgmstream's releases](https://github.com/vgmstream/vgmstream/releases)
-   and put it next to Waddamburo, or in a `vgmstream` folder next to it. Nijiiro's music
-   is G.719, which Waddamburo cannot ship a decoder for.
-2. Open **Settings → Songs → Nijiiro songs** and choose the installation's folder (the
-   one that contains `Data` and `Executable`).
-3. Restart the game when it asks you to.
-
-The row turns green when the installation can be played. Otherwise it says what is
-missing: no data in that folder, a song table that cannot be read (the `Executable`
-folder must be there too), or no vgmstream-cli. The installation is only read, never
-changed. Decoded music is cached so later plays start quickly.
-
-The cache (decoded music and upscaled textures) lives in this PC's user cache folder:
-`%LOCALAPPDATA%\Waddamburo` on Windows, `~/.cache/Waddamburo` on Linux. A game kept on a USB
-stick therefore never decodes onto the stick, and finds (or rebuilds) its cache on whichever PC
-starts it. **Settings → Songs → Cache Folder** (`cache_folder` in `config.cfg`) can put it back in
-the game folder (`game`) or in any folder; a cache left in `waddamburo/cache` by older versions
-moves to the chosen place at start.
-
-## TaikOnline
-
-[TaikOnline](https://taikonline.com) saves your scores and shows online rankings in
-song select. It's on by default and optional.
-
-- **Signing in (home mode):** the player-select screen before each session offers
-  **Sign in**. Scan the QR code or enter the code on the website, and the account is
-  remembered on this PC. After that, each drum picks its own account, or **Guest**.
-- **Playing at a friend's:** choose **Join with code** on their PC and enter the code on
-  the website. Your scores go to your own account, and your login is not
-  saved on their PC.
-- **Cabinets:** `cabinet_token` in `config.cfg` (from the server admin) lets players log
-  in with a 6-digit code shown during the attract loop.
-- **Headless setups:** `Waddamburo --login` signs in from the terminal and `--logout`
-  signs every account out.
-- **Offline:** leave `server =` empty in `config.cfg`. Scores then stay on this PC.
-  `server = https://…` points the game at another TaikOnline server.
-
-Scoring, judgement and soul gauge follow the arcade's rules; see
-[scoring](docs/development/scoring.md).
-
-## Building from source
-
-You need git and the .NET SDK **10.0.201** (exactly; see [BUILDING.md](BUILDING.md#1-install-the-net-sdk)).
-The native libraries (FFmpeg, vgmstream, FreeType, bgfx) are downloaded from the latest
-release:
+Make the AppImage executable through your file manager's permissions, or run these
+commands inside `USRDIR`:
 
 ```sh
-git clone https://github.com/LucaSilva-r/Waddamburo-public.git
-cd Waddamburo-public
-./eng/fetch-native.sh       # Windows: powershell -ExecutionPolicy Bypass -File eng/fetch-native.ps1
-dotnet run --project src/Waddamburo.App -- "/path/to/game/USRDIR"
+chmod +x Waddamburo-x86_64.AppImage
+./Waddamburo-x86_64.AppImage
 ```
 
-[BUILDING.md](BUILDING.md) explains how to build the native libraries yourself (Linux, or
-MSYS2 on Windows), build the release files with `eng/package.sh`, and run the tests.
+</details>
 
-Further reading:
-- [native builds](docs/development/native-builds.md)
-- [diagnostics and developer runs](docs/development/diagnostics.md): single movies,
-  scenes, screenshots, scripted input
-- [app flow](docs/development/app-flow.md)
-- the rest of [docs/development](docs/development)
+## Play online with TaikOnline
 
-### Contributing a translation
+**Sign in to save scores to your account and see online rankings in Song Select.**
 
-The game's own text lives in `src/Waddamburo.App/Languages/<code>.json`, one file per
-language. To add a language:
-1. Copy `en.json` to the new language's code and translate the values. Keep the
-   `{0}`-style placeholders.
-2. Rebuild. The language appears in **Settings → Language**.
+In Song Select, highlight a song and press **L** to open its rankings (single-player).
 
-`LanguageFileTests` checks that no keys or placeholders are missing.
+1. On the player-select screen, choose **Sign in**.
+2. Scan the QR code, or enter the code shown by the game on [TaikOnline](https://taikonline.com).
+3. Return to the game, select your account, and start playing. It will be remembered
+   on this PC for your next session.
 
-### Project rules
+Each player can choose their own account in two-player mode. On a friend's PC,
+choose **Join with code** to use your account without saving the login there.
 
-Waddamburo is a clean implementation. Asset formats are learned from the files
-themselves, and product code never contains addresses, lifted code or original content.
-Tests use synthetic data. See the [evidence policy](docs/legal/evidence-policy.md),
-[provenance](docs/legal/provenance.md) and
-[release content](docs/legal/release-content-policy.md) policies.
+Online is optional: choose **Guest** to play without signing in. You can also play offline.
+
+## Basic controls
+
+| Drum hit | Player 1 | Player 2 |
+| --- | --- | --- |
+| Left rim — Ka | **D** | **Z** |
+| Left centre — Don | **F** | **X** |
+| Right centre — Don | **J** | **C** |
+| Right rim — Ka | **K** | **V** |
+
+**In menus, hit a rim to move and the centre to confirm.** Arrow keys and Enter also work.
+The missing player can join from Song Select by hitting their drum.
+
+| Shortcut | Action |
+| --- | --- |
+| **Escape** | Open the pause menu and Settings |
+| **F11** | Toggle fullscreen |
+| **Space** | Skip startup screens |
+| **L** | Open or close the selected song's rankings in Song Select (single-player) |
+| **Hold Q** | Restart during a song or its results |
+
+To change keys or set up a controller or MIDI drum, open **Escape → Settings → Drum Controls**.
+
+## Make it your own
+
+Open **Escape → Settings** to change language, volume, graphics, controls, and timing.
+
+- **Vertical menu:** under **Songs → Song Select scrolling**, choose Classic or Vertical.
+  Vertical offers Linear and Curved paths. Resume the game to apply it.
+- **Waiwai:** two players use Normal mode by default. Enable **Songs → Waiwai (2P)**
+  if you want the option to switch to Waiwai.
+- **Extra songs:** put TJA charts in `USRDIR/custom_songs`, or choose your TJA,
+  osu!lazer, or Nijiiro library in **Settings → Songs**.
+
+For build instructions on Windows and Linux, tests, release packaging, and
+contributions, see the [Build and development guide](BUILDING.md).
 
 ## Legal
 
-Waddamburo is not affiliated with, authorized by, sponsored by, or endorsed by
-Bandai Namco Entertainment Inc. or its affiliates. "Taiko no Tatsujin" and related
-names and marks are the property of their respective owners and are referenced only
-to describe compatibility.
+Waddamburo is not affiliated with or endorsed by Bandai Namco Entertainment Inc.
+"Taiko no Tatsujin" and related names and marks belong to their respective owners.
+Source code is available under the [MIT License](LICENSE); dependencies retain
+their own licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Waddamburo source is licensed under the [MIT License](LICENSE). Dependencies keep
-their own licenses, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+## 日本語ガイド
+
+<h3 align="center">Waddamburoは、独立して開発されたオープンソースの「太鼓の達人」シミュレーターです。</h3>
+
+<p align="center"><strong>再コンパイル版・改造版（MOD）ではありません!!</strong></p>
+
+WindowsとLinuxで、**Gen3時代（2011〜2019年）**のアーケード体験を楽しめます。
+FPS制限の解除、グラフィックのアップスケーリング、縦型の曲選択、2人プレイ、
+カスタム操作設定、TaikOnlineでのスコア保存とランキングに対応しています。
+
+**正規に入手したオリジナルのゲームデータが必要です。ゲームデータや商用フォントは同梱されていません。**
+
+### インストールと起動
+
+1. [Releases](https://github.com/LucaSilva-r/Waddamburo-public/releases)から、
+   Windows x64用の`Waddamburo.exe`、またはLinux x64用の
+   `Waddamburo-x86_64.AppImage`をダウンロードします。
+2. 正規に入手した[対応バージョン](#compatible-gen3-arcade-versions)のゲームデータフォルダーを開き、
+   Waddamburoを**`USRDIR`フォルダー**内の、`data`フォルダーと同じ階層にドラッグして配置します。
+3. オリジナルの書体を使う場合は、正規に入手した**DFPKanTeiRyu-XB**を
+   **`USRDIR/data/font/font.ttf`**に配置します。`font`フォルダーがなければ作成してください。
+   Windowsでのパスは`USRDIR\data\font\font.ttf`です。
+4. Waddamburoを起動し、自分のアカウントまたは**Guest**を選んでプレイします。
+
+フォントを追加した後はゲームを再起動してください。
+Linuxではファイルの権限設定でAppImageの実行を許可するか、`USRDIR`内で次を実行します。
+
+```sh
+chmod +x Waddamburo-x86_64.AppImage
+./Waddamburo-x86_64.AppImage
+```
+
+**縦型の曲選択メニューやその他の追加機能は、グリーンVer.でのみ動作確認しています。**
+他のバージョンでの動作は未確認です。
+
+### TaikOnlineでオンラインプレイ
+
+**アカウントにログインすると、オンラインでスコアを保存し、曲選択でランキングを確認できます。**
+
+1人プレイの曲選択で、曲を選んで**L**を押すと、その曲のランキングを表示できます。
+
+1. プレイヤー選択画面で**Sign in**を選びます。
+2. QRコードを読み取るか、ゲームに表示されたコードを[TaikOnline](https://taikonline.com)で入力します。
+3. ゲームに戻り、自分のアカウントを選んでプレイしてください。
+   次回からも、このPCでアカウントを選べます。
+
+2人プレイでは、それぞれ自分のアカウントを選べます。
+友達のPCでは**Join with code**を選ぶと、ログイン情報をそのPCに保存せずに遊べます。
+オンライン機能は任意です。ログインせずに遊ぶ場合は**Guest**を選んでください。
+オフラインでもプレイできます。
+
+### 基本操作
+
+| 操作 | 1P | 2P |
+| --- | --- | --- |
+| 左ふち（カッ） | **D** | **Z** |
+| 左面（ドン） | **F** | **X** |
+| 右面（ドン） | **J** | **C** |
+| 右ふち（カッ） | **K** | **V** |
+
+**メニューでは、ふちで移動し、面をたたくと決定します。** 矢印キーとEnterも使えます。
+曲選択中に、参加していない側の太鼓をたたくと、もう1人が参加できます。
+
+| キー | 操作 |
+| --- | --- |
+| **Escape** | ポーズメニューや設定を開く |
+| **F11** | フルスクリーンの切り替え |
+| **Space** | 起動時の画面をスキップ |
+| **L** | 曲選択で選んだ曲のランキングを開く・閉じる（1人プレイ） |
+| **Qを長押し** | 演奏中または結果画面から曲をやり直す |
+
+キーの変更やコントローラー・MIDI太鼓の設定は、**Escape → Settings → Drum Controls**から行えます。
+メニュー項目名は、画面で見つけやすいよう英語表記で記載しています。
+
+### 設定と追加楽曲
+
+**Escape → Settings**から言語、音量、画質、操作、タイミングを変更できます。
+
+- **縦型メニュー：** **Songs → Song Select scrolling**でClassicまたはVerticalを選びます。
+  縦型にはLinearとCurvedがあります。ゲームに戻ると変更が反映されます。
+- **ワイワイモード：** 2人プレイは通常モードで始まります。
+  **Songs → Waiwai (2P)**を有効にすると、ワイワイに切り替える選択肢が表示されます。
+- **追加楽曲：** TJA譜面を`USRDIR/custom_songs`に配置するか、**Settings → Songs**で
+  TJA、osu!lazer、ニジイロの楽曲フォルダーを指定してください。
+
+Windows・Linuxでのビルド、テスト、リリース用ファイルの作成、開発・翻訳への参加については、
+[ビルド・開発ガイド（英語）](BUILDING.md)を参照してください。
+Waddamburoはバンダイナムコエンターテインメントの公式製品ではなく、同社の公認・後援を受けていません。
