@@ -8,6 +8,9 @@
 
 <p align="center"><strong>NOT A RECOMPILATION OR A MOD!!</strong></p>
 
+**Waddamburo uses a completely new, independently developed engine. No Bandai
+Namco source code or compiled game code is included in Waddamburo.**
+
 It brings the **Gen3 arcade experience (2011–2019)** to your PC, with:
 
 - **Online scores and rankings** through [TaikOnline](https://taikonline.com).
@@ -123,6 +126,9 @@ their own licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 <h3 align="center">Waddamburoは、独立して開発されたオープンソースの「太鼓の達人」シミュレーターです。</h3>
 
 <p align="center"><strong>再コンパイル版・改造版（MOD）ではありません!!</strong></p>
+
+**Waddamburoは、独自に新規開発した、まったく新しいエンジンを使用しています。
+バンダイナムコのソースコードやコンパイル済みのゲームコードは一切含まれていません。**
 
 WindowsとLinuxで、**Gen3時代（2011〜2019年）**のアーケード体験を楽しめます。
 FPS制限の解除、グラフィックのアップスケーリング、2人プレイ、
