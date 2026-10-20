@@ -12,7 +12,6 @@ It brings the **Gen3 arcade experience (2011–2019)** to your PC, with:
 
 - **Online scores and rankings** through [TaikOnline](https://taikonline.com).
 - Uncapped FPS and upscaled graphics.
-- Classic or Vertical Song Select, including a curved scrolling option.
 - One- and two-player support, custom drum bindings, and extra song libraries.
 
 **You need legitimately obtained original game files. Game data and commercial
@@ -42,8 +41,8 @@ fonts are not included.**
    | 2018 | Taiko no Tatsujin Blue Ver. |
    | **2019** | **Taiko no Tatsujin Green Ver.** |
 
-   **Enhancements such as Vertical Song Select and other extra features have
-   only been tested with Green Ver.** Their behavior on other versions is unverified.
+   **Development and testing currently focus on Green Ver.** Behavior on other
+   versions is unverified.
 
 3. To use the original font, place your legitimately obtained **DFPKanTeiRyu-XB**
    at **`USRDIR/data/font/font.ttf`**. Create the `font` folder if needed.
@@ -106,10 +105,6 @@ To change keys or set up a controller or MIDI drum, open **Escape → Settings �
 
 Open **Escape → Settings** to change language, volume, graphics, controls, and timing.
 
-- **Vertical menu:** under **Songs → Song Select scrolling**, choose Classic or Vertical.
-  Vertical offers Linear and Curved paths. Resume the game to apply it.
-- **Waiwai:** two players use Normal mode by default. Enable **Songs → Waiwai (2P)**
-  if you want the option to switch to Waiwai.
 - **Extra songs:** put TJA charts in `USRDIR/custom_songs`, or choose your TJA,
   osu!lazer, or Nijiiro library in **Settings → Songs**.
 
@@ -130,7 +125,7 @@ their own licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 <p align="center"><strong>再コンパイル版・改造版（MOD）ではありません!!</strong></p>
 
 WindowsとLinuxで、**Gen3時代（2011〜2019年）**のアーケード体験を楽しめます。
-FPS制限の解除、グラフィックのアップスケーリング、縦型の曲選択、2人プレイ、
+FPS制限の解除、グラフィックのアップスケーリング、2人プレイ、
 カスタム操作設定、TaikOnlineでのスコア保存とランキングに対応しています。
 
 **正規に入手したオリジナルのゲームデータが必要です。ゲームデータや商用フォントは同梱されていません。**
@@ -155,7 +150,7 @@ chmod +x Waddamburo-x86_64.AppImage
 ./Waddamburo-x86_64.AppImage
 ```
 
-**縦型の曲選択メニューやその他の追加機能は、グリーンVer.でのみ動作確認しています。**
+**開発と動作確認は現在、主にグリーンVer.を対象にしています。**
 他のバージョンでの動作は未確認です。
 
 ### TaikOnlineでオンラインプレイ
@@ -201,10 +196,6 @@ chmod +x Waddamburo-x86_64.AppImage
 
 **Escape → Settings**から言語、音量、画質、操作、タイミングを変更できます。
 
-- **縦型メニュー：** **Songs → Song Select scrolling**でClassicまたはVerticalを選びます。
-  縦型にはLinearとCurvedがあります。ゲームに戻ると変更が反映されます。
-- **ワイワイモード：** 2人プレイは通常モードで始まります。
-  **Songs → Waiwai (2P)**を有効にすると、ワイワイに切り替える選択肢が表示されます。
 - **追加楽曲：** TJA譜面を`USRDIR/custom_songs`に配置するか、**Settings → Songs**で
   TJA、osu!lazer、ニジイロの楽曲フォルダーを指定してください。
 
