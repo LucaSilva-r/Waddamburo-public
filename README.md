@@ -31,17 +31,6 @@ fonts are not included.**
 
    **Compatible Gen3 arcade versions**
 
-   | Year | Arcade version |
-   | --- | --- |
-   | 2012 | Taiko no Tatsujin KATSU-DON |
-   | 2013 | Taiko no Tatsujin Sorairo Ver. |
-   | 2013 | Taiko no Tatsujin Momoiro Ver. |
-   | 2014 | Taiko no Tatsujin Kimidori Ver. |
-   | 2015 | Taiko no Tatsujin Murasaki Ver. |
-   | 2015 | Taiko no Tatsujin White Ver. |
-   | 2016 | Taiko no Tatsujin Red Ver. |
-   | 2017 | Taiko no Tatsujin Yellow Ver. |
-   | 2018 | Taiko no Tatsujin Blue Ver. |
    | **2019** | **Taiko no Tatsujin Green Ver.** |
 
    **Development and testing currently focus on Green Ver.** Behavior on other
