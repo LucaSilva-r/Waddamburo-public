@@ -46,7 +46,10 @@ internal sealed record GameOptions(
     AccountBook? Accounts = null,
     string? ScoresPath = null,
     bool Autoplay = false,
-    bool Fullscreen = false);
+    bool Fullscreen = false,
+    bool GameplayTitleLeft = false,
+    bool HitDetailsLeft = false,
+    string? MissingFontPath = null);
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -56,6 +59,10 @@ internal sealed record GameOptions(
 internal sealed class GameShell : IDisposable
 {
     public GameOptions Options { get; }
+    // A bounded scripted QA run must not turn desktop typing or another window's focus into
+    // gameplay input. Interactive launches, including unbounded scripted demos, retain live input.
+    internal bool IsolatedProbe => Options.TickLimit is not null && !Options.InputTimeline.IsEmpty
+        && Environment.GetEnvironmentVariable("WADDAMBURO_ISOLATED_PROBE") == "1";
     /// <summary>The settings (the home menu changes them while the game runs).</summary>
     public ArcadeSettings Arcade { get; set; }
 
@@ -66,6 +73,7 @@ internal sealed class GameShell : IDisposable
     public GameSounds? Sounds { get; }
     public SongPreviewController? Previews { get; }
     public SongTitleTextureCache Titles { get; }
+    public ChartCarouselPresentation ChartCards { get; }
     public CoinBank? Coins { get; }
 
     /// <summary>Per lane, the best before the last saved play on its chart, or that play's score when it is the first (for results).</summary>
@@ -314,7 +322,9 @@ internal sealed class GameShell : IDisposable
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
-            squash: () => Arcade.SquashTitles);
+            squash: () => Arcade.SquashTitles, gameplayTitleLeft: options.GameplayTitleLeft, nativeAssetRoot: assetRoot);
+        Titles.PreloadFolderGlyphs(SongCatalog.Categories.Select(static category => category.Name));
+        ChartCards = new ChartCarouselPresentation();
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _nameTexts = new NameTextTextures(Application, options.FontPath);
@@ -329,7 +339,7 @@ internal sealed class GameShell : IDisposable
         Gameplay = new TaikoGameplayPresentation((lane, action) =>
             Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
             Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
-            () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
+            () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs)) { MirrorHitDetails = options.HitDetailsLeft };
         _costumeIcons = new CostumeIconTextures(Application, dataRoot);
         _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
         Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
@@ -384,6 +394,8 @@ internal sealed class GameShell : IDisposable
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => SongsPlayed,
             ShowOni = () => Arcade.ShowOni,
+            CurvedScrolling = () => Arcade.VerticalScrollPath == VerticalScrollPath.Curved,
+            WaiwaiEnabled = () => Arcade.WaiwaiEnabled,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
             // Next to the settings file (USRDIR/waddamburo); memory only without one.
@@ -405,13 +417,16 @@ internal sealed class GameShell : IDisposable
         if (Arcade.Home && Options.Accounts is { } setupBook)
             _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
         // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
-        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = (archive, content) => patch(archive, content, null) };
+        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) {
+            Decoded = (archive, content) => patch(archive, content, null),
+        };
         _presenter = new ScenePresenter(Application, MovieContent);
         MovieContent.Reuse = _presenter.Reuse;
         // Upscaling runs when the model files are installed (see UpscaleTool).
         // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
         var cacheRoot = options.ArcadePath is { } settings
             ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
+        MovieContent.Prepare = (movie, content) => SongSelectLayoutPreparation.Apply(movie, content, Arcade, options.FontPath, cacheRoot);
         if (UpscaleTool.Find(cacheRoot is null ? null : Path.Combine(cacheRoot, "upscaled")) is { } upscale)
         {
             Upscale = upscale;
@@ -492,6 +507,23 @@ internal sealed class GameShell : IDisposable
 
     private int run()
     {
+        // Diagnostic direct launches exercise the actual joined-side host paths,
+        // including solo P2 and both players, without changing saved settings.
+        if (Options.StartScene == StartScene.SongSelect
+            && Environment.GetEnvironmentVariable("WADDAMBURO_DIAGNOSTIC_SIDES") is { Length: > 0 } diagnosticSides)
+        {
+            foreach (var side in diagnosticSides.Split(',').Select(int.Parse).Distinct())
+            {
+                if (side is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(diagnosticSides));
+                JoinPlayer(side - 1);
+            }
+            if (Environment.GetEnvironmentVariable("WADDAMBURO_DIAGNOSTIC_WAIWAI") is { } waiwai)
+            {
+                Hosts.Waiwai = waiwai == "1";
+                Catalog.Replace(FlowScenes.SongSelectScene([.. JoinedSides], Hosts.Waiwai));
+            }
+            Console.WriteLine($"Diagnostic joined sides: {string.Join(',', JoinedSides.Select(side => side + 1))}; Waiwai={Hosts.Waiwai}");
+        }
         var initialScene = Options.StartScene switch
         {
             StartScene.Boot => FlowScenes.Boot,
@@ -510,7 +542,7 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"Showing {Active.Id} at launch.");
             _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
-                .AsTask().GetAwaiter().GetResult()) { Coins = Coins };
+                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, Side = Hosts.PlayerSide, TwoPlayers = Hosts.TwoPlayers };
             _home.LoadResume(_loader);
             Hosts.LayerLoading = host =>
             {
@@ -531,14 +563,18 @@ internal sealed class GameShell : IDisposable
             };
             _indicatorTextures = SceneTextures.Upload(Application, _indicators.Scene);
 
+            var prepared = prepareInitialMenuFrame();
+            var menuProfile = Environment.GetEnvironmentVariable("WADDAMBURO_SONG_SELECT_FRAME_PROFILE") == "1";
             var result = Application.Run(
                 createFrame,
                 tick,
-                Options.FrameLimit,
-                Options.TickLimit,
-                Options.ScreenshotPath is null ? null : capture => ScreenshotWriter.Write(Options.ScreenshotPath, capture),
+                Options.FrameLimit - prepared.Frames,
+                Options.TickLimit - prepared.Ticks,
+                Options.ScreenshotPath is null ? null : captureFrame,
+                captureFrame: () => _captureTicks.Contains(Tick),
                 updateFrame: keyboard =>
                 {
+                    if (Headless || IsolatedProbe) keyboard = SdlKeyboardSnapshot.Empty;
                     _input.Frame(keyboard);
                     // The notice sidebar (live presses only reach this callback; not over a lane, nor while the
                     // search field takes the letters).
@@ -546,7 +582,7 @@ internal sealed class GameShell : IDisposable
                         _notices.Toggle();
                     flowOf(Active.Id).UpdateFrame(keyboard);
                 },
-                profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown,
+                profileFrame: () => (Active.Id == FlowScenes.Gameplay || menuProfile && Active.Id == FlowScenes.SongSelect) && !Overlay.IsShown,
                 togglePerformanceOverlay: _performance.Toggle,
                 pointerMoved: _performance.SetPointer,
                 performanceVisible: () => _performance.Visible,
@@ -568,7 +604,7 @@ internal sealed class GameShell : IDisposable
             }
             if (result.DroppedTicks > 0)
                 Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
-            return result.RenderedFrames;
+            return result.RenderedFrames + prepared.Frames;
         }
         finally
         {
@@ -584,10 +620,73 @@ internal sealed class GameShell : IDisposable
 
     // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
     // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
+    private readonly HashSet<int> _captureTicks = (Environment.GetEnvironmentVariable("WADDAMBURO_CAPTURE_TICKS") ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
+
+    // A direct menu launch has no earlier scene for preparation. Run only its
+    // still-invisible loading states before starting the presentation clock;
+    // the first visible authored pose starts the normal animation unchanged.
+    private (int Ticks, int Frames) prepareInitialMenuFrame()
+    {
+        // Frame-bounded and deterministic diagnostics retain their original
+        // first-frame behaviour. Tick-bounded live runs account for every step.
+        if (Headless || Active.Id != FlowScenes.SongSelect
+            || Options.FrameLimit is not null || Options.TickLimit is <= 1) return default;
+        var started = Stopwatch.GetTimestamp();
+        var ticks = 0;
+        var maximumTicks = Math.Min(8, (Options.TickLimit ?? 9) - 1);
+        RenderFrame frame;
+        do
+        {
+            tick(SdlKeyboardSnapshot.Empty);
+            ticks++;
+            frame = createFrame(1);
+            var browser = Active.Player.Layers.FirstOrDefault(layer =>
+                layer.Player.Name?.EndsWith("song_select.lm", StringComparison.Ordinal) == true)?.Player;
+            if (browser is null || browser.CreateInstanceRenderSnapshot("/main/genreSelect_").Quads
+                .Any(quad => quad.MaskOperation == Waddamburo.Lumen.Rendering.LumenRenderMaskOperation.Draw
+                    && quad.MultiplyColor.Alpha > 0)) break;
+        } while (ticks < maximumTicks && Active.Id == FlowScenes.SongSelect);
+
+        // At most16 title jobs are queued per pass; newly freed slots may admit
+        // the rest of the visible labels. Await real work, never a timed delay.
+        for (var pass = 0; pass < 3; pass++)
+        {
+            Titles.CompletePendingForStartup();
+            frame = createFrame(1);
+            if (!Titles.HasPendingRasterizations) break;
+        }
+        // Warm the actual draw path behind a black cover, then wait for that
+        // submission by presenting it again. Driver setup stays in loading.
+        var covered = new RenderFrame(RenderColor.Black,
+            frame.Quads.Append(Painter.Rect(0, 0, 1280, 720, RenderColor.Black)), frame.ContentAspectRatio);
+        Application.PresentInitialFrame(covered);
+        Application.PresentInitialFrame(covered);
+        var capturePath = Environment.GetEnvironmentVariable("WADDAMBURO_CAPTURE_INITIAL_FRAME");
+        if (Application.PresentInitialFrame(createFrame(1), capture: !string.IsNullOrWhiteSpace(capturePath)) is { } capture)
+            ScreenshotWriter.Write(capturePath!, capture);
+        foreach (var layer in Active.Player.Layers) layer.Player.HoldStill();
+        DonRenderer?.Advance(0);
+        if (_indicators is not null)
+            foreach (var layer in _indicators.Scene.Player.Layers) layer.Player.HoldStill();
+        Console.WriteLine(FormattableString.Invariant($"Initial Song Select prepared at tick {Tick}: {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F2} ms before animation clock ({ticks} native ticks, 3 presents)."));
+        return (ticks, 3);
+    }
+
+    private void captureFrame(RenderCapture capture)
+    {
+        var path = Options.ScreenshotPath!;
+        if (_captureTicks.Contains(Tick)) path = Path.Combine(Path.GetDirectoryName(path)!,
+            $"{Path.GetFileNameWithoutExtension(path)}-{Tick:D4}{Path.GetExtension(path)}");
+        ScreenshotWriter.Write(path, capture);
+    }
+
     private void tick(SdlKeyboardSnapshot keyboard)
     {
         Tick++;
-        var keys = Options.InputTimeline.Apply(Tick, keyboard);
+        using var tickTrace = StartupWorkTrace.Measure("tick.total", Tick);
+        var live = Headless || IsolatedProbe ? new SdlKeyboardSnapshot([], timestamp: keyboard.Timestamp) : keyboard;
+        var keys = Options.InputTimeline.Apply(Tick, live);
         var presses = _input.Take(keys);
         if (backToAttract(presses.Attract))
             return;
@@ -600,7 +699,12 @@ internal sealed class GameShell : IDisposable
         // A reviewed play takes the mouse wheel (seeking) like a menu does.
         Application.MenuInput = !onLane || _home.MenuOpen || _gameplay.Reviewing && !_gameplay.Attempting;
         var held = keys;
-        keys = scene.MapKeys(_input.Pulses(keys));
+        using (StartupWorkTrace.Measure("tick.input-map", Tick))
+        {
+            keys = _input.Pulses(keys);
+            // The settings menu owns physical arrows; the vertical browser maps them only in the scene.
+            if (!_home.MenuOpen) keys = scene.MapKeys(keys);
+        }
         // Home: Backspace is Escape too (a Tatacon's B button), except while it edits text or is being bound.
         var escape = _input.EscapePressed(keys, menuKey: Arcade.Home && !_search.IsOpen && !_home.CapturingBinding ? GameActions.Key(GameAction.Menu) : null);
         // Focus is followed whichever overlay takes the keys (the mute in background).
@@ -620,13 +724,21 @@ internal sealed class GameShell : IDisposable
             return;
         if (_home.QuickRestart(held))
             return;
+        // Native gameplay judges live presses per display frame. Exact-tick diagnostic pulses
+        // have no SDL frame event, so submit only those pulses here, once, at the current chart time.
+        if (!Headless && onLane && !Options.InputTimeline.IsEmpty)
+        {
+            var scripted = Options.InputTimeline.Apply(Tick, new SdlKeyboardSnapshot([], timestamp: keyboard.Timestamp));
+            if (!scripted.Presses.IsEmpty) scene.UpdateFrame(scripted);
+        }
         advance(scene, keys);
         var switching = Coordinator.Flow.State == GameFlowState.TransitionPending;
         if (_home.HoldsResults(held, switching))
             return;
         if (!switching)
         {
-            scene.Tick(new FlowInput(keys, presses.DrumSide, presses.Skip, escape));
+            using (StartupWorkTrace.Measure("tick.flow", Tick))
+                scene.Tick(new FlowInput(keys, presses.DrumSide, presses.Skip, escape));
             return;
         }
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
@@ -690,7 +802,8 @@ internal sealed class GameShell : IDisposable
     private void advance(FlowScene scene, SdlKeyboardSnapshot keys)
     {
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
-            onLane ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
+            onLane ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls,
+            primarySide: Hosts.PlayerSide == 1 && !Hosts.TwoPlayers && Active.Id != FlowScenes.Retry ? 1 : 0));
         Overlay.Advance();
         // Diagnostic: WADDAMBURO_DUMP_TREE=<tick> prints the active scene's display lists.
         if (_dumpTreeTick == Tick)
@@ -699,6 +812,23 @@ internal sealed class GameShell : IDisposable
                 Console.WriteLine($"== layer {index} {layer.Definition.MovieId}");
                 foreach (var line in Active.Player.Layers[index].Player.DescribeDisplayList())
                     Console.WriteLine(line);
+                var movie = Active.Player.Layers[index].Player;
+                if (movie.TryGetLabelFrame("main", "wd_vertical_v1", out _))
+                {
+                    foreach (var path in new[] { "main.courseScene.state", "main.courseScene.next",
+                                 "main.cpp.key.isAccumulation", "main.cpp.key.m_inputEnable.1", "main.cpp.key.m_keyBuffTrg.1",
+                                 "main.cpp.input.1", "main.courseScene.input.1",
+                                 "main.courseScene.courseSelect.cursor.0.state", "main.courseScene.courseSelect.cursor.0.isTween",
+                                 "main.courseScene.courseSelect.cursor.0._visible", "main.courseScene.courseSelect.cursor.0._alpha",
+                                 "_global.CppConnection.prototype.GetInputs", "main.cpp.GetInputs",
+                                 "_global.container.currentMusicIndex", "_global.container.currentGenreIndex" })
+                        Console.WriteLine($"Script {path} = {movie.ReadScriptValue(path) ?? "undefined"}");
+                    for (var board = 0; board < 13; board++)
+                    {
+                        var info = $"_global.CppConnection.resource.musicboardList.{board}.musicInfo";
+                        Console.WriteLine($"Board {board}: genre={movie.ReadScriptValue(info + ".genreIndex")}, index={movie.ReadScriptValue(info + ".musicIndex")}");
+                    }
+                }
             }
         if (_indicators is null)
             return;
@@ -707,7 +837,8 @@ internal sealed class GameShell : IDisposable
             _indicatorScene = Active.Id;
             _indicators.SetScene(scene.IndicatorsFor(Active.Id));
         }
-        _indicators.Advance();
+        using (StartupWorkTrace.Measure("tick.indicators", Tick))
+            _indicators.Advance();
     }
 
     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit counts at
@@ -889,11 +1020,17 @@ internal sealed class GameShell : IDisposable
         var two = JoinedSides.Count == 2;
         var first = JoinedSides.Count == 0 ? 0 : JoinedSides.Min;
         Hosts.PlayerSide = first;
+        var wasTwo = Hosts.TwoPlayers;
         Hosts.TwoPlayers = two;
-        // Two players start in Waiwai's song select (traced); one player only has the normal one.
-        Hosts.Waiwai = two;
+        // An additional join must not reset a mode already chosen by both players.
+        Hosts.Waiwai = two && Arcade.WaiwaiEnabled && (!wasTwo || Hosts.Waiwai);
         if (_indicators is not null)
         {
+            // A late join reloads Song Select under the same scene id. Refresh its
+            // system overlay too, so the joined drum stops displaying its join prompt.
+            if (_indicatorScene == FlowScenes.SongSelect
+                && (_indicators.Side != first || _indicators.TwoPlayers != two))
+                ResetIndicatorScene();
             _indicators.Side = first;
             _indicators.TwoPlayers = two;
         }
@@ -973,6 +1110,8 @@ internal sealed class GameShell : IDisposable
             });
             return;
         }
+        Waddamburo.Game.Patching.SongSelectModeSwitchPatch.Apply(content);
+        Waddamburo.Game.Patching.SongSelectHeaderColours.Apply(content);
         var patching = Waddamburo.Game.Patching.SongSelectGenrePatch.AppliesTo(content);
         upscale?.Tool.ApplyCached(content, upscale.Value.Bc7 && !patching);
         if (!patching)
@@ -996,6 +1135,7 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame createFrame(double interpolationFraction)
     {
+        using var frameTrace = StartupWorkTrace.Measure("frame.total", Tick);
         var interpolation = _home.Interpolation(interpolationFraction);
         if (_presenter.Held(Tick) is { } held)
         {
@@ -1006,8 +1146,10 @@ internal sealed class GameShell : IDisposable
                     [.. Overlay.Quads(interpolation, Titles.Resolve), .. held.Frame.Quads], held.Frame.ContentAspectRatio)
                 : held.Frame);
         }
-        Titles.UploadCompleted();
-        _presenter.UploadAhead();
+        using (StartupWorkTrace.Measure("frame.title-uploads", Tick))
+            Titles.UploadCompleted();
+        using (StartupWorkTrace.Measure("frame.prefetch-uploads", Tick))
+            _presenter.UploadAhead();
         if (SceneTextures.Upscaler is { } upscaler)
         {
             upscaler.Paused = onLane || Bake?.Running == true;
@@ -1015,10 +1157,14 @@ internal sealed class GameShell : IDisposable
         }
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
-        var scene = flowOf(Active.Id).CreateSnapshot(interpolation);
+        Waddamburo.Lumen.Rendering.LumenRenderSnapshot scene;
+        using (StartupWorkTrace.Measure("frame.snapshot", Tick))
+            scene = flowOf(Active.Id).CreateSnapshot(interpolation);
         if (LumenPlayer.Inspect)
             _inspected = scene;
-        var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
+        RenderFrame frame;
+        using (StartupWorkTrace.Measure("frame.resolve-surfaces", Tick))
+            frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads;
@@ -1035,6 +1181,7 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(_playerSetup.Quads(interpolation));
         quads.AddRange(indicatorQuads(false));
         quads.AddRange(Overlay.Quads(interpolation, Titles.Resolve));
+        quads.AddRange(Reload.Quads());
         foreach (var overlay in _inputOverlays)
             quads.AddRange(overlay.Quads());
         quads.AddRange(indicatorQuads(true));
@@ -1097,6 +1244,7 @@ internal sealed class GameShell : IDisposable
         _notices?.Dispose();
         _timingMarks.Dispose();
         Titles.Dispose();
+        ChartCards.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();
         _audioDevice?.Dispose();

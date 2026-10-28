@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="34" viewBox="0 0 500 34" role="img" aria-labelledby="title">
+  <title id="title">再コンパイル版・改造版（MOD）ではありません!!</title>
+  <style>
+    text { fill: #1f2328; }
+    @media (prefers-color-scheme: dark) { text { fill: #f0f6fc; } }
+  </style>
+  <text x="250" y="21" text-anchor="middle" font-family="'Noto Sans JP', 'Yu Gothic', Meiryo, sans-serif" font-size="18" font-weight="700">再コンパイル版・改造版（MOD）ではありません!!</text>
+  <path d="M 25 29 H 475" fill="none" stroke="#f2cc60" stroke-width="4" stroke-linecap="round"/>
+</svg>

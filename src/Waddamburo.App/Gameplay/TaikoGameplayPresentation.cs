@@ -45,6 +45,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>The song's clear / fail banner shows at its end (off in practice; set before <see cref="Start"/>).</summary>
     public bool EndBanner { get; set; } = true;
 
+    /// <summary>Reflects hit-triggered skin runners across the stage; chart scrolling is independent.</summary>
+    public bool MirrorHitDetails { get; set; }
+
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
 
@@ -69,7 +72,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         IReadOnlyList<TaikoCourse> courses, int side = 0, WaiwaiComposition? waiwai = null,
         IReadOnlyList<ReviewTimeline>? reviews = null)
     {
-        var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: scene.Player.Layers[index],
+        var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: MirrorHitDetails
+            && role(layer.Definition) is "chibi" or "renda" ? scene.Player.Layers[index] with
+            { Transform = scene.Player.Layers[index].Transform.Then(new LumenMatrix(-1, 0, 0, 1, 1280, 0)) }
+            : scene.Player.Layers[index],
             layer.Content)).ToArray();
         _stage = null;
         if (charts.Count == 1)

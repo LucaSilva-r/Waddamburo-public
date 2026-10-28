@@ -16,26 +16,33 @@ internal sealed record GameDataLayout(
     string SoundRoot,
     string FontPath)
 {
+    public const string OriginalFontName = "DFPKanTeiRyu-XB";
+    public const string OriginalFontLocation = "USRDIR/data/font/font.ttf";
+    public string? MissingFontPath { get; init; }
+
     public static GameDataLayout Resolve(string root, string? fontOverride = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         var fullRoot = Path.GetFullPath(root);
-        requireDirectory(fullRoot, "game data root");
 
         var lumen = Path.Combine(fullRoot, "data", "lumendata", "packed");
         var don = Path.Combine(fullRoot, "data", "don3d");
         var tja = Path.Combine(fullRoot, "custom_songs");
         var sound = Path.Combine(fullRoot, "data", "sound");
-        requireDirectory(lumen, "Lumen asset root");
-        requireDirectory(don, "Don asset root");
-        requireDirectory(sound, "sound root");
+        var missing = new[] { lumen, don, sound }.Where(path => !Directory.Exists(path))
+            .Concat(new[] { Path.Combine(lumen, "attract", "kidou", "packeddata.ddp"),
+                Path.Combine(lumen, "song_select", "packeddata.ddp"), Path.Combine(lumen, "indicator", "packeddata.ddp") }
+                .Where(path => !File.Exists(path))).ToArray();
+        if (missing.Length > 0) throw new MissingGameDataException(fullRoot, missing);
 
-        var font = fontOverride is null ? findTitleFont(fullRoot) : Path.GetFullPath(fontOverride);
+        var suppliedFont = fontOverride is null ? findTitleFont(fullRoot) : Path.GetFullPath(fontOverride);
+        var font = suppliedFont ?? findSystemFont();
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
         var home = Path.Combine(fullRoot, "waddamburo");
         moveIntoHome(fullRoot, home);
-        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font);
+        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font)
+        { MissingFontPath = suppliedFont is null ? Path.Combine(fullRoot, "data", "font", "font.ttf") : null };
     }
 
     /// <summary>
@@ -123,12 +130,13 @@ internal sealed record GameDataLayout(
     {
         var executable = Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath;
         var directory = Path.GetDirectoryName(executable);
-        return directory is not null && Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed"))
+        return directory is not null && (Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed"))
+                || !string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase))
             ? directory
             : Directory.GetCurrentDirectory();
     }
 
-    private static string findTitleFont(string root)
+    private static string? findTitleFont(string root)
     {
         var fontDirectory = Path.Combine(root, "data", "font");
         if (Directory.Exists(fontDirectory))
@@ -149,19 +157,13 @@ internal sealed record GameDataLayout(
                 return suppliedFont;
         }
 
-        return findSystemFont();
+        return null;
     }
 
     private static bool isSupportedFontExtension(string extension)
         => extension.Equals(".ttf", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".otf", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".ttc", StringComparison.OrdinalIgnoreCase);
-
-    private static void requireDirectory(string path, string description)
-    {
-        if (!Directory.Exists(path))
-            throw new DirectoryNotFoundException($"The {description} does not exist: {path}");
-    }
 
     private static string findSystemFont()
     {

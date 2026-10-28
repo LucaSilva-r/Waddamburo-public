@@ -4,6 +4,7 @@ using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Diagnostics;
 using Waddamburo.Game;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
@@ -21,7 +22,8 @@ internal static class MovieViewer
         int? tickLimit,
         string? screenshotPath,
         ImmutableArray<CallbackInvocation> callbackInvocations,
-        SdlKeyboardTimeline inputTimeline)
+        SdlKeyboardTimeline inputTimeline,
+        bool layoutOnly = false)
     {
         var archiveLength = new FileInfo(archivePath).Length;
         if (archiveLength > ParserLimits.Default.MaxFileBytes)
@@ -54,7 +56,15 @@ internal static class MovieViewer
                 checked((uint)texture.Height),
                 texture.Rgba8.AsSpan()))
             .ToArray();
-        var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
+        var definition = layoutOnly ? content.Definition with
+        {
+            Sprites = [.. content.Definition.Sprites.Select(sprite => sprite with
+            {
+                Timeline = [.. sprite.Timeline.Where(command => command is not Waddamburo.Formats.Lmb.LmbDoActionCommand)],
+            })],
+        } : content.Definition;
+        if (layoutOnly) Console.WriteLine("Layout preview: ActionScript disabled.");
+        var player = new LumenPlayer(definition, 1280, 720, hostBinding: layoutOnly ? null : ViewerHostBinding.Instance);
         if (seekFrame is int requestedFrame)
             player.Seek(requestedFrame);
         void invoke(CallbackInvocation invocation)

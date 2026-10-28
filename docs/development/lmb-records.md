@@ -34,3 +34,32 @@ Timeline semantics keep ordinary `0001` frame groups separate from `F105` seek-s
 groups. The latter are full display-list snapshots used only by explicit seeks, not
 additional sequential frames. For `0005` removal records, the high 16 bits of payload
 word 1 are the timeline depth directly; no one-based adjustment is applied.
+
+## Binary editing
+
+`LmbEditDocument` is a transaction over the raw record stream, used by runtime layout
+preparation. Opening/exporting without edits is byte-identical. An edit clones
+the source, updates known fields and counts, reparses it, and rejects semantic
+errors before committing. Unknown tags, opaque header bytes and uninterpreted
+payload words remain present. Undo/redo retains the original compatibility baseline.
+
+The editing API exposes effective ordinary-timeline placements at a frame, affine
+transforms, opacity, placement/removal, key deletion, new shapes and container
+sprites, labels, timeline extension and baked animations. It resolves move sentinels
+against the preceding placement. Matrix/colour entries are deduplicated; uniquely
+referenced ordinary entries can be edited in place, while shared entries are copied.
+New instances get fresh movie-wide placement IDs; recursive sprite insertion is
+rejected. Clearing inherited mask/blend/name fields can require a new placement,
+which restarts that child timeline at the current frame.
+
+After changing a sprite's ordinary timeline, its F105 display snapshots are rebuilt
+from effective ordinary state, retaining original first-frame ages. Existing
+snapshot entries keep their own opaque words when the same depth survives. Actions,
+labels and unknown records inside those groups are retained. This makes an edited
+frame render consistently when reached sequentially or by an explicit seek; the
+runtime regression suite tests that comparison after serialization/reparse.
+
+No observed-profile writer can prove that opaque fields have no additional
+constraints on original hardware. In particular, preserving known layout or passing
+Waddamburo parsing/rendering does not certify a System 357 executable's behaviour.
+Keep the original file and verify exported copies on the intended runtime.

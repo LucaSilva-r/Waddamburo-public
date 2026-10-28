@@ -2,6 +2,7 @@
 bin/
 obj/
 out/
+graphify-out/
 .vs/
 .idea/
 *.user
@@ -9,6 +10,9 @@ out/
 
 # Local inputs and generated observations
 local-assets/
+/USRDIR/
+/USRDIR_giapponese/
+*.lumenproj
 generated/
 captures/
 screenshots/
@@ -18,6 +22,9 @@ crashdumps/
 # Original game formats and commercial fonts
 *.ddp
 *.lm
+*.lmb
+*.lumen
+!src/Waddamburo.Lumen/
 *.nut
 *.nub
 *.nud
@@ -37,5 +44,29 @@ crashdumps/
 
 # Synthetic fixtures are reviewed exceptions
 !tests/fixtures/synthetic/**
+!samples/delay-check/Delay Check.tja
 AGENTS.md
 CLAUDE.md
+
+# Private development setup and obsolete preview launchers
+/.vscode/
+/docs/development/song-select-resume.md
+/.graphifyignore
+/eng/build-project-map.py
+/eng/query-project-map.py
+/eng/prepare-song-select.ps1
+/GameplayLeftHud.cmd
+/GameplayLeftHudLocal.cmd
+/SongSelectVertical.cmd
+/SongSelectDWheel.cmd
+/ProvaWaddamburo.cmd
+/ProvaWaddamburo.lnk
+
+# Standalone desktop editor: kept locally, not part of the public game for now
+/src/Waddamburo.Editor/
+/tests/Waddamburo.Editor.Tests/
+/LumenEditor.cmd
+
+# Input variants used to choose the embedded osu! folder pattern
+/osu!*.png
+/osu! Triangles Large.svg

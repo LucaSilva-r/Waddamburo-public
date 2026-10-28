@@ -28,10 +28,14 @@ public sealed class LumenPlayer
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeFillBinding> _nativeFills = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)> _overlays =
+    private readonly Dictionary<string, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace, string[] Names)> _overlays =
         new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
+    private readonly Dictionary<string, List<DisplayInstance>> _namedInstanceIndex = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DisplayInstance?> _instanceLookups = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string[]> _instancePathParts = new(StringComparer.Ordinal);
+    private long _displayRevision, _lookupRevision = -1, _nameIndexRevision = -1;
     private LumenInputSnapshot _inputSnapshot = LumenInputSnapshot.Empty;
     private long _nextActionSequence;
     private int _callDepth;
@@ -163,7 +167,10 @@ public sealed class LumenPlayer
         {
             throw new ArgumentOutOfRangeException(nameof(placement));
         }
-        _nativeFills[instanceName] = new NativeFillBinding(surface, placement);
+        if (_nativeFills.TryAdd(instanceName, new NativeFillBinding(surface, placement)))
+            _scopedFills += instanceName.Contains('/') ? 1 : 0;
+        else
+            _nativeFills[instanceName] = new NativeFillBinding(surface, placement);
     }
 
     /// <summary>
@@ -175,7 +182,7 @@ public sealed class LumenPlayer
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
     public string? Name { get; set; }
 
-    // "movie: texture 259 — character 694 in 696 'icon' frame 3 < 744 < root".
+    // "movie: texture 259 â€” character 694 in 696 'icon' frame 3 < 744 < root".
     private string describe(DisplayInstance instance, string what)
     {
         var chain = new List<string>();
@@ -241,7 +248,7 @@ public sealed class LumenPlayer
     }
 
     /// <summary>
-    /// Calls a script method on the object at <paramref name="targetPath"/> (as <see cref="ReadScriptValue"/>
+    /// Calls a script method on the object or movie clip at <paramref name="targetPath"/> (as <see cref="ReadScriptValue"/>
     /// finds it), for authored helpers the movie exports no callback for. False when either is missing.
     /// </summary>
     public bool TryCallScriptMethod(string targetPath, string method, IReadOnlyList<LumenHostValue> arguments)
@@ -249,10 +256,14 @@ public sealed class LumenPlayer
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(arguments);
-        if (ReadScriptValue(targetPath) is not Avm1Object target
-            || target.GetProperty(method).Value is not Avm1FunctionValue function)
-            return false;
-        var invoked = invokeFunction(_root, function, target, arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
+        var target = ReadScriptValue(targetPath);
+        var values = arguments.Select(fromHostValue).ToArray();
+        var invoked = readMember(target, method).Value switch
+        {
+            Avm1FunctionValue function => invokeFunction(target as DisplayInstance ?? _root, function, target, values, _activeContext).Found,
+            Avm1MethodWrapper wrapper => wrapper.Invoke(target, values).Found,
+            _ => false,
+        };
         if (invoked)
             drainActions();
         return invoked;
@@ -270,12 +281,34 @@ public sealed class LumenPlayer
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(host);
-        if (ReadScriptValue(targetPath) is not Avm1Object target
-            || target.GetProperty(method).Value is not Avm1FunctionValue original)
+        var target = ReadScriptValue(targetPath);
+        if (target is not (Avm1Object or DisplayInstance) || readMember(target, method).Value is not Avm1FunctionValue original)
             return false;
-        target.Properties[method] = new Avm1MethodWrapper((self, arguments) => new Avm1Lookup(true, fromHostValue(host(
+        var wrapper = new Avm1MethodWrapper((self, arguments) => new Avm1Lookup(true, fromHostValue(host(
             new LumenHostCall([.. arguments.Select(toHostValue)]),
-            () => toHostValue(invokeFunction(_root, original, self, arguments, _activeContext).Value)))));
+            () => toHostValue(invokeFunction(target as DisplayInstance ?? _root, original, self, arguments, _activeContext).Value)))));
+        if (target is Avm1Object script) script.Properties[method] = wrapper;
+        else ((DisplayInstance)target).Variables[method] = wrapper;
+        return true;
+    }
+
+    /// <summary>Runs a host action after a script method, preserving its return value, including arrays and objects.</summary>
+    public bool TryAfterScriptMethod(string targetPath, string method, Action after)
+    {
+        ArgumentNullException.ThrowIfNull(targetPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        ArgumentNullException.ThrowIfNull(after);
+        var target = ReadScriptValue(targetPath);
+        if (target is not (Avm1Object or DisplayInstance) || readMember(target, method).Value is not Avm1FunctionValue original)
+            return false;
+        var wrapper = new Avm1MethodWrapper((self, arguments) =>
+        {
+            var result = invokeFunction(target as DisplayInstance ?? _root, original, self, arguments, _activeContext);
+            after();
+            return result;
+        });
+        if (target is Avm1Object script) script.Properties[method] = wrapper;
+        else ((DisplayInstance)target).Variables[method] = wrapper;
         return true;
     }
 
@@ -288,10 +321,11 @@ public sealed class LumenPlayer
     {
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
-        if (ReadScriptValue(targetPath) is not Avm1Object target
-            || target.GetProperty(method).Value is not Avm1FunctionValue function)
+        var target = ReadScriptValue(targetPath);
+        if (readMember(target, method).Value is not Avm1FunctionValue function)
             return null;
-        var result = invokeFunction(_root, function, target, [.. arguments.Select(static argument => (object?)argument)], _activeContext).Value;
+        var result = invokeFunction(target as DisplayInstance ?? _root, function, target,
+            [.. arguments.Select(static argument => (object?)argument)], _activeContext).Value;
         if (member is not null)
             result = result is Avm1Object returned ? returned.GetProperty(member).Value : null;
         return result is double number ? number : null;
@@ -307,15 +341,39 @@ public sealed class LumenPlayer
     {
         ArgumentNullException.ThrowIfNull(inputSnapshot);
         _inputSnapshot = inputSnapshot;
-        // A clip run ahead for this tick already recorded where the tick's motion starts.
-        if (!_tickSnapshotTaken)
-            snapshotInstances(_root);
-        _tickSnapshotTaken = false;
-        advanceSubtree(_root, queueActions: true);
-        drainActions();
-        dispatchEnterFrameHandlers();
-        drainActions();
-        advanceLoadedMovies(inputSnapshot);
+        var trace = TraceStartup && _startupTraceAdvances++ < 2;
+        var at = trace ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        _tracingStartupActions = trace;
+        try
+        {
+            // A clip run ahead for this tick already recorded where the tick's motion starts.
+            if (!_tickSnapshotTaken)
+                snapshotInstances(_root);
+            _tickSnapshotTaken = false;
+            if (trace) traceStartupPhase("snapshot", ref at);
+            advanceSubtree(_root, queueActions: true);
+            if (trace) traceStartupPhase("timeline", ref at);
+            drainActions();
+            if (trace) traceStartupPhase("frame-actions", ref at);
+            dispatchEnterFrameHandlers();
+            if (trace) traceStartupPhase("enter-frame", ref at);
+            drainActions();
+            if (trace) traceStartupPhase("handler-actions", ref at);
+            advanceLoadedMovies(inputSnapshot);
+            if (trace) traceStartupPhase("loaded-movies", ref at);
+        }
+        finally { _tracingStartupActions = false; }
+    }
+
+    private static readonly bool TraceStartup = Environment.GetEnvironmentVariable("WADDAMBURO_STARTUP_TRACE") == "1";
+    private int _startupTraceAdvances;
+    private bool _tracingStartupActions;
+
+    private void traceStartupPhase(string phase, ref long at)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(at).TotalMilliseconds;
+        Console.Error.WriteLine(FormattableString.Invariant($"[lumen-startup] {Name} advance={_startupTraceAdvances} {phase}: {elapsed:F2} ms"));
+        at = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
     private readonly List<DisplayInstance> _loadedClips = [];
@@ -399,6 +457,19 @@ public sealed class LumenPlayer
         return true;
     }
 
+    /// <summary>Seeks a named child clip to a zero-based authored frame.</summary>
+    public bool TryGotoFrame(string instancePath, int frame, bool play = false)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        if (findInstance(instancePath) is not { } instance || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
+            || frame < 0 || frame >= timeline.Frames.Length) return false;
+        if (instance.Frame == frame) { instance.Playing = play; return true; }
+        jumpInstance(instance, frame, play);
+        drainActions();
+        resetInterpolation(instance);
+        return true;
+    }
+
     /// <summary>The frame a named clip is on and whether it is playing; null when there is no such clip.</summary>
     public (int Frame, bool Playing)? InstanceFrame(string instancePath)
     {
@@ -464,6 +535,178 @@ public sealed class LumenPlayer
         return true;
     }
 
+    /// <summary>Restores a visual copy's tint independently of the source controller's flash.</summary>
+    public bool TrySetInstanceColor(string instancePath, LumenRenderColor multiply, LumenRenderColor add)
+    {
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.Color = new(multiply, add);
+        resetInterpolation(instance);
+        return true;
+    }
+
+    public bool? InstanceVisibility(string instancePath) => findInstance(instancePath)?.Visible;
+    public float? InstanceAlpha(string instancePath) => findInstance(instancePath)?.Color.Multiply.Alpha;
+
+    public bool TryGetInstanceLocalTransform(string instancePath, out LumenMatrix transform)
+    {
+        transform = LumenMatrix.Identity;
+        if (findInstance(instancePath) is not { } instance) return false;
+        transform = instance.Transform;
+        return true;
+    }
+
+    /// <summary>Updates a host-controlled clip's position, retaining its rotation, scale and interpolation history.</summary>
+    public bool TrySetInstancePosition(string instancePath, float x, float y)
+    {
+        if (!float.IsFinite(x) || !float.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(x));
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.Transform = instance.Transform with { X = x, Y = y };
+        return true;
+    }
+
+    /// <summary>Updates a host-owned component, such as the flat strips of a resizable frame.</summary>
+    public bool TrySetInstanceTransform(string instancePath, LumenMatrix transform)
+    {
+        if (!float.IsFinite(transform.M11) || !float.IsFinite(transform.M12)
+            || !float.IsFinite(transform.M21) || !float.IsFinite(transform.M22)
+            || !float.IsFinite(transform.X) || !float.IsFinite(transform.Y))
+            throw new ArgumentOutOfRangeException(nameof(transform));
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.Transform = transform;
+        return true;
+    }
+
+    public bool TrySetInstanceVisibility(string instancePath, bool visible)
+    {
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.Visible = visible;
+        return true;
+    }
+
+    /// <summary>Sets a 2D layout position for drawing, keeping the authored coordinates available to ActionScript.</summary>
+    public bool TrySetInstanceLayoutPosition(string instancePath, float x, float y, bool interpolate = true)
+    {
+        if (!float.IsFinite(x) || !float.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(x));
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.LayoutPosition = (x, y);
+        if (!interpolate) instance.PreviousLayoutPosition = instance.LayoutPosition;
+        return true;
+    }
+
+    /// <summary>Overrides a presentation container's full matrix while preserving its authored script coordinates.</summary>
+    public bool TrySetInstanceLayoutTransform(string instancePath, LumenMatrix? transform, bool interpolate = true)
+    {
+        if (transform is { } matrix && (!float.IsFinite(matrix.M11) || !float.IsFinite(matrix.M12)
+            || !float.IsFinite(matrix.M21) || !float.IsFinite(matrix.M22)
+            || !float.IsFinite(matrix.X) || !float.IsFinite(matrix.Y)))
+            throw new ArgumentOutOfRangeException(nameof(transform));
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.LayoutTransform = transform;
+        if (!interpolate) instance.PreviousLayoutTransform = transform;
+        return true;
+    }
+
+    /// <summary>Overrides presentation opacity without changing ActionScript's fade state.</summary>
+    public bool TrySetInstanceLayoutAlpha(string instancePath, float? alpha)
+    {
+        if (alpha is { } value && (!float.IsFinite(value) || value < 0 || value > 1))
+            throw new ArgumentOutOfRangeException(nameof(alpha));
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.LayoutAlpha = alpha;
+        return true;
+    }
+
+    /// <summary>Overrides drawing visibility; null follows the visibility controlled by the movie.</summary>
+    public bool TrySetInstanceLayoutVisibility(string instancePath, bool? visible)
+    {
+        if (findInstance(instancePath) is not { } instance) return false;
+        instance.LayoutVisible = visible;
+        return true;
+    }
+
+    /// <summary>Creates artwork from a native export even before its authored screen is entered.</summary>
+    public bool TryCreateExportInstance(string exportName, string parentPath, string name, int depth)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(depth);
+        if (string.IsNullOrWhiteSpace(name) || name.Contains('/')) throw new ArgumentException("Expected a clip name.");
+        if (findInstance(parentPath) is not { } parent || parent.Children.ContainsKey(depth)
+            || parent.Children.Values.Any(child => child.Name == name)) return false;
+        var exported = _sprites.Values.FirstOrDefault(sprite => sprite.ExportName == exportName);
+        if (exported.ExportName is null) return false;
+        var instance = new DisplayInstance(exported.CharacterId, parent.HierarchyDepth + 1, parent)
+        {
+            Name = name, Depth = depth, CutInterpolationUntilSnapshot = true,
+        };
+        parent.Children.Add(depth, instance);
+        _displayRevision++;
+        enterFrame(instance, 0, queueActions: false);
+        instance.Playing = false;
+        resetInterpolation(instance);
+        return true;
+    }
+
+    /// <summary>Uses crisp texel sampling for a component's current bitmap pieces; text surfaces keep their own sampling.</summary>
+    public bool TrySetInstanceNearestSampling(string instancePath, bool enabled)
+    {
+        if (findInstance(instancePath) is not { } instance) return false;
+        set(instance);
+        return true;
+        void set(DisplayInstance node)
+        {
+            node.UseNearestSampling = enabled;
+            foreach (var child in node.Children.Values) set(child);
+        }
+    }
+
+    /// <summary>Copies an initialized native component for host layout, without advancing or restarting its children.</summary>
+    public bool TryCloneInstance(string sourcePath, string parentPath, string name, int depth)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(depth);
+        if (string.IsNullOrWhiteSpace(name) || name.Contains('/')) throw new ArgumentException("Expected a clip name.", nameof(name));
+        if (findInstance(sourcePath) is not { } source || findInstance(parentPath) is not { } parent)
+            return false;
+        if (parent.Children.ContainsKey(depth) || parent.Children.Values.Any(child => child.Name == name))
+            return false;
+        var clone = cloneInstance(source, parent, name);
+        clone.Depth = depth;
+        clone.CutInterpolationUntilSnapshot = true;
+        parent.Children.Add(depth, clone);
+        _displayRevision++;
+        return true;
+    }
+
+    /// <summary>Releases a host-created copy and its children; authored timeline clips are protected.</summary>
+    public bool TryRemoveHostInstance(string instancePath)
+    {
+        if (findInstance(instancePath) is not { FromTimeline: false, Parent: { } parent } instance
+            || !parent.Children.TryGetValue(instance.Depth, out var child) || !ReferenceEquals(child, instance)) return false;
+        parent.Children.Remove(instance.Depth);
+        instance.Removed = true;
+        _displayRevision++;
+        return true;
+    }
+
+    /// <summary>Reorders a host-created visual copy without changing authored timeline depths.</summary>
+    public bool TrySetHostInstanceDepth(string instancePath, int depth)
+    {
+        if (findInstance(instancePath) is not { FromTimeline: false, Parent: { } parent } instance)
+            return false;
+        if (parent.Children.TryGetValue(depth, out var occupant) && occupant.FromTimeline) return false;
+        swapDepth(instance, depth);
+        return true;
+    }
+
+    /// <summary>Sets an authored sibling mask endpoint; null disables the conditional mask.</summary>
+    public bool TrySetInstanceClipDepth(string instancePath, ushort? inclusiveEnd)
+    {
+        if (findInstance(instancePath) is not { } instance) return false;
+        var end = inclusiveEnd is { } depth ? TimelineDepthBase + depth : (long?)null;
+        if (end <= instance.Depth) throw new ArgumentOutOfRangeException(nameof(inclusiveEnd));
+        instance.ClipDepth = end;
+        return true;
+    }
+
+
     /// <summary>
     /// Reads a script variable or named clip by dotted path from the root (e.g. "main.isAllEnd"), as the game
     /// polls movie state. Null when any step is missing.
@@ -476,7 +719,8 @@ public sealed class LumenPlayer
         object? value = parts[0] == "_global" ? _globals.GetValueOrDefault("_global") : _root;
         foreach (var part in parts[0] == "_global" ? parts[1..] : parts)
         {
-            value = value switch
+            value = _activeContext is { } context && value is (DisplayInstance or Avm1Object)
+                ? context.GetMember(value, part).Value : value switch
             {
                 DisplayInstance instance => instance.Variables.GetValueOrDefault(part)
                     ?? instance.Children.Values.FirstOrDefault(child => child.Name == part),
@@ -485,7 +729,7 @@ public sealed class LumenPlayer
                 Dictionary<string, object?> globals => globals.GetValueOrDefault(part),
                 _ => null,
             };
-            if (value is null) return null;
+            if (value is null or Avm1Undefined) return null;
         }
         return value;
     }
@@ -503,7 +747,15 @@ public sealed class LumenPlayer
         if (split <= 0)
             return false;
         var name = path[(split + 1)..];
-        switch (ReadScriptValue(path[..split]))
+        var parent = ReadScriptValue(path[..split]);
+        // Host hooks run inside the caller's AVM transaction. Writing the object directly here
+        // would be shadowed (and later overwritten) by the caller's staged script writes.
+        if (_activeContext is { } context && parent is (DisplayInstance or Avm1Object))
+        {
+            context.SetMember(parent, name, value);
+            return true;
+        }
+        switch (parent)
         {
             case DisplayInstance instance:
                 instance.Variables[name] = value;
@@ -539,7 +791,12 @@ public sealed class LumenPlayer
                     .Select(pair => pair.Key).FirstOrDefault() : null;
             lines.Add($"{new string(' ', 2 * level)}{(instance.Name.Length > 0 ? instance.Name : "-")} ch={instance.CharacterId} "
                 + $"frame={instance.Frame}{(label is null ? "" : $"({label})")}{(instance.Playing ? " playing" : "")}"
-                + $"{(instance.Visible ? "" : " HIDDEN")} a={instance.Color.Multiply.Alpha:0.##}");
+                + $"{(instance.Visible ? "" : " HIDDEN")} a={instance.Color.Multiply.Alpha:0.##}"
+                + $" pos=({instance.Transform.X:0.##},{instance.Transform.Y:0.##})"
+                + $" matrix=({instance.Transform.M11:0.##},{instance.Transform.M12:0.##},{instance.Transform.M21:0.##},{instance.Transform.M22:0.##})"
+                + (instance.LayoutPosition is { } layout ? $" layout=({layout.X:0.##},{layout.Y:0.##})" : "")
+                + (instance.LayoutVisible == false ? " DRAW_HIDDEN" : "")
+                + (_nativeFills.TryGetValue(instance.Name, out var fill) ? $" surface={fill.Surface}" : ""));
             foreach (var child in instance.Children.Values)
                 visit(child, level + 1);
         }
@@ -559,7 +816,11 @@ public sealed class LumenPlayer
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
         if (surface is { } key)
-            _overlays[instancePath] = (key, box, replace);
+        {
+            var names = _overlays.TryGetValue(instancePath, out var current)
+                ? current.Names : instancePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            _overlays[instancePath] = (key, box, replace, names);
+        }
         else
             _overlays.Remove(instancePath);
     }
@@ -567,16 +828,20 @@ public sealed class LumenPlayer
     // The overlay whose path ends with this clip and its nearest ancestors ("board1p/name_board/names").
     private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)? findOverlay(DisplayInstance instance)
     {
-        foreach (var (path, overlay) in _overlays)
+        foreach (var overlay in _overlays.Values)
         {
+            var names = overlay.Names;
+            // Most instances have no matching overlay. Reject by the leaf name
+            // before walking ancestors; paths were parsed once at registration.
+            if (names.Length > 0 && names[^1] != instance.Name) continue;
             var node = instance;
             var matched = true;
-            foreach (var name in path.Split('/', StringSplitOptions.RemoveEmptyEntries).Reverse())
+            for (var index = names.Length - 1; index >= 0; index--)
             {
-                if (node is null || node.Name != name) { matched = false; break; }
+                if (node is null || node.Name != names[index]) { matched = false; break; }
                 node = node.Parent;
             }
-            if (matched) return overlay;
+            if (matched) return (overlay.Surface, overlay.Box, overlay.Replace);
         }
         return null;
     }
@@ -615,38 +880,77 @@ public sealed class LumenPlayer
 
     // A clip by its names from the root ("a/b/name"), else the first live clip anywhere whose own and
     // nearest ancestors' names end the path (as SetInstanceOverlay matches clips).
+    // A leading slash explicitly selects from the root and never falls back to a suffix search.
     private DisplayInstance? findInstance(string path)
     {
-        var names = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var instance = _root;
+        if (path.Length == 0) return _root;
+        if (_lookupRevision != _displayRevision)
+        {
+            _instanceLookups.Clear();
+            _lookupRevision = _displayRevision;
+        }
+        if (_instanceLookups.TryGetValue(path, out var cached)) return cached;
+        if (!_instancePathParts.TryGetValue(path, out var names))
+        {
+            if (_instancePathParts.Count >= 8192) _instancePathParts.Clear();
+            _instancePathParts[path] = names = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        }
+        if (names.Length == 0) return _root;
+        if (_instanceLookups.Count >= 8192) _instanceLookups.Clear();
+        DisplayInstance? direct = _root;
         foreach (var name in names)
         {
-            instance = instance.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == name);
-            if (instance is null)
-                return names.Length == 0 ? null : findBySuffix(_root, names);
+            DisplayInstance? next = null;
+            // Reuse a current name index; after a clone/seek, rooted paths can
+            // resolve their parent chain without forcing a whole-tree rebuild.
+            if (_nameIndexRevision == _displayRevision)
+            {
+                if (_namedInstanceIndex.TryGetValue(name, out var named))
+                    foreach (var child in named)
+                        if (ReferenceEquals(child.Parent, direct)) { next = child; break; }
+            }
+            else
+                foreach (var child in direct!.Children.Values)
+                    if (!child.Removed && child.Name == name) { next = child; break; }
+            direct = next;
+            if (direct is null) break;
         }
-        return instance;
+        if (direct is not null) return _instanceLookups[path] = direct;
+        if (path[0] == '/') return _instanceLookups[path] = null;
+        if (_nameIndexRevision != _displayRevision)
+        {
+            if (_namedInstanceIndex.Count > 8192) _namedInstanceIndex.Clear();
+            foreach (var list in _namedInstanceIndex.Values) list.Clear();
+            indexNamedChildren(_root);
+            _nameIndexRevision = _displayRevision;
+        }
+        DisplayInstance? suffix = null;
+        if (_namedInstanceIndex.TryGetValue(names[^1], out var candidates))
+            foreach (var candidate in candidates)
+            {
+                var node = candidate;
+                var matched = true;
+                for (var index = names.Length - 1; index >= 0 && matched; index--, node = node?.Parent)
+                    matched = node is not null && node.Name == names[index];
+                if (!matched) continue;
+                suffix = candidate;
+                break;
+            }
+        return _instanceLookups[path] = suffix;
     }
 
-    private static DisplayInstance? findBySuffix(DisplayInstance instance, string[] names)
+    private void indexNamedChildren(DisplayInstance instance)
     {
         foreach (var child in instance.Children.Values)
         {
-            if (child.Removed)
-                continue;
-            if (child.Name == names[^1])
+            if (child.Removed) continue;
+            if (child.Name is { Length: > 0 } name)
             {
-                var node = child.Parent;
-                var matched = true;
-                for (var index = names.Length - 2; index >= 0 && matched; index--, node = node?.Parent)
-                    matched = node is not null && node.Name == names[index];
-                if (matched)
-                    return child;
+                if (!_namedInstanceIndex.TryGetValue(name, out var list)) _namedInstanceIndex[name] = list = [];
+                list.Add(child);
             }
-            if (findBySuffix(child, names) is { } found)
-                return found;
+            indexNamedChildren(child);
         }
-        return null;
     }
 
     /// <summary>
@@ -746,22 +1050,73 @@ public sealed class LumenPlayer
         }
     }
 
-    public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f)
+    public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f,
+        IEnumerable<string>? excludedInstancePaths = null)
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         // The builder keeps its capacity between frames: one exact-size array per snapshot, no regrowth.
         _quads.Clear();
-        appendInstance(
-            _root,
-            LumenMatrix.Identity,
-            ColorState.Identity,
-            LumenRenderBlend.Normal,
-            interpolationFraction,
-            _quads);
-        return new LumenRenderSnapshot(StageWidth, StageHeight, _quads.ToImmutable());
+        _snapshotExcluded = excludedInstancePaths?.Select(findInstance).OfType<DisplayInstance>().ToHashSet();
+        try
+        {
+            appendInstance(
+                _root,
+                LumenMatrix.Identity,
+                ColorState.Identity,
+                LumenRenderBlend.Normal,
+                interpolationFraction,
+                _quads);
+            return new LumenRenderSnapshot(StageWidth, StageHeight, _quads.ToImmutable());
+        }
+        finally { _snapshotExcluded = null; }
     }
 
+    private HashSet<DisplayInstance>? _snapshotExcluded;
+
+    /// <summary>Draws one live clip with its current timelines, ancestor transforms and colours.</summary>
+    public LumenRenderSnapshot CreateInstanceRenderSnapshot(string instancePath, float interpolationFraction = 1f,
+        IEnumerable<string>? excludedInstancePaths = null)
+    {
+        if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
+            throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
+        var quads = _componentSnapshotPool.TryPop(out var reusable) ? reusable : ImmutableArray.CreateBuilder<LumenRenderQuad>();
+        try
+        {
+            if (findInstance(instancePath) is not { } instance)
+                return new(StageWidth, StageHeight, quads);
+            var transform = LumenMatrix.Identity;
+            var color = ColorState.Identity;
+            var blend = LumenRenderBlend.Normal;
+            var ancestors = new Stack<DisplayInstance>();
+            for (var parent = instance.Parent; parent is not null; parent = parent.Parent)
+                ancestors.Push(parent);
+            foreach (var parent in ancestors)
+            {
+                if (!(parent.LayoutVisible ?? parent.Visible) || parent.Removed) return new(StageWidth, StageHeight, quads);
+                var local = interpolate(parent, interpolationFraction);
+                transform = local.Transform.Then(transform);
+                color = local.Color.Then(color);
+                blend = parent.BlendMode switch { 3 => LumenRenderBlend.Multiply, 4 => LumenRenderBlend.Screen,
+                    8 => LumenRenderBlend.Add, _ => blend };
+                if (isInterpolationCut(parent)) interpolationFraction = 1;
+            }
+            var previousExcluded = _snapshotExcluded;
+            _snapshotExcluded = excludedInstancePaths?.Select(findInstance).OfType<DisplayInstance>().ToHashSet();
+            try { appendInstance(instance, transform, color, blend, interpolationFraction, quads); }
+            finally { _snapshotExcluded = previousExcluded; }
+            return new(StageWidth, StageHeight, quads);
+        }
+        finally
+        {
+            quads.Clear();
+            if (quads.Capacity <= 4096 && _componentSnapshotPool.Count < 4) _componentSnapshotPool.Push(quads);
+        }
+    }
+
+    // Component frames own immutable copies; only temporary builders are pooled.
+    // Separate rentals also preserve nested/reentrant snapshot requests.
+    private readonly Stack<ImmutableArray<LumenRenderQuad>.Builder> _componentSnapshotPool = [];
     private readonly ImmutableArray<LumenRenderQuad>.Builder _quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
 
     private static SpriteTimeline compileTimeline(
@@ -900,6 +1255,7 @@ public sealed class LumenPlayer
 
     private void enterFrame(DisplayInstance instance, int frame, bool queueActions)
     {
+        _displayRevision++;
         var timeline = _sprites[instance.CharacterId];
         if ((uint)frame >= (uint)timeline.Frames.Length)
             return;
@@ -923,6 +1279,7 @@ public sealed class LumenPlayer
                     var depth = TimelineDepthBase + remove.Depth;
                     if (instance.Children.TryGetValue(depth, out var removed))
                     {
+                        _displayRevision++;
                         instance.Children.Remove(depth);
                         removed.Removed = true;
                     }
@@ -1460,6 +1817,7 @@ public sealed class LumenPlayer
                     if (parent.Children.TryGetValue(targetDepth, out var replaced))
                         replaced.Removed = true;
                     parent.Children[targetDepth] = clone;
+                    _displayRevision++;
                 });
                 return new Avm1Lookup(true, clone);
             },
@@ -1519,14 +1877,15 @@ public sealed class LumenPlayer
         return context;
     }
 
-    private static void placeScriptChild(DisplayInstance parent, DisplayInstance child)
+    private void placeScriptChild(DisplayInstance parent, DisplayInstance child)
     {
+        _displayRevision++;
         if (parent.Children.TryGetValue(child.Depth, out var replaced))
             replaced.Removed = true;
         parent.Children[child.Depth] = child;
     }
 
-    private static void scheduleRemoval(Avm1ExecutionContext context, DisplayInstance instance)
+    private void scheduleRemoval(Avm1ExecutionContext context, DisplayInstance instance)
     {
         if (instance.Parent is not { } parent)
             return;
@@ -1535,6 +1894,7 @@ public sealed class LumenPlayer
             context.SetTransientMember(parent, name, Avm1Undefined.Instance);
         context.OnCommit(() =>
         {
+            _displayRevision++;
             if (parent.Children.TryGetValue(instance.Depth, out var current)
                 && ReferenceEquals(current, instance))
             {
@@ -1547,7 +1907,8 @@ public sealed class LumenPlayer
     private static DisplayInstance cloneInstance(
         DisplayInstance source,
         DisplayInstance parent,
-        string name)
+        string name,
+        bool timelineChild = false)
     {
         var clone = new DisplayInstance(source.CharacterId, parent.HierarchyDepth + 1, parent)
         {
@@ -1555,13 +1916,22 @@ public sealed class LumenPlayer
             Depth = source.Depth,
             PlacementId = source.PlacementId,
             FirstFrame = source.FirstFrame,
+            FromTimeline = timelineChild && source.FromTimeline,
             Frame = source.Frame,
             Playing = source.Playing,
             Visible = source.Visible,
+            LayoutVisible = source.LayoutVisible,
+            UseNearestSampling = source.UseNearestSampling,
             BlendMode = source.BlendMode,
             Transform = source.Transform,
+            LayoutPosition = source.LayoutPosition,
+            LayoutTransform = source.LayoutTransform,
+            LayoutAlpha = source.LayoutAlpha,
             Color = source.Color,
             PreviousTransform = source.PreviousTransform,
+            PreviousLayoutPosition = source.PreviousLayoutPosition,
+            PreviousLayoutTransform = source.PreviousLayoutTransform,
+            PreviousLayoutAlpha = source.PreviousLayoutAlpha,
             PreviousMultiply = source.PreviousMultiply,
             PreviousVisible = source.PreviousVisible,
             ScriptTransformed = source.ScriptTransformed,
@@ -1573,17 +1943,18 @@ public sealed class LumenPlayer
         foreach (var (variableName, value) in source.Variables)
             clone.Variables.Add(variableName, value);
         foreach (var (depth, child) in source.Children)
-            clone.Children.Add(depth, cloneInstance(child, clone, child.Name));
+            clone.Children.Add(depth, cloneInstance(child, clone, child.Name, timelineChild: true));
         return clone;
     }
 
-    private static void swapDepth(DisplayInstance instance, long destination)
+    private void swapDepth(DisplayInstance instance, long destination)
     {
         if (instance.Parent is not { } parent)
             return;
         var source = instance.Depth;
         if (source == destination)
             return;
+        _displayRevision++;
         parent.Children.Remove(source);
         if (parent.Children.Remove(destination, out var displaced))
         {
@@ -1668,6 +2039,7 @@ public sealed class LumenPlayer
             return default;
         }
         _callDepth++;
+        var traceAt = _tracingStartupActions ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         try
         {
             var startingFrame = timelineTarget.Frame;
@@ -1726,6 +2098,16 @@ public sealed class LumenPlayer
         finally
         {
             _callDepth--;
+            if (traceAt != 0)
+            {
+                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(traceAt).TotalMilliseconds;
+                if (elapsed >= 2)
+                {
+                    var index = function.Definition.NameStringIndex;
+                    var name = index < _movie.Strings.Length ? _movie.Strings[index].Value : "(anonymous)";
+                    Console.Error.WriteLine(FormattableString.Invariant($"[lumen-startup-call] {Name} clip={timelineTarget.Name} function={name} body={function.Body.Offset} depth={_callDepth} {elapsed:F2} ms"));
+                }
+            }
         }
     }
 
@@ -1888,6 +2270,7 @@ public sealed class LumenPlayer
             {
                 case "_name":
                     instance.Name = toAvmString(value);
+                    _displayRevision++;
                     return;
                 case "_visible":
                     instance.Visible = toBoolean(value);
@@ -2179,6 +2562,7 @@ public sealed class LumenPlayer
         LmbPlaceObjectCommand placement,
         bool queueActions)
     {
+        _displayRevision++;
         var depth = TimelineDepthBase + placement.Depth;
         parent.Children.TryGetValue(depth, out var instance);
         switch (placement.Mode)
@@ -2341,7 +2725,7 @@ public sealed class LumenPlayer
         ImmutableArray<LumenRenderQuad>.Builder quads,
         byte maskDepth = 0)
     {
-        if (instance.Removed || !instance.Visible)
+        if (instance.Removed || !(instance.LayoutVisible ?? instance.Visible) || _snapshotExcluded?.Contains(instance) == true)
             return;
         // A newly revealed or abruptly moved parent must show its children at the same tick.
         // Otherwise hidden child positions are interpolated under the parent's new opacity.
@@ -2410,6 +2794,7 @@ public sealed class LumenPlayer
                     color.Multiply,
                     color.Add,
                     blend, MaskDepth: maskDepth,
+                    UseNearestSampling: instance.UseNearestSampling,
                     Source: Inspect ? describe(instance, $"texture {geometry.TextureIndex}") : null));
             }
         }
@@ -2537,9 +2922,13 @@ public sealed class LumenPlayer
     {
         if (instance.Removed)
             return;
+        instance.CutInterpolationUntilSnapshot = false;
         instance.PreviousTransform = instance.Transform;
+        instance.PreviousLayoutPosition = instance.LayoutPosition;
+        instance.PreviousLayoutTransform = instance.LayoutTransform;
+        instance.PreviousLayoutAlpha = instance.LayoutAlpha;
         instance.PreviousMultiply = instance.Color.Multiply;
-        instance.PreviousVisible = instance.Visible;
+        instance.PreviousVisible = instance.LayoutVisible ?? instance.Visible;
         foreach (var child in instance.Children.Values)
             snapshotInstances(child);
     }
@@ -2549,14 +2938,18 @@ public sealed class LumenPlayer
         if (instance.Removed)
             return;
         instance.PreviousTransform = instance.Transform;
+        instance.PreviousLayoutPosition = instance.LayoutPosition;
+        instance.PreviousLayoutTransform = instance.LayoutTransform;
+        instance.PreviousLayoutAlpha = instance.LayoutAlpha;
         instance.PreviousMultiply = instance.Color.Multiply;
-        instance.PreviousVisible = instance.Visible;
+        instance.PreviousVisible = instance.LayoutVisible ?? instance.Visible;
         foreach (var child in instance.Children.Values)
             resetInterpolation(child);
     }
 
-    private static void clearChildren(DisplayInstance instance)
+    private void clearChildren(DisplayInstance instance)
     {
+        _displayRevision++;
         foreach (var child in instance.Children.Values)
             child.Removed = true;
         instance.Children.Clear();
@@ -2564,14 +2957,21 @@ public sealed class LumenPlayer
 
     private static InterpolatedState interpolate(DisplayInstance instance, float fraction)
     {
+        var currentTransform = instance.LayoutTransform ?? instance.Transform;
+        var currentColor = instance.LayoutAlpha is { } alpha
+            ? instance.Color with { Multiply = instance.Color.Multiply with { Alpha = alpha } } : instance.Color;
+        if (instance.LayoutPosition is { } position)
+            currentTransform = currentTransform with { X = position.X, Y = position.Y };
         if (fraction >= 1 || isInterpolationCut(instance))
         {
-            return new InterpolatedState(instance.Transform, instance.Color);
+            return new InterpolatedState(currentTransform, currentColor);
         }
 
-        var previousTransform = instance.PreviousTransform!.Value;
+        var previousTransform = instance.PreviousLayoutTransform ?? instance.PreviousTransform!.Value;
+        if (instance.PreviousLayoutPosition is { } previousPosition)
+            previousTransform = previousTransform with { X = previousPosition.X, Y = previousPosition.Y };
         var previousMultiply = instance.PreviousMultiply!.Value;
-        var currentTransform = instance.Transform;
+        if (instance.PreviousLayoutAlpha is { } previousAlpha) previousMultiply = previousMultiply with { Alpha = previousAlpha };
 
         return new InterpolatedState(
             new LumenMatrix(
@@ -2581,23 +2981,37 @@ public sealed class LumenPlayer
                 lerp(previousTransform.M22, currentTransform.M22, fraction),
                 lerp(previousTransform.X, currentTransform.X, fraction),
                 lerp(previousTransform.Y, currentTransform.Y, fraction)),
-            instance.Color with
+            currentColor with
             {
                 Multiply = new LumenRenderColor(
                     lerp(previousMultiply.Red, instance.Color.Multiply.Red, fraction),
                     lerp(previousMultiply.Green, instance.Color.Multiply.Green, fraction),
                     lerp(previousMultiply.Blue, instance.Color.Multiply.Blue, fraction),
-                    lerp(previousMultiply.Alpha, instance.Color.Multiply.Alpha, fraction)),
+                    lerp(previousMultiply.Alpha, currentColor.Multiply.Alpha, fraction)),
             });
     }
 
     private static bool isInterpolationCut(DisplayInstance instance) =>
-        instance.PreviousTransform is not LumenMatrix previousTransform
+        instance.CutInterpolationUntilSnapshot
+        || layoutDistanceExceeds(instance)
+        || instance.PreviousTransform is not LumenMatrix
         || instance.PreviousMultiply is not LumenRenderColor previousMultiply
-        || instance.PreviousVisible == false && instance.Visible
-        || Math.Abs(instance.Transform.X - previousTransform.X)
-            + Math.Abs(instance.Transform.Y - previousTransform.Y) > TranslationCutThreshold
+        || instance.PreviousVisible == false && (instance.LayoutVisible ?? instance.Visible)
         || colorDistanceExceeds(previousMultiply, instance.Color.Multiply, ColorCutThreshold);
+
+    private static bool layoutDistanceExceeds(DisplayInstance instance)
+    {
+        // Compare the coordinates actually drawn. The native selector can
+        // recycle a board by hundreds of units under a host layout override;
+        // cutting on that invisible jump also snaps all its animated children.
+        var current = instance.LayoutTransform ?? instance.Transform;
+        var previous = instance.PreviousLayoutTransform ?? instance.PreviousTransform ?? current;
+        var x = instance.LayoutPosition?.X ?? current.X;
+        var y = instance.LayoutPosition?.Y ?? current.Y;
+        var oldX = instance.PreviousLayoutPosition?.X ?? previous.X;
+        var oldY = instance.PreviousLayoutPosition?.Y ?? previous.Y;
+        return Math.Abs(x - oldX) + Math.Abs(y - oldY) > TranslationCutThreshold;
+    }
 
     private static bool colorDistanceExceeds(
         LumenRenderColor previous,
@@ -2699,12 +3113,21 @@ public sealed class LumenPlayer
         public bool Playing { get; set; } = true;
 
         public bool Visible { get; set; } = true;
+        public bool UseNearestSampling { get; set; }
+        public bool? LayoutVisible { get; set; }
+        public bool CutInterpolationUntilSnapshot { get; set; }
 
         public bool ScriptTransformed { get; set; }
 
         public ushort BlendMode { get; set; }
 
         public LumenMatrix Transform { get; set; } = LumenMatrix.Identity;
+        public (float X, float Y)? LayoutPosition { get; set; }
+        public (float X, float Y)? PreviousLayoutPosition { get; set; }
+        public LumenMatrix? LayoutTransform { get; set; }
+        public LumenMatrix? PreviousLayoutTransform { get; set; }
+        public float? LayoutAlpha { get; set; }
+        public float? PreviousLayoutAlpha { get; set; }
 
         public ColorState Color { get; set; } = ColorState.Identity;
 

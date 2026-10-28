@@ -112,7 +112,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _review?.Dispose();
         // Home: a recorded play (a replay picked in song select) or the autoplay is reviewed (pause,
         // scrub, speed) rather than played live; it is never saved.
-        _review = !Shell.Arcade.Home || Shell.Headless ? null
+        _review = !Shell.Arcade.Home || Shell.Headless || Shell.IsolatedProbe ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
             : Shell.Options.Autoplay
@@ -531,6 +531,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (active != FlowScenes.Gameplay)
             return;
         Console.WriteLine($"Loaded gameplay charts: {_charts.Length}.");
+        foreach (var chart in _sourceCharts)
+            Console.WriteLine($"Gameplay chart: {chart.Key}, {chart.HitObjects.Length} authored notes.");
         Shell.Gameplay.ReportDiagnostics();
     }
 }

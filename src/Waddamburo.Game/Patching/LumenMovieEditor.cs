@@ -66,19 +66,19 @@ public sealed class LumenMovieEditor
         return (uint)(_textures.Count - 1);
     }
 
-    private readonly Dictionary<uint, (uint Body, uint Light)> _split = [];
+    private readonly Dictionary<(uint Source, uint Reference, bool BlackOutline), (uint Body, uint Light)> _split = [];
     private LmbRemoveObjectCommand? _removeTemplate;
 
     /// <summary>
-    /// Texture <paramref name="source"/> split for recolouring: each pixel read as shade × (base colour
+    /// Texture <paramref name="source"/> split for recolouring: each pixel read as shade Ã— (base colour
     /// mixed with white), the base colour being <paramref name="reference"/>'s most saturated one (one
-    /// reference for a whole set of art keeps its pieces matching). Body = shade × colour
-    /// share (grey, to be multiplied by a new colour), light = shade × white share (grey, added on top):
-    /// body × colour + light redraws the art in any colour with its highlights and shading.
+    /// reference for a whole set of art keeps its pieces matching). Body = shade Ã— colour
+    /// share (grey, to be multiplied by a new colour), light = shade Ã— white share (grey, added on top):
+    /// body Ã— colour + light redraws the art in any colour with its highlights and shading.
     /// </summary>
-    public (uint Body, uint Light) SplitForRecolour(uint source, uint reference)
+    public (uint Body, uint Light) SplitForRecolour(uint source, uint reference, bool blackOutline = false)
     {
-        if (_split.TryGetValue(source, out var known))
+        if (_split.TryGetValue((source, reference, blackOutline), out var known))
             return known;
         var texture = _textures[checked((int)source)];
         if (texture.Rgba8.IsDefaultOrEmpty || _textures[checked((int)reference)].Rgba8.IsDefaultOrEmpty)
@@ -105,13 +105,14 @@ public sealed class LumenMovieEditor
             var shade = Math.Min(1, value / Math.Max(1e-4f, baseValue * colourShare + whiteShare));
             var b = (byte)Math.Round(shade * colourShare * 255);
             var l = (byte)Math.Round(shade * whiteShare * 255);
+            if (blackOutline && value < .6f) b = l = 0;
             body[index] = body[index + 1] = body[index + 2] = b;
             light[index] = light[index + 1] = light[index + 2] = l;
             body[index + 3] = light[index + 3] = pixels[index + 3];
         }
         _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. body], Bc7 = default });
         _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. light], Bc7 = default });
-        return _split[source] = ((uint)(_textures.Count - 2), (uint)(_textures.Count - 1));
+        return _split[(source, reference, blackOutline)] = ((uint)(_textures.Count - 2), (uint)(_textures.Count - 1));
     }
 
     private static (float Saturation, float Value) saturationValue(ReadOnlySpan<byte> pixels, int index)
@@ -174,7 +175,7 @@ public sealed class LumenMovieEditor
                 return done[character] = (layered(shape, rules, recolour), null, null);
             var tint = rules.OfType<TextureRule.Tint>().FirstOrDefault();
             var fill = rules.OfType<TextureRule.Fill>().Select(static fill => fill.Slot).FirstOrDefault();
-            if (!rules.Any(static rule => rule is TextureRule.Fill or TextureRule.Hide))
+            if (!rules.Any(static rule => rule is TextureRule.Fill or TextureRule.Hide or TextureRule.Swap))
                 return done[character] = (character, tint, null);
             var id = _nextCharacter++;
             _shapes[id] = shape with
@@ -183,7 +184,12 @@ public sealed class LumenMovieEditor
                 Geometry = [.. shape.Geometry.Zip(rules)
                     .Where(static pair => pair.Second is not TextureRule.Hide)
                     // A geometry whose flags' high half is zero draws the host surface of its slot.
-                    .Select(static pair => pair.Second is TextureRule.Fill ? pair.First with { Flags = pair.First.Flags & 0xFFFF } : pair.First)],
+                    .Select(static pair => pair.Second switch
+                    {
+                        TextureRule.Fill => pair.First with { Flags = pair.First.Flags & 0xFFFF },
+                        TextureRule.Swap swap => pair.First with { TextureIndex = swap.TextureIndex },
+                        _ => pair.First,
+                    })],
                 DeclaredGeometryCount = (uint)shape.Geometry.Zip(rules).Count(static pair => pair.Second is not TextureRule.Hide),
             };
             return done[character] = (id, tint, fill);
@@ -331,8 +337,8 @@ public sealed class LumenMovieEditor
                     ? pair.First with { TextureIndex = texture(pair.First.TextureIndex) } : pair.First)],
             };
         }
-        var body = layer(texture => SplitForRecolour(texture, recolour.Reference).Body);
-        var light = layer(texture => SplitForRecolour(texture, recolour.Reference).Light);
+        var body = layer(texture => SplitForRecolour(texture, recolour.Reference, recolour.BlackOutline).Body);
+        var light = layer(texture => SplitForRecolour(texture, recolour.Reference, recolour.BlackOutline).Light);
         var template = _sprites.Values.First(static sprite => sprite.Timeline.OfType<LmbPlaceObjectCommand>().Any()
             && sprite.Timeline.OfType<LmbShowFrameCommand>().Any());
         var show = template.Timeline.OfType<LmbShowFrameCommand>().First();
@@ -415,7 +421,10 @@ public abstract record TextureRule
     /// multiply), keeping their highlights and shading (see <see cref="LumenMovieEditor.SplitForRecolour"/>,
     /// against texture <paramref name="Reference"/>'s colour).
     /// </summary>
-    public sealed record Recolour(uint ColorIndex, uint Reference) : TextureRule;
+    public sealed record Recolour(uint ColorIndex, uint Reference, bool BlackOutline = false) : TextureRule;
+
+    /// <summary>Uses another native texture with the existing geometry and UVs.</summary>
+    public sealed record Swap(uint TextureIndex) : TextureRule;
 
     /// <summary>Its geometries are not drawn.</summary>
     public sealed record Hide : TextureRule;

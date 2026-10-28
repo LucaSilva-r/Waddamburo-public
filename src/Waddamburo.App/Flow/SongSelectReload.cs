@@ -1,4 +1,5 @@
 using Waddamburo.App.Scenes;
+using Waddamburo.Platform.Sdl.Rendering;
 
 namespace Waddamburo.App.Flow;
 
@@ -16,6 +17,7 @@ internal sealed class SongSelectReload(GameShell shell)
     private enum Stage { None, Covering, Revealing }
     private Stage _stage;
     private Action? _change;
+    private long _started;
     private Waddamburo.Game.Flow.SceneId? _next;
 
     public bool Busy => _stage != Stage.None;
@@ -39,15 +41,19 @@ internal sealed class SongSelectReload(GameShell shell)
         shell.Overlay.Show(FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
         shell.Overlay.Speed = Speed;
         _stage = Stage.Covering;
-        _startTick = shell.Tick;
+        _started = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
-    private int _startTick;
     private Waddamburo.Game.Scenes.SceneDefinition? _scene;
 
-    // Covered this long (from the cover's start) without the prefetch: finish it the slow way (most of
-    // it is decoded by then; a slow reload measured 160 ms).
-    private const int PrefetchLimitTicks = 60;
+    public IEnumerable<RenderQuad> Quads()
+    {
+        if (_stage != Stage.Covering || _next is not null || shell.PrefetchReady
+            || System.Diagnostics.Stopwatch.GetElapsedTime(_started).TotalSeconds < .75) yield break;
+        yield return shell.Painter.Rect(390, 620, 500, 52, new RenderColor(0, 0, 0, .75f));
+        var dots = new string('.', shell.Tick / 20 % 4);
+        yield return shell.Painter.Text(Strings.T("menu.loading_song_select") + dots, 640, 646, 480, 30);
+    }
 
     /// <summary>Drives the reload; true while it runs (the tick's input is taken).</summary>
     public bool Tick()
@@ -56,7 +62,9 @@ internal sealed class SongSelectReload(GameShell shell)
             return false;
         if (shell.Overlay.Player is { IsPlaying: true })
             return true;
-        if (_stage == Stage.Covering && _next is null && !shell.PrefetchReady && shell.Tick - _startTick < PrefetchLimitTicks)
+        // A first-use menu layout can take longer than the cover. Never fall back to
+        // waiting for its decoder on the window thread; keep rendering and polling events.
+        if (_stage == Stage.Covering && _next is null && !shell.PrefetchReady)
             return true;
         if (_stage == Stage.Covering && _next is { } next)
         {

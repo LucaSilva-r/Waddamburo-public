@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
+    <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
+    <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,25 @@ namespace Waddamburo.Providers.Tja.Tests;
 public sealed class TjaCatalogProviderTests
 {
     [Fact]
+    public async Task RepeatedOniChartsKeepDistinctNamesAndLoadTheExactOccurrence()
+    {
+        using var library = new TemporaryLibrary();
+        var content = "TITLE:Many Oni\nBPM:120\n" + string.Join("\n", Enumerable.Range(1, 9)
+            .Select(index => $"COURSE:Oni\nLEVEL:9\n#START\n{new string('1', index)},\n#END"));
+        library.WriteText("many.tja", content);
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var song = Assert.Single(contribution.Songs);
+        Assert.Equal(9, song.Charts.Length);
+        Assert.Equal(9, song.Charts.Select(chart => chart.Key).Distinct().Count());
+        Assert.Equal(9, song.Charts.Select(chart => chart.DifficultyName).Distinct().Count());
+        var seventh = song.Charts.Single(chart => chart.DifficultyName == "Oni 7");
+        var loaded = await provider.LoadChartAsync(seventh.Key, seventh.ChartAsset);
+        Assert.Equal(seventh.Key, loaded.Key);
+        Assert.Equal(7, loaded.HitObjects.Length);
+    }
+
+    [Fact]
     public async Task BoxDefNamesAndColoursItsFolder()
     {
         using var library = new TemporaryLibrary();

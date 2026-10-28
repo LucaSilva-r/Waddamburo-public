@@ -34,6 +34,7 @@ internal sealed class HomeControls : IDisposable
     private bool _focused = true;
     private float _lastInterpolation;
     private float _pauseInterpolation;
+    private bool _songSelectLayoutChanged;
 
     public HomeControls(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration, string fontPath, string assetRoot)
     {
@@ -44,7 +45,11 @@ internal sealed class HomeControls : IDisposable
         _audio.Apply(shell.Arcade);
         _menu = new HomeMenu(() => shell.Arcade, settings =>
         {
+            _songSelectLayoutChanged |= shell.Arcade.SongSelectScroll != settings.SongSelectScroll
+                || shell.Arcade.VerticalScrollPath != settings.VerticalScrollPath
+                || shell.Arcade.WaiwaiEnabled != settings.WaiwaiEnabled;
             shell.Arcade = settings;
+            if (!settings.WaiwaiEnabled) shell.Hosts.Waiwai = false;
             _audio.Apply(settings);
             shell.ApplyDisplay();
             shell.ApplyControls();
@@ -55,7 +60,8 @@ internal sealed class HomeControls : IDisposable
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
         // A cabinet has the menu too (outside songs): its operator's settings.
-        _overlay = new HomePauseOverlay(shell.Application, shell.Painter, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures);
+        _overlay = new HomePauseOverlay(shell.Application, shell.Painter, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures,
+            missingFont: shell.Options.MissingFontPath is not null);
     }
 
     private bool home => _shell.Arcade.Home;
@@ -166,9 +172,10 @@ internal sealed class HomeControls : IDisposable
     public void FollowFocus()
     {
         _audio.InMenus(AttractScenes.Contains(active) || active == FlowScenes.Entry || active == FlowScenes.SongSelect);
-        if (_shell.Application.Focused == _focused)
+        var focused = _shell.IsolatedProbe || _shell.Application.Focused;
+        if (focused == _focused)
             return;
-        _focused = _shell.Application.Focused;
+        _focused = focused;
         if (_shell.Arcade.MuteInBackground || _focused)
             _shell.Audio?.Mixer.FadeOutput(_focused ? 1 : 0, TimeSpan.FromMilliseconds(300));
     }
@@ -259,6 +266,12 @@ internal sealed class HomeControls : IDisposable
                 resume.Start();
                 break;
             case HomeMenuAction.Resume:
+                if (_songSelectLayoutChanged && active == FlowScenes.SongSelect)
+                {
+                    _songSelectLayoutChanged = false;
+                    _shell.Hosts.SongSelect?.RememberCurrentSong();
+                    _shell.Reload.Start(static () => { });
+                }
                 resumeSong();
                 break;
             case HomeMenuAction.InstantReplay when active == FlowScenes.Gameplay:

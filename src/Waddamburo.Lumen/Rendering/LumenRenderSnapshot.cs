@@ -59,7 +59,8 @@ public readonly record struct LumenRenderQuad(
     LumenNativeSurfaceKey? NativeSurface = null,
     LumenRenderMaskOperation MaskOperation = LumenRenderMaskOperation.Draw,
     byte MaskDepth = 0,
-    string? Source = null);
+    string? Source = null,
+    float FrameBorderScale = 1);
 
 /// <summary>
 /// Immutable renderer-independent output from one Lumen player state. Coordinates

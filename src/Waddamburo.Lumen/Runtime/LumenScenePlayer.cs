@@ -61,7 +61,8 @@ public sealed class LumenScenePlayer
     }
 
     public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f,
-        Func<LumenPlayer, float>? playerInterpolation = null)
+        Func<LumenPlayer, float>? playerInterpolation = null,
+        Func<LumenPlayer, IEnumerable<string>?>? excludedInstances = null)
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
@@ -70,7 +71,8 @@ public sealed class LumenScenePlayer
         quads.Clear();
         foreach (var layer in _layers)
         {
-            var child = layer.Player.CreateRenderSnapshot(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction);
+            var child = layer.Player.CreateRenderSnapshot(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction,
+                excludedInstances?.Invoke(layer.Player));
             foreach (var quad in child.Quads)
             {
                 if (quad.NativeSurface is null && quad.TextureIndex >= layer.TextureCount)

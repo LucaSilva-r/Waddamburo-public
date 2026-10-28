@@ -33,6 +33,12 @@ byte hash plus course/player/occurrence. Moving the configured library root does
 not change either identity, while editing a chart changes only its chart identity.
 Identical chart copies within one song are diagnosed and published once.
 
+Repeated courses remain individually selectable in the custom chart carousel. Its first columns
+are Easy, Normal, Hard and Oni; further charts appear to the right with horizontal scrolling.
+Repeated course names gain an occurrence number, and charts merged from separate TJA files also
+show their source filename. Confirmation launches that exact chart key rather than the first chart
+with a matching course.
+
 ## Assets and safety
 
 `WAVE` is resolved relative to its TJA file and must remain beneath the configured

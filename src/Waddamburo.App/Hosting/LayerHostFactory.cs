@@ -51,6 +51,10 @@ internal sealed class LayerHostFactory(
     /// <summary>Songs started this credit (song select shows the next one's number).</summary>
     public Func<int>? SongsStarted { get; init; }
 
+    public Func<bool>? CurvedScrolling { get; init; }
+
+    public Func<bool>? WaiwaiEnabled { get; init; }
+
     /// <summary>Song select's score windows from the server (null offline).</summary>
     public Online.SongRankings? Rankings { get; init; }
 
@@ -302,7 +306,7 @@ internal sealed class LayerHostFactory(
     {
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
-            modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
+            modeSwitch: TwoPlayers && (WaiwaiEnabled?.Invoke() ?? arcade.WaiwaiEnabled), library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
             browse: OsuBrowse, search: Search);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
@@ -331,7 +335,8 @@ internal sealed class LayerHostFactory(
             parts: _parts,
             side: PlayerSide,
             twoPlayers: TwoPlayers,
-            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)])
+            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)],
+            curvedScrolling: CurvedScrolling?.Invoke() == true)
         {
             StartCategory = start,
             StartSong = startSong,

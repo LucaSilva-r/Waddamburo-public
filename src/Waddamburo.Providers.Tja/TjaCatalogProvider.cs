@@ -105,7 +105,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             var representative = files[0];
             var songKey = new SongKey(Source, stableSongId(group.Key));
             var charts = files
-                .SelectMany(file => createCharts(file, songKey, diagnostics))
+                .SelectMany(file => createCharts(file, songKey, diagnostics, files.Length > 1))
                 .GroupBy(static chart => chart.Key)
                 .Select(chartGroup =>
                 {
@@ -250,7 +250,8 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
     private List<SongChartDescriptor> createCharts(
         InspectedTjaFile file,
         SongKey song,
-        List<CatalogDiagnostic> diagnostics)
+        List<CatalogDiagnostic> diagnostics,
+        bool showSourceName = false)
     {
         var charts = new List<SongChartDescriptor>();
         foreach (var chart in file.Metadata.Charts)
@@ -265,9 +266,14 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
             var player = string.IsNullOrWhiteSpace(chart.Player) ? "solo" : chart.Player.ToLowerInvariant();
             var stableId = $"{file.SourceHash}:{course.ToString().ToLowerInvariant()}:{player}:{chart.Occurrence.ToString(CultureInfo.InvariantCulture)}";
+            var difficultyName = chart.DifficultyName;
+            if (file.Metadata.Charts.Count(other => other.Course == chart.Course && other.Player == chart.Player) > 1)
+                difficultyName += $" {chart.Occurrence.ToString(CultureInfo.InvariantCulture)}";
+            if (showSourceName)
+                difficultyName += $" ({Path.GetFileNameWithoutExtension(file.RelativePath)})";
             charts.Add(new SongChartDescriptor(
                 new ChartKey(song, stableId),
-                chart.DifficultyName,
+                difficultyName,
                 TjaChartAssetKeyCodec.Encode(
                     Id,
                     file.RelativePath,

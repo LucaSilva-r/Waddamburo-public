@@ -35,6 +35,48 @@ The final `Profile exit` line runs a full collection to estimate retained manage
 memory after the session.
 Do not commit logs from a user-owned game session to this repository.
 
+For startup phase timings, set `WADDAMBURO_STARTUP_TRACE=1`. During the first
+180 simulation ticks it writes `[startup]` lines for movie advancement, browser
+host updates, title/prefetch uploads, snapshot construction and surface resolution.
+It reports phases above 3 ms, plus every measured phase in the first two ticks.
+Nested phase durations overlap: do not add the total and its children. The trace
+is disabled by default. Combine it with `WADDAMBURO_HITCH_TRACE=1` to separate
+application work from the renderer/present call; console writes affect timings,
+so disable startup tracing for the final frame-rate measurement.
+
+A direct live Song Select launch prepares its still-invisible native loading
+states before starting the animation clock. It stops at the first visible menu
+pose (two ticks in the measured assets), finishes currently queued title work,
+and warms two covered presents before presenting that pose. It neither seeks the
+timeline nor adds a timed delay. The `Initial Song Select prepared` line records
+this loading cost separately; roughly 0.3 seconds on the local Windows probe is
+still real startup work. The animation profile starts afterward. Input-script
+ticks retain absolute shell numbering; SDL profile tick counts exclude the
+prepared ticks. Explicit frame limits, a one-tick limit and deterministic
+screenshot runs bypass preparation.
+
+For a diagnostic capture of that first pose with normal asynchronous text, set
+`WADDAMBURO_CAPTURE_INITIAL_FRAME` to an output PNG path and omit `--screenshot`.
+The capture adds readback/encoding cost, so disable it for performance reports.
+Startup tracing also splits the first two Lumen advances into timeline, frame
+actions, enter-frame handlers and loaded movies, reports slow AVM function calls,
+and breaks down the host's initial data assignment. Nested timings overlap.
+
+`WADDAMBURO_SONG_SELECT_FRAME_PROFILE=1` enables the same buffered frame-interval
+reports for Song Select. Keep intermediate screenshot capture disabled when
+measuring stalls: GPU readback and PNG encoding add work outside normal rendering.
+`WADDAMBURO_PROFILE_BACKGROUND=1` includes unfocused windows for automated probes;
+leave it unset for an interactive performance measurement.
+For the final interactive performance comparison, omit `--screenshot` entirely.
+That option also selects deterministic synchronous title rendering and tick-based
+preview timing; a capture only at the end still changes that execution path.
+The private Song Select harness supports `-NoCapture` for normal asynchronous
+text and audio behaviour, while retaining bounded ticks and scripted input.
+Its screenshot mode remains useful for repeatable geometry and pixel checks.
+`WADDAMBURO_STARTUP_TRACE=1` additionally reports detailed browser phases for the
+first two browser updates (clones, captions/descriptions, details and depths).
+
+
 For a 480 Hz frame-time stress run, set `WADDAMBURO_GAMEPLAY_FRAME_PROFILE=1`
 instead. Its output covers only active gameplay after the rainbow has cleared.
 Add `--autoplay` to have the selected chart drive its player's drum during

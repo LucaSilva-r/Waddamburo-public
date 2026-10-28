@@ -243,11 +243,12 @@ public sealed class RealtimeConnectionTests
 
         public async ValueTask DisposeAsync()
         {
-            _listener.Stop();
-            _listener.Close();
             lock (_sockets)
                 foreach (var context in _sockets.Values)
                     context.Response.Abort();
+            // Windows needs the listener's request queue alive when aborting responses.
+            _listener.Stop();
+            _listener.Close();
             await _accept.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
 

@@ -164,7 +164,7 @@ public interface ISongSelectSoundController
 }
 
 /// <summary>Translates the authored Song Select protocol into one catalog-pinned session.</summary>
-public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
+public sealed partial class SongSelectHostBinding : ILumenHostBinding, IDisposable
 {
     private readonly SongSelectSession _session;
     private readonly ISongSelectSoundController? _sounds;
@@ -198,11 +198,127 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>Both players' course select shows Oni at once (the movie's isMania; the original needs right-rim hits).</summary>
     public bool ShowOni { get; init; }
 
+    public bool VerticalLayout { get; private set; }
+    private (LumenNativeSurfaceKey Surface, float Extent)? _scrollingTitle;
+    private int _titleAge;
+    private bool _verticalRows;
+    private bool _courseWasShown;
+    private readonly List<string> _genreLabels = [];
+
     /// <summary>
     /// The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)); null again
     /// once the list asks for a ranking (backing out).
     /// </summary>
     public SongSelectSong? CourseSelectSong { get; private set; }
+
+    /// <summary>The custom song's individual chart choices while its selector is open.</summary>
+    public SongChartCarousel? ChartCarousel { get; private set; }
+
+    public bool ChartCarouselReady => ChartCarousel is not null
+        && _player?.InstanceFrame("main") is { } frame
+        && _player.TryGetLabelFrame("main", "course", out var at) && frame.Frame == at;
+
+    public void RefreshChartUtilities()
+    {
+        if (ChartCarousel is not { } choices) return;
+        var player = requirePlayer();
+        // Green's CourseResource defines BOARDTYPE_COURSE as zero. Static class
+        // constants may live outside the root's enumerable script properties.
+        var course = player.ReadScriptValue("_global.CourseResource.BOARDTYPE_COURSE") as double? ?? 0;
+        foreach (var side in choices.Sides.Where(choices.IsUtility))
+        {
+            var type = player.CallScriptNumber("main.courseScene.courseSelect", "GetCursorType", null, side);
+            if (type is { } value && value == course)
+                choices.LeaveUtilities(side);
+        }
+    }
+
+    public bool NativeChartFocused(int side) => _sides.Contains(side) && CourseSelectSong is not null
+        && ChartCarousel is null && !LeavingCourseSelect
+        && requirePlayer().CallScriptNumber("main.courseScene.courseSelect", "GetCursorType", null, side)
+            == (requirePlayer().ReadScriptValue("_global.CourseResource.BOARDTYPE_COURSE") as double? ?? 0);
+
+    public bool ChartReturnSelected(int side)
+    {
+        var player = requirePlayer();
+        var back = player.ReadScriptValue("_global.CourseResource.BOARDTYPE_BACK") as double? ?? 3;
+        var type = player.CallScriptNumber("main.courseScene.courseSelect", "GetCursorType", null, side);
+        return type == back;
+    }
+
+    public void ConfirmChart(int side)
+    {
+        var choices = ChartCarousel ?? throw new InvalidOperationException("No chart selector is open.");
+        if (choices.IsConfirmed(side)) return;
+        choices.Confirm(side);
+        updateChartCursorStyles();
+        if (!choices.Ready || _courseSelect is not { } at) return;
+        // The custom carousel owns the chart keys, while Main owns the final
+        // voice, Don motions and motion wait. Let it complete the same branch
+        // as a stock song; NotifyEndCourseSelect still resolves our chart keys.
+        if (completeNativeChartSelection()) return;
+        _ = notifySelection(new LumenHostCall([
+            LumenHostValue.FromNumber(at.Category), LumenHostValue.FromNumber(at.Song),
+            _sides.Contains(0) ? LumenHostValue.FromNumber(3) : LumenHostValue.Null,
+            _sides.Contains(1) ? LumenHostValue.FromNumber(3) : LumenHostValue.Null,
+        ]));
+    }
+
+    private bool completeNativeChartSelection()
+    {
+        var player = requirePlayer();
+        if (player.ReadScriptValue("_global.CourseSelectScene.STATE_END") is not double end
+            || player.ReadScriptValue("_global.CourseSelectScene.NextScene_End") is not double next) return false;
+        foreach (var side in _sides)
+        {
+            if (!player.TryWriteScriptValue($"main.courseScene.state.{side}", end)
+                || !player.TryWriteScriptValue($"main.courseScene.isEnd.{side}", true)) return false;
+        }
+        return player.TryWriteScriptValue("main.courseScene.next", next)
+            && player.TryCallScriptMethod("main", "Proc_SelectCourse", []);
+    }
+
+    /// <summary>Closes the custom choices through the movie's own return transition.</summary>
+    public bool CancelChartSelection()
+    {
+        if (_courseSelect is { } at && CourseSelectSong is { } song)
+            Picked = (_session.Catalog.Categories[at.Category].Key, song.Descriptor.Key);
+        var player = requirePlayer();
+        foreach (var side in _sides)
+        {
+            if (_optionOpen[side])
+            {
+                // Course_Back only changes the scene state. Close this drum's native
+                // utility first, so its raised Don and hidden name board return too.
+                var utility = _optionMode[side] == 1 ? "toneChange" : "sessionOption";
+                player.TryCallScriptMethod($"main.courseScene.{utility}.{side}", "Skip_SlideOut",
+                    [LumenHostValue.FromBoolean(false)]);
+                // An opening panel cannot start its exit tween. Its scene controller
+                // is retiring now, so it will not retry after the opening completes.
+                if (player.ReadScriptValue($"main.courseScene.{utility}.{side}.isSlideOut") is false)
+                    player.TrySetInstanceVisibility($"main/{(_optionMode[side] == 1 ? "toneChange" : "option")}_{side + 1}p_", false);
+                _parts?.FadeSongSelectName(Array.IndexOf(_sides, side), visible: true);
+                (_optionOpen[side], _speedShown[side]) = (false, -1);
+            }
+            // Skip_SlideOut waits if a utility is still opening. The Don's native
+            // down tween also handles that interruption, and is a no-op once down.
+            player.TryCallScriptMethod("main.resource", "TweenDon_Down", [LumenHostValue.FromNumber(side)]);
+            // Course_Back ends this drum's controller, so Proc_Wait will no longer
+            // clear an interrupted settings/cursor wait. Main waits for both slots.
+            if (player.ReadScriptValue("_global.CourseSelectScene.WAIT_NONE") is double idle)
+                player.TryWriteScriptValue($"main.courseScene.waitTween.{side}", idle);
+        }
+        var native = _sides.All(side => player.TryCallScriptMethod("main.courseScene", "Course_Back",
+            [LumenHostValue.FromNumber(side)]));
+        LeavingCourseSelect = native;
+        if (!native)
+        {
+            ChartCarousel = null;
+            CourseSelectSong = null;
+            _courseSelect = null;
+        }
+        return native;
+    }
 
     /// <summary>Backing out of the difficulty boards: they are closing, the list does not take steps yet.</summary>
     public bool LeavingCourseSelect { get; private set; }
@@ -225,8 +341,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         IndicatorParts? parts = null,
         int side = 0,
         bool twoPlayers = false,
-        IReadOnlyDictionary<string, TaikoCrown>?[]? crowns = null)
+        IReadOnlyDictionary<string, TaikoCrown>?[]? crowns = null,
+        bool curvedScrolling = false)
     {
+        CurvedScrolling = curvedScrolling;
+        _browser = new VerticalSongBrowser(curvedScrolling ? .15f : 1,
+            overlayCategoryHeader: curvedScrolling, categoryGapScale: curvedScrolling ? -.25f : null);
         _crowns = crowns ?? [null, null];
         _sides = twoPlayers ? [0, 1] : [side];
         _parts = parts;
@@ -273,11 +393,44 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             Picked = (_session.Catalog.Categories[at.Category].Key, song.Descriptor.Key);
     }
 
+    private bool _restoredInitialSong;
+    private int _restoreSongAttempts;
+
+    /// <summary>Opens the remembered song's folder once its native browser is ready.</summary>
+    public LumenInputSnapshot RestoreInitialSong(LumenInputSnapshot input)
+    {
+        if (_restoredInitialSong || StartSong < 0 || !_assigned || _player is null || CourseSelectSong is not null
+            || !_session.Catalog.TryGetSong(StartCategory, StartSong, out _)
+            || _player.InstanceFrame("main/genreSelect_") is not { Playing: false }) return input;
+        if (!_player.TryGetLabelFrame("main", "music", out var musicFrame)
+            || _player.InstanceFrame("main") is not { Playing: false } main || main.Frame != musicFrame)
+            return input;
+        // SetSelectedMusic retains the song's board in openIndex, but Reset initially
+        // displays its closed category. Let the native controller reopen that board;
+        // a regular category confirmation deliberately starts at the first song.
+        if (_player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") != StartCategory)
+            return input;
+        if (_player.ReadScriptValue($"_global.container.isOpenFolder.{StartCategory}") is true)
+        {
+            _restoredInitialSong = true;
+            return input;
+        }
+        if (_player.ReadScriptValue($"main.cpp.key.m_inputEnable.{_sides[0]}") is not true) return input;
+        if (++_restoreSongAttempts > 60) { _restoredInitialSong = true; return input; }
+        if ((_restoreSongAttempts & 1) == 0) return input;
+        if (_restoreSongAttempts == 1 && Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1")
+            Console.WriteLine($"[song-restore] category={StartCategory} song={StartSong} main={main.Frame}");
+        return new LumenInputSnapshot([_sides[0] == 0 ? 'Z' : 'C']);
+    }
+
     public void Attach(LumenPlayer player)
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
+        VerticalLayout = player.TryGetLabelFrame("main", "wd_vertical_v1", out _);
+        _verticalRows = player.TryGetLabelFrame("main", "wd_vertical_rows_v2", out _);
         // A page jump sounds like a costume change (as the later games do), not like its ten rim hits.
-        Scroll = new SongSelectScroll(player, () => _openFolder, side => PlayCue?.Invoke("SE_COM", side == 0 ? 19 : 20));
+        Scroll = new SongSelectScroll(player, () => _openFolder, side => PlayCue?.Invoke("SE_COM", side == 0 ? 19 : 20),
+            circularFolders: _verticalRows, defaultPlayer: _sides[0]);
         if (_don is null)
             return;
         // Like entry, the movie's 2P slot already turns Katsu-chan inward (user-confirmed: the
@@ -323,7 +476,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 return LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _timer.IsTimeUp);
             });
             lumen.RegisterMethod("IsInitWait", _ =>
-                LumenHostValue.FromBoolean((_parts?.PollReady() ?? true) && assignInitialData()));
+            {
+                var trace = new BrowserStartupTrace(0);
+                var ready = _parts?.PollReady() ?? true;
+                trace.Lap("indicator-parts-init");
+                return LumenHostValue.FromBoolean(ready && assignInitialData());
+            });
             lumen.RegisterMethod("NotifyTimeSec", static _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("GetMusicInfo_Basic", publishMusicInfo);
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
@@ -348,7 +506,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if (Array.IndexOf(_sides, player) is var board and >= 0)
                     _parts?.FadeSongSelectName(board, visible: !boolean(call, 1));
                 if ((uint)player < 2)
+                {
                     (_optionOpen[player], _speedShown[player]) = (boolean(call, 1), -1);
+                    _optionMode[player] = integer(call, 2);
+                }
                 return LumenHostValue.Undefined;
             });
             // RequestFillrect(slot, tone): the tone board's name and icon (FillrectNum: 15-18 player 0's
@@ -362,7 +523,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 var (player, part) = (slot / 4, slot % 4 >= 2 ? "in_" : "out_");
                 var tone = integer(call, 1);
                 var lumenPlayer = requirePlayer();
-                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone));
+                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone), ToneSurfaces.NamePlacement);
                 if (ToneSurfaces.Icon(tone) is { } icon)
                     lumenPlayer.SetNativeFill($"tone_icon_{part}{player}", icon);
                 else
@@ -371,8 +532,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             });
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
             {
+                _titleAge = 0;
+                _courseWasShown = false;
                 _courseSelect = (integer(call, 0), integer(call, 1));
                 CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
+                ChartCarousel = song?.Descriptor.Key.Source is SongSourceKind.Tja or SongSourceKind.OsuLazer
+                    ? new SongChartCarousel(song.Descriptor, _sides) : null;
                 LeavingCourseSelect = false;
                 // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.
                 foreach (var player in _sides)
@@ -452,9 +617,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (_player is null)
             return false;
         _assigned = true;
+        var workTrace = new BrowserStartupTrace(0);
+        // Let the movie own intermediate Return rows and both index conversions.
+        if (_verticalRows && !requirePlayer().TryWriteScriptValue("_global.Resource.BACKBOARD_INTERVAL", 10d))
+            throw new InvalidOperationException("The vertical browser needs Resource.BACKBOARD_INTERVAL.");
         installFavouriteIcon();
         _featureFolders.Clear();
+        _genreLabels.Clear();
+        workTrace.Lap("init-favourite");
         var genres = registerCustomGenres();
+        workTrace.Lap("init-register-genres");
         var custom = 0;
         for (var index = 0; index < _session.Catalog.Categories.Length; index++)
         {
@@ -472,6 +644,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 featureSlot = _featureFolders.Count % FeatureSlots;
                 _featureFolders.Add((index, featureSlot));
             }
+            _genreLabels.Add(label);
             invoke(
                 "AssignMusic",
                 LumenHostValue.FromString(label),
@@ -481,7 +654,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber((int)category.Presentation),
                 LumenHostValue.FromNumber(featureSlot));
         }
+        workTrace.Lap("init-assign-music");
+        bindBrowserNavigation();
+        bindChartCursorStyles();
+        bindIndependentCourseInput();
         nameFeatureFolders(StartCategory);
+        workTrace.Lap("init-navigation");
         // A song board takes its colours from GetGenreLabel(its folder) in MusicBoard.ResetMusicInfo(genre,
         // music): the search folder's boards show their song's library instead (see SongSelectCatalogView.SourceLabel).
         if (!requirePlayer().TryWrapScriptMethod("_global.MusicBoard.prototype", "ResetMusicInfo", (call, original) =>
@@ -507,6 +685,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             || !requirePlayer().TryWrapScriptMethod("_global.CppConnection.resource", "GetGenreLabel",
                 (_, original) => _boardLabel is { } label ? LumenHostValue.FromString(label) : original()))
             Console.Error.WriteLine("Song Select has no MusicBoard.ResetMusicInfo; search results keep the folder's colour.");
+        workTrace.Lap("init-method-wrappers");
         // Callback_SetSelectedMusic(genre, music) resets the movie's selection onto that song's board.
         invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(StartSong));
         // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
@@ -538,6 +717,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 tryInvoke("SetValidOptionMenu", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(true));
             }
         }
+        workTrace.Lap("init-players");
         // CourseResource.isMania[player] is what repeated right-rim hits set (Callback_SetCourse's
         // isMania_ also writes it, but with the remembered course too); CheckMania reads it per board.
         if (ShowOni)
@@ -546,6 +726,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     Console.Error.WriteLine("Song Select has no CourseResource.isMania; Oni stays hidden.");
         _parts?.ShowGuestNames(_sides);
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
+        workTrace.Lap("init-names-and-voice");
         return true;
     }
 
@@ -633,18 +814,33 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var songIndex = integer(call, 2);
         if (!_session.Catalog.TryGetSong(category, songIndex, out _))
             return LumenHostValue.Undefined;
+        if (VerticalLayout && slot != 14)
+            kind = kind == SongBoardTextureKind.Compact ? SongBoardTextureKind.HorizontalCompact : SongBoardTextureKind.HorizontalExpanded;
         var surface = _session.GetBoardTexture(category, songIndex, kind);
         if ((uint)slot < (uint)_boards.Length)
             _boards[slot] = (category, songIndex);
         if (slot is 13 or 14)
             _centre = (category, songIndex);
-        requirePlayer().SetNativeFill(slot switch
+        var slotName = slot switch
         {
             13 => "song_name_center",
             14 => "song_name_detail",
             _ when slot is >= 0 and <= 12 => $"song_name{slot}",
             _ => throw new ArgumentOutOfRangeException(nameof(call), "Song board slot must be between 0 and 14."),
-        }, surface);
+        };
+        if (VerticalLayout && slot != 14)
+        {
+            var extent = _session.GetHorizontalExtent(surface);
+            requirePlayer().SetNativeFill(slotName, surface, new(-28, 200 - extent + 10 / 1.1f, 56, extent));
+        }
+        else requirePlayer().SetNativeFill(slotName, surface);
+        if (VerticalLayout && slot == 14)
+        {
+            var horizontal = _session.GetBoardTexture(category, songIndex, SongBoardTextureKind.HorizontalExpanded);
+            if (_scrollingTitle?.Surface != horizontal) _titleAge = 0;
+            _scrollingTitle = (horizontal, _session.GetHorizontalExtent(horizontal));
+            showHorizontalTitle();
+        }
         invoke("UpdateMusicBoard", LumenHostValue.FromNumber(slot));
         return LumenHostValue.Undefined;
     }
@@ -659,7 +855,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // The movie reports no cancel of course select: backing out plays SE 5/32 and asks for the centre
         // song's ranking again, which it never does while a difficulty board is open (traced).
         CourseSelectSong = null;
+        ChartCarousel = null;
         LeavingCourseSelect = false;
+        _courseWasShown = false;
         var rankings = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
             ? Rankings?.Invoke(song) : null;
         for (var course = 0; course < 5; course++)
@@ -703,6 +901,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         for (var slot = 0; slot < SongSelectGenrePatch.Slots; slot++)
             if (!player.TryWriteScriptValue($"{keys}.{(int)length + slot}", SongSelectGenrePatch.Label(slot)))
                 return 0;
+        // Initialization runs inside an AVM callback. Indexed writes are staged;
+        // AssignMusic must see the extended length before that callback commits.
+        if (!player.TryWriteScriptValue(keys + ".length", length + SongSelectGenrePatch.Slots))
+            return 0;
         return SongSelectGenrePatch.Slots;
     }
 
@@ -735,7 +937,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // Pictures (event-folder style) replace the drawn names.
         var (spine, header, box) = category.Images;
         player.SetNativeFill(SongSelectGenrePatch.Slot("tate", slot), spine is not null ? _session.GetImage(spine)
-            : _session.GetFolderName(category.Name, SongBoardTextureKind.Compact, outline));
+            : _session.GetFolderName(category.Name, VerticalLayout ? SongBoardTextureKind.HorizontalCompact : SongBoardTextureKind.Compact, outline));
         // Built-in folders' pattern over the front (revealed as it opens); none: plain.
         if (category.Art is { } art)
         {
@@ -747,7 +949,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             new LumenNativeSurfacePlacement(-128 - SongSelectGenrePatch.HeaderShift, -28, 256, 56));
         if ((category.Description ?? category.Art?.Lines) is { Length: > 0 } description)
             // Text inside an open folder is outlined in black (the genres' own descriptions).
-            player.SetNativeFill(SongSelectGenrePatch.Slot("desc", slot), _session.GetFolderDescription(description, 0x000000));
+            player.SetNativeFill(SongSelectGenrePatch.Slot("desc", slot), _session.GetFolderDescription(description, 0x000000, VerticalLayout));
         if (box is not null || category.Art is not null)
             player.SetNativeFill(SongSelectGenrePatch.Slot("image", slot),
                 box is not null ? _session.GetImage(box) : _session.GetFolderArt(category.Art!, FolderArtPart.Box));
@@ -776,7 +978,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 continue;
             _slotNames[group.Key] = name;
             requirePlayer().SetNativeFill($"feature_board_tate_{group.Key:00}",
-                _session.GetFolderName(name, SongBoardTextureKind.Compact));
+                _session.GetFolderName(name, VerticalLayout ? SongBoardTextureKind.HorizontalCompact : SongBoardTextureKind.Compact));
             requirePlayer().SetNativeFill($"feature_board_yoko_{group.Key:00}",
                 _session.GetFolderName(name, SongBoardTextureKind.Expanded));
         }
@@ -789,6 +991,55 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void Poll()
     {
+        if (!VerticalLayout && ChartCarouselReady)
+            updateChartCursorStyles();
+        if (VerticalLayout && _player is { } vertical)
+        {
+            if (CourseSelectSong is not null && vertical.ReadScriptValue("main.courseScene.isBackEvent") is true)
+                LeavingCourseSelect = true;
+            vertical.TrySetInstanceLayoutVisibility("main/coursestarView_", false);
+            vertical.TrySetInstanceLayoutVisibility("main/courseBG_1p_", false);
+            vertical.TrySetInstanceLayoutVisibility("main/courseBG_2p_", false);
+            vertical.TrySetInstanceLayoutVisibility("main/coursePanel_/song_name_detail", false);
+            if (CourseSelectSong is not null && _courseSelect is { } courseAt)
+            {
+                var title = _session.GetBoardTexture(courseAt.Category, courseAt.Song, SongBoardTextureKind.HorizontalCourse);
+                var extent = _session.GetHorizontalExtent(title);
+                vertical.SetNativeFill("wd_course_title", title,
+                    new(-280, -24, extent, DifficultySelectLayout.TitleHeight));
+                layoutDifficultySelect(vertical);
+                updateChartCursorStyles();
+            }
+            // Waiwai has no solo-ranking refresh after cancelling its difficulty boards.
+            // Follow the native main timeline as well, so its browser can resume without that callback.
+            if (CourseSelectSong is not null && vertical.InstanceFrame("main") is { } main)
+            {
+                if (vertical.TryGetLabelFrame("main", "course", out var courseFrame) && main.Frame == courseFrame)
+                    _courseWasShown = true;
+                else if (_courseWasShown && !main.Playing
+                    && vertical.TryGetLabelFrame("main", "music", out var musicFrame) && main.Frame == musicFrame)
+                {
+                    CourseSelectSong = null;
+                    LeavingCourseSelect = false;
+                    ChartCarousel = null;
+                    _courseWasShown = false;
+                }
+            }
+            if (_verticalRows)
+            {
+                completeNativeBrowserDecision();
+                updateVerticalBrowser();
+            }
+            else
+                foreach (var board in Boards)
+                {
+                    var path = "main/genreSelect_/" + board;
+                    if (vertical.TryGetInstanceLocalTransform(path, out var pose))
+                        vertical.TrySetInstancePosition(path, pose.X, -SongSelectCircularPath.Inset(pose.X));
+                }
+            _titleAge++;
+            showHorizontalTitle();
+        }
         showSpeeds();
         if (_featureFolders.Count <= FeatureSlots || _player is null)
             return;
@@ -803,7 +1054,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (folder < 0)
                 continue;
             _player.SetNativeFill($"{Boards[board]}/feature_board_tate_{_featureFolders[folder].Slot:00}",
-                _session.GetFolderName(_session.Catalog.Categories[(int)shown].Name, SongBoardTextureKind.Compact));
+                _session.GetFolderName(_session.Catalog.Categories[(int)shown].Name, VerticalLayout ? SongBoardTextureKind.HorizontalCompact : SongBoardTextureKind.Compact));
         }
         // The banner over the centre (feature_board_yoko_*) follows the cursor.
         if (_player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") is { } cursor
@@ -890,11 +1141,80 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private LumenHostValue clearSelectionSurfaces()
     {
         _centre = null;
+        _scrollingTitle = null;
+        requirePlayer().RemoveNativeFill("expand_/song_name_detail");
         requirePlayer().RemoveNativeFill("song_name_center");
         requirePlayer().RemoveNativeFill("song_name_detail");
         return LumenHostValue.Undefined;
     }
 
+    private void showHorizontalTitle()
+    {
+        if (_scrollingTitle is not { } title) return;
+        var offset = _verticalRows ? 0 : SongTitleMarquee.Offset(_titleAge, title.Extent);
+        var height = _verticalRows && !_browserExpandedTitle ? 64 : 100;
+        requirePlayer().SetNativeFill("expand_/song_name_detail", title.Surface,
+            new(-height / 2f, 200 - title.Extent + offset + 10 / 1.1f, height, title.Extent));
+    }
+
+    private void showCategoryFrame(string body, int category, bool visible)
+    {
+        var player = requirePlayer();
+        var root = body[..body.LastIndexOf('/')] + "/wd_category_frame";
+        player.TrySetInstanceLayoutVisibility(root, visible);
+        if (!visible || (uint)category >= (uint)_genreLabels.Count) return;
+        if (player.TryGetLabelFrame(root, _genreLabels[category], out var frame)
+            && player.InstanceFrame(root)?.Frame != frame)
+            player.TryGotoFrame(root, frame);
+        if (!player.TryGetInstanceLocalTransform(body + "/expand_/wd_native_top", out var top)
+            || !player.TryGetInstanceLocalTransform(body + "/expand_/wd_native_bottom", out var bottom)) return;
+        var start = top.X - 9;
+        var height = (bottom.X + 9 - start) * .65f;
+        sizeFrameOutline(root + "/", start, Math.Max(48, height) / .65f, 14, 474);
+        for (var part = 0; part < 9; part++)
+        {
+            var slice = VerticalCategoryFrame.Slice(part / 3, part % 3, height, start, 14, 474);
+            player.TrySetInstanceTransform(root + $"/part_{part}", new(slice.Width, 0, 0, slice.Height, slice.X, slice.Y));
+        }
+        foreach (var child in new[] { "folder_", "expand_", "backboard_" })
+            player.TrySetInstanceLayoutVisibility(body + "/" + child, false);
+        var art = (uint)category < (uint)_session.Catalog.Categories.Length
+            ? _session.Catalog.Categories[category].Art : null;
+        player.TrySetInstanceTransform(root + "/wd_pattern_mask",
+            new((Math.Max(height, 48) - 8) / .65f / 640, 0, 0, (460 - 8 / 1.1f) / 720,
+                start + Math.Max(height, 48) / .65f / 2, 244));
+        for (var tile = 0; tile < 3; tile++)
+        {
+            var path = root + $"/wd_rows_pattern_{tile}";
+            player.TrySetInstanceLayoutVisibility(path, art is not null && tile == 0);
+            if (art is null || tile != 0) continue;
+            var ancestor = root[..root.LastIndexOf('/')];
+            var slot = ancestor[(ancestor.LastIndexOf('/') + 1)..] + $"/wd_rows_pattern_{tile}";
+            player.SetNativeFill(slot, _session.GetFolderArt(art, FolderArtPart.Pattern));
+            player.TrySetInstanceTransform(path,
+                new(0, 460, 600f / .65f, 0, start + 300 / .65f, 244));
+        }
+        var peg = Math.Clamp((75 - height) / 20, 0, 1);
+        player.TrySetInstanceAlpha(root + "/wd_peg_outline", peg);
+        player.TrySetInstanceAlpha(root + "/wd_peg_fill", peg);
+        player.TrySetInstanceTransform(root + "/wd_peg_outline",
+            new(0, 35.2f / 1.1f, 16 / .65f, 0, start - 4 / .65f, 14 + 17.6f / 1.1f));
+        player.TrySetInstanceTransform(root + "/wd_peg_fill",
+            new(4 / .65f, 0, 0, 27.2f / 1.1f, start + 2 / .65f, 14 + 17.6f / 1.1f));
+    }
+
+    private void sizeFrameOutline(string root, float top, float length, float left, float right)
+    {
+        var player = requirePlayer();
+        var center = top + length / 2;
+        var middle = (left + right) / 2;
+        // Opaque strips bridge the native corner textures' transparent fringe.
+        // They meet on the same outer bounds instead of exposing a one-pixel notch.
+        player.TrySetInstanceTransform(root + "wd_border_top", new(4 / .65f, 0, 0, right - left, top + 2 / .65f, middle));
+        player.TrySetInstanceTransform(root + "wd_border_bottom", new(4 / .65f, 0, 0, right - left, top + length - 2 / .65f, middle));
+        player.TrySetInstanceTransform(root + "wd_border_start", new(length, 0, 0, 4 / 1.1f, center, left + 2 / 1.1f));
+        player.TrySetInstanceTransform(root + "wd_border_end", new(length, 0, 0, 4 / 1.1f, center, right - 2 / 1.1f));
+    }
     // Starting on a song (back from a play), the movie asks for the centre board's titles and then
     // notifies the folder open for that same song: keep them. No NotifyStopBGM follows until the cursor
     // moves, so that song's preview starts here.
@@ -910,7 +1230,14 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     {
         clearSelectionSurfaces();
         for (var slot = 0; slot <= 12; slot++)
+        {
+            // Other independently opened folders retain their recycled boards and title surfaces.
+            if (_verticalRows && _boards[slot] is { } board
+                && (requirePlayer().ReadScriptValue($"_global.container.isOpenFolder.{board.Category}") is true
+                    || _browser.SelectedGenre >= 0 && _browser.Reveal(board.Category) > 0))
+                continue;
             requirePlayer().RemoveNativeFill($"song_name{slot}");
+        }
         _session.StopPreview();
         return LumenHostValue.Undefined;
     }
@@ -930,8 +1257,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.selected.{player}") is IConvertible index
                 && requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.list.{player}.{(int)index.ToDouble(System.Globalization.CultureInfo.InvariantCulture)}") is IConvertible tone)
                 TaikoGuest.Tones[player] = Math.Clamp((int)tone.ToDouble(System.Globalization.CultureInfo.InvariantCulture), 0, TaikoGuest.ToneCount - 1);
-        var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
-            TaikoGuest.Options);
+        var selection = ChartCarousel is { } choices
+            ? _session.SelectCharts(request.Category, request.Song,
+                _sides.Contains(0) ? choices.Choice(0).Key : null,
+                _sides.Contains(1) ? choices.Choice(1).Key : null, TaikoGuest.Options)
+            : _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
+                TaikoGuest.Options);
         Picked = (_session.Catalog.Categories[request.Category].Key, selection.Song);
         return LumenHostValue.Undefined;
     }
@@ -943,6 +1274,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private const string SpeedRowLabel = "音符のはやさ";
     private readonly int?[] _speedRow = new int?[2];
     private readonly bool[] _optionOpen = new bool[2];
+    private readonly int[] _optionMode = new int[2];
     private readonly int[] _speedShown = [-1, -1];
     private LumenNativeSurfacePlacement? _speedBox;
 

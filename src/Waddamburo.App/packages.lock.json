@@ -85,6 +85,14 @@
           "Waddamburo.Formats": "[0.0.0-dev, )"
         }
       },
+      "waddamburo.menulayouts": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )",
+          "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.platform.sdl": {
         "type": "Project",
         "dependencies": {

@@ -1,4 +1,5 @@
 using Waddamburo.App.Scenes;
+using Waddamburo.App.Presentation;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -6,7 +7,9 @@ using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;
 
@@ -17,6 +20,134 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
+    private SongPanelTransitionPresentation _panelTransition = new();
+
+    private readonly bool _traceControls = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
+
+    public override SdlKeyboardSnapshot MapKeys(SdlKeyboardSnapshot keys)
+    {
+        if (_traceControls && keys.PressedKeys.Any())
+        {
+            var traceHost = Shell.Hosts.SongSelect;
+            var traceMovie = Shell.Active.Player.Layers[0].Player;
+            var traceFrame = traceMovie.InstanceFrame("main/genreSelect_");
+            Console.WriteLine($"[song-controls] tick={Shell.Tick} keys={string.Join(',', keys.PressedKeys)} "
+                + $"panel={_panelTransition.Active} busy={traceHost?.BrowserFolderBusy} "
+                + $"course={traceHost?.CourseSelectSong?.Descriptor.Title.Primary} custom={traceHost?.ChartCarousel is not null} "
+                + $"list={traceFrame?.Frame}/{traceFrame?.Playing}");
+        }
+        if (_panelTransition.Active) return SdlKeyboardSnapshot.Empty;
+        if (Shell.Hosts.SongSelect is { VerticalLayout: true, CourseSelectSong: null } browserHost)
+        {
+            if (browserHost.BrowserFolderBusy)
+            {
+                if (keys.IsDown(SdlKeyboardKey.Backspace)) browserHost.CloseBrowserFolder();
+                return SdlKeyboardSnapshot.Empty;
+            }
+            if (keys.PressedKeys.Any(key => key is SdlKeyboardKey.D or SdlKeyboardKey.Z or SdlKeyboardKey.Left or SdlKeyboardKey.Up or SdlKeyboardKey.WheelUp))
+                browserHost.SetBrowserScrollDirection(-1);
+            else if (keys.PressedKeys.Any(key => key is SdlKeyboardKey.K or SdlKeyboardKey.V or SdlKeyboardKey.Right or SdlKeyboardKey.Down or SdlKeyboardKey.WheelDown))
+                browserHost.SetBrowserScrollDirection(1);
+            if (keys.PressedKeys.Any(key => key is SdlKeyboardKey.F or SdlKeyboardKey.J
+                or SdlKeyboardKey.X or SdlKeyboardKey.C or SdlKeyboardKey.Enter))
+                browserHost.BeginBrowserCategorySelection();
+            var confirmReturn = browserHost.BrowserOnReturn && keys.PressedKeys.Any(key => key is
+                SdlKeyboardKey.F or SdlKeyboardKey.J or SdlKeyboardKey.X or SdlKeyboardKey.C or SdlKeyboardKey.Enter);
+            if ((keys.IsDown(SdlKeyboardKey.Backspace) || confirmReturn) && browserHost.CloseBrowserFolder())
+                return SdlKeyboardSnapshot.Empty;
+        }
+        if (Shell.Active.Id == FlowScenes.SongSelect && Shell.Hosts.SongSelect is { VerticalLayout: true, CourseSelectSong: null }
+            && (keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.Down)))
+        {
+            keys = new SdlKeyboardSnapshot(keys.PressedKeys.Select(key => key switch
+                { SdlKeyboardKey.Up => SdlKeyboardKey.Left, SdlKeyboardKey.Down => SdlKeyboardKey.Right, _ => key }),
+                keys.Presses.Select(press => press with { Key = press.Key switch
+                    { SdlKeyboardKey.Up => SdlKeyboardKey.Left, SdlKeyboardKey.Down => SdlKeyboardKey.Right, _ => press.Key } }), keys.Timestamp);
+        }
+        if (Shell.Hosts.SongSelect is { VerticalLayout: true, CourseSelectSong: null, BrowserSongPanel: not null }
+            && Shell.Active.Player.Layers[0].Player.InstanceFrame("main/genreSelect_") is { Playing: false }
+            && (keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J) || keys.IsDown(SdlKeyboardKey.Enter)
+                || keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C)))
+            _panelTransition.Begin(Shell.Active.Player.Layers[0].Player.InstanceFrame("main/genreSelect_")?.Frame);
+        if (Shell.Hosts.SongSelect is { VerticalLayout: true, CourseSelectSong: not null, ChartCarousel: null, LeavingCourseSelect: false } nativeHost
+            && ((keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J) || keys.IsDown(SdlKeyboardKey.Enter)) && nativeHost.ChartReturnSelected(0)
+                || (keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C) || keys.IsDown(SdlKeyboardKey.Enter)) && nativeHost.ChartReturnSelected(1)))
+        {
+            _panelTransition.BeginReturn();
+            nativeHost.CancelChartSelection();
+            return SdlKeyboardSnapshot.Empty;
+        }
+        if (Shell.Active.Id != FlowScenes.SongSelect || Shell.Hosts.SongSelect is not { ChartCarousel: { } choices } host)
+            return keys;
+        if (!host.ChartCarouselReady || host.LeavingCourseSelect) return SdlKeyboardSnapshot.Empty;
+        if (Shell.PlayRequests.Pending is not null) return SdlKeyboardSnapshot.Empty;
+        host.RefreshChartUtilities();
+        return ChartCarouselControls.Route(keys, choices, host.ChartReturnSelected,
+            cancel: () =>
+            {
+                _panelTransition.BeginReturn();
+                if (!host.CancelChartSelection())
+                {
+                    Shell.ChartCards.Close();
+                    Shell.Reload.Start(static () => { });
+                }
+            },
+            undo: host.UndoChartConfirmations,
+            confirm: side =>
+            {
+                Console.WriteLine($"Chart selected P{side + 1}: {choices.Choice(side).DifficultyName} [{choices.Choice(side).Key}]");
+                host.ConfirmChart(side);
+            });
+    }
+
+    public override LumenRenderSnapshot CreateSnapshot(float interpolation)
+    {
+        if (Shell.Hosts.SongSelect is not { } host) return base.CreateSnapshot(interpolation);
+        var custom = host.ChartCarouselReady && host.ChartCarousel is not null;
+        if (!host.VerticalLayout && !custom)
+            return SongTitleMarqueePresentation.Compose(base.CreateSnapshot(interpolation), host, interpolation, scrollTitles: false);
+        var index = Shell.Active.Layers.ToList().FindIndex(layer => layer.Content.Name.EndsWith("song_select.lm", StringComparison.Ordinal));
+        if (index < 0) return base.CreateSnapshot(interpolation);
+        var layer = Shell.Active.Player.Layers[index];
+        if (host.VerticalLayout)
+            SongBrowserFramePresentation.Register(layer.Player, Shell.Active.Layers[index].Content);
+        var excluded = new List<string>();
+        if (custom) excluded.AddRange(ChartCarouselPresentation.OriginalBoards.Where(path =>
+            path != "courseSelect_/cursor_1p_" || !host.ChartCarousel!.Sides.Contains(0) || !host.ChartCarousel.IsUtility(0))
+            .Where(path => path != "courseSelect_/cursor_2p_" || !host.ChartCarousel!.Sides.Contains(1) || !host.ChartCarousel.IsUtility(1)));
+        if (host.VerticalLayout && _panelTransition.Active) excluded.AddRange(SongPanelTransitionPresentation.Excluded);
+        else if (host.VerticalLayout && host.CourseSelectSong is null)
+            excluded.Add("main/genreSelect_");
+        var snapshot = Shell.Active.Player.CreateRenderSnapshot(interpolation,
+            excludedInstances: player => ReferenceEquals(player, layer.Player) ? excluded : null);
+        var cards = custom ? Shell.ChartCards.Snapshot(host.ChartCarousel!, layer, Shell.Active.Layers[index].Content,
+            interpolation, host.VerticalLayout) : null;
+        if (!host.VerticalLayout)
+            return SongTitleMarqueePresentation.Compose(
+                SongPanelTransitionPresentation.InsertCourseCards(snapshot, cards!, layer, excluded, interpolation),
+                host, interpolation, scrollTitles: false);
+        if (_panelTransition.Active)
+            return SongBrowserFramePresentation.ScaleCourseMarkers(
+                _panelTransition.Compose(snapshot, layer, interpolation, cards, courseReady(layer.Player), host), layer);
+        if (host.CourseSelectSong is not null)
+            snapshot = SongBrowserFramePresentation.ComposeCourse(snapshot, layer, interpolation);
+        _panelTransition.Capture(layer, interpolation, host, cards);
+        if (host.CourseSelectSong is null)
+        {
+            var source = SongPanelTransitionPresentation.BrowserSnapshot(layer, interpolation, host, scrollTitles: false);
+            var browser = SongTitleMarqueePresentation.Compose(source, host, interpolation);
+            _panelTransition.CaptureBrowser(browser, layer, interpolation, source);
+            return SongPanelTransitionPresentation.InsertBrowser(snapshot, browser, layer, interpolation);
+        }
+        if (cards is null) return SongBrowserFramePresentation.ScaleCourseMarkers(
+            SongTitleMarqueePresentation.Compose(snapshot, host, interpolation), layer);
+        return SongBrowserFramePresentation.ScaleCourseMarkers(SongTitleMarqueePresentation.Compose(
+            SongPanelTransitionPresentation.InsertCourseCards(snapshot, cards, layer, excluded, interpolation), host, interpolation), layer);
+    }
+
+    private static bool courseReady(LumenPlayer player) => player.InstanceFrame("main") is { } frame
+        && player.TryGetLabelFrame("main", "course", out var at) && frame.Frame == at;
+
     public override IndicatorScene IndicatorsFor(SceneId scene) =>
         scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial : IndicatorScene.SongSelect;
 
@@ -31,6 +162,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     public override void Exit(SceneId scene)
     {
+        _panelTransition = new();
+        Shell.ChartCards.Close();
         if (scene == FlowScenes.Tutorial)
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
     }
@@ -65,13 +198,50 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     }
 
     // The list's fast scrolling (when set) sees the tick's input before the movie and what it did after.
+    private DifficultySelectScroll? _difficultyScroll;
+    private LumenPlayer? _difficultyPlayer;
+
     public override void Advance(LumenInputSnapshot input)
     {
+        using var trace = StartupWorkTrace.Measure("tick.song-select-advance", Shell.Tick);
+        input = Shell.Hosts.SongSelect?.RestoreInitialSong(input) ?? input;
+        if (Shell.Hosts.SongSelect is { VerticalLayout: true, CourseSelectSong: null, Scroll: { } folderScroll })
+        {
+            input = folderScroll.ConstrainToFolder(input);
+        }
         var scroll = Shell.Arcade.FastSongScroll && Shell.Active.Id == FlowScenes.SongSelect ? Shell.Hosts.SongSelect?.Scroll : null;
-        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null,
-            keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input);
+        input = scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null,
+            keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input;
+        var nativeDifficulty = Shell.Arcade.FastSongScroll && !_panelTransition.Active
+            && Shell.Hosts.SongSelect is { VerticalLayout: true, CourseSelectSong: not null, ChartCarousel: null, LeavingCourseSelect: false }
+            && courseReady(Shell.Active.Player.Layers[0].Player);
+        if (nativeDifficulty && Shell.Hosts.SongSelect is { } difficultyHost)
+        {
+            var player = Shell.Active.Player.Layers[0].Player;
+            if (!ReferenceEquals(player, _difficultyPlayer))
+            {
+                _difficultyPlayer = player;
+                _difficultyScroll = new(side => player.CallScriptNumber(
+                    "main.courseScene.courseSelect", "GetCursorIndex", null, side));
+            }
+            input = _difficultyScroll!.Before(input, difficultyHost.NativeChartFocused);
+        }
+        else { _difficultyScroll = null; _difficultyPlayer = null; }
+        if (Shell.Active.Id == FlowScenes.SongSelect && Shell.Hosts.SongSelect is { VerticalLayout: true })
+            _panelTransition.AdvanceOpening(Shell.Active.Player.Layers[0].Player);
+        base.Advance(input);
+        _difficultyScroll?.After();
         scroll?.After();
-        Shell.Hosts.SongSelect?.Poll();
+        using (StartupWorkTrace.Measure("tick.browser-host-poll", Shell.Tick))
+            Shell.Hosts.SongSelect?.Poll();
+        if (Shell.Active.Id == FlowScenes.SongSelect && Shell.Hosts.SongSelect is { VerticalLayout: true } host)
+        {
+            var player = Shell.Active.Player.Layers[0].Player;
+            var browser = player.InstanceFrame("main/genreSelect_");
+            _panelTransition.Advance(host, courseReady(player), browser?.Frame, browser?.Playing == true,
+                !_panelTransition.Returning || SongPanelTransitionPresentation.BrowserTitleReady(player));
+        }
+        if (Shell.Hosts.SongSelect?.ChartCarousel is { } choices) Shell.ChartCards.Advance(choices, Shell.Arcade.FastSongScroll);
     }
 
     private SongKey? _titled;
@@ -91,10 +261,19 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // free play): back to the entry, which joins them (traced session28: SE_SELECT 0 as Song Select
         // stops, then the entry with the first player in, SetPrevious(SCENE_SONGSELECT, that drum)), under
         // the plain rainbow a folder change uses (seen on the cabinet).
-        if (!Shell.Arcade.Home && Shell.JoinedSides.Count == 1 && input.DrumSide is { } joining
+        if (Shell.JoinedSides.Count == 1 && input.DrumSide is { } joining
             && !Shell.JoinedSides.Contains(joining) && Shell.PlayRequests.Pending is null
-            && Shell.Hosts.SongSelect?.CourseSelectSong is null && (Shell.Coins is null || Shell.Coins.Missing(1) == 0))
+            && (Shell.Coins is null || Shell.Coins.Missing(1) == 0))
         {
+            if (Shell.Arcade.Home)
+            {
+                Shell.Hosts.SongSelect?.RememberCurrentSong();
+                Shell.JoinPlayer(joining);
+                Shell.Sounds?.Bank.Play("SE_SELECT", 0);
+                Shell.Reload.Start(static () => { });
+                Console.WriteLine($"Player {joining + 1} joined from Song Select; both drums remain active.");
+                return;
+            }
             Shell.Sounds?.StopAll();
             Shell.Sounds?.Bank.Play("SE_SELECT", 0);
             var first = Shell.JoinedSides.Min;
@@ -133,7 +312,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // The mode-switch folder: reload as the other song select (normal <-> Waiwai).
         if (Shell.Hosts.SongSelect?.ModeSwitchRequested == true)
         {
-            Shell.Hosts.Waiwai = !Shell.Hosts.Waiwai;
+            Shell.Hosts.Waiwai = Shell.Arcade.WaiwaiEnabled && !Shell.Hosts.Waiwai;
             showSongSelect();
             return;
         }

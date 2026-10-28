@@ -24,6 +24,9 @@ public static partial class ReleaseConsole
 
     public static void Begin()
     {
+        Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+        _out.Inner = Console.Out;
+        _error.Inner = Console.Error;
         Console.SetOut(_out);
         Console.SetError(_error);
         // A crash off the main thread (a worker, a finalizer) ends the process without reaching Fail.
@@ -53,6 +56,19 @@ public static partial class ReleaseConsole
         }
         else
             _out.Inner = _error.Inner = TextWriter.Null;
+    }
+
+    /// <summary>Shows a setup notice without a crash report; redirected command-line runs log it.</summary>
+    public static unsafe void Notice(string message)
+    {
+        Console.Error.WriteLine(message);
+        // A GUI executable has no standard output handle; .NET calls that "redirected" too.
+        // Suppress the dialog only for a real redirected file/pipe, not for a double-click launch.
+        var redirected = OperatingSystem.IsWindows()
+            ? GetFileType(GetStdHandle(-11)) is 1 or 3
+            : Console.IsOutputRedirected;
+        if (!redirected)
+            SDL3.SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags.SDL_MESSAGEBOX_WARNING, "Waddamburo", message, null);
     }
 
     /// <summary>
@@ -153,6 +169,12 @@ public static partial class ReleaseConsole
 
     [LibraryImport("kernel32.dll")]
     private static partial nint GetConsoleWindow();
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint GetStdHandle(int standardHandle);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetFileType(nint handle);
 
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

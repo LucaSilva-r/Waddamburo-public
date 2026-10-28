@@ -3,6 +3,7 @@ using Waddamburo.Formats.Nut;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
+using Waddamburo.App.Cli;
 using Waddamburo.Game.Flow;
 using static Waddamburo.App.Strings;
 
@@ -22,16 +23,18 @@ internal sealed class HomePauseOverlay : IDisposable
 
     private readonly UpscaleTool? _upscale;
     private readonly bool _upscaled;
+    private readonly bool _missingFont;
 
     /// <remarks><paramref name="upscale"/>: With <paramref name="upscaled"/> on, the art comes from the upscale cache when
     /// it is there, and is queued for background upscaling when not.</remarks>
     public HomePauseOverlay(SdlApplication application, OverlayPainter painter, string assetRoot, UpscaleTool? upscale = null,
-        bool upscaled = false)
+        bool upscaled = false, bool missingFont = false)
     {
         _application = application;
         _painter = painter;
         _upscale = upscale;
         _upscaled = upscaled && upscale is not null;
+        _missingFont = missingFont;
         load(Path.Combine(assetRoot, "entry_info", "packeddata.ddp"), [0, 11], 0);
         load(Path.Combine(assetRoot, "song_select", "packeddata.ddp"), [103, 352, 354], 1000);
     }
@@ -65,6 +68,12 @@ internal sealed class HomePauseOverlay : IDisposable
                 settings(quads, menu);
             else
                 choices(quads, menu);
+            if (_missingFont && !menu.SettingsPage)
+            {
+                quads.Add(_painter.Rect(140, 624, 1000, 88, new(0, 0, 0, .85f)));
+                quads.Add(_painter.Text(T("startup.font_missing", GameDataLayout.OriginalFontName), 640, 645, 960, 26));
+                quads.Add(_painter.Text(T("startup.font_install", GameDataLayout.OriginalFontLocation), 640, 683, 960, 22));
+            }
         }
         if (black > 0)
             quads.Add(_painter.Rect(0, 0, 1280, 720, new(0, 0, 0, Math.Clamp(black, 0, 1))));

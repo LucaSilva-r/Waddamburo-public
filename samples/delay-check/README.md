@@ -1,7 +1,7 @@
 # Delay check chart
 
 This synthetic TJA tests `#DELAY`, including negative delays: the per-note "Time Offset"
-from PeepoDrumKit (`#DELAY x` before the note, `#DELAY 0` after it), notes pushed early or
+from PeepoDrumKit (`#DELAY x` before the note, `#DELAY -x` after it), notes pushed early or
 late and put back, a note landing before one written earlier, two measures overlapping, a
 roll stretched and a balloon cut short by a delay, delays in Go-Go at a different BPM, and a
 `#SCROLL` moved before an earlier one. The comment above each section in the `.tja` says

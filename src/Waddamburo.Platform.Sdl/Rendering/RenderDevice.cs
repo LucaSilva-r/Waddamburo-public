@@ -207,8 +207,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         ArgumentNullException.ThrowIfNull(frame);
         validateFrame(frame);
 
-        int pixelWidth, pixelHeight;
-        if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
+        int pixelWidth = (int)_externalWidth, pixelHeight = (int)_externalHeight;
+        if (_window is not null && !SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
             throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
         var width = (uint)Math.Max(1, pixelWidth);
         var height = (uint)Math.Max(1, pixelHeight);
@@ -245,7 +245,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         var viewport = letterbox(frame.ResolveViewport(width, height), width, height);
         bgfx.set_view_rect(MainView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
         bgfx.set_view_scissor(MainView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
-        submitQuads(frame.Quads.AsSpan());
+        submitQuads(frame.Quads.AsSpan(), viewport);
 
         if (!capture)
         {
@@ -264,6 +264,13 @@ internal sealed unsafe class RenderDevice : IDisposable
     /// <summary>osu!-style letterbox: the stage at this fraction of its size, placed in the free space (0-1, 0.5 = centred).</summary>
     public (float Size, float X, float Y) Letterbox { get; set; } = (1, .5f, .5f);
 
+    private uint _externalWidth = 1, _externalHeight = 1;
+    internal void ResizeEmbedded(uint width, uint height)
+    {
+        _externalWidth = Math.Max(1, width);
+        _externalHeight = Math.Max(1, height);
+    }
+
     private RenderViewport letterbox(RenderViewport fitted, uint width, uint height)
     {
         var (size, x, y) = Letterbox;
@@ -274,7 +281,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         return new RenderViewport((int)((width - w) * x), (int)((height - h) * y), w, h);
     }
 
-    private void submitQuads(ReadOnlySpan<RenderQuad> quads)
+    private void submitQuads(ReadOnlySpan<RenderQuad> quads, RenderViewport viewport)
     {
         if (quads.IsEmpty)
             return;
@@ -294,6 +301,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         for (var index = 0; index < quadCount; index++)
         {
             var quad = quads[index];
+            if (quad.PixelFrame is not null) quad = RenderPixelGrid.Snap(quad, viewport.Width, viewport.Height);
             var multiply = quad.MultiplyColor;
             var add = quad.AddColor;
             var corners = vertices.Slice(index * 6, 6);

@@ -101,6 +101,11 @@ public static class ToneSurfaces
 {
     public const string Prefix = "tone-art:";
 
+    // Green's names are 304x48; the movie's fill-zero placeholder is 360x72.
+    // Fit the original lettering within that slot without stretching it vertically.
+    public static readonly LumenNativeSurfacePlacement NamePlacement =
+        LumenNativeSurfacePlacement.Centered(360, 360f * 48 / 304);
+
     public static LumenNativeSurfaceKey Name(int tone) => new($"{Prefix}name:{tone}");
 
     public static LumenNativeSurfaceKey? Icon(int tone) => tone <= 0 ? null : new($"{Prefix}icon:{tone}");

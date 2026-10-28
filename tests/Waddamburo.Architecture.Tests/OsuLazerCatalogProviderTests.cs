@@ -15,29 +15,26 @@ public sealed class OsuLazerCatalogProviderTests
         OsuLazerCatalogProvider.CreateContribution(new OsuLazerSnapshot(51,
             [new OsuLazerBeatmapSet(Guid.NewGuid(), false, [new OsuLazerFile("song.ogg", AudioHash)], beatmaps)]));
 
-    private static Dictionary<TaikoCourse, string> courses(SongDescriptor song) =>
-        song.Charts.ToDictionary(static chart => chart.Course!.Value, static chart => chart.DifficultyName);
-
     [Fact]
-    public void ChartsFillTheCoursesLeftToRightInStarOrderFourPerEntry()
+    public void AllChartsSharingAudioStayInOneSongInStarOrder()
     {
         var songs = contribution(beatmap("Inner Oni", 6.3), beatmap("Kantan", 1.4), beatmap("Oni", 4.2),
             beatmap("Futsuu", 2.3), beatmap("Muzukashii", 3.4)).Songs;
-        Assert.Equal(2, songs.Length);
-        var dealt = songs.Select(courses).ToArray();
-        Assert.Contains(dealt, entry => entry.OrderBy(static p => p.Key).Select(static p => p.Value)
-            .SequenceEqual(["Kantan", "Futsuu", "Muzukashii", "Oni"]));
-        // The fifth chart starts the next entry on Easy, whatever its name.
-        Assert.Contains(dealt, entry => entry.Count == 1 && entry[TaikoCourse.Easy] == "Inner Oni");
-        Assert.All(songs, static song => Assert.Contains("[", song.Subtitle, StringComparison.Ordinal));
+        var song = Assert.Single(songs);
+        Assert.Equal(["Kantan", "Futsuu", "Muzukashii", "Oni", "Inner Oni"], song.Charts.Select(static chart => chart.DifficultyName));
+        Assert.Equal([TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni, TaikoCourse.Oni],
+            song.Charts.Select(static chart => chart.Course!.Value));
+        Assert.Equal(6.3, song.Charts[^1].StarRating);
+        Assert.Equal("Fixture Artist", song.Subtitle);
         Assert.Equal($"file:{AudioHash}", songs[0].AudioAsset!.StableId);
     }
 
     [Fact]
-    public void ALoneChartIsEasyWithOsuStarsRounded()
+    public void ALoneChartUsesOniJudgementAndKeepsItsSourceStars()
     {
         var chart = Assert.Single(Assert.Single(contribution(beatmap("Lv.450", 7.49)).Songs).Charts);
-        Assert.Equal(TaikoCourse.Easy, chart.Course);
+        Assert.Equal(TaikoCourse.Oni, chart.Course);
+        Assert.Equal(7.49, chart.StarRating);
         Assert.Equal(7, chart.Level);
         Assert.Equal(10, OsuCourseLayout.Level(12.3));
         Assert.Equal(1, OsuCourseLayout.Level(0.4));

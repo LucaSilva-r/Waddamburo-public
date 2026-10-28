@@ -161,7 +161,7 @@ public sealed class SongSelectCatalogView
                 var label = genreLabel(category.Descriptor?.Genre) ?? authoredLabel(category.Name);
                 return new SongSelectCategory(
                     category.Key,
-                    category.Name,
+                    label == FeatureLabel && category.Key.Source != SongSourceKind.Stock ? sentenceCase(category.Name) : category.Name,
                     label,
                     SongCategoryPresentation.AlwaysVisible,
                     category.Descriptor?.OutlineColour is { } outline ? new SongBoardTextureStyle(outline) : boardStyle(label == FeatureLabel ? category.Name : label),
@@ -307,12 +307,15 @@ public sealed class SongSelectCatalogView
         return songs(found.Length);
     }
 
+    private static string sentenceCase(string name) => string.IsNullOrEmpty(name) ? name
+        : char.ToUpperInvariant(name[0]) + name[1..].ToLowerInvariant();
+
     public static string LibraryName(SongSourceKind library) => library switch
     {
-        SongSourceKind.Stock => "ORIGINAL",
-        SongSourceKind.Nijiiro => "NIJIIRO",
-        SongSourceKind.Tja => "CUSTOM TJA",
-        SongSourceKind.OsuLazer => "OSU! LAZER",
+        SongSourceKind.Stock => "Original Songs",
+        SongSourceKind.Nijiiro => "Nijiiro",
+        SongSourceKind.Tja => "Custom tja",
+        SongSourceKind.OsuLazer => "osu!lazer",
         _ => library.ToString(),
     };
 

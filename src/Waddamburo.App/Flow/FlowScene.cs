@@ -1,4 +1,5 @@
 using Waddamburo.App.Scenes;
+using Waddamburo.App.Presentation;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -40,8 +41,10 @@ internal abstract class FlowScene(GameShell shell)
     /// <summary>Advances the scene's movies by one tick.</summary>
     public virtual void Advance(LumenInputSnapshot input)
     {
-        Shell.Active.Player.Advance(input);
-        Shell.DonRenderer?.Advance();
+        using (StartupWorkTrace.Measure("tick.lumen", Shell.Tick))
+            Shell.Active.Player.Advance(input);
+        using (StartupWorkTrace.Measure("tick.don", Shell.Tick))
+            Shell.DonRenderer?.Advance();
     }
 
     /// <summary>The scene's own logic, once the movies have advanced (skipped while a transition is pending).</summary>

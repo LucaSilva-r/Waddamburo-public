@@ -544,6 +544,15 @@ public sealed unsafe class SdlApplication : IDisposable
     /// </summary>
     public void DiscardElapsed() => _discardElapsed = true;
 
+    /// <summary>Presents a prepared startup frame before the simulation clock starts; queued input stays untouched.</summary>
+    public RenderCapture? PresentInitialFrame(RenderFrame frame, bool capture = false)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(frame);
+        return _renderer!.Present(frame, capture);
+    }
+
     /// <summary>Ends the running loop after the current frame; callable from any thread.</summary>
     public void RequestQuit() => _quitRequested = true;
 
@@ -592,7 +601,8 @@ public sealed unsafe class SdlApplication : IDisposable
         Action? toggleInspect = null,
         Action<SdlFrameMetrics>? performanceSample = null,
         Action? pointerReleased = null,
-        Action<float>? pointerScrolled = null)
+        Action<float>? pointerScrolled = null,
+        Func<bool>? captureFrame = null)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -608,6 +618,13 @@ public sealed unsafe class SdlApplication : IDisposable
         var renderedFrames = 0;
         var simulationTicks = 0;
         var droppedTicks = 0;
+        // Diagnostic captures advance exactly once per rendered frame. Reading back
+        // a PNG must not make the wall clock skip the animation frames under test.
+        var captureEachTick = captureFinalFrame is not null
+            && Environment.GetEnvironmentVariable("WADDAMBURO_CAPTURE_EVERY_TICK") == "1";
+        var captureFraction = float.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_CAPTURE_INTERPOLATION"),
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fraction)
+            ? Math.Clamp(fraction, 0, 1) : 1;
         var clock = new FixedStepAccumulator();
         var previousTimestamp = Stopwatch.GetTimestamp();
         var running = true;
@@ -623,8 +640,10 @@ public sealed unsafe class SdlApplication : IDisposable
         }
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
         (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
-        using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
-            ? new FrameProfile() : null;
+        var menuProfile = Environment.GetEnvironmentVariable("WADDAMBURO_SONG_SELECT_FRAME_PROFILE") == "1";
+        var profileBackground = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE_BACKGROUND") == "1";
+        using var frameProfile = menuProfile || Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
+            ? new FrameProfile(menuProfile ? "Song Select" : "Gameplay") : null;
         var previousProfileEligible = false;
         var windowFocused = true;
         _quitRequested = false;
@@ -832,7 +851,7 @@ public sealed unsafe class SdlApplication : IDisposable
                 _nextFrameAt = Math.Max(_nextFrameAt + _frameInterval, now);
             }
 
-            var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
+            var profileEligibleAtStart = frameProfile is not null && (windowFocused || profileBackground) && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
             previousTimestamp = timestamp;
@@ -843,11 +862,18 @@ public sealed unsafe class SdlApplication : IDisposable
             var inputTime = performanceActive ? Stopwatch.GetElapsedTime(inputStart) : TimeSpan.Zero;
             var delivered = updateFrame is not null;
             var updateStart = Stopwatch.GetTimestamp();
-            var update = clock.AddElapsed(elapsed, () =>
+            void advanceTick()
             {
                 simulationTick(delivered ? new SdlKeyboardSnapshot(_pressedKeys, timestamp: eventTime) : keyboard);
                 delivered = true;
-            }, remainingTicks);
+            }
+            FixedStepUpdate update;
+            if (captureEachTick && remainingTicks > 0)
+            {
+                advanceTick();
+                update = new(1, 0);
+            }
+            else update = clock.AddElapsed(elapsed, advanceTick, remainingTicks);
             if (delivered)
                 pendingPresses.Clear();
             simulationTicks += update.ExecutedTicks;
@@ -855,8 +881,8 @@ public sealed unsafe class SdlApplication : IDisposable
 
             var reachedTickLimit = tickLimit is int requestedTicks && simulationTicks >= requestedTicks;
             var reachedFrameLimit = frameLimit is int requestedFrames && renderedFrames + 1 >= requestedFrames;
-            var shouldCapture = captureFinalFrame is not null && (reachedTickLimit || reachedFrameLimit);
-            var interpolationFraction = reachedTickLimit ? 1d : clock.InterpolationFraction;
+            var shouldCapture = captureFinalFrame is not null && (reachedTickLimit || reachedFrameLimit || captureFrame?.Invoke() == true);
+            var interpolationFraction = reachedTickLimit ? 1d : captureEachTick ? captureFraction : clock.InterpolationFraction;
             var renderStart = Stopwatch.GetTimestamp();
             var capture = _renderer!.Present(createFrame(interpolationFraction), shouldCapture);
             if (_discardElapsed)
@@ -867,7 +893,7 @@ public sealed unsafe class SdlApplication : IDisposable
             // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
             var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
             var renderTime = Stopwatch.GetElapsedTime(renderStart);
-            var profileEligibleAtEnd = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
+            var profileEligibleAtEnd = frameProfile is not null && (windowFocused || profileBackground) && (profileFrame?.Invoke() ?? true);
             if (performanceActive)
                 performanceSample?.Invoke(new SdlFrameMetrics(elapsed, inputTime, updateTime, renderTime, update.ExecutedTicks));
             if (frameProfile is not null)
@@ -906,7 +932,7 @@ public sealed unsafe class SdlApplication : IDisposable
         return new SdlRunResult(renderedFrames, simulationTicks, droppedTicks, clock.InterpolationFraction);
     }
 
-    private sealed class FrameProfile : IDisposable
+    private sealed class FrameProfile(string name) : IDisposable
     {
         private const int WindowFrames = 1920;
         private readonly double[] _frameTimes = new double[WindowFrames];
@@ -951,7 +977,7 @@ public sealed unsafe class SdlApplication : IDisposable
             var over8 = sorted.Count(static ms => ms > 1000d / 120);
             static double percentile(double[] values, double fraction) =>
                 values[(int)Math.Ceiling((values.Length - 1) * fraction)];
-            _reports.Add($"Gameplay frames to tick {tick}: {_frames} frames, "
+            _reports.Add($"{name} frames to tick {tick}: {_frames} frames, "
                 + $"FPS {_frames / wallSeconds:F0}, "
                 + $"p50/p95/p99/max {percentile(sorted, .5):F2}/{percentile(sorted, .95):F2}/"
                 + $"{percentile(sorted, .99):F2}/{sorted[^1]:F2} ms, "

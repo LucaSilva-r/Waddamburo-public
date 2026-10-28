@@ -11,6 +11,17 @@ namespace Waddamburo.Providers.OsuLazer;
 /// </summary>
 public static class OsuCourseLayout
 {
+    /// <summary>The visual course of a named osu! chart. Gameplay still uses osu!'s Oni judgement.</summary>
+    public static TaikoCourse Course(string name)
+    {
+        var words = name.Trim().ToLowerInvariant().Split([' ', '-', '_', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
+        if (words.Contains("inner") || words.Contains("oni")) return TaikoCourse.Oni;
+        if (words.Contains("kantan") || words.Contains("easy")) return TaikoCourse.Easy;
+        if (words.Contains("futsuu") || words.Contains("futsu") || words.Contains("normal")) return TaikoCourse.Normal;
+        if (words.Contains("muzukashii") || words.Contains("hard")) return TaikoCourse.Hard;
+        return TaikoCourse.Oni;
+    }
+
     private static readonly TaikoCourse[] Slots = [TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni];
 
     /// <summary>The star level shown (1-10): osu!'s own star rating, rounded.</summary>

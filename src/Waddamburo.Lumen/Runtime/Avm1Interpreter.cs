@@ -5,6 +5,16 @@ namespace Waddamburo.Lumen.Runtime;
 
 internal static class Avm1Interpreter
 {
+    // Code blocks are immutable and shared by movie instances. Validation and
+    // offset lookup depend only on that block, never on registers, limits or
+    // transaction state. Weak keys release plans with their unloaded movies.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Avm1CodeBlock, ExecutionPlan> Plans = new();
+    private sealed record ExecutionPlan(bool Supported, Dictionary<int, Avm1Instruction>? Instructions);
+
+    private static ExecutionPlan prepare(Avm1CodeBlock code) => isSupported(code)
+        ? new(true, code.Instructions.ToDictionary(static instruction => instruction.Offset))
+        : new(false, null);
+
     // Flash 4 property indices (GetProperty / SetProperty).
     private static readonly string[] PropertyNames =
     [
@@ -164,10 +174,11 @@ internal static class Avm1Interpreter
     {
         resultingPlaying = initialPlaying;
         returnValue = Avm1Undefined.Instance;
-        if (!isSupported(code))
+        var plan = Plans.GetValue(code, static block => prepare(block));
+        if (!plan.Supported)
             return Avm1ExecutionStatus.Unsupported;
 
-        var instructions = code.Instructions.ToDictionary(instruction => instruction.Offset);
+        var instructions = plan.Instructions!;
         var stack = new List<object?>();
         var playing = initialPlaying;
         var pc = code.Offset;

@@ -14,13 +14,14 @@ public sealed class DependencyRulesTests
             ["Waddamburo.Catalog"] = [],
             ["Waddamburo.Formats"] = [],
             ["Waddamburo.Lumen"] = ["Waddamburo.Formats"],
+            ["Waddamburo.MenuLayouts"] = ["Waddamburo.Formats", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
             ["Waddamburo.Game"] = ["Waddamburo.Catalog", "Waddamburo.Formats", "Waddamburo.Lumen"],
             ["Waddamburo.Platform.Sdl"] = ["Waddamburo.Formats", "Waddamburo.Lumen"],
             ["Waddamburo.Providers.OsuLazer"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Stock"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Tja"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Upscale"] = [],
-            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.OsuLazer", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja", "Waddamburo.Upscale"],
+            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.MenuLayouts", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.OsuLazer", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja", "Waddamburo.Upscale"],
             ["Waddamburo.Tool"] = ["Waddamburo.Formats", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
         };
 

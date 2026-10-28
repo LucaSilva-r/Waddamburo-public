@@ -135,7 +135,19 @@ namespace Waddamburo.Platform.Sdl.Rendering
         /// </summary>
         // ponytail: macOS needs rendering on the main thread; there the roles must swap.
         public static void Initialize(SDL_Window* window, uint width, uint height, bool debug)
+            => initialize(window, 0, width, height, debug);
+
+        /// <summary>Embeds the compositor in an existing Windows desktop control.</summary>
+        public static void Initialize(nint windowHandle, uint width, uint height, bool debug)
         {
+            if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Embedded windows require Windows.");
+            if (windowHandle == 0) throw new ArgumentException("A native window handle is required.", nameof(windowHandle));
+            initialize(null, windowHandle, width, height, debug);
+        }
+
+        private static void initialize(SDL_Window* window, nint windowHandle, uint width, uint height, bool debug)
+        {
+            lock (s_pendingLock) s_pendingFrames = 0;
             using var started = new ManualResetEventSlim();
             s_renderThread = new Thread(() => renderLoop(started)) { IsBackground = true, Name = "bgfx render" };
             s_renderThread.Start();
@@ -162,7 +174,8 @@ namespace Waddamburo.Platform.Sdl.Rendering
             init.swapChain.formatDepthStencil = bgfx.TextureFormat.D24S8;
             init.swapChain.maxFrameLatency = MaxFrameLatency;
             init.reset = ResetFlags;
-            fillWindow(window, &init);
+            if (windowHandle != 0) init.swapChain.nwh = (void*)windowHandle;
+            else fillWindow(window, &init);
             if (!bgfx.init(&init))
             {
                 bgfx.shutdown();

@@ -9,6 +9,582 @@ namespace Waddamburo.Lumen.Tests;
 public sealed class LumenPlayerTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void NativeRepositionDoesNotCutHostLayoutOrChildInterpolation(bool nested, bool matrix)
+    {
+        var movie = createMovie(placementNameStringIndex: 31, actionBytecode: [0]);
+        if (nested)
+        {
+            var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+            movie = movie with { Sprites = movie.Sprites.Add(child with
+            {
+                CharacterId = 99, DeclaredFrameCount = 1,
+                Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(),
+                    child.Timeline.OfType<LmbPlaceObjectCommand>().First() with { CharacterId = 7 }],
+            }) };
+        }
+        var player = new LumenPlayer(movie, 1280, 720, rootCharacterId: nested ? 99 : null);
+        player.Stop();
+        place(20, 30, false);
+        var before = Assert.Single(player.CreateRenderSnapshot().Quads);
+        player.Advance();
+        // The native horizontal selector recycles a board while the host owns
+        // its vertical position. This invisible native jump must not advance
+        // either the row or its children to the next presentation tick.
+        player.TrySetInstancePosition("placed", 800, 900);
+        place(40, 50, true);
+        if (nested) player.TrySetInstanceLayoutPosition("placed/placed", 30, 40);
+        var after = Assert.Single(player.CreateRenderSnapshot(1).Quads);
+        foreach (var fraction in new[] { 0f, .25f, .5f, .75f })
+        {
+            var quad = Assert.Single(player.CreateRenderSnapshot(fraction).Quads);
+            Assert.Equal(before.TopLeft.X + (after.TopLeft.X - before.TopLeft.X) * fraction, quad.TopLeft.X, 3);
+            Assert.Equal(before.TopLeft.Y + (after.TopLeft.Y - before.TopLeft.Y) * fraction, quad.TopLeft.Y, 3);
+            Assert.Equal(quad, Assert.Single(player.CreateInstanceRenderSnapshot(nested ? "placed/placed" : "placed", fraction).Quads));
+        }
+        void place(float x, float y, bool interpolate)
+        {
+            if (matrix) player.TrySetInstanceLayoutTransform("placed", new(1, 0, 0, 1, x, y), interpolate);
+            else player.TrySetInstanceLayoutPosition("placed", x, y, interpolate);
+        }
+    }
+
+    [Fact]
+    public void RecycledRowsCanSnapTheirWholeLayoutWithoutTweeningTheTemplateScale()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        player.TrySetInstanceLayoutTransform("placed", new(1, 0, 0, 1, 20, 30));
+        player.Advance();
+        player.TrySetInstanceLayoutTransform("placed", new(2, 0, 0, 3, 40, 50), interpolate: false);
+        var full = Assert.Single(player.CreateRenderSnapshot(1).Quads);
+        var halfway = Assert.Single(player.CreateRenderSnapshot(.5f).Quads);
+        Assert.Equal(full.TopLeft.X, halfway.TopLeft.X, 3);
+        Assert.Equal(full.TopLeft.Y, halfway.TopLeft.Y, 3);
+        Assert.Equal(full.BottomRight.X, halfway.BottomRight.X, 3);
+        Assert.Equal(full.BottomRight.Y, halfway.BottomRight.Y, 3);
+        player.Advance();
+        player.TrySetInstanceLayoutTransform("placed", new(3, 0, 0, 4, 60, 70));
+        Assert.NotEqual(Assert.Single(player.CreateRenderSnapshot(1).Quads).BottomRight, Assert.Single(player.CreateRenderSnapshot(.5f).Quads).BottomRight);
+    }
+
+    [Fact]
+    public void ReplacingAGlyphLayoutCanSnapItsOriginWithoutMovingAuthoredCoordinates()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        player.TrySetInstanceLayoutPosition("placed", 20, 30);
+        player.Advance();
+        player.TrySetInstanceLayoutPosition("placed", 40, 50);
+        Assert.Equal(30, Assert.Single(player.CreateRenderSnapshot(.5f).Quads).TopLeft.X);
+        player.TrySetInstanceLayoutPosition("placed", 60, 70, interpolate: false);
+        foreach (var fraction in new[] { 0f, .25f, .5f, 1f })
+        {
+            var quad = Assert.Single(player.CreateRenderSnapshot(fraction).Quads);
+            Assert.Equal(60, quad.TopLeft.X); Assert.Equal(70, quad.TopLeft.Y);
+        }
+        Assert.True(player.TryGetInstanceLocalTransform("placed", out var authored));
+        Assert.Equal(10, authored.X); Assert.Equal(20, authored.Y);
+    }
+
+    [Fact]
+    public void CopiedArtworkCanResetItsSourceFlashAndInterpolation()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        Assert.True(player.TrySetInstanceColor("placed", new(.2f, .3f, .4f, 1), new(.5f, .5f, .5f, 0)));
+        player.Advance();
+        Assert.True(player.TrySetInstanceColor("placed", LumenRenderColor.White, LumenRenderColor.Transparent));
+        var quad = Assert.Single(player.CreateRenderSnapshot(.5f).Quads);
+        Assert.Equal(LumenRenderColor.White, quad.MultiplyColor);
+        Assert.Equal(LumenRenderColor.Transparent, quad.AddColor);
+        Assert.False(player.TrySetInstanceColor("missing", LumenRenderColor.White, LumenRenderColor.Transparent));
+    }
+
+    [Fact]
+    public void SeekingClonedArtworkRemovesThePreviousLabelsTimelineChildren()
+    {
+        var movie = createMovie(actionBytecode: [0], removeOnThirdFrame: false, placementNameStringIndex: 31);
+        var source = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var commands = source.Timeline.ToList();
+        var secondFrameEnd = commands.FindIndex(command => command is LmbShowFrameCommand { Frame: 2 });
+        commands.Insert(secondFrameEnd, commands.OfType<LmbPlaceObjectCommand>().First() with
+        {
+            Depth = 2, PlacementId = 999, FirstFrame = 1, NameStringIndex = 16,
+        });
+        var player = new LumenPlayer(movie with { Sprites = [source with { Timeline = [.. commands] }] }, 1280, 720);
+        player.Advance();
+        Assert.Equal(2, player.CreateRenderSnapshot().Quads.Length);
+        Assert.True(player.TryCloneInstance("", "", "copy", 100));
+        Assert.Equal(2, player.CreateInstanceRenderSnapshot("copy").Quads.Length);
+        Assert.True(player.TryGotoFrame("copy", 0));
+        Assert.Single(player.CreateInstanceRenderSnapshot("copy").Quads);
+        // The host-created copy itself must survive a rewind of its parent.
+        player.TryGotoFrame("", 0);
+        Assert.NotNull(player.InstanceFrame("copy"));
+        Assert.Single(player.CreateInstanceRenderSnapshot("copy").Quads);
+    }
+
+    [Fact]
+    public void HostCanCallAnAuthoredClipMethodWithTheClipAsThis()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31, actionBytecode:
+        [
+            0x96, 3, 0, 9, 31, 0, 0x1C, // placed
+            0x96, 3, 0, 9, 15, 0, // SetVisible
+            0x9B, 6, 0, 16, 0, 0, 0, 17, 0, // anonymous function
+                0x96, 3, 0, 9, 9, 0, 0x1C, // this
+                0x96, 5, 0, 9, 2, 0, 5, 0, 0x4F, 0, // this._visible = false
+            0x4F, 0,
+        ]), 1280, 720);
+        player.Advance();
+        Assert.True(player.TryCallScriptMethod("placed", "SetVisible", []));
+        Assert.False(player.InstanceVisibility("placed"));
+        var wrapped = false;
+        Assert.True(player.TryWrapScriptMethod("placed", "SetVisible", (_, original) =>
+        {
+            wrapped = true;
+            return original();
+        }));
+        player.TrySetInstanceVisibility("placed", true);
+        Assert.True(player.TryCallScriptMethod("placed", "SetVisible", []));
+        Assert.True(wrapped);
+        Assert.False(player.InstanceVisibility("placed"));
+        Assert.False(player.TryCallScriptMethod("placed", "missing", []));
+        Assert.False(player.TryCallScriptMethod("missing", "SetVisible", []));
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void AfterMethodHookPreservesAnArrayReturnedToTheScriptCaller()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31, actionBytecode: Avm1Assembly.Assemble("""
+            Push string:31
+            GetVariable
+            Push string:15
+            DefineFunction 100000000000 {
+                Push string:9
+                GetVariable
+                Push string:18
+                Push int:41 int:1
+                InitArray
+                StoreRegister 00
+                SetMember
+                Push register:0 string:23 int:41
+                SetMember
+                Push register:0
+                Return
+                End
+            }
+            SetMember
+            Push string:31
+            GetVariable
+            Push string:29
+            DefineFunction 100000000000 {
+                Push int:0 string:9
+                GetVariable
+                Push string:15
+                CallMethod
+                Push string:23
+                GetMember
+                Return
+                End
+            }
+            SetMember
+            End
+            """)), 1280, 720);
+        player.Advance();
+        Assert.Equal(41, player.CallScriptNumber("placed", "Ping"));
+        var calls = 0;
+        Assert.True(player.TryAfterScriptMethod("placed", "SetVisible", () =>
+        {
+            calls++;
+            Assert.True(player.TryWriteScriptValue("placed.value.0", 99d));
+        }));
+        Assert.Equal(99, player.CallScriptNumber("placed", "Ping"));
+        Assert.Equal(1, calls);
+        Assert.False(player.TryAfterScriptMethod("placed", "missing", () => calls++));
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void PresentationOpacityNeverChangesTheNativeFadeState()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        player.TrySetInstanceAlpha("placed", 0);
+        player.TrySetInstanceLayoutAlpha("placed", 1);
+        Assert.Equal(0, player.InstanceAlpha("placed"));
+        Assert.Equal(1, Assert.Single(player.CreateRenderSnapshot().Quads).MultiplyColor.Alpha);
+        player.Advance();
+        player.TrySetInstanceAlpha("placed", .25f);
+        Assert.Equal(1, Assert.Single(player.CreateRenderSnapshot(.5f).Quads).MultiplyColor.Alpha);
+        Assert.Equal(.25f, player.InstanceAlpha("placed"));
+        player.TrySetInstanceLayoutAlpha("placed", null);
+        Assert.Equal(.25f, Assert.Single(player.CreateRenderSnapshot().Quads).MultiplyColor.Alpha);
+    }
+
+    [Fact]
+    public void NumericPollingCallsAClipMethodWithItsOwnThis()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31, actionBytecode:
+        [
+            0x96, 3, 0, 9, 31, 0, 0x1C,
+            0x96, 3, 0, 9, 15, 0,
+            0x9B, 6, 0, 16, 0, 0, 0, 16, 0,
+                0x96, 3, 0, 9, 9, 0, 0x1C,
+                0x96, 3, 0, 9, 46, 0, 0x4E, 0x3E, 0,
+            0x4F, 0,
+        ]), 1280, 720);
+        player.Advance();
+        player.TrySetInstancePosition("placed", 123, 20);
+        Assert.Equal(123, player.CallScriptNumber("placed", "SetVisible"));
+        Assert.Null(player.CallScriptNumber("placed", "missing"));
+        Assert.Null(player.CallScriptNumber("missing", "SetVisible"));
+    }
+
+    [Fact]
+    public void ReusingComponentSnapshotStoragePreservesPreviouslyReturnedFramesAndExclusions()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        var original = player.CreateInstanceRenderSnapshot("placed");
+        var quad = Assert.Single(original.Quads);
+        for (var step = 1; step <= 20; step++)
+        {
+            Assert.Empty(player.CreateInstanceRenderSnapshot("missing").Quads);
+            player.TrySetInstanceLayoutPosition("placed", step * 13.25f, step * .5f, interpolate: false);
+            var moved = Assert.Single(player.CreateInstanceRenderSnapshot("placed").Quads);
+            Assert.NotEqual(quad.TopLeft, moved.TopLeft);
+            Assert.Empty(player.CreateInstanceRenderSnapshot("placed", excludedInstancePaths: ["placed"]).Quads);
+            Assert.Equal(quad, Assert.Single(original.Quads));
+            Assert.Equal(moved, Assert.Single(player.CreateInstanceRenderSnapshot("placed").Quads));
+        }
+    }
+
+    [Fact]
+    public void LiveComponentSnapshotCanExcludeContentsWithoutChangingTheDisplayList()
+    {
+        var movie = createMovie(placementNameStringIndex: 31, actionBytecode: [0]);
+        var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var wrapper = child with { CharacterId = 99, DeclaredFrameCount = 1,
+            Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(),
+                child.Timeline.OfType<LmbPlaceObjectCommand>().First() with { CharacterId = 7 }] };
+        var player = new LumenPlayer(movie with { Sprites = movie.Sprites.Add(wrapper) }, 1280, 720, rootCharacterId: 99);
+        var original = Assert.Single(player.CreateInstanceRenderSnapshot("placed").Quads);
+        Assert.Empty(player.CreateInstanceRenderSnapshot("placed", excludedInstancePaths: ["placed/placed"]).Quads);
+        Assert.Equal(original, Assert.Single(player.CreateInstanceRenderSnapshot("placed").Quads));
+        Assert.Equal(original, Assert.Single(player.CreateRenderSnapshot().Quads));
+    }
+
+    [Fact]
+    public void LayoutMatrixOverridesNativePulseWithoutChangingScriptCoordinates()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        player.TrySetInstanceTransform("placed", new(.5f, 0, 0, .75f, 30, 40));
+        Assert.True(player.TryGetInstanceLocalTransform("placed", out var authored));
+        var pulsing = Assert.Single(player.CreateRenderSnapshot().Quads);
+        player.TrySetInstanceLayoutTransform("placed", LumenMatrix.Identity);
+        var steady = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.Equal((pulsing.BottomRight.X - pulsing.TopLeft.X) * 2, steady.BottomRight.X - steady.TopLeft.X, 3);
+        player.Advance();
+        player.TrySetInstanceTransform("placed", new(.2f, 0, 0, .2f, 100, 200));
+        Assert.Equal(steady, Assert.Single(player.CreateRenderSnapshot(.5f).Quads));
+        Assert.NotEqual(authored, GetLocal());
+        player.TrySetInstanceLayoutTransform("placed", null);
+        Assert.NotEqual(steady, Assert.Single(player.CreateRenderSnapshot().Quads));
+        LumenMatrix GetLocal() { player.TryGetInstanceLocalTransform("placed", out var pose); return pose; }
+    }
+
+    [Fact]
+    public void HostCanCreateNativeExportBeforeItsAuthoredPlacementExists()
+    {
+        var player = new LumenPlayer(createMovie(rootExportStringIndex: 5), 1280, 720);
+        player.Stop();
+        Assert.False(player.TryCreateExportInstance("missing", "", "art", 100));
+        Assert.True(player.TryCreateExportInstance("RootExport", "", "art", 100));
+        Assert.False(player.TryCreateExportInstance("RootExport", "", "collision", 100));
+        Assert.False(player.TryCreateExportInstance("RootExport", "", "art", 101));
+        Assert.Single(player.CreateInstanceRenderSnapshot("art").Quads);
+        Assert.True(player.TrySetInstanceNearestSampling("art", true));
+        Assert.True(Assert.Single(player.CreateInstanceRenderSnapshot("art").Quads).UseNearestSampling);
+        Assert.False(Assert.Single(player.CreateRenderSnapshot(excludedInstancePaths: ["art"]).Quads).UseNearestSampling);
+        Assert.True(player.TryRemoveHostInstance("art"));
+        Assert.Null(player.InstanceFrame("art"));
+    }
+
+    [Fact]
+    public void ClipLookupInvalidatesMissesCopiesAndTimelineRemovals()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        Assert.False(player.TryGetInstanceLocalTransform("new-copy", out _));
+        Assert.True(player.TryCloneInstance("placed", "", "new-copy", 100));
+        Assert.True(player.TrySetInstanceLayoutPosition("new-copy", 200, 100));
+        var oldCopy = Assert.Single(player.CreateInstanceRenderSnapshot("new-copy").Quads);
+        Assert.True(player.TryRemoveHostInstance("new-copy"));
+        Assert.Null(player.InstanceFrame("new-copy"));
+        Assert.True(player.TryCloneInstance("placed", "", "new-copy", 100));
+        var replacement = Assert.Single(player.CreateInstanceRenderSnapshot("new-copy").Quads);
+        Assert.NotEqual(oldCopy, replacement);
+        Assert.NotNull(player.InstanceFrame("placed"));
+        Assert.True(player.TryGotoFrame("", 2, false));
+        Assert.Null(player.InstanceFrame("placed"));
+        Assert.True(player.TryGotoFrame("", 0, false));
+        Assert.NotNull(player.InstanceFrame("placed"));
+    }
+
+    [Fact]
+    public void ExplicitRootPathsNeverResolveAnUnrelatedNestedClipAndInvalidateAfterMutation()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        Assert.True(player.TryCloneInstance("", "", "container", 100));
+        Assert.True(player.TryCloneInstance("placed", "container", "nested", 101));
+        Assert.NotNull(player.InstanceFrame("nested")); // Existing suffix semantics.
+        Assert.Null(player.InstanceFrame("/nested"));
+        Assert.False(player.TrySetInstanceLayoutPosition("/nested", 90, 90));
+        Assert.True(player.TrySetInstanceLayoutPosition("/container/nested", 30, 40));
+        Assert.Equal(player.InstanceFrame("nested"), player.InstanceFrame("/container/nested"));
+        Assert.Equal(player.InstanceFrame(""), player.InstanceFrame("/"));
+        Assert.Null(player.InstanceFrame("/arrived"));
+        Assert.True(player.TryCloneInstance("placed", "", "arrived", 102));
+        Assert.NotNull(player.InstanceFrame("/arrived"));
+        Assert.True(player.TryRemoveHostInstance("/arrived"));
+        Assert.Null(player.InstanceFrame("/arrived"));
+        Assert.True(player.TrySetHostInstanceDepth("/container/nested", 103));
+        Assert.NotNull(player.InstanceFrame("/container/nested"));
+    }
+
+    [Fact]
+    public void HostVisualDepthCanBeChangedWithoutReorderingAuthoredClipsOrLosingCopies()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        Assert.True(player.TryCloneInstance("placed", "", "near", 100));
+        Assert.True(player.TryCloneInstance("placed", "", "far", 101));
+        player.TrySetInstanceLayoutPosition("near", 100, 0);
+        player.TrySetInstanceLayoutPosition("far", 200, 0);
+        var near = Assert.Single(player.CreateInstanceRenderSnapshot("near").Quads);
+        var far = Assert.Single(player.CreateInstanceRenderSnapshot("far").Quads);
+        Assert.False(player.TrySetHostInstanceDepth("placed", 102));
+        Assert.True(player.TrySetHostInstanceDepth("near", 102));
+        Assert.Equal(far, player.CreateRenderSnapshot().Quads[1]);
+        Assert.Equal(near, player.CreateRenderSnapshot().Quads[2]);
+        Assert.True(player.TrySetHostInstanceDepth("far", 102));
+        Assert.Equal(near, player.CreateRenderSnapshot().Quads[1]);
+        Assert.Equal(far, player.CreateRenderSnapshot().Quads[2]);
+        Assert.True(player.TryRemoveHostInstance("near"));
+        Assert.True(player.TryRemoveHostInstance("far"));
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
+    public void HostCloneRetainsNativeArtAndHasIndependentLayoutAndVisibility()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        var original = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.True(player.TryCloneInstance("placed", "", "copy", 100));
+        Assert.False(player.TryCloneInstance("placed", "", "collision", 100));
+        Assert.False(player.TryCloneInstance("placed", "", "copy", 101));
+        Assert.True(player.TrySetInstanceLayoutPosition("copy", 200, 100));
+        Assert.Equal(2, player.CreateRenderSnapshot().Quads.Length);
+        player.TrySetInstanceLayoutVisibility("copy", false);
+        Assert.Equal(original, Assert.Single(player.CreateRenderSnapshot().Quads));
+        Assert.True(player.InstanceVisibility("placed"));
+        Assert.Equal(player.InstanceFrame("placed"), player.InstanceFrame("copy"));
+    }
+
+    [Fact]
+    public void NewHostCopyNeverInterpolatesFromTheTemplatesOldLocationOrSize()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        player.Advance();
+        Assert.True(player.TryCloneInstance("", "", "copy", 100));
+        player.TryGotoFrame("copy", 0);
+        player.TrySetInstanceLayoutTransform("copy", new(1, 0, 0, .5f, 30, 40));
+        var placed = Assert.Single(player.CreateInstanceRenderSnapshot("copy").Quads);
+        Assert.Equal(placed, Assert.Single(player.CreateInstanceRenderSnapshot("copy", .25f).Quads));
+        Assert.Equal(placed, Assert.Single(player.CreateInstanceRenderSnapshot("copy", .75f).Quads));
+        player.Advance();
+        player.TrySetInstanceLayoutPosition("copy", 35, 40);
+        Assert.NotEqual(player.CreateInstanceRenderSnapshot("copy").Quads[0], player.CreateInstanceRenderSnapshot("copy", .5f).Quads[0]);
+    }
+
+    [Fact]
+    public void RebasedLayoutCopyCutsAcrossTheHiddenPeriodWithoutCrossingTheScreen()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        player.TrySetInstanceLayoutPosition("placed", -1200, 0);
+        player.Advance();
+        player.TrySetInstanceLayoutPosition("placed", 1200, 0);
+        Assert.Equal(player.CreateInstanceRenderSnapshot("placed").Quads[0], player.CreateInstanceRenderSnapshot("placed", .5f).Quads[0]);
+    }
+
+    [Fact]
+    public void ReleasingHostCopiesPreservesNativeClipsAndReusesTheirDepth()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        var original = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.False(player.TryRemoveHostInstance(""));
+        Assert.False(player.TryRemoveHostInstance("placed"));
+        for (var cycle = 0; cycle < 100; cycle++)
+        {
+            Assert.True(player.TryCloneInstance("", "", "copy", 100));
+            Assert.Equal(original, Assert.Single(player.CreateInstanceRenderSnapshot("copy").Quads));
+            Assert.True(player.TryRemoveHostInstance("copy"));
+            Assert.False(player.TryRemoveHostInstance("copy"));
+            Assert.Null(player.InstanceFrame("copy"));
+            Assert.Equal(original, Assert.Single(player.CreateRenderSnapshot().Quads));
+        }
+    }
+
+    [Fact]
+    public void ClearingLayoutVisibilityFollowsTheMovieInsteadOfRevealingHiddenClips()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.TrySetInstanceLayoutVisibility("placed", false);
+        Assert.True(player.InstanceVisibility("placed"));
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        player.TrySetInstanceVisibility("placed", false);
+        player.TrySetInstanceLayoutVisibility("placed", null);
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        player.TrySetInstanceVisibility("placed", true);
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+    }
+
+    [Fact]
+    public void ConditionalMaskCanBeDisabledWithoutClippingItsFollowingSiblings()
+    {
+        var movie = createMovie(placementNameStringIndex: 31, actionBytecode: [0]);
+        var root = movie.Sprites.Single();
+        var place = root.Timeline.OfType<LmbPlaceObjectCommand>().First();
+        movie = movie with { Sprites = [root with { Timeline = [
+            root.Timeline.OfType<LmbShowFrameCommand>().First(),
+            place with { Depth = 2, NameStringIndex = 18, ClipDepth = 3 },
+            place with { Depth = 3 },
+        ] }] };
+        var player = new LumenPlayer(movie, 1280, 720);
+        var textures = Enumerable.Repeat(new LumenSoftwareTexture(1, 1, new byte[] { 255, 255, 255, 255 }), 5).ToArray();
+        byte[] render() => LumenSoftwareRenderer.Render(player.CreateRenderSnapshot(), textures, 128, 72);
+        player.TrySetInstanceVisibility("value", false);
+        Assert.DoesNotContain(render(), static value => value != 0);
+        Assert.True(player.TrySetInstanceClipDepth("value", null));
+        Assert.Contains(render(), static value => value != 0);
+        Assert.True(player.TrySetInstanceClipDepth("value", 3));
+        Assert.DoesNotContain(render(), static value => value != 0);
+    }
+
+    [Fact]
+    public void LayoutPositionInterpolatesWithoutChangingAuthoredCoordinatesOrQuadSize()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        Assert.True(player.TryGetInstanceLocalTransform("placed", out var authored));
+        var original = Assert.Single(player.CreateRenderSnapshot().Quads);
+        player.TrySetInstanceLayoutPosition("placed", authored.X + 100, authored.Y + 20);
+        var moved = Assert.Single(player.CreateRenderSnapshot().Quads);
+        Assert.Equal(original.TopLeft.X + 100, moved.TopLeft.X);
+        Assert.Equal(original.TopLeft.Y + 20, moved.TopLeft.Y);
+        Assert.Equal(original.BottomRight.X - original.TopLeft.X, moved.BottomRight.X - moved.TopLeft.X);
+        player.Advance();
+        player.TrySetInstanceLayoutPosition("placed", authored.X + 120, authored.Y + 40);
+        var middle = Assert.Single(player.CreateRenderSnapshot(.5f).Quads);
+        Assert.Equal(original.TopLeft.X + 110, middle.TopLeft.X);
+        Assert.Equal(original.TopLeft.Y + 30, middle.TopLeft.Y);
+        Assert.True(player.TryGetInstanceLocalTransform("placed", out var unchanged));
+        Assert.Equal(authored, unchanged);
+    }
+
+    [Fact]
+    public void PositionedScopedNativeFillKeepsOtherInstancesUnchangedAndCanBeRemoved()
+    {
+        var movie = createMovie(placementNameStringIndex: 31, geometryFlags: 0);
+        var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var wrapper = child with { CharacterId = 99, DeclaredFrameCount = 1,
+            Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(),
+                child.Timeline.OfType<LmbPlaceObjectCommand>().First() with { CharacterId = 7 }] };
+        var player = new LumenPlayer(movie with { Sprites = movie.Sprites.Add(wrapper) }, 1280, 720, rootCharacterId: 99);
+        var original = new LumenNativeSurfaceKey("original");
+        var scrolling = new LumenNativeSurfaceKey("scrolling");
+        player.SetNativeFill("placed", original);
+        player.SetNativeFill("placed/placed", scrolling, new(0, 0, 400, 56));
+        Assert.Equal(scrolling, Assert.Single(player.CreateRenderSnapshot().Quads).NativeSurface);
+        player.SetNativeFill("placed/placed", scrolling, new(-50, 0, 400, 56));
+        Assert.True(player.RemoveNativeFill("placed/placed"));
+        Assert.Equal(original, Assert.Single(player.CreateRenderSnapshot().Quads).NativeSurface);
+        player.TrySetInstanceLayoutVisibility("placed", false);
+        Assert.Empty(player.CreateInstanceRenderSnapshot("placed/placed").Quads);
+    }
+
+    [Fact]
+    public void LiveClipSnapshotPreservesAncestorColourTransformAndAnimation()
+    {
+        var movie = createMovie(placementNameStringIndex: 31, actionBytecode: [0]);
+        var child = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var wrapper = child with
+        {
+            CharacterId = 99, DeclaredFrameCount = 1,
+            Timeline = [child.Timeline.OfType<LmbShowFrameCommand>().First(),
+                child.Timeline.OfType<LmbPlaceObjectCommand>().First() with { CharacterId = 7 }],
+        };
+        var player = new LumenPlayer(movie with { Sprites = movie.Sprites.Add(wrapper) }, 1280, 720, rootCharacterId: 99);
+        foreach (var fraction in new[] { 0f, .5f, 1f })
+        {
+            player.Advance();
+            var before = player.InstanceFrame("placed");
+            var full = player.CreateRenderSnapshot(fraction);
+            var clip = player.CreateInstanceRenderSnapshot("placed/placed", fraction);
+            Assert.Equal(full.Quads.ToArray(), clip.Quads.ToArray());
+            Assert.Equal(before, player.InstanceFrame("placed"));
+        }
+        player.TrySetInstanceVisibility("placed", false);
+        Assert.Empty(player.CreateInstanceRenderSnapshot("placed/placed").Quads);
+        Assert.Empty(player.CreateInstanceRenderSnapshot("missing").Quads);
+    }
+
+    [Fact]
+    public void ExcludingLiveClipDoesNotChangeItsStateOrOtherSnapshots()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        var before = player.CreateRenderSnapshot();
+        var frame = player.InstanceFrame("placed");
+        Assert.Empty(player.CreateRenderSnapshot(excludedInstancePaths: ["placed"]).Quads);
+        Assert.Equal(before.Quads.ToArray(), player.CreateRenderSnapshot().Quads.ToArray());
+        Assert.Equal(before.Quads.ToArray(), player.CreateInstanceRenderSnapshot("placed").Quads.ToArray());
+        Assert.Equal(frame, player.InstanceFrame("placed"));
+    }
+
+    [Fact]
+    public void BinaryEditorAnimationMatchesSequentialPlaybackAndExplicitSeekAfterExport()
+    {
+        var source = createMovie(includeSeekKey: true, removeOnThirdFrame: false, actionBytecode: [0]);
+        using var stream = new MemoryStream();
+        source.RawFile.WriteTo(stream);
+        var bytes = stream.ToArray();
+        var snapshot = source.Sprites.Single().Timeline.OfType<LmbPlaceObjectCommand>().Last();
+        // This synthetic runtime fixture uses an invalid name sentinel; give the editor a valid source.
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan((int)snapshot.Record.PayloadOffset + 12, 4), 0);
+        var document = new LmbEditDocument(bytes);
+        document.Tween(7, 3, 0, 2, new LmbMatrix(2, 0, 0, 2, 90, 100), 1, smooth: false);
+        var exported = LmbSemanticReader.Read(LmbFile.Parse(document.Export(false))).Value;
+        var sequential = new LumenPlayer(exported, 1280, 720);
+        sequential.Advance(); sequential.Advance();
+        var sought = new LumenPlayer(exported, 1280, 720);
+        sought.Seek(2);
+        Assert.Equal(sequential.CreateRenderSnapshot().Quads.ToArray(), sought.CreateRenderSnapshot().Quads.ToArray());
+        Assert.Equal(90, Assert.Single(sought.CreateRenderSnapshot().Quads).TopLeft.X);
+        Assert.Empty(sought.Diagnostics);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void NewMethodColorTransformAppliesChannelsAndRollsBackUnsupportedActions(bool fail)
@@ -96,6 +672,36 @@ public sealed class LumenPlayerTests
         player.SetInstanceOverlay("placed", null);
         player.SetInstanceOverlay("other/placed", surface, new LumenNativeSurfacePlacement(0, 0, 10, 10));
         Assert.Equal(0, overlays());
+    }
+
+    [Fact]
+    public void ParsedOverlayPathsRetainMatchingPrecedenceAcrossUpdatesAndRemoval()
+    {
+        var player = new LumenPlayer(createMovie(placementNameStringIndex: 31), 1280, 720);
+        player.Stop();
+        Assert.True(player.TryCloneInstance("", "", "container", 100));
+        var broad = new LumenNativeSurfaceKey("broad");
+        var scoped = new LumenNativeSurfaceKey("scoped");
+        var updated = new LumenNativeSurfaceKey("updated");
+        var box = new LumenNativeSurfacePlacement(0, 0, 10, 10);
+        player.SetInstanceOverlay("placed", broad, box);
+        player.SetInstanceOverlay("//container//placed/", scoped, box);
+        Assert.Equal(2, overlays().Length);
+        Assert.All(overlays(), quad => Assert.Equal(broad, quad.NativeSurface));
+        player.SetInstanceOverlay("placed", updated, box with { Width = 20 }, replace: true);
+        Assert.All(overlays(), quad =>
+        {
+            Assert.Equal(updated, quad.NativeSurface);
+            Assert.Equal(20, quad.TopRight.X - quad.TopLeft.X);
+        });
+        player.SetInstanceOverlay("placed", null);
+        Assert.Equal(scoped, Assert.Single(overlays()).NativeSurface);
+        player.SetInstanceOverlay("//container//placed/", null);
+        Assert.Empty(overlays());
+        player.SetInstanceOverlay("container/placed", updated, box);
+        Assert.Equal(updated, Assert.Single(overlays()).NativeSurface);
+
+        LumenRenderQuad[] overlays() => player.CreateRenderSnapshot().Quads.Where(quad => quad.NativeSurface is not null).ToArray();
     }
 
     [Fact]
@@ -835,6 +1441,43 @@ public sealed class LumenPlayerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxStackValues: 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxPendingActions: 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new LumenRuntimeLimits(maxRegisters: 0));
+    }
+
+    [Fact]
+    public void SharedCodeKeepsPerInvocationInstructionBudgetsAndPlaybackTransactions()
+    {
+        var movie = createMovie(actionBytecode: [0x07, 0x00]);
+        var first = new LumenPlayer(movie, 1280, 720, limits: new(maxInstructionsPerAction: 2));
+        first.Advance();
+        Assert.False(first.IsPlaying);
+        var limited = new LumenPlayer(movie, 1280, 720, limits: new(maxInstructionsPerAction: 1));
+        limited.Advance();
+        Assert.True(limited.IsPlaying);
+        Assert.Contains(limited.Diagnostics, item => item.Code == "LUM_ACTION_LIMIT");
+        var last = new LumenPlayer(movie, 1280, 720, limits: new(maxInstructionsPerAction: 2));
+        last.Advance();
+        Assert.False(last.IsPlaying);
+    }
+
+    [Fact]
+    public void ReplacingCodeAtTheSameOffsetsDoesNotReuseItsPreviousSupportDecision()
+    {
+        var movie = createMovie(actionBytecode: [0x04, 0x00]);
+        var unsupported = new LumenPlayer(movie, 1280, 720);
+        unsupported.Advance();
+        Assert.True(unsupported.IsPlaying);
+        Assert.Contains(unsupported.Diagnostics, item => item.Code == "LUM_ACTION_DEFERRED");
+        var action = movie.Actions[0];
+        var replacement = action with
+        {
+            Bytecode = [0x07, 0x00],
+            Code = action.Code with { Instructions = action.Code.Instructions.SetItem(0,
+                action.Code.Instructions[0] with { Opcode = 0x07 }) },
+        };
+        var supported = new LumenPlayer(movie with { Actions = movie.Actions.SetItem(0, replacement) }, 1280, 720);
+        supported.Advance();
+        Assert.False(supported.IsPlaying);
+        Assert.DoesNotContain(supported.Diagnostics, item => item.Code == "LUM_ACTION_DEFERRED");
     }
 
     [Fact]

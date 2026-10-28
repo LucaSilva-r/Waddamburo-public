@@ -59,11 +59,13 @@ public static class SongSelectGenrePatch
     /// <summary>The pattern's opacity (a colour entry's alpha, 256 = opaque).</summary>
     private const short PatternAlpha = 128;
 
-    private static void addPattern(LumenMovieEditor editor, uint sprite, int slot, uint alpha)
+    private static void addPattern(LumenMovieEditor editor, uint sprite, int slot, uint alpha, bool vertical)
     {
         var pattern = editor.Clone(OpenPattern, _ => new TextureRule.Fill(""));
         var name = editor.AddString(Slot("pattern", slot));
-        var centre = editor.AddMatrix(new LmbMatrix(PatternWidthScale, 0, 0, 1, 4, 245));
+        var centre = editor.AddMatrix(vertical
+            ? new LmbMatrix(0, -460f / 368, 1, 0, 4, 245)
+            : new LmbMatrix(PatternWidthScale, 0, 0, 1, 4, 245));
         var result = ImmutableArray.CreateBuilder<LmbTimelineCommand>();
         float left = 0, right = 0;
         var placed = false;
@@ -178,6 +180,7 @@ public static class SongSelectGenrePatch
     {
         var editor = new LumenMovieEditor(content);
         var sprites = editor.SpritesWithLabel(Source);
+        var vertical = content.Definition.Strings.Any(s => s.Value == "wd_vertical_rows_v2");
         var patternAlpha = editor.AddColorTransform(256, 256, 256, PatternAlpha);
         var colours = new uint[Slots];
         for (var slot = 0; slot < Slots; slot++)
@@ -193,13 +196,13 @@ public static class SongSelectGenrePatch
                 HeaderName => new TextureRule.Fill(Slot("yoko", current)),
                 Description => new TextureRule.Fill(Slot("desc", current)),
                 Mascot => new TextureRule.Fill(Slot("image", current)),
-                _ when Art.Contains(texture) => new TextureRule.Recolour(colour, Reference),
+                _ when Art.Contains(texture) => new TextureRule.Recolour(colour, Reference, BlackOutline: vertical && texture is 423 or 424),
                 _ => null,
             };
             editor.SpriteCloned = (original, copy) =>
             {
                 if (original == Spine)
-                    addPattern(editor, copy, current, patternAlpha);
+                    addPattern(editor, copy, current, patternAlpha, vertical);
             };
             foreach (var sprite in sprites)
                 editor.CloneLabel(sprite, Source, Label(slot), rule);

@@ -65,6 +65,9 @@ public sealed record SongChartDescriptor
 
     public int? Level { get; }
 
+    /// <summary>The source's unrounded star rating, when it provides one (osu!taiko).</summary>
+    public double? StarRating { get; init; }
+
     /// <summary>
     /// The course's two-player charts (left drum, right drum), empty when the course has none. The
     /// game's own songs author them apart from the solo chart (different parts, hand notes).

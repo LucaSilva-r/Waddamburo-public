@@ -9,6 +9,27 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class SongSelectSessionTests
 {
+    [Fact]
+    public async Task ExpandedTitleIsPreparedWhileCompactAndNeverReplacesItBeforeItCanBeDrawn()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var textures = new RecordingTextureService();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), textures,
+            new RecordingPreviewController(), new PlayRequestState());
+        var compact = session.GetPreviewTitle(0, 0, expanded: false);
+        Assert.False(compact.Expanded);
+        var detailed = session.GetBoardTexture(0, 0, SongBoardTextureKind.HorizontalExpanded);
+        Assert.Equal(detailed, textures.PreparedSurface);
+        for (var tick = 0; tick < 20; tick++)
+            Assert.Equal(compact, session.GetPreviewTitle(0, 0, expanded: true));
+        textures.SurfaceReady = true;
+        var ready = session.GetPreviewTitle(0, 0, expanded: true);
+        Assert.True(ready.Expanded);
+        Assert.Equal(detailed, ready.Surface);
+        Assert.Equal(compact, session.GetPreviewTitle(0, 0, expanded: false));
+    }
+
     [Theory]
     [InlineData(0, TaikoCourse.Easy)]
     [InlineData(1, TaikoCourse.Normal)]
@@ -294,7 +315,7 @@ public sealed class SongSelectSessionTests
         var view = new SongSelectCatalogView(snapshot, library: SongSourceKind.Tja,
             links: [SongSourceKind.Stock, SongSourceKind.Nijiiro]);
 
-        Assert.Equal(["Anime", "ORIGINAL", "NIJIIRO"], view.Categories.Select(static category => category.Name));
+        Assert.Equal(["Anime", "Original Songs", "Nijiiro"], view.Categories.Select(static category => category.Name));
         Assert.Null(view.Categories[0].Link);
         var link = view.Categories[1];
         Assert.Equal(SongSourceKind.Stock, link.Link);
@@ -349,7 +370,41 @@ public sealed class SongSelectSessionTests
         }
     }
 
-    private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
+    [Fact]
+    public async Task SelectingTheSeventhOniPreservesItsExactChartAssetAndOptions()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider(extraOni: 7)]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
+            new RecordingPreviewController(), pending);
+        var descriptor = Assert.Single(snapshot.Songs.Values);
+        var chosen = descriptor.Charts.Single(chart => chart.Key.StableId == "oni-7");
+        var options = new TaikoPlayOptions(true, 2, false, false, TaikoRandom.None);
+        var selection = session.SelectCharts(0, 0, chosen.Key, null, [options, default]);
+        Assert.Equal(chosen.Key, selection.PlayerOneChart);
+        var request = Assert.Single(pending.Pending!.Players);
+        Assert.Equal(chosen.Key, request.Chart);
+        Assert.Equal(chosen.ChartAsset, request.ChartAsset);
+        Assert.Equal(TaikoCourse.Oni, request.Course);
+        Assert.Equal(options, request.Options);
+    }
+
+    [Fact]
+    public async Task IndividualSelectionRejectsAChartOutsideTheSelectedSong()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider(extraOni: 7)]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
+            new RecordingPreviewController(), pending);
+        var key = Assert.Single(snapshot.Songs.Keys);
+        Assert.Throws<ArgumentException>(() => session.SelectCharts(0, 0, new ChartKey(key, "missing"), null));
+        Assert.Null(pending.Pending);
+        Assert.Throws<ArgumentException>(() => session.SelectCharts(0, 0, null, null));
+    }
+
+    private sealed class SyntheticProvider(bool includeUra = false, int extraOni = 0) : ISongCatalogProvider
     {
         public CatalogProviderId Id { get; } = new("synthetic");
 
@@ -382,6 +437,9 @@ public sealed class SongSelectSessionTests
                     .. includeUra ? new[] { new SongChartDescriptor(
                         new ChartKey(songKey, "ura"), "Ura", new CatalogAssetKey(Id, "ura"),
                         TaikoCourse.Ura, 9) } : Array.Empty<SongChartDescriptor>(),
+                    .. Enumerable.Range(1, extraOni).Select(index => new SongChartDescriptor(
+                        new ChartKey(songKey, $"oni-{index}"), $"Inner Oni {index}",
+                        new CatalogAssetKey(Id, $"oni-{index}"), TaikoCourse.Oni, 9)),
                 ],
                 new CatalogAssetKey(Id, "audio"),
                 TimeSpan.FromSeconds(12));
@@ -403,6 +461,14 @@ public sealed class SongSelectSessionTests
 
         public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0) =>
             new($"folder:{name}:{kind}");
+
+        public bool SurfaceReady { get; set; }
+        public LumenNativeSurfaceKey? PreparedSurface { get; private set; }
+        public bool PrepareSurface(LumenNativeSurfaceKey surface)
+        {
+            PreparedSurface = surface;
+            return SurfaceReady;
+        }
 
         public SongSelectSong? LastSong { get; private set; }
 

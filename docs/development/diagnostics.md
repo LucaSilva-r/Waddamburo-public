@@ -1,5 +1,28 @@
 # Diagnostics and developer runs
 
+## Layout preview
+
+To inspect a movie with Waddamburo's GPU renderer independently of its
+game-host initialization, use its authored-layout mode:
+
+```powershell
+dotnet run --project src/Waddamburo.App -- --archive=out/edited.ddp --movie=scene/scene.lm --layout-only --seek-frame=2 --frames=1 --screenshot=out/edited.png
+```
+
+`--layout-only` disables frame actions for this diagnostic run. Omit it to exercise authored scripts with the normal standalone
+viewer host. Full game-host initialization requires the normal scene/game flow.
+
+For a custom gameplay layout with the `song_info` title slot positioned on the left,
+`--gameplay-title-left` aligns rendered gameplay titles to the slot's left edge.
+It applies to short and long titles, and replay/practice labels. It preserves glyph
+orientation and the fixed-size native surface; the slot position remains authored
+in the LMB. Incoming note scrolling uses its original gameplay path.
+`--hit-details-left` reflects the gameplay skin's `chibi` hit/miss runners and
+`renda` roll characters across the stage, including themed skins. It changes their
+presentation layer, independently of incoming chart notes and hit-flight movies.
+
+## Other diagnostic runs
+
 Command-line options for probing single movies, scenes and flows from source, and the
 older notes on how the game flow is composed. Normal play needs none of this: see the
 [README](../../README.md).
@@ -274,8 +297,8 @@ TJA supports standard rolls, balloons, partner notes, mid-measure commands, and
 fixed-route branches; see the [compatibility matrix](custom-tja.md#gameplay-compatibility)
 for supported features and remaining limits. Invalid or unsupported chart loads
 return to Song Select with a console diagnostic.
-The initial gameplay composition deliberately rejects two-player launches until a
-two-lane presentation and input contract are implemented.
+Normal gameplay supports one or two joined drums, with independent charts and input.
+The home Song Select can add the missing drum before opening difficulty selection.
 `--sound-root=/path/to/user-owned-sound-tree` additionally enables authored
 nuSound2 bank/cue effects and voices; unresolved system/player request shapes are
 logged rather than guessed.
@@ -298,3 +321,19 @@ The SDL window and bgfx rendering lifecycle is documented in
 [docs/development/rendering.md](rendering.md).
 For memory, frame time and audio-buffer measurements, see
 [docs/development/profiling.md](profiling.md).
+
+## Isolated two-player checks
+
+Set `master_volume = 0` in every private QA configuration. Keep all test roots,
+configs, logs and captures under `out/`; never modify the source game installation.
+
+`WADDAMBURO_ISOLATED_PROBE=1` applies only to a bounded `--ticks` launch with a
+nonempty `--press` timeline. It ignores desktop keyboard/focus changes, forwards
+scripted drum pulses to native gameplay, and lets `--autoplay` exercise live game
+completion/results instead of Home replay controls. Ordinary interactive launches
+retain live input, focus pausing and Home autoplay review behavior.
+
+Use `WADDAMBURO_CAPTURE_EVERY_TICK=1` for exact menu animation frames. It advances
+one simulation tick per render without waiting for audio, so it cannot verify song
+completion. Set it to `0` for full song tests with the real audio clock, including
+muted PASS/result checks and continued drum input after the last note.

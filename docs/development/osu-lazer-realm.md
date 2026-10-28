@@ -26,11 +26,17 @@ fixture parks those notifications.
 ## From beatmaps to songs
 
 A set's taiko beatmaps (osu!standard, catch and mania are left out; hidden ones too) are grouped per
-audio file. osu! difficulties follow no Taiko course scheme, so `OsuCourseLayout` uses the courses
-as plain slots: the charts in star order fill Easy, Normal, Hard and Oni, four per entry; further
-charts open another song entry, and entries of a split set name their charts in the subtitle. Ura is
-never used (the song select only reveals it by pressing right on Oni). Stars are osu!'s own rating,
-rounded (1-10), and every osu! chart plays with Oni's judgement windows whatever its slot.
+audio file, with every difficulty kept in that one song. `OsuCourseLayout.Course` recognizes
+Easy/Kantan, Normal/Futsuu, Hard/Muzukashii and Oni names; other names use Oni art. The custom
+chart carousel retains Easy, Normal, Hard and Oni as its first four columns, then adds the remaining
+charts to the right in course/star order. Each choice keeps its exact chart key and source name.
+The displayed stars are rounded to 1-10; the catalog also retains the unrounded osu! rating.
+Every osu! chart plays with Oni's judgement windows regardless of its visual course.
+
+The carousel snapshots the live initialized boards and cursors from `song_select.lm`, using their
+original textures and animation state. It slides a clipped four-column window, without seeking
+standalone copies through the boards' flip effects. Left/right or rim hits move, Page Up/Down
+move four choices, don/Enter confirms, and Backspace cancels a confirmation or returns to the song.
 
 For osu! songs only, the host marks every course an entry lacks invalid (`SetInvalidCourse`, hidden
 Easy/Normal/Hard/Oni included). That puts the board in the movie's restricted mode

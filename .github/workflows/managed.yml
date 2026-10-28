@@ -1,0 +1,37 @@
+name: Managed checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  managed:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Restore locked dependencies
+        run: dotnet restore Waddamburo.slnx --locked-mode
+      - name: Build with warnings as errors
+        run: dotnet build Waddamburo.slnx -c Release --no-restore
+      - name: Test portable projects
+        run: dotnet test Waddamburo.slnx -c Release --no-build --no-restore --logger trx --results-directory out/test-results
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: out/test-results/*.trx
+          if-no-files-found: ignore

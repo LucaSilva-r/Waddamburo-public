@@ -4,7 +4,24 @@ using System.Runtime.InteropServices;
 
 namespace Waddamburo.Platform.Sdl.Text;
 
-public sealed record RgbaTextSurface(uint Width, uint Height, byte[] Pixels);
+public sealed record RgbaTextSurface(uint Width, uint Height, byte[] Pixels)
+{
+    /// <summary>Moves visible pixels to the left edge, preserving glyph order, outlines and surface dimensions.</summary>
+    public RgbaTextSurface AlignLeft()
+    {
+        var width = checked((int)Width); var height = checked((int)Height);
+        if (Pixels.Length != checked(width * height * 4)) throw new InvalidDataException("Invalid RGBA text surface dimensions.");
+        var first = width;
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < first; x++)
+                if (Pixels[(y * width + x) * 4 + 3] != 0) { first = x; break; }
+        if (first == 0 || first == width) return this;
+        var aligned = new byte[Pixels.Length];
+        for (var y = 0; y < height; y++)
+            Pixels.AsSpan((y * width + first) * 4, (width - first) * 4).CopyTo(aligned.AsSpan(y * width * 4));
+        return this with { Pixels = aligned };
+    }
+}
 
 /// <summary>
 /// One rendered glyph: its fill and outline masks (8-bit, <see cref="Width"/> x <see cref="Height"/>), the

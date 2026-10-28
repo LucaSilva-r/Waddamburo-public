@@ -1,0 +1,81 @@
+TITLE:Delay Check
+GENRE:Variety
+BPM:120
+WAVE:click.ogg
+COURSE:Oni
+LEVEL:1
+BALLOON:3
+#START
+0000,
+// 1: unchanged beat grid: 2, 2.5, 3, 3.5 s.
+1111,
+0000,
+// 2: leave subsequent notes 16 ms late: 6, 6.516, 7.016, 7.516 s.
+1
+#DELAY 0.016
+111,
+0000,
+// 3: undo that delay after the first note: 10.016, 10.5, 11, 11.5 s.
+1
+#DELAY -0.016
+111,
+0000,
+// 4: move one note late and return: 14, 14.75, 15, 15.5 s.
+1
+#DELAY 0.25
+1
+#DELAY -0.25
+11,
+0000,
+// 5: move one note early and return: 18, 18.25, 19, 19.5 s.
+1
+#DELAY -0.25
+1
+#DELAY 0.25
+11,
+0000,
+// 6: the second written note precedes the first: 22, 21.75, 23, 23.5 s.
+1
+#DELAY -0.75
+1
+#DELAY 0.75
+11,
+0000,
+// 7: overlap two measures: 27, 27.5 s followed by 28, 28.5 s.
+#DELAY 1
+1100,
+#DELAY -1
+1100,
+0000,
+// 8: stretch a roll from 32 s to 34 s, then restore the beat grid.
+50
+#DELAY 1
+80,
+#DELAY -1
+0000,
+// 9: shorten a balloon from 36 s to 36.75 s, then restore the grid.
+70
+#DELAY -0.25
+80,
+#DELAY 0.25
+0000,
+// 10: Go-Go at 240 BPM; delay the second half by 62.5 ms.
+// Notes: 40, 40.125, 40.25, 40.375, 40.5625, 40.6875, 40.8125, 40.9375 s.
+#BPMCHANGE 240
+#GOGOSTART
+1111
+#DELAY 0.0625
+1111,
+#DELAY -0.0625
+#GOGOEND
+0000,
+#BPMCHANGE 120
+0000,
+// 11: move the 0.5 scroll point before the earlier-written 2.0 point.
+// Notes: 44, 44.5, 45, 45.5 s; the replacement scroll stays at 44 s.
+#SCROLL 2
+#DELAY -0.5
+#SCROLL 0.5
+#DELAY 0.5
+1111,
+#END

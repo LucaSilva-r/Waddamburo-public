@@ -16,12 +16,15 @@ namespace Waddamburo.Game.Lumen;
 /// (No skipping on quick rim hits, as the later games do: a roll, or a held key's repeat, scrolls fast instead.)
 /// Nothing in the movie is written to: it sees the same hits and plays the same frames, sooner. A single
 /// hit on a list at rest is left to the movie as it is. Queued steps and skips inside a folder stop at
-/// its last song rather than run out of it.
+/// its last song unless circular folder navigation is enabled.
 /// </summary>
 /// <param name="movie">The song select movie.</param>
 /// <param name="openFolder">The open folder's genre index, or -1 when none is open.</param>
 /// <param name="jumped">A skip was taken (by this player, 0 or 1): its sound is due.</param>
-public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Action<int> jumped)
+/// <param name="circularFolders">The vertical browser recycles every board within its open folder.</param>
+/// <param name="defaultPlayer">The joined drum used by page keys before any rim hit.</param>
+public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Action<int> jumped, bool circularFolders = false,
+    int defaultPlayer = 0)
 {
     // The list clip and its move tweens' labels.
     private const string List = "main/genreSelect_";
@@ -48,10 +51,20 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     /// <summary>A skip is running the movie through its steps: their rim hits are not to be heard one by one.</summary>
     public bool Jumping { get; private set; }
 
+    /// <summary>Keep ordinary hits and wheel/page navigation inside the visible folder.</summary>
+    public LumenInputSnapshot ConstrainToFolder(LumenInputSnapshot input)
+    {
+        if (circularFolders || openFolder() < 0 || !resolve()) return input;
+        var keys = input.PressedKeyCodes;
+        if (atFolderEdge(-1)) keys = keys.Except(LeftKeys).Remove(WheelUp).Remove(PageUp);
+        if (atFolderEdge(1)) keys = keys.Except(RightKeys).Remove(WheelDown).Remove(PageDown);
+        return new(keys);
+    }
+
     private int _right = -1, _left = -1, _cancel = -1, _cancelEnd = -1;
     // Steps still to take: positive to the right.
     private int _pending;
-    private int _player;
+    private int _player = defaultPlayer is 0 or 1 ? defaultPlayer : throw new ArgumentOutOfRangeException(nameof(defaultPlayer));
     // Ticks since the movie took the current step; ticks a queued step has waited.
     private int _age, _waited, _sinceHit;
     // The step handed to the movie this tick (0: none); the list was busy with another animation then.
@@ -205,7 +218,7 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
 
     // The cursor is in the open folder and the next board that way is not: a step there would leave it.
     private bool atFolderEdge(int direction) =>
-        openFolder() is >= 0 and var open && genre(0) == open && genre(direction) is { } next && next != open;
+        !circularFolders && openFolder() is >= 0 and var open && genre(0) == open && genre(direction) is { } next && next != open;
 
     // The genre of the board this many places from the one the cursor is going to. The boards only take
     // a step's new songs when its tween is finished: until then that one is still a board to the side.

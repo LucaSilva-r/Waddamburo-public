@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -37,6 +37,7 @@
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
+    <ProjectReference Include="../Waddamburo.MenuLayouts/Waddamburo.MenuLayouts.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.Stock/Waddamburo.Providers.Stock.csproj" />
@@ -47,6 +48,10 @@
   <ItemGroup>
     <!-- QR codes for the home setup's sign-in and friend codes (MIT). -->
     <PackageReference Include="QRCoder" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Waddamburo.App.Tests" />
   </ItemGroup>
 
 </Project>

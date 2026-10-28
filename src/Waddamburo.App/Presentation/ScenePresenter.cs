@@ -77,6 +77,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
                 uploaded[next] = SceneTextures.UploadOne(application, content.Textures[next]);
             }
             _partial.Remove(content);
+            SongBrowserFramePresentation.Prepare(content);
             content.ReleaseDecodedTexturePixels();
             _uploadedAhead[content] = uploaded;
         }
@@ -173,6 +174,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         var ahead = _uploadedAhead.Count + _partial.Count;
         var decoded = movies.DecodedPrefetches.Count();
+        foreach (var layer in scene.Layers) SongBrowserFramePresentation.Prepare(layer.Content);
         _textures = SceneTextures.Upload(application, scene, takeAhead);
         Console.WriteLine($"Scene {scene.Id}: {ahead - _uploadedAhead.Count - _partial.Count} of {scene.Layers.Length} movies "
             + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead); textures {application.TextureUsage}.");
@@ -195,11 +197,17 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         _heldNotPresented = false;
         if (first || tick < _holdUntilTick)
             return (held, _heldBlack);
-        SceneTextures.Release(application, _heldTextures.Where(notKept));
+        // Results can reuse the held gameplay frame's name-board textures. Prefetching the
+        // next Song Select evicts their cached copy, but the active results still own them.
+        SceneTextures.Release(application, RetiredFrameTextures(_heldTextures, _textures, _keptTextures));
         _heldTextures = [];
         _heldFrame = null;
         return null;
     }
+
+    internal static IEnumerable<RenderTextureId> RetiredFrameTextures(IEnumerable<RenderTextureId> held,
+        IEnumerable<RenderTextureId> active, IEnumerable<RenderTextureId> kept) =>
+        held.Except(active).Except(kept);
 
     /// <summary>The frame just drawn (what a switch holds), and whether an intermission was in it.</summary>
     public void Presented(RenderFrame frame, bool withIntermission)

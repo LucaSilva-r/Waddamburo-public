@@ -5,6 +5,10 @@ namespace Waddamburo.Game.Flow;
 /// <summary>Which hits get the early/late glow: none, Goods and Bads, or every hit (Greats too).</summary>
 public enum TimingIndicator { Off, GoodBad, Always }
 
+public enum SongSelectScrollMode { Classic, Vertical }
+
+public enum VerticalScrollPath { Linear, Curved }
+
 /// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
@@ -16,7 +20,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 21;
+    public const int CurrentVersion = 23;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -142,9 +146,8 @@ public sealed record ArcadeSettings
         # shows up as a controller: the pads above everywhere.
         pad_menus = gamepad
         # fast_song_scroll: in song select the list keeps up with quick rim hits and the mouse wheel, and
-        # Page Up/Down or three quick rim hits one way skip ten songs; false = the original, one board
-        # at a time.
-        fast_song_scroll = false
+        # Page Up/Down skip ten songs; false = the original, one board at a time.
+        fast_song_scroll = true
 
         """,
         """
@@ -219,6 +222,20 @@ public sealed record ArcadeSettings
         mouse_controls = true
 
         """,
+        """
+        # Song Select scrolling: classic = the original horizontal wheel; vertical = an upright list.
+        # Vertical path: linear = straight; curved = the D-shaped wheel.
+        # Both can also be changed in Settings; returning to Song Select applies the layout.
+        song_select_scroll = classic
+        vertical_scroll_path = linear
+
+        """,
+        """
+        # Waiwai is optional in 2P. false starts the normal Song Select and hides the mode-switch folder.
+        # true allows Waiwai and starts there when both players join; the folder switches back to Normal.
+        waiwai_enabled = false
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -267,7 +284,7 @@ public sealed record ArcadeSettings
     public int DrumDebounceMs { get; init; }
 
     /// <summary>Song select's list keeps up with quick rim hits and the wheel, and skips ten songs at a time.</summary>
-    public bool FastSongScroll { get; init; }
+    public bool FastSongScroll { get; init; } = true;
 
     /// <summary>Song select shows Oni at once instead of after repeated right-rim hits (the original).</summary>
     public bool ShowOni { get; init; } = true;
@@ -354,6 +371,12 @@ public sealed record ArcadeSettings
 
     /// <summary>"ja" on a Japanese system, else "en": the languages Waddamburo and the song titles both have.</summary>
     public static string SystemLanguage => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ja" ? "ja" : "en";
+
+    public bool WaiwaiEnabled { get; init; }
+
+    public SongSelectScrollMode SongSelectScroll { get; init; } = SongSelectScrollMode.Classic;
+
+    public VerticalScrollPath VerticalScrollPath { get; init; } = VerticalScrollPath.Linear;
 
     public int MasterVolume { get; init; } = 50;
 
@@ -582,6 +605,17 @@ public sealed record ArcadeSettings
                     _ => throw new InvalidDataException($"{FileName} line {index}: title_language is english or japanese, not '{value}'."),
                 } },
                 "language" => settings with { Language = value.Length > 0 ? value.ToLowerInvariant() : SystemLanguage },
+                "waiwai_enabled" => settings with { WaiwaiEnabled = boolean(value, index) },
+                "song_select_scroll" => settings with { SongSelectScroll = value.ToLowerInvariant() switch
+                {
+                    "classic" => SongSelectScrollMode.Classic, "vertical" => SongSelectScrollMode.Vertical,
+                    _ => throw new InvalidDataException($"Line {index + 1}: song_select_scroll must be classic or vertical."),
+                } },
+                "vertical_scroll_path" => settings with { VerticalScrollPath = value.ToLowerInvariant() switch
+                {
+                    "linear" => VerticalScrollPath.Linear, "curved" => VerticalScrollPath.Curved,
+                    _ => throw new InvalidDataException($"Line {index + 1}: vertical_scroll_path must be linear or curved."),
+                } },
                 "master_volume" => settings with { MasterVolume = integer(value, index, 0, 100) },
                 "music_volume" => settings with { MusicVolume = integer(value, index, 0, 100) },
                 "drum_volume" => settings with { DrumVolume = integer(value, index, 0, 100) },
@@ -677,6 +711,9 @@ public sealed record ArcadeSettings
         ArgumentNullException.ThrowIfNull(settings);
         var values = new Dictionary<string, object>
         {
+            ["waiwai_enabled"] = settings.WaiwaiEnabled ? "true" : "false",
+            ["song_select_scroll"] = settings.SongSelectScroll.ToString().ToLowerInvariant(),
+            ["vertical_scroll_path"] = settings.VerticalScrollPath.ToString().ToLowerInvariant(),
             ["master_volume"] = settings.MasterVolume,
             ["music_volume"] = settings.MusicVolume,
             ["drum_volume"] = settings.DrumVolume,

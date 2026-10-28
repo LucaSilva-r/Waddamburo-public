@@ -261,3 +261,36 @@ hides its range. Soft alpha masks, script-driven setMask, and arbitrary non-quad
 geometry remain outside this slice. Synthetic GPU pixel checks cover transparent
 mask texels, overlapping mask pieces, nested intersection, and restoration after
 pop; local captures remain private.
+
+## Host instance paths and text overlays
+
+Host clip selectors with a leading slash, such as `/main/panel/title`, resolve
+only from the movie root. A missing child returns no match without scanning the
+whole display list. Selectors without the slash retain the existing root-first,
+then ancestor-suffix matching behaviour. Both positive and missing results are
+invalidated when the display list changes, including clones, removals and seeks.
+
+`SetInstanceOverlay` still matches a clip and its nearest ancestors by suffix;
+its leading/repeated slashes are ignored. Overlay paths are split once when
+registered and reused when only the surface, box or replace flag changes. Matching
+keeps dictionary order and tests the leaf name before walking ancestors. Snapshots
+retain their own immutable output after an overlay is updated or removed.
+
+## Immutable AVM execution plans
+
+The interpreter validates supported instructions and indexes action offsets once
+per immutable `Avm1CodeBlock`, using a weak-key cache. Replacing a code block,
+even at the same offsets, produces a fresh plan; released movie code does not
+stay alive solely because of the cache. Only support metadata and instruction
+lookup are shared. Registers, stack, instruction budgets, context and playback
+transactions remain local to each invocation, including failed executions.
+
+## Host hooks and script transactions
+
+`TryWrapScriptMethod` exchanges primitive return values with the host.
+`TryAfterScriptMethod` runs a host action after the authored method while preserving
+its complete return value, including array/object identity. Use the latter when a
+caller keeps the returned input array. Host writes through `TryWriteScriptValue`
+join the active AVM transaction: subsequent script reads see them and native staged
+writes do not overwrite them at commit. Calls made outside AVM execution retain
+the immediate-write behavior.

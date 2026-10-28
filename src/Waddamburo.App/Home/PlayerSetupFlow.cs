@@ -7,7 +7,7 @@ using Waddamburo.Platform.Sdl.Text;
 
 namespace Waddamburo.App.Home;
 
-internal enum SetupChoiceKind { Guest, Account, Friend, AddAccount }
+internal enum SetupChoiceKind { Guest, Account, Friend, AddAccount, NotPlaying }
 
 /// <summary>One column's current choice (an account's avatar once it has downloaded).</summary>
 internal sealed record SetupChoice(SetupChoiceKind Kind, string Label, long Baid = 0, RgbaTextSurface? Avatar = null,
@@ -61,7 +61,6 @@ internal sealed class PlayerSetupFlow : IDisposable
         public SetupChoiceKind Kind;
         public long Baid;
         public bool Ready;
-        public bool Touched; // this drum picked something (an untouched idle drum never plays)
         public ScoreProfile? Visitor; // a friend's profile (Friend) once paired
         public string? Code;
         public string? QrUrl; // the page the code is entered on, code filled in (scanned from the stand)
@@ -91,7 +90,7 @@ internal sealed class PlayerSetupFlow : IDisposable
 
     /// <summary>
     /// Opens with the drum that started on the default account (or Guest); the other drum waits on Join
-    /// with code (Guest offline) and plays only if it locks something in before the start.
+    /// with code (Guest offline). Every displayed Don joins when either drum confirms.
     /// </summary>
     public void Open(int starter)
     {
@@ -103,7 +102,6 @@ internal sealed class PlayerSetupFlow : IDisposable
             select(_sides[starter], SetupChoiceKind.Account, first.Baid);
         else
             select(_sides[starter], SetupChoiceKind.Guest);
-        _sides[starter].Touched = true;
         loadAvatars();
     }
 
@@ -117,7 +115,6 @@ internal sealed class PlayerSetupFlow : IDisposable
         foreach (var index in joined)
         {
             var profile = profiles[index];
-            _sides[index].Touched = true;
             if (profile is null)
                 select(_sides[index], SetupChoiceKind.Guest);
             else if (_book.Accounts.All(account => account.Baid != profile.Baid))
@@ -193,7 +190,6 @@ internal sealed class PlayerSetupFlow : IDisposable
         var side = _sides[index];
         if (left || right)
         {
-            side.Touched = true;
             if (side.Ready)
             {
                 side.Ready = false; // a rim hit unlocks
@@ -220,6 +216,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         }
         switch (current(index).Kind)
         {
+            case SetupChoiceKind.NotPlaying:
             case SetupChoiceKind.Guest:
                 side.Ready = true;
                 break;
@@ -241,7 +238,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         // Once a drum locks in, every drum with a Don on its stand plays too (the other player need not
         // confirm); options (Join with code, Sign in) stay out, and one mid-code holds the start.
         var playing = Enumerable.Range(0, 2).Select(playsIfStarted).ToArray();
-        if (!_sides.Any(static side => side.Ready) || _sides.Any(static side => !side.Ready && side.Code is not null)
+        if (!playing.Any(static value => value) || !_sides.Any(static side => side.Ready) || _sides.Any(static side => !side.Ready && side.Code is not null)
             || playing.All(static value => value) && sameAccount())
             return;
         var profiles = new ScoreProfile?[2];
@@ -256,7 +253,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         Confirmed?.Invoke(profiles, playing);
     }
 
-    private bool playsIfStarted(int index) => _sides[index].Ready || _sides[index].Touched && current(index).HasDon;
+    private bool playsIfStarted(int index) => current(index).HasDon;
 
     // Both stands show the same account (or a visitor who is also a stored account).
     private bool sameAccount() => current(0) is { HasDon: true, Baid: not 0 } left && left.Baid == current(1).Baid;
@@ -267,6 +264,7 @@ internal sealed class PlayerSetupFlow : IDisposable
         var online = _server is not null;
         return
         [
+            new(SetupChoiceKind.NotPlaying, Strings.T("setup.not_playing")),
             new(SetupChoiceKind.Guest, Strings.T("setup.guest")),
             .. _book.Accounts.Select(account => new SetupChoice(SetupChoiceKind.Account,
                 account.Profile.DisplayName, account.Baid, account.Avatar is { } url ? _avatars.GetValueOrDefault(url) : null,
@@ -320,7 +318,6 @@ internal sealed class PlayerSetupFlow : IDisposable
     {
         select(side, choice);
         side.Ready = false;
-        side.Touched = false;
         side.Visitor = null;
         side.Code = null;
         side.Message = null;

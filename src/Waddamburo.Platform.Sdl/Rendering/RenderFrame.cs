@@ -84,7 +84,8 @@ public readonly record struct RenderQuad(
     RenderBlend Blend = RenderBlend.Normal,
     RenderSampling Sampling = RenderSampling.Linear,
     RenderMaskOperation MaskOperation = RenderMaskOperation.Draw,
-    byte MaskDepth = 0)
+    byte MaskDepth = 0,
+    RenderPixelFrame? PixelFrame = null)
 {
     public static RenderQuad FromRectangles(
         RenderTextureId texture,

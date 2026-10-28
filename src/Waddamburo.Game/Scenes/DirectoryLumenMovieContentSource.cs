@@ -35,8 +35,13 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// <summary>A movie a load reuses whole instead of decoding it (a prefetch, being fresher, wins).</summary>
     public Func<string, string, LumenMovieContent?>? Reuse { get; set; }
 
-    private LumenMovieContent decoded(string archiveId, LumenMovieContent content)
+    /// <summary>Optional preparation using the original movie bytes, before post-decode patches and upload.</summary>
+    public Action<DdpMovieView, LumenMovieContent>? Prepare { get; set; }
+
+    private LumenMovieContent decoded(string archiveId, DdpMovieView movie)
     {
+        var content = LumenMovieContent.Load(movie, _limits);
+        Prepare?.Invoke(movie, content);
         Decoded?.Invoke(archiveId, content);
         return content;
     }
@@ -53,7 +58,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var opened = Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archive.Key)), _limits));
             foreach (var movie in archive)
                 fresh[movie] = opened.ContinueWith(
-                    task => decoded(archive.Key, LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits)),
+                    task => decoded(archive.Key, task.GetAwaiter().GetResult().OpenMovie(movie.MovieId)),
                     CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         }
         _prefetched = fresh;
@@ -123,7 +128,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                 _archives.Add(archivePath, archive);
             }
             var read = profile ? Stopwatch.GetTimestamp() : 0;
-            var content = owner.decoded(archiveId, LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits));
+            var content = owner.decoded(archiveId, archive!.OpenMovie(movieId));
             if (profile)
             {
                 var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length);

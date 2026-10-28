@@ -16,6 +16,29 @@ public static class GlyphLineRasterizer
     // ponytail: never evicted; a few hundred glyphs per font and scale (UI text, names, titles).
     private static readonly ConcurrentDictionary<(string Font, uint Scale, int Scalar), GlyphMasks> Glyphs = new();
 
+    /// <summary>The exact Render canvas size, without composing or allocating a line bitmap.</summary>
+    public static (uint Width, uint Height) Measure(string fontPath, string text, uint rasterScale)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(rasterScale);
+        var font = Path.GetFullPath(fontPath);
+        var pen = 0f;
+        var left = int.MaxValue;
+        var right = int.MinValue;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var glyph = getGlyph(font, rasterScale, rune.Value);
+            var x = (int)pen + glyph.Left;
+            left = Math.Min(left, x);
+            right = Math.Max(right, x + glyph.Width);
+            pen += glyph.Advance;
+        }
+        return (left == int.MaxValue ? 1u : (uint)Math.Max(1, right - left), (uint)(LineUnits * rasterScale));
+    }
+
+    private static GlyphMasks getGlyph(string font, uint scale, int scalar) =>
+        Glyphs.GetOrAdd((font, scale, scalar), static key => NativeVerticalTextRasterizer.RenderGlyph(
+            key.Font, key.Scalar, FontUnits * key.Scale, (uint)(OutlineUnits * key.Scale + 0.5f)));
+
     public static RgbaTextSurface Render(string fontPath, string text, uint outlineRgb, uint rasterScale)
     {
         ArgumentOutOfRangeException.ThrowIfZero(rasterScale);
@@ -24,8 +47,7 @@ public static class GlyphLineRasterizer
         var pen = 0f;
         foreach (var rune in text.EnumerateRunes())
         {
-            var glyph = Glyphs.GetOrAdd((font, rasterScale, rune.Value), static key => NativeVerticalTextRasterizer.RenderGlyph(
-                key.Font, key.Scalar, FontUnits * key.Scale, (uint)(OutlineUnits * key.Scale + 0.5f)));
+            var glyph = getGlyph(font, rasterScale, rune.Value);
             placed.Add(((int)pen + glyph.Left, glyph)); // whole pixels, as the title profiles place them
             pen += glyph.Advance;
         }

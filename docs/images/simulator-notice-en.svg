@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="34" viewBox="0 0 440 34" role="img" aria-labelledby="title">
+  <title id="title">NOT A RECOMPILATION OR A MOD!!</title>
+  <style>
+    text { fill: #1f2328; }
+    @media (prefers-color-scheme: dark) { text { fill: #f0f6fc; } }
+  </style>
+  <text x="220" y="21" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">NOT A RECOMPILATION OR A MOD!!</text>
+  <path d="M 37 29 H 403" fill="none" stroke="#f2cc60" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,14 +1,16 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Formats.Ddp;
+using Waddamburo.Formats.Lmb;
+using Waddamburo.Formats.Nut;
 using Waddamburo.Platform.Sdl.Text;
 
 namespace Waddamburo.App.Presentation;
 
 /// <summary>
-/// The built-in folders' art: the pattern over the front and the emblem in the mascot slot are PNG files
-/// built into the app (Resources/folders/&lt;style&gt;/{pattern,box}.png: edit them, rebuild); the description
-/// columns are drawn.
+/// Built-in folder patterns and emblems come from embedded PNGs. Original Songs reuses
+/// the local Waiwai Normal-mode illustration when available; description columns are drawn.
 /// </summary>
 internal static class FolderArtPainter
 {
@@ -16,15 +18,96 @@ internal static class FolderArtPainter
     private static readonly ConcurrentDictionary<string, RgbaTextSurface> Images = new();
 
     /// <summary>The folder front's pattern (any size: drawn over the open front, revealed as it opens).</summary>
-    public static RgbaTextSurface Pattern(FolderArt art) => image(art.Style, "pattern");
+    public static RgbaTextSurface Pattern(FolderArt art) => art.Style != FolderArtStyle.Osu ? image(art.Style, "pattern")
+        : Environment.GetEnvironmentVariable("WADDAMBURO_OSU_CATEGORY_PATTERN") is { Length: > 0 } preview
+        ? Images.GetOrAdd("osu-preview:" + Path.GetFullPath(preview), static key => pinkPattern(key[12..]))
+        : Images.GetOrAdd("osu-vivid-pattern", static _ => pinkPattern(image(FolderArtStyle.Osu, "triangles")));
+
+    private static RgbaTextSurface pinkPattern(string path)
+    {
+        var (width, height, pixels) = Waddamburo.Upscale.PngFile.Read(path);
+        return pinkPattern(new RgbaTextSurface(width, height, pixels));
+    }
+
+    private static RgbaTextSurface pinkPattern(RgbaTextSurface source)
+    {
+        var pixels = source.Pixels.ToArray();
+        double total = 0, coverage = 0;
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            total += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3d * pixels[i + 3];
+            coverage += pixels[i + 3];
+        }
+        var mean = coverage > 0 ? total / coverage : 0;
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var luminance = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3f;
+            var shade = Math.Clamp(.25 + .5 * mean / 255 + (luminance - mean) / 28, 0, 1);
+            pixels[i] = 255;
+            pixels[i + 1] = (byte)Math.Round(10 + 172 * shade);
+            pixels[i + 2] = (byte)Math.Round(140 + 104 * shade);
+        }
+        return new(source.Width, source.Height, pixels);
+    }
+
+    internal static string RegisterPeg(byte[] source, int width, int height, byte red, byte green, byte blue)
+    {
+        var key = $"folder-peg:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(source))}:{red:x2}{green:x2}{blue:x2}";
+        Images.GetOrAdd(key, _ =>
+        {
+            var pixels = source.ToArray();
+            for (var at = 0; at < pixels.Length; at += 4)
+            {
+                var coloured = Math.Max(pixels[at], Math.Max(pixels[at + 1], pixels[at + 2])) > 40;
+                if (pixels[at + 3] < (coloured ? 100 : 220)) { pixels[at + 3] = 0; continue; }
+                pixels[at + 3] = 255;
+                if (coloured) { pixels[at] = red; pixels[at + 1] = green; pixels[at + 2] = blue; }
+            }
+            return new((uint)width, (uint)height, pixels);
+        });
+        return key;
+    }
+    internal static RgbaTextSurface Peg(string key) => Images[key];
 
     /// <summary>The open folder's emblem (any size: drawn into the 192x360 mascot slot).</summary>
-    public static RgbaTextSurface Box(FolderArt art) => image(art.Style, "box");
+    public static RgbaTextSurface Box(FolderArt art) => image(art.Style == FolderArtStyle.Nijiiro ? FolderArtStyle.Original : art.Style, "box");
+
+    /// <summary>Reuses Waiwai's native Normal-mode mascot without distributing its artwork.</summary>
+    public static RgbaTextSurface? NormalModeBox(string assetRoot)
+    {
+        var path = Path.Combine(assetRoot, "waiwai_song_select", "packeddata.ddp");
+        if (!File.Exists(path)) return null;
+        var archive = DdpArchive.Open(File.ReadAllBytes(path));
+        var movie = archive.OpenMovie("waiwai_song_select/waiwai_song_select.lm");
+        var document = new LmbEditDocument(movie.Data.Span);
+        var definition = document.Definition;
+        // Resolve the illustration by its authored folder label and dimensions,
+        // rather than relying on a texture index that varies between movies.
+        foreach (var sprite in definition.Sprites)
+        {
+            var label = sprite.Timeline.OfType<LmbFrameLabelCommand>().FirstOrDefault(frame =>
+                definition.Strings[(int)frame.StringIndex].Value == SongSelectCatalogView.ModeSwitchLabel);
+            if (label is null) continue;
+            foreach (var placed in document.Placements(sprite.CharacterId, (int)label.Frame))
+            {
+                var shape = definition.Shapes.FirstOrDefault(shape => shape.CharacterId == placed.CharacterId);
+                if (shape is null) continue;
+                foreach (var index in shape.Geometry.Select(geometry => geometry.TextureIndex).Distinct())
+                {
+                    if (index >= movie.Textures.Length) continue;
+                    var texture = NutFile.Parse(movie.Textures[(int)index].Data).Textures[0];
+                    if (texture.Width == 192 && texture.Height == 360)
+                        return new(texture.Width, texture.Height, NutTextureDecoder.DecodeRgba8(texture));
+                }
+            }
+        }
+        return null;
+    }
 
     private static RgbaTextSurface image(FolderArtStyle style, string part) =>
         Images.GetOrAdd($"{style.ToString().ToLowerInvariant()}.{part}", static name =>
         {
-            // Default resource names join the folders with dots (…Resources.folders.osu.box.png).
+            // Default resource names join the folders with dots (ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦Resources.folders.osu.box.png).
             var assembly = typeof(FolderArtPainter).Assembly;
             var resource = assembly.GetManifestResourceNames().FirstOrDefault(entry => entry.EndsWith($".folders.{name}.png", StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"Folder art {name}.png is not built in.");
@@ -41,8 +124,14 @@ internal static class FolderArtPainter
     /// The genre description slot (160x400): up to three vertical columns, right to left, each starting
     /// lower than the one before (the game's own descriptions are staggered so).
     /// </summary>
-    public static RgbaTextSurface Description(string lines, string fontPath, uint outlineRgb, int scale, bool squash)
+    public static RgbaTextSurface Description(string lines, string fontPath, uint outlineRgb, int scale, bool squash,
+        bool englishParagraph = false)
     {
+        // Match the supplied English genre artwork: compact horizontal lines,
+        // centred within the native portrait slot rather than vertical Latin columns.
+        if (englishParagraph)
+            return HorizontalTextParagraph.Render(fontPath, lines, DescriptionWidth, DescriptionHeight,
+                outlineRgb, (uint)scale, preferredLines: 11);
         var canvas = new VectorCanvas(DescriptionWidth, DescriptionHeight, scale, fontPath);
         foreach (var (line, index) in lines.Split('\n').Where(static line => line.Length > 0).Take(DescriptionColumns)
             .Select(static (line, index) => (line, index)))

@@ -31,6 +31,11 @@ try
     }
     var archivePath = parseOption(args, "--archive=");
     var movieName = parseOption(args, "--movie=");
+    var layoutOnly = args.Contains("--layout-only", StringComparer.Ordinal);
+    if (layoutOnly && (archivePath is null || movieName is null))
+        throw new ArgumentException("--layout-only requires --archive and --movie.");
+    if (layoutOnly && !callbackInvocations.IsEmpty)
+        throw new ArgumentException("--invoke requires ActionScript; omit --layout-only.");
     var scenePath = parseOption(args, "--scene=");
     var gameDataRoot = parseOption(args, "--game-data=");
     var assetRoot = parseOption(args, "--asset-root=");
@@ -44,6 +49,8 @@ try
     var logout = args.Contains("--logout", StringComparer.Ordinal);
     var exportCharts = parseOption(args, "--export-charts=");
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
+    var gameplayTitleLeft = args.Contains("--gameplay-title-left", StringComparer.Ordinal);
+    var hitDetailsLeft = args.Contains("--hit-details-left", StringComparer.Ordinal);
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var previewPath = parseOption(args, "--preview=");
@@ -104,7 +111,10 @@ try
         if (seekFrame is not null || !callbackInvocations.IsEmpty)
             throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
-        var layout = GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
+        var dataRoot = gameDataRoot ?? GameDataLayout.DefaultRoot();
+        // Setup errors precede the game settings: use the operating system's UI locale.
+        Strings.Use("auto");
+        var layout = GameDataLayout.Resolve(dataRoot, fontPath);
         ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
@@ -168,7 +178,7 @@ try
             accounts,
             Path.Combine(layout.Home, Waddamburo.Game.Scores.ScoreStore.FileName),
             autoplay,
-            arcade.Fullscreen));
+            arcade.Fullscreen, gameplayTitleLeft, hitDetailsLeft, MissingFontPath: layout.MissingFontPath));
         // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
         if (GameShell.RestartRequested)
             SelfUpdate.Relaunch(args);
@@ -215,7 +225,7 @@ try
             soundRoot,
             countdown,
             startScene,
-            Autoplay: autoplay));
+            Autoplay: autoplay, GameplayTitleLeft: gameplayTitleLeft, HitDetailsLeft: hitDetailsLeft));
         return 0;
     }
     if (startSceneOption is not null)
@@ -263,7 +273,8 @@ try
             tickLimit,
             screenshotPath,
             callbackInvocations,
-            inputTimeline);
+            inputTimeline,
+            layoutOnly);
         return 0;
     }
     if (seekFrame is not null)
@@ -325,6 +336,11 @@ try
     return 0;
 }
 
+catch (MissingGameDataException exception)
+{
+    ReleaseConsole.Notice(exception.Message);
+    return 1;
+}
 catch (Exception exception)
 {
     ReleaseConsole.Fail(exception);

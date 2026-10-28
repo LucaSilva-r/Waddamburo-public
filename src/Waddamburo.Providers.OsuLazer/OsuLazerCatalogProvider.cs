@@ -96,26 +96,26 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                         $"Beatmap set {set.Id} does not resolve its audio file '{group.Key}'.", provider));
                     continue;
                 }
-                var entries = OsuCourseLayout.Deal(group, static beatmap => beatmap.DifficultyName, static beatmap => beatmap.StarRating);
-                for (var index = 0; index < entries.Count; index++)
+                var entries = new[] { group.OrderBy(static beatmap => beatmap.StarRating)
+                    .ThenBy(static beatmap => beatmap.DifficultyName, StringComparer.OrdinalIgnoreCase).ToArray() };
+                for (var index = 0; index < entries.Length; index++)
                 {
                     var entry = entries[index];
-                    var first = entry.Values.First();
-                    // ponytail: keyed by set, audio and entry number; adding a chart in lazer can reshuffle
-                    // entries (and their scores). Key by the lowest chart's hash if that matters.
+                    var first = entry[0];
+                    // Keep the former first entry's identity; every chart sharing this audio belongs here.
                     var songKey = new SongKey(SongSourceKind.OsuLazer, $"{set.Id:N}:{audioHash[..8]}:{index}");
-                    var charts = entry.Select(pair => new SongChartDescriptor(
-                        new ChartKey(songKey, pair.Value.FileHash),
-                        pair.Value.DifficultyName.Length == 0 ? "Taiko" : pair.Value.DifficultyName,
-                        new CatalogAssetKey(provider, $"chart:{pair.Value.FileHash}:{OsuCourseLayout.Level(pair.Value.StarRating)}"),
-                        pair.Key,
-                        OsuCourseLayout.Level(pair.Value.StarRating))
+                    var charts = entry.Select(beatmap => new SongChartDescriptor(
+                        new ChartKey(songKey, beatmap.FileHash),
+                        beatmap.DifficultyName.Length == 0 ? "Taiko" : beatmap.DifficultyName,
+                        new CatalogAssetKey(provider, $"chart:{beatmap.FileHash}:{OsuCourseLayout.Level(beatmap.StarRating)}"),
+                        OsuCourseLayout.Course(beatmap.DifficultyName),
+                        OsuCourseLayout.Level(beatmap.StarRating))
                     {
-                        OnlineId = pair.Value.OnlineId > 0 ? pair.Value.OnlineId : null,
+                        OnlineId = beatmap.OnlineId > 0 ? beatmap.OnlineId : null,
+                        StarRating = double.IsFinite(beatmap.StarRating) && beatmap.StarRating >= 0 ? beatmap.StarRating : null,
                     }).ToArray();
                     var artist = orEnglish(first.ArtistUnicode, first.Artist);
-                    // A set dealt into several entries names each entry's charts so they can be told apart.
-                    var subtitle = entries.Count == 1 ? artist : $"{artist} [{string.Join(" / ", entry.Values.Select(static b => b.DifficultyName))}]";
+                    var subtitle = artist;
                     songs.Add(new SongDescriptor(
                         songKey,
                         new SongTitle(orEnglish(first.TitleUnicode, first.Title, "?"),
@@ -130,9 +130,9 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                         OnlineSetId = set.OnlineId > 0 ? set.OnlineId : null,
                         DateAdded = set.DateAdded,
                         Bpm = first.Bpm > 0 ? first.Bpm : null,
-                        Length = entry.Values.Max(static beatmap => beatmap.Length) is { } length && length > TimeSpan.Zero ? length : null,
+                        Length = entry.Max(static beatmap => beatmap.Length) is { } length && length > TimeSpan.Zero ? length : null,
                     });
-                    foreach (var beatmap in entry.Values.Where(static beatmap => beatmap.Md5Hash.Length != 0))
+                    foreach (var beatmap in entry.Where(static beatmap => beatmap.Md5Hash.Length != 0))
                         songByMd5.TryAdd(beatmap.Md5Hash, songKey);
                 }
             }
