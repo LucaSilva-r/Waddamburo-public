@@ -64,6 +64,8 @@ small note.
 ### Rolls and balloons (W2)
 
 Drum rolls, balloons and kusudama never produce a Bad and never touch the gauge or the combo.
+Each counts at most one hit per 1/60 s of song time from its start (Green's top speed, at any
+training speed); extra hits are taken but not scored (scoring version 4; version 3 capped drumrolls only).
 
 **Status: implemented.**
 
