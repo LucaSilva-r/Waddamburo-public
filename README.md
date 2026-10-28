@@ -6,7 +6,8 @@
 
 <h3 align="center">Waddamburo is an independent, open-source Taiko no Tatsujin simulator.</h3>
 
-<p align="center"><strong>NOT A RECOMPILATION OR A MOD!!</strong></p>
+<p align="center"><strong>THIS IS NOT A RECOMPILATION OR A MOD!!</strong></p>
+<p align="center"><strong>THIS PROJECT WAS DEVELOPED WITH THE HEAVY USE OF AI</strong></p>
 
 **Waddamburo uses a completely new, independently developed engine. No Bandai
 Namco source code or compiled game code is included in Waddamburo.**
