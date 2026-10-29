@@ -203,6 +203,18 @@ public sealed class ScoreClient(HttpClient http)
         return new ReplayDownload(result, result.ChartSha256, TaikoReplay.Decode(Convert.FromBase64String(result.Replay)), result.Player);
     }
 
+    /// <summary>
+    /// Reports another player's play (watched as a replay) to the moderators; returns the server's answer
+    /// to show (sent, already reported, or why not: the reporter's own play, blocked from reporting, too many).
+    /// </summary>
+    public async Task<string> ReportAsync(Guid playId, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync($"api/wdb/plays/{playId}/report", new ReportRequest("cheating"),
+            ScoreJson.Default.ReportRequest, cancellationToken).ConfigureAwait(false);
+        var result = await response.Content.ReadFromJsonAsync(ScoreJson.Default.MessageResult, cancellationToken).ConfigureAwait(false);
+        return result?.Message ?? response.ReasonPhrase ?? "";
+    }
+
     private static string query(long? baid) => baid is { } value ? $"?baid={value}" : "";
 
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
@@ -294,6 +306,10 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record LeaderboardResult(List<ScoreRow> Scores, ScoreRow? Mine);
 
     internal sealed record ScoresResult(List<ScoreRow> Scores);
+
+    internal sealed record ReportRequest(string Reason);
+
+    internal sealed record MessageResult(string? Message);
 
     internal sealed record ReplayResult : ScoreRow
     {

@@ -860,6 +860,9 @@ internal sealed class GameShell : IDisposable
         Don?.SetLook(side, player.Look);
     }
 
+    /// <summary>The drum's own player while a replay shows another (null when none is watched).</summary>
+    public ScoreProfile? Watcher => _watchedOver is var (_, profile) ? profile : null;
+
     /// <summary>The drum's own player is back after a replay (nothing when none was watched).</summary>
     public void StopWatching()
     {

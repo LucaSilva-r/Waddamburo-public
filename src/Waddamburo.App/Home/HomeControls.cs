@@ -193,7 +193,7 @@ internal sealed class HomeControls : IDisposable
         if (escape || !_focused)
         {
             countdown.Cancel();
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport);
         }
         else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
             resumeSong();
@@ -217,7 +217,7 @@ internal sealed class HomeControls : IDisposable
             _restart.CancelHold();
             _pauseInterpolation = _lastInterpolation;
             _gameplay.SetPaused(true, _pauseInterpolation);
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport);
             return true;
         }
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
@@ -263,6 +263,10 @@ internal sealed class HomeControls : IDisposable
                 break;
             case HomeMenuAction.InstantReplay when active == FlowScenes.Gameplay:
                 _gameplay.StartInstantReplay();
+                break;
+            case HomeMenuAction.Report when active == FlowScenes.Gameplay:
+                _gameplay.Report();
+                resumeSong();
                 break;
             case HomeMenuAction.Restart:
                 resumeSong();

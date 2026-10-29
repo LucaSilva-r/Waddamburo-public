@@ -24,6 +24,8 @@ namespace Waddamburo.Game.Scores;
 [JsonSerializable(typeof(ScoreClient.LeaderboardResult))]
 [JsonSerializable(typeof(ScoreClient.ScoresResult))]
 [JsonSerializable(typeof(ScoreClient.ReplayResult))]
+[JsonSerializable(typeof(ScoreClient.ReportRequest))]
+[JsonSerializable(typeof(ScoreClient.MessageResult))]
 [JsonSerializable(typeof(FriendPairingClient.Request))]
 [JsonSerializable(typeof(FriendPairingClient.Reply))]
 [JsonSerializable(typeof(PairingClient.CardRequest))]

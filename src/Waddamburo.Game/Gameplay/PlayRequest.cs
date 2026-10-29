@@ -130,7 +130,11 @@ public sealed record PlayRequest
 /// A recorded play to watch: its drum inputs (in judgement time) and the input offset it was played with,
 /// so its hits show where that player saw them; <paramref name="Player"/>, who played it (shown in their place).
 /// </summary>
-public sealed record ReviewRequest(IReadOnlyList<TaikoReplayInput> Inputs, TimeSpan InputOffset, Scores.ScoreProfile? Player = null);
+public sealed record ReviewRequest(IReadOnlyList<TaikoReplayInput> Inputs, TimeSpan InputOffset, Scores.ScoreProfile? Player = null)
+{
+    /// <summary>The server's id of the play being watched (a downloaded replay): its pause menu can report it.</summary>
+    public Guid? PlayId { get; init; }
+}
 
 public interface IPlayRequestSink
 {

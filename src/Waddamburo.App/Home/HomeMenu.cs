@@ -19,6 +19,8 @@ internal enum HomeMenuAction
     Restart,
     /// <summary>Review the song played so far (the play is void).</summary>
     InstantReplay,
+    /// <summary>Report the watched replay's player to the moderators (the replay carries on).</summary>
+    Report,
     SongSelect,
     Title,
     /// <summary>Open the folder picker for the custom TJA library.</summary>
@@ -625,8 +627,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <remarks>
     /// <paramref name="replayable"/>: a song's pause menu offers the instant replay of what was played.
     /// <paramref name="reviewing"/>: a replay or practice is on: restarting plays the song for real.
+    /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
     /// </remarks>
-    public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false)
+    public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
+        bool reportable = false)
     {
         _calibrationOffered = songSelect;
         var restart = reviewing ? "menu.play_song" : "menu.restart_song";
@@ -634,6 +638,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 ? ["menu.resume", restart, "menu.instant_replay", "menu.settings", "menu.song_select"]
                 : ["menu.resume", restart, "menu.settings", "menu.song_select"]
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
+        if (reportable)
+            _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
         IsOpen = true;
         Selection = 0;
         _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
@@ -715,6 +721,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                         break;
                     case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
                     case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
+                    case "menu.report_player": return close(HomeMenuAction.Report);
                     case "menu.song_select": return close(HomeMenuAction.SongSelect);
                     case "menu.return_to_title": return close(HomeMenuAction.Title);
                     default: return close(HomeMenuAction.Resume);

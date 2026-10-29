@@ -42,11 +42,28 @@ public sealed class ScoreListTests
         Assert.Equal(10, download.Play.AudioOffsetMs);
     }
 
+    [Fact]
+    public async Task ReportsAPlayAndShowsTheServersAnswer()
+    {
+        var playId = Guid.NewGuid();
+        var server = new StubServer(path => path == $"/api/wdb/plays/{playId}/report" ? """{"message":"Thanks, the report was sent."}""" : null);
+        using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
+
+        Assert.Equal("Thanks, the report was sent.", await new ScoreClient(http).ReportAsync(playId));
+        Assert.Equal("""{"reason":"cheating"}""", server.LastBody);
+    }
+
     private sealed class StubServer(Func<string, string?> respond) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(respond(request.RequestUri!.AbsolutePath) is { } body
+        /// <summary>The last request's body (null without one).</summary>
+        public string? LastBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            return respond(request.RequestUri!.AbsolutePath) is { } body
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
-                : new HttpResponseMessage(HttpStatusCode.NotFound));
+                : new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
     }
 }
