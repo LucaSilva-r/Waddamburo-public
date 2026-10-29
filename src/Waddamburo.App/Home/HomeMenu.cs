@@ -374,7 +374,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _buttonsPage ? "menu.title.buttons" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
+        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report" : _buttonsPage ? "menu.title.buttons" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
         : "menu.title.paused");
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
@@ -399,6 +399,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
     public string? Message => _restartPrompt ? T("menu.restart_message") : null;
+
+    /// <summary>What the player picked to report the replay for (with <see cref="HomeMenuAction.Report"/>): a server reason.</summary>
+    public string ReportReason { get; private set; } = "cheating";
+
+    // The report page: the reasons a replay can be reported for (each choice is "report.{server reason}").
+    private bool _reportPrompt;
+    private static readonly string[] ReportChoices = ["report.autoplay", "report.macro", "report.cheating", "menu.back"];
 
     // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
@@ -642,7 +649,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = _restartPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
+        _settingsPage = _editing = _restartPrompt = _reportPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
         input.CancelCapture();
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
@@ -706,6 +713,23 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             }
             return HomeMenuAction.None;
         }
+        if (_reportPrompt)
+        {
+            if (up || down)
+                Selection = (Selection + (up ? ReportChoices.Length - 1 : 1)) % ReportChoices.Length;
+            else if (decide && _choices[Selection] is var choice && choice != "menu.back")
+            {
+                ReportReason = choice["report.".Length..];
+                return close(HomeMenuAction.Report);
+            }
+            else if (escape || decide)
+            {
+                _reportPrompt = false;
+                _choices = _pauseChoices;
+                Selection = Array.IndexOf(_choices, "menu.report_player");
+            }
+            return HomeMenuAction.None;
+        }
         if (!_settingsPage)
         {
             if (escape)
@@ -721,7 +745,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                         break;
                     case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
                     case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
-                    case "menu.report_player": return close(HomeMenuAction.Report);
+                    case "menu.report_player":
+                        _reportPrompt = true;
+                        _pauseChoices = _choices;
+                        _choices = ReportChoices;
+                        Selection = 0;
+                        break;
                     case "menu.song_select": return close(HomeMenuAction.SongSelect);
                     case "menu.return_to_title": return close(HomeMenuAction.Title);
                     default: return close(HomeMenuAction.Resume);

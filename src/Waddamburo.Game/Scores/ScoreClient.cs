@@ -204,12 +204,13 @@ public sealed class ScoreClient(HttpClient http)
     }
 
     /// <summary>
-    /// Reports another player's play (watched as a replay) to the moderators; returns the server's answer
+    /// Reports another player's play (watched as a replay) to the moderators for <paramref name="reason"/>
+    /// (autoplay, macro, cheating); returns the server's answer
     /// to show (sent, already reported, or why not: the reporter's own play, blocked from reporting, too many).
     /// </summary>
-    public async Task<string> ReportAsync(Guid playId, CancellationToken cancellationToken = default)
+    public async Task<string> ReportAsync(Guid playId, string reason, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PostAsJsonAsync($"api/wdb/plays/{playId}/report", new ReportRequest("cheating"),
+        using var response = await http.PostAsJsonAsync($"api/wdb/plays/{playId}/report", new ReportRequest(reason),
             ScoreJson.Default.ReportRequest, cancellationToken).ConfigureAwait(false);
         var result = await response.Content.ReadFromJsonAsync(ScoreJson.Default.MessageResult, cancellationToken).ConfigureAwait(false);
         return result?.Message ?? response.ReasonPhrase ?? "";
