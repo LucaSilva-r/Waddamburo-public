@@ -50,11 +50,21 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
         var candidates = metadataCandidates(_root)
             .Select(path => (Path: path, Entries: readMetadata(path, diagnostics)))
             .ToList();
-        var entries = candidates
+        if (candidates.Count == 0)
+            throw new FileNotFoundException("The stock data folder has no musicinfo.xml.");
+        // The revision listing the most installed charts is the base (its titles, genres and order); the others
+        // add the installed songs it no longer lists (rotated out, mostly licensed anime and J-POP: 171 in
+        // Green), each from the fullest revision that has it.
+        var revisions = candidates
             .OrderByDescending(candidate => candidate.Entries.Count(entry => installedCourses(entry.Id).Any()))
             .ThenBy(static candidate => candidate.Path, StringComparer.Ordinal)
-            .FirstOrDefault().Entries
-            ?? throw new FileNotFoundException("The stock data folder has no musicinfo.xml.");
+            .ToList();
+        var entries = revisions[0].Entries.ToList();
+        var listed = entries.Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var revision in revisions.Skip(1))
+            foreach (var entry in revision.Entries)
+                if (installedCourses(entry.Id).Any() && listed.Add(entry.Id))
+                    entries.Add(entry);
         // The attract demo list (demoplay): later revisions dropped the flag, so any revision's counts.
         var demo = candidates.SelectMany(static candidate => candidate.Entries)
             .Where(static entry => entry.DemoPlay).Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
