@@ -29,6 +29,11 @@
                       LogicalName="Waddamburo.Upscale.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- Bundled fonts (SIL OFL 1.1; BundledFonts.cs, THIRD_PARTY_NOTICES.md), gzipped. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources/fonts/*.gz" LogicalName="Waddamburo.Fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- UI text per language (Strings.cs). -->
   <ItemGroup>
     <EmbeddedResource Include="Languages/*.json" LogicalName="Waddamburo.Languages.%(Filename)%(Extension)" />

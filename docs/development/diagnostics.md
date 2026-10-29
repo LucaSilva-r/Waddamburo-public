@@ -197,8 +197,9 @@ The equivalent explicit form is `--game-data=/path/to/game/USRDIR`. Without eith
 executable's own directory is used when it holds the game (a release dropped into
 `USRDIR`), otherwise the working directory. A user-owned
 TrueType/OpenType font placed in `data/font` is selected automatically, with
-`font.ttf`, `font.otf`, and `font.ttc` preferred in that order. Otherwise an
-installed Japanese-capable system font is used. `--font=/path/to/font` remains the
+`font.ttf`, `font.otf`, and `font.ttc` preferred in that order. Otherwise the bundled
+Mochiy Pop P One is used; the bundled Noto Sans CJK JP Black subset draws any character
+the chosen font lacks. `--font=/path/to/font` remains the
 highest-priority override. All granular content options below are retained for
 diagnostic runs.
 

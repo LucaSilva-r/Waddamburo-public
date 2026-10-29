@@ -84,8 +84,10 @@ the reviewed codec/demuxer allowlist.
 The optional title rasterizer is enabled with
 `-DWADDAMBURO_BUILD_TEXT=ON`. It exposes only a small project-owned C ABI and
 links dynamically to a system FreeType 2.13-or-newer development installation.
-It accepts an explicit user-owned font path and returns premultiplied RGBA8; it
-does not discover, embed, cache, or redistribute fonts. Release packages link the
+It accepts an explicit font path, optionally followed by fallback font paths
+(newline-separated, ABI 1.7: each character is drawn by the first font that has it),
+and returns premultiplied RGBA8; it does not discover, embed, or cache fonts (the app
+extracts its bundled fonts, `src/Waddamburo.App/Cli/BundledFonts.cs`). Release packages link the
 pinned FreeType below statically instead.
 
 ## Release packages

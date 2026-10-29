@@ -14,7 +14,8 @@ internal sealed record GameDataLayout(
     string DonRoot,
     string TjaRoot,
     string SoundRoot,
-    string FontPath)
+    string FontPath,
+    IReadOnlyList<string> FallbackFonts)
 {
     public static GameDataLayout Resolve(string root, string? fontOverride = null)
     {
@@ -30,12 +31,15 @@ internal sealed record GameDataLayout(
         requireDirectory(don, "Don asset root");
         requireDirectory(sound, "sound root");
 
-        var font = fontOverride is null ? findTitleFont(fullRoot) : Path.GetFullPath(fontOverride);
-        if (!File.Exists(font))
-            throw new FileNotFoundException($"The title font does not exist: {font}", font);
         var home = Path.Combine(fullRoot, "waddamburo");
         moveIntoHome(fullRoot, home);
-        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font);
+        // The user's font when they supplied one, else the bundled one; the bundled fonts draw what it lacks.
+        var bundled = BundledFonts.Extract(Path.Combine(home, "fonts"));
+        var font = fontOverride is null ? findTitleFont(fullRoot) ?? bundled.Title : Path.GetFullPath(fontOverride);
+        if (!File.Exists(font))
+            throw new FileNotFoundException($"The title font does not exist: {font}", font);
+        string[] fallbacks = font == bundled.Title ? [bundled.Fallback] : [bundled.Title, bundled.Fallback];
+        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks);
     }
 
     /// <summary>
@@ -128,7 +132,7 @@ internal sealed record GameDataLayout(
             : Directory.GetCurrentDirectory();
     }
 
-    private static string findTitleFont(string root)
+    private static string? findTitleFont(string root)
     {
         var fontDirectory = Path.Combine(root, "data", "font");
         if (Directory.Exists(fontDirectory))
@@ -149,7 +153,7 @@ internal sealed record GameDataLayout(
                 return suppliedFont;
         }
 
-        return findSystemFont();
+        return null;
     }
 
     private static bool isSupportedFontExtension(string extension)
@@ -161,37 +165,5 @@ internal sealed record GameDataLayout(
     {
         if (!Directory.Exists(path))
             throw new DirectoryNotFoundException($"The {description} does not exist: {path}");
-    }
-
-    private static string findSystemFont()
-    {
-        var candidates = OperatingSystem.IsWindows()
-            ? windowsFonts()
-            : OperatingSystem.IsMacOS()
-                ? [
-                    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-                    "/System/Library/Fonts/Helvetica.ttc",
-                ]
-                : [
-                    "/usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc",
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                    "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                ];
-        return candidates.FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException(
-                "No supported system title font was found. Install Noto Sans CJK or pass --font=/path/to/font.");
-    }
-
-    private static string[] windowsFonts()
-    {
-        var directory = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
-        return [
-            Path.Combine(directory, "YuGothM.ttc"),
-            Path.Combine(directory, "meiryo.ttc"),
-            Path.Combine(directory, "msgothic.ttc"),
-            Path.Combine(directory, "arial.ttf"),
-        ];
     }
 }
