@@ -22,6 +22,7 @@ internal sealed record GameDataLayout(
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         var fullRoot = Path.GetFullPath(root);
         requireDirectory(fullRoot, "game data root");
+        requireGreen(fullRoot);
 
         var lumen = Path.Combine(fullRoot, "data", "lumendata", "packed");
         var don = Path.Combine(fullRoot, "data", "don3d");
@@ -160,6 +161,67 @@ internal sealed record GameDataLayout(
         => extension.Equals(".ttf", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".otf", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".ttc", StringComparison.OrdinalIgnoreCase);
+
+    // The AC15 releases by the code in their PARAM.SFO title, "Taiko no Tatsujin(S111)" (TITLE_01 always has it).
+    private static readonly Dictionary<string, string> Releases = new(StringComparer.Ordinal)
+    {
+        ["ST1-A07"] = "Taiko no Tatsujin (2011)",
+        ["ST21"] = "Katsu-Don Ver.",
+        ["ST31"] = "Sorairo Ver.",
+        ["ST41"] = "Momoiro Ver.",
+        ["ST48"] = "Wadaiko Ver.",
+        ["ST51"] = "Kimidori Ver.",
+        ["ST61"] = "Murasaki Ver.",
+        ["ST71"] = "White Ver.",
+        ["ST87"] = "Red Ver.",
+        ["ST91"] = "Yellow Ver.",
+        ["S101"] = "Blue Ver.",
+    };
+
+    // Waddamburo runs Green (S111) only. The game folder (USRDIR's parent) names its release in PARAM.SFO;
+    // without one (USRDIR copied on its own) nothing is checked. Downloads often hold an older release
+    // that only becomes Green once its update package is installed (#14).
+    private static void requireGreen(string root)
+    {
+        var sfo = Path.Combine(root, "..", "PARAM.SFO");
+        if (!File.Exists(sfo) || sfoTitle(File.ReadAllBytes(sfo)) is not { } title
+            || System.Text.RegularExpressions.Regex.Match(title, @"\(([A-Z0-9-]+)\)\s*$") is not { Success: true } code
+            || code.Groups[1].Value == "S111")
+            return;
+        var release = Releases.GetValueOrDefault(code.Groups[1].Value, $"\"{title}\"");
+        throw new InvalidDataException(
+            $"{release} is not supported: Waddamburo runs Taiko no Tatsujin Green Ver. (S111) only. "
+            + "If this download came with an update package (dev_usb000/VERSIONUP), install it in RPCS3 first: "
+            + "the updated game is Green.");
+    }
+
+    // PARAM.SFO's TITLE_01 (else TITLE): little-endian key and data tables, 16-byte index entries.
+    private static string? sfoTitle(byte[] data)
+    {
+        if (data.Length < 20 || data[0] != 0 || data[1] != (byte)'P' || data[2] != (byte)'S' || data[3] != (byte)'F')
+            return null;
+        var span = data.AsSpan();
+        int keys = BitConverter.ToInt32(span[8..]), values = BitConverter.ToInt32(span[12..]), count = BitConverter.ToInt32(span[16..]);
+        string? title = null;
+        for (var index = 0; index < count && 20 + 16 * index + 16 <= data.Length; index++)
+        {
+            var entry = span.Slice(20 + 16 * index, 16);
+            var keyStart = keys + BitConverter.ToUInt16(entry);
+            var keyEnd = Array.IndexOf(data, (byte)0, keyStart);
+            int length = BitConverter.ToInt32(entry[4..]), start = values + BitConverter.ToInt32(entry[12..]);
+            if (keyEnd < 0 || start < 0 || start + length > data.Length)
+                return null;
+            var key = System.Text.Encoding.ASCII.GetString(data, keyStart, keyEnd - keyStart);
+            if (key is "TITLE_01" or "TITLE")
+            {
+                var value = System.Text.Encoding.UTF8.GetString(data, start, length).TrimEnd('\0');
+                if (key == "TITLE_01")
+                    return value;
+                title = value;
+            }
+        }
+        return title;
+    }
 
     private static void requireDirectory(string path, string description)
     {
