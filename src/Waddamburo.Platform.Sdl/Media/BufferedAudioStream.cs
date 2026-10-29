@@ -43,8 +43,10 @@ public sealed class BufferedAudioSource : IAudioStreamSource
             var frame = checked((ulong)Math.Round(start.TotalSeconds * format.SampleRate));
             _decoder.Seek(frame);
         }
-        _ring = new float[checked(format.SampleRate * format.Channels / 2)];
-        _producer = Task.Run(produce);
+        // 2 s ahead on its own thread: a stalled decoder underruns the song, which gameplay cannot recover
+        // from (a 0.5 s ring on the thread pool did on Windows while the notices reconnected).
+        _ring = new float[checked(format.SampleRate * format.Channels * 2)];
+        _producer = Task.Factory.StartNew(produce, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     public SdlAudioFormat Format { get; }
