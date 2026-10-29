@@ -11,6 +11,8 @@
   "menu.restart_song": "はじめから",
   "menu.settings": "設定",
   "menu.song_select": "曲選択にもどる",
+  "menu.report_player": "プレイヤーを通報",
+  "report.failed": "通報を送れませんでした（{0}）。",
   "menu.return_to_title": "タイトルにもどる",
   "menu.restart_message": "再起動後に反映される変更があります。",
   "menu.restart_now": "今すぐ再起動",

@@ -206,6 +206,38 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>A reviewed play is on screen (home autoplay): its clock is paused, sought and sped up by the keys.</summary>
     public bool Reviewing => _review is not null && Shell.Active.Id == FlowScenes.Gameplay;
 
+    // Plays reported from a replay's pause menu this session: each once.
+    private readonly HashSet<Guid> _reported = [];
+
+    /// <summary>A downloaded replay of another player, watched by a logged-in one: its pause menu can report it.</summary>
+    public bool CanReport => reportTarget() is not null;
+
+    private (Guid Play, ScoreClient Client)? reportTarget() =>
+        Reviewing && _lastRequest?.Review is { PlayId: { } play, Player: { } watched } && !_reported.Contains(play)
+        && Shell.Watcher is { Token: { } token } watcher && watcher.Baid != watched.Baid && Shell.Sync.ClientFor(token) is { } client
+            ? (play, client) : null;
+
+    /// <summary>Reports the watched play in the background; a notice shows the server's answer.</summary>
+    public void Report()
+    {
+        if (reportTarget() is not var (play, client))
+            return;
+        _reported.Add(play);
+        _ = Task.Run(async () =>
+        {
+            string message;
+            try
+            {
+                message = await client.ReportAsync(play).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                message = Strings.T("report.failed", exception.Message);
+            }
+            Shell.Sync.Notices.AddLocal(message);
+        });
+    }
+
     /// <summary>The reviewed play's clock, for the review bar (null when not reviewing).</summary>
     public ReviewClock? Review => _review?.Clock;
 

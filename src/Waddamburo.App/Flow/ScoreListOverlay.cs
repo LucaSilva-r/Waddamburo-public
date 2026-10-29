@@ -147,7 +147,10 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 chart.Key, chart.ChartAsset, chart.Course!.Value) { Options = TaikoPlayOptions.FromBits(replay.Play.Options) }])
         {
             Seed = replay.Play.Seed,
-            Review = new ReviewRequest(replay.Replay.Inputs, TimeSpan.FromMilliseconds(replay.Play.InputOffsetMs ?? 0), replay.Player),
+            Review = new ReviewRequest(replay.Replay.Inputs, TimeSpan.FromMilliseconds(replay.Play.InputOffsetMs ?? 0), replay.Player)
+            {
+                PlayId = replay.Play.PlayId,
+            },
         };
         if (!shell.PlayRequests.TryRequestPlay(request))
         {
