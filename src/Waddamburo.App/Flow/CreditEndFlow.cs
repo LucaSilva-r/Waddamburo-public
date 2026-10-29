@@ -29,8 +29,11 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");
         if (resultIndex >= 0 && gameplay.Song is { } song)
             Shell.Active.Player.Layers[resultIndex].Player.SetNativeFill("song_name", Shell.Titles.GetGameplayTitle(song));
-        Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
     }
+
+    // Don-chan's 成績発表 (VO_RESULT 0, played as the song ends) is heard in silence; the music follows.
+    // ponytail: the clip's 2.38 s as ticks; read the voice's playback state if banks ever differ.
+    private const int MusicDelayTicks = 143;
 
     public override void Exit(SceneId scene)
     {
@@ -70,6 +73,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             // The song's shutter stays over the results until their first frames are drawn.
             if (Shell.Overlay.IsShown && !Shell.FadePending && Shell.Tick - _resultStartTick >= 2)
                 Shell.Overlay.Clear();
+            if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
+                Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
             if (Shell.FinishFade()) return;
             // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message; Waiwai's
             // reports AllFinish).
