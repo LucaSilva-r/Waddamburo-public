@@ -119,7 +119,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             : Shell.Options.Autoplay
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
-        Shell.Gameplay.EndBanner = true;
+        // A replay or autoplay review is scrubbed back and forth: the end banner would stay up once reached.
+        Shell.Gameplay.EndBanner = _review is null;
         _training = null;
         _voided = request.Review is not null;
         if (_review is not null && request.Review?.Player is { } watched)
