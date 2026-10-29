@@ -1043,7 +1043,8 @@ internal sealed class GameShell : IDisposable
         quads.AddRange(indicatorQuads(true));
         quads.AddRange(pill());
         if (_notices is not null)
-            quads.AddRange(_notices.Quads(onLane));
+            // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
+            quads.AddRange(_notices.Quads(onLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
         quads.AddRange(_performance.Quads());
         var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio);
         _presenter.Presented(result, Overlay.IsShown);

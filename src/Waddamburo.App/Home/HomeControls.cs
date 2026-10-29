@@ -265,7 +265,7 @@ internal sealed class HomeControls : IDisposable
                 _gameplay.StartInstantReplay();
                 break;
             case HomeMenuAction.Report when active == FlowScenes.Gameplay:
-                _gameplay.Report();
+                _gameplay.Report(_menu.ReportReason);
                 resumeSong();
                 break;
             case HomeMenuAction.Restart:

@@ -49,8 +49,8 @@ public sealed class ScoreListTests
         var server = new StubServer(path => path == $"/api/wdb/plays/{playId}/report" ? """{"message":"Thanks, the report was sent."}""" : null);
         using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
 
-        Assert.Equal("Thanks, the report was sent.", await new ScoreClient(http).ReportAsync(playId));
-        Assert.Equal("""{"reason":"cheating"}""", server.LastBody);
+        Assert.Equal("Thanks, the report was sent.", await new ScoreClient(http).ReportAsync(playId, "macro"));
+        Assert.Equal("""{"reason":"macro"}""", server.LastBody);
     }
 
     private sealed class StubServer(Func<string, string?> respond) : HttpMessageHandler

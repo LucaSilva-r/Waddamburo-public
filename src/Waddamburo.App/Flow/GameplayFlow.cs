@@ -217,8 +217,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         && Shell.Watcher is { Token: { } token } watcher && watcher.Baid != watched.Baid && Shell.Sync.ClientFor(token) is { } client
             ? (play, client) : null;
 
-    /// <summary>Reports the watched play in the background; a notice shows the server's answer.</summary>
-    public void Report()
+    /// <summary>Reports the watched play for <paramref name="reason"/> (a server reason) in the background; a notice shows the server's answer.</summary>
+    public void Report(string reason)
     {
         if (reportTarget() is not var (play, client))
             return;
@@ -228,7 +228,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             string message;
             try
             {
-                message = await client.ReportAsync(play).ConfigureAwait(false);
+                message = await client.ReportAsync(play, reason).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
             {

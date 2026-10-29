@@ -29,6 +29,12 @@ internal sealed class ScoreSync : IDisposable
         Health = arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure)) : null;
         // ponytail: printed until the notice sidebar draws them.
         Notices.Added += static notice => Console.WriteLine($"Notice [{notice.Severity}] {notice.Message}");
+        // A sanction changes the name board (RESTRICTED while banned): show it now, not at the next credit.
+        Notices.Added += notice =>
+        {
+            if (notice.Kind == "sanction")
+                RefreshProfiles();
+        };
         if (arcade.Server is { } realtimeServer)
             startRealtime(realtimeServer);
         Scores = (arcade.Home || cabinet) && scoresPath is not null ? new ScoreStore(scoresPath) : null;
