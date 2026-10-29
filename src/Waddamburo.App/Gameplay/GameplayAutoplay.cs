@@ -10,7 +10,8 @@ internal sealed class GameplayAutoplay
     private readonly (TimeSpan Time, SdlKeyboardKey Key)[] _presses;
     private int _next;
 
-    public GameplayAutoplay(IReadOnlyList<PlayableChart> charts, int singlePlayerSide)
+    /// <remarks><paramref name="rollInterval"/>: between roll hits (default 25 ms, a stress run's 40 a second).</remarks>
+    public GameplayAutoplay(IReadOnlyList<PlayableChart> charts, int singlePlayerSide, TimeSpan? rollInterval = null)
     {
         var presses = new List<(TimeSpan Time, SdlKeyboardKey Key)>();
         for (var lane = 0; lane < charts.Count; lane++)
@@ -27,13 +28,21 @@ internal sealed class GameplayAutoplay
                 (_, TaikoInputAction.LeftKa) => SdlKeyboardKey.Z,
                 _ => SdlKeyboardKey.V,
             };
-            presses.AddRange(InputsFor(charts[lane]).Select(input => (input.Time, key(input.Action))));
+            presses.AddRange(InputsFor(charts[lane], rollInterval ?? DefaultRollInterval).Select(input => (input.Time, key(input.Action))));
         }
         _presses = [.. presses.OrderBy(press => press.Time)];
     }
 
+    private static readonly TimeSpan DefaultRollInterval = TimeSpan.FromMilliseconds(25);
+
     /// <summary>The bot's drum hits for one chart, in time order: every note on time, rolls drummed every 25 ms.</summary>
-    public static IReadOnlyList<TaikoReplayInput> InputsFor(PlayableChart chart)
+    public static IReadOnlyList<TaikoReplayInput> InputsFor(PlayableChart chart) => InputsFor(chart, DefaultRollInterval);
+
+    /// <summary>
+    /// The same, rolls drummed every <paramref name="rollInterval"/>; a balloon gets its required hits only
+    /// (sooner when the interval would not pop it in time), none after it bursts.
+    /// </summary>
+    public static IReadOnlyList<TaikoReplayInput> InputsFor(PlayableChart chart, TimeSpan rollInterval)
     {
         var inputs = new List<TaikoReplayInput>();
         foreach (var note in chart.HitObjects)
@@ -46,13 +55,21 @@ internal sealed class GameplayAutoplay
         foreach (var longNote in chart.LongNotes)
         {
             // Exercise rolls and balloon effects without inserting hits close to tap notes.
+            var step = rollInterval;
+            var limit = int.MaxValue;
+            if (longNote.IsBalloon && longNote.RequiredHits > 0)
+            {
+                limit = longNote.RequiredHits;
+                var fits = (longNote.EndTime - longNote.StartTime - TimeSpan.FromMilliseconds(50)) / limit;
+                step = TimeSpan.FromTicks(Math.Clamp(fits.Ticks, DefaultRollInterval.Ticks, rollInterval.Ticks));
+            }
             var hit = longNote.StartTime + TimeSpan.FromMilliseconds(25);
             var index = 0;
-            while (hit < longNote.EndTime - TimeSpan.FromMilliseconds(25))
+            while (hit < longNote.EndTime - TimeSpan.FromMilliseconds(25) && index < limit)
             {
                 if (!chart.HitObjects.Any(note => Math.Abs((note.StartTime - hit).TotalMilliseconds) < 40))
                     inputs.Add(new(index++ % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightDon, hit));
-                hit += TimeSpan.FromMilliseconds(25);
+                hit += step;
             }
         }
         return [.. inputs.OrderBy(static input => input.Time)];

@@ -137,6 +137,9 @@ public sealed record SongDescriptor
     /// </summary>
     public ImmutableArray<string> ScenePresets { get; init; } = [];
 
+    /// <summary>In the game's own attract demo rotation (Green's musicinfo <c>demoplay</c>).</summary>
+    public bool DemoPlay { get; init; }
+
     /// <summary>The chart author (osu! mapper), when the source names one; for browsing.</summary>
     public string? Creator { get; init; }
 

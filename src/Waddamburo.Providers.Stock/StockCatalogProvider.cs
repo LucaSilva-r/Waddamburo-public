@@ -47,12 +47,17 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
         var diagnostics = new List<CatalogDiagnostic>();
         // Installs carry one musicinfo.xml per game revision; the one describing the most installed
         // charts is the installed revision's.
-        var entries = metadataCandidates(_root)
+        var candidates = metadataCandidates(_root)
             .Select(path => (Path: path, Entries: readMetadata(path, diagnostics)))
+            .ToList();
+        var entries = candidates
             .OrderByDescending(candidate => candidate.Entries.Count(entry => installedCourses(entry.Id).Any()))
             .ThenBy(static candidate => candidate.Path, StringComparer.Ordinal)
             .FirstOrDefault().Entries
             ?? throw new FileNotFoundException("The stock data folder has no musicinfo.xml.");
+        // The attract demo list (demoplay): later revisions dropped the flag, so any revision's counts.
+        var demo = candidates.SelectMany(static candidate => candidate.Entries)
+            .Where(static entry => entry.DemoPlay).Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
 
         var stars = readStars(Path.Combine(_root, "fumen", "tuning.bin"), diagnostics);
         _stars = stars;
@@ -99,6 +104,7 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                 extra.Subtitle)
             {
                 EnglishSubtitle = extra.EnglishSubtitle,
+                DemoPlay = demo.Contains(entry.Id),
                 // Waiwai songs are the ones with a section layout (all of Green's 182 match the traced list).
                 WaiwaiComposition = File.Exists(compositionPath(entry.Id))
                     ? new CatalogAssetKey(Id, $"composition:{entry.Id}") : null,
@@ -226,7 +232,7 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
         return table;
     });
 
-    private sealed record MetadataEntry(string Id, string? Title, string? Genre);
+    private sealed record MetadataEntry(string Id, string? Title, string? Genre, bool DemoPlay);
 
     // Boost XML serialisation: <MusicInfo><Data><musicid/><musicname/><genrename/>…</Data>…
     private List<MetadataEntry> readMetadata(string path, List<CatalogDiagnostic> diagnostics)
@@ -250,7 +256,8 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                         diagnostics.Add(warning("STOCK_ID_INVALID", $"Music id '{id}' is not a supported identifier."));
                     continue;
                 }
-                entries.Add(new MetadataEntry(id, blank((string?)data.Element("musicname")), blank((string?)data.Element("genrename"))));
+                entries.Add(new MetadataEntry(id, blank((string?)data.Element("musicname")), blank((string?)data.Element("genrename")),
+                    ((string?)data.Element("demoplay"))?.Trim() == "1"));
             }
             return entries;
         }

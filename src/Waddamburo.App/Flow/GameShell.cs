@@ -432,9 +432,9 @@ internal sealed class GameShell : IDisposable
         foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade })
             Overlay.Preload(intermission);
 
-        _attract = new AttractFlow(this, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
-            AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
         _gameplay = new GameplayFlow(this);
+        _attract = new AttractFlow(this, _gameplay, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
+            AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
         var calibration = new CalibrationFlow(this);
         _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
         _search = new SongSearch(this, _libraries.Snapshot, Painter);

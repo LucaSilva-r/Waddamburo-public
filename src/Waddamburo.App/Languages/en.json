@@ -279,6 +279,7 @@
   "mode.replay": "Replay",
   "mode.replay_of": "{0}'s replay",
   "mode.practice": "Practice mode",
+  "mode.demo": "Demo play",
   "review.keys": "{0} pause · hold ←/→ scrub · wheel 1 s · ↑/↓ speed · {1} practise from here",
   "review.paused": "Paused",
   "menu.play_song": "Play the Song",

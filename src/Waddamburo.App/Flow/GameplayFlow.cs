@@ -78,7 +78,70 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _waiwai = waiwai;
     }
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Gameplay;
+    public override IndicatorScene IndicatorsFor(SceneId scene) => _demo ? IndicatorScene.Demo : IndicatorScene.Gameplay;
+
+    // The attract loop's demo play (between its CMs): a stock song on autoplay, unsaved, no banner or pause;
+    // it fades back to logo_namco after DemoLength, and a drum, coin or card (takeOver) starts a credit.
+    private bool _demo;
+    private Func<FlowInput, bool>? _demoTakeOver;
+    private static readonly TimeSpan DemoLength = TimeSpan.FromSeconds(30);
+
+    /// <summary>Starts a demo play of <paramref name="song"/> (its Oni or Hard chart); false when it cannot load.</summary>
+    public bool StartDemo(SongSelectSong song, string category, Func<FlowInput, bool> takeOver)
+    {
+        var chart = song.Descriptor.Charts.Where(static chart => chart.Course is TaikoCourse.Oni or TaikoCourse.Hard)
+            .OrderByDescending(static chart => chart.Course).FirstOrDefault();
+        if (chart?.Course is not { } course)
+            return false;
+        PlayableChart loaded;
+        try
+        {
+            loaded = Shell.Assets.LoadChartAsync(chart.Key, chart.ChartAsset).AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception exception) when (exception is InvalidDataException
+            or NotSupportedException or IOException or OverflowException or ArgumentException)
+        {
+            Console.Error.WriteLine($"Demo play of {song.Descriptor.Key} unavailable: {exception.Message}");
+            return false;
+        }
+        var request = new PlayRequest(Shell.SongCatalog.Revision, song.Descriptor.Key, song.Descriptor.AudioAsset,
+            [new PlayerChartRequest(LocalPlayerSlot.PlayerOne, chart.Key, chart.ChartAsset, course)]);
+        if (!Shell.PlayRequests.TryRequestPlay(request))
+            return false;
+        if (Shell.Sounds?.Gameplay is { } sounds)
+        {
+            sounds.Waiwai = false;
+            sounds.Tones = [TaikoGuest.Tones[0]];
+            sounds.PrepareDrums(false);
+        }
+        Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), 1, Final: false);
+        Shell.Catalog.Replace(GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout,
+            Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin), 0, twoPlayers: false));
+        Prepare([loaded], song, 0, null);
+        _demo = true;
+        _demoTakeOver = takeOver;
+        _directStart = true;
+        Shell.Show(FlowScenes.Gameplay);
+        Console.WriteLine($"Demo play: {song.Descriptor.Key} ({course}).");
+        return true;
+    }
+
+    public override void Exit(SceneId scene)
+    {
+        if (!_demo)
+            return;
+        _demo = false;
+        _demoTakeOver = null;
+        if (_music is { } music)
+            Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
+        _music = null;
+        _clock.Reset();
+        _directStart = false;
+        _autoplay = null;
+        _charts = [];
+        Shell.Gameplay.Stop();
+        Shell.PlayRequests.ClearActive();
+    }
 
     public override void Enter(SceneId scene)
     {
@@ -101,7 +164,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             var title = Shell.Titles.GetGameplayTitle(_song);
             _ = Shell.Titles.Resolve(title);
             active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
-            ModeLabel.Show(active.Player.Layers[songInfoIndex].Player, modeLabel(ModeText(request)));
+            ModeLabel.Show(active.Player.Layers[songInfoIndex].Player, modeLabel(_demo ? Strings.T("mode.demo") : ModeText(request)));
         }
         _timeline = new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
         _startTick = Shell.Tick;
@@ -120,12 +183,14 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
         // A replay or autoplay review is scrubbed back and forth: the end banner would stay up once reached.
-        Shell.Gameplay.EndBanner = _review is null;
+        Shell.Gameplay.EndBanner = _review is null && !_demo;
         _training = null;
-        _voided = request.Review is not null;
+        _voided = request.Review is not null || _demo;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.WatchAs(_side, watched);
-        _autoplay = Shell.Options.Autoplay && _review is null ? new GameplayAutoplay(_charts, _side) : null;
+        _autoplay = (Shell.Options.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
+            // The demo drums like a person (15 hits a second), not a stress run.
+            _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
         Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
@@ -252,7 +317,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// </summary>
     public bool Attempting => Reviewing && _training is { Live: true, Clock.Paused: false };
 
-    public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
+    public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown && !_demo;
 
     // Escape after the last note: the shutter closes now rather than after the banner and the outro.
     private bool _skipToShutter;
@@ -265,7 +330,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _skipToShutter = true;
         return true;
     }
-    public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
+    public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown && !_demo;
 
     public void SetPaused(bool paused, float interpolation = 0)
     {
@@ -402,6 +467,19 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public override void Tick(FlowInput input)
     {
         if (_paused) return;
+        if (_demo)
+        {
+            // Exit (on the switch either makes) ends the demo.
+            if (_demoTakeOver?.Invoke(input) == true || Shell.FinishFade())
+                return;
+            if (revealed && (chartTime() >= DemoLength || ChartOver))
+            {
+                if (_music is { } demoMusic)
+                    Shell.Audio?.Mixer.Stop(demoMusic.Handle, TimeSpan.FromSeconds(1));
+                Shell.FadeTo(FlowScenes.Logo);
+                return;
+            }
+        }
         var overlay = Shell.Overlay;
         if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick))
         {

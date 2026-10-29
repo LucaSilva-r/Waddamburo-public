@@ -11,6 +11,7 @@ internal enum IndicatorScene
     Boot, // kidou: the card prompt stays off (traced SetOnline(0) until the attract loop)
     Attract,
     AttractPrompt, // caution screen / title: "hit the drum to start"
+    Demo, // the attract's demo play: the prompt without the card icon, which covers the song's title
     Entry,
     SongSelect,
     // The tutorial: the coin/free-play line stays, the join messages are hidden (traced session22).
@@ -78,12 +79,12 @@ internal sealed class SystemIndicators
     public void SetScene(IndicatorScene scene)
     {
         _setupPanels = null;
-        var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt;
+        var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt or IndicatorScene.Demo;
         _scene = scene;
         if (scene != IndicatorScene.Entry)
             _cardDialog = false; // left the entry mid-dialog (F1)
         _online = scene != IndicatorScene.Boot;
-        _cardVisible = attract || scene == IndicatorScene.Entry;
+        _cardVisible = attract && scene != IndicatorScene.Demo || scene == IndicatorScene.Entry;
         // The free-play/coin message first appears with the attract title (traced SetVisible* calls);
         // during the boot screens it stays off.
         _coinsVisible = scene is not (IndicatorScene.Gameplay or IndicatorScene.Boot);
@@ -91,7 +92,7 @@ internal sealed class SystemIndicators
         // Song Select shows the unjoined player's message; the authored indicator movie
         // positions it on the available side and runs its fade animation.
         var rejoin = scene == IndicatorScene.Entry && Rejoin;
-        var prompt = (scene is IndicatorScene.AttractPrompt or IndicatorScene.Entry
+        var prompt = (scene is IndicatorScene.AttractPrompt or IndicatorScene.Demo or IndicatorScene.Entry
             || scene == IndicatorScene.SongSelect && !TwoPlayers) && !rejoin;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {

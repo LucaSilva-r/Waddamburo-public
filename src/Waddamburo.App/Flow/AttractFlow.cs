@@ -1,5 +1,6 @@
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
+using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Platform.Sdl;
@@ -10,7 +11,7 @@ namespace Waddamburo.App.Flow;
 /// The boot screens and the attract loop (traced): kidou once, then logo_namco -> title -> keikoku ->
 /// one attract CM -> logo_namco ... A drum hit (free play) or a coin starts the entry.
 /// </summary>
-internal sealed class AttractFlow(GameShell shell, string[] movies, string? opening = null) : FlowScene(shell), IDisposable
+internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string[] movies, string? opening = null) : FlowScene(shell), IDisposable
 {
     // movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.
     private const string MovieFill = "movie1280x720";
@@ -20,6 +21,9 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
     private string? _last;
     // The movie scene is showing the opening (OP.pam) as the title rather than a CM.
     private bool _openingAsTitle;
+    // After keikoku the loop alternates its CM and a demo play (a random song on autoplay; not traced, the
+    // cabinet's demo screen was missing, #2). Without CMs every turn is a demo.
+    private bool _demoTurn;
 
     /// <summary>The attract CM playing in movie.lm, if any.</summary>
     public AttractMovie? Movie { get; private set; }
@@ -60,6 +64,67 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
             return;
         }
         Movie?.Advance();
+        if (TryStart(input))
+            return;
+        if (Shell.Active.Id == FlowScenes.Movie)
+        {
+            if (Movie?.Finished != false)
+            {
+                var next = _openingAsTitle ? FlowScenes.Caution : FlowScenes.Logo;
+                _openingAsTitle = false;
+                Shell.Show(next);
+            }
+        }
+        else if (Shell.Hosts.Attract?.Finished == true)
+        {
+            var current = Shell.Active.Id;
+            // Releases with an opening movie play it as the title (their exe's attract table).
+            if (current == FlowScenes.Logo && opening is not null)
+            {
+                _openingAsTitle = true;
+                Shell.Show(FlowScenes.Movie);
+                return;
+            }
+            // Traced: keikoku is followed by one attract CM, then logo_namco again.
+            if (current == FlowScenes.Caution && (_demoTurn = !_demoTurn || movies.Length == 0) && startDemo())
+                return;
+            Shell.Show(current == FlowScenes.Logo ? FlowScenes.Title
+                : current == FlowScenes.Title ? FlowScenes.Caution
+                : movies.Length != 0 ? FlowScenes.Movie : FlowScenes.Logo);
+        }
+    }
+
+    // A random stock (Green) song with an Oni or Hard chart, from the game's own demo list (musicinfo demoplay,
+    // 114 songs in Green) when it has one; no TJA, osu! or Nijiiro picks.
+    private bool startDemo()
+    {
+        var songs = Shell.SongCatalog.Categories
+            .SelectMany(category => category.Songs.Select(song => (category.Name, Song: song)))
+            .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock
+                && (entry.Song.HasCourse(TaikoCourse.Oni) || entry.Song.HasCourse(TaikoCourse.Hard)))
+            .ToArray();
+        // Mostly songs with their own gameplay skin (collabs, Vocaloid...), as the cabinet seemed to favour:
+        // three demos in four from those (the skin table, no archive loaded), the rest from any song.
+        if (songs.Where(static entry => entry.Song.Descriptor.DemoPlay).ToArray() is { Length: > 0 } listed)
+            songs = listed;
+        var themed = songs.Where(entry => Shell.Skins.HasTheme(entry.Song.Descriptor, entry.Name)).ToArray();
+        Console.WriteLine($"Demo picks: {themed.Length} themed of {songs.Length} songs.");
+        if (themed.Length != 0 && Random.Shared.Next(4) != 0)
+            songs = themed;
+        for (var attempt = 0; attempt < 3 && songs.Length != 0; attempt++)
+        {
+            var (category, song) = songs[Random.Shared.Next(songs.Length)];
+            if (gameplay.StartDemo(song, category, TryStart))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// A drum hit, coin or card starts a credit (the attract's screens and its demo play); true when one did.
+    /// </summary>
+    public bool TryStart(FlowInput input)
+    {
         // Free play: a drum hit starts. Coin mode: any credit does, at once (traced: entry loads right
         // after the first coin, even short of a full credit; coins inserted during the boot screens
         // start it as soon as the attract is reached). The drum does nothing there.
@@ -102,30 +167,9 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
                 Shell.JoinPlayer(input.DrumSide ?? 0);
             Shell.Show(FlowScenes.Entry);
         }
-        else if (Shell.Active.Id == FlowScenes.Movie)
-        {
-            if (Movie?.Finished != false)
-            {
-                var next = _openingAsTitle ? FlowScenes.Caution : FlowScenes.Logo;
-                _openingAsTitle = false;
-                Shell.Show(next);
-            }
-        }
-        else if (Shell.Hosts.Attract?.Finished == true)
-        {
-            var current = Shell.Active.Id;
-            // Releases with an opening movie play it as the title (their exe's attract table).
-            if (current == FlowScenes.Logo && opening is not null)
-            {
-                _openingAsTitle = true;
-                Shell.Show(FlowScenes.Movie);
-                return;
-            }
-            // Traced: keikoku is followed by one attract CM, then logo_namco again.
-            Shell.Show(current == FlowScenes.Logo ? FlowScenes.Title
-                : current == FlowScenes.Title ? FlowScenes.Caution
-                : movies.Length != 0 ? FlowScenes.Movie : FlowScenes.Logo);
-        }
+        else
+            return false;
+        return true;
     }
 
     private void startMovie(string? path)
