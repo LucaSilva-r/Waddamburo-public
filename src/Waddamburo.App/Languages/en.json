@@ -17,6 +17,7 @@
   "report.macro": "Roll/balloon macro",
   "report.cheating": "Other cheating",
   "report.failed": "The report could not be sent ({0}).",
+  "gameplay.audio_failed": "The song's audio could not keep up, so the play was stopped.",
   "menu.return_to_title": "Return to Title",
   "menu.restart_message": "Some changes need a restart to apply.",
   "menu.restart_now": "Restart Now",

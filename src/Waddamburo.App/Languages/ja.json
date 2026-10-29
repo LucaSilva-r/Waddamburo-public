@@ -17,6 +17,7 @@
   "report.macro": "連打マクロ",
   "report.cheating": "その他の不正",
   "report.failed": "通報を送れませんでした（{0}）。",
+  "gameplay.audio_failed": "曲の音声の読み込みが間に合わなかったため、演奏を中断しました。",
   "menu.return_to_title": "タイトルにもどる",
   "menu.restart_message": "再起動後に反映される変更があります。",
   "menu.restart_now": "今すぐ再起動",

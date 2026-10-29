@@ -5,6 +5,7 @@ using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Online;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
@@ -411,8 +412,16 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         var elapsed = chartTime();
         if (Shell.Headless)
             Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
-        if (_music?.Failure is not null || Shell.Audio?.Failure is not null)
-            throw new IOException("Gameplay audio failed.", _music?.Failure ?? Shell.Audio?.Failure);
+        if (Shell.Audio?.Failure is { } device)
+            throw new IOException("Gameplay audio failed.", device);
+        // The song's decoder fell behind (or its file broke): back to Song Select, unsaved, with a notice.
+        if (_music?.Failure is { } song)
+        {
+            Console.Error.WriteLine($"Gameplay audio failed: {song.Message}");
+            Shell.Sync.Notices.AddLocal(Strings.T("gameplay.audio_failed"), NoticeSeverity.Warning);
+            end(finished: false);
+            return;
+        }
         // Traced: the shutter closes 9 s after the end banner (the audio had ended by then); a longer
         // outro still plays out first.
         var musicFinished = _music is not { } music || Shell.Audio is null || !Shell.Audio.Mixer.IsPlaying(music.Handle);
