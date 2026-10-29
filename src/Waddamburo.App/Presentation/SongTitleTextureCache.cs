@@ -24,12 +24,14 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
 
     private readonly bool _english;
     private readonly Func<bool> _squash;
+    private readonly Lazy<RgbaTextSurface?> _normalModeBox;
 
     /// <remarks><paramref name="squash"/>: Song-select titles too long for their column: squashed vertically at full
     /// width (the arcade's way) instead of shrunk; read live.</remarks>
     public SongTitleTextureCache(SdlApplication application, string fontPath, bool asynchronous = true, bool english = true,
-        Func<bool>? squash = null)
+        Func<bool>? squash = null, string? assetRoot = null)
     {
+        _normalModeBox = new(() => assetRoot is null ? null : FolderArtPainter.NormalModeBox(assetRoot));
         _squash = squash ?? (static () => false);
         _english = english;
         _application = application ?? throw new ArgumentNullException(nameof(application));
@@ -261,7 +263,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             return FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)rasterScale, squash);
         if (request.Art is { } art)
             return request.Part == FolderArtPart.Box
-                ? FolderArtPainter.Box(art)
+                ? (art.Style is FolderArtStyle.Original or FolderArtStyle.Nijiiro ? _normalModeBox.Value : null) ?? FolderArtPainter.Box(art)
                 : FolderArtPainter.Pattern(art);
         if (request.Kind != TitleTextureKind.Banner)
             return NativeVerticalTextRasterizer.RenderSongTitle(

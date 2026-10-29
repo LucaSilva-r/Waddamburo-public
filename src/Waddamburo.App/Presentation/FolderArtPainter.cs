@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text;
+using Waddamburo.Formats.Ddp;
+using Waddamburo.Formats.Lmb;
+using Waddamburo.Game;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Text;
 
@@ -8,7 +11,7 @@ namespace Waddamburo.App.Presentation;
 /// <summary>
 /// The built-in folders' art: the pattern over the front and the emblem in the mascot slot are PNG files
 /// built into the app (Resources/folders/&lt;style&gt;/{pattern,box}.png: edit them, rebuild); the description
-/// columns are drawn.
+/// columns are drawn. Original and Nijiiro show Waiwai's Normal-mode mascot instead when the game data has it.
 /// </summary>
 internal static class FolderArtPainter
 {
@@ -19,7 +22,37 @@ internal static class FolderArtPainter
     public static RgbaTextSurface Pattern(FolderArt art) => image(art.Style, "pattern");
 
     /// <summary>The open folder's emblem (any size: drawn into the 192x360 mascot slot).</summary>
-    public static RgbaTextSurface Box(FolderArt art) => image(art.Style, "box");
+    public static RgbaTextSurface Box(FolderArt art) => image(art.Style == FolderArtStyle.Nijiiro ? FolderArtStyle.Original : art.Style, "box");
+
+    /// <summary>Waiwai's Normal-mode mascot (its mode-switch folder's 192x360 picture), read from the user's game data; null without it.</summary>
+    public static RgbaTextSurface? NormalModeBox(string assetRoot)
+    {
+        var path = Path.Combine(assetRoot, "waiwai_song_select", "packeddata.ddp");
+        if (!File.Exists(path))
+            return null;
+        var content = LumenMovieContent.Load(DdpArchive.Open(File.ReadAllBytes(path)).OpenMovie("waiwai_song_select/waiwai_song_select.lm"));
+        var movie = content.Definition;
+        foreach (var sprite in movie.Sprites)
+        {
+            var labels = sprite.Timeline.OfType<LmbFrameLabelCommand>().ToArray();
+            if (labels.FirstOrDefault(label => movie.Strings[(int)label.StringIndex].Value == "通常とワイワイ移動") is not { } mode)
+                continue;
+            var end = labels.Where(label => label.Frame > mode.Frame).Select(label => label.Frame).DefaultIfEmpty(uint.MaxValue).Min();
+            uint frame = 0;
+            foreach (var command in sprite.Timeline)
+            {
+                frame = command switch { LmbShowFrameCommand show => show.Frame, LmbFrameKeyCommand key => key.Frame, _ => frame };
+                if (frame < mode.Frame || frame >= end || command is not LmbPlaceObjectCommand place)
+                    continue;
+                var textures = movie.Shapes.Where(shape => shape.CharacterId == place.CharacterId)
+                    .SelectMany(shape => shape.Geometry).Select(geometry => (int)geometry.TextureIndex);
+                foreach (var index in textures)
+                    if (index < content.Textures.Length && content.Textures[index] is { Width: 192, Height: 360 } texture)
+                        return new RgbaTextSurface((uint)texture.Width, (uint)texture.Height, [.. texture.Rgba8]);
+            }
+        }
+        return null;
+    }
 
     private static RgbaTextSurface image(FolderArtStyle style, string part) =>
         Images.GetOrAdd($"{style.ToString().ToLowerInvariant()}.{part}", static name =>

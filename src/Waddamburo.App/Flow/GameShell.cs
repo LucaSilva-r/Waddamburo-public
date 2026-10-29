@@ -314,7 +314,7 @@ internal sealed class GameShell : IDisposable
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
         Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
         Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
-            squash: () => Arcade.SquashTitles);
+            squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
         _pill = new PairingPill(Application, options.FontPath);
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _nameTexts = new NameTextTextures(Application, options.FontPath);
