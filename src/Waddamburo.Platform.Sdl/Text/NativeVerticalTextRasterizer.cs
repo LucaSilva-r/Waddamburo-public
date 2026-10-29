@@ -25,10 +25,18 @@ public enum SongTitleTextProfile : uint
 /// <summary>Rasterizes a user-supplied font through Waddamburo's stable FreeType C adapter.</summary>
 public static unsafe partial class NativeVerticalTextRasterizer
 {
-    private const uint AbiVersion = 0x0001_0006;
+    private const uint AbiVersion = 0x0001_0007;
     private const uint SquashFlag = 1; // WADDAMBURO_TEXT_SONG_TITLE_SQUASH
     private static readonly ConcurrentDictionary<string, Lazy<NativeFontContext>> FontContexts =
         new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Fonts that draw the characters a font lacks, in order (the bundled ones; set once at startup).
+    /// </summary>
+    public static IReadOnlyList<string> FallbackFonts { get; set; } = [];
+
+    // The native chain: the font, then its fallbacks, newline-separated (text ABI 1.7).
+    private static string chain(string fontPath) => string.Join('\n', [Path.GetFullPath(fontPath), .. FallbackFonts]);
 
     public static RgbaTextSurface RenderSongTitle(
         string fontPath,
@@ -58,9 +66,8 @@ public static unsafe partial class NativeVerticalTextRasterizer
         };
         var width = checked(baseDimensions.Width * rasterScale);
         var height = checked(baseDimensions.Height * rasterScale);
-        var fullFontPath = Path.GetFullPath(fontPath);
         var context = FontContexts.GetOrAdd(
-            fullFontPath,
+            chain(fontPath),
             static path => new Lazy<NativeFontContext>(
                 () => new NativeFontContext(path),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
@@ -76,7 +83,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         if (GetAbiVersion() != AbiVersion)
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
         return FontContexts.GetOrAdd(
-            Path.GetFullPath(fontPath),
+            chain(fontPath),
             static path => new Lazy<NativeFontContext>(
                 () => new NativeFontContext(path),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value.RenderGlyph(scalar, fontPx, outlineRadius);
@@ -97,7 +104,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         var error = new NativeTextError { StructSize = (uint)Unsafe.SizeOf<NativeTextError>() };
         fixed (byte* destination = pixels)
         {
-            var result = RenderVertical(fontPath, text, width, height, destination, (ulong)pixels.Length, &error);
+            var result = RenderVertical(chain(fontPath), text, width, height, destination, (ulong)pixels.Length, &error);
             if (result != 0)
                 throw new InvalidOperationException(error.Message.Length == 0
                     ? $"Title rasterization failed with code {result}."

@@ -108,6 +108,7 @@ try
         ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
+        Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
         // Cabinet settings (free play, credits, songs per session) beside the game data.
         var arcadePath = Path.Combine(layout.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);

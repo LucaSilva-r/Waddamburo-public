@@ -9,10 +9,65 @@
 #include <string.h>
 #include <math.h>
 
+/* A chain of faces (ABI 1.7): the first is the font; each later one only draws the scalars the
+ * faces before it lack (a title's rare symbols, Chinese or Hangul). */
+#define WADDAMBURO_TEXT_MAX_FACES 4U
+
 struct waddamburo_text_context {
     FT_Library library;
-    FT_Face face;
+    FT_Face faces[WADDAMBURO_TEXT_MAX_FACES];
+    uint32_t face_count;
 };
+
+/* The first face that has the scalar; the font's own (its missing-glyph box) when none has it. */
+static FT_Face face_for(const waddamburo_text_context *context, uint32_t scalar)
+{
+    for (uint32_t i = 0U; i < context->face_count; ++i) {
+        if (FT_Get_Char_Index(context->faces[i], scalar) != 0U)
+            return context->faces[i];
+    }
+    return context->faces[0];
+}
+
+static FT_Error size_faces(waddamburo_text_context *context, FT_UInt pixels)
+{
+    for (uint32_t i = 0U; i < context->face_count; ++i) {
+        FT_Error ft_error = FT_Set_Pixel_Sizes(context->faces[i], 0U, pixels);
+        if (ft_error != 0)
+            return ft_error;
+    }
+    return 0;
+}
+
+static void transform_faces(waddamburo_text_context *context, FT_Matrix *matrix)
+{
+    for (uint32_t i = 0U; i < context->face_count; ++i)
+        FT_Set_Transform(context->faces[i], matrix, NULL);
+}
+
+/* The share of the em above the baseline, from the font's line box scaled to one em: fonts with a
+ * taller box (extra line spacing, common in web fonts) would otherwise sit low in the title slots. */
+static float em_ascent(FT_Face face)
+{
+    float box = (float)(face->ascender - face->descender);
+    return box > 0.0f ? (float)face->ascender / box : 0.88f;
+}
+
+/* The line's ascender and descender in whole pixels at the size the faces were set to, rounded out
+ * as FreeType rounds its own (a font whose box is one em lays out exactly as with those). */
+static void line_metrics(FT_Face face, float font_px, float *ascender, float *descender)
+{
+    float pixels = (float)(FT_UInt)(font_px + 0.5f);
+    *ascender = ceilf(pixels * em_ascent(face));
+    *descender = floorf(pixels * (em_ascent(face) - 1.0f));
+}
+
+/* Loads the scalar from the face that has it; *face is that face (its glyph slot holds the result). */
+static FT_Error load_char(waddamburo_text_context *context, uint32_t scalar, FT_Int32 flags, FT_Face *face)
+{
+    *face = face_for(context, scalar);
+    return FT_Load_Char(*face, scalar, flags);
+}
 
 static int error_is_valid(const waddamburo_text_error *error)
 {
@@ -319,7 +374,7 @@ static waddamburo_text_result decode_title_items(
 }
 
 static waddamburo_text_result render_title_column(
-    FT_Face face,
+    waddamburo_text_context *context,
     const char *text,
     float requested_font_px,
     float requested_leading_px,
@@ -342,7 +397,9 @@ static waddamburo_text_result render_title_column(
     float font_px = requested_font_px;
     float leading = requested_leading_px;
     FT_Error ft_error;
+    FT_Face face;
     float ascent;
+    float descent;
     float natural_height;
     waddamburo_text_result result = decode_title_items(text, scalars, items, &item_count, error);
     if (result != WADDAMBURO_TEXT_OK || item_count == 0U)
@@ -379,17 +436,18 @@ static waddamburo_text_result render_title_column(
     natural_height = positions[item_count - 1U] + font_px * vertical;
     offset = from_bottom && natural_height < (float)(bottom - top) ? (float)(bottom - top) - natural_height : 0.0f;
     top += (uint32_t)offset;
-    ft_error = FT_Set_Pixel_Sizes(face, 0U, (FT_UInt)(font_px + 0.5f));
+    ft_error = size_faces(context, (FT_UInt)(font_px + 0.5f));
     if (ft_error != 0)
         return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not size the song-title font.");
-    ascent = (float)face->size->metrics.ascender / 64.0f * vertical;
+    line_metrics(context->faces[0], font_px, &ascent, &descent);
+    ascent *= vertical;
 
     for (uint32_t i = 0U; i < item_count; ++i) {
         title_item item = items[i];
         float group_width = 0.0f;
         float x;
         for (uint32_t k = 0U; k < item.count; ++k) {
-            ft_error = FT_Load_Char(face, scalars[item.first + k], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            ft_error = load_char(context, scalars[item.first + k], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL, &face);
             if (ft_error != 0)
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a song-title glyph.");
             group_width += (float)face->glyph->advance.x / 64.0f;
@@ -411,11 +469,11 @@ static waddamburo_text_result render_title_column(
                 squash_matrix.xy = 0;
                 squash_matrix.yx = 0;
                 squash_matrix.yy = (FT_Fixed)((rotate ? 1.0f : vertical) * 65536.0f);
-                FT_Set_Transform(face, &squash_matrix, NULL);
+                transform_faces(context, &squash_matrix);
             }
-            ft_error = FT_Load_Char(face, scalar, FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            ft_error = load_char(context, scalar, FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL, &face);
             if (vertical < 1.0f)
-                FT_Set_Transform(face, NULL, NULL);
+                transform_faces(context, NULL);
             if (ft_error != 0)
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not rasterize a song-title glyph.");
             ft_error = FT_Get_Glyph(face->glyph, &fill_glyph);
@@ -447,7 +505,7 @@ static waddamburo_text_result render_title_column(
 }
 
 static waddamburo_text_result render_title_row(
-    FT_Face face,
+    waddamburo_text_context *context,
     const char *text,
     uint32_t raster_scale,
     uint8_t *mask,
@@ -468,7 +526,10 @@ static waddamburo_text_result render_title_row(
     float advance = 0.0f;
     float pen_x;
     int baseline;
+    float line_ascender;
+    float line_descender;
     FT_Error ft_error;
+    FT_Face face;
 
     while (*cursor != 0U) {
         if (scalar_count == 256U)
@@ -480,11 +541,11 @@ static waddamburo_text_result render_title_row(
     if (scalar_count == 0U)
         return set_error(error, WADDAMBURO_TEXT_ERROR_TEXT, 0, "Transition title is empty.");
 
-    ft_error = FT_Set_Pixel_Sizes(face, 0U, (FT_UInt)(font_px + 0.5f));
+    ft_error = size_faces(context, (FT_UInt)(font_px + 0.5f));
     if (ft_error != 0)
         return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not size the transition-title font.");
     for (uint32_t i = 0U; i < scalar_count; ++i) {
-        ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+        ft_error = load_char(context, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL, &face);
         if (ft_error != 0)
             return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a transition-title glyph.");
         advance += (float)face->glyph->advance.x / 64.0f;
@@ -495,10 +556,10 @@ static waddamburo_text_result render_title_row(
         squeeze.xy = 0;
         squeeze.yx = 0;
         squeeze.yy = 0x10000;
-        FT_Set_Transform(face, &squeeze, NULL); /* advances below are transformed too */
+        transform_faces(context, &squeeze); /* advances below are transformed too */
         advance = 0.0f;
         for (uint32_t i = 0U; i < scalar_count; ++i) {
-            ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            ft_error = load_char(context, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL, &face);
             if (ft_error != 0)
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a gameplay-title glyph.");
             advance += (float)face->glyph->advance.x / 64.0f;
@@ -507,29 +568,29 @@ static waddamburo_text_result render_title_row(
         font_px *= width * 0.94f / advance;
         if (font_px < 6.0f)
             font_px = 6.0f;
-        ft_error = FT_Set_Pixel_Sizes(face, 0U, (FT_UInt)(font_px + 0.5f));
+        ft_error = size_faces(context, (FT_UInt)(font_px + 0.5f));
         if (ft_error != 0)
             return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not fit the transition-title font.");
         advance = 0.0f;
         for (uint32_t i = 0U; i < scalar_count; ++i) {
-            ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+            ft_error = load_char(context, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL, &face);
             if (ft_error != 0)
                 return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not measure a transition-title glyph.");
             advance += (float)face->glyph->advance.x / 64.0f;
         }
     }
 
+    line_metrics(context->faces[0], font_px, &line_ascender, &line_descender);
     pen_x = gameplay ? (float)width - margin - advance : ((float)width - advance) * 0.5f;
     (void)height;
     baseline = (int)(center_y * raster_scale
-        + ((float)face->size->metrics.ascender / 64.0f
-        + (float)face->size->metrics.descender / 64.0f) * 0.5f);
+        + (line_ascender + line_descender) * 0.5f);
     for (uint32_t i = 0U; i < scalar_count; ++i) {
         FT_Glyph fill_glyph = NULL;
         FT_BitmapGlyph fill_bitmap;
         float glyph_advance;
 
-        ft_error = FT_Load_Char(face, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL);
+        ft_error = load_char(context, scalars[i], FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL, &face);
         if (ft_error != 0)
             return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not rasterize a transition-title glyph.");
         glyph_advance = (float)face->glyph->advance.x / 64.0f;
@@ -553,7 +614,7 @@ static waddamburo_text_result render_title_row(
 
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_6;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_7;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -572,12 +633,28 @@ waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
         return NULL;
     }
     ft_error = FT_Init_FreeType(&context->library);
-    if (ft_error == 0)
-        ft_error = FT_New_Face(context->library, utf8_font_path, 0, &context->face);
+    /* The path is a newline-separated chain: the font, then its fallbacks (ABI 1.7). */
+    for (const char *start = utf8_font_path; ft_error == 0 && *start != '\0' && context->face_count < WADDAMBURO_TEXT_MAX_FACES;) {
+        const char *end = strchr(start, '\n');
+        size_t length = end != NULL ? (size_t)(end - start) : strlen(start);
+        char *path = (char *)malloc(length + 1U);
+        if (path == NULL) {
+            ft_error = FT_Err_Out_Of_Memory;
+            break;
+        }
+        memcpy(path, start, length);
+        path[length] = '\0';
+        if (length > 0U)
+            ft_error = FT_New_Face(context->library, path, 0, &context->faces[context->face_count++]);
+        free(path);
+        if (ft_error != 0)
+            context->face_count--;
+        start = end != NULL ? end + 1 : start + length;
+    }
+    if (ft_error == 0 && context->face_count == 0U)
+        ft_error = FT_Err_Cannot_Open_Resource;
     if (ft_error != 0) {
-        if (context->library != NULL)
-            FT_Done_FreeType(context->library);
-        free(context);
+        waddamburo_text_context_destroy(context);
         set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not initialize the text context.");
         return NULL;
     }
@@ -589,8 +666,10 @@ void WADDAMBURO_TEXT_CALL waddamburo_text_context_destroy(waddamburo_text_contex
 {
     if (context == NULL)
         return;
-    FT_Done_Face(context->face);
-    FT_Done_FreeType(context->library);
+    for (uint32_t i = 0U; i < context->face_count; ++i)
+        FT_Done_Face(context->faces[i]);
+    if (context->library != NULL)
+        FT_Done_FreeType(context->library);
     free(context);
 }
 
@@ -603,9 +682,10 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_render_vertical_rgba
     uint64_t rgba8_capacity,
     waddamburo_text_error *error)
 {
-    FT_Library library = NULL;
+    waddamburo_text_context *context = NULL;
+    waddamburo_text_error context_error;
     FT_Face face = NULL;
-    FT_Error ft_error;
+    FT_Error ft_error = 0;
     const uint8_t *cursor;
     uint32_t scalar;
     uint32_t glyph_count = 0U;
@@ -640,18 +720,19 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_render_vertical_rgba
         return set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to allocate the title surface.");
     }
 
-    ft_error = FT_Init_FreeType(&library);
-    if (ft_error != 0)
+    memset(&context_error, 0, sizeof(context_error));
+    context_error.struct_size = sizeof(context_error);
+    context = waddamburo_text_context_create(utf8_font_path, &context_error);
+    if (context == NULL) {
+        ft_error = context_error.native_code;
         goto font_failure;
-    ft_error = FT_New_Face(library, utf8_font_path, 0, &face);
-    if (ft_error != 0)
-        goto font_failure;
+    }
     pixel_size = (uint32_t)(((uint64_t)height * 9U) / ((uint64_t)glyph_count * 10U));
     if (pixel_size > width * 3U / 4U)
         pixel_size = width * 3U / 4U;
     if (pixel_size < 6U)
         pixel_size = 6U;
-    ft_error = FT_Set_Pixel_Sizes(face, 0U, pixel_size);
+    ft_error = size_faces(context, pixel_size);
     if (ft_error != 0)
         goto font_failure;
 
@@ -663,7 +744,7 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_render_vertical_rgba
         uint32_t x;
         uint32_t y;
         (void)decode_utf8(&cursor, &scalar);
-        ft_error = FT_Load_Char(face, scalar, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL);
+        ft_error = load_char(context, scalar, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL, &face);
         if (ft_error != 0)
             goto font_failure;
         bitmap = &face->glyph->bitmap;
@@ -717,17 +798,13 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_render_vertical_rgba
         rgba8[i * 4U + 3U] = outline[i] > fill ? outline[i] : fill;
     }
 
-    FT_Done_Face(face);
-    FT_Done_FreeType(library);
+    waddamburo_text_context_destroy(context);
     free(outline);
     free(mask);
     return set_error(error, WADDAMBURO_TEXT_OK, 0, "");
 
 font_failure:
-    if (face != NULL)
-        FT_Done_Face(face);
-    if (library != NULL)
-        FT_Done_FreeType(library);
+    waddamburo_text_context_destroy(context);
     free(outline);
     free(mask);
     return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not rasterize the requested title.");
@@ -805,39 +882,39 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_song_
 
     if (profile == WADDAMBURO_TEXT_PROFILE_GAMEPLAY_TITLE) {
         result = render_title_row(
-            context->face, utf8_title, raster_scale,
+            context, utf8_title, raster_scale,
             mask, width, height, 1, 44.0f, 32.0f, error);
-        FT_Set_Transform(context->face, NULL, NULL); /* the face is shared; drop any squeeze */
+        transform_faces(context, NULL); /* the faces are shared; drop any squeeze */
     } else if (profile == WADDAMBURO_TEXT_PROFILE_TRANSITION) {
         /* The artist line is smaller than the title after Latin and Japanese glyph metrics are
          * taken into account. Keep the two rows independently sized in the 103 px slot. */
         if (utf8_subtitle != NULL && utf8_subtitle[0] != '\0') {
             result = render_title_row(
-                context->face, utf8_title, raster_scale,
+                context, utf8_title, raster_scale,
                 mask, width, height, 0, 46.0f, 36.0f, error);
             if (result == WADDAMBURO_TEXT_OK)
                 result = render_title_row(
-                    context->face, utf8_subtitle, raster_scale,
+                    context, utf8_subtitle, raster_scale,
                     mask, width, height, 0, 22.0f, 84.0f, error);
         } else {
             result = render_title_row(
-                context->face, utf8_title, raster_scale,
+                context, utf8_title, raster_scale,
                 mask, width, height, 0, 49.0f, 51.5f, error);
         }
     } else if (profile == WADDAMBURO_TEXT_PROFILE_SONG_COMPACT) {
         result = render_title_column(
-            context->face, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
+            context, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
             28.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 0,
             mask, width, height, error);
     } else {
         result = render_title_column(
-            context->face, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
+            context, utf8_title, 38.0f * raster_scale, 35.0f * raster_scale,
             70.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 0,
             mask, width, height, error);
         /* The narrower artist column runs from the bottom, as in the arcade. */
         if (result == WADDAMBURO_TEXT_OK && utf8_subtitle != NULL && utf8_subtitle[0] != '\0') {
             result = render_title_column(
-                context->face, utf8_subtitle, 21.0f * raster_scale, 21.0f * raster_scale,
+                context, utf8_subtitle, 21.0f * raster_scale, 21.0f * raster_scale,
                 23.0f * raster_scale, 5U * raster_scale, height - 5U * raster_scale, squash, 1,
                 mask, width, height, error);
         }
@@ -910,6 +987,7 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_glyph
 {
     const FT_Bitmap *bitmap;
     FT_Error ft_error;
+    FT_Face face;
     uint64_t pixel_count;
     if (!error_is_valid(error))
         return WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT;
@@ -917,20 +995,20 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_glyph
         !(font_px >= 1.0f && font_px <= 1024.0f) || outline_radius > 256U)
         return set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "Invalid glyph rasterizer arguments.");
     /* The face is shared with the title profiles: its size and any squeeze are set per call. */
-    FT_Set_Transform(context->face, NULL, NULL);
-    ft_error = FT_Set_Pixel_Sizes(context->face, 0U, (FT_UInt)(font_px + 0.5f));
+    transform_faces(context, NULL);
+    ft_error = size_faces(context, (FT_UInt)(font_px + 0.5f));
     if (ft_error == 0)
-        ft_error = FT_Load_Char(context->face, scalar, FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL | FT_LOAD_RENDER);
+        ft_error = load_char(context, scalar, FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL | FT_LOAD_RENDER, &face);
     if (ft_error != 0)
         return set_error(error, WADDAMBURO_TEXT_ERROR_FONT, ft_error, "FreeType could not render a glyph.");
-    bitmap = &context->face->glyph->bitmap;
+    bitmap = &face->glyph->bitmap;
     glyph->width = bitmap->width + 2U * outline_radius;
     glyph->height = bitmap->rows + 2U * outline_radius;
-    glyph->left = context->face->glyph->bitmap_left - (int32_t)outline_radius;
-    glyph->top = context->face->glyph->bitmap_top + (int32_t)outline_radius;
-    glyph->advance = (float)context->face->glyph->advance.x / 64.0f;
-    glyph->ascender = (float)context->face->size->metrics.ascender / 64.0f;
-    glyph->descender = (float)context->face->size->metrics.descender / 64.0f;
+    glyph->left = face->glyph->bitmap_left - (int32_t)outline_radius;
+    glyph->top = face->glyph->bitmap_top + (int32_t)outline_radius;
+    glyph->advance = (float)face->glyph->advance.x / 64.0f;
+    /* The font's line metrics, whichever face drew the glyph: a fallback glyph sits on the same line. */
+    line_metrics(context->faces[0], font_px, &glyph->ascender, &glyph->descender);
     pixel_count = (uint64_t)glyph->width * glyph->height;
     if (fill == NULL || outline == NULL || mask_capacity < pixel_count)
         return set_error(error, WADDAMBURO_TEXT_OK, 0, "");

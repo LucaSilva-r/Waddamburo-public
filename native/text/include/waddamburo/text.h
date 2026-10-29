@@ -23,6 +23,7 @@ extern "C" {
 #define WADDAMBURO_TEXT_ABI_VERSION_1_4 UINT32_C(0x00010004)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_5 UINT32_C(0x00010005)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_6 UINT32_C(0x00010006)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_7 UINT32_C(0x00010007)
 
 /* Song-title flags (ABI 1.5): a column too long for its slot keeps its font size and is squashed
  * vertically (as the arcade does), instead of the whole font shrinking. Compact and expanded only. */
@@ -54,8 +55,9 @@ typedef struct waddamburo_text_error {
 
 WADDAMBURO_TEXT_API uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void);
 
-/* Contexts retain one FreeType library and font face. Calls using the same
- * context must be serialized by the caller. */
+/* Contexts retain one FreeType library and up to four font faces. utf8_font_path is the font,
+ * optionally followed by fallback fonts, separated by '\n' (ABI 1.7): each scalar is drawn by
+ * the first face that has it. Calls using the same context must be serialized by the caller. */
 WADDAMBURO_TEXT_API waddamburo_text_context *WADDAMBURO_TEXT_CALL
 waddamburo_text_context_create(
     const char *utf8_font_path,
@@ -129,7 +131,7 @@ typedef struct waddamburo_text_glyph {
     int32_t left;     /* the mask's left edge, from the pen position */
     int32_t top;      /* the mask's top edge, above the baseline */
     float advance;    /* pen advance */
-    float ascender;   /* the size's line metrics (descender negative) */
+    float ascender;   /* the font's line box scaled to one em (descender negative; ABI 1.7) */
     float descender;
 } waddamburo_text_glyph;
 

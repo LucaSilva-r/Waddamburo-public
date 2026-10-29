@@ -37,8 +37,9 @@ fonts are not included.**
    **Development and testing currently focus on Green Ver.** Behavior on other
    versions is unverified.
 
-3. To use the original font, place your legitimately obtained **DFPKanTeiRyu-XB**
-   at **`USRDIR/data/font/font.ttf`**. Create the `font` folder if needed.
+3. Optional: Waddamburo ships its own title font (Mochiy Pop P One). To use the original font
+   instead, place your legitimately obtained **DFPKanTeiRyu-XB** at
+   **`USRDIR/data/font/font.ttf`**. Create the `font` folder if needed.
 4. Launch Waddamburo, choose your player account or **Guest**, and play!
 
 On Windows, the font path is `USRDIR\data\font\font.ttf`. Restart after adding it.
@@ -128,7 +129,7 @@ FPS制限の解除、グラフィックのアップスケーリング、2人プ�
    `Waddamburo-x86_64.AppImage`をダウンロードします。
 2. 正規に入手した[対応バージョン](#compatible-gen3-arcade-versions)のゲームデータフォルダーを開き、
    Waddamburoを**`USRDIR`フォルダー**内の、`data`フォルダーと同じ階層にドラッグして配置します。
-3. オリジナルの書体を使う場合は、正規に入手した**DFPKanTeiRyu-XB**を
+3. 任意：Waddamburoは独自の書体（Mochiy Pop P One）を同梱しています。オリジナルの書体を使う場合は、正規に入手した**DFPKanTeiRyu-XB**を
    **`USRDIR/data/font/font.ttf`**に配置します。`font`フォルダーがなければ作成してください。
    Windowsでのパスは`USRDIR\data\font\font.ttf`です。
 4. Waddamburoを起動し、自分のアカウントまたは**Guest**を選んでプレイします。
