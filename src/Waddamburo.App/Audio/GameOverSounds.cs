@@ -28,7 +28,7 @@ internal sealed class GameOverSounds(SoundBank bank) : IGameOverSoundController
                 bank.Play("SE_GAMEOVER", 0);
                 break;
             case (GameOverSoundRequestKind.Voice, 0, 100):
-                bank.Play("VO_HOWTOPLAY", 0);
+                bank.Play("VO_GAMEOVER", 0);
                 break;
             default:
                 Console.WriteLine($"GameOver.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");
