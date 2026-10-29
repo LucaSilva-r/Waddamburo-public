@@ -146,6 +146,13 @@ internal sealed class LayerHostFactory(
     private bool _searchShown;
     private (CategoryKey Category, SongKey Song)? _lastPick;
 
+    /// <summary>A new cabinet credit: Song Select no longer starts on the previous credit's song.</summary>
+    public void ForgetLastSong()
+    {
+        _lastPick = null;
+        SongSelect?.ForgetPicked();
+    }
+
     // Home mode keeps each source in its own library (arcade lists the stock songs as the game does);
     // one source needs no switching.
     private SongSourceKind[] libraries()

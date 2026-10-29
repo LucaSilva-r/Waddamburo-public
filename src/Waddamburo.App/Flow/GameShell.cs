@@ -386,8 +386,9 @@ internal sealed class GameShell : IDisposable
             ShowOni = () => Arcade.ShowOni,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
-            // Next to the settings file (USRDIR/waddamburo); memory only without one.
-            Favourites = new SongFavourites(options.ArcadePath is { } arcade
+            // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
+            // the machine's, not a player's, so a cabinet's guests and card players get no folder (#6).
+            Favourites = !Arcade.Home ? null : new SongFavourites(options.ArcadePath is { } arcade
                 ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),
             Crowns = side => Sync.Scores is not { } scores ? null
                 : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
@@ -879,6 +880,8 @@ internal sealed class GameShell : IDisposable
     {
         // A credit starts with guests (default Dons); cards and the home account attach as players join,
         // with the website's current looks.
+        if (!Arcade.Home)
+            Hosts.ForgetLastSong();
         Array.Clear(TaikoGuest.Profiles);
         Array.Clear(TaikoGuest.Options);
         Array.Clear(TaikoGuest.Tones);

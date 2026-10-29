@@ -260,6 +260,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The folder and song of the last course decided (to come back to it).</summary>
     public (CategoryKey Category, SongKey Song)? Picked { get; private set; }
 
+    /// <summary>Forgets the last course decided (a new credit starts on the default song).</summary>
+    public void ForgetPicked() => Picked = null;
+
     private (int Category, int Song)? _courseSelect;
 
     /// <summary>
