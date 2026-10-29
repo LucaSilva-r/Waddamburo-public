@@ -93,8 +93,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // the plain rainbow a folder change uses (seen on the cabinet).
         if (!Shell.Arcade.Home && Shell.JoinedSides.Count == 1 && input.DrumSide is { } joining
             && !Shell.JoinedSides.Contains(joining) && Shell.PlayRequests.Pending is null
-            && Shell.Hosts.SongSelect?.CourseSelectSong is null && (Shell.Coins is null || Shell.Coins.Missing(1) == 0))
+            && (Shell.Coins is null || Shell.Coins.Missing(1) == 0))
         {
+            // As on the cabinet, also from the difficulty selector; Song Select comes back on that song.
+            Shell.Hosts.SongSelect?.RememberCurrentSong();
             Shell.Sounds?.StopAll();
             Shell.Sounds?.Bank.Play("SE_SELECT", 0);
             var first = Shell.JoinedSides.Min;
