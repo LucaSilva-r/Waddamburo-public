@@ -13,11 +13,16 @@ namespace Waddamburo.App.Flow;
 internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : FlowScene(shell)
 {
     private int _resultStartTick;
+    // When the game over's movie terminated (-1: not yet); its last frame, after the "Produced by" credits
+    // fade, is held while a real cabinet loads the attract (at least 4 s recorded; the recomp traces load at once).
+    private int _gameOverEndTick = -1;
+    private const int GameOverHoldTicks = 240;
 
     public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Result;
 
     public override void Enter(SceneId scene)
     {
+        _gameOverEndTick = -1;
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
@@ -96,6 +101,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         }
         else if (Shell.Hosts.GameOver?.Ended == true)
         {
+            if (_gameOverEndTick < 0)
+                _gameOverEndTick = Shell.Tick;
+            if (Shell.Tick - _gameOverEndTick < GameOverHoldTicks)
+                return;
             // Traced: the credit's end returns to the attract loop at logo_namco.
             Shell.SongsPlayed = 0;
             Shell.Show(FlowScenes.Logo);

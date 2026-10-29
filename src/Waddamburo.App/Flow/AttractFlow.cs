@@ -20,12 +20,6 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
     private string? _last;
     // The movie scene is showing the opening (OP.pam) as the title rather than a CM.
     private bool _openingAsTitle;
-    // When logo_namco ended (-1: not yet); its last frame is held while the cabinet loads the title.
-    private int _logoEndTick = -1;
-
-    // A real cabinet stays on logo_namco's credits at least 4 s after the movie ends, loading the next
-    // screen (recorded; the recomp traces load at once).
-    private const int LogoHoldTicks = 240;
 
     /// <summary>The attract CM playing in movie.lm, if any.</summary>
     public AttractMovie? Movie { get; private set; }
@@ -39,7 +33,6 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
     {
         // A drum hit leads to Entry: it loads in the background once per loop (loading it on the hit
         // froze the attract ~0.6 s).
-        _logoEndTick = -1;
         if (Shell.Prefetched != FlowScenes.Entry)
             Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         if (scene == FlowScenes.Movie)
@@ -121,13 +114,6 @@ internal sealed class AttractFlow(GameShell shell, string[] movies, string? open
         else if (Shell.Hosts.Attract?.Finished == true)
         {
             var current = Shell.Active.Id;
-            if (current == FlowScenes.Logo)
-            {
-                if (_logoEndTick < 0)
-                    _logoEndTick = Shell.Tick;
-                if (Shell.Tick - _logoEndTick < LogoHoldTicks)
-                    return;
-            }
             // Releases with an opening movie play it as the title (their exe's attract table).
             if (current == FlowScenes.Logo && opening is not null)
             {
