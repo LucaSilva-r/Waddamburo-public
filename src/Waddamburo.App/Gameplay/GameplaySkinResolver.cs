@@ -29,6 +29,8 @@ internal sealed class GameplaySkinResolver
 
     private readonly string _lumenRoot;
     private readonly Dictionary<string, string> _partsByTitle = new(StringComparer.Ordinal);
+    // By Green's musicid, which Nijiiro shares: its titles are often written differently.
+    private readonly Dictionary<string, string> _partsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _partsByPreset = new(StringComparer.Ordinal);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GameplaySceneComposition.ThemedSkin?> _skins = new(StringComparer.Ordinal);
 
@@ -47,8 +49,13 @@ internal sealed class GameplaySkinResolver
             _partsByPreset[normalize(parts)] = parts;
         if (musicInfoPath is null || !File.Exists(musicInfoPath)) return;
         foreach (var song in XDocument.Load(musicInfoPath).Descendants("Data"))
-            if ((string?)song.Element("musicname") is { } name && (string?)song.Element("partsset") is { } parts)
-                _partsByTitle.TryAdd(normalize(name), parts);
+            if ((string?)song.Element("partsset") is { } parts)
+            {
+                if ((string?)song.Element("musicname") is { } name)
+                    _partsByTitle.TryAdd(normalize(name), parts);
+                if (((string?)song.Element("musicid"))?.Trim() is { Length: > 0 } id)
+                    _partsById.TryAdd(id, parts);
+            }
     }
 
     /// <summary>The skins the player can choose for every song (the user's enso_ archives that are themes), by name.</summary>
@@ -59,19 +66,27 @@ internal sealed class GameplaySkinResolver
     /// <param name="category">Its song select category (Vocaloid's default skin).</param>
     /// <param name="choice">The player's setting (ArcadeSettings.GameplaySkin): "auto", "original" or a skin's
     /// name for every song; a name the data does not have counts as auto.</param>
-    public GameplaySceneComposition.ThemedSkin? Resolve(SongDescriptor song, string category, string choice = "auto")
+    public GameplaySceneComposition.ThemedSkin? Resolve(SongDescriptor song, string category, string choice = "auto") =>
+        partsFor(song, category, choice) is { } parts
+            ? _skins.GetOrAdd($"{ArchiveNames.GetValueOrDefault(parts, "enso_" + parts)}/packeddata.ddp", load)
+            : null;
+
+    /// <summary>The song has a skin of its own (by its presets, title or category); nothing is loaded.</summary>
+    public bool HasTheme(SongDescriptor song, string category) => partsFor(song, category, "auto") is not null;
+
+    private string? partsFor(SongDescriptor song, string category, string choice)
     {
         if (normalize(choice) == "original")
             return null;
         var parts = lookup(choice)
             ?? song.ScenePresets.Select(lookup).FirstOrDefault(value => value is not null)
+            ?? (song.Key.Source is SongSourceKind.Stock or SongSourceKind.Nijiiro ? _partsById.GetValueOrDefault(song.Key.StableId) : null)
             ?? new[] { song.Title.Japanese, song.Title.Primary, song.Title.English }
             .OfType<string>()
             .Select(title => _partsByTitle.GetValueOrDefault(normalize(title)))
             .FirstOrDefault(value => value is not null)
-            ?? (normalize(category) is "vocaloid" or "ボーカロイド" ? "miku" : null);
-        if (parts is null || NotStandardSkins.Contains(parts)) return null;
-        return _skins.GetOrAdd($"{ArchiveNames.GetValueOrDefault(parts, "enso_" + parts)}/packeddata.ddp", load);
+            ?? (normalize(category) is var genre && (genre.Contains("vocaloid") || genre.Contains("ボーカロイド")) ? "miku" : null);
+        return parts is null || NotStandardSkins.Contains(parts) ? null : parts;
     }
 
     // A skin's parts set by any of its names (with or without enso_, case and punctuation ignored).

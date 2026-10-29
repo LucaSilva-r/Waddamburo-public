@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -90,6 +91,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                 titles.TryAdd(key, (japanese ?? any, english ?? any));
         }
 
+        var themes = ensoThemes(diagnostics);
         var songs = new List<SongDescriptor>();
         var categories = new SortedDictionary<int, List<SongKey>>();
         var stars = new Dictionary<string, int[]>(StringComparer.Ordinal);
@@ -140,6 +142,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                 subtitle.Japanese)
             {
                 EnglishSubtitle = subtitle.English,
+                ScenePresets = themes.GetValueOrDefault(id, []),
             });
             var genre = entry.TryGetProperty("genreNo", out var number) && number.TryGetInt32(out var genreNo)
                 && genreNo >= 0 && genreNo < Genres.Length ? genreNo : Genres.Length;
@@ -199,6 +202,40 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     private string audioPath(string id) => Path.Combine(_root, "sound", $"song_{id}.nus3bank");
 
     // datatable/<name>.json, or the packed .bin; its "items" array.
+    // The songs' own gameplay themes: music_attribute's ensoPartsID1 names a music_ensoparts entry, whose
+    // parts sit under lumen/<NNN_theme>/ (001_miku, 011_imas_cg, ...). As presets, the theme then its
+    // series (imas_cg, imas), Green's archive names where they differ; empty without the tables.
+    private Dictionary<string, ImmutableArray<string>> ensoThemes(List<CatalogDiagnostic> diagnostics)
+    {
+        var themes = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
+        try
+        {
+            var parts = new Dictionary<int, string>();
+            foreach (var entry in table("music_ensoparts"))
+                if (entry.TryGetProperty("uniqueId", out var number) && number.TryGetInt32(out var partsId)
+                    && text(entry, "dancer")?.Split('/') is [_, var folder, ..] && folder.IndexOf('_') is var cut and > 0)
+                    parts[partsId] = folder[(cut + 1)..];
+            foreach (var entry in table("music_attribute"))
+                if (text(entry, "id") is { } id && entry.TryGetProperty("ensoPartsID1", out var number)
+                    && number.TryGetInt32(out var partsId) && parts.TryGetValue(partsId, out var theme))
+                    themes[id] = [GreenThemes.GetValueOrDefault(theme, theme), theme.Split('_')[0]];
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException
+            or KeyNotFoundException or UnauthorizedAccessException)
+        {
+            diagnostics.Add(warning("NIJIIRO_THEMES_UNREADABLE", $"The songs' gameplay themes could not be read: {exception.Message}"));
+        }
+        return themes;
+    }
+
+    // Nijiiro theme folders Green names otherwise (the rest match ignoring case and punctuation).
+    private static readonly Dictionary<string, string> GreenThemes = new(StringComparer.Ordinal)
+    {
+        ["yokai_mb"] = "yokai_matsuri",
+        ["yokai_ht"] = "yokai_hatsukoi",
+        ["yokai_yt"] = "yokai_yougota",
+    };
+
     private List<JsonElement> table(string name)
     {
         var path = Path.Combine(_root, "datatable", name + ".json");
