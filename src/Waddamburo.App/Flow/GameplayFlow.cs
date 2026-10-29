@@ -253,6 +253,20 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public bool Attempting => Reviewing && _training is { Live: true, Clock.Paused: false };
 
     public bool CanPause => revealed && _shutterStartTick < 0 && !_paused && !Shell.Overlay.IsShown;
+
+    // Escape after the last note: the shutter closes now rather than after the banner and the outro.
+    private bool _skipToShutter;
+
+    /// <summary>Closes the shutter at once (home, a played song whose notes are over); false when it cannot.</summary>
+    public bool SkipToShutter()
+    {
+        if (_review is not null || !ChartOver || !CanPause)
+            return false;
+        _skipToShutter = true;
+        if (_music is { } music)
+            Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromSeconds(1));
+        return true;
+    }
     public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
 
     public void SetPaused(bool paused, float interpolation = 0)
@@ -433,7 +447,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
         var chartFinished = _charts.Length != 0
             && elapsed >= _charts.Max(TaikoResultBanner.Time) + TaikoResultBanner.ShutterDelay;
-        if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0 && chartFinished && musicFinished && !Shell.Gameplay.OverlayActive)
+        if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0
+            && (_skipToShutter || chartFinished && musicFinished && !Shell.Gameplay.OverlayActive))
         {
             overlay.Clear();
             // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
@@ -458,6 +473,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private void end(bool finished)
     {
         _shutterStartTick = -1;
+        _skipToShutter = false;
         _review?.Dispose();
         _review = null;
         _training = null;

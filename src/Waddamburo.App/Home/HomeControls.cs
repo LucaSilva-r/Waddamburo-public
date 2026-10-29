@@ -214,6 +214,9 @@ internal sealed class HomeControls : IDisposable
                 return false;
             if (_restart.Black != 0 || !_gameplay.CanPause)
                 return false;
+            // The notes are over (the banner's up): nothing to pause, Escape goes on to the results.
+            if (escape && _gameplay.SkipToShutter())
+                return true;
             _restart.CancelHold();
             _pauseInterpolation = _lastInterpolation;
             _gameplay.SetPaused(true, _pauseInterpolation);
