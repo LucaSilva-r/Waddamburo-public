@@ -263,8 +263,6 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (_review is not null || !ChartOver || !CanPause)
             return false;
         _skipToShutter = true;
-        if (_music is { } music)
-            Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromSeconds(1));
         return true;
     }
     public bool CanQuickRestart => revealed && _shutterStartTick < 0 && !Shell.Overlay.IsShown;
@@ -437,8 +435,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             end(finished: false);
             return;
         }
-        // Traced: the shutter closes 9 s after the end banner (the audio had ended by then); a longer
-        // outro still plays out first.
+        // Traced: the shutter closes 9 s after the end banner, by the chart, not the audio (whose end only
+        // freezes the chart clock below). Audio running past it fades under the shutter: some songs' files
+        // go on long after their chart (Stock:hanakp: silence, then more song; #4).
         var musicFinished = _music is not { } music || Shell.Audio is null || !Shell.Audio.Mixer.IsPlaying(music.Handle);
         if (musicFinished && _music is { } finished && _musicEndPosition is null)
         {
@@ -448,9 +447,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         var chartFinished = _charts.Length != 0
             && elapsed >= _charts.Max(TaikoResultBanner.Time) + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0
-            && (_skipToShutter || chartFinished && musicFinished && !Shell.Gameplay.OverlayActive))
+            && (_skipToShutter || chartFinished && !Shell.Gameplay.OverlayActive))
         {
             overlay.Clear();
+            if (!musicFinished && _music is { } outro)
+                Shell.Audio?.Mixer.Stop(outro.Handle, TimeSpan.FromSeconds(1));
             // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
             if (Shell.Gameplay.WaiwaiOutcome is null)
                 overlay.Show(FlowScenes.Shutter);
