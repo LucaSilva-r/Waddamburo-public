@@ -11,7 +11,8 @@ public readonly record struct AudioPerformanceCounters(long Blocks, long WorkTic
 public sealed class AudioEngine : IDisposable
 {
     private const int RenderFrames = 128;
-    private const int TargetQueuedFrames = 512;
+    // ~21 ms at 48 kHz: rides out the GC's own pauses while scenes load (8-20 ms traced); drum hits skip it.
+    private const int TargetQueuedFrames = 1024;
 
     private readonly IAudioOutput _device;
     private readonly CancellationTokenSource _cancellation = new();
@@ -44,6 +45,9 @@ public sealed class AudioEngine : IDisposable
     }
 
     public AudioMixer Mixer { get; }
+
+    /// <summary>What the game is doing (scene, tick), named in the underrun trace; read on the mix thread.</summary>
+    public Func<string>? TraceContext { get; set; }
 
     private Exception? _failure;
 
@@ -116,6 +120,25 @@ public sealed class AudioEngine : IDisposable
         return Mixer.Play(clip, bus, volume, loop: true);
     }
 
+    /// <summary>
+    /// Queues mixed audio up to <paramref name="ahead"/> now, so a known stall of every managed thread (a blocking
+    /// collection) plays through: SDL's device thread is native and keeps draining it. Sounds started in that
+    /// window wait behind it.
+    /// </summary>
+    public void FillAhead(TimeSpan ahead)
+    {
+        if (_device is not SdlAudioDevice device || _disposed)
+            return;
+        var target = (ulong)(ahead.TotalSeconds * device.Format.SampleRate);
+        var samples = new float[RenderFrames * device.Format.Channels];
+        lock (_outputGate)
+            while (device.QueuedFrames < target)
+            {
+                render(samples);
+                device.Queue(samples);
+            }
+    }
+
     private void render(Span<float> samples)
     {
         lock (_outputGate)
@@ -134,26 +157,72 @@ public sealed class AudioEngine : IDisposable
     private void produce(SdlAudioDevice device)
     {
         var samples = new float[RenderFrames * device.Format.Channels];
+        var rate = (double)device.Format.SampleRate;
+        // The underrun trace: when the mix last queued, how much it left queued, the GC's pause total then.
+        long lastQueued = 0, lastWake = Stopwatch.GetTimestamp();
+        ulong queuedAfter = 0;
+        var gcPause = GC.GetTotalPauseDuration();
+        var collections = GC.CollectionCount(2);
         try
         {
             while (!_cancellation.IsCancellationRequested)
             {
                 if (device.QueuedFrames >= TargetQueuedFrames)
                 {
+                    lastWake = Stopwatch.GetTimestamp();
                     Thread.Sleep(1);
                     continue;
                 }
+                var waiting = Stopwatch.GetTimestamp();
                 lock (_outputGate)
                 {
+                    var locked = Stopwatch.GetTimestamp();
                     render(samples);
+                    var rendered = Stopwatch.GetTimestamp();
+                    // The queue ran dry since the last block: the device played silence for the rest of the gap.
+                    if (lastQueued != 0 && device.QueuedFrames == 0)
+                    {
+                        var starved = Stopwatch.GetElapsedTime(lastQueued, rendered).TotalMilliseconds - queuedAfter / rate * 1000;
+                        if (starved >= 1)
+                            traceUnderrun(starved, Stopwatch.GetElapsedTime(lastWake, waiting).TotalMilliseconds,
+                                Stopwatch.GetElapsedTime(waiting, locked).TotalMilliseconds,
+                                Stopwatch.GetElapsedTime(locked, rendered).TotalMilliseconds,
+                                gcPause, collections, device);
+                    }
                     device.Queue(samples);
+                    lastQueued = Stopwatch.GetTimestamp();
+                    queuedAfter = device.QueuedFrames;
+                    gcPause = GC.GetTotalPauseDuration();
+                    collections = GC.CollectionCount(2);
                 }
+                lastWake = lastQueued;
             }
         }
         catch (Exception exception)
         {
             _failure = exception;
         }
+    }
+
+    // One line per underrun (the log keeps it, with the scene around it): how long the device starved, and
+    // where the mix thread lost the time: oversleeping (or descheduled), waiting for the mixer's lock (the
+    // main thread holds it to start, stop or seek sounds), mixing, or a garbage collection's pause.
+    private void traceUnderrun(double starved, double slept, double lockWait, double mix,
+        TimeSpan gcPause, int collections, SdlAudioDevice device)
+    {
+        string context;
+        try
+        {
+            context = TraceContext?.Invoke() ?? "";
+        }
+        catch (Exception exception)
+        {
+            context = exception.GetType().Name;
+        }
+        Console.WriteLine(FormattableString.Invariant(
+            $"Audio underrun: {starved:F1} ms of silence (device buffer {device.HardwareBufferFrames * 1000.0 / device.HardwareFormat.SampleRate:F1} ms); ")
+            + FormattableString.Invariant($"since last wake {slept:F1} ms, lock wait {lockWait:F1} ms, mix {mix:F1} ms, ")
+            + FormattableString.Invariant($"GC pauses +{(GC.GetTotalPauseDuration() - gcPause).TotalMilliseconds:F1} ms (gen2 +{GC.CollectionCount(2) - collections}); {context}"));
     }
 
     public void Dispose()

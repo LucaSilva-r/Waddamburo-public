@@ -308,7 +308,7 @@ internal sealed class GameShell : IDisposable
             Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
                 + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
                 + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
-        Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice);
+        Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{Active?.Id.ToString() ?? "starting"} at tick {Tick}" };
         Previews = Audio is null
             ? null
             : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
@@ -776,6 +776,8 @@ internal sealed class GameShell : IDisposable
         if ((!onLane || _home.Covering) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
         {
             System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
+            Audio?.FillAhead(TimeSpan.FromMilliseconds(150));
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
             _liveAfterCollect = GC.GetTotalMemory(false);
         }

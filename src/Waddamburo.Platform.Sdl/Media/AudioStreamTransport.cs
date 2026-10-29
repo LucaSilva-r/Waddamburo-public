@@ -44,7 +44,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
         return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
     }
 
-    // ponytail: the song frames already queued when pausing still play out (~10 ms at the default
+    // ponytail: the song frames already queued when pausing still play out (~21 ms at the default
     // buffer) and are skipped on resume; hold them back in the device if that ever matters.
     internal void SetPaused(bool paused, ulong submitted)
     {
