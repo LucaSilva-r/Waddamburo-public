@@ -195,7 +195,8 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         _heldNotPresented = false;
         if (first || tick < _holdUntilTick)
             return (held, _heldBlack);
-        SceneTextures.Release(application, _heldTextures.Where(notKept));
+        // Results can show the held gameplay frame's name boards: those stay with the active scene.
+        SceneTextures.Release(application, _heldTextures.Where(texture => notKept(texture) && !_textures.Contains(texture)));
         _heldTextures = [];
         _heldFrame = null;
         return null;
@@ -210,7 +211,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
 
     public void Dispose()
     {
-        SceneTextures.Release(application, _textures.Concat(_heldTextures).Concat(_keptTextures));
+        SceneTextures.Release(application, _textures.Concat(_heldTextures).Concat(_keptTextures).Distinct());
         releaseUploadedAhead();
     }
 
