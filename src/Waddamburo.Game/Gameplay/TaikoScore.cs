@@ -9,8 +9,10 @@ public readonly record struct TaikoScoreState(long Value, int Combo, int RollHit
 public sealed class TaikoScore
 {
     private readonly PlayableChart _chart;
-    private readonly int _base;
-    private readonly int _step;
+    private int _base;
+    private int _step;
+    // A chart of several songs (a dan course): each one's rates, from where it starts.
+    private readonly (TimeSpan Start, int Base, int Step)[] _songs;
     private int _pendingStrongIndex = -1;
     private long _pendingStrongPoints;
 
@@ -25,6 +27,13 @@ public sealed class TaikoScore
         _step = chart.ScoreDiff ?? (chart.ScoreInit is { } init ? init / 4 : estimated.Diff);
         ArgumentOutOfRangeException.ThrowIfNegative(_base);
         ArgumentOutOfRangeException.ThrowIfNegative(_step);
+        _songs = [.. chart.Segments.Select(static song =>
+        {
+            var rates = new TaikoScore(song.Source);
+            return (song.Start, rates._base, rates._step);
+        })];
+        if (_songs.Length > 0)
+            (_base, _step) = (_songs[0].Base, _songs[0].Step);
     }
 
     public long Value { get; private set; }
@@ -41,6 +50,9 @@ public sealed class TaikoScore
 
     public bool Apply(TaikoNoteJudgement judgement, TimeSpan time)
     {
+        foreach (var song in _songs)
+            if (time >= song.Start)
+                (_base, _step) = (song.Base, song.Step);
         var previous = Value;
         if (judgement.StrongHitCompleted)
         {

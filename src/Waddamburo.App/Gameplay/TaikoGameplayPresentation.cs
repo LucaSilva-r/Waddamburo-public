@@ -299,7 +299,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
             if (gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]) == false)
                 throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
-            var gauge = new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
+            var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments) : new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
             var score = new TaikoScore(chart);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
             if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))

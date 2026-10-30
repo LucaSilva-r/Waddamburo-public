@@ -262,7 +262,7 @@ internal sealed class LayerHostFactory(
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => songSelectHost(),
             GameplaySceneComposition.StaticHostId or GameplaySceneComposition.PlayerTwoHostId =>
-                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
+                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),

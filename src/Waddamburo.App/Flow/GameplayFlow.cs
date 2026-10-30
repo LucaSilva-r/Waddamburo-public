@@ -3,6 +3,7 @@ using Waddamburo.App.Gameplay;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Online;
@@ -69,8 +70,22 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private bool revealed => _directStart || Rainbow.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete;
 
     /// <summary>The next song's charts (one per player) and layout, for <see cref="Enter"/>.</summary>
+    /// <summary>Plays a dan course: after <see cref="Prepare"/> with its merged chart.</summary>
+    public void PrepareCourse(DanCourseTimeline course, IReadOnlyList<SongSelectSong> songs)
+    {
+        _course = course;
+        _courseSongs = songs;
+        _courseSong = 0;
+        _courseHold = TimeSpan.Zero;
+    }
+
+    private DanCourseTimeline? _course;
+    private IReadOnlyList<SongSelectSong> _courseSongs = [];
+    private int _courseSong;
+
     public void Prepare(PlayableChart[] charts, SongSelectSong song, int side, WaiwaiComposition? waiwai)
     {
+        _course = null;
         _directStart = false;
         _charts = _sourceCharts = charts;
         _song = song;
@@ -166,7 +181,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
             ModeLabel.Show(active.Player.Layers[songInfoIndex].Player, modeLabel(_demo ? Strings.T("mode.demo") : ModeText(request)));
         }
-        _timeline = new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
+        _timeline = _course is { } course
+            ? new GameplayTimeline(course.Songs[0].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn)
+            : new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
         _startTick = Shell.Tick;
         _clock.Reset();
         _musicEndPosition = null;
@@ -176,7 +193,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _review?.Dispose();
         // Home: a recorded play (a replay picked in song select) or the autoplay is reviewed (pause,
         // scrub, speed) rather than played live; it is never saved.
-        _review = !Shell.Arcade.Home || Shell.Headless ? null
+        _review = !Shell.Arcade.Home || Shell.Headless || _course is not null ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
             : Shell.Options.Autoplay
@@ -185,7 +202,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A replay or autoplay review is scrubbed back and forth: the end banner would stay up once reached.
         Shell.Gameplay.EndBanner = _review is null && !_demo;
         _training = null;
-        _voided = request.Review is not null || _demo;
+        // ponytail: a course's play is not saved until plays can hold several charts.
+        _voided = request.Review is not null || _demo || _course is not null;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.WatchAs(_side, watched);
         _autoplay = (Shell.Options.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
@@ -254,7 +272,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// The chart position: held at zero under the rainbow, then the music's (or the ticks', headless),
     /// less the audio offset.
     /// </summary>
-    private TimeSpan chartTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
+    private TimeSpan chartTime()
+    {
+        if (_course is not { } course)
+            return songTime();
+        // A new song's audio clock starts a little behind where the last one stopped: time holds until it catches up.
+        var time = course.Songs[_courseSong].Zero + songTime();
+        return time > _courseHold ? time : _courseHold;
+    }
+
+    private TimeSpan _courseHold;
+
+    private TimeSpan songTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
         : _musicEndPosition is { } ended ? ended + _afterMusic.Elapsed
         : _music is not null ? Shell.Audio!.GetPosition(_music)
@@ -488,7 +517,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _startTick = Shell.Tick;
             _music = _review is null ? startAudio(request) : null; // a review plays its own music
             _clock.Restart();
-            rainbow.GotoLabel(RainbowTransitionComposition.RevealLabel, play: true);
+            showCourseSong();
+            rainbow.GotoLabel(_course is null ? RainbowTransitionComposition.RevealLabel
+                : RainbowTransitionComposition.PlainRevealLabel, play: true);
             Rainbow.StartReveal();
             Console.WriteLine($"Rainbow reveal and gameplay started at tick {Shell.Tick}.");
             return;
@@ -501,6 +532,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it
             return;
         var elapsed = chartTime();
+        if (_course is { } playing && _courseSong + 1 < playing.Songs.Count && elapsed >= playing.Songs[_courseSong].End)
+        {
+            nextCourseSong(Shell.PlayRequests.Active!);
+            elapsed = chartTime();
+        }
         if (Shell.Headless)
             Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
         if (Shell.Audio?.Failure is { } device)
@@ -547,6 +583,51 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             end(finished: !input.Escape || Shell.Arcade.Home);
     }
 
+    // A course's next song: its music, on the course's clock, from under its card.
+    private void nextCourseSong(PlayRequest request)
+    {
+        var course = _course!;
+        _courseHold = chartTime();
+        if (_music is { } music)
+            Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
+        _courseSong++;
+        _timeline = new GameplayTimeline(course.Songs[_courseSong].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn);
+        _musicEndPosition = null;
+        _afterMusic.Reset();
+        _clock.Restart();
+        _music = startAudio(request);
+        showCourseSong();
+    }
+
+    // Traced session30, at each song's start: between's clip nextsong goes to "start" (its sounds are its own),
+    // with the song's title, and song_info shows the song's title, genre and number.
+    private void showCourseSong()
+    {
+        if (_course is null)
+            return;
+        var song = _courseSongs[_courseSong];
+        LumenPlayer? layer(string movie)
+        {
+            var index = Shell.Active.Layers.ToList().FindIndex(entry => Path.GetFileNameWithoutExtension(entry.Definition.MovieId) == movie);
+            return index < 0 ? null : Shell.Active.Player.Layers[index].Player;
+        }
+        var card = Shell.Titles.GetTransitionTitle(song);
+        _ = Shell.Titles.Resolve(card);
+        if (layer("between") is { } between)
+        {
+            between.SetNativeFill("next_song_name", card);
+            if (!between.TryGotoLabel("nextsong", "start"))
+                Console.Error.WriteLine("between has no nextsong clip to start.");
+        }
+        Shell.SongInfo = Shell.SongInfo with { Stage = _courseSong + 1 };
+        if (layer("song_info") is { } info)
+        {
+            var title = Shell.Titles.GetGameplayTitle(song);
+            _ = Shell.Titles.Resolve(title);
+            info.SetNativeFill("song_name", title);
+        }
+    }
+
     // A finished song shows its results (the shutter stays over them until their first frames are
     // drawn); Escape goes straight back to Song Select.
     private void end(bool finished)
@@ -568,6 +649,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.ReportDiagnostics();
         Shell.Gameplay.Stop();
         Shell.Gameplay.Dan = null;
+        _course = null;
+        dropNextAudio();
         if (finished && Shell.PlayRequests.Active is { } played)
             saveScore(played);
         Shell.PlayRequests.ClearActive();
@@ -636,7 +719,61 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     private AudioStreamTransport? startAudio(PlayRequest request)
     {
-        if (Shell.Audio is not { } audio || request.AudioAsset is not { } audioAsset)
+        var playback = openAudio(request);
+        prepareNextCourseSong();
+        return playback;
+    }
+
+    // A course's next song decodes ahead, off this thread: starting it there would stall the game.
+    private Task<BufferedAudioSource>? _nextAudio;
+
+    private void prepareNextCourseSong()
+    {
+        if (_course is null || _courseSong + 1 >= _courseSongs.Count || Shell.Audio is not { } audio
+            || _courseSongs[_courseSong + 1].Descriptor.AudioAsset is not { } asset)
+            return;
+        var next = _courseSongs[_courseSong + 1];
+        _ = Shell.Titles.Resolve(Shell.Titles.GetTransitionTitle(next));
+        _ = Shell.Titles.Resolve(Shell.Titles.GetGameplayTitle(next));
+        _nextAudio = Task.Run(async () =>
+        {
+            var stream = await Shell.Assets.OpenReadAsync(asset).ConfigureAwait(false);
+            BufferedAudioSource source;
+            try
+            {
+                source = new BufferedAudioSource(stream, audio.Mixer.Format);
+            }
+            catch
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+            await source.Ready.ConfigureAwait(false);
+            return source;
+        });
+    }
+
+    private void dropNextAudio()
+    {
+        _nextAudio?.ContinueWith(static task =>
+        {
+            if (task.IsCompletedSuccessfully)
+                task.Result.Dispose();
+        }, TaskScheduler.Default);
+        _nextAudio = null;
+    }
+
+    private AudioStreamTransport? openAudio(PlayRequest request)
+    {
+        var playing = _course?.Songs[_courseSong];
+        if (_nextAudio is { } prepared && Shell.Audio is { } ready)
+        {
+            _nextAudio = null;
+            return ready.PlayTransport(new ScheduledAudioSource(prepared.GetAwaiter().GetResult(),
+                _timeline!.AudioStart, _timeline.LeadIn + playing!.Chart.Duration + TimeSpan.FromSeconds(1)));
+        }
+        var asset = playing is null ? request.AudioAsset : _courseSongs[_courseSong].Descriptor.AudioAsset;
+        if (Shell.Audio is not { } audio || asset is not { } audioAsset)
             return null;
         var inputStream = Shell.Assets.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
         BufferedAudioSource? source = null;
@@ -653,7 +790,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
             source.Ready.GetAwaiter().GetResult();
             var playback = audio.PlayTransport(new ScheduledAudioSource(source,
-                _timeline!.AudioStart, _timeline.LeadIn + _charts[0].Duration + TimeSpan.FromSeconds(1)));
+                _timeline!.AudioStart, _timeline.LeadIn + (playing?.Chart ?? _charts[0]).Duration + TimeSpan.FromSeconds(1)));
             source = null;
             return playback;
         }

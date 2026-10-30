@@ -13,9 +13,10 @@ public sealed class TaikoSoulGauge
     /// <summary>Segments of the authored gauge movies.</summary>
     public const int Segments = 50;
 
-    private readonly int _great;
-    private readonly int _good;
-    private readonly int _miss;
+    private int _great;
+    private int _good;
+    private int _miss;
+    private readonly (TimeSpan Start, int Great, int Good, int Miss)[] _songs = [];
 
     public TaikoSoulGauge(TaikoCourse course, int? level, int noteCount)
     {
@@ -26,6 +27,21 @@ public sealed class TaikoSoulGauge
             _ => 8000,
         };
         (_great, _good, _miss) = rates(course, Math.Clamp(level ?? 10, 1, 10), noteCount);
+    }
+
+    /// <summary>
+    /// A dan course's gauge: every song's amounts divided by 3, rounded towards zero (traced session30: predicts
+    /// the gauge after each of 5 songs within a percent; the wiki's 達人 examples, 15 to 5 and 14 to 4, agree).
+    /// </summary>
+    public TaikoSoulGauge(IReadOnlyList<ChartSegment> songs)
+        : this(songs[0].Course, songs[0].Source.Level, songs[0].Source.NoteCount)
+    {
+        _songs = [.. songs.Select(static song =>
+        {
+            var (great, good, miss) = rates(song.Course, Math.Clamp(song.Source.Level ?? 10, 1, 10), song.Source.NoteCount);
+            return (song.Start, great / 3, good / 3, miss / 3);
+        })];
+        (_great, _good, _miss) = (_songs[0].Great, _songs[0].Good, _songs[0].Miss);
     }
 
     public int Clear { get; }
@@ -43,6 +59,9 @@ public sealed class TaikoSoulGauge
     public bool Apply(TaikoNoteJudgement judgement)
     {
         if (judgement.StrongHitCompleted || judgement.Result is not { } result) return false;
+        foreach (var song in _songs)
+            if (judgement.HitObject.StartTime >= song.Start)
+                (_great, _good, _miss) = (song.Great, song.Good, song.Miss);
         var previous = Value;
         Value = Math.Clamp(Value + result switch
         {
