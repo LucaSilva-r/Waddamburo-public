@@ -100,7 +100,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             if (input.Escape || Shell.Hosts.DaniSelect is { Terminated: true, Back: true })
             {
-                Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanCover);
+                Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanExitCover); // traced session31
                 return;
             }
             if (Shell.Hosts.DaniSelect is { Terminated: true, Selected: { } board } && Shell.PlayRequests.Pending is null)

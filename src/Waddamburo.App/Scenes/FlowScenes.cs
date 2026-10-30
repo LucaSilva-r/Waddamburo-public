@@ -30,6 +30,11 @@ internal static class FlowScenes
             LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
     ]);
 
+    public static SceneDefinition DanExitCover { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-exit-cover"), [
+        new SceneLayerDefinition("intermission/packeddata.ddp", "scene_change_dani2/scene_change_dani2.lm",
+            LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
+    ]);
+
     public static SceneDefinition Rainbow { get; } = RainbowTransitionComposition.Create(new SceneId("rainbow-transition"));
 
     // Traced 1P results: the results movie and its "press to continue" overlay, full screen.

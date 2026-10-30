@@ -434,7 +434,7 @@ internal sealed class GameShell : IDisposable
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
         // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
-        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover })
+        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover })
             Overlay.Preload(intermission);
 
         _gameplay = new GameplayFlow(this);
