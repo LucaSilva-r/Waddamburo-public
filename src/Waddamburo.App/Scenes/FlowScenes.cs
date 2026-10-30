@@ -24,6 +24,12 @@ internal static class FlowScenes
     public static readonly SceneId Tutorial = new("tutorial");
     public static readonly SceneId DaniSelect = new("dani-select");
 
+    // Traced session30: the game plays this as Song Select ends and sends it out once dani_select has loaded.
+    public static SceneDefinition DanCover { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-cover"), [
+        new SceneLayerDefinition("intermission/packeddata.ddp", "scene_change_dani1/scene_change_dani1.lm",
+            LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
+    ]);
+
     public static SceneDefinition Rainbow { get; } = RainbowTransitionComposition.Create(new SceneId("rainbow-transition"));
 
     // Traced 1P results: the results movie and its "press to continue" overlay, full screen.

@@ -421,7 +421,7 @@ internal sealed class LayerHostFactory(
             return boards;
         }, PlayerSide, uid =>
             Dan!.Song(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
-                ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Compact) : null,
+                ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Expanded) : null,
             songSelectSounds, don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }

@@ -41,6 +41,7 @@ public sealed class DaniSelectHostBinding(
 
     private LumenPlayer? _player;
     private IReadOnlyList<DaniSelectBoard>? _boards;
+    private bool _boardsJumped;
 
     /// <summary>The picked board's index, once the movie reported it.</summary>
     public int? Selected { get; private set; }
@@ -50,6 +51,14 @@ public sealed class DaniSelectHostBinding(
     /// <summary>Back to Song Select: the back board was picked.</summary>
     public bool Back => Selected is { } index && _boards is { } shown
         && ((uint)index >= (uint)shown.Count || shown[index].Id == BackId);
+
+    /// <summary>After the tick's movie advance, once the boards are where the tick leaves them.</summary>
+    public void Poll()
+    {
+        if (_boardsJumped)
+            _player?.HoldStill();
+        _boardsJumped = false;
+    }
 
     public void Attach(LumenPlayer player)
     {
@@ -122,6 +131,14 @@ public sealed class DaniSelectHostBinding(
         if (_boards is not null || _player is null || boards() is not { } ready)
             return;
         _boards = ready;
+        // The boards recycle: stopping puts each back on its slot, a 125 px jump with new content, under the
+        // distance interpolation takes for a cut. Drawn as is, or they slide across it (a flicker at high refresh).
+        if (!_player.TryWrapScriptMethod("_global.BoardContainer.prototype", "ResetBoards", (_, original) =>
+        {
+            _boardsJumped = true;
+            return original();
+        }))
+            Console.Error.WriteLine("dani_select has no BoardContainer.ResetBoards to hold still.");
         invoke("SetPlayer", side, firstValid(ready) + 1, EveryRankOpen);
         foreach (var board in ready)
         {

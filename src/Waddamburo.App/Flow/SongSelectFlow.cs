@@ -77,6 +77,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input);
         scroll?.After();
         Shell.Hosts.SongSelect?.Poll();
+        if (Shell.Active.Id == FlowScenes.DaniSelect)
+            Shell.Hosts.DaniSelect?.Poll();
     }
 
     private SongKey? _titled;
@@ -96,7 +98,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             // ponytail: a picked course returns here until the course's gameplay exists.
             if (input.Escape || Shell.Hosts.DaniSelect?.Terminated == true)
-                showSongSelect();
+                Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanCover);
             return;
         }
         // A second player joins from Song Select (arcade; one player in, the other drum's join paid for or
@@ -129,7 +131,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (Shell.Hosts.SongSelect?.DanRequested == true)
         {
-            Shell.Show(FlowScenes.DaniSelect);
+            Shell.Sounds?.Bank.Play("SE_SELECT", 7); // traced session30, as Song Select ends
+            Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
             return;
         }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the

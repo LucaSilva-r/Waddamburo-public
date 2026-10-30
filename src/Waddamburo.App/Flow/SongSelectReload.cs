@@ -22,9 +22,10 @@ internal sealed class SongSelectReload(GameShell shell)
 
     /// <summary>
     /// Covers the screen, then runs <paramref name="change"/> and reloads Song Select (or shows
-    /// <paramref name="next"/> instead).
+    /// <paramref name="next"/> instead). <paramref name="cover"/> replaces the rainbow with another
+    /// intermission that has its "in" and "out" labels.
     /// </summary>
-    public void Start(Action change, Waddamburo.Game.Flow.SceneId? next = null)
+    public void Start(Action change, Waddamburo.Game.Flow.SceneId? next = null, Waddamburo.Game.Scenes.SceneDefinition? cover = null)
     {
         // A scene switch still under way would make the reload's restart throw (flow not Active).
         if (Busy || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active)
@@ -36,8 +37,9 @@ internal sealed class SongSelectReload(GameShell shell)
             shell.JoinedSides.Count > 0 ? [.. shell.JoinedSides] : [shell.Hosts.PlayerSide], shell.Hosts.Waiwai);
         if (next is null)
             shell.Prefetch(_scene);
-        shell.Overlay.Show(FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
-        shell.Overlay.Speed = Speed;
+        shell.Overlay.Show(cover ?? FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
+        // The rainbow hurries here; another cover plays as authored.
+        shell.Overlay.Speed = cover is null ? Speed : 1;
         _stage = Stage.Covering;
         _startTick = shell.Tick;
     }
