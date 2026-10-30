@@ -19,6 +19,9 @@ public sealed class TaikoLumenPresentation
     private readonly IReadOnlyDictionary<string, LumenSceneLayer>? _noteTexts; // by onp_moji label
     private readonly string[] _noteLabels;
     private readonly LumenSceneLayer _bar;
+    private readonly LumenSceneLayer? _branchBar;
+    private readonly HashSet<TimeSpan> _checkBars;
+    private ChartBranch _shownBranch;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
     private readonly LumenPlayer _board;
@@ -38,8 +41,11 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
         LumenSceneLayer? rareNote = null,
-        IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null)
+        IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null,
+        LumenSceneLayer? branchBar = null)
     {
+        _branchBar = branchBar;
+        _checkBars = [.. chart.Branching?.Checks.Select(static check => check.Time) ?? []];
         _noteTexts = noteTexts;
         _noteLabels = TaikoNoteText.Labels(chart);
         _rareNote = rareNote;
@@ -68,6 +74,8 @@ public sealed class TaikoLumenPresentation
         _hitRadius = _hitY - target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y).Y;
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
+        // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.
+        callback(_target.Player, "SetBranchAvailable", LumenHostValue.FromBoolean(chart.Branching is not null));
     }
 
     /// <summary>Shows a combo count at once (a reviewed play's restored state).</summary>
@@ -104,6 +112,12 @@ public sealed class TaikoLumenPresentation
     {
         _longNotes?.Update(time);
         _gogo.Update(time);
+        // The lane takes the route a check picked at once (lane_hit plays its normal_kurouto etc. transition).
+        if (_judgement.Branch != _shownBranch)
+        {
+            _shownBranch = _judgement.Branch;
+            callback(_target.Player, "SetBranch", LumenHostValue.FromNumber((int)_shownBranch));
+        }
     }
 
     // characterSlot: background index the character is drawn before (it sits on its backdrop,
@@ -137,7 +151,7 @@ public sealed class TaikoLumenPresentation
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
         foreach (var bar in _chart.BarLines)
             if (bar.IsVisible)
-                addAt(layers, _bar, bar.Time, time);
+                addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time);
         // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
         // deeper depth), so an earlier roll body covers the notes that follow it.
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
@@ -152,6 +166,7 @@ public sealed class TaikoLumenPresentation
             if (_removed.Contains(index) || _judgement.IsJudged(index) && !_judgement.IsMissed(index)) continue;
             hitNotes.Clear();
             var note = _chart.HitObjects[index];
+            if (!PlayableChart.IsOn(note.Branch, _judgement.BranchAt(note.StartTime))) continue;
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
             var template = note.IsRare && _rareNote is { } rare ? rare
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
@@ -169,6 +184,7 @@ public sealed class TaikoLumenPresentation
         {
             var note = _chart.LongNotes[index];
             var held = _longNotes?.IsHeld(index, time) == true;
+            if (!PlayableChart.IsOn(note.Branch, _judgement.BranchAt(note.StartTime))) continue;
             if (note.IsBalloon && (time < note.StartTime || held)
                 && _noteTexts?.GetValueOrDefault(TaikoNoteText.Balloon(note.Kind)) is { } text)
                 addAt(texts, text, held ? time : note.StartTime, time, yOffset: TaikoNoteText.Offset);

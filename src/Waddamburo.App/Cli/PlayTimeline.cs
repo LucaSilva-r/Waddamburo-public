@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Waddamburo.Catalog;
 using Waddamburo.App.Gameplay;
 using Waddamburo.Game.Gameplay;
 
@@ -11,11 +12,15 @@ namespace Waddamburo.App.Cli;
 /// <c>long_notes</c> (start, end, kind, required hits, the times of the hits that counted), <c>inputs</c>
 /// (time, action 0 left Don .. 3 right Ka, what it hit: note, strong, roll, pop, capped or none, and the note's
 /// index when it judged one), <c>bars</c> and <c>gogo</c> (time, on). The chart is the one played (after its options).
+/// A 譜面分岐 chart adds <c>branch</c> (normal, expert, master) to its route-only notes and long notes, and
+/// <c>branches</c>: each check (t, its yellow bar line; start, where its route begins; route, the one picked).
+/// Notes off the route played have no result.
 /// </summary>
 internal static class PlayTimeline
 {
     private static readonly string[] Kinds = ["don", "ka", "big_don", "big_ka"];
     private static readonly string[] LongKinds = ["roll", "big_roll", "balloon", "kusudama"];
+    private static readonly string[] Routes = ["normal", "expert", "master"];
 
     /// <summary>Writes <paramref name="play"/>'s timeline as properties of the object <paramref name="writer"/> is in.</summary>
     public static void Write(Rescore.ChartCache charts, Rescore.StoredPlay play, Utf8JsonWriter writer)
@@ -40,6 +45,8 @@ internal static class PlayTimeline
                 hitNote = judgement.NoteIndex;
         };
         session.LongNoteHit += progress => longHits[progress.NoteIndex].Add(session.CurrentTime);
+        var branches = new List<(ChartBranchCheck Check, ChartBranch Route)>();
+        session.BranchChecked += (check, route) => branches.Add((check, route));
 
         writer.WriteStartObject("windows");
         writer.WriteNumber("great", ms(windows.Great));
@@ -83,6 +90,8 @@ internal static class PlayTimeline
             writer.WriteString("kind", Kinds[(int)note.Kind]);
             if (note.IsHand)
                 writer.WriteBoolean("hand", true);
+            if (note.Branch is { } noteRoute)
+                writer.WriteString("branch", Routes[(int)noteRoute]);
             if (judged[index] is { } judgement)
             {
                 writer.WriteString("result", judgement.Result switch
@@ -108,6 +117,8 @@ internal static class PlayTimeline
             writer.WriteNumber("end", ms(note.EndTime));
             writer.WriteString("kind", LongKinds[(int)note.Kind]);
             writer.WriteNumber("required", note.RequiredHits);
+            if (note.Branch is { } longRoute)
+                writer.WriteString("branch", Routes[(int)longRoute]);
             writer.WriteStartArray("hits");
             foreach (var hit in longHits[index])
                 writer.WriteNumberValue(ms(hit));
@@ -126,6 +137,18 @@ internal static class PlayTimeline
             writer.WriteStartObject();
             writer.WriteNumber("t", ms(point.Time));
             writer.WriteBoolean("on", point.IsGoGo);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        if (chart.Branching is null)
+            return;
+        writer.WriteStartArray("branches");
+        foreach (var (check, route) in branches)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("t", ms(check.Time));
+            writer.WriteNumber("start", ms(check.Start));
+            writer.WriteString("route", Routes[(int)route]);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();

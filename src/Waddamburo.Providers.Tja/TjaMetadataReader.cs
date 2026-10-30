@@ -25,6 +25,11 @@ internal static class TjaMetadataReader
             var line = StripComment(rawLine).Trim();
             if (line.Length == 0)
                 continue;
+            if (line.StartsWith("#BRANCHSTART", StringComparison.OrdinalIgnoreCase) && charts.Count != 0)
+            {
+                charts[^1] = charts[^1] with { HasBranches = true };
+                continue;
+            }
             if (line.StartsWith("#START", StringComparison.OrdinalIgnoreCase))
             {
                 started = true;
@@ -149,4 +154,7 @@ internal sealed record TjaChartMetadata(
     string DifficultyName,
     int? Level,
     string Player,
-    int Occurrence);
+    int Occurrence)
+{
+    public bool HasBranches { get; init; }
+}

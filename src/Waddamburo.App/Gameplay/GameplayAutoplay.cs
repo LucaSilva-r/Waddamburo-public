@@ -44,6 +44,9 @@ internal sealed class GameplayAutoplay
     /// </summary>
     public static IReadOnlyList<TaikoReplayInput> InputsFor(PlayableChart chart, TimeSpan rollInterval)
     {
+        // ponytail: 譜面分岐 charts play the master route, where a perfect play goes at the first check;
+        // a chart whose first check cannot reach master leaves the bot hitting master notes on a lower route.
+        chart = chart.OnRoute(ChartBranch.Master);
         var inputs = new List<TaikoReplayInput>();
         foreach (var note in chart.HitObjects)
         {

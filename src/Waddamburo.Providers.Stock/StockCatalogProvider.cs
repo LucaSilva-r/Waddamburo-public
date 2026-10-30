@@ -95,7 +95,10 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                     hasDuet(entry.Id, Courses[(int)course])
                         ? [new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:1"),
                            new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:2")]
-                        : null))
+                        : null)
+                {
+                    HasBranches = FumenChartReader.HasBranchesFlag(chartPath(entry.Id, Courses[(int)course])),
+                })
                 .ToArray();
             if (charts.Length == 0)
                 continue;

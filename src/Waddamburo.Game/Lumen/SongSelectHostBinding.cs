@@ -602,6 +602,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             LumenHostValue.FromNumber(courses.HiddenNormalStars),
             LumenHostValue.FromNumber(courses.HiddenHardStars),
             LumenHostValue.FromNumber(courses.HiddenOniStars));
+        // The course board's 分岐 mark (GetEffectLabel): one bit per course slot, ura = hidden oni (7).
+        // ponytail: the パパママ (papamama support) bits stay 0; nothing provides them yet.
+        var separate = song.Descriptor.Charts.Where(static chart => chart.HasBranches && chart.Course is not null)
+            .Aggregate(0, static (bits, chart) => bits | 1 << (chart.Course == TaikoCourse.Ura ? 7 : (int)chart.Course!.Value));
+        invoke("SetPapamamaSeparateBits", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(separate));
         publishCrowns(song);
         return LumenHostValue.Undefined;
     }

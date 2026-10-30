@@ -26,7 +26,7 @@ public static class PlayRescore
         // ponytail: a duet's hand notes take their bonus from the partner, whose inputs a solo replay lacks.
         var session = new TaikoJudgementSession(played, windows, strongSecondHitWindow);
         var score = new TaikoScore(played);
-        var gauge = new TaikoSoulGauge(course, played.Level, played.NoteCount);
+        var gauge = new TaikoSoulGauge(course, played.Level, played.OnRoute(ChartBranch.Normal).NoteCount);
         int great = 0, good = 0, miss = 0, maxCombo = 0;
         session.Judged += judgement =>
         {
@@ -47,7 +47,7 @@ public static class PlayRescore
             gauge.FilledSegments, gauge.State != TaikoGaugeState.BelowClear)
         {
             Options = options,
-            RollMax = TaikoJudgementSession.MaxRollHits(played),
+            RollMax = Enum.GetValues<ChartBranch>().Max(route => TaikoJudgementSession.MaxRollHits(played.OnRoute(route))),
         };
     }
 }

@@ -456,21 +456,58 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
-    public async Task BranchesPlayNormalOnlyAndDoNotLeakTimingFromOtherRoutes()
+    public async Task BranchesKeepEveryRouteTaggedAndTakeTimingFromNormal()
     {
         var chart = await loadSynthetic("#SECTION\n#BRANCHSTART p,50,80\n#N\n1,\n#E\n#BPMCHANGE 999\n2,\n#M\n#DELAY 10\n3,\n#BRANCHEND\n4,");
-        Assert.Equal(new[] { PlayableNoteKind.Don, PlayableNoteKind.BigKa }, chart.HitObjects.Select(n => n.Kind));
-        Assert.Equal(TimeSpan.FromSeconds(2), chart.HitObjects[1].StartTime);
-        Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+        Assert.Equal(new (PlayableNoteKind, ChartBranch?, double)[]
+            {
+                (PlayableNoteKind.Don, ChartBranch.Normal, 0), (PlayableNoteKind.Ka, ChartBranch.Expert, 0),
+                (PlayableNoteKind.BigKa, null, 2), (PlayableNoteKind.BigDon, ChartBranch.Master, 10),
+            },
+            chart.HitObjects.Select(n => (n.Kind, n.Branch, n.StartTime.TotalSeconds)));
         Assert.Single(chart.TimingPoints);
+        Assert.Equal(2, chart.BarLines.Length); // the normal route's measure and the one after
+        Assert.Single(chart.Branching!.Checks);
+    }
+
+    [Fact]
+    public async Task PercentConditionsBecomePointsOfTheMeasuresBeforeTheCheck()
+    {
+        // Judged at the bar line before the branch (2 s) over the four notes before it: 80 points at most.
+        var chart = await loadSynthetic("1111,\n0,\n#BRANCHSTART p,50,100\n#N\n1,\n#E\n2,\n#M\n3,\n#BRANCHEND\n4,");
+        var check = Assert.Single(chart.Branching!.Checks);
+        Assert.Equal((TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4)), (check.Time, check.Start));
+        Assert.Equal(new ChartBranchThreshold(40, 80), check.FromNormal);
+        Assert.Equal(new ChartBranchThreshold(40, 80), check.FromMaster);
+        Assert.Equal(0, chart.Branching.Points.Roll); // percent conditions only: rolls earn nothing
+        Assert.Equal(20, chart.Branching.Points.Great);
+    }
+
+    [Fact]
+    public async Task RollConditionsLevelHoldAndScoreConditions()
+    {
+        var chart = await loadSynthetic(
+            "5008,\n#BRANCHSTART r,3,6\n#N\n1,\n#E\n#LEVELHOLD\n2,\n#M\n3,\n#BRANCHEND\n#BRANCHSTART s,1,2\n#N\n1,\n#E\n2,\n#M\n3,");
+        var (rolls, held) = (chart.Branching!.Checks[0], chart.Branching.Checks[1]);
+        Assert.Equal(new ChartBranchThreshold(3, 6), rolls.FromNormal);
+        Assert.Equal(new ChartBranchThreshold(0, int.MaxValue), held.FromExpert); // #LEVELHOLD on expert stays there
+        Assert.Equal(ChartBranchThreshold.Stay, held.FromNormal); // ponytail: score conditions keep the route
+        Assert.Equal(ChartBranchPoints.Default, chart.Branching.Points); // roll and other conditions mixed: every weight
     }
 
     [Fact]
     public async Task ConsecutiveAndEmptyBranchesAndFallbackRoutesLoad()
     {
         var chart = await loadSynthetic("#BRANCHSTART p,0,0\n#BRANCHEND\n#BRANCHSTART p,50,80\n#N\n1,\n#E\n2,\n#BRANCHSTART p,-1,-1\n#M\n3,");
-        Assert.Equal(new[] { PlayableNoteKind.Don, PlayableNoteKind.BigDon }, chart.HitObjects.Select(n => n.Kind));
+        // A route a block lacks plays the main route's notes: master copies normal, then normal and expert copy master.
+        Assert.Equal(new (PlayableNoteKind, ChartBranch?)[]
+            {
+                (PlayableNoteKind.Don, ChartBranch.Normal), (PlayableNoteKind.Ka, ChartBranch.Expert), (PlayableNoteKind.Don, ChartBranch.Master),
+                (PlayableNoteKind.BigDon, ChartBranch.Master), (PlayableNoteKind.BigDon, ChartBranch.Normal), (PlayableNoteKind.BigDon, ChartBranch.Expert),
+            },
+            chart.HitObjects.Select(n => (n.Kind, n.Branch)));
         Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
+        Assert.Equal(3, chart.Branching!.Checks.Length);
     }
 
     [Fact]
@@ -487,13 +524,13 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Theory]
-    [InlineData("", 3)]
-    [InlineData("BALLOONNOR:8\n", 8)]
-    public async Task SkippedBranchesStillConsumeTheirGlobalBalloonEntries(string branchHeader, int expectedHits)
+    [InlineData("", new[] { 2, 3, 4, 5 })] // file order: expert, normal, master, after the block
+    [InlineData("BALLOONNOR:8\n", new[] { 1, 8, 1, 2 })] // per-route lists; a route without one gets 1
+    public async Task BranchBalloonsTakeTheirRoutesOrTheGlobalListInFileOrder(string branchHeader, int[] expectedHits)
     {
         var chart = await loadSynthetic("#BRANCHSTART p,50,80\n#E\n7080,\n#N\n7080,\n#M\n7080,\n#BRANCHEND\n7080,", "BALLOON:2,3,4,5\n" + branchHeader);
-        Assert.Equal(expectedHits, chart.LongNotes[0].RequiredHits);
-        Assert.Equal(branchHeader.Length == 0 ? 5 : 2, chart.LongNotes[1].RequiredHits);
+        Assert.Equal(expectedHits, chart.LongNotes.Select(n => n.RequiredHits));
+        Assert.Equal(new ChartBranch?[] { ChartBranch.Expert, ChartBranch.Normal, ChartBranch.Master, null }, chart.LongNotes.Select(n => n.Branch));
         Assert.Equal(TimeSpan.FromSeconds(4), chart.Duration);
     }
 

@@ -20,9 +20,11 @@ public sealed class ReviewTimeline
     private readonly TaikoHitResult?[] _results;
     private readonly TimeSpan[][] _longHits;
 
-    private ReviewTimeline(PlayableChart chart, ImmutableArray<ReviewEvent> events, ImmutableArray<TaikoReplayInput> inputs)
+    private ReviewTimeline(PlayableChart chart, ImmutableArray<ReviewEvent> events, ImmutableArray<TaikoReplayInput> inputs,
+        ImmutableArray<(ChartBranchCheck Check, ChartBranch Route)> branches)
     {
         Chart = chart;
+        Branches = branches;
         Events = events;
         Inputs = inputs;
         _judgedAt = new TimeSpan?[chart.NoteCount];
@@ -39,6 +41,24 @@ public sealed class ReviewTimeline
     }
 
     public PlayableChart Chart { get; }
+
+    /// <summary>The 譜面分岐 checks passed and the route each picked, in time order.</summary>
+    public ImmutableArray<(ChartBranchCheck Check, ChartBranch Route)> Branches { get; }
+
+    /// <summary>The route the last check at or before <paramref name="now"/> picked.</summary>
+    public ChartBranch BranchAt(TimeSpan now) => routeAt(now, static item => item.Check.Time);
+
+    /// <summary>The route played at chart time <paramref name="time"/>, as known at <paramref name="now"/>.</summary>
+    public ChartBranch BranchAt(TimeSpan time, TimeSpan now) =>
+        routeAt(time, static item => item.Check.Start, now);
+
+    private ChartBranch routeAt(TimeSpan time, Func<(ChartBranchCheck Check, ChartBranch Route), TimeSpan> from, TimeSpan? now = null)
+    {
+        for (var index = Branches.Length - 1; index >= 0; index--)
+            if (from(Branches[index]) <= time && (now is null || Branches[index].Check.Time <= now))
+                return Branches[index].Route;
+        return ChartBranch.Normal;
+    }
 
     /// <summary>In time order.</summary>
     public ImmutableArray<ReviewEvent> Events { get; }
@@ -62,8 +82,10 @@ public sealed class ReviewTimeline
         if (from is { } start)
             session.SkipTo(start);
         var score = new TaikoScore(chart);
-        var gauge = new TaikoSoulGauge(course, chart.Level, chart.NoteCount);
+        var gauge = new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
         var events = new List<ReviewEvent>();
+        var branches = new List<(ChartBranchCheck, ChartBranch)>();
+        session.BranchChecked += (check, route) => branches.Add((check, route));
         ReviewState state(TimeSpan time) => new(time, score.State, gauge.Value);
         session.Judged += judgement =>
         {
@@ -87,7 +109,7 @@ public sealed class ReviewTimeline
             session.AdvanceTo(end);
         // Stable: same-time events keep the order they happened in.
         return new ReviewTimeline(chart, [.. events.Select(static (item, index) => (item, index))
-            .OrderBy(static pair => pair.item.Time).ThenBy(static pair => pair.index).Select(static pair => pair.item)], played);
+            .OrderBy(static pair => pair.item.Time).ThenBy(static pair => pair.index).Select(static pair => pair.item)], played, [.. branches]);
     }
 
     /// <summary>The state at <paramref name="time"/>: after the last event at or before it (null: before the first).</summary>
@@ -155,6 +177,11 @@ public sealed class ReviewJudgementSource(ReviewTimeline timeline) : ITaikoJudge
     public bool IsJudged(int index) => Timeline.IsJudged(index, CurrentTime);
 
     public bool IsMissed(int index) => Timeline.ResultAt(index, CurrentTime) == TaikoHitResult.Miss;
+
+    public ChartBranch Branch => Timeline.BranchAt(CurrentTime);
+
+    // A section not checked yet at the playhead follows the route being played, as live.
+    public ChartBranch BranchAt(TimeSpan time) => Timeline.BranchAt(time, CurrentTime);
 
     public TaikoLongNoteProgress GetLongNoteProgress(int index)
     {

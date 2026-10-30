@@ -137,6 +137,15 @@ the user's asset files. The implementation is written independently; no address 
 TaikoRecomp source is copied.
 Public tests use synthetic XML, fumen and `.nsh` fixtures.
 
+譜面分岐 (branching): the fumen branch-point weights (header 0x1D4) and per-measure thresholds, and the
+conversion of TJA `#BRANCHSTART p/r`, `#LEVELHOLD` and point-weight selection to them, follow the
+MIT-licensed tja2fumen documentation and converter (`tools/tja2fumen` in the Waddamburo lab, as vendored
+2026-09-27); the check one measure before the branch is the TJA format's own rule. Which charts branch was
+measured on the user's Green fumens (thresholds plus differing routes) and Nijiiro `musicinfo` flags. The
+lane's route display uses `lane_hit.lm`'s own `SetBranchAvailable`/`SetBranch` callbacks and
+`lane_syousetsu.lm`'s `bunki` frame, and song select's 分岐 mark its `Callback_SetPapamamaSeparateBits`,
+all read from the user's Green movies. No tja2fumen source is copied or translated.
+
 `src/Waddamburo.Catalog/PlayableChart.cs` and the playable-chart conversion in
 `src/Waddamburo.Providers.Tja/` are original Waddamburo implementations. Their
 separation of absolute-time hit objects from timing, scroll, and effect control

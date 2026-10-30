@@ -153,7 +153,7 @@ public sealed class TaikoLongNotePresentation
         {
             var note = _chart.LongNotes[index];
             if (note.StartTime > time) break;
-            if (IsHeld(index, time)) continue; // opened by its first hit
+            if (IsHeld(index, time) || !onRoute(index)) continue; // held: opened by its first hit
             if (time < note.EndTime && !_session.GetLongNoteProgress(index).IsPopped && !_finished.Contains(index))
             {
                 begin(index);
@@ -161,6 +161,9 @@ public sealed class TaikoLongNotePresentation
             }
         }
     }
+
+    private bool onRoute(int index) =>
+        PlayableChart.IsOn(_chart.LongNotes[index].Branch, _session.BranchAt(_chart.LongNotes[index].StartTime));
 
     /// <summary>Visible long notes with their start times (for chart-order drawing); <paramref name="bodies"/> false: their text only (ドロン).</summary>
     public IEnumerable<(TimeSpan Start, LumenSceneLayer Layer)> NoteLayers(TimeSpan time,
@@ -170,6 +173,7 @@ public sealed class TaikoLongNotePresentation
         for (var index = _chart.LongNotes.Length - 1; index >= 0; index--)
         {
             var note = _chart.LongNotes[index];
+            if (!onRoute(index)) continue;
             // Rolls remain on screen after their scoring window closes until the tail passes left.
             if (note.IsBalloon && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
             var held = IsHeld(index, time);

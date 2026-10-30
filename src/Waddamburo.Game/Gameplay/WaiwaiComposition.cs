@@ -57,6 +57,8 @@ public sealed class WaiwaiComposition
     // between two runs, likely live) and the rare note are not modelled.
     public (PlayableChart Left, PlayableChart Right) Apply(PlayableChart left, PlayableChart right, bool rareNote = false)
     {
+        // ponytail: Waiwai Green charts have no 譜面分岐; a branched one is played on its normal route.
+        (left, right) = (left.OnRoute(ChartBranch.Normal), right.OnRoute(ChartBranch.Normal));
         var timeline = Timeline(left);
         WaiwaiSectionTime? at(TimeSpan time) => timeline.Cast<WaiwaiSectionTime?>()
             .FirstOrDefault(section => time >= section!.Value.Start && time < section.Value.End);

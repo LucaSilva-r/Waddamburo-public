@@ -73,6 +73,9 @@ public sealed record SongChartDescriptor
 
     /// <summary>The chart's id on its online source (an osu.ppy.sh beatmap id), when known.</summary>
     public int? OnlineId { get; init; }
+
+    /// <summary>The chart has 譜面分岐 (song select marks the course 分岐).</summary>
+    public bool HasBranches { get; init; }
 }
 
 public sealed record SongDescriptor

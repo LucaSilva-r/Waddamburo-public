@@ -276,7 +276,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                     chart.Player,
                     chart.Occurrence),
                 course,
-                chart.Level));
+                chart.Level) { HasBranches = chart.HasBranches });
         }
 
         return charts;

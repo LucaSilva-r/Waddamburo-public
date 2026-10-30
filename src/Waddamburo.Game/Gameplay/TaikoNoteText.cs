@@ -23,6 +23,19 @@ public static class TaikoNoteText
         // any run gets clustered too, which reproduces what tja2fumen would have written.
         if (notes.Any(note => note.InRun))
             return [.. notes.Select(note => label(note, note.InRun, note.IsKo))];
+        // 譜面分岐: each route clustered on its own (a note on every route takes the normal one's label).
+        if (chart.Branching is not null)
+        {
+            var labels = new string[notes.Length];
+            foreach (var route in Enum.GetValues<ChartBranch>())
+            {
+                var indices = Enumerable.Range(0, notes.Length).Where(index => PlayableChart.IsOn(notes[index].Branch, route)).ToArray();
+                var routeLabels = Labels(chart.OnRoute(route));
+                for (var index = 0; index < indices.Length; index++)
+                    labels[indices[index]] ??= routeLabels[index];
+            }
+            return labels;
+        }
         var shortForm = new bool[notes.Length];
         var ko = new bool[notes.Length];
         foreach (var cluster in Clusters(chart))

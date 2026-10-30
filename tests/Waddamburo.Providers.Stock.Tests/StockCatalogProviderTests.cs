@@ -43,6 +43,37 @@ public sealed class StockCatalogProviderTests
         Assert.Contains(contribution.Diagnostics, static diagnostic => diagnostic.Code == "STOCK_AUDIO_MISSING");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)] // thresholds over three equal routes: plays the same, so no branching (and no new hash)
+    public async Task BranchedFumensKeepEachRouteAndCheckAtThePreviousBarLine(bool masterDiffers)
+    {
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "曲", "J-POP"));
+        int[] none = [-1, -1, -1, -1, -1, -1];
+        data.WriteBytes("fumen/song/solo/song_m.bin", Fumen(
+            new Measure(120, 0, [N(1, 0)], Thresholds: none),
+            new Measure(120, 2000, [N(1, 0)], Thresholds: none),
+            new Measure(120, 4000, [N(1, 0)], Thresholds: [20, 40, 20, 40, -1, -1], MasterNotes: masterDiffers ? [N(7, 0)] : null)));
+        var provider = new StockCatalogProvider(data.Path);
+        var chart = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs[0].Charts);
+
+        var playable = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
+
+        if (!masterDiffers)
+        {
+            Assert.Null(playable.Branching);
+            Assert.Equal(3, playable.NoteCount);
+            return;
+        }
+        var check = Assert.Single(playable.Branching!.Checks);
+        Assert.Equal((4000d, 6000d), (check.Time.TotalMilliseconds, check.Start.TotalMilliseconds));
+        Assert.Equal(new ChartBranchThreshold(20, 40), check.FromExpert);
+        Assert.Equal(ChartBranchThreshold.Stay, check.FromMaster);
+        Assert.Equal(9, playable.NoteCount); // three per measure, one per route
+        Assert.Equal(PlayableNoteKind.BigDon, playable.OnRoute(ChartBranch.Master).HitObjects[2].Kind);
+    }
+
     [Fact]
     public async Task ChartConvertsMeasuresNotesAndLongNotes()
     {
@@ -179,7 +210,8 @@ public sealed class StockCatalogProviderTests
         return [.. data, .. pool.ToArray()];
     }
 
-    private sealed record Measure(float Bpm, float Offset, (int Type, float Position, float Duration, int Hits)[] Notes, bool GoGo = false, float Speed = 1);
+    private sealed record Measure(float Bpm, float Offset, (int Type, float Position, float Duration, int Hits)[] Notes, bool GoGo = false, float Speed = 1,
+        int[]? Thresholds = null, (int Type, float Position, float Duration, int Hits)[]? MasterNotes = null);
 
     private static (int, float, float, int) N(int type, float position, float duration = 0, int hits = 0) => (type, position, duration, hits);
 
@@ -201,13 +233,17 @@ public sealed class StockCatalogProviderTests
             f32(measure.Offset);
             stream.WriteByte(measure.GoGo ? (byte)1 : (byte)0);
             stream.WriteByte(1);
-            stream.Write(new byte[2 + 24 + 4]);
+            stream.Write(new byte[2]);
+            foreach (var threshold in measure.Thresholds ?? [0, 0, 0, 0, 0, 0])
+                i32(threshold);
+            stream.Write(new byte[4]);
             for (var branch = 0; branch < 3; branch++)
             {
-                u16(measure.Notes.Length);
+                var notes = branch == 2 && measure.MasterNotes is { } master ? master : measure.Notes;
+                u16(notes.Length);
                 u16(0);
                 f32(measure.Speed);
-                foreach (var (type, position, duration, hits) in measure.Notes)
+                foreach (var (type, position, duration, hits) in notes)
                 {
                     i32(type);
                     f32(position);

@@ -23,6 +23,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     private const int MaximumNotes = 1_000_000;
     private const string Courses = "enhmx";
     private static readonly string[] StarFields = ["starEasy", "starNormal", "starHard", "starMania", "starUra"];
+    private static readonly string[] BranchFields = ["branchEasy", "branchNormal", "branchHard", "branchMania", "branchUra"];
     // genreNo 0-7, named as the Song Select categories are (their art and colours).
     private static readonly string[] Genres = ["J-POP", "Anime", "Kids", "Vocaloid", "Game Music", "Namco Original", "Variety", "Classical"];
 
@@ -125,7 +126,10 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                     new CatalogAssetKey(Id, $"chart:{id}:{letter}"),
                     (TaikoCourse)course,
                     levels[course] > 0 ? levels[course] : null,
-                    [new CatalogAssetKey(Id, $"chart:{id}:{letter}:1"), new CatalogAssetKey(Id, $"chart:{id}:{letter}:2")]));
+                    [new CatalogAssetKey(Id, $"chart:{id}:{letter}:1"), new CatalogAssetKey(Id, $"chart:{id}:{letter}:2")])
+                {
+                    HasBranches = entry.TryGetProperty(BranchFields[course], out var branch) && branch.ValueKind == JsonValueKind.True,
+                });
             }
             if (charts.Count == 0)
                 continue;

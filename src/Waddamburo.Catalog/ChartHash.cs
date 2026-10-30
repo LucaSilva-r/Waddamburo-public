@@ -69,6 +69,30 @@ public static class ChartHash
             writer.Write(micros(line.Time));
             writer.Write(line.IsVisible);
         }
+        // 譜面分岐 goes after everything else, only for branched charts: other charts keep their bytes and hash.
+        if (chart.Branching is { } branching)
+        {
+            writer.Write("BRCH"u8);
+            foreach (var note in chart.HitObjects)
+                writer.Write(route(note.Branch));
+            foreach (var note in chart.LongNotes)
+                writer.Write(route(note.Branch));
+            var points = branching.Points;
+            foreach (var value in (int[])[points.Great, points.Good, points.Bad, points.Roll, points.BigGreat,
+                points.BigGood, points.BigRoll, points.Balloon, points.Kusudama])
+                writer.Write(value);
+            writer.Write(branching.Checks.Length);
+            foreach (var check in branching.Checks)
+            {
+                writer.Write(micros(check.Time));
+                writer.Write(micros(check.Start));
+                foreach (var row in (ChartBranchThreshold[])[check.FromNormal, check.FromExpert, check.FromMaster])
+                {
+                    writer.Write(row.Expert);
+                    writer.Write(row.Master);
+                }
+            }
+        }
         writer.Flush();
         return stream.ToArray();
     }
@@ -117,8 +141,24 @@ public static class ChartHash
         var bars = new ChartBarLine[count(reader)];
         for (var index = 0; index < bars.Length; index++)
             bars[index] = new ChartBarLine(time(reader), reader.ReadBoolean());
+        ChartBranching? branching = null;
         if (reader.BaseStream.Position != reader.BaseStream.Length)
-            throw new InvalidDataException("Trailing bytes after the chart.");
+        {
+            if (!reader.ReadBytes(4).AsSpan().SequenceEqual("BRCH"u8))
+                throw new InvalidDataException("Trailing bytes after the chart.");
+            for (var index = 0; index < notes.Length; index++)
+                notes[index] = notes[index] with { Branch = branch(reader.ReadByte()) };
+            for (var index = 0; index < longNotes.Length; index++)
+                longNotes[index] = longNotes[index] with { Branch = branch(reader.ReadByte()) };
+            var points = new ChartBranchPoints(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32(),
+                reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32());
+            var checks = new ChartBranchCheck[count(reader)];
+            for (var index = 0; index < checks.Length; index++)
+                checks[index] = new ChartBranchCheck(time(reader), time(reader), threshold(reader), threshold(reader), threshold(reader));
+            branching = new ChartBranching([.. checks], points);
+            if (reader.BaseStream.Position != reader.BaseStream.Length)
+                throw new InvalidDataException("Trailing bytes after the chart.");
+        }
 
         var duration = notes.Select(static note => note.StartTime).Concat(longNotes.Select(static note => note.EndTime))
             .Concat(bars.Select(static line => line.Time)).DefaultIfEmpty(TimeSpan.Zero).Max();
@@ -128,8 +168,18 @@ public static class ChartHash
             Level = level < 0 ? null : level,
             ScoreInit = scoreInit < 0 ? null : scoreInit,
             ScoreDiff = scoreDiff < 0 ? null : scoreDiff,
+            Branching = branching,
         };
         return (chart, course);
+
+        static ChartBranch? branch(byte value) => value switch
+        {
+            0 => null,
+            <= 3 => (ChartBranch)(value - 1),
+            _ => throw new InvalidDataException("Bad branch route."),
+        };
+
+        static ChartBranchThreshold threshold(BinaryReader reader) => new(reader.ReadInt32(), reader.ReadInt32());
 
         static TimeSpan time(BinaryReader reader) => TimeSpan.FromTicks(checked(reader.ReadInt64() * 10));
 
@@ -142,6 +192,8 @@ public static class ChartHash
             return value;
         }
     }
+
+    private static byte route(ChartBranch? branch) => branch is { } value ? (byte)((int)value + 1) : (byte)0;
 
     private static long micros(TimeSpan time) => (long)Math.Round(time.Ticks / 10d, MidpointRounding.AwayFromZero);
 }

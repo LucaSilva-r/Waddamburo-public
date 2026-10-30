@@ -294,7 +294,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
             if (gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]) == false)
                 throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
-            var gauge = new TaikoSoulGauge(course, chart.Level, chart.NoteCount);
+            var gauge = new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
             var score = new TaikoScore(chart);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
             if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
@@ -523,7 +523,16 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         if (!text.Player.TryGotoLabel("", label, play: false))
                             throw new InvalidDataException($"Note text movie is missing label '{label}'.");
                         return text;
-                    }));
+                    }),
+                // The bar line of a 譜面分岐 check: lane_syousetsu's yellow "bunki" frame.
+                chart.Branching is null ? null : layers["lane_syousetsu"] with { Player = branchBar() });
+            LumenPlayer branchBar()
+            {
+                var player = content("lane_syousetsu").CreatePlayer();
+                if (!player.TryGotoLabel("", "bunki", play: false))
+                    throw new InvalidDataException("Bar line movie is missing label 'bunki'.");
+                return player;
+            }
             hitPoint = _presentation.HitPoint;
             _presentation.Doron = options.Doron;
             // The options' icons on the lane (traced SetSpeed(1) for none). lane_obi's setOption shows

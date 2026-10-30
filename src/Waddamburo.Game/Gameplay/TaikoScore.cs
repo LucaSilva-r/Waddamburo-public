@@ -19,7 +19,7 @@ public sealed class TaikoScore
         _chart = chart ?? throw new ArgumentNullException(nameof(chart));
         if (chart.ScoreInit is null && chart.ScoreDiff is > int.MaxValue / 4)
             throw new ArgumentOutOfRangeException(nameof(chart), "SCOREDIFF is too large to derive SCOREINIT.");
-        var estimated = chart.ScoreInit is null && chart.ScoreDiff is null ? estimateRates(chart) : (Init: 0, Diff: 0);
+        var estimated = chart.ScoreInit is null && chart.ScoreDiff is null ? estimateRates(chart.OnRoute(ChartBranch.Normal)) : (Init: 0, Diff: 0);
         _base = chart.ScoreInit ?? (chart.ScoreDiff is { } diff
             ? checked((int)((((long)diff * 4 + 5) / 10) * 10)) : estimated.Init);
         _step = chart.ScoreDiff ?? (chart.ScoreInit is { } init ? init / 4 : estimated.Diff);

@@ -45,6 +45,9 @@ public readonly record struct PlayableHitObject
 
     /// <summary>A Waiwai rare (heart) note: played as its note, drawn with the collabo's rare art.</summary>
     public bool IsRare { get; init; }
+
+    /// <summary>The 譜面分岐 route this note belongs to; null: played on every route.</summary>
+    public ChartBranch? Branch { get; init; }
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }
 
@@ -68,8 +71,52 @@ public readonly record struct PlayableLongNote
     public TimeSpan EndTime { get; }
     public PlayableLongNoteKind Kind { get; }
     public int RequiredHits { get; }
+
+    /// <summary>The 譜面分岐 route this note belongs to; null: played on every route.</summary>
+    public ChartBranch? Branch { get; init; }
     public bool IsBalloon => Kind is PlayableLongNoteKind.Balloon or PlayableLongNoteKind.Kusudama;
 }
+
+/// <summary>The three 譜面分岐 routes: 普通, 玄人 and 達人 (lane_hit's BRANCH_NORMAL/KUROUTO/TATSUJIN).</summary>
+public enum ChartBranch : byte { Normal, Expert, Master }
+
+/// <summary>
+/// One route's requirement at a check: branch points at least <see cref="Master"/> go to master, at least
+/// <see cref="Expert"/> to expert, else normal. -1 (fumen) on either: the route stays as it is.
+/// </summary>
+public readonly record struct ChartBranchThreshold(int Expert, int Master)
+{
+    public static readonly ChartBranchThreshold Stay = new(-1, -1);
+
+    public ChartBranch Next(ChartBranch current, int points) => Expert < 0 || Master < 0 ? current
+        : points >= Master ? ChartBranch.Master : points >= Expert ? ChartBranch.Expert : ChartBranch.Normal;
+}
+
+/// <summary>
+/// A 譜面分岐 check. At <see cref="Time"/> (the measure before the branch, drawn with a yellow bar line) the
+/// branch points earned since the previous check pick the route played from <see cref="Start"/>, by the
+/// threshold row of the route being played.
+/// </summary>
+public readonly record struct ChartBranchCheck(TimeSpan Time, TimeSpan Start,
+    ChartBranchThreshold FromNormal, ChartBranchThreshold FromExpert, ChartBranchThreshold FromMaster)
+{
+    public ChartBranchThreshold For(ChartBranch current) => current switch
+    {
+        ChartBranch.Normal => FromNormal,
+        ChartBranch.Expert => FromExpert,
+        _ => FromMaster,
+    };
+}
+
+/// <summary>Branch points per judgement (the fumen header's; Green's usual 20/10/0/1/20/10/1/30/30).</summary>
+public readonly record struct ChartBranchPoints(int Great, int Good, int Bad, int Roll,
+    int BigGreat, int BigGood, int BigRoll, int Balloon, int Kusudama)
+{
+    public static readonly ChartBranchPoints Default = new(20, 10, 0, 1, 20, 10, 1, 30, 30);
+}
+
+/// <summary>A chart's 譜面分岐: its checks in time order and what each judgement is worth.</summary>
+public sealed record ChartBranching(ImmutableArray<ChartBranchCheck> Checks, ChartBranchPoints Points);
 
 public readonly record struct ChartTimingPoint
 {
@@ -184,6 +231,30 @@ public sealed record PlayableChart
     /// ten), with no combo growth, 100-combo bonus or Go-Go factor. Null: the normal scoring.
     /// </summary>
     public int? ShinuchiBase { get; init; }
+
+    /// <summary>
+    /// The chart's 譜面分岐, when it has one: its notes then carry <see cref="PlayableHitObject.Branch"/>
+    /// and only the route being played is judged and drawn (<c>TaikoJudgementSession.BranchAt</c>).
+    /// Timing, scroll, Go-Go and bar lines are the normal route's.
+    /// </summary>
+    public ChartBranching? Branching { get; init; }
+
+    /// <summary>Whether a note tagged <paramref name="branch"/> plays on <paramref name="route"/>.</summary>
+    public static bool IsOn(ChartBranch? branch, ChartBranch route) => branch is null || branch == route;
+
+    /// <summary>
+    /// The chart as one route, without branching: what per-chart figures (soul gauge note count, score
+    /// rates, 真打 base) are worked out from. A chart without branching is returned as it is.
+    /// </summary>
+    public PlayableChart OnRoute(ChartBranch route) => Branching is null ? this
+        : new PlayableChart(Key, AuthoredOffset, Duration, HitObjects.Where(note => IsOn(note.Branch, route)),
+            TimingPoints, ScrollPoints, EffectPoints, BarLines, LongNotes.Where(note => IsOn(note.Branch, route)))
+        {
+            Level = Level,
+            ScoreInit = ScoreInit,
+            ScoreDiff = ScoreDiff,
+            ShinuchiBase = ShinuchiBase,
+        };
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(
         IEnumerable<T> values,

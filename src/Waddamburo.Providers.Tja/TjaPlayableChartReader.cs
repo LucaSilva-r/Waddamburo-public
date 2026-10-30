@@ -28,12 +28,7 @@ internal static class TjaPlayableChartReader
         var balloons = new Queue<int>();
         var branchBalloons = new Dictionary<string, Queue<int>>();
         var longNotes = ImmutableArray.CreateBuilder<PlayableLongNote>();
-        (TimeSpan Start, PlayableLongNoteKind Kind, int Hits)? pendingLong = null;
-        var branch = false;
-        var selectedRoute = true;
-        var sawSelectedRoute = false;
-        var routeToPlay = "#N";
-        var skippedKusudama = false;
+        (TimeSpan Start, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)? pendingLong = null;
         var hitObjects = ImmutableArray.CreateBuilder<PlayableHitObject>();
         var timingPoints = ImmutableArray.CreateBuilder<ChartTimingPoint>();
         var scrollPoints = ImmutableArray.CreateBuilder<ChartScrollPoint>();
@@ -51,6 +46,27 @@ internal static class TjaPlayableChartReader
         int? level = null;
         int? scoreInit = null;
         int? scoreDiff = null;
+
+        // 譜面分岐: every route is read with its notes tagged. The main route (#N, else the first one written)
+        // gives the timing, scroll, Go-Go and bar lines, and the state the chart goes on with after the block;
+        // the other routes' control points go to scratch streams. A route a block lacks plays the main one's notes.
+        var branch = false;
+        var mainRoute = "#N";
+        string? route = null;
+        var routesSeen = new HashSet<string>();
+        TjaState atBranch = default, afterMain = default;
+        (int Notes, int Longs) mainFrom = default, mainTo = default;
+        var checks = new List<TjaCheck>();
+        var levelHold = new HashSet<ChartBranch>();
+        var timing = timingPoints;
+        var scrolls = scrollPoints;
+        var effects = effectPoints;
+        bool onMain() => !branch || route == mainRoute;
+        ChartBranch? tag() => branch && route is not null ? routeOf(route) : null;
+        TjaState save() => new(numerator, denominator, bpm, scroll, isGoGo, isBarlineVisible, cursorSeconds, pendingLong);
+        void restore(TjaState state) =>
+            (numerator, denominator, bpm, scroll, isGoGo, isBarlineVisible, cursorSeconds, pendingLong) =
+            (state.Numerator, state.Denominator, state.Bpm, state.Scroll, state.GoGo, state.Barline, state.Cursor, state.Pending);
 
         for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
@@ -107,8 +123,8 @@ internal static class TjaPlayableChartReader
                     var values = balloons;
                     if (header != "BALLOON")
                     {
-                        var route = header switch { "BALLOONNOR" => "#N", "BALLOONEXP" => "#E", _ => "#M" };
-                        branchBalloons[route] = values = new Queue<int>();
+                        var balloonRoute = header switch { "BALLOONNOR" => "#N", "BALLOONEXP" => "#E", _ => "#M" };
+                        branchBalloons[balloonRoute] = values = new Queue<int>();
                     }
                     values.Clear();
                     foreach (var value in line[(headerSeparator + 1)..].Split(','))
@@ -123,33 +139,49 @@ internal static class TjaPlayableChartReader
             {
                 if (measureData.Length != 0)
                     throw new InvalidDataException("The selected TJA chart ends with an unterminated measure.");
-                if (branch && !sawSelectedRoute)
-                    throw new InvalidDataException("TJA branch has no selected route.");
                 foreach (var command in commands)
                     applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timingPoints, scrollPoints, effectPoints);
+                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects);
+                commands.Clear();
+                closeBranch();
                 closeLong(chartTime(cursorSeconds));
+                var notes = hitObjects.OrderBy(static n => n.StartTime).ToImmutableArray();
+                var longs = longNotes.OrderBy(static n => n.StartTime).ToImmutableArray();
                 return new PlayableChart(
                     key,
                     authoredOffset(offsetText),
                     chartTime(Math.Max(cursorSeconds, maxSeconds)),
                     // A negative #DELAY can step back in time; OrderBy is stable, so ties keep file order.
-                    hitObjects.OrderBy(static n => n.StartTime),
+                    notes,
                     timingPoints.ToImmutable(),
                     scrollPoints.ToImmutable(),
                     effectPoints.ToImmutable(),
-                    barLines.OrderBy(static b => b.Time), longNotes.OrderBy(static n => n.StartTime))
-                { Level = level, ScoreInit = scoreInit, ScoreDiff = scoreDiff };
+                    barLines.OrderBy(static b => b.Time), longs)
+                {
+                    Level = level,
+                    ScoreInit = scoreInit,
+                    ScoreDiff = scoreDiff,
+                    Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
+                };
             }
 
             var commandName = line.Split([' ', '\t'], 2)[0].ToUpperInvariant();
             if (commandName == "#BRANCHSTART")
             {
-                if ((branch && !sawSelectedRoute) || measureData.Length != 0)
-                    throw new InvalidDataException("TJA branch must begin between measures and contain a selected route.");
+                if (measureData.Length != 0)
+                    throw new InvalidDataException("TJA branch must begin between measures.");
+                closeBranch();
+                var start = chartTime(cursorSeconds);
+                // Judged a measure before the branch, at the previous bar line (TJA: "calculated one measure
+                // before #BRANCHSTART").
+                var at = barLines.Count != 0 && barLines[^1].Time < start ? barLines[^1].Time : start;
+                checks.Add(new TjaCheck(at, start, line[commandName.Length..].Trim(), [.. levelHold]));
+                levelHold.Clear();
                 branch = true;
-                selectedRoute = false;
-                routeToPlay = string.Empty;
+                atBranch = afterMain = save();
+                routesSeen.Clear();
+                route = null;
+                mainRoute = string.Empty;
                 for (var lookahead = lineIndex + 1; lookahead < lines.Length; lookahead++)
                 {
                     var marker = TjaMetadataReader.StripComment(lines[lookahead]).Trim().ToUpperInvariant();
@@ -157,13 +189,12 @@ internal static class TjaPlayableChartReader
                         || marker is "#BRANCHEND" or "#END") break;
                     if (marker == "#N")
                     {
-                        routeToPlay = marker;
+                        mainRoute = marker;
                         break;
                     }
-                    if (routeToPlay.Length == 0 && marker is "#E" or "#M")
-                        routeToPlay = marker;
+                    if (mainRoute.Length == 0 && marker is "#E" or "#M")
+                        mainRoute = marker;
                 }
-                sawSelectedRoute = routeToPlay.Length == 0; // Empty branch blocks are legal.
                 continue;
             }
             if (commandName is "#N" or "#E" or "#M")
@@ -171,32 +202,42 @@ internal static class TjaPlayableChartReader
                 if (!branch) throw new InvalidDataException("TJA route outside a branch.");
                 if (measureData.Length != 0)
                     throw new InvalidDataException("TJA route ends with an unterminated measure.");
-                selectedRoute = commandName == routeToPlay;
-                skippedKusudama = false;
-                sawSelectedRoute |= selectedRoute;
+                endRoute();
+                restore(atBranch);
+                route = commandName;
+                routesSeen.Add(route);
+                if (onMain())
+                {
+                    mainFrom = (hitObjects.Count, longNotes.Count);
+                    (timing, scrolls, effects) = (timingPoints, scrollPoints, effectPoints);
+                }
+                else
+                {
+                    // Seeded with the current points: commands are placed after the last one.
+                    timing = ImmutableArray.CreateBuilder<ChartTimingPoint>();
+                    timing.Add(timingPoints[^1]);
+                    scrolls = ImmutableArray.CreateBuilder<ChartScrollPoint>();
+                    scrolls.Add(scrollPoints[^1]);
+                    effects = ImmutableArray.CreateBuilder<ChartEffectPoint>();
+                    effects.Add(effectPoints[^1]);
+                }
                 continue;
             }
             if (commandName == "#BRANCHEND")
             {
-                if (!branch || !sawSelectedRoute) throw new InvalidDataException("TJA branch has no selected route.");
+                if (!branch) throw new InvalidDataException("TJA #BRANCHEND outside a branch.");
                 if (measureData.Length != 0)
                     throw new InvalidDataException("TJA route ends with an unterminated measure.");
-                branch = false;
-                selectedRoute = true;
+                closeBranch();
                 continue;
             }
-            if (!selectedRoute)
+            if (commandName == "#LEVELHOLD")
             {
-                // BALLOON is ordered by file appearance, including unused branch paths.
-                if (line[0] != '#' && branchBalloons.Count == 0)
-                    foreach (var symbol in line)
-                    {
-                        if (symbol == '9' && skippedKusudama) { skippedKusudama = false; continue; }
-                        if (symbol is '7' or '9') balloons.TryDequeue(out _);
-                        if (symbol is >= '5' and <= '9') skippedKusudama = symbol == '9';
-                    }
+                levelHold.Add(tag() ?? ChartBranch.Normal);
                 continue;
             }
+            if (branch && route is null && line[0] != '#')
+                throw new InvalidDataException("TJA branch notes come before any route.");
             if (line[0] == '#')
             {
                 commands.Add((measureData.Length, line));
@@ -220,10 +261,10 @@ internal static class TjaPlayableChartReader
                     {
                         applyCommand(commands[commandIndex++].Line, ref numerator, ref denominator,
                             ref bpm, ref scroll, ref isGoGo, ref isBarlineVisible, ref cursorSeconds,
-                            timingPoints, scrollPoints, effectPoints);
+                            timing, scrolls, effects);
                     }
                     if (index == count) break;
-                    if (index == 0) barLines.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
+                    if (index == 0 && onMain()) barLines.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
                     var symbol = measureData.Length == 0 ? '0' : char.ToUpperInvariant(measureData[index]);
                     var time = chartTime(cursorSeconds);
                     if (symbol is '5' or '6' or '7' or '9')
@@ -242,11 +283,12 @@ internal static class TjaPlayableChartReader
                             var hits = 0;
                             if (symbol is '7' or '9')
                             {
+                                // BALLOON is ordered by file appearance, every route's balloons included.
                                 var values = branch && branchBalloons.Count != 0
-                                    ? branchBalloons.GetValueOrDefault(routeToPlay) : balloons;
+                                    ? branchBalloons.GetValueOrDefault(route ?? mainRoute) : balloons;
                                 hits = values is not null && values.TryDequeue(out var requiredHits) ? requiredHits : 1;
                             }
-                            pendingLong = (time, kind, hits);
+                            pendingLong = (time, kind, hits, tag());
                         }
                     }
                     else if (symbol == '8') closeLong(time);
@@ -264,7 +306,7 @@ internal static class TjaPlayableChartReader
                         if (kind is { } value)
                         {
                             checkNoteLimit();
-                            hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B'));
+                            hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B') { Branch = tag() });
                         }
                     }
                     maxSeconds = Math.Max(maxSeconds, cursorSeconds);
@@ -274,6 +316,35 @@ internal static class TjaPlayableChartReader
                 measureData.Clear();
                 commands.Clear();
             }
+        }
+
+        // The route being read ends; the main route's end state is what the chart goes on from.
+        void endRoute()
+        {
+            if (route is null || !onMain()) return;
+            afterMain = save();
+            mainTo = (hitObjects.Count, longNotes.Count);
+        }
+
+        void closeBranch()
+        {
+            if (!branch) return;
+            endRoute();
+            // A route the block lacks plays the main route's notes.
+            if (routesSeen.Contains(mainRoute))
+                foreach (var missing in (string[])["#N", "#E", "#M"])
+                {
+                    if (routesSeen.Contains(missing)) continue;
+                    var copy = routeOf(missing);
+                    for (var index = mainFrom.Notes; index < mainTo.Notes; index++)
+                        hitObjects.Add(hitObjects[index] with { Branch = copy });
+                    for (var index = mainFrom.Longs; index < mainTo.Longs; index++)
+                        longNotes.Add(longNotes[index] with { Branch = copy });
+                }
+            restore(afterMain);
+            (timing, scrolls, effects) = (timingPoints, scrollPoints, effectPoints);
+            branch = false;
+            route = null;
         }
 
         void checkNoteLimit()
@@ -286,13 +357,90 @@ internal static class TjaPlayableChartReader
         {
             if (pendingLong is not { } note) return;
             checkNoteLimit();
-            longNotes.Add(new PlayableLongNote(note.Start, end, note.Kind, note.Hits));
+            longNotes.Add(new PlayableLongNote(note.Start, end, note.Kind, note.Hits) { Branch = note.Branch });
             pendingLong = null;
         }
 
         throw new InvalidDataException(active
             ? "The selected TJA chart has no #END marker."
             : "The selected TJA chart section no longer exists.");
+    }
+
+    private readonly record struct TjaState(int Numerator, int Denominator, decimal Bpm, double Scroll, bool GoGo,
+        bool Barline, decimal Cursor, (TimeSpan Start, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)? Pending);
+
+    // A #BRANCHSTART: judged At, its routes from Start; Condition "p,80,90" etc.; routes under #LEVELHOLD.
+    private sealed record TjaCheck(TimeSpan At, TimeSpan Start, string Condition, ChartBranch[] Held);
+
+    private static ChartBranch routeOf(string marker) => marker switch
+    {
+        "#N" => ChartBranch.Normal,
+        "#E" => ChartBranch.Expert,
+        _ => ChartBranch.Master,
+    };
+
+    /// <summary>
+    /// The checks as fumen thresholds, the way tja2fumen converts them: <c>r,a,b</c> are roll hits;
+    /// <c>p,a,b</c> percentages of the most points the route's notes and balloons since the previous check
+    /// can earn (0 or less: always, over 100: never). Only rolls count when every condition is a roll
+    /// count (or a p that is always/never met), only notes and balloons when none is.
+    /// </summary>
+    /// <remarks>
+    /// ponytail: points reset at every check as in fumen, so a TJA counting on past one without #SECTION
+    /// counts from the last check; <c>s</c> (score) conditions keep the route.
+    /// </remarks>
+    private static ChartBranching branching(List<TjaCheck> checks, ImmutableArray<PlayableHitObject> notes,
+        ImmutableArray<PlayableLongNote> longNotes)
+    {
+        var parsed = checks.Select(static check =>
+        {
+            var parts = check.Condition.Split(',', StringSplitOptions.TrimEntries);
+            var type = parts.Length > 0 ? parts[0].ToLowerInvariant() : string.Empty;
+            double value(int index) => parts.Length > index
+                && double.TryParse(parts[index], NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+                && double.IsFinite(number) ? number : 0;
+            return (Check: check, Type: type, Expert: value(1), Master: value(2));
+        }).ToArray();
+        var always = (double percent) => percent <= 0 || percent > 100;
+        var rollsOnly = parsed.All(item => item.Type == "r" || item.Type == "p" && always(item.Expert) && always(item.Master));
+        var notesOnly = parsed.All(static item => item.Type != "r");
+        var points = ChartBranchPoints.Default;
+        if (rollsOnly)
+            points = points with { Great = 0, Good = 0, BigGreat = 0, BigGood = 0, Balloon = 0, Kusudama = 0 };
+        else if (notesOnly)
+            points = points with { Roll = 0, BigRoll = 0 };
+        var result = ImmutableArray.CreateBuilder<ChartBranchCheck>(parsed.Length);
+        var since = TimeSpan.Zero;
+        foreach (var (check, type, expert, master) in parsed)
+        {
+            ChartBranchThreshold row(ChartBranch route)
+            {
+                if (check.Held.Contains(route))
+                    return route switch
+                    {
+                        ChartBranch.Normal => new(int.MaxValue, int.MaxValue),
+                        ChartBranch.Expert => new(0, int.MaxValue),
+                        _ => new(0, 0),
+                    };
+                if (type == "r")
+                    return new(rolls(expert), rolls(master));
+                if (type != "p")
+                    return ChartBranchThreshold.Stay;
+                var most = notes.Where(note => note.StartTime >= since && note.StartTime < check.At && PlayableChart.IsOn(note.Branch, route))
+                        .Sum(note => (long)(note.IsStrong ? points.BigGreat : points.Great))
+                    + longNotes.Where(note => note.IsBalloon && note.StartTime >= since && note.StartTime < check.At
+                            && PlayableChart.IsOn(note.Branch, route))
+                        .Sum(note => (long)(note.Kind == PlayableLongNoteKind.Balloon ? points.Balloon : points.Kusudama));
+                int percentOf(double percent) => percent <= 0 ? 0 : percent > 100 ? int.MaxValue
+                    : (int)Math.Min(int.MaxValue, Math.Floor(most * percent / 100));
+                return new(percentOf(expert), percentOf(master));
+            }
+            result.Add(new ChartBranchCheck(check.At, check.Start, row(ChartBranch.Normal), row(ChartBranch.Expert), row(ChartBranch.Master)));
+            since = check.At;
+        }
+        return new ChartBranching(result.MoveToImmutable(), points);
+
+        static int rolls(double hits) => hits <= 0 ? 0 : (int)Math.Min(int.MaxValue, Math.Ceiling(hits));
     }
 
     private static void readHeader(string line, ref string course, ref string bpm, ref string offset)
@@ -368,10 +516,9 @@ internal static class TjaPlayableChartReader
                 isBarlineVisible = false;
                 break;
             case "#SECTION":
-            case "#LEVELHOLD":
             case "#SENOTECHANGE":
             case "#LYRIC":
-                // Fixed Normal route; lyric/sound-decoration commands do not alter timing.
+                // Points reset at every check anyway (branching); lyric/sound-decoration commands do not alter timing.
                 break;
             default:
                 throw new NotSupportedException($"TJA command '{name}' is not supported by the gameplay loader.");

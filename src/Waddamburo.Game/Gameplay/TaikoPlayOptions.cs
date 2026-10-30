@@ -95,7 +95,7 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
         var notes = chart.HitObjects.Select(note => abekobe ^ (chance > 0 && random.NextDouble() < chance) ? swapped(note) : note).ToArray();
         var longNotes = Shinuchi
             ? chart.LongNotes.Select(static note => note.Kind == PlayableLongNoteKind.Kusudama
-                ? new PlayableLongNote(note.StartTime, note.EndTime, PlayableLongNoteKind.Balloon, note.RequiredHits) : note)
+                ? new PlayableLongNote(note.StartTime, note.EndTime, PlayableLongNoteKind.Balloon, note.RequiredHits) { Branch = note.Branch } : note)
             : chart.LongNotes;
         var speed = ScrollSpeed;
         var played = new PlayableChart(chart.Key, chart.AuthoredOffset, chart.Duration, notes, chart.TimingPoints,
@@ -105,8 +105,10 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
             Level = chart.Level,
             ScoreInit = chart.ScoreInit,
             ScoreDiff = chart.ScoreDiff,
+            Branching = chart.Branching,
         };
-        return Shinuchi ? played with { ShinuchiBase = ShinuchiBase(played) } : played;
+        // 真打 on a branched chart: the master route's all-Great comes to about a million.
+        return Shinuchi ? played with { ShinuchiBase = ShinuchiBase(played.OnRoute(ChartBranch.Master)) } : played;
     }
 
     /// <summary>
@@ -139,5 +141,6 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
             InRun = note.InRun,
             IsKo = false, // a ko is a don's run name
             IsRare = note.IsRare,
+            Branch = note.Branch,
         };
 }

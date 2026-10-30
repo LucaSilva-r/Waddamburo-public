@@ -97,6 +97,15 @@ public interface ITaikoJudgementSource
 
     TaikoLongNoteProgress GetLongNoteProgress(int index);
 
+    /// <summary>
+    /// The 譜面分岐 route played at chart time <paramref name="time"/> as known now (normal before the first
+    /// check; a section not checked yet follows the route being played). Notes off it are neither judged nor drawn.
+    /// </summary>
+    ChartBranch BranchAt(TimeSpan time);
+
+    /// <summary>The route the last check passed picked (what the lane shows; its notes start at the check's Start).</summary>
+    ChartBranch Branch { get; }
+
     event Action<TaikoNoteJudgement>? Judged;
 
     event Action<TaikoLongNoteProgress>? LongNoteHit;
@@ -124,6 +133,11 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private PendingStrongHit? _pendingStrong;
     private TimeSpan? _lastJudgedInputTime;
     private readonly bool _partnerHandNotes;
+    // 譜面分岐: the route picked at each check passed (from its Start), the next check, the points since the last.
+    private readonly List<(TimeSpan Start, ChartBranch Route)> _routes = [];
+    private int _nextCheck;
+    private int _branchPoints;
+    private TimeSpan _pointsSince;
 
     /// <summary>A hand note was hit Great (two-player partner matching).</summary>
     public event Action<int>? HandNoteHit;
@@ -162,6 +176,29 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     public event Action<TaikoNoteJudgement>? Judged;
     public event Action<TaikoLongNoteProgress>? LongNoteHit;
 
+    /// <summary>A 譜面分岐 check picked its route (raised at the check, also when the route stays).</summary>
+    public event Action<ChartBranchCheck, ChartBranch>? BranchChecked;
+
+    /// <summary>The route being played now (the last check's pick).</summary>
+    public ChartBranch Branch => _routes.Count == 0 ? ChartBranch.Normal : _routes[^1].Route;
+
+    /// <summary>Branch points earned since the last check.</summary>
+    public int BranchPoints => _branchPoints;
+
+    public ChartBranch BranchAt(TimeSpan time)
+    {
+        for (var index = _routes.Count - 1; index >= 0; index--)
+            if (_routes[index].Start <= time)
+                return _routes[index].Route;
+        return ChartBranch.Normal;
+    }
+
+    private bool onRoute(int index) =>
+        PlayableChart.IsOn(_chart.HitObjects[index].Branch, BranchAt(_chart.HitObjects[index].StartTime));
+
+    private bool longOnRoute(int index) =>
+        PlayableChart.IsOn(_chart.LongNotes[index].Branch, BranchAt(_chart.LongNotes[index].StartTime));
+
     /// <summary>
     /// The most hits a chart's drumrolls can count (the 1/60 s frames they last; balloons and kusudama
     /// are not counted).
@@ -196,6 +233,10 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             _skipped[_nextNoteIndex] = true;
         while (_nextLongIndex < _chart.LongNotes.Length && _chart.LongNotes[_nextLongIndex].EndTime <= time)
             _nextLongIndex++;
+        // ponytail: the checks skipped are not judged, so training from mid-song plays the normal route.
+        while (_chart.Branching is { } branching && _nextCheck < branching.Checks.Length && branching.Checks[_nextCheck].Time <= time)
+            _nextCheck++;
+        _pointsSince = time;
     }
 
     public int AdvanceTo(TimeSpan time)
@@ -203,20 +244,49 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         ensureMonotonic(time);
         _currentTime = time;
         expireStrongHit(time);
-        while (_nextLongIndex < _chart.LongNotes.Length
-               && (time >= _chart.LongNotes[_nextLongIndex].EndTime || GetLongNoteProgress(_nextLongIndex).IsPopped))
-            _nextLongIndex++;
         var missed = 0;
         while (_nextNoteIndex < _chart.NoteCount
                && time - _chart.HitObjects[_nextNoteIndex].StartTime > _windows.Miss)
         {
-            judge(_nextNoteIndex, TaikoHitResult.Miss, time - _chart.HitObjects[_nextNoteIndex].StartTime,
-                timedOut: true);
+            // A note off the route played just goes by (its section was checked a measure before it).
+            if (onRoute(_nextNoteIndex))
+            {
+                judge(_nextNoteIndex, TaikoHitResult.Miss, time - _chart.HitObjects[_nextNoteIndex].StartTime,
+                    timedOut: true);
+                missed++;
+            }
             _nextNoteIndex++;
-            missed++;
             skipJudged();
         }
+        checkBranches(time);
+        while (_nextLongIndex < _chart.LongNotes.Length
+               && (time >= _chart.LongNotes[_nextLongIndex].EndTime || GetLongNoteProgress(_nextLongIndex).IsPopped
+                   || time >= _chart.LongNotes[_nextLongIndex].StartTime && !longOnRoute(_nextLongIndex)))
+            _nextLongIndex++;
         return missed;
+    }
+
+    // The checks reached by now pick their routes from the points since the previous one. A note hit
+    // after a check it came before counts for neither (ponytail: when Green counts a late hit is not measured).
+    private void checkBranches(TimeSpan time)
+    {
+        if (_chart.Branching is not { } branching)
+            return;
+        for (; _nextCheck < branching.Checks.Length && branching.Checks[_nextCheck].Time <= time; _nextCheck++)
+        {
+            var check = branching.Checks[_nextCheck];
+            var route = check.For(Branch).Next(Branch, _branchPoints);
+            _routes.Add((check.Start, route));
+            _branchPoints = 0;
+            _pointsSince = check.Time;
+            BranchChecked?.Invoke(check, route);
+        }
+    }
+
+    private void addBranchPoints(int points, TimeSpan noteTime)
+    {
+        if (_chart.Branching is not null && noteTime >= _pointsSince)
+            _branchPoints += points;
     }
 
     private void skipJudged()
@@ -245,7 +315,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             var candidateOffset = time - _chart.HitObjects[index].StartTime;
             if (candidateOffset < -_windows.Miss)
                 break;
-            if (_results[index] is not null || !matches(action, _chart.HitObjects[index].Kind))
+            if (_results[index] is not null || !matches(action, _chart.HitObjects[index].Kind) || !onRoute(index))
                 continue;
             if (candidateOffset.Duration() <= _windows.Good)
             {
@@ -315,6 +385,15 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         _lastRollFrame[_nextLongIndex] = frame;
         _longHits[_nextLongIndex]++;
         var progress = GetLongNoteProgress(_nextLongIndex) with { LastAction = action };
+        if (_chart.Branching is { Points: var points })
+            addBranchPoints(note.Kind switch
+            {
+                PlayableLongNoteKind.Roll => points.Roll,
+                PlayableLongNoteKind.BigRoll => points.BigRoll,
+                // ponytail: a balloon's points come once, when it bursts (tja2fumen counts them once a balloon).
+                PlayableLongNoteKind.Balloon => progress.IsPopped ? points.Balloon : 0,
+                _ => progress.IsPopped ? points.Kusudama : 0,
+            }, time);
         LongNoteHit?.Invoke(progress);
         if (progress.IsPopped) _nextLongIndex++;
         return progress.IsPopped ? TaikoInputResult.BalloonPopped : TaikoInputResult.LongNoteHit;
@@ -366,6 +445,16 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         _results[index] = result;
         _offsets[index] = offset;
         _timedOut[index] = timedOut;
+        if (_chart.Branching is { Points: var points })
+        {
+            var strong = _chart.HitObjects[index].IsStrong;
+            addBranchPoints(result switch
+            {
+                TaikoHitResult.Great => strong ? points.BigGreat : points.Great,
+                TaikoHitResult.Good => strong ? points.BigGood : points.Good,
+                _ => points.Bad,
+            }, _chart.HitObjects[index].StartTime);
+        }
         Judged?.Invoke(new TaikoNoteJudgement(index, _chart.HitObjects[index], result, offset, false, timedOut));
     }
 
