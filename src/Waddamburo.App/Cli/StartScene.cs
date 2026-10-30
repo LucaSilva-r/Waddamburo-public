@@ -13,6 +13,7 @@ internal enum StartScene
     ResultClear,
     DaniResultFail,
     DaniResultClear,
+    DaniGameOver,
     Retry,
     GameOver,
     WaiwaiResult,
@@ -31,10 +32,11 @@ internal static class StartSceneParser
         "result-clear" => StartScene.ResultClear,
         "dani-result-fail" => StartScene.DaniResultFail,
         "dani-result-clear" => StartScene.DaniResultClear,
+        "dani-gameover" => StartScene.DaniGameOver,
         "retry" => StartScene.Retry,
         "gameover" => StartScene.GameOver,
         "waiwai-result" => StartScene.WaiwaiResult,
         _ => throw new ArgumentException(
-            "--start-scene must be boot, attract, entry, song-select, dani-select, result-fail, dani-result-fail, dani-result-clear, result-clear, retry, gameover, or waiwai-result."),
+            "--start-scene must be boot, attract, entry, song-select, dani-select, result-fail, dani-result-fail, dani-result-clear, dani-gameover, result-clear, retry, gameover, or waiwai-result."),
     };
 }

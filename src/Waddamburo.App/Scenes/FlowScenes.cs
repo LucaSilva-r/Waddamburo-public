@@ -116,10 +116,20 @@ internal static class FlowScenes
         new SceneDefinition(SceneDefinition.CurrentVersion, DaniSelect, [
             new SceneLayerDefinition("dani_select/packeddata.ddp", "dani_select/dani_select.lm", LumenMatrix.Identity, "dani-select"),
         ]),
+        NormalGameOver,
+    ];
+
+    public static SceneDefinition NormalGameOver { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
-        ]),
-    ];
+        ]);
+
+    // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.
+    public static SceneDefinition DaniGameOver { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
+            new SceneLayerDefinition("dani_result/packeddata.ddp", "dani_gameover/dani_gameover.lm", LumenMatrix.Identity, "gameover"),
+        ]);
+
 
     // Traced final name-board positions are (-580, 278) for the left drum's player and (308, 278) for
     // the right one's in the cabinet's centered coordinates, or (60, 638) / (948, 638) in our top-left

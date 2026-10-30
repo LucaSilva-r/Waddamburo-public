@@ -58,7 +58,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Hosts.DanResult = null;
         }
         else if (scene == FlowScenes.GameOver)
+        {
             Shell.Sounds?.GameOver.StopGameOverMusic();
+            Shell.Catalog.Replace(FlowScenes.NormalGameOver);
+        }
     }
 
     // The revival keeps the left player's movie setup (see RetryGameHostBinding), so a right-drum
@@ -102,8 +105,16 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (input.Escape || (Shell.Hosts.WaiwaiResult is { } waiwai
                     ? waiwai.Ended
                     : RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player)))
-                // A course is a whole credit (traced); at home, Song Select again.
-                Shell.FadeTo(Shell.Hosts.DanResult is not null && !Shell.Arcade.Home ? FlowScenes.GameOver : Shell.Hosts.CreditNext switch
+                // A course ends the credit however many songs it had left (the coins inserted stay); at home,
+                // the course list again.
+                if (Shell.Hosts.DanResult is not null)
+                {
+                    if (!Shell.Arcade.Home)
+                        Shell.Catalog.Replace(FlowScenes.DaniGameOver);
+                    Shell.FadeTo(Shell.Arcade.Home ? FlowScenes.DaniSelect : FlowScenes.GameOver);
+                }
+                else
+                Shell.FadeTo(Shell.Hosts.CreditNext switch
                 {
                     TaikoCreditNext.Revival => FlowScenes.Retry,
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,

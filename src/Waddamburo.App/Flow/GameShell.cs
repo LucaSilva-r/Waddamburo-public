@@ -527,9 +527,11 @@ internal sealed class GameShell : IDisposable
             StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult
                 or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
-            StartScene.GameOver => FlowScenes.GameOver,
+            StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
         };
+        if (Options.StartScene == StartScene.DaniGameOver)
+            Catalog.Replace(FlowScenes.DaniGameOver);
         Coordinator.StartAsync(initialScene).AsTask().GetAwaiter().GetResult();
         try
         {
