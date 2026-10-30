@@ -1599,6 +1599,8 @@ public sealed class LumenPlayer
         }
         instance.Depth = destination;
         parent.Children[destination] = instance;
+        // Flash: a clip moved by script is the script's now, and a rewinding timeline leaves it alone.
+        instance.FromTimeline = false;
     }
 
     /// <summary>Diagnostic: WADDAMBURO_HOST_TRACE=1 prints every movie -> host call with its result.</summary>
