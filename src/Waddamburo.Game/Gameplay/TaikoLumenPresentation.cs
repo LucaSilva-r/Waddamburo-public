@@ -154,9 +154,13 @@ public sealed class TaikoLumenPresentation
         var layers = new List<LumenSceneLayer>(_background);
         if (character is { } don)
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
-        foreach (var bar in _chart.BarLines)
-            if (bar.IsVisible)
+        var barWindows = _barWindows ??= [.. _chart.BarLines.Select(bar => window(bar.Time))];
+        for (var index = 0; index < barWindows.Length; index++)
+        {
+            var bar = _chart.BarLines[index];
+            if (bar.IsVisible && time >= barWindows[index].From && time <= barWindows[index].Until)
                 addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time);
+        }
         // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
         // deeper depth), so an earlier roll body covers the notes that follow it.
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
@@ -165,8 +169,10 @@ public sealed class TaikoLumenPresentation
                 (noteTime, controlTime) => position(noteTime, time, controlTime), _hitX, _hitY, bodies: !Doron));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
+        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => window(note.StartTime))];
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
+            if (time < noteWindows[index].From || time > noteWindows[index].Until) continue;
             // A miss is judged at the timing window, but its note keeps scrolling out of view.
             if (_removed.Contains(index) || _judgement.IsJudged(index) && !_judgement.IsMissed(index)) continue;
             hitNotes.Clear();
@@ -214,14 +220,26 @@ public sealed class TaikoLumenPresentation
         layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY + yOffset } });
     }
 
-    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime)
-    {
-        var bpm = _chart.BeatsPerMinuteAt(controlTime);
-        var multiplier = _chart.ScrollAt(controlTime);
-        // Product layout: four beats span the visible lane at scroll 1.
-        return (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * bpm / 60
-            * (1280 - _hitX) / 4 * multiplier, -100_000, 100_000);
-    }
+    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime) =>
+        (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * pixelsPerSecond(controlTime), -100_000, 100_000);
+
+    // Product layout: four beats span the visible lane at scroll 1.
+    private double pixelsPerSecond(TimeSpan controlTime) =>
+        _chart.BeatsPerMinuteAt(controlTime) / 60 * (1280 - _hitX) / 4 * _chart.ScrollAt(controlTime);
+
+    // When each note and bar is on the lane, so a frame skips the rest of a chart with one comparison each.
+    // ponytail: still a pass over every note, a cursor needs care as scroll changes reorder arrivals.
+    private (TimeSpan From, TimeSpan Until)[]? _noteWindows;
+    private (TimeSpan From, TimeSpan Until)[]? _barWindows;
+
+    private (TimeSpan From, TimeSpan Until) window(TimeSpan noteTime) =>
+        VisibleWindow(noteTime, pixelsPerSecond(noteTime), _hitX);
+
+    /// <summary>When something moving at this speed is between x -100 and 1380, the lane's drawn range; always, if it barely moves.</summary>
+    public static (TimeSpan From, TimeSpan Until) VisibleWindow(TimeSpan noteTime, double pixelsPerSecond, float hitX) =>
+        pixelsPerSecond < 1
+            ? (TimeSpan.MinValue, TimeSpan.MaxValue)
+            : (noteTime - TimeSpan.FromSeconds((1380 - hitX) / pixelsPerSecond), noteTime + TimeSpan.FromSeconds((hitX + 100) / pixelsPerSecond));
 
     private void onJudged(TaikoNoteJudgement result)
     {
