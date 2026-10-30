@@ -99,6 +99,9 @@ public sealed class SongSelectCatalogView
     /// <summary>The how-to-play folder (GenreResource id 0): deciding it plays the tutorial movie.</summary>
     public const string TutorialLabel = "あそびかた説明";
 
+    /// <summary>The dan dojo folder (GenreResource id 13): deciding it opens the course list.</summary>
+    public const string DanLabel = "段位道場";
+
     /// <summary>The favourites folder's art (GenreResource.FAVORITE).</summary>
     public const string FavouritesLabel = "お気に入り";
 
@@ -119,7 +122,7 @@ public sealed class SongSelectCatalogView
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
-        SongSearchResults? search = null)
+        SongSearchResults? search = null, bool danDojo = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -178,6 +181,11 @@ public sealed class SongSelectCatalogView
                 };
             })
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
+            .Concat(danDojo && mode == SongSelectMode.Normal && library is null or SongSourceKind.Stock ? new[]
+            {
+                new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "dan"), "Dan Dojo", DanLabel,
+                    SongCategoryPresentation.FolderEnd, boardStyle(""), []),
+            } : [])
             .Concat(library == SongSourceKind.OsuLazer && browse is not null ? new[]
             {
                 control(SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}"),
@@ -321,6 +329,9 @@ public sealed class SongSelectCatalogView
 
     /// <summary>Index of the how-to-play folder, or -1.</summary>
     public int TutorialCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == TutorialLabel);
+
+    /// <summary>Index of the dan dojo folder, or -1.</summary>
+    public int DanCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == DanLabel);
 
     public long Revision { get; }
 

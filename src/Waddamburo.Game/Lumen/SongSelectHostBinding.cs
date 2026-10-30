@@ -241,6 +241,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     /// <summary>The players decided the how-to-play folder (the tutorial movie).</summary>
     public bool TutorialRequested { get; private set; }
+    public bool DanRequested { get; private set; }
 
     /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
     public SongSourceKind? LibraryRequested { get; private set; }
@@ -395,6 +396,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     // Traced SetSelectedMusic(0, -1), Terminate, then the tutorial scene.
                     else if (genre == _session.Catalog.TutorialCategory)
                         TutorialRequested = true;
+                    // Traced SetSelectedMusic(10, -1), Terminate, then dani_select.
+                    else if (genre == _session.Catalog.DanCategory)
+                        DanRequested = true;
                     else if ((uint)genre < (uint)_session.Catalog.Categories.Length)
                     {
                         LibraryRequested = _session.Catalog.Categories[genre].Link;

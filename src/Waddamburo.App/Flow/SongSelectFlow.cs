@@ -18,20 +18,25 @@ namespace Waddamburo.App.Flow;
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
     public override IndicatorScene IndicatorsFor(SceneId scene) =>
-        scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial : IndicatorScene.SongSelect;
+        scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial
+            : scene == FlowScenes.DaniSelect ? IndicatorScene.DaniSelect : IndicatorScene.SongSelect;
+
+    private const string DanMusicCue = "JINGLE_DANI";
 
     public override void Enter(SceneId scene)
     {
         Shell.StopWatching();
         if (scene == FlowScenes.SongSelect)
             Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
+        else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
+            Shell.Sounds?.Bank.PlayMusic(DanMusicCue, DanMusicCue, loop: true);
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)
             Shell.Sounds?.Bank.PlayMusic("Tutorial", "JINGLE_DOJO", loop: true);
     }
 
     public override void Exit(SceneId scene)
     {
-        if (scene == FlowScenes.Tutorial)
+        if (scene == FlowScenes.Tutorial || scene == FlowScenes.DaniSelect)
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
     }
 
@@ -87,6 +92,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 showSongSelect();
             return;
         }
+        if (Shell.Active.Id == FlowScenes.DaniSelect)
+        {
+            // ponytail: a picked course returns here until the course's gameplay exists.
+            if (input.Escape || Shell.Hosts.DaniSelect?.Terminated == true)
+                showSongSelect();
+            return;
+        }
         // A second player joins from Song Select (arcade; one player in, the other drum's join paid for or
         // free play): back to the entry, which joins them (traced session28: SE_SELECT 0 as Song Select
         // stops, then the entry with the first player in, SetPrevious(SCENE_SONGSELECT, that drum)), under
@@ -113,6 +125,11 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             Shell.Hosts.TutorialSeen = true;
             Shell.Show(FlowScenes.Tutorial);
+            return;
+        }
+        if (Shell.Hosts.SongSelect?.DanRequested == true)
+        {
+            Shell.Show(FlowScenes.DaniSelect);
             return;
         }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the

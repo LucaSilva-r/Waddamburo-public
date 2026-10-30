@@ -1,8 +1,10 @@
 using Waddamburo.App.Audio;
 using Waddamburo.App.Gameplay;
+using Waddamburo.App.Online;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -113,6 +115,15 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
     public bool TutorialSeen { get; set; }
+
+    /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
+    public DanCourses? Dan { get; set; }
+
+    /// <summary>The course list on screen.</summary>
+    public DaniSelectHostBinding? DaniSelect { get; private set; }
+
+    /// <summary>The course behind each of its boards (null: the back board).</summary>
+    public IReadOnlyList<DanCourseStatus?> DanBoards { get; private set; } = [];
 
     /// <summary>The live show_oni setting (the Settings menu changes it while the game runs).</summary>
     public Func<bool>? ShowOni { get; init; }
@@ -261,6 +272,7 @@ internal sealed class LayerHostFactory(
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
             "tutorial" => tutorialHost(),
+            "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
             "attract" => attractHost(),
             "boot" => new LumenLayerHost(null),
@@ -311,7 +323,7 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
-            browse: OsuBrowse, search: Search);
+            browse: OsuBrowse, search: Search, danDojo: Dan?.Available == true);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
@@ -392,6 +404,25 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost tutorialHost()
     {
         var binding = new TutorialHostBinding(PlayerSide, TwoPlayers, sounds is null ? null : sounds.Frontend.PlayCue, don);
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    private LumenLayerHost daniSelectHost()
+    {
+        var view = new SongSelectCatalogView(catalog);
+        var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
+            .GroupBy(static entry => entry.Song.Descriptor.Key).ToDictionary(static group => group.Key, static group => group.First());
+        var binding = DaniSelect = new DaniSelectHostBinding(() =>
+        {
+            if (!Dan!.Ready)
+                return null;
+            var (boards, courses) = Dan.Boards("green");
+            DanBoards = courses;
+            return boards;
+        }, PlayerSide, uid =>
+            Dan!.Song(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
+                ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Compact) : null,
+            songSelectSounds, don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
 

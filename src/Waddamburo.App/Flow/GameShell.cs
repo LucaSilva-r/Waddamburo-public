@@ -77,6 +77,8 @@ internal sealed class GameShell : IDisposable
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
 
+    private readonly DanCourses _danCourses;
+
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
     public ScoreSync Sync { get; }
 
@@ -274,6 +276,8 @@ internal sealed class GameShell : IDisposable
         // Server crowns need every chart's hash before song select lists it.
         if (Sync.Online)
             ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
+        _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
+            ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
 
         Application = new SdlApplication(
             Waddamburo.App.Hosting.SelfUpdate.WindowTitle,
@@ -399,6 +403,7 @@ internal sealed class GameShell : IDisposable
                 Sync.RefreshBests(card);
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
+            Dan = _danCourses,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
@@ -454,6 +459,7 @@ internal sealed class GameShell : IDisposable
             [FlowScenes.Entry] = entry,
             [FlowScenes.SongSelect] = songSelect,
             [FlowScenes.Tutorial] = songSelect,
+            [FlowScenes.DaniSelect] = songSelect,
             [FlowScenes.Gameplay] = _gameplay,
             [FlowScenes.Calibration] = calibration,
             [FlowScenes.Result] = ending,
@@ -499,6 +505,7 @@ internal sealed class GameShell : IDisposable
             StartScene.Attract => FlowScenes.Logo,
             StartScene.Entry => FlowScenes.Entry,
             StartScene.SongSelect => FlowScenes.SongSelect,
+            StartScene.DaniSelect => FlowScenes.DaniSelect,
             StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
             StartScene.GameOver => FlowScenes.GameOver,
@@ -518,7 +525,7 @@ internal sealed class GameShell : IDisposable
                 if (Don is null) return;
                 if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
                     Don.MapPlayerZero = Hosts.PlayerSide == 1;
-                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial")
+                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial" or "dani-select")
                     Don.MapPlayerZero = false;
             };
             Hosts.CardDialog = open => _indicators.CardDialog(open);

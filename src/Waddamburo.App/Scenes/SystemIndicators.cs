@@ -16,6 +16,8 @@ internal enum IndicatorScene
     SongSelect,
     // The tutorial: the coin/free-play line stays, the join messages are hidden (traced session22).
     Tutorial,
+    // The dan dojo's course list: a scene of its own, no coin or join messages.
+    DaniSelect,
     Gameplay,
     Result,
 }
@@ -87,7 +89,7 @@ internal sealed class SystemIndicators
         _cardVisible = attract && scene != IndicatorScene.Demo || scene == IndicatorScene.Entry;
         // The free-play/coin message first appears with the attract title (traced SetVisible* calls);
         // during the boot screens it stays off.
-        _coinsVisible = scene is not (IndicatorScene.Gameplay or IndicatorScene.Boot);
+        _coinsVisible = scene is not (IndicatorScene.Gameplay or IndicatorScene.Boot or IndicatorScene.DaniSelect);
         call(_card, "SetScene", LumenHostValue.FromNumber(scene == IndicatorScene.Entry ? 1 : 0));
         // Song Select shows the unjoined player's message; the authored indicator movie
         // positions it on the available side and runs its fade animation.

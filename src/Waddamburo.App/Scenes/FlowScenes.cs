@@ -22,6 +22,7 @@ internal static class FlowScenes
     public static readonly SceneId Retry = new("retry");
     public static readonly SceneId GameOver = new("gameover");
     public static readonly SceneId Tutorial = new("tutorial");
+    public static readonly SceneId DaniSelect = new("dani-select");
 
     public static SceneDefinition Rainbow { get; } = RainbowTransitionComposition.Create(new SceneId("rainbow-transition"));
 
@@ -89,6 +90,10 @@ internal static class FlowScenes
         // Traced: the how-to-play folder cuts straight to the tutorial movie, full screen.
         new SceneDefinition(SceneDefinition.CurrentVersion, Tutorial, [
             new SceneLayerDefinition("tutorial/packeddata.ddp", "tutorial/tutorial.lm", LumenMatrix.Identity, "tutorial"),
+        ]),
+        // Traced session30: full screen at depth 0, the indicator's parts above it.
+        new SceneDefinition(SceneDefinition.CurrentVersion, DaniSelect, [
+            new SceneLayerDefinition("dani_select/packeddata.ddp", "dani_select/dani_select.lm", LumenMatrix.Identity, "dani-select"),
         ]),
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),

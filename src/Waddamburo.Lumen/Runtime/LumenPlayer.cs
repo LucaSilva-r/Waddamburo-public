@@ -565,6 +565,13 @@ public sealed class LumenPlayer
     }
 
     // The overlay whose path ends with this clip and its nearest ancestors ("board1p/name_board/names").
+    // ponytail: markers carry no rotation, so only the scale's area is kept.
+    private static LumenMatrix uniformScale(LumenMatrix transform)
+    {
+        var scale = MathF.Sqrt(MathF.Abs(transform.M11 * transform.M22 - transform.M12 * transform.M21));
+        return transform with { M11 = scale, M12 = 0, M21 = 0, M22 = scale };
+    }
+
     private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)? findOverlay(DisplayInstance instance)
     {
         foreach (var (path, overlay) in _overlays)
@@ -2382,7 +2389,8 @@ public sealed class LumenPlayer
                             reportOnce("LUM_NATIVE_FILL_EMPTY", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has empty bounds.");
                             continue;
                         }
-                        var nativeVertices = transformNativeVertices(geometry.Vertices, transform, minX, maxX, minY, maxY,
+                        var nativeVertices = transformNativeVertices(geometry.Vertices,
+                            nativeFill.Placement is { UniformScale: true } ? uniformScale(transform) : transform, minX, maxX, minY, maxY,
                             nativeFill.Placement);
                         quads.Add(new LumenRenderQuad(
                             0,

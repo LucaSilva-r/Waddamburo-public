@@ -104,7 +104,7 @@ public interface IDonPresentationController
 public static class DonLumenBinding
 {
     public static readonly LumenNativeSurfacePlacement Placement =
-        LumenNativeSurfacePlacement.Centered(600, 600);
+        LumenNativeSurfacePlacement.Centered(600, 600) with { UniformScale = true };
 
     /// <param name="player">The movie receiving the native fill markers.</param>
     /// <param name="presentation">The Don presentation supplying render targets.</param>

@@ -36,6 +36,12 @@ public readonly record struct LumenNativeSurfacePlacement(float X, float Y, floa
 {
     public static LumenNativeSurfacePlacement Centered(float width, float height) =>
         new(-width / 2, -height / 2, width, height);
+
+    /// <summary>
+    /// Draws at the marker's average scale, ignoring its shape: some movies' Don marker is a 96x400 placeholder
+    /// scaled (2.08, 0.5) into a square, which would stretch the Don into a long drum.
+    /// </summary>
+    public bool UniformScale { get; init; }
 }
 
 /// <summary>Stencil writes never paint color. Depth is the reference before each operation.</summary>
