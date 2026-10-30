@@ -175,10 +175,13 @@ public sealed class TaikoLongNotePresentation
             var note = _chart.LongNotes[index];
             if (!onRoute(index)) continue;
             // Rolls remain on screen after their scoring window closes until the tail passes left.
-            if (note.IsBalloon && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
+            // A balloon left unplayed slides off from the target when its time runs out (user-confirmed on the game).
+            var unplayed = note.Kind == PlayableLongNoteKind.Balloon && time >= note.EndTime
+                && _session.GetLongNoteProgress(index).Hits == 0;
+            if (note.IsBalloon && !unplayed && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
             var held = IsHeld(index, time);
-            if (note.IsBalloon && time >= note.StartTime && !held) continue;
-            var head = held ? hitX : position(note.StartTime, note.StartTime);
+            if (note.IsBalloon && time >= note.StartTime && !held && !unplayed) continue;
+            var head = held ? hitX : position(unplayed ? note.EndTime : note.StartTime, note.StartTime);
             var tail = note.IsBalloon ? head : position(note.EndTime, note.StartTime);
             if (Math.Max(head, tail) < -100 || Math.Min(head, tail) > 1380) continue;
             retained.Add(index);
