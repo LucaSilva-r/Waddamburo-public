@@ -108,6 +108,16 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);
 
+    /// <summary>A dan course's requirement can no longer be met: the course ends with the song being played.</summary>
+    public bool DanFailed => _lanes.Any(static lane => lane.DanFailed);
+
+    /// <summary>Brings the end banner to <paramref name="time"/>, for a course ending early.</summary>
+    public void EndCourseAt(TimeSpan time)
+    {
+        foreach (var lane in _lanes)
+            lane.EndsAt = time;
+    }
+
     public void Stop()
     {
         foreach (var lane in _lanes)
@@ -237,6 +247,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private bool _stopped;
 
         public TaikoPlayResult Result => _result();
+
+        /// <summary>A dan course's requirement can no longer be met.</summary>
+        public bool DanFailed { get; private set; }
+
+        /// <summary>The end banner's time, when a course ends before its last song.</summary>
+        public TimeSpan? EndsAt { get; set; }
 
         public TaikoJudgementSession Session => _session;
 
@@ -397,15 +413,22 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
             var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
+            var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var bannerTime = TaikoResultBanner.Time(chart);
             var bannerShown = !endBanner;
             _onChartTime = time =>
             {
-                danPanel?.Update(new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
-                    great, good, miss, maxCombo, score.RollHits, score.Value));
+                // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
+                danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
+                    great, good, miss, maxCombo, score.RollHits + score.BalloonHits, score.Value);
+                danPanel?.Update(danProgress);
+                DanFailed = danPanel?.Failed == true;
+                if (EndsAt is { } end)
+                    bannerTime = end;
                 if (bannerShown || time < bannerTime) return;
                 bannerShown = true;
-                var cleared = (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
+                var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false)
+                    : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
                 if (banner is not null) label(banner, TaikoResultBanner.Label(cleared, !missed));
                 sound(!cleared ? GameplaySoundEvent.FailBanner
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);

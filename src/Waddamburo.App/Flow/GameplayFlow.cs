@@ -77,6 +77,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _courseSongs = songs;
         _courseSong = 0;
         _courseHold = TimeSpan.Zero;
+        _courseEndsAt = null;
     }
 
     private DanCourseTimeline? _course;
@@ -282,6 +283,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     private TimeSpan _courseHold;
+    private TimeSpan? _courseEndsAt;
 
     private TimeSpan songTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
@@ -532,7 +534,16 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it
             return;
         var elapsed = chartTime();
-        if (_course is { } playing && _courseSong + 1 < playing.Songs.Count && elapsed >= playing.Songs[_courseSong].End)
+        // Traced session31: a requirement that can no longer be met ends the course with the song being played.
+        if (_course is { } failing && _courseEndsAt is null && Shell.Gameplay.DanFailed)
+        {
+            var failed = failing.Songs[_courseSong];
+            var banner = failed.Zero + TaikoResultBanner.Time(failed.Chart);
+            _courseEndsAt = banner > elapsed ? banner : elapsed;
+            Shell.Gameplay.EndCourseAt(_courseEndsAt.Value);
+            dropNextAudio();
+        }
+        if (_course is { } playing && _courseEndsAt is null && _courseSong + 1 < playing.Songs.Count && elapsed >= playing.Songs[_courseSong].End)
         {
             nextCourseSong(Shell.PlayRequests.Active!);
             elapsed = chartTime();
@@ -559,7 +570,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _afterMusic.Restart();
         }
         var chartFinished = _charts.Length != 0
-            && elapsed >= _charts.Max(TaikoResultBanner.Time) + TaikoResultBanner.ShutterDelay;
+            && elapsed >= (_courseEndsAt ?? _charts.Max(TaikoResultBanner.Time)) + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0
             && (_skipToShutter || chartFinished && !Shell.Gameplay.OverlayActive))
         {

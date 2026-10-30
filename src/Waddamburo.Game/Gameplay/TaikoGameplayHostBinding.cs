@@ -19,12 +19,13 @@ public sealed class TaikoGameplayHostBinding(Func<TaikoSongInfo>? songInfo = nul
     {
         ArgumentNullException.ThrowIfNull(context);
         context.RegisterObject("Lumen", static _ => { });
-        // between, a dan course's next-song card: ExternalInterface CallSE(name, moment), traced SE_GAME 17, 19, 20.
+        // A dan course's movies: ExternalInterface CallSE(name, moment), traced SE_GAME 17, 19, 20 for between's card,
+        // 16 for dani_enso's requirement that can no longer be met.
         context.RegisterExternalInterfaceCall(call =>
         {
             if (call.Arguments.Length > 2 && call.Arguments[0].Kind == LumenHostValueKind.Text && call.Arguments[0].AsString() == "CallSE"
                 && call.Arguments[2].Kind == LumenHostValueKind.Text)
-                playCue?.Invoke("SE_GAME", call.Arguments[2].AsString() switch { "Start" => 17, "Close" => 19, _ => 20 });
+                playCue?.Invoke("SE_GAME", call.Arguments[2].AsString() switch { "Start" => 17, "Close" => 19, "Open" => 20, _ => 16 });
             return LumenHostValue.Undefined;
         });
         // song_info: main.genre.gotoAndStop(genreArray[GetGenrNumber()]), main.stage.gotoAndStop(GetPlayCount()).

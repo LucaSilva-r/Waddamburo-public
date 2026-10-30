@@ -14,6 +14,9 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
     private bool _ready;
     private DanProgress? _shown;
 
+    /// <summary>A requirement can no longer be met: the course ends with the song being played.</summary>
+    public bool Failed { get; private set; }
+
     public void Update(in DanProgress progress)
     {
         if (!_ready && !(_ready = setUp()))
@@ -26,7 +29,9 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
         {
             var requirement = _exams.Requirements[index];
             call("SetConditionValue", index, DanExams.ValueOf(requirement.Type, progress));
-            call("SetConditionValid", index, _exams.StillPossible(requirement, progress) ? 1 : 0);
+            var possible = _exams.StillPossible(requirement, progress);
+            Failed |= !possible;
+            call("SetConditionValid", index, possible ? 1 : 0);
         }
     }
 
