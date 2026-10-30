@@ -9,22 +9,19 @@ using Waddamburo.Providers.Stock;
 namespace Waddamburo.App.Cli;
 
 /// <summary>
-/// --export-charts=FILE: every stock chart, and the Nijiiro charts of the songs --nijiiro-songs=FILE lists (the
-/// Nijiiro folder from the settings, home mode or not; TaikOnline's database/data/nijiiro-song-ids.txt, one id a
-/// line, # comments): a Nijiiro install may hold community songs that must not rank. As gzipped JSON lines, one chart import each (<see cref="ChartUpload"/> plus its sha256), for
-/// TaikOnline's <c>php artisan app:import-waddamburo-charts</c>.
+/// --export-charts=FILE: every stock chart and every chart of the Nijiiro folder from the settings (home mode or
+/// not), as gzipped JSON lines, one chart import each (<see cref="ChartUpload"/> plus its sha256), for TaikOnline's
+/// <c>php artisan app:import-waddamburo-charts</c>. A Nijiiro install may hold community songs: which Nijiiro songs
+/// are official (rank) is the server's list (its --nijiiro-songs), the rest still get their notes and songs there.
 /// </summary>
 internal static class ChartExport
 {
-    public static int Run(string dataRoot, ArcadeSettings arcade, string path, string? nijiiroSongs)
+    public static int Run(string dataRoot, ArcadeSettings arcade, string path)
     {
-        var official = nijiiroSongs is null ? null : File.ReadLines(nijiiroSongs)
-            .Select(static line => line.Split('#', 2)[0].Trim()).Where(static id => id.Length > 0)
-            .ToHashSet(StringComparer.Ordinal);
         ISongCatalogProvider[] providers =
         [
             .. StockCatalogProvider.IsStockData(dataRoot) ? [new StockCatalogProvider(dataRoot)] : Array.Empty<ISongCatalogProvider>(),
-            .. official is not null && arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is var installed
+            .. arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is var installed
                 && installed.Problem is null ? [installed] : Array.Empty<ISongCatalogProvider>(),
         ];
         using var catalog = new GlobalSongCatalog(providers);
@@ -34,14 +31,8 @@ internal static class ChartExport
         var skipped = 0;
         using var file = File.Create(path);
         using var output = new GZipStream(file, CompressionLevel.Optimal);
-        var unlisted = 0;
         foreach (var song in snapshot.Songs.Values)
         {
-            if (song.Key.Source == SongSourceKind.Nijiiro && !official!.Contains(song.Key.StableId))
-            {
-                unlisted++;
-                continue;
-            }
             foreach (var chart in song.Charts)
             {
                 if (chart.Course is not { } course)
@@ -89,8 +80,7 @@ internal static class ChartExport
                 exported++;
             }
         }
-        Console.WriteLine($"Exported {exported} charts to {path} ({skipped} unreadable, skipped; "
-            + (official is null ? "Nijiiro left out without --nijiiro-songs)." : $"{unlisted} Nijiiro songs not listed, left out)."));
+        Console.WriteLine($"Exported {exported} charts to {path} ({skipped} unreadable, skipped).");
         return 0;
     }
 }
