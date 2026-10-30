@@ -144,7 +144,9 @@ MIT-licensed tja2fumen documentation and converter (`tools/tja2fumen` in the Wad
 measured on the user's Green fumens (thresholds plus differing routes) and Nijiiro `musicinfo` flags. The
 lane's route display uses `lane_hit.lm`'s own `SetBranchAvailable`/`SetBranch` callbacks and
 `lane_syousetsu.lm`'s `bunki` frame, and song select's 分岐 mark its `Callback_SetPapamamaSeparateBits`,
-all read from the user's Green movies. No tja2fumen source is copied or translated.
+all read from the user's Green movies. No tja2fumen source is copied or translated. The bubble beside Don
+at a route change is `fukidashi_level_1p.lm`'s own `level_up`/`level_down` labels; when it plays was observed
+in a play session.
 
 `src/Waddamburo.Catalog/PlayableChart.cs` and the playable-chart conversion in
 `src/Waddamburo.Providers.Tja/` are original Waddamburo implementations. Their

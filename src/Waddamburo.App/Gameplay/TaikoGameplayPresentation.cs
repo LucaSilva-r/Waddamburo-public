@@ -525,7 +525,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         return text;
                     }),
                 // The bar line of a 譜面分岐 check: lane_syousetsu's yellow "bunki" frame.
-                chart.Branching is null ? null : layers["lane_syousetsu"] with { Player = branchBar() });
+                chart.Branching is null ? null : layers["lane_syousetsu"] with { Player = branchBar() },
+                layers.GetValueOrDefault("fukidashi_level_1p")?.Player);
             LumenPlayer branchBar()
             {
                 var player = content("lane_syousetsu").CreatePlayer();

@@ -159,6 +159,7 @@ internal static class GameplaySceneComposition
         ("indicator", "player_name", 11, 505),
         ("enso_system/don1p", "score_add_don_1p", 24, 502),
         ("enso_system/don1p", "combo_bonus_don_1p", 20, 502),
+        ("enso_system/base1p", "fukidashi_level_1p", 16, 502),
         ("enso_system/common", "renda_num", 18, 502),
         ("enso_system/common", "lane_hit_effect", 14, 502),
         ("enso_system/don1p", "onp_kiseki_don_1p", 14, 502),

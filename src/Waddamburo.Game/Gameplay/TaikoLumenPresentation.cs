@@ -22,6 +22,7 @@ public sealed class TaikoLumenPresentation
     private readonly LumenSceneLayer? _branchBar;
     private readonly HashSet<TimeSpan> _checkBars;
     private ChartBranch _shownBranch;
+    private readonly LumenPlayer? _branchBubble;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
     private readonly LumenPlayer _board;
@@ -42,9 +43,11 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
         LumenSceneLayer? rareNote = null,
         IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null,
-        LumenSceneLayer? branchBar = null)
+        LumenSceneLayer? branchBar = null,
+        LumenPlayer? branchBubble = null)
     {
         _branchBar = branchBar;
+        _branchBubble = branchBubble;
         _checkBars = [.. chart.Branching?.Checks.Select(static check => check.Time) ?? []];
         _noteTexts = noteTexts;
         _noteLabels = TaikoNoteText.Labels(chart);
@@ -112,9 +115,11 @@ public sealed class TaikoLumenPresentation
     {
         _longNotes?.Update(time);
         _gogo.Update(time);
-        // The lane takes the route a check picked at once (lane_hit plays its normal_kurouto etc. transition).
+        // The lane takes the route a check picked at once (lane_hit plays its normal_kurouto etc. transition),
+        // and Don-chan's bubble says which way it went (traced: same tick; the movie stops itself after).
         if (_judgement.Branch != _shownBranch)
         {
+            _branchBubble?.GotoLabel(_judgement.Branch > _shownBranch ? "level_up" : "level_down", play: true);
             _shownBranch = _judgement.Branch;
             callback(_target.Player, "SetBranch", LumenHostValue.FromNumber((int)_shownBranch));
         }
