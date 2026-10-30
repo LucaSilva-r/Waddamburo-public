@@ -160,6 +160,14 @@ public sealed class ScoreClient(HttpClient http)
             .Rankings;
     }
 
+    /// <summary>The dan dojo catalogue (public: no account needed).</summary>
+    public async Task<Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/dan", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DanCatalogue, cancellationToken).ConfigureAwait(false))!;
+    }
+
     /// <summary>A player's bests per chart hash (home: the token's player; cabinet: <paramref name="baid"/>).</summary>
     public async Task<List<RemoteBest>> BestsAsync(long? baid = null, CancellationToken cancellationToken = default)
     {
