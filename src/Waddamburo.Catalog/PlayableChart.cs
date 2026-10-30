@@ -239,6 +239,36 @@ public sealed record PlayableChart
     /// </summary>
     public ChartBranching? Branching { get; init; }
 
+    /// <summary>The tempo at <paramref name="time"/>: every note asks on every frame, so this does not walk the list.</summary>
+    public double BeatsPerMinuteAt(TimeSpan time)
+    {
+        var (low, high) = (0, TimingPoints.Length);
+        while (low < high)
+        {
+            var middle = (low + high) / 2;
+            if (TimingPoints[middle].Time <= time)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return TimingPoints[Math.Max(low - 1, 0)].BeatsPerMinute;
+    }
+
+    /// <summary>The scroll multiplier at <paramref name="time"/>, 1 before the first point.</summary>
+    public double ScrollAt(TimeSpan time)
+    {
+        var (low, high) = (0, ScrollPoints.Length);
+        while (low < high)
+        {
+            var middle = (low + high) / 2;
+            if (ScrollPoints[middle].Time <= time)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low == 0 ? 1 : ScrollPoints[low - 1].Multiplier;
+    }
+
     /// <summary>Whether a note tagged <paramref name="branch"/> plays on <paramref name="route"/>.</summary>
     public static bool IsOn(ChartBranch? branch, ChartBranch route) => branch is null || branch == route;
 

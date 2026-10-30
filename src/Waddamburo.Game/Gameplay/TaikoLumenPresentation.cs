@@ -216,20 +216,8 @@ public sealed class TaikoLumenPresentation
 
     private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime)
     {
-        var bpm = _chart.TimingPoints[0].BeatsPerMinute;
-        foreach (var point in _chart.TimingPoints)
-        {
-            if (point.Time > controlTime)
-                break;
-            bpm = point.BeatsPerMinute;
-        }
-        var multiplier = 1d;
-        foreach (var point in _chart.ScrollPoints)
-        {
-            if (point.Time > controlTime)
-                break;
-            multiplier = point.Multiplier;
-        }
+        var bpm = _chart.BeatsPerMinuteAt(controlTime);
+        var multiplier = _chart.ScrollAt(controlTime);
         // Product layout: four beats span the visible lane at scroll 1.
         return (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * bpm / 60
             * (1280 - _hitX) / 4 * multiplier, -100_000, 100_000);
