@@ -267,6 +267,7 @@ internal sealed class LayerHostFactory(
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
             "waiwai-result" => waiwaiResultHost(),
+            "dani-result" => daniResultHost(),
             "waiwai-result-board-0" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 0)),
             "waiwai-result-board-1" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 1)),
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
@@ -376,6 +377,19 @@ internal sealed class LayerHostFactory(
             Best = Best,
             Placement = Placement,
         };
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    /// <summary>The course play the next results show; null: a song's.</summary>
+    public DanCourseResult? DanResult { get; set; }
+
+    /// <summary>The dan results on stage, while they are.</summary>
+    public DaniResultHostBinding? DaniResult { get; private set; }
+
+    private LumenLayerHost daniResultHost()
+    {
+        var binding = DaniResult = new DaniResultHostBinding(DanResult ?? throw new InvalidOperationException("Dan results loaded without a course play."),
+            don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
 

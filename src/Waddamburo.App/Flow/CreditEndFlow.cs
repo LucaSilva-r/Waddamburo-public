@@ -29,6 +29,16 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Lumen.TaikoCreditNext.NextSong)
             Shell.Prefetch(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
+        // dani_result's song boards: fills song_name1 to 3.
+        if (Shell.Hosts.DanResult is not null && Shell.Active.Player.Layers[0].Player is { } dani)
+        {
+            for (var index = 0; index < gameplay.CourseSongs.Count; index++)
+            {
+                var title = Shell.Titles.GetGameplayTitle(gameplay.CourseSongs[index]);
+                _ = Shell.Titles.Resolve(title);
+                dani.SetNativeFill($"song_name{index + 1}", title);
+            }
+        }
         // result.lm's song_name slot is the same as gameplay song_info's: reuse its title texture.
         var resultIndex = Shell.Active.Layers.ToList().FindIndex(layer =>
             Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");
@@ -43,7 +53,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
     public override void Exit(SceneId scene)
     {
         if (scene == FlowScenes.Result)
+        {
             Shell.Sounds?.Results.StopMusic();
+            Shell.Hosts.DanResult = null;
+        }
         else if (scene == FlowScenes.GameOver)
             Shell.Sounds?.GameOver.StopGameOverMusic();
     }
@@ -78,6 +91,9 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             // The song's shutter stays over the results until their first frames are drawn.
             if (Shell.Overlay.IsShown && !Shell.FadePending && Shell.Tick - _resultStartTick >= 2)
                 Shell.Overlay.Clear();
+            if (Shell.Hosts.DanResult is not null)
+                Shell.Hosts.DaniResult?.Poll();
+            // ponytail: a course's results take a song's delay until a trace times theirs.
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
                 Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
             if (Shell.FinishFade()) return;
@@ -86,7 +102,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (input.Escape || (Shell.Hosts.WaiwaiResult is { } waiwai
                     ? waiwai.Ended
                     : RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player)))
-                Shell.FadeTo(Shell.Hosts.CreditNext switch
+                // A course is a whole credit (traced); at home, Song Select again.
+                Shell.FadeTo(Shell.Hosts.DanResult is not null && !Shell.Arcade.Home ? FlowScenes.GameOver : Shell.Hosts.CreditNext switch
                 {
                     TaikoCreditNext.Revival => FlowScenes.Retry,
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,

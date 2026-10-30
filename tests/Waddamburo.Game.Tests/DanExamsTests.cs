@@ -58,6 +58,24 @@ public sealed class DanExamsTests
     }
 
     [Fact]
+    public void ResultLevelIsFailRedOrGold()
+    {
+        var test = course(exam("hits", 100, 200));
+
+        Assert.Equal(0, DanCourseResult.LevelOf(test, new DanProgress(0, 99, 0, 0, 0, 0, 0)));
+        Assert.Equal(1, DanCourseResult.LevelOf(test, new DanProgress(0, 100, 0, 0, 0, 0, 0)));
+        Assert.Equal(2, DanCourseResult.LevelOf(test, new DanProgress(0, 200, 0, 0, 0, 0, 0)));
+    }
+
+    [Fact]
+    public void LimitsComeAfterWhatMustBeReached()
+    {
+        var exams = new DanExams(course(exam("soul_gauge", 94, 97), exam("bads", 55, 44), exam("hits", 610, 640)));
+
+        Assert.Equal(["soul_gauge", "hits", "bads"], exams.Requirements.Select(static requirement => requirement.Type));
+    }
+
+    [Fact]
     public void ThePanelShowsWhatRedAsksFor()
     {
         var exams = new DanExams(course(exam("hits", 100, 0), exam("score", 0, 5000)));

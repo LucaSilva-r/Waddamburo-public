@@ -179,7 +179,7 @@ about 1,000,000 for Oni ★7 ("基本天井"). The 真打 formula below makes th
 
 ### 真打 (Shinuchi) option (AC15, W1)
 
-An optional scoring mode (and the fixed mode of the AI battle and dan dojo). The score never grows
+An optional scoring mode (and the fixed mode of the AI battle). The score never grows
 with combo:
 - Every Great is the chart's 真打 base.
 - A Good is half of it, rounded **up** to ten.
@@ -205,7 +205,9 @@ note's second 16-bit field is taken as step × 4).
   Hard 106 / 80 / −106 with ratios 1 / 0.878 / 0.828, Oni 69 / 34 / −110.
 - **Branches:** each branch scales the three amounts by `normal combo ÷ branch combo`, keeping
   fractions (W3).
-- **Dan dojo:** roughly a third of each song's amounts (W3).
+- **Dan dojo (Green, observed on the game):** each song's own amounts divided by 3, rounded towards
+  zero, so 114 / 86 / −57 becomes 38 / 28 / −19. Score uses each song's normal rates with no 真打, and
+  combo carries from song to song.
 
 | Course | Good vs Great | Bad vs Great (W3, approximate) |
 |---|---|---|
@@ -291,4 +293,4 @@ rare-note flags; no ranked score or crown is shown.
 ## Not covered here
 
 - Branch conditions (only the normal branch is played).
-- Dan dojo and AI battle rules.
+- Dan dojo rules other than the gauge and scoring above; AI battle rules.

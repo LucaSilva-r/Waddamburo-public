@@ -579,7 +579,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 Shell.Audio?.Mixer.Stop(outro.Handle, TimeSpan.FromSeconds(1));
             // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
             if (Shell.Gameplay.WaiwaiOutcome is null)
-                overlay.Show(FlowScenes.Shutter);
+                overlay.Show(_course is null ? FlowScenes.Shutter : FlowScenes.DanShutter);
+            // Traced sessions 30 and 31, as the course's shutter closes.
+            if (_course is not null && Shell.Sounds is { } sounds)
+            {
+                sounds.Frontend.PlayCue("VO_RESULT", 19);
+                sounds.Frontend.PlayCue("SE_GAME", 15);
+            }
             _shutterStartTick = Shell.Tick;
             _shutterClosing = false;
         }
@@ -658,6 +664,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         ResetRainbow();
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
+        Shell.Hosts.DanResult = finished && _course is { } course ? danResult(course) : null;
+        var dan = Shell.Hosts.DanResult is not null;
+        CourseSongs = dan ? _courseSongs : [];
         Shell.Gameplay.Stop();
         Shell.Gameplay.Dan = null;
         _course = null;
@@ -665,13 +674,27 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (finished && Shell.PlayRequests.Active is { } played)
             saveScore(played);
         Shell.PlayRequests.ClearActive();
-        if (finished)
+        if (finished && !dan)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
-        Shell.Catalog.Replace(Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
+        Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
+            : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _charts = [];
         _autoplay = null;
         Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
+    }
+
+    /// <summary>The songs of the course the results are showing.</summary>
+    public IReadOnlyList<SongSelectSong> CourseSongs { get; private set; } = [];
+
+    private DanCourseResult danResult(DanCourseTimeline course)
+    {
+        var total = Shell.Gameplay.DanTotal;
+        var counts = Shell.Gameplay.DanSongs(course.Songs.Count);
+        var plan = Shell.Gameplay.Dan!;
+        return new DanCourseResult(plan, [.. course.Songs.Select((song, index) => new DanSongResult(
+                Shell.Hosts.Dan?.Genre(_courseSongs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
+            _courseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total));
     }
 
     // Each lane whose drum has a profile saves its play. ponytail: Waiwai (shared voltage, its own

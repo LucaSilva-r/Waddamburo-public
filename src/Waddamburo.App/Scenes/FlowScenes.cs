@@ -43,6 +43,16 @@ internal static class FlowScenes
         new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
     ]);
 
+    // A dan course's results (traced sessions 30 and 31), and the shutter closing over its last song.
+    public static SceneDefinition DaniResults { get; } = new(SceneDefinition.CurrentVersion, Result, [
+        new SceneLayerDefinition("dani_result/packeddata.ddp", "dani_result/dani_result.lm", LumenMatrix.Identity, "dani-result"),
+    ]);
+
+    public static SceneDefinition DanShutter { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-shutter"), [
+        new SceneLayerDefinition("intermission/packeddata.ddp", "dani_shutter/dani_shutter.lm",
+            LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
+    ]);
+
     // Waiwai's results (traced): its movie full screen, the two name boards at (-580|308, 220) centred.
     public static SceneDefinition WaiwaiResults { get; } = new(SceneDefinition.CurrentVersion, Result, [
         new SceneLayerDefinition("waiwai_result/packeddata.ddp", "waiwai_result/waiwai_result.lm", LumenMatrix.Identity,

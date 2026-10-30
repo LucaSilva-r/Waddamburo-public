@@ -111,6 +111,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>A dan course's requirement can no longer be met: the course ends with the song being played.</summary>
     public bool DanFailed => _lanes.Any(static lane => lane.DanFailed);
 
+    /// <summary>A dan course's whole play.</summary>
+    public Waddamburo.Game.Dan.DanProgress DanTotal => _lanes[0].DanTotal;
+
+    /// <summary>Each of a course's songs' own counts; songs not reached have none.</summary>
+    public IReadOnlyList<Waddamburo.Game.Dan.DanSongCounts> DanSongs(int songs) => _lanes[0].DanSongs(songs);
+
     /// <summary>Brings the end banner to <paramref name="time"/>, for a course ending early.</summary>
     public void EndCourseAt(TimeSpan time)
     {
@@ -250,6 +256,25 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         /// <summary>A dan course's requirement can no longer be met.</summary>
         public bool DanFailed { get; private set; }
+
+        /// <summary>A dan course's play so far.</summary>
+        public Waddamburo.Game.Dan.DanProgress DanTotal { get; private set; }
+
+        private readonly List<Waddamburo.Game.Dan.DanProgress> _danSongEnds = [];
+
+        /// <summary>Each song's own counts, the song being played last, for <paramref name="songs"/> songs.</summary>
+        public List<Waddamburo.Game.Dan.DanSongCounts> DanSongs(int songs)
+        {
+            var counts = new List<Waddamburo.Game.Dan.DanSongCounts>();
+            var before = default(Waddamburo.Game.Dan.DanProgress);
+            for (var index = 0; index < songs; index++)
+            {
+                var end = index < _danSongEnds.Count ? _danSongEnds[index] : index == _danSongEnds.Count ? DanTotal : before;
+                counts.Add(new(end.Goods - before.Goods, end.Oks - before.Oks, end.Bads - before.Bads, end.Rolls - before.Rolls));
+                before = end;
+            }
+            return counts;
+        }
 
         /// <summary>The end banner's time, when a course ends before its last song.</summary>
         public TimeSpan? EndsAt { get; set; }
@@ -414,6 +439,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
             var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
+            var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
+            _danSongEnds = danSongEnds;
             var bannerTime = TaikoResultBanner.Time(chart);
             var bannerShown = !endBanner;
             _onChartTime = time =>
@@ -422,6 +449,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
                     great, good, miss, maxCombo, score.RollHits + score.BalloonHits, score.Value);
                 danPanel?.Update(danProgress);
+                // A song's counts are what has built up by the time the next song's card starts.
+                while (danSongEnds.Count + 1 < chart.Segments.Length && time >= chart.Segments[danSongEnds.Count + 1].Start)
+                    danSongEnds.Add(danProgress);
+                DanTotal = danProgress;
                 DanFailed = danPanel?.Failed == true;
                 if (EndsAt is { } end)
                     bannerTime = end;

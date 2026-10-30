@@ -61,8 +61,8 @@ internal sealed class DanCourses
     }
 
     // The board's panel holds one value per requirement, the red one (a value only gold asks for has none).
-    private static List<DaniSelectCondition> conditions(DanCourse course) => [.. course.Requirements
-        .Where(static requirement => requirement.Red.Length == 1 && requirement.Red[0] != 0)
+    private static List<DaniSelectCondition> conditions(DanCourse course) => [.. new DanExams(course).Requirements
+        .Where(static requirement => requirement.Red.Length == 1)
         .Select(static requirement => new DaniSelectCondition(requirement.Type switch
         {
             "soul_gauge" => 0,
@@ -84,6 +84,8 @@ internal sealed class DanCourses
     }
 
     // The song's folder among the game's genres, for its colour.
+    public int Genre(SongDescriptor song) => genre(song);
+
     private int genre(SongDescriptor? song)
     {
         if (song is null)

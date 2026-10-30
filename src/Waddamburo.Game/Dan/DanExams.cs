@@ -19,7 +19,9 @@ public sealed class DanExams
     {
         ArgumentNullException.ThrowIfNull(course);
         _notes = course.Songs.Sum(static song => song.Notes);
-        Requirements = [.. course.Requirements.Where(static requirement => requirement.Red.Length > 0 && requirement.Red[0] != 0)];
+        // Traced 五級: gauge, hits, then the limit on bads, whatever order the course file lists them in.
+        Requirements = [.. course.Requirements.Where(static requirement => requirement.Red.Length > 0 && requirement.Red[0] != 0)
+            .OrderBy(static requirement => requirement.Type is "bads" or "oks")];
     }
 
     /// <summary>What the panel shows: the requirements red asks for.</summary>
