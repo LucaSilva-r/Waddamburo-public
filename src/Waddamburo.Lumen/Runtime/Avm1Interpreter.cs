@@ -326,6 +326,22 @@ internal static class Avm1Interpreter
                     if (!tryPush(stack, new Avm1ArrayObject(arrayValues), limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
+                case 0x43: // InitObject: the count, then each property's value above its name
+                    if (!tryPop(stack, out var initCountValue))
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var initCount = toNumber(initCountValue);
+                    if (!double.IsFinite(initCount) || initCount < 0 || initCount * 2 > stack.Count)
+                        return Avm1ExecutionStatus.StackUnderflow;
+                    var initialized = new Avm1Object();
+                    for (var initIndex = 0; initIndex < (int)initCount; initIndex++)
+                    {
+                        if (!tryPop(stack, out var initialValue) || !tryPop(stack, out var initialName))
+                            return Avm1ExecutionStatus.StackUnderflow;
+                        initialized.Properties[toAvmString(initialName)] = initialValue;
+                    }
+                    if (!tryPush(stack, initialized, limits.MaxStackValues))
+                        return Avm1ExecutionStatus.StackLimit;
+                    break;
                 case 0x4C: // PushDuplicate
                     if (!tryPeek(stack, out var duplicate))
                         return Avm1ExecutionStatus.StackUnderflow;
@@ -538,7 +554,7 @@ internal static class Avm1Interpreter
         {
             0x00 or 0x06 or 0x07
                 or 0x0A or 0x0B or 0x0C or 0x0D or 0x0E or 0x0F or 0x12 or 0x17 or 0x18 or 0x22 or 0x23 or 0x26
-                or 0x1C or 0x1D or 0x24 or 0x25 or 0x3A or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42
+                or 0x1C or 0x1D or 0x24 or 0x25 or 0x3A or 0x3C or 0x3D or 0x3E or 0x3F or 0x40 or 0x41 or 0x42 or 0x43
                 or 0x47 or 0x48 or 0x49 or 0x4A or 0x4B or 0x4C or 0x4D or 0x4E or 0x4F or 0x50 or 0x51 or 0x52 or 0x53
                 or 0x60 or 0x61 or 0x62 or 0x63 or 0x64 or 0x65 or 0x66 or 0x67 or 0x69
                 or 0x87 or 0x8C or 0x99 or 0x9D => true,
