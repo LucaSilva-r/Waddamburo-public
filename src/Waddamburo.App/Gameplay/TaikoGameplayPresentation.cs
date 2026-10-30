@@ -48,6 +48,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
 
+    /// <summary>The dan course being played (null: a normal song): its gauge and requirements panel show.</summary>
+    public Waddamburo.Game.Dan.DanCourse? Dan { get; set; }
+
     /// <summary>The first lane's numbers for the results screen (null before a song).</summary>
     public TaikoPlayResult? Result => _lanes.Length == 0 ? null : _lanes[0].Result;
 
@@ -76,7 +79,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), endBanner: EndBanner)];
+                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), dan: Dan, endBanner: EndBanner)];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -250,7 +253,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
-            TaikoPlayOptions options = default, bool endBanner = true)
+            TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -281,10 +284,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
             if (stage is not null) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
             if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
-                || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
+                || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(dan is null ? courseLabel : "dani")]))
                 throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
             // The three gauge movies differ in their authored clear line (60/70/80%).
-            var gaugeName = course switch
+            if (dan is not null)
+                board.TryInvokeCallback("SetDani", []);
+            var gaugeName = dan is not null ? "gage_don_1p_dani" : course switch
             {
                 TaikoCourse.Easy => "gage_don_1p_easy",
                 TaikoCourse.Normal or TaikoCourse.Hard => "gage_don_1p_normal",
@@ -391,10 +396,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
+            var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
             var bannerTime = TaikoResultBanner.Time(chart);
             var bannerShown = !endBanner;
             _onChartTime = time =>
             {
+                danPanel?.Update(new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
+                    great, good, miss, maxCombo, score.RollHits, score.Value));
                 if (bannerShown || time < bannerTime) return;
                 bannerShown = true;
                 var cleared = (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;

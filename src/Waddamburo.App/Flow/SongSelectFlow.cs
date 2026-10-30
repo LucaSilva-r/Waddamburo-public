@@ -1,5 +1,6 @@
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
@@ -59,12 +60,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var twoPlayers = request.Players.Length == 2;
         // Waiwai's fixed layout (its charts only reshape the notes).
         var waiwai = Shell.Hosts.Waiwai && twoPlayers && song.Descriptor.WaiwaiComposition is not null;
+        var dojo = Shell.Gameplay.Dan is not null;
         _prefetch = null;
         _composing = Task.Run(() =>
         {
             var theme = waiwai ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
             var scene = waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
-                : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers);
+                : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers, dojo);
             return new Prefetched(request.Song, side, twoPlayers, waiwai, theme, scene);
         });
     }
@@ -96,9 +98,15 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (Shell.Active.Id == FlowScenes.DaniSelect)
         {
-            // ponytail: a picked course returns here until the course's gameplay exists.
-            if (input.Escape || Shell.Hosts.DaniSelect?.Terminated == true)
+            if (input.Escape || Shell.Hosts.DaniSelect is { Terminated: true, Back: true })
+            {
                 Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanCover);
+                return;
+            }
+            if (Shell.Hosts.DaniSelect is { Terminated: true, Selected: { } board } && Shell.PlayRequests.Pending is null)
+                playCourse(Shell.Hosts.DanBoards[board]!);
+            if (Shell.PlayRequests.Pending is { } course)
+                coverForGameplay(course);
             return;
         }
         // A second player joins from Song Select (arcade; one player in, the other drum's join paid for or
@@ -187,8 +195,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
         if (GameActions.Down(input.Keys, GameAction.Favourite) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
             Console.WriteLine("Favourite: the cursor is on no song.");
-        if (Shell.PlayRequests.Pending is not { } request)
-            return;
+        if (Shell.PlayRequests.Pending is { } request)
+            coverForGameplay(request);
+    }
+
+    // The pending play's rainbow, and gameplay under it once it covers the screen.
+    private void coverForGameplay(PlayRequest request)
+    {
         var rainbow = gameplay.Rainbow;
         if (rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete)
         {
@@ -274,6 +287,19 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Show(FlowScenes.SongSelect);
     }
 
+    // ponytail: only the course's first song so far; the three become one timeline next.
+    private void playCourse(DanCourseStatus course)
+    {
+        var first = course.Songs[0];
+        var key = first.Chart!;
+        var song = find(key.Song).Song.Descriptor;
+        var chart = song.Charts.First(candidate => candidate.Key == key);
+        Shell.Gameplay.Dan = course.Course;
+        var side = Shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
+        Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,
+            [new PlayerChartRequest(side, key, chart.ChartAsset, (TaikoCourse)first.Song.Course)]));
+    }
+
     private (string Category, SongSelectSong Song) find(SongKey song) => Shell.SongCatalog.Categories
         .SelectMany(category => category.Songs.Select(entry => (category.Name, entry)))
         .First(entry => entry.entry.Descriptor.Key == song);
@@ -334,7 +360,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Catalog.Replace(prefetched?.Scene ?? (waiwai is not null
             ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
             : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
-                twoPlayers: twoPlayers)));
+                twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
         gameplay.Prepare(charts, song, side, waiwai);
         Shell.Show(FlowScenes.Gameplay);
     }

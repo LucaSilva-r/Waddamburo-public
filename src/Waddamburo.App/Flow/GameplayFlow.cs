@@ -567,6 +567,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
         Shell.Gameplay.Stop();
+        Shell.Gameplay.Dan = null;
         if (finished && Shell.PlayRequests.Active is { } played)
             saveScore(played);
         Shell.PlayRequests.ClearActive();
