@@ -1,3 +1,4 @@
+using Waddamburo.Game.Dan;
 using System.Globalization;
 using System.Reflection;
 using Microsoft.Data.Sqlite;
@@ -116,6 +117,20 @@ public sealed record PlayRecord(
     public int? Seed { get; init; }
 }
 
+/// <summary>A finished dan course, with each song's chart hash (null: not known).</summary>
+public sealed record DanPlayRecord(Guid Id, long Baid, DanCourseResult Result, IReadOnlyList<string?> ChartHashes,
+    DateTimeOffset PlayedAt, byte[] Replay)
+{
+    public int AudioOffsetMs { get; init; }
+
+    public int InputOffsetMs { get; init; }
+
+    public int ScoringVersion { get; init; } = PlayRecord.CurrentScoringVersion;
+
+    public string EngineVersion { get; init; } =
+        typeof(PlayRecord).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+}
+
 /// <summary>The local score database (SQLite, one file beside the cabinet settings).</summary>
 public sealed class ScoreStore : IDisposable
 {
@@ -196,6 +211,34 @@ public sealed class ScoreStore : IDisposable
         """
         ALTER TABLE plays ADD COLUMN options INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE plays ADD COLUMN seed INTEGER;
+        """,
+        // A dan course's plays: three charts, one replay on the course's timeline. Apart from plays, so they
+        // never count as a song's best or reach the song upload. uploaded_at: for when they are sent.
+        """
+        CREATE TABLE dan_plays (
+            id TEXT PRIMARY KEY,
+            baid INTEGER NOT NULL,
+            course_hash TEXT NOT NULL,
+            level INTEGER NOT NULL,
+            result_level INTEGER NOT NULL,
+            score INTEGER NOT NULL,
+            great INTEGER NOT NULL,
+            good INTEGER NOT NULL,
+            miss INTEGER NOT NULL,
+            max_combo INTEGER NOT NULL,
+            rolls INTEGER NOT NULL,
+            gauge_percent INTEGER NOT NULL,
+            songs_played INTEGER NOT NULL,
+            songs TEXT NOT NULL,
+            replay BLOB NOT NULL,
+            scoring_version INTEGER NOT NULL,
+            engine_version TEXT NOT NULL,
+            audio_offset_ms INTEGER NOT NULL,
+            input_offset_ms INTEGER NOT NULL,
+            played_at TEXT NOT NULL,
+            uploaded_at TEXT
+        );
+        CREATE INDEX dan_plays_player ON dan_plays (baid, course_hash);
         """,
     ];
 
@@ -532,6 +575,86 @@ public sealed class ScoreStore : IDisposable
                 command.ExecuteNonQuery();
             }
             transaction.Commit();
+        }
+    }
+
+    /// <summary>Saves a course play.</summary>
+    public void SaveDan(DanPlayRecord play)
+    {
+        ArgumentNullException.ThrowIfNull(play);
+        var result = play.Result;
+        var total = result.Total;
+        var songs = songsJson(play);
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO dan_plays (id, baid, course_hash, level, result_level, score, great, good, miss, max_combo,
+                    rolls, gauge_percent, songs_played, songs, replay, scoring_version, engine_version,
+                    audio_offset_ms, input_offset_ms, played_at)
+                VALUES ($id, $baid, $hash, $level, $result, $score, $great, $good, $miss, $combo,
+                    $rolls, $gauge, $played, $songs, $replay, $scoring, $engine, $audio, $input, $at)
+                """;
+            command.Parameters.AddWithValue("$id", play.Id.ToString());
+            command.Parameters.AddWithValue("$baid", play.Baid);
+            command.Parameters.AddWithValue("$hash", result.Course.Hash);
+            command.Parameters.AddWithValue("$level", result.Course.Level);
+            command.Parameters.AddWithValue("$result", result.Level);
+            command.Parameters.AddWithValue("$score", total.Score);
+            command.Parameters.AddWithValue("$great", total.Goods);
+            command.Parameters.AddWithValue("$good", total.Oks);
+            command.Parameters.AddWithValue("$miss", total.Bads);
+            command.Parameters.AddWithValue("$combo", total.MaxCombo);
+            command.Parameters.AddWithValue("$rolls", total.Rolls);
+            command.Parameters.AddWithValue("$gauge", total.GaugePercent);
+            command.Parameters.AddWithValue("$played", result.SongsPlayed);
+            command.Parameters.AddWithValue("$songs", songs);
+            command.Parameters.AddWithValue("$replay", play.Replay);
+            command.Parameters.AddWithValue("$scoring", play.ScoringVersion);
+            command.Parameters.AddWithValue("$engine", play.EngineVersion);
+            command.Parameters.AddWithValue("$audio", play.AudioOffsetMs);
+            command.Parameters.AddWithValue("$input", play.InputOffsetMs);
+            command.Parameters.AddWithValue("$at", play.PlayedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static string songsJson(DanPlayRecord play)
+    {
+        using var buffer = new MemoryStream();
+        using (var json = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            json.WriteStartArray();
+            var songs = play.Result.Songs;
+            for (var index = 0; index < songs.Count; index++)
+            {
+                json.WriteStartObject();
+                json.WriteString("sha256", index < play.ChartHashes.Count ? play.ChartHashes[index] : null);
+                json.WriteNumber("course", songs[index].Course);
+                json.WriteNumber("great", songs[index].Counts.Goods);
+                json.WriteNumber("good", songs[index].Counts.Oks);
+                json.WriteNumber("miss", songs[index].Counts.Bads);
+                json.WriteNumber("rolls", songs[index].Counts.Rolls);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>The player's best result on each course played, by course hash: 0 failed, 1 red, 2 gold.</summary>
+    public Dictionary<string, int> DanBests(long baid)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT course_hash, MAX(result_level) FROM dan_plays WHERE baid = $baid GROUP BY course_hash";
+            command.Parameters.AddWithValue("$baid", baid);
+            using var reader = command.ExecuteReader();
+            var bests = new Dictionary<string, int>(StringComparer.Ordinal);
+            while (reader.Read())
+                bests[reader.GetString(0)] = reader.GetInt32(1);
+            return bests;
         }
     }
 

@@ -41,8 +41,11 @@ internal sealed class DanCourses
     private readonly List<SongDescriptor> _uids = [];
 
     /// <summary>A series' ranks as dani_select's boards, the back board first, with each course's status.</summary>
+    /// <param name="series">The series' id.</param>
+    /// <param name="bests">The player's best result per course hash (see <see cref="ScoreStore.DanBests"/>).</param>
     // ponytail: the ranks of Green only, the extras (level above 25, named by a texture) and the picker come next.
-    public (IReadOnlyList<DaniSelectBoard> Boards, IReadOnlyList<DanCourseStatus?> Courses) Boards(string series)
+    public (IReadOnlyList<DaniSelectBoard> Boards, IReadOnlyList<DanCourseStatus?> Courses) Boards(string series,
+        IReadOnlyDictionary<string, int>? bests = null)
     {
         var boards = new List<DaniSelectBoard> { new(DaniSelectHostBinding.BackId, true, []) };
         var courses = new List<DanCourseStatus?> { null };
@@ -54,7 +57,9 @@ internal sealed class DanCourses
         {
             var status = DanCourseStatus.Of(course, library);
             boards.Add(new DaniSelectBoard(course.Level - 1, status.Playable, [.. status.Songs.Select(board)],
-                course.Songs.Sum(static song => song.Notes), conditions(course)));
+                course.Songs.Sum(static song => song.Notes), conditions(course),
+                // The movie's history labels (traced): 0 none, 1 played, 2 success, 3 perfect.
+                bests is not null && bests.TryGetValue(course.Hash, out var best) ? best + 1 : 0));
             courses.Add(status);
         }
         return (boards, courses);

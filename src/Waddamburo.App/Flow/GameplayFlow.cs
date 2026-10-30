@@ -71,8 +71,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>The next song's charts (one per player) and layout, for <see cref="Enter"/>.</summary>
     /// <summary>Plays a dan course: after <see cref="Prepare"/> with its merged chart.</summary>
-    public void PrepareCourse(DanCourseTimeline course, IReadOnlyList<SongSelectSong> songs)
+    public void PrepareCourse(DanCourseTimeline course, IReadOnlyList<SongSelectSong> songs, DanCourseStatus status)
     {
+        _courseStatus = status;
         _course = course;
         _courseSongs = songs;
         _courseSong = 0;
@@ -81,6 +82,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     private DanCourseTimeline? _course;
+    private DanCourseStatus? _courseStatus;
     private IReadOnlyList<SongSelectSong> _courseSongs = [];
     private int _courseSong;
 
@@ -203,7 +205,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A replay or autoplay review is scrubbed back and forth: the end banner would stay up once reached.
         Shell.Gameplay.EndBanner = _review is null && !_demo;
         _training = null;
-        // ponytail: a course's play is not saved until plays can hold several charts.
+        // A course saves apart, whole (saveCourse).
         _voided = request.Review is not null || _demo || _course is not null;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.WatchAs(_side, watched);
@@ -672,7 +674,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _course = null;
         dropNextAudio();
         if (finished && Shell.PlayRequests.Active is { } played)
+        {
             saveScore(played);
+            if (Shell.Hosts.DanResult is { } danPlay)
+                saveCourse(played, danPlay);
+        }
         Shell.PlayRequests.ClearActive();
         if (finished && !dan)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
@@ -695,6 +701,28 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         return new DanCourseResult(plan, [.. course.Songs.Select((song, index) => new DanSongResult(
                 Shell.Hosts.Dan?.Genre(_courseSongs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
             _courseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total));
+    }
+
+    // Offline too: nothing here waits for the server. ponytail: not uploaded yet (uploaded_at stays null).
+    private void saveCourse(PlayRequest request, DanCourseResult result)
+    {
+        if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores
+            || TaikoGuest.Profiles[(int)request.Players[0].Player] is not { } profile)
+            return;
+        try
+        {
+            scores.SaveDan(new DanPlayRecord(Guid.NewGuid(), profile.Baid, result,
+                [.. _courseStatus!.Songs.Select(static song => song.Sha256)], DateTimeOffset.UtcNow, Shell.Gameplay.Replays[0].Encode())
+            {
+                AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
+                InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
+            });
+        }
+        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
+        {
+            // A lost score must not end the credit.
+            Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
+        }
     }
 
     // Each lane whose drum has a profile saves its play. ponytail: Waiwai (shared voltage, its own

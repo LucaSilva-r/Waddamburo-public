@@ -6,7 +6,7 @@ namespace Waddamburo.Game.Lumen;
 
 /// <summary>One board of dani_select: a dan id (see <see cref="DaniSelectHostBinding"/>) and its songs.</summary>
 public sealed record DaniSelectBoard(int Id, bool Valid, IReadOnlyList<DaniSelectSong> Songs, int Notes = 0,
-    IReadOnlyList<DaniSelectCondition>? Conditions = null);
+    IReadOnlyList<DaniSelectCondition>? Conditions = null, int History = 0);
 
 /// <summary>A requirement on a board's panel: <paramref name="Type"/> is ConditionInfo's (see <see cref="DaniSelectHostBinding"/>).</summary>
 public sealed record DaniSelectCondition(int Type, int Value);
@@ -144,7 +144,7 @@ public sealed class DaniSelectHostBinding(
         {
             invoke("AssignDani", board.Id);
             _player.TryInvokeCallback("SetDaniStatus", [LumenHostValue.FromBoolean(board.Valid),
-                LumenHostValue.FromNumber(board.Notes), LumenHostValue.FromNumber(0)]);
+                LumenHostValue.FromNumber(board.Notes), LumenHostValue.FromNumber(board.History)]);
             foreach (var song in board.Songs)
                 invoke("AssignMusic", song.Uid, song.Genre, song.Course, song.Star);
             foreach (var condition in board.Conditions ?? [])

@@ -401,6 +401,8 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
+            DanBests = () => TaikoGuest.Profiles[Hosts!.PlayerSide] is { } player && Sync.Scores is { } scores
+                ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
             DanResult = options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
                 ? diagnosticDan(options.StartScene == StartScene.DaniResultClear) : null,
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,

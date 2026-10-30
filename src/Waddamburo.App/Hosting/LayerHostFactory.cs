@@ -119,6 +119,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
     public DanCourses? Dan { get; set; }
 
+    /// <summary>The player's best result per course hash, for the course list's stamps.</summary>
+    public Func<IReadOnlyDictionary<string, int>>? DanBests { get; set; }
+
     /// <summary>The course list on screen.</summary>
     public DaniSelectHostBinding? DaniSelect { get; private set; }
 
@@ -324,7 +327,8 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
-            browse: OsuBrowse, search: Search, danDojo: Dan?.Available == true);
+            browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
+            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
@@ -430,7 +434,7 @@ internal sealed class LayerHostFactory(
         {
             if (!Dan!.Ready)
                 return null;
-            var (boards, courses) = Dan.Boards("green");
+            var (boards, courses) = Dan.Boards("green", DanBests?.Invoke());
             DanBoards = courses;
             return boards;
         }, PlayerSide, uid =>

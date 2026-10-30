@@ -336,6 +336,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // A course: all its songs as one chart.
         DanCourseTimeline? timeline = null;
         var courseSongs = new List<SongSelectSong>();
+        var courseStatus = _course;
         if (_course is { } picked)
         {
             _course = null;
@@ -391,7 +392,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
         gameplay.Prepare(charts, song, side, waiwai);
         if (timeline is not null)
-            gameplay.PrepareCourse(timeline, courseSongs);
+            gameplay.PrepareCourse(timeline, courseSongs, courseStatus!);
         Shell.Show(FlowScenes.Gameplay);
     }
 }

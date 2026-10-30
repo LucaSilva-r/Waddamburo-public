@@ -67,7 +67,7 @@ public enum DanSongState
 }
 
 /// <summary>A course song against the library: <see cref="Chart"/> is what to play when playable.</summary>
-public sealed record DanSongStatus(DanCourseSong Song, DanSongState State, ChartKey? Chart);
+public sealed record DanSongStatus(DanCourseSong Song, DanSongState State, ChartKey? Chart, string? Sha256 = null);
 
 /// <summary>A course is playable only when all its songs are: a play that could not count is never offered.</summary>
 public sealed record DanCourseStatus(DanCourse Course, IReadOnlyList<DanSongStatus> Songs)
@@ -83,7 +83,7 @@ public sealed record DanCourseStatus(DanCourse Course, IReadOnlyList<DanSongStat
         {
             var counted = library.FirstOrDefault(chart => song.Charts.Contains(chart.Sha256, StringComparer.Ordinal));
             if (counted is not null)
-                return new DanSongStatus(song, DanSongState.Playable, counted.Chart);
+                return new DanSongStatus(song, DanSongState.Playable, counted.Chart, counted.Sha256);
             return new DanSongStatus(song, library.Any(chart => chart.Course == song.Course
                 && string.Equals(chart.SongKey, song.SongKey, StringComparison.Ordinal))
                 ? DanSongState.DifferentChart : DanSongState.Missing, null);
