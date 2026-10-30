@@ -122,7 +122,8 @@ public sealed class SongSelectCatalogView
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
-        SongSearchResults? search = null, bool danDojo = false)
+        SongSearchResults? search = null, bool danDojo = false,
+        IReadOnlyList<(string Id, string Name)>? danSeries = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -183,8 +184,10 @@ public sealed class SongSelectCatalogView
             .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
             .Concat(danDojo && mode == SongSelectMode.Normal && library is null or SongSourceKind.Stock ? new[]
             {
+                // At home a folder of series, one spine each; a cabinet's one series opens straight away.
                 new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "dan"), "Dan Dojo", DanLabel,
-                    SongCategoryPresentation.FolderEnd, boardStyle(""), []),
+                    danSeries is { Count: > 0 } ? SongCategoryPresentation.AlwaysVisible : SongCategoryPresentation.FolderEnd,
+                    boardStyle(""), [.. (danSeries ?? []).Select(static series => danSeriesSong(series.Id, series.Name))]),
             } : [])
             .Concat(library == SongSourceKind.OsuLazer && browse is not null ? new[]
             {
@@ -329,6 +332,20 @@ public sealed class SongSelectCatalogView
 
     /// <summary>Index of the how-to-play folder, or -1.</summary>
     public int TutorialCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == TutorialLabel);
+
+    private const string DanSeriesPrefix = "dan-series:";
+
+    // A spine, not a song: it has no notes or music, and deciding it opens the series' courses.
+    private static SongSelectSong danSeriesSong(string id, string name)
+    {
+        var key = new SongKey(SongSourceKind.Stock, DanSeriesPrefix + id);
+        return new SongSelectSong(new SongDescriptor(key, new SongTitle(name), null,
+            [new SongChartDescriptor(new ChartKey(key, "dan"), "dan", new CatalogAssetKey(new CatalogProviderId("dan"), key.StableId))]), default, [.. new int?[5]]);
+    }
+
+    /// <summary>The series a song in the dan dojo folder stands for; null: a real song.</summary>
+    public static string? DanSeriesOf(SongKey song) => song.StableId.Contains(DanSeriesPrefix, StringComparison.Ordinal)
+        ? song.StableId[(song.StableId.IndexOf(DanSeriesPrefix, StringComparison.Ordinal) + DanSeriesPrefix.Length)..] : null;
 
     /// <summary>Index of the dan dojo folder, or -1.</summary>
     public int DanCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == DanLabel);

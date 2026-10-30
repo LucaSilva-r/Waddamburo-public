@@ -119,6 +119,12 @@ internal sealed class LayerHostFactory(
     /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
     public DanCourses? Dan { get; set; }
 
+    /// <summary>The series dani_select lists.</summary>
+    public string DanSeries { get; set; } = "green";
+
+    /// <summary>The challenge course being played: its number in <see cref="DanSeries"/>; 0: a rank.</summary>
+    public int DanChallenge { get; set; }
+
     /// <summary>The player's best result per course hash, for the course list's stamps.</summary>
     public Func<IReadOnlyDictionary<string, int>>? DanBests { get; set; }
 
@@ -328,7 +334,8 @@ internal sealed class LayerHostFactory(
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
-            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null);
+            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null,
+            danSeries: arcade.Home ? Dan?.Series : null);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
@@ -434,12 +441,13 @@ internal sealed class LayerHostFactory(
         {
             if (!Dan!.Ready)
                 return null;
-            var (boards, courses) = Dan.Boards("green", DanBests?.Invoke());
+            var (boards, courses) = Dan.Boards(DanSeries, DanBests?.Invoke());
             DanBoards = courses;
             return boards;
         }, PlayerSide, uid =>
             Dan!.Song(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
                 ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Expanded) : null,
+            (challenge, kind) => DanChallengeArt.Key(DanSeries, challenge, kind),
             songSelectSounds, don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }

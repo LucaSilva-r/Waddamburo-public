@@ -67,6 +67,19 @@ public sealed class DanExamsTests
         Assert.Equal(2, DanCourseResult.LevelOf(test, new DanProgress(0, 200, 0, 0, 0, 0, 0)));
     }
 
+    [Theory]
+    [InlineData("初級", 0)]
+    [InlineData("一級", 10)]
+    [InlineData("１級", 10)]
+    [InlineData("初段", 11)]
+    [InlineData("大将", 15)]
+    [InlineData("達人", 24)]
+    [InlineData("復活！カツドン大将", DanRanks.Challenge)]
+    public void EverySeriesRanksGoOnGreensBoards(string name, int rank)
+    {
+        Assert.Equal(rank, DanRanks.Of(name));
+    }
+
     [Fact]
     public void LimitsComeAfterWhatMustBeReached()
     {

@@ -243,6 +243,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public bool TutorialRequested { get; private set; }
     public bool DanRequested { get; private set; }
 
+    /// <summary>The series spine decided in the dan dojo folder; null: the folder itself (a cabinet's).</summary>
+    public string? DanSeriesPicked { get; private set; }
+
     /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
     public SongSourceKind? LibraryRequested { get; private set; }
 
@@ -376,6 +379,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyBeginCourseSelect", call =>
             {
                 _courseSelect = (integer(call, 0), integer(call, 1));
+                if (_session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var picked)
+                    && picked is not null && SongSelectCatalogView.DanSeriesOf(picked.Descriptor.Key) is { } series)
+                {
+                    DanSeriesPicked = series;
+                    DanRequested = true;
+                    Picked = (_session.Catalog.Categories[integer(call, 0)].Key, picked.Descriptor.Key); // back comes here
+                }
                 CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
                 LeavingCourseSelect = false;
                 // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.
@@ -666,14 +676,32 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     // Answered inside the call (the movie only stores RankingScore while it waits): per course 0-4
     // (ura 4), ranks 0-2, empty ones as (course, rank, 0, "") (traced).
+    private static readonly string[] SongParts =
+        ["main/genreSelect_/musicDetail_", "main/rankingView_/rankingPanel_1p_", "main/rankingView_/rankingPanel_2p_"];
+
+    private bool _songPartsHidden;
+
+    // A series spine is no song: no difficulties or ranking on it.
+    private void hideSongPartsOnSeries()
+    {
+        var series = _centre is { } at && _session.Catalog.TryGetSong(at.Category, at.Song, out var song)
+            && SongSelectCatalogView.DanSeriesOf(song.Descriptor.Key) is not null;
+        if (series == _songPartsHidden || _player is null)
+            return;
+        _songPartsHidden = series;
+        foreach (var part in SongParts)
+            _player.SetInstanceHidden(part, series);
+    }
+
     private LumenHostValue publishRanking(LumenHostCall call)
     {
         // The movie reports no cancel of course select: backing out plays SE 5/32 and asks for the centre
         // song's ranking again, which it never does while a difficulty board is open (traced).
         CourseSelectSong = null;
         LeavingCourseSelect = false;
+        // Answered even for a series spine: on false the movie stops there, and never asks for the title.
         var rankings = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
-            ? Rankings?.Invoke(song) : null;
+            && SongSelectCatalogView.DanSeriesOf(song.Descriptor.Key) is null ? Rankings?.Invoke(song) : null;
         for (var course = 0; course < 5; course++)
             for (var rank = 0; rank < 3; rank++)
             {
@@ -801,6 +829,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void Poll()
     {
+        hideSongPartsOnSeries();
         showSpeeds();
         if (_featureFolders.Count <= FeatureSlots || _player is null)
             return;

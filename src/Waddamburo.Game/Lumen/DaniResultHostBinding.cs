@@ -77,7 +77,7 @@ public sealed class DaniResultHostBinding(DanCourseResult result, IDonPresentati
         call(player, "SetCombo", total.MaxCombo);
         call(player, "SetBeats", total.Hits);
         call(player, "SetGauge", total.GaugePercent / 2);
-        call(player, "SetDaniLevel", result.Course.Level);
+        call(player, "SetDaniLevel", result.Course.Rank + 1);
         call(player, "SetMedleyCourse", 3);
         var exams = new DanExams(result.Course).Requirements;
         for (var index = 0; index < exams.Count; index++)

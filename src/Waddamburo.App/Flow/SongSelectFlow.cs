@@ -1,3 +1,4 @@
+using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
@@ -140,6 +141,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (Shell.Hosts.SongSelect?.DanRequested == true)
         {
             Shell.Sounds?.Bank.Play("SE_SELECT", 7); // traced session30, as Song Select ends
+            // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
+            Shell.Hosts.DanSeries = Shell.Hosts.SongSelect.DanSeriesPicked ?? Shell.Arcade.DanSeries;
             Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
             return;
         }
@@ -305,6 +308,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var song = find(key.Song).Song.Descriptor;
         var chart = song.Charts.First(candidate => candidate.Key == key);
         Shell.Gameplay.Dan = course.Course;
+        var challenge = Shell.Hosts.DanChallenge = Shell.Hosts.Dan!.ChallengeNumber(Shell.Hosts.DanSeries, course.Course);
+        Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Hosts.DanSeries, challenge, "mini");
         var side = Shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,
             [new PlayerChartRequest(side, key, chart.ChartAsset, (TaikoCourse)first.Song.Course)]));

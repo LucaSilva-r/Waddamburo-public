@@ -163,6 +163,7 @@ internal sealed class GameShell : IDisposable
     private readonly IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
     private readonly CostumeIconTextures _costumeIcons;
+    private readonly DanChallengeArt _danArt;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
     private readonly NameTextTextures _nameTexts;
@@ -350,6 +351,7 @@ internal sealed class GameShell : IDisposable
             Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
             () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
         _costumeIcons = new CostumeIconTextures(Application, dataRoot);
+        _danArt = new DanChallengeArt(Application, dataRoot);
         _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
         Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
             Path.Combine(dataRoot, "config", "S11100-1", "musicinfo.xml"));
@@ -1024,7 +1026,7 @@ internal sealed class GameShell : IDisposable
 
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
+        ?? _danArt.Resolve(surface) ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
         ?? Titles.Resolve(surface);
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),

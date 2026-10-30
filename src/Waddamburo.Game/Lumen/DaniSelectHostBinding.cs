@@ -6,7 +6,11 @@ namespace Waddamburo.Game.Lumen;
 
 /// <summary>One board of dani_select: a dan id (see <see cref="DaniSelectHostBinding"/>) and its songs.</summary>
 public sealed record DaniSelectBoard(int Id, bool Valid, IReadOnlyList<DaniSelectSong> Songs, int Notes = 0,
-    IReadOnlyList<DaniSelectCondition>? Conditions = null, int History = 0);
+    IReadOnlyList<DaniSelectCondition>? Conditions = null, int History = 0)
+{
+    /// <summary>A challenge board's number in its series (SetChallengeID; its art goes in fills challenge_n_long, _short).</summary>
+    public int? Challenge { get; init; }
+}
 
 /// <summary>A requirement on a board's panel: <paramref name="Type"/> is ConditionInfo's (see <see cref="DaniSelectHostBinding"/>).</summary>
 public sealed record DaniSelectCondition(int Type, int Value);
@@ -28,6 +32,7 @@ public sealed class DaniSelectHostBinding(
     Func<IReadOnlyList<DaniSelectBoard>?> boards,
     int side,
     Func<int, LumenNativeSurfaceKey?> title,
+    Func<int, string, LumenNativeSurfaceKey>? challengeArt = null,
     ISongSelectSoundController? sounds = null,
     IDonPresentationController? don = null,
     Action<string, int>? playCue = null) : ILumenHostBinding
@@ -145,6 +150,15 @@ public sealed class DaniSelectHostBinding(
             invoke("AssignDani", board.Id);
             _player.TryInvokeCallback("SetDaniStatus", [LumenHostValue.FromBoolean(board.Valid),
                 LumenHostValue.FromNumber(board.Notes), LumenHostValue.FromNumber(board.History)]);
+            if (board.Challenge is { } challenge)
+            {
+                invoke("SetChallengeID", challenge);
+                if (challengeArt is not null)
+                {
+                    _player.SetNativeFill($"challenge_{challenge}_long", challengeArt(challenge, "long"));
+                    _player.SetNativeFill($"challenge_{challenge}_short", challengeArt(challenge, "short"));
+                }
+            }
             foreach (var song in board.Songs)
                 invoke("AssignMusic", song.Uid, song.Genre, song.Course, song.Star);
             foreach (var condition in board.Conditions ?? [])

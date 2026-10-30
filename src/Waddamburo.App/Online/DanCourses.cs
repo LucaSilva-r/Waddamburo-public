@@ -43,7 +43,6 @@ internal sealed class DanCourses
     /// <summary>A series' ranks as dani_select's boards, the back board first, with each course's status.</summary>
     /// <param name="series">The series' id.</param>
     /// <param name="bests">The player's best result per course hash (see <see cref="ScoreStore.DanBests"/>).</param>
-    // ponytail: the ranks of Green only, the extras (level above 25, named by a texture) and the picker come next.
     public (IReadOnlyList<DaniSelectBoard> Boards, IReadOnlyList<DanCourseStatus?> Courses) Boards(string series,
         IReadOnlyDictionary<string, int>? bests = null)
     {
@@ -51,19 +50,68 @@ internal sealed class DanCourses
         var courses = new List<DanCourseStatus?> { null };
         _uids.Clear();
         var catalogue = _catalogue;
-        var ranks = catalogue?.Series.Find(candidate => candidate.Id == series)?.Courses.Where(static course => course.Level <= 25) ?? [];
+        var challenges = 0;
         var library = _library;
-        foreach (var course in ranks)
+        foreach (var course in catalogue?.Series.Find(candidate => candidate.Id == series)?.Courses ?? [])
         {
             var status = DanCourseStatus.Of(course, library);
-            boards.Add(new DaniSelectBoard(course.Level - 1, status.Playable, [.. status.Songs.Select(board)],
+            boards.Add(new DaniSelectBoard(course.Rank, status.Playable, [.. status.Songs.Select(board)],
                 course.Songs.Sum(static song => song.Notes), conditions(course),
-                // The movie's history labels (traced): 0 none, 1 played, 2 success, 3 perfect.
-                bests is not null && bests.TryGetValue(course.Hash, out var best) ? best + 1 : 0));
+                // The movie's history labels (traced): 0 none, 1 played (no art), 2 success, 3 perfect.
+                bests is not null && bests.TryGetValue(course.Hash, out var best) ? best + 1 : 0)
+            {
+                Challenge = course.Rank == DanRanks.Challenge ? ++challenges : null,
+            });
             courses.Add(status);
         }
         return (boards, courses);
     }
+
+    /// <summary>A challenge course's number in its series, for its art; 0: a rank.</summary>
+    public int ChallengeNumber(string series, DanCourse course)
+    {
+        var challenges = 0;
+        foreach (var candidate in _catalogue?.Series.Find(entry => entry.Id == series)?.Courses ?? [])
+        {
+            if (candidate.Rank == DanRanks.Challenge)
+                challenges++;
+            if (candidate == course)
+                return course.Rank == DanRanks.Challenge ? challenges : 0;
+        }
+        return 0;
+    }
+
+    /// <summary>The series, newest first, with the names their spines show.</summary>
+    public IReadOnlyList<(string Id, string Name)> Series =>
+        [.. (_catalogue?.Series ?? []).Select(static series => (series.Id, SeriesName(series.Id)))];
+
+    private static string SeriesName(string id) => Strings.Language.StartsWith("ja", StringComparison.Ordinal) ? id switch
+    {
+        "green" => "グリーン",
+        "blue" => "ブルー",
+        "yellow" => "イエロー",
+        "red" => "レッド",
+        "white" => "ホワイト",
+        "murasaki" => "ムラサキ",
+        "kimidori" => "キミドリ",
+        "momoiro" => "モモイロ",
+        "sorairo" => "ソライロ",
+        "katsudon" => "カツドン",
+        _ => id,
+    } : id switch
+    {
+        "green" => "Green",
+        "blue" => "Blue",
+        "yellow" => "Yellow",
+        "red" => "Red",
+        "white" => "White",
+        "murasaki" => "Murasaki",
+        "kimidori" => "Kimidori",
+        "momoiro" => "Momoiro",
+        "sorairo" => "Sorairo",
+        "katsudon" => "Katsu-Don",
+        _ => id,
+    };
 
     // The board's panel holds one value per requirement, the red one (a value only gold asks for has none).
     private static List<DaniSelectCondition> conditions(DanCourse course) => [.. new DanExams(course).Requirements

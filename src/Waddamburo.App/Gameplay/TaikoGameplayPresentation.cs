@@ -51,6 +51,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>The dan course being played (null: a normal song): its gauge and requirements panel show.</summary>
     public Waddamburo.Game.Dan.DanCourse? Dan { get; set; }
 
+    /// <summary>A challenge course's name art for dani_enso's fill challenge_lv_mini.</summary>
+    public LumenNativeSurfaceKey? DanChallengeArt { get; set; }
+
     /// <summary>The first lane's numbers for the results screen (null before a song).</summary>
     public TaikoPlayResult? Result => _lanes.Length == 0 ? null : _lanes[0].Result;
 
@@ -79,7 +82,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), dan: Dan, endBanner: EndBanner)];
+                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -294,7 +297,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
-            TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null)
+            TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -438,6 +441,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
             var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
+            if (dan is not null && danArt is { } challengeArt)
+                layers["dani_enso"].Player.SetNativeFill("challenge_lv_mini", challengeArt);
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;

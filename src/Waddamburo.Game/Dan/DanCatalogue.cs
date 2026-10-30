@@ -43,7 +43,12 @@ public sealed record DanSeries(string Id, string Name, List<DanCourse> Courses);
 /// A course: its level is the list's slot (1-25 ranks, above them extras). <paramref name="Hash"/> changes
 /// with its songs or requirements, so a pass never carries over to a changed course.
 /// </summary>
-public sealed record DanCourse(int Level, string Name, string Hash, List<DanRequirement> Requirements, List<DanCourseSong> Songs);
+public sealed record DanCourse(int Level, string Name, string Hash, List<DanRequirement> Requirements, List<DanCourseSong> Songs)
+{
+    /// <summary>The course's board in the movies: every series' ranks use Green's.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int Rank => DanRanks.Of(Name);
+}
 
 /// <summary>
 /// One requirement: red and gold hold a value for the whole course, or one per song. 0 = none at that level
@@ -89,4 +94,23 @@ public sealed record DanCourseStatus(DanCourse Course, IReadOnlyList<DanSongStat
                 ? DanSongState.DifferentChart : DanSongState.Missing, null);
         }).ToList());
     }
+}
+
+/// <summary>The dan movies' rank numbers (their DANI_LABEL), which every series shares: older names go on Green's boards.</summary>
+public static class DanRanks
+{
+    /// <summary>A course that is no rank: a challenge board, named by the host.</summary>
+    public const int Challenge = 29;
+
+    private static readonly Dictionary<string, int> Ranks = new(StringComparer.Ordinal)
+    {
+        ["初級"] = 0, ["十級"] = 1, ["九級"] = 2, ["八級"] = 3, ["七級"] = 4, ["六級"] = 5, ["五級"] = 6, ["四級"] = 7, ["三級"] = 8,
+        ["二級"] = 9, ["一級"] = 10, ["４級"] = 7, ["３級"] = 8, ["２級"] = 9, ["１級"] = 10,
+        ["初段"] = 11, ["二段"] = 12, ["三段"] = 13, ["四段"] = 14, ["五段"] = 15, ["六段"] = 16, ["七段"] = 17, ["八段"] = 18, ["九段"] = 19,
+        ["十段"] = 20, ["玄人"] = 21, ["名人"] = 22, ["超人"] = 23, ["達人"] = 24,
+        // Katsu-Don's five: no art of their own, user's call to use Green's first five dan.
+        ["先鋒"] = 11, ["次鋒"] = 12, ["中堅"] = 13, ["副将"] = 14, ["大将"] = 15,
+    };
+
+    public static int Of(string name) => Ranks.GetValueOrDefault(name, Challenge);
 }

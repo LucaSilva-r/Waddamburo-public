@@ -1,3 +1,4 @@
+using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Lumen;
@@ -29,9 +30,11 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Lumen.TaikoCreditNext.NextSong)
             Shell.Prefetch(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
-        // dani_result's song boards: fills song_name1 to 3.
+        // dani_result's song boards: fills song_name1 to 3, and a challenge's name art.
         if (Shell.Hosts.DanResult is not null && Shell.Active.Player.Layers[0].Player is { } dani)
         {
+            if (Shell.Hosts.DanChallenge > 0)
+                dani.SetNativeFill("challenge_short", DanChallengeArt.Key(Shell.Hosts.DanSeries, Shell.Hosts.DanChallenge, "short"));
             for (var index = 0; index < gameplay.CourseSongs.Count; index++)
             {
                 var title = Shell.Titles.GetGameplayTitle(gameplay.CourseSongs[index]);

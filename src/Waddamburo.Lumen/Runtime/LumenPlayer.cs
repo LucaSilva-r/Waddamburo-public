@@ -547,6 +547,16 @@ public sealed class LumenPlayer
         return lines;
     }
 
+    /// <summary>Keeps a clip from being drawn whatever its script does with _visible, until asked otherwise.</summary>
+    public bool SetInstanceHidden(string instancePath, bool hidden)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+        if (findInstance(instancePath) is not { } instance)
+            return false;
+        instance.HiddenByHost = hidden;
+        return true;
+    }
+
     /// <summary>
     /// Draws a host surface over every clip named <paramref name="instancePath"/> ("a/b/name" scopes it to
     /// clips under those ancestors),
@@ -2350,7 +2360,7 @@ public sealed class LumenPlayer
         ImmutableArray<LumenRenderQuad>.Builder quads,
         byte maskDepth = 0)
     {
-        if (instance.Removed || !instance.Visible)
+        if (instance.Removed || !instance.Visible || instance.HiddenByHost)
             return;
         // A newly revealed or abruptly moved parent must show its children at the same tick.
         // Otherwise hidden child positions are interpolated under the parent's new opacity.
@@ -2709,6 +2719,7 @@ public sealed class LumenPlayer
         public bool Playing { get; set; } = true;
 
         public bool Visible { get; set; } = true;
+        public bool HiddenByHost { get; set; }
 
         public bool ScriptTransformed { get; set; }
 

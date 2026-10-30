@@ -37,7 +37,7 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
 
     private bool setUp()
     {
-        if (!call("SetChallengeLevel", course.Level - 1))
+        if (!call("SetChallengeLevel", course.Rank))
             return false;
         call("SetConditionNum", _exams.Requirements.Count);
         for (var index = 0; index < _exams.Requirements.Count; index++)
