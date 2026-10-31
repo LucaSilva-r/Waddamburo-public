@@ -36,7 +36,8 @@ internal static class FumenChartReader
         reader.Position = BranchPointsOffset;
         var points = new ChartBranchPoints(reader.Int32(), reader.Int32(), reader.Int32(), reader.Int32(),
             reader.Int32(), reader.Int32(), reader.Int32(), reader.Int32(), reader.Int32());
-        var branched = hasBranches(data, bigEndian, measureCount);
+        var (thresholded, differ) = branchFlags(data, bigEndian, measureCount);
+        var branched = thresholded && differ;
         reader.Position = HeaderSize;
 
         // Audio time (ms) of every event; shifted to non-negative chart time at the end.
@@ -57,7 +58,7 @@ internal static class FumenChartReader
             var fromExpert = new ChartBranchThreshold(reader.Int32(), reader.Int32());
             var fromMaster = new ChartBranchThreshold(reader.Int32(), reader.Int32());
             reader.Position += 4; // padding
-            if (branched && (fromNormal, fromExpert, fromMaster) != (ChartBranchThreshold.Stay, ChartBranchThreshold.Stay, ChartBranchThreshold.Stay))
+            if (thresholded && (fromNormal, fromExpert, fromMaster) != (ChartBranchThreshold.Stay, ChartBranchThreshold.Stay, ChartBranchThreshold.Stay))
                 checks.Add((measure, fromNormal, fromExpert, fromMaster));
             if (!float.IsFinite(bpm) || bpm <= 0 || !float.IsFinite(offset))
                 throw new InvalidDataException($"Fumen measure {measure} has an invalid BPM or offset.");
@@ -157,9 +158,9 @@ internal static class FumenChartReader
             RouteControls = branched ? [.. scrolls.Select(scroll => new ChartRouteControls(timing.ToImmutable(), scroll.ToImmutable()))] : [],
             // A measure's thresholds pick its route; they are judged a measure earlier, at the previous bar line
             // (tja2fumen: "calculated one measure before #BRANCHSTART").
-            Branching = branched ? new ChartBranching([.. checks.Select(check => new ChartBranchCheck(
+            Branching = thresholded ? new ChartBranching([.. checks.Select(check => new ChartBranchCheck(
                 chartTime(measures[Math.Max(0, check.Measure - 1)].Time), chartTime(measures[check.Measure].Time),
-                check.Normal, check.Expert, check.Master))], points) : null,
+                check.Normal, check.Expert, check.Master))], points) { SameNotes = !differ } : null,
         };
     }
 
@@ -182,10 +183,10 @@ internal static class FumenChartReader
         }
     }
 
-    // 譜面分岐 that plays: a threshold set somewhere (all -1: no check there) and routes whose notes differ.
-    // The header's has-branches byte is not used: Nijiiro files carry other values there, and 7 Green charts
-    // flagged with thresholds repeat one route three times (they would only change hash, not play).
-    private static bool hasBranches(ReadOnlySpan<byte> data, bool bigEndian, int measureCount)
+    // 譜面分岐: a threshold set somewhere (all -1: no check there), and whether the routes' notes differ. Same notes
+    // still change route on the lane (Joubutsu 2000 forces Master, Normal, Master) but play and hash as one route.
+    // The header's has-branches byte is not used: Nijiiro files carry other values there.
+    private static (bool Thresholds, bool Differ) branchFlags(ReadOnlySpan<byte> data, bool bigEndian, int measureCount)
     {
         var reader = new Reader(data, bigEndian) { Position = HeaderSize };
         bool thresholds = false, differ = false;
@@ -213,7 +214,7 @@ internal static class FumenChartReader
             }
             differ |= !data[notes[0]].SequenceEqual(data[notes[1]]) || !data[notes[0]].SequenceEqual(data[notes[2]]);
         }
-        return thresholds && differ;
+        return (thresholds, differ);
     }
 
     // Note types per tja2fumen: 1-3 don, 4-5 ka, 7/8 big don/ka, 0xB/0xD big don/ka (hand notes).

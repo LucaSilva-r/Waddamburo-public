@@ -70,7 +70,7 @@ public static class ChartHash
             writer.Write(line.IsVisible);
         }
         // 譜面分岐 goes after everything else, only for branched charts: other charts keep their bytes and hash.
-        if (chart.Branching is { } branching)
+        if (chart.Branching is { SameNotes: false } branching)
         {
             writer.Write("BRCH"u8);
             foreach (var note in chart.HitObjects)

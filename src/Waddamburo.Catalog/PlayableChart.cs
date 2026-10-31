@@ -129,7 +129,14 @@ public readonly record struct ChartBranchPoints(int Great, int Good, int Bad, in
 }
 
 /// <summary>A chart's 譜面分岐: its checks in time order and what each judgement is worth.</summary>
-public sealed record ChartBranching(ImmutableArray<ChartBranchCheck> Checks, ChartBranchPoints Points);
+public sealed record ChartBranching(ImmutableArray<ChartBranchCheck> Checks, ChartBranchPoints Points)
+{
+    /// <summary>
+    /// Every route has the same notes, so its notes carry no route: the checks only change what the lane shows.
+    /// They change no play, so such a chart hashes and stores as one with no branching.
+    /// </summary>
+    public bool SameNotes { get; init; }
+}
 
 /// <summary>One route's tempo and scroll over the whole chart, ordered by time.</summary>
 public sealed record ChartRouteControls(ImmutableArray<ChartTimingPoint> Timing, ImmutableArray<ChartScrollPoint> Scroll);

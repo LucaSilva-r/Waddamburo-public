@@ -45,7 +45,7 @@ public sealed class StockCatalogProviderTests
 
     [Theory]
     [InlineData(true)]
-    [InlineData(false)] // thresholds over three equal routes: plays the same, so no branching (and no new hash)
+    [InlineData(false)] // thresholds over three equal routes: the lane changes route, but it plays and hashes as one
     public async Task BranchedFumensKeepEachRouteAndCheckAtThePreviousBarLine(bool masterDiffers)
     {
         using var data = new TemporaryData();
@@ -62,8 +62,11 @@ public sealed class StockCatalogProviderTests
 
         if (!masterDiffers)
         {
-            Assert.Null(playable.Branching);
+            Assert.True(playable.Branching!.SameNotes);
+            Assert.Single(playable.Branching.Checks);
             Assert.Equal(3, playable.NoteCount);
+            Assert.All(playable.HitObjects, static note => Assert.Null(note.Branch));
+            Assert.Equal(ChartHash.Compute(playable with { Branching = null }, TaikoCourse.Oni), ChartHash.Compute(playable, TaikoCourse.Oni));
             return;
         }
         var check = Assert.Single(playable.Branching!.Checks);

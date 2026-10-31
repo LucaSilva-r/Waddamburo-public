@@ -112,6 +112,18 @@ public sealed class TaikoBranchingTests
     }
 
     [Fact]
+    public void RoutesWithTheSameNotesChangeRouteButHashAsNoBranching()
+    {
+        var plain = chart() with { Branching = null };
+        var shown = plain with { Branching = new ChartBranching([new ChartBranchCheck(s(2), s(4), new(0, 0), new(0, 0), new(0, 0))], ChartBranchPoints.Default) { SameNotes = true } };
+        Assert.Equal(ChartHash.Compute(plain, TaikoCourse.Oni), ChartHash.Compute(shown, TaikoCourse.Oni));
+
+        var session = new TaikoJudgementSession(shown, Windows, Strong);
+        session.AdvanceTo(s(2));
+        Assert.Equal(ChartBranch.Master, session.Branch);
+    }
+
+    [Fact]
     public void BranchingIsPartOfTheChartHashAndReadsBack()
     {
         var branched = chart();

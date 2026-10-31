@@ -55,7 +55,7 @@ internal static class ChartExport
                     writer.WriteString("sha256", ChartHash.Compute(playable, course));
                     // A 譜面分岐 chart's hash before branching was played (clients up to v0.18 read its normal
                     // route alone): TaikOnline marks that chart legacy and keeps its plays apart.
-                    if (playable.Branching is not null)
+                    if (playable.Branching is { SameNotes: false })
                         writer.WriteString("legacy_sha256", ChartHash.Compute(playable.OnRoute(ChartBranch.Normal), course));
                     writer.WriteString("notes", upload.Notes);
                     writer.WriteString("title", upload.Title);
