@@ -263,6 +263,40 @@ public sealed class ScoreSavingTests
     }
 
     [Fact]
+    public void UpdatingDeletesFailedPlays()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            var key = chart().Key;
+            PlayRecord play(bool cleared) => new(Guid.NewGuid(), 42, "sha", key, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, cleared), DateTimeOffset.UtcNow, new TaikoReplay().Encode());
+            var upload = ChartUpload.From(chart(), TaikoCourse.Oni, null);
+            using (var store = new ScoreStore(path))
+            {
+                store.Save(play(cleared: true), upload);
+                store.Save(play(cleared: false), upload);
+                Assert.Equal(2, store.PendingPlays(42, 50).Count);
+            }
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}"))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = "PRAGMA user_version = 8";
+                command.ExecuteNonQuery();
+            }
+            using var updated = new ScoreStore(path);
+            Assert.True(Assert.Single(updated.PendingPlays(42, 50)).Cleared);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void StoreKeepsEveryPlayAndDerivesTheBestCrown()
     {
         var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");

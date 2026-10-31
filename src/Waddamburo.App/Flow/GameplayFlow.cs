@@ -707,7 +707,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // Offline too: nothing here waits for the server; it goes up with the next upload.
     private void saveCourse(PlayRequest request, DanCourseResult result, DanCourseTimeline course)
     {
-        if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores
+        // Failed runs aren't kept, here or on the server.
+        if (result.Level == 0 || Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores
             || TaikoGuest.Profiles[(int)request.Players[0].Player] is not { } profile)
             return;
         var replays = course.Split(Shell.Gameplay.Replays[0]);
@@ -773,6 +774,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 var shinuchi = player.Options.Shinuchi;
                 if (lane < Shell.Bests.Length)
                     Shell.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id, shinuchi) ?? Shell.Gameplay.Results[lane].Score;
+                // Failed plays aren't kept, here or on the server; the results still show them.
+                if (!Shell.Gameplay.Results[lane].Cleared)
+                    continue;
                 // Online players only (the guest's baid is never uploaded), from the board song select fetched.
                 // ponytail: 真打 plays get no rank-in on the results (song select fetched the normal board only).
                 if (lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi

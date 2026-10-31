@@ -252,6 +252,11 @@ public sealed class ScoreStore : IDisposable
         """
         ALTER TABLE dan_plays DROP COLUMN replay;
         """,
+        // Failed plays are no longer kept.
+        """
+        DELETE FROM plays WHERE cleared = 0;
+        DELETE FROM dan_plays WHERE result_level = 0;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -708,7 +713,7 @@ public sealed class ScoreStore : IDisposable
         }
     }
 
-    /// <summary>The player's best result on each course played, by course hash: 0 failed, 1 red, 2 gold.</summary>
+    /// <summary>The player's best result on each course played, by course hash: 1 red, 2 gold.</summary>
     public Dictionary<string, int> DanBests(long baid)
     {
         lock (_connection)
