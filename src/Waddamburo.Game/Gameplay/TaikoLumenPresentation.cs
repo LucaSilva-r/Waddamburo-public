@@ -154,22 +154,22 @@ public sealed class TaikoLumenPresentation
         var layers = new List<LumenSceneLayer>(_background);
         if (character is { } don)
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
-        var barWindows = _barWindows ??= [.. _chart.BarLines.Select(bar => window(bar.Time))];
+        var barWindows = _barWindows ??= [.. _chart.BarLines.Select(bar => barWindow(bar.Time))];
         for (var index = 0; index < barWindows.Length; index++)
         {
             var bar = _chart.BarLines[index];
             if (bar.IsVisible && time >= barWindows[index].From && time <= barWindows[index].Until)
-                addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time);
+                addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time, _judgement.BranchAt(bar.Time));
         }
         // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
         // deeper depth), so an earlier roll body covers the notes that follow it.
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
         if (_longNotes is not null)
             notes.AddRange(_longNotes.NoteLayers(time,
-                (noteTime, controlTime) => position(noteTime, time, controlTime), _hitX, _hitY, bodies: !Doron));
+                (noteTime, controlTime, route) => position(noteTime, time, controlTime, route), _hitX, _hitY, bodies: !Doron));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
-        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => window(note.StartTime))];
+        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => window(note.StartTime, note.Branch))];
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
             if (time < noteWindows[index].From || time > noteWindows[index].Until) continue;
@@ -183,11 +183,11 @@ public sealed class TaikoLumenPresentation
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
-            addAt(hitNotes, template, note.StartTime, time);
+            addAt(hitNotes, template, note.StartTime, time, note.Branch);
             if (hitNotes.Count != 0 && !Doron) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
-                addAt(texts, text, note.StartTime, time, yOffset: TaikoNoteText.Offset);
+                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset);
         }
         // Balloons and kusudamas carry their text until their overlay takes over (a balloon waiting on the
         // target keeps it there).
@@ -198,7 +198,7 @@ public sealed class TaikoLumenPresentation
             if (!PlayableChart.IsOn(note.Branch, _judgement.BranchAt(note.StartTime))) continue;
             if (note.IsBalloon && (time < note.StartTime || held)
                 && _noteTexts?.GetValueOrDefault(TaikoNoteText.Balloon(note.Kind)) is { } text)
-                addAt(texts, text, held ? time : note.StartTime, time, yOffset: TaikoNoteText.Offset);
+                addAt(texts, text, held ? time : note.StartTime, time, note.Branch, TaikoNoteText.Offset);
         }
         layers.AddRange(notes.OrderByDescending(note => note.Start).Select(note => note.Layer));
         layers.AddRange(texts);
@@ -212,28 +212,32 @@ public sealed class TaikoLumenPresentation
     }
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
-        TimeSpan noteTime, TimeSpan time, float yOffset = 0)
+        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0)
     {
-        var x = position(noteTime, time, noteTime);
+        var x = position(noteTime, time, noteTime, route);
         if (x < -100 || x > 1380)
             return;
         layers.Add(template with { Transform = LumenMatrix.Identity with { X = x, Y = _hitY + yOffset } });
     }
 
-    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime) =>
-        (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * pixelsPerSecond(controlTime), -100_000, 100_000);
+    private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, ChartBranch? route) =>
+        (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * pixelsPerSecond(controlTime, route), -100_000, 100_000);
 
     // Product layout: four beats span the visible lane at scroll 1.
-    private double pixelsPerSecond(TimeSpan controlTime) =>
-        _chart.BeatsPerMinuteAt(controlTime) / 60 * (1280 - _hitX) / 4 * _chart.ScrollAt(controlTime);
+    private double pixelsPerSecond(TimeSpan controlTime, ChartBranch? route) =>
+        _chart.BeatsPerMinuteAt(controlTime, route) / 60 * (1280 - _hitX) / 4 * _chart.ScrollAt(controlTime, route);
 
     // When each note and bar is on the lane, so a frame skips the rest of a chart with one comparison each.
     // ponytail: still a pass over every note, a cursor needs care as scroll changes reorder arrivals.
     private (TimeSpan From, TimeSpan Until)[]? _noteWindows;
     private (TimeSpan From, TimeSpan Until)[]? _barWindows;
 
-    private (TimeSpan From, TimeSpan Until) window(TimeSpan noteTime) =>
-        VisibleWindow(noteTime, pixelsPerSecond(noteTime), _hitX);
+    private (TimeSpan From, TimeSpan Until) window(TimeSpan noteTime, ChartBranch? route) =>
+        VisibleWindow(noteTime, pixelsPerSecond(noteTime, route), _hitX);
+
+    // A bar line follows whichever route is playing, so it stays listed for as long as the slowest would show it.
+    private (TimeSpan From, TimeSpan Until) barWindow(TimeSpan time) =>
+        VisibleWindow(time, Enum.GetValues<ChartBranch>().Min(route => pixelsPerSecond(time, route)), _hitX);
 
     /// <summary>When something moving at this speed is between x -100 and 1380, the lane's drawn range; always, if it barely moves.</summary>
     public static (TimeSpan From, TimeSpan Until) VisibleWindow(TimeSpan noteTime, double pixelsPerSecond, float hitX) =>

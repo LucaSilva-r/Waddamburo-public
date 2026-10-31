@@ -131,6 +131,9 @@ public readonly record struct ChartBranchPoints(int Great, int Good, int Bad, in
 /// <summary>A chart's 譜面分岐: its checks in time order and what each judgement is worth.</summary>
 public sealed record ChartBranching(ImmutableArray<ChartBranchCheck> Checks, ChartBranchPoints Points);
 
+/// <summary>One route's tempo and scroll over the whole chart, ordered by time.</summary>
+public sealed record ChartRouteControls(ImmutableArray<ChartTimingPoint> Timing, ImmutableArray<ChartScrollPoint> Scroll);
+
 public readonly record struct ChartTimingPoint
 {
     public ChartTimingPoint(TimeSpan time, double beatsPerMinute, int beatsPerMeasure, int beatUnit)
@@ -259,38 +262,47 @@ public sealed record PlayableChart
     /// <summary>
     /// The chart's 譜面分岐, when it has one: its notes then carry <see cref="PlayableHitObject.Branch"/>
     /// and only the route being played is judged and drawn (<c>TaikoJudgementSession.BranchAt</c>).
-    /// Timing, scroll, Go-Go and bar lines are the normal route's.
+    /// Go-Go and bar lines are the main route's; each route's tempo and scroll are <see cref="RouteControls"/>.
     /// </summary>
     public ChartBranching? Branching { get; init; }
 
+    /// <summary>
+    /// How each route's notes move, indexed by <see cref="ChartBranch"/>; empty when every route moves as
+    /// <see cref="TimingPoints"/> and <see cref="ScrollPoints"/> say. Only drawing reads these: they change no
+    /// judgement or score, so they stay out of <see cref="ChartHash"/> and a server's stored chart.
+    /// </summary>
+    public ImmutableArray<ChartRouteControls> RouteControls { get; init; } = [];
+
     /// <summary>The tempo at <paramref name="time"/>: every note asks on every frame, so this does not walk the list.</summary>
-    public double BeatsPerMinuteAt(TimeSpan time)
+    public double BeatsPerMinuteAt(TimeSpan time, ChartBranch? route = null)
     {
-        var (low, high) = (0, TimingPoints.Length);
+        var points = route is { } own && !RouteControls.IsEmpty ? RouteControls[(int)own].Timing : TimingPoints;
+        var (low, high) = (0, points.Length);
         while (low < high)
         {
             var middle = (low + high) / 2;
-            if (TimingPoints[middle].Time <= time)
+            if (points[middle].Time <= time)
                 low = middle + 1;
             else
                 high = middle;
         }
-        return TimingPoints[Math.Max(low - 1, 0)].BeatsPerMinute;
+        return points[Math.Max(low - 1, 0)].BeatsPerMinute;
     }
 
     /// <summary>The scroll multiplier at <paramref name="time"/>, 1 before the first point.</summary>
-    public double ScrollAt(TimeSpan time)
+    public double ScrollAt(TimeSpan time, ChartBranch? route = null)
     {
-        var (low, high) = (0, ScrollPoints.Length);
+        var points = route is { } own && !RouteControls.IsEmpty ? RouteControls[(int)own].Scroll : ScrollPoints;
+        var (low, high) = (0, points.Length);
         while (low < high)
         {
             var middle = (low + high) / 2;
-            if (ScrollPoints[middle].Time <= time)
+            if (points[middle].Time <= time)
                 low = middle + 1;
             else
                 high = middle;
         }
-        return low == 0 ? 1 : ScrollPoints[low - 1].Multiplier;
+        return low == 0 ? 1 : points[low - 1].Multiplier;
     }
 
     /// <summary>The songs this chart is made of, when several: score and gauge use each one's rates.</summary>

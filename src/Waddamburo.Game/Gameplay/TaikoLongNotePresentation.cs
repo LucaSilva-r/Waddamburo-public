@@ -167,7 +167,7 @@ public sealed class TaikoLongNotePresentation
 
     /// <summary>Visible long notes with their start times (for chart-order drawing); <paramref name="bodies"/> false: their text only (ドロン).</summary>
     public IEnumerable<(TimeSpan Start, LumenSceneLayer Layer)> NoteLayers(TimeSpan time,
-        Func<TimeSpan, TimeSpan, float> position, float hitX, float hitY, bool bodies = true)
+        Func<TimeSpan, TimeSpan, ChartBranch?, float> position, float hitX, float hitY, bool bodies = true)
     {
         var retained = new HashSet<int>();
         for (var index = _chart.LongNotes.Length - 1; index >= 0; index--)
@@ -181,8 +181,8 @@ public sealed class TaikoLongNotePresentation
             if (note.IsBalloon && !unplayed && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
             var held = IsHeld(index, time);
             if (note.IsBalloon && time >= note.StartTime && !held && !unplayed) continue;
-            var head = held ? hitX : position(unplayed ? note.EndTime : note.StartTime, note.StartTime);
-            var tail = note.IsBalloon ? head : position(note.EndTime, note.StartTime);
+            var head = held ? hitX : position(unplayed ? note.EndTime : note.StartTime, note.StartTime, note.Branch);
+            var tail = note.IsBalloon ? head : position(note.EndTime, note.StartTime, note.Branch);
             if (Math.Max(head, tail) < -100 || Math.Min(head, tail) > 1380) continue;
             retained.Add(index);
             if (!_visible.TryGetValue(index, out var layer))

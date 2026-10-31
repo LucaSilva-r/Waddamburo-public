@@ -84,7 +84,7 @@ public sealed class TaikoLongNotePresentationTests
         var started = new List<PlayableLongNoteKind>();
         var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer,
             onNoteStarted: started.Add);
-        var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _) => 400 + (float)time.TotalSeconds * 100, 400, 250)).Layer;
+        var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _, _) => 400 + (float)time.TotalSeconds * 100, 400, 250)).Layer;
         Assert.NotSame(layer.Player, noteLayer.Player);
         Assert.Contains(("SetWidth", 100d), calls);
         presentation.Update(TimeSpan.FromSeconds(1));
@@ -124,12 +124,12 @@ public sealed class TaikoLongNotePresentationTests
         var layer = movie(calls);
         var presentation = new TaikoLongNotePresentation(chart, sessionFor(chart), _ => movie(calls), layer, layer);
 
-        float position(TimeSpan noteTime, TimeSpan _) => 400 + (float)(noteTime - TimeSpan.FromSeconds(6.1)).TotalSeconds * 100;
+        float position(TimeSpan noteTime, TimeSpan _, ChartBranch? __) => 400 + (float)(noteTime - TimeSpan.FromSeconds(6.1)).TotalSeconds * 100;
         var visible = Assert.Single(presentation.NoteLayers(TimeSpan.FromSeconds(6.1), position, 400, 250));
         Assert.Equal(-110, visible.Layer.Transform.X);
         Assert.Equal(100, calls.Last(call => call.Item1 == "SetWidth").Item2);
 
-        float offscreen(TimeSpan noteTime, TimeSpan _) => 400 + (float)(noteTime - TimeSpan.FromSeconds(7.1)).TotalSeconds * 100;
+        float offscreen(TimeSpan noteTime, TimeSpan _, ChartBranch? __) => 400 + (float)(noteTime - TimeSpan.FromSeconds(7.1)).TotalSeconds * 100;
         Assert.Empty(presentation.NoteLayers(TimeSpan.FromSeconds(7.1), offscreen, 400, 250));
     }
 

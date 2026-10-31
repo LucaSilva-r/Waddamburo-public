@@ -40,7 +40,7 @@ internal static class FumenChartReader
         reader.Position = HeaderSize;
 
         // Audio time (ms) of every event; shifted to non-negative chart time at the end.
-        var measures = new List<(double Time, double Bpm, double Speed, bool GoGo, bool Barline)>(measureCount);
+        var measures = new List<(double Time, double Bpm, double[] Speeds, bool GoGo, bool Barline)>(measureCount);
         var notes = new List<(double Time, PlayableNoteKind Kind, bool Hand, bool InRun, bool Ko, ChartBranch? Branch)>();
         var longNotes = new List<(double Start, double End, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)>();
         var checks = new List<(int Measure, ChartBranchThreshold Normal, ChartBranchThreshold Expert, ChartBranchThreshold Master)>();
@@ -63,15 +63,15 @@ internal static class FumenChartReader
                 throw new InvalidDataException($"Fumen measure {measure} has an invalid BPM or offset.");
             // A measure's offset is when its start enters the lane: one 4/4 measure before it is hit.
             var time = offset + 240_000d / bpm;
-            var speed = 1d;
+            var speeds = new double[] { 1, 1, 1 };
             for (var branch = 0; branch < 3; branch++)
             {
                 reader.Require(BranchHeaderSize);
                 int count = reader.UInt16();
                 reader.Position += 2;
                 var branchSpeed = reader.Single();
-                if (branch == 0 && float.IsFinite(branchSpeed))
-                    speed = branchSpeed;
+                if (float.IsFinite(branchSpeed))
+                    speeds[branch] = branchSpeed;
                 for (var index = 0; index < count; index++)
                 {
                     reader.Require(NoteSize);
@@ -105,7 +105,7 @@ internal static class FumenChartReader
             // Control streams must be ordered; a measure never starts before the previous one.
             if (measures.Count > 0 && time < measures[^1].Time)
                 time = measures[^1].Time;
-            measures.Add((time, bpm, speed, goGo, barline));
+            measures.Add((time, bpm, speeds, goGo, barline));
         }
         if (measures.Count == 0)
             throw new InvalidDataException("The fumen has no measures.");
@@ -123,7 +123,8 @@ internal static class FumenChartReader
         TimeSpan chartTime(double ms) => TimeSpan.FromMilliseconds(Math.Max(0, ms + shiftMs));
 
         var timing = ImmutableArray.CreateBuilder<ChartTimingPoint>();
-        var scroll = ImmutableArray.CreateBuilder<ChartScrollPoint>();
+        // Tempo is one per measure; each route has its own scroll.
+        ImmutableArray<ChartScrollPoint>.Builder[] scrolls = [.. Enumerable.Range(0, 3).Select(static _ => ImmutableArray.CreateBuilder<ChartScrollPoint>())];
         var effects = ImmutableArray.CreateBuilder<ChartEffectPoint>();
         for (var index = 0; index < measures.Count; index++)
         {
@@ -131,8 +132,9 @@ internal static class FumenChartReader
             var time = index == 0 ? TimeSpan.Zero : chartTime(current.Time);
             if (index == 0 || current.Bpm != measures[index - 1].Bpm)
                 timing.Add(new ChartTimingPoint(time, current.Bpm, 4, 4));
-            if (index == 0 || current.Speed != measures[index - 1].Speed)
-                scroll.Add(new ChartScrollPoint(time, current.Speed));
+            for (var route = 0; route < scrolls.Length; route++)
+                if (index == 0 || current.Speeds[route] != measures[index - 1].Speeds[route])
+                    scrolls[route].Add(new ChartScrollPoint(time, current.Speeds[route]));
             if (index == 0 || current.GoGo != measures[index - 1].GoGo)
                 effects.Add(new ChartEffectPoint(time, current.GoGo));
         }
@@ -144,7 +146,7 @@ internal static class FumenChartReader
             notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind, note.Hand)
                 { InRun = note.InRun, IsKo = note.Ko, Branch = note.Branch }),
             timing.ToImmutable(),
-            scroll.ToImmutable(),
+            scrolls[0].ToImmutable(),
             effects.ToImmutable(),
             measures.Select(measure => new ChartBarLine(chartTime(measure.Time), measure.Barline)),
             longNotes.OrderBy(static note => note.Start).Select(note => new PlayableLongNote(chartTime(note.Start), chartTime(note.End), note.Kind, note.Hits)
@@ -152,6 +154,7 @@ internal static class FumenChartReader
         {
             ScoreInit = scoreInit,
             ScoreDiff = scoreDiff,
+            RouteControls = branched ? [.. scrolls.Select(scroll => new ChartRouteControls(timing.ToImmutable(), scroll.ToImmutable()))] : [],
             // A measure's thresholds pick its route; they are judged a measure earlier, at the previous bar line
             // (tja2fumen: "calculated one measure before #BRANCHSTART").
             Branching = branched ? new ChartBranching([.. checks.Select(check => new ChartBranchCheck(

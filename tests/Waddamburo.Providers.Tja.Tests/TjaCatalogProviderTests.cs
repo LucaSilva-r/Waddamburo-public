@@ -471,6 +471,28 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task EachRouteKeepsItsOwnScrollAndTempoInsideItsBlock()
+    {
+        // 120 BPM: a measure takes 2 seconds, so the block runs from 2 s to 4 s.
+        var chart = await loadSynthetic("#SECTION\n1,\n#BRANCHSTART p,50,80\n#N\n#SCROLL 4\n1,\n#E\n1,\n#M\n#SCROLL 0.5\n#BPMCHANGE 240\n1,1,\n#BRANCHEND\n#SCROLL 2\n1,");
+        var inBlock = TimeSpan.FromSeconds(3);
+        Assert.Equal(4, chart.ScrollAt(inBlock));
+        Assert.Equal(4, chart.ScrollAt(inBlock, ChartBranch.Normal));
+        Assert.Equal(1, chart.ScrollAt(inBlock, ChartBranch.Expert));
+        Assert.Equal(0.5, chart.ScrollAt(inBlock, ChartBranch.Master));
+        Assert.Equal(240, chart.BeatsPerMinuteAt(inBlock, ChartBranch.Master));
+        Assert.Equal(chart.BeatsPerMinuteAt(inBlock), chart.BeatsPerMinuteAt(inBlock, ChartBranch.Expert));
+        foreach (var route in Enum.GetValues<ChartBranch>())
+        {
+            Assert.Equal(1, chart.ScrollAt(TimeSpan.FromSeconds(1), route));
+            Assert.Equal(2, chart.ScrollAt(TimeSpan.FromSeconds(5), route));
+            Assert.Equal(chart.BeatsPerMinuteAt(TimeSpan.FromSeconds(5)), chart.BeatsPerMinuteAt(TimeSpan.FromSeconds(5), route));
+        }
+        // They only change how notes move: the chart's identity does not depend on them.
+        Assert.Equal(ChartHash.Compute(chart, TaikoCourse.Oni), ChartHash.Compute(chart with { RouteControls = [] }, TaikoCourse.Oni));
+    }
+
+    [Fact]
     public async Task PercentConditionsBecomePointsOfTheMeasuresBeforeTheCheck()
     {
         // Judged at the bar line before the branch (2 s) over the four notes before it: 80 points at most.

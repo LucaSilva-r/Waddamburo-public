@@ -48,8 +48,9 @@ internal static class TjaPlayableChartReader
         int? scoreDiff = null;
 
         // 譜面分岐: every route is read with its notes tagged. The main route (#N, else the first one written)
-        // gives the timing, scroll, Go-Go and bar lines, and the state the chart goes on with after the block;
-        // the other routes' control points go to scratch streams. A route a block lacks plays the main one's notes.
+        // gives the Go-Go and bar lines, and the state the chart goes on with after the block; the other routes'
+        // control points go to scratch streams, their tempo and scroll kept per block for RouteControls.
+        // A route a block lacks plays the main one's notes.
         var branch = false;
         var mainRoute = "#N";
         string? route = null;
@@ -58,6 +59,8 @@ internal static class TjaPlayableChartReader
         (int Notes, int Longs) mainFrom = default, mainTo = default;
         var checks = new List<TjaCheck>();
         var levelHold = new HashSet<ChartBranch>();
+        var routeBlocks = new List<TjaRouteBlock>();
+        var ownRoutes = new Dictionary<string, (ImmutableArray<ChartTimingPoint>.Builder Timing, ImmutableArray<ChartScrollPoint>.Builder Scroll)>();
         var timing = timingPoints;
         var scrolls = scrollPoints;
         var effects = effectPoints;
@@ -162,6 +165,9 @@ internal static class TjaPlayableChartReader
                     ScoreInit = scoreInit,
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
+                    RouteControls = routeBlocks.Count == 0 ? [] : [.. ((string[])["#N", "#E", "#M"]).Select(name => new ChartRouteControls(
+                        routeStream(timingPoints, routeBlocks, name, static own => own.Timing, static point => point.Time, static (point, at) => new ChartTimingPoint(at, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
+                        routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => new ChartScrollPoint(at, point.Multiplier))))],
                 };
             }
 
@@ -179,6 +185,7 @@ internal static class TjaPlayableChartReader
                 levelHold.Clear();
                 branch = true;
                 atBranch = afterMain = save();
+                ownRoutes = [];
                 routesSeen.Clear();
                 route = null;
                 mainRoute = string.Empty;
@@ -213,11 +220,13 @@ internal static class TjaPlayableChartReader
                 }
                 else
                 {
-                    // Seeded with the current points: commands are placed after the last one.
+                    // Seeded with the state at the branch, just before it: commands are placed after the last point,
+                    // and the main route may already have gone past this route's.
+                    var seed = TimeSpan.FromTicks(Math.Max(chartTime(atBranch.Cursor).Ticks - 1, 0));
                     timing = ImmutableArray.CreateBuilder<ChartTimingPoint>();
-                    timing.Add(timingPoints[^1]);
+                    timing.Add(new ChartTimingPoint(seed, (double)atBranch.Bpm, atBranch.Numerator, atBranch.Denominator));
                     scrolls = ImmutableArray.CreateBuilder<ChartScrollPoint>();
-                    scrolls.Add(scrollPoints[^1]);
+                    scrolls.Add(new ChartScrollPoint(seed, atBranch.Scroll));
                     effects = ImmutableArray.CreateBuilder<ChartEffectPoint>();
                     effects.Add(effectPoints[^1]);
                 }
@@ -321,7 +330,12 @@ internal static class TjaPlayableChartReader
         // The route being read ends; the main route's end state is what the chart goes on from.
         void endRoute()
         {
-            if (route is null || !onMain()) return;
+            if (route is null) return;
+            if (!onMain())
+            {
+                ownRoutes[route] = (timing, scrolls);
+                return;
+            }
             afterMain = save();
             mainTo = (hitObjects.Count, longNotes.Count);
         }
@@ -341,6 +355,8 @@ internal static class TjaPlayableChartReader
                     for (var index = mainFrom.Longs; index < mainTo.Longs; index++)
                         longNotes.Add(longNotes[index] with { Branch = copy });
                 }
+            if (ownRoutes.Count != 0)
+                routeBlocks.Add(new TjaRouteBlock(chartTime(atBranch.Cursor), chartTime(afterMain.Cursor), ownRoutes));
             restore(afterMain);
             (timing, scrolls, effects) = (timingPoints, scrollPoints, effectPoints);
             branch = false;
@@ -368,6 +384,24 @@ internal static class TjaPlayableChartReader
 
     private readonly record struct TjaState(int Numerator, int Denominator, decimal Bpm, double Scroll, bool GoGo,
         bool Barline, decimal Cursor, (TimeSpan Start, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)? Pending);
+
+    // The routes other than the main one, as written between Start and End.
+    private sealed record TjaRouteBlock(TimeSpan Start, TimeSpan End,
+        Dictionary<string, (ImmutableArray<ChartTimingPoint>.Builder Timing, ImmutableArray<ChartScrollPoint>.Builder Scroll)> Routes);
+
+    // A route's whole stream: the main route's points, but its own inside the blocks where it has some, back to
+    // the main route's value when each ends. A scratch stream's seed comes before the block's Start.
+    private static ImmutableArray<T> routeStream<T>(ImmutableArray<T>.Builder main, List<TjaRouteBlock> blocks, string route,
+        Func<(ImmutableArray<ChartTimingPoint>.Builder Timing, ImmutableArray<ChartScrollPoint>.Builder Scroll), IEnumerable<T>> own,
+        Func<T, TimeSpan> time, Func<T, TimeSpan, T> at)
+    {
+        var blocksOfRoute = blocks.Where(block => block.Routes.ContainsKey(route)).ToList();
+        // Sorted stably: at one time the block's return comes first, then the main route's point, then a next block's.
+        var returns = blocksOfRoute.SelectMany(block => main.Where(point => time(point) <= block.End).TakeLast(1).Select(point => at(point, block.End)));
+        var outside = main.Where(point => !blocksOfRoute.Any(block => time(point) >= block.Start && time(point) < block.End));
+        var inside = blocksOfRoute.SelectMany(block => own(block.Routes[route]).Where(point => time(point) >= block.Start));
+        return [.. returns.Concat(outside).Concat(inside).OrderBy(time)];
+    }
 
     // A #BRANCHSTART: judged At, its routes from Start; Condition "p,80,90" etc.; routes under #LEVELHOLD.
     private sealed record TjaCheck(TimeSpan At, TimeSpan Start, string Condition, ChartBranch[] Held);
