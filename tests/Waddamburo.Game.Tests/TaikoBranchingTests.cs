@@ -74,6 +74,30 @@ public sealed class TaikoBranchingTests
     }
 
     [Fact]
+    public void ACheckIsJudgedOneFullMeasureBeforeItsRouteHoweverShortTheBarBefore()
+    {
+        // 120 BPM: a 4/4 measure takes 2 s. The stored check says the bar line 0.5 s before the route.
+        var chart = new PlayableChart(new ChartKey(new SongKey(SongSourceKind.Tja, "song"), "chart"), TimeSpan.Zero, s(8),
+            [new PlayableHitObject(s(1), PlayableNoteKind.Don), new PlayableHitObject(s(3), PlayableNoteKind.Don)],
+            [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4)], [new ChartScrollPoint(TimeSpan.Zero, 1)],
+            [new ChartEffectPoint(TimeSpan.Zero, false)], [new ChartBarLine(TimeSpan.Zero, true)])
+        {
+            Branching = new ChartBranching([new ChartBranchCheck(s(4.5), s(5), new(1, 1), new(1, 1), new(1, 1))],
+                new ChartBranchPoints(1, 1, 0, 0, 1, 1, 0, 0, 0)),
+        };
+        var session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(TimeSpan.FromMilliseconds(25),
+            TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108)), TimeSpan.FromMilliseconds(30));
+        var judged = new List<ChartBranchCheck>();
+        session.BranchChecked += (check, _) => judged.Add(check);
+
+        session.AdvanceTo(s(2.9));
+        Assert.Empty(judged);
+        session.AdvanceTo(s(3));
+        Assert.Equal(s(3), Assert.Single(judged).Time);
+        Assert.Equal(s(4.5), chart.Branching!.Checks[0].Time); // what the chart's hash reads
+    }
+
+    [Fact]
     public void AReviewedPlayShowsTheRoutesItsChecksPicked()
     {
         TaikoReplayInput[] inputs = [new(TaikoInputAction.LeftDon, s(0.5)), new(TaikoInputAction.LeftDon, s(1))];

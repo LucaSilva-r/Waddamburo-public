@@ -305,6 +305,17 @@ public sealed record PlayableChart
         return low == 0 ? 1 : points[low - 1].Multiplier;
     }
 
+    /// <summary>
+    /// The checks with <see cref="ChartBranchCheck.Time"/> when they are really judged: as their route's first
+    /// measure enters the lane, one 4/4 measure before it is hit, whatever the measure before it (traced on
+    /// ghnpan_m, whose bar line before the branch is a quarter of a measure away). The stored Time is the previous
+    /// bar line, which it only is after a full measure; it stays as it is because it is part of the chart's hash.
+    /// </summary>
+    public ImmutableArray<ChartBranchCheck> JudgedChecks => Branching is { } branching
+        ? [.. branching.Checks.Select(check => check with
+            { Time = check.Start - TimeSpan.FromSeconds(240 / BeatsPerMinuteAt(check.Start)) })]
+        : [];
+
     /// <summary>The songs this chart is made of, when several: score and gauge use each one's rates.</summary>
     public ImmutableArray<ChartSegment> Segments { get; init; } = [];
 

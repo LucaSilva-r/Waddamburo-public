@@ -135,6 +135,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private readonly bool _partnerHandNotes;
     // 譜面分岐: the route picked at each check passed (from its Start), the next check, the points since the last.
     private readonly List<(TimeSpan Start, ChartBranch Route)> _routes = [];
+    private readonly ImmutableArray<ChartBranchCheck> _checks;
     private int _nextCheck;
     private int _branchPoints;
     private TimeSpan _pointsSince;
@@ -157,6 +158,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentOutOfRangeException.ThrowIfLessThan(strongSecondHitWindow, TimeSpan.Zero);
         _chart = chart;
+        _checks = chart.JudgedChecks;
         _windows = windows;
         _strongSecondHitWindow = strongSecondHitWindow;
         _results = new TaikoHitResult?[chart.NoteCount];
@@ -234,7 +236,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         while (_nextLongIndex < _chart.LongNotes.Length && _chart.LongNotes[_nextLongIndex].EndTime <= time)
             _nextLongIndex++;
         // ponytail: the checks skipped are not judged, so training from mid-song plays the normal route.
-        while (_chart.Branching is { } branching && _nextCheck < branching.Checks.Length && branching.Checks[_nextCheck].Time <= time)
+        while (_nextCheck < _checks.Length && _checks[_nextCheck].Time <= time)
             _nextCheck++;
         _pointsSince = time;
     }
@@ -270,11 +272,9 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     // after a check it came before counts for neither (ponytail: when Green counts a late hit is not measured).
     private void checkBranches(TimeSpan time)
     {
-        if (_chart.Branching is not { } branching)
-            return;
-        for (; _nextCheck < branching.Checks.Length && branching.Checks[_nextCheck].Time <= time; _nextCheck++)
+        for (; _nextCheck < _checks.Length && _checks[_nextCheck].Time <= time; _nextCheck++)
         {
-            var check = branching.Checks[_nextCheck];
+            var check = _checks[_nextCheck];
             var route = check.For(Branch).Next(Branch, _branchPoints);
             _routes.Add((check.Start, route));
             _branchPoints = 0;

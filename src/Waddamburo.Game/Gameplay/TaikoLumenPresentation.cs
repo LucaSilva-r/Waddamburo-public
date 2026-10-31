@@ -48,7 +48,7 @@ public sealed class TaikoLumenPresentation
     {
         _branchBar = branchBar;
         _branchBubble = branchBubble;
-        _checkBars = [.. chart.Branching?.Checks.Select(static check => check.Time) ?? []];
+        _checkBars = [.. chart.Branching?.Checks.Select(static check => check.Start) ?? []];
         _noteTexts = noteTexts;
         _noteLabels = TaikoNoteText.Labels(chart);
         _rareNote = rareNote;
