@@ -87,7 +87,8 @@ internal static class Rescore
         static int[] values(JsonElement requirement, string name) => [.. requirement.GetProperty(name).EnumerateArray().Select(static value => value.GetInt32())];
         var course = new DanCourse(0, "", "", [.. play.GetProperty("requirements").EnumerateArray().Select(static requirement =>
                 new DanRequirement(requirement.GetProperty("type").GetString() ?? "", values(requirement, "red"), values(requirement, "gold")))],
-            [.. songs.Select(static song => new DanCourseSong("", 0, null, song.GetProperty("note_count").GetInt32(), []))]);
+            [.. songs.Select(static song => new DanCourseSong("", 0, null, song.GetProperty("note_count").GetInt32(), []))],
+            play.TryGetProperty("rules", out var rules) ? rules.GetString() : null);
         var windows = TaikoGameplayPresentation.WindowsFor(stored[0].Chart, stored[0].Course);
         var replays = songs.Select(static song => song.TryGetProperty("replay", out var replay) ? Convert.FromBase64String(replay.GetString() ?? "") : []).ToList();
         var progress = new List<(int Song, TimeSpan Time, DanProgress At)>();

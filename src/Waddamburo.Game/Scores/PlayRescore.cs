@@ -72,7 +72,7 @@ public static class PlayRescore
         ArgumentNullException.ThrowIfNull(replays);
         var session = new TaikoJudgementSession(timeline.Chart, windows, strongSecondHitWindow);
         var score = new TaikoScore(timeline.Chart);
-        var gauge = new TaikoSoulGauge(timeline.Chart.Segments);
+        var gauge = new TaikoSoulGauge(timeline.Chart.Segments, course.ExactGauge);
         int great = 0, good = 0, miss = 0, maxCombo = 0;
         var playing = 0;
         session.Judged += judgement =>

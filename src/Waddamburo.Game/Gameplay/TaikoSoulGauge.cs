@@ -13,6 +13,8 @@ public sealed class TaikoSoulGauge
     /// <summary>Segments of the authored gauge movies.</summary>
     public const int Segments = 50;
 
+    private int _points;
+    private readonly int _scale = 1;
     private int _great;
     private int _good;
     private int _miss;
@@ -33,22 +35,26 @@ public sealed class TaikoSoulGauge
     /// A dan course's gauge: every song's amounts divided by 3, rounded towards zero (traced session30: predicts
     /// the gauge after each of 5 songs within a percent; the wiki's 達人 examples, 15 to 5 and 14 to 4, agree).
     /// </summary>
-    public TaikoSoulGauge(IReadOnlyList<ChartSegment> songs)
+    /// <param name="songs">The course's songs.</param>
+    /// <param name="exact">Nijiiro: thirds keep their fractions (the wiki's 復活！ムラサキ達人 reaches soul at 2161 combos
+    /// this way, and at Green's 2408 rounded), so the gauge counts in thirds of a point.</param>
+    public TaikoSoulGauge(IReadOnlyList<ChartSegment> songs, bool exact = false)
         : this(songs[0].Course, songs[0].Source.Level, songs[0].Source.NoteCount)
     {
-        _songs = [.. songs.Select(static song =>
+        _scale = exact ? 3 : 1;
+        _songs = [.. songs.Select(song =>
         {
             var (great, good, miss) = rates(song.Course, Math.Clamp(song.Source.Level ?? 10, 1, 10), song.Source.NoteCount);
-            return (song.Start, great / 3, good / 3, miss / 3);
+            return exact ? (song.Start, great, good, miss) : (song.Start, great / 3, good / 3, miss / 3);
         })];
         (_great, _good, _miss) = (_songs[0].Great, _songs[0].Good, _songs[0].Miss);
     }
 
     public int Clear { get; }
-    public int Value { get; private set; }
+    public int Value => _points / _scale;
 
     /// <summary>Sets the gauge to a point of a reviewed play.</summary>
-    public void Restore(int value) => Value = Math.Clamp(value, 0, Max);
+    public void Restore(int value) => _points = Math.Clamp(value, 0, Max) * _scale;
     public int FilledSegments => Value * Segments / Max;
 
     public TaikoGaugeState State => Value >= Max ? TaikoGaugeState.Full
@@ -63,12 +69,12 @@ public sealed class TaikoSoulGauge
             if (judgement.HitObject.StartTime >= song.Start)
                 (_great, _good, _miss) = (song.Great, song.Good, song.Miss);
         var previous = Value;
-        Value = Math.Clamp(Value + result switch
+        _points = Math.Clamp(_points + result switch
         {
             TaikoHitResult.Great => _great,
             TaikoHitResult.Good => _good,
             _ => _miss,
-        }, 0, Max);
+        }, 0, Max * _scale);
         return Value != previous;
     }
 

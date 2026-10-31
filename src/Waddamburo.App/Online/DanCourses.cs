@@ -85,7 +85,9 @@ internal sealed class DanCourses
     public IReadOnlyList<(string Id, string Name)> Series =>
         [.. (_catalogue?.Series ?? []).Select(static series => (series.Id, SeriesName(series.Id)))];
 
-    private static string SeriesName(string id) => Strings.Language.StartsWith("ja", StringComparison.Ordinal) ? id switch
+    private static string SeriesName(string id) => id.StartsWith("nijiiro-", StringComparison.Ordinal)
+        ? (Strings.Language.StartsWith("ja", StringComparison.Ordinal) ? "ニジイロ" : "Nijiiro ") + id["nijiiro-".Length..]
+        : Strings.Language.StartsWith("ja", StringComparison.Ordinal) ? id switch
     {
         "green" => "グリーン",
         "blue" => "ブルー",

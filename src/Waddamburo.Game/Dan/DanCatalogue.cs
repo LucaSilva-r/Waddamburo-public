@@ -43,8 +43,12 @@ public sealed record DanSeries(string Id, string Name, List<DanCourse> Courses);
 /// A course: its level is the list's slot (1-25 ranks, above them extras). <paramref name="Hash"/> changes
 /// with its songs or requirements, so a pass never carries over to a changed course.
 /// </summary>
-public sealed record DanCourse(int Level, string Name, string Hash, List<DanRequirement> Requirements, List<DanCourseSong> Songs)
+public sealed record DanCourse(int Level, string Name, string Hash, List<DanRequirement> Requirements, List<DanCourseSong> Songs, string? Rules = null)
 {
+    /// <summary>Nijiiro's series ("nijiiro" rules), whose gauge differs from Green's and before.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ExactGauge => Rules == "nijiiro";
+
     /// <summary>The course's board in the movies: every series' ranks use Green's.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public int Rank => DanRanks.Of(Name);

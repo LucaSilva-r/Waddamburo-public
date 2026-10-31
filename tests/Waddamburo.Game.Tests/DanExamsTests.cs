@@ -108,6 +108,13 @@ public sealed class DanExamsTests
     }
 
     [Fact]
+    public void RulesNamedNijiiroKeepTheGaugesFractions()
+    {
+        Assert.True((course() with { Rules = "nijiiro" }).ExactGauge);
+        Assert.False(course().ExactGauge);
+    }
+
+    [Fact]
     public void FourRequirementsLeaveTheGaugeToItsBar()
     {
         var exams = new DanExams(course(exam("soul_gauge", 94, 97), exam("goods", 500, 600), exam("bads", 55, 44), exam("rolls", 100, 120)));
