@@ -627,6 +627,7 @@ public sealed unsafe class SdlApplication : IDisposable
             ? new FrameProfile() : null;
         var previousProfileEligible = false;
         var windowFocused = true;
+        var inspecting = false; // F3: a click inspects, it does not decide
         _quitRequested = false;
         while (running && !_quitRequested && (frameLimit is null || renderedFrames < frameLimit))
         {
@@ -670,7 +671,7 @@ public sealed unsafe class SdlApplication : IDisposable
                 {
                     // In menus a left click is a don (player 1's left don key: decide everywhere menus are).
                     // Not the click that brings the window up: some systems send it before the focus, others just after.
-                    if (_menuInput && MouseControls && !_capturing && windowFocused && currentEvent.button.timestamp > _focusedAt + FocusClickGraceNs)
+                    if (_menuInput && MouseControls && !_capturing && !inspecting && windowFocused && currentEvent.button.timestamp > _focusedAt + FocusClickGraceNs)
                         pendingPresses.Add(new SdlKeyPress(SdlInputBindings.Pads[1],
                             TimeSpan.FromTicks(checked((long)(currentEvent.button.timestamp / 100)))));
                     if (pointerClicked is null)
@@ -695,6 +696,7 @@ public sealed unsafe class SdlApplication : IDisposable
                     if (!currentEvent.key.repeat)
                     {
                         toggleInspect();
+                        inspecting = !inspecting;
                         _ = SDL_CursorVisible() ? SDL_HideCursor() : SDL_ShowCursor();
                     }
                 }

@@ -318,6 +318,9 @@ public sealed record ArcadeSettings
     /// <summary>Frames per second at most, outside exclusive fullscreen; 0 = no limit.</summary>
     public int FpsCap { get; init; }
 
+    /// <summary>The dan dojo series a cabinet offers (home mode picks one in the game).</summary>
+    public string DanSeries { get; init; } = "green";
+
     /// <summary>Exclusive fullscreen (the resolution and refresh rate apply) instead of borderless.</summary>
     public bool ExclusiveFullscreen { get; init; }
 
@@ -473,6 +476,9 @@ public sealed record ArcadeSettings
         credits_2p = 2
         # Songs in one session.
         songs_per_session = 2
+        # dan_series: the dan dojo courses a cabinet offers: green, blue, yellow, red, white, murasaki,
+        # kimidori, momoiro, sorairo or katsudon. Home mode picks one in the game.
+        dan_series = green
         # TaikOnline server for scores (log in with --login). Left out = https://taikonline.com;
         # an empty value (server =) plays offline, scores stay local.
         # server = https://taikonline.com
@@ -560,6 +566,7 @@ public sealed record ArcadeSettings
                 "config_version" => settings with { Version = count(value, index, 0) },
                 "fullscreen" => settings with { Fullscreen = boolean(value, index) },
                 "vsync" => settings with { Vsync = boolean(value, index) },
+                "dan_series" => settings with { DanSeries = value },
                 "fps_cap" => settings with { FpsCap = integer(value, index, 0, 10000) },
                 "fullscreen_mode" => settings with { ExclusiveFullscreen = value.ToLowerInvariant() switch
                 {

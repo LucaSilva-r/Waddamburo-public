@@ -547,6 +547,16 @@ public sealed class LumenPlayer
         return lines;
     }
 
+    /// <summary>Keeps a clip from being drawn whatever its script does with _visible, until asked otherwise.</summary>
+    public bool SetInstanceHidden(string instancePath, bool hidden)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+        if (findInstance(instancePath) is not { } instance)
+            return false;
+        instance.HiddenByHost = hidden;
+        return true;
+    }
+
     /// <summary>
     /// Draws a host surface over every clip named <paramref name="instancePath"/> ("a/b/name" scopes it to
     /// clips under those ancestors),
@@ -565,6 +575,13 @@ public sealed class LumenPlayer
     }
 
     // The overlay whose path ends with this clip and its nearest ancestors ("board1p/name_board/names").
+    // ponytail: markers carry no rotation, so only the scale's area is kept.
+    private static LumenMatrix uniformScale(LumenMatrix transform)
+    {
+        var scale = MathF.Sqrt(MathF.Abs(transform.M11 * transform.M22 - transform.M12 * transform.M21));
+        return transform with { M11 = scale, M12 = 0, M21 = 0, M22 = scale };
+    }
+
     private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)? findOverlay(DisplayInstance instance)
     {
         foreach (var (path, overlay) in _overlays)
@@ -1592,6 +1609,8 @@ public sealed class LumenPlayer
         }
         instance.Depth = destination;
         parent.Children[destination] = instance;
+        // Flash: a clip moved by script is the script's now, and a rewinding timeline leaves it alone.
+        instance.FromTimeline = false;
     }
 
     /// <summary>Diagnostic: WADDAMBURO_HOST_TRACE=1 prints every movie -> host call with its result.</summary>
@@ -2341,7 +2360,7 @@ public sealed class LumenPlayer
         ImmutableArray<LumenRenderQuad>.Builder quads,
         byte maskDepth = 0)
     {
-        if (instance.Removed || !instance.Visible)
+        if (instance.Removed || !instance.Visible || instance.HiddenByHost)
             return;
         // A newly revealed or abruptly moved parent must show its children at the same tick.
         // Otherwise hidden child positions are interpolated under the parent's new opacity.
@@ -2382,7 +2401,8 @@ public sealed class LumenPlayer
                             reportOnce("LUM_NATIVE_FILL_EMPTY", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has empty bounds.");
                             continue;
                         }
-                        var nativeVertices = transformNativeVertices(geometry.Vertices, transform, minX, maxX, minY, maxY,
+                        var nativeVertices = transformNativeVertices(geometry.Vertices,
+                            nativeFill.Placement is { UniformScale: true } ? uniformScale(transform) : transform, minX, maxX, minY, maxY,
                             nativeFill.Placement);
                         quads.Add(new LumenRenderQuad(
                             0,
@@ -2699,6 +2719,7 @@ public sealed class LumenPlayer
         public bool Playing { get; set; } = true;
 
         public bool Visible { get; set; } = true;
+        public bool HiddenByHost { get; set; }
 
         public bool ScriptTransformed { get; set; }
 

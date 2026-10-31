@@ -1,3 +1,4 @@
+using Waddamburo.Game.Dan;
 using System.Globalization;
 using System.Reflection;
 using Microsoft.Data.Sqlite;
@@ -116,6 +117,28 @@ public sealed record PlayRecord(
     public int? Seed { get; init; }
 }
 
+/// <summary>A course play as the server takes it: each song's chart hash and replay (base64).</summary>
+public sealed record UploadDanPlay(Guid Id, long Baid, string CourseHash, int ResultLevel, long Score, int Great, int Good, int Miss,
+    int MaxCombo, int Rolls, int GaugePercent, int SongsPlayed, int ScoringVersion, string EngineVersion, int AudioOffsetMs,
+    int InputOffsetMs, DateTimeOffset PlayedAt, List<UploadDanSong> Songs);
+
+/// <summary>One song of an uploaded course play.</summary>
+public sealed record UploadDanSong(string Sha256, string Replay);
+
+/// <summary>A finished dan course: each song's chart hash (null: not known) and replay, on that song's own time.</summary>
+public sealed record DanPlayRecord(Guid Id, long Baid, DanCourseResult Result, IReadOnlyList<string?> ChartHashes,
+    DateTimeOffset PlayedAt, IReadOnlyList<byte[]> Replays)
+{
+    public int AudioOffsetMs { get; init; }
+
+    public int InputOffsetMs { get; init; }
+
+    public int ScoringVersion { get; init; } = PlayRecord.CurrentScoringVersion;
+
+    public string EngineVersion { get; init; } =
+        typeof(PlayRecord).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+}
+
 /// <summary>The local score database (SQLite, one file beside the cabinet settings).</summary>
 public sealed class ScoreStore : IDisposable
 {
@@ -197,6 +220,38 @@ public sealed class ScoreStore : IDisposable
         ALTER TABLE plays ADD COLUMN options INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE plays ADD COLUMN seed INTEGER;
         """,
+        // A dan course's plays: three charts, one replay on the course's timeline. Apart from plays, so they
+        // never count as a song's best or reach the song upload. uploaded_at: for when they are sent.
+        """
+        CREATE TABLE dan_plays (
+            id TEXT PRIMARY KEY,
+            baid INTEGER NOT NULL,
+            course_hash TEXT NOT NULL,
+            level INTEGER NOT NULL,
+            result_level INTEGER NOT NULL,
+            score INTEGER NOT NULL,
+            great INTEGER NOT NULL,
+            good INTEGER NOT NULL,
+            miss INTEGER NOT NULL,
+            max_combo INTEGER NOT NULL,
+            rolls INTEGER NOT NULL,
+            gauge_percent INTEGER NOT NULL,
+            songs_played INTEGER NOT NULL,
+            songs TEXT NOT NULL,
+            replay BLOB NOT NULL,
+            scoring_version INTEGER NOT NULL,
+            engine_version TEXT NOT NULL,
+            audio_offset_ms INTEGER NOT NULL,
+            input_offset_ms INTEGER NOT NULL,
+            played_at TEXT NOT NULL,
+            uploaded_at TEXT
+        );
+        CREATE INDEX dan_plays_player ON dan_plays (baid, course_hash);
+        """,
+        // Each song's replay on its own, in songs: nothing about the course's timeline is kept or sent.
+        """
+        ALTER TABLE dan_plays DROP COLUMN replay;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -226,28 +281,7 @@ public sealed class ScoreStore : IDisposable
                 hash.Parameters.AddWithValue("$sha", play.ChartSha256);
                 hash.ExecuteNonQuery();
             }
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = """
-                INSERT OR IGNORE INTO charts (sha256, notes, title, subtitle, source, course, level,
-                    song_key, title_en, subtitle_en, difficulty, osu_beatmap_id, osu_beatmapset_id)
-                VALUES ($sha, $notes, $title, $subtitle, $source, $course, $level,
-                    $song_key, $title_en, $subtitle_en, $difficulty, $beatmap, $beatmapset)
-                """;
-            command.Parameters.AddWithValue("$sha", play.ChartSha256);
-            command.Parameters.AddWithValue("$notes", Convert.FromBase64String(chart.Notes));
-            command.Parameters.AddWithValue("$title", (object?)chart.Title ?? DBNull.Value);
-            command.Parameters.AddWithValue("$subtitle", (object?)chart.Subtitle ?? DBNull.Value);
-            command.Parameters.AddWithValue("$source", (object?)chart.Source ?? DBNull.Value);
-            command.Parameters.AddWithValue("$course", chart.Course);
-            command.Parameters.AddWithValue("$level", (object?)chart.Level ?? DBNull.Value);
-            command.Parameters.AddWithValue("$song_key", (object?)chart.SongKey ?? DBNull.Value);
-            command.Parameters.AddWithValue("$title_en", (object?)chart.TitleEn ?? DBNull.Value);
-            command.Parameters.AddWithValue("$subtitle_en", (object?)chart.SubtitleEn ?? DBNull.Value);
-            command.Parameters.AddWithValue("$difficulty", (object?)chart.Difficulty ?? DBNull.Value);
-            command.Parameters.AddWithValue("$beatmap", (object?)chart.OsuBeatmapId ?? DBNull.Value);
-            command.Parameters.AddWithValue("$beatmapset", (object?)chart.OsuBeatmapsetId ?? DBNull.Value);
-            command.ExecuteNonQuery();
+            insertChart(play.ChartSha256, chart, transaction);
             transaction.Commit();
         }
     }
@@ -385,6 +419,32 @@ public sealed class ScoreStore : IDisposable
             }
             transaction.Commit();
         }
+    }
+
+    private void insertChart(string sha256, ChartUpload chart, SqliteTransaction transaction)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT OR IGNORE INTO charts (sha256, notes, title, subtitle, source, course, level,
+                song_key, title_en, subtitle_en, difficulty, osu_beatmap_id, osu_beatmapset_id)
+            VALUES ($sha, $notes, $title, $subtitle, $source, $course, $level,
+                $song_key, $title_en, $subtitle_en, $difficulty, $beatmap, $beatmapset)
+            """;
+        command.Parameters.AddWithValue("$sha", sha256);
+        command.Parameters.AddWithValue("$notes", Convert.FromBase64String(chart.Notes));
+        command.Parameters.AddWithValue("$title", (object?)chart.Title ?? DBNull.Value);
+        command.Parameters.AddWithValue("$subtitle", (object?)chart.Subtitle ?? DBNull.Value);
+        command.Parameters.AddWithValue("$source", (object?)chart.Source ?? DBNull.Value);
+        command.Parameters.AddWithValue("$course", chart.Course);
+        command.Parameters.AddWithValue("$level", (object?)chart.Level ?? DBNull.Value);
+        command.Parameters.AddWithValue("$song_key", (object?)chart.SongKey ?? DBNull.Value);
+        command.Parameters.AddWithValue("$title_en", (object?)chart.TitleEn ?? DBNull.Value);
+        command.Parameters.AddWithValue("$subtitle_en", (object?)chart.SubtitleEn ?? DBNull.Value);
+        command.Parameters.AddWithValue("$difficulty", (object?)chart.Difficulty ?? DBNull.Value);
+        command.Parameters.AddWithValue("$beatmap", (object?)chart.OsuBeatmapId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$beatmapset", (object?)chart.OsuBeatmapsetId ?? DBNull.Value);
+        command.ExecuteNonQuery();
     }
 
     private void insertPlay(PlayRecord play, SqliteTransaction transaction)
@@ -532,6 +592,135 @@ public sealed class ScoreStore : IDisposable
                 command.ExecuteNonQuery();
             }
             transaction.Commit();
+        }
+    }
+
+    /// <summary>Saves a course play. Its charts stay out: the server gave their hashes, so it has them.</summary>
+    public void SaveDan(DanPlayRecord play)
+    {
+        ArgumentNullException.ThrowIfNull(play);
+        var result = play.Result;
+        var total = result.Total;
+        var songs = songsJson(play);
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO dan_plays (id, baid, course_hash, level, result_level, score, great, good, miss, max_combo,
+                    rolls, gauge_percent, songs_played, songs, scoring_version, engine_version,
+                    audio_offset_ms, input_offset_ms, played_at)
+                VALUES ($id, $baid, $hash, $level, $result, $score, $great, $good, $miss, $combo,
+                    $rolls, $gauge, $played, $songs, $scoring, $engine, $audio, $input, $at)
+                """;
+            command.Parameters.AddWithValue("$id", play.Id.ToString());
+            command.Parameters.AddWithValue("$baid", play.Baid);
+            command.Parameters.AddWithValue("$hash", result.Course.Hash);
+            command.Parameters.AddWithValue("$level", result.Course.Level);
+            command.Parameters.AddWithValue("$result", result.Level);
+            command.Parameters.AddWithValue("$score", total.Score);
+            command.Parameters.AddWithValue("$great", total.Goods);
+            command.Parameters.AddWithValue("$good", total.Oks);
+            command.Parameters.AddWithValue("$miss", total.Bads);
+            command.Parameters.AddWithValue("$combo", total.MaxCombo);
+            command.Parameters.AddWithValue("$rolls", total.Rolls);
+            command.Parameters.AddWithValue("$gauge", total.GaugePercent);
+            command.Parameters.AddWithValue("$played", result.SongsPlayed);
+            command.Parameters.AddWithValue("$songs", songs);
+            command.Parameters.AddWithValue("$scoring", play.ScoringVersion);
+            command.Parameters.AddWithValue("$engine", play.EngineVersion);
+            command.Parameters.AddWithValue("$audio", play.AudioOffsetMs);
+            command.Parameters.AddWithValue("$input", play.InputOffsetMs);
+            command.Parameters.AddWithValue("$at", play.PlayedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static string songsJson(DanPlayRecord play)
+    {
+        using var buffer = new MemoryStream();
+        using (var json = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            json.WriteStartArray();
+            var songs = play.Result.Songs;
+            for (var index = 0; index < songs.Count; index++)
+            {
+                json.WriteStartObject();
+                json.WriteString("sha256", index < play.ChartHashes.Count ? play.ChartHashes[index] : null);
+                json.WriteNumber("course", songs[index].Course);
+                json.WriteBase64String("replay", index < play.Replays.Count ? play.Replays[index] : []);
+                json.WriteNumber("great", songs[index].Counts.Goods);
+                json.WriteNumber("good", songs[index].Counts.Oks);
+                json.WriteNumber("miss", songs[index].Counts.Bads);
+                json.WriteNumber("rolls", songs[index].Counts.Rolls);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>Course plays not yet on the server; a guest's stay on this PC.</summary>
+    public List<UploadDanPlay> PendingDanPlays(long? baid, int limit)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, baid, course_hash, result_level, score, great, good, miss, max_combo, rolls, gauge_percent,
+                    songs_played, scoring_version, engine_version, audio_offset_ms, input_offset_ms, played_at, songs
+                FROM dan_plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND uploaded_at IS NULL
+                ORDER BY played_at LIMIT $limit
+                """;
+            command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var plays = new List<UploadDanPlay>();
+            while (reader.Read())
+            {
+                using var songs = System.Text.Json.JsonDocument.Parse(reader.GetString(17));
+                plays.Add(new UploadDanPlay(Guid.Parse(reader.GetString(0)), reader.GetInt64(1), reader.GetString(2), reader.GetInt32(3),
+                    reader.GetInt64(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7), reader.GetInt32(8), reader.GetInt32(9),
+                    reader.GetInt32(10), reader.GetInt32(11), reader.GetInt32(12), reader.GetString(13), reader.GetInt32(14), reader.GetInt32(15),
+                    DateTimeOffset.Parse(reader.GetString(16), CultureInfo.InvariantCulture),
+                    [.. songs.RootElement.EnumerateArray().Select(static song => new UploadDanSong(
+                        song.GetProperty("sha256").GetString() ?? "", song.GetProperty("replay").GetString() ?? ""))]));
+            }
+            return plays;
+        }
+    }
+
+    public void MarkDanUploaded(IEnumerable<Guid> ids)
+    {
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE dan_plays SET uploaded_at = $at WHERE id = $id";
+            command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            var id = command.Parameters.Add("$id", SqliteType.Text);
+            foreach (var value in ids)
+            {
+                id.Value = value.ToString();
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+
+    /// <summary>The player's best result on each course played, by course hash: 0 failed, 1 red, 2 gold.</summary>
+    public Dictionary<string, int> DanBests(long baid)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT course_hash, MAX(result_level) FROM dan_plays WHERE baid = $baid GROUP BY course_hash";
+            command.Parameters.AddWithValue("$baid", baid);
+            using var reader = command.ExecuteReader();
+            var bests = new Dictionary<string, int>(StringComparer.Ordinal);
+            while (reader.Read())
+                bests[reader.GetString(0)] = reader.GetInt32(1);
+            return bests;
         }
     }
 

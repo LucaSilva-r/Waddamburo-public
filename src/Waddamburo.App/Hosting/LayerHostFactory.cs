@@ -1,8 +1,10 @@
 using Waddamburo.App.Audio;
 using Waddamburo.App.Gameplay;
+using Waddamburo.App.Online;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -113,6 +115,24 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
     public bool TutorialSeen { get; set; }
+
+    /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
+    public DanCourses? Dan { get; set; }
+
+    /// <summary>The series dani_select lists.</summary>
+    public string DanSeries { get; set; } = "green";
+
+    /// <summary>The challenge course being played: its number in <see cref="DanSeries"/>; 0: a rank.</summary>
+    public int DanChallenge { get; set; }
+
+    /// <summary>The player's best result per course hash, for the course list's stamps.</summary>
+    public Func<IReadOnlyDictionary<string, int>>? DanBests { get; set; }
+
+    /// <summary>The course list on screen.</summary>
+    public DaniSelectHostBinding? DaniSelect { get; private set; }
+
+    /// <summary>The course behind each of its boards (null: the back board).</summary>
+    public IReadOnlyList<DanCourseStatus?> DanBoards { get; private set; } = [];
 
     /// <summary>The live show_oni setting (the Settings menu changes it while the game runs).</summary>
     public Func<bool>? ShowOni { get; init; }
@@ -251,16 +271,18 @@ internal sealed class LayerHostFactory(
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => songSelectHost(),
             GameplaySceneComposition.StaticHostId or GameplaySceneComposition.PlayerTwoHostId =>
-                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo)),
+                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
             "waiwai-result" => waiwaiResultHost(),
+            "dani-result" => daniResultHost(),
             "waiwai-result-board-0" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 0)),
             "waiwai-result-board-1" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 1)),
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
             "tutorial" => tutorialHost(),
+            "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
             "attract" => attractHost(),
             "boot" => new LumenLayerHost(null),
@@ -311,7 +333,9 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
-            browse: OsuBrowse, search: Search);
+            browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
+            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null,
+            danSeries: arcade.Home ? Dan?.Series : null);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
@@ -367,6 +391,19 @@ internal sealed class LayerHostFactory(
         return new LumenLayerHost(binding, binding.Attach);
     }
 
+    /// <summary>The course play the next results show; null: a song's.</summary>
+    public DanCourseResult? DanResult { get; set; }
+
+    /// <summary>The dan results on stage, while they are.</summary>
+    public DaniResultHostBinding? DaniResult { get; private set; }
+
+    private LumenLayerHost daniResultHost()
+    {
+        var binding = DaniResult = new DaniResultHostBinding(DanResult ?? throw new InvalidOperationException("Dan results loaded without a course play."),
+            don, sounds is null ? null : sounds.Frontend.PlayCue);
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
     private LumenLayerHost waiwaiResultHost()
     {
         var outcome = WaiwaiOutcome?.Invoke() ?? throw new InvalidOperationException("Waiwai results without a Waiwai song.");
@@ -392,6 +429,26 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost tutorialHost()
     {
         var binding = new TutorialHostBinding(PlayerSide, TwoPlayers, sounds is null ? null : sounds.Frontend.PlayCue, don);
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    private LumenLayerHost daniSelectHost()
+    {
+        var view = new SongSelectCatalogView(catalog);
+        var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
+            .GroupBy(static entry => entry.Song.Descriptor.Key).ToDictionary(static group => group.Key, static group => group.First());
+        var binding = DaniSelect = new DaniSelectHostBinding(() =>
+        {
+            if (!Dan!.Ready)
+                return null;
+            var (boards, courses) = Dan.Boards(DanSeries, DanBests?.Invoke());
+            DanBoards = courses;
+            return boards;
+        }, PlayerSide, uid =>
+            Dan!.Song(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
+                ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Expanded) : null,
+            (challenge, kind) => DanChallengeArt.Key(DanSeries, challenge, kind),
+            songSelectSounds, don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
 

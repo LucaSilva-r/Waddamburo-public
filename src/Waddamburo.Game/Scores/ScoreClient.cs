@@ -71,6 +71,7 @@ public sealed class TwoFactorRequiredException() : Exception("The account needs 
 public sealed class ScoreClient(HttpClient http)
 {
     private const int BatchSize = 50;
+    private const int DanBatchSize = 10;
 
     /// <summary>The API's JSON options (snake_case), backed by the generated <see cref="ScoreJson"/>.</summary>
     public static JsonSerializerOptions Json => ScoreJson.Default.Options;
@@ -158,6 +159,14 @@ public sealed class ScoreClient(HttpClient http)
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.RankingsResult, cancellationToken).ConfigureAwait(false))!
             .Rankings;
+    }
+
+    /// <summary>The dan dojo catalogue (public: no account needed).</summary>
+    public async Task<Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/dan", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DanCatalogue, cancellationToken).ConfigureAwait(false))!;
     }
 
     /// <summary>A player's bests per chart hash (home: the token's player; cabinet: <paramref name="baid"/>).</summary>
@@ -252,6 +261,26 @@ public sealed class ScoreClient(HttpClient http)
             if (result.Accepted.Count < batch.Count)
                 Console.Error.WriteLine($"Warning SCORE_REJECTED: the server refused {batch.Count - result.Accepted.Count} play(s).");
         }
+        return sent + await syncDanAsync(store, baid, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Course plays, after the songs' so that a server without them yet costs the songs nothing.
+    private async Task<int> syncDanAsync(ScoreStore store, long? baid, CancellationToken cancellationToken)
+    {
+        var sent = 0;
+        while (store.PendingDanPlays(baid, DanBatchSize) is { Count: > 0 } batch)
+        {
+            using var response = await http.PostAsJsonAsync("api/wdb/dan/plays", new DanPlaysRequest(batch), ScoreJson.Default.DanPlaysRequest, cancellationToken)
+                .ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return sent; // an older server: they wait here until it has the dan dojo
+            response.EnsureSuccessStatusCode();
+            var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DanPlaysResult, cancellationToken).ConfigureAwait(false))!;
+            store.MarkDanUploaded(batch.Select(static play => play.Id));
+            sent += batch.Count;
+            if (result.Accepted.Count < batch.Count)
+                Console.Error.WriteLine($"Warning SCORE_REJECTED: the server refused {batch.Count - result.Accepted.Count} dan play(s).");
+        }
         return sent;
     }
 
@@ -297,6 +326,10 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record RankingsRequest(IReadOnlyCollection<string> Charts);
 
     internal sealed record PlaysRequest(List<UploadPlay> Plays);
+
+    internal sealed record DanPlaysRequest(List<UploadDanPlay> Plays);
+
+    internal sealed record DanPlaysResult(List<Guid> Accepted);
 
     internal sealed record BestsResult(List<RemoteBest> Bests);
 

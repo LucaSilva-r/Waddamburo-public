@@ -1,5 +1,7 @@
+using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
@@ -18,20 +20,25 @@ namespace Waddamburo.App.Flow;
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
     public override IndicatorScene IndicatorsFor(SceneId scene) =>
-        scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial : IndicatorScene.SongSelect;
+        scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial
+            : scene == FlowScenes.DaniSelect ? IndicatorScene.DaniSelect : IndicatorScene.SongSelect;
+
+    private const string DanMusicCue = "JINGLE_DANI";
 
     public override void Enter(SceneId scene)
     {
         Shell.StopWatching();
         if (scene == FlowScenes.SongSelect)
             Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
+        else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
+            Shell.Sounds?.Bank.PlayMusic(DanMusicCue, DanMusicCue, loop: true);
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)
             Shell.Sounds?.Bank.PlayMusic("Tutorial", "JINGLE_DOJO", loop: true);
     }
 
     public override void Exit(SceneId scene)
     {
-        if (scene == FlowScenes.Tutorial)
+        if (scene == FlowScenes.Tutorial || scene == FlowScenes.DaniSelect)
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
     }
 
@@ -54,12 +61,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var twoPlayers = request.Players.Length == 2;
         // Waiwai's fixed layout (its charts only reshape the notes).
         var waiwai = Shell.Hosts.Waiwai && twoPlayers && song.Descriptor.WaiwaiComposition is not null;
+        var dojo = Shell.Gameplay.Dan is not null;
         _prefetch = null;
         _composing = Task.Run(() =>
         {
             var theme = waiwai ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
             var scene = waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
-                : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers);
+                : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers, dojo);
             return new Prefetched(request.Song, side, twoPlayers, waiwai, theme, scene);
         });
     }
@@ -72,6 +80,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input);
         scroll?.After();
         Shell.Hosts.SongSelect?.Poll();
+        if (Shell.Active.Id == FlowScenes.DaniSelect)
+            Shell.Hosts.DaniSelect?.Poll();
     }
 
     private SongKey? _titled;
@@ -85,6 +95,19 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player))
                 showSongSelect();
+            return;
+        }
+        if (Shell.Active.Id == FlowScenes.DaniSelect)
+        {
+            if (input.Escape || Shell.Hosts.DaniSelect is { Terminated: true, Back: true })
+            {
+                Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanExitCover); // traced session31
+                return;
+            }
+            if (Shell.Hosts.DaniSelect is { Terminated: true, Selected: { } board } && Shell.PlayRequests.Pending is null)
+                playCourse(Shell.Hosts.DanBoards[board]!);
+            if (Shell.PlayRequests.Pending is { } course)
+                coverForGameplay(course);
             return;
         }
         // A second player joins from Song Select (arcade; one player in, the other drum's join paid for or
@@ -115,6 +138,14 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.Show(FlowScenes.Tutorial);
             return;
         }
+        if (Shell.Hosts.SongSelect?.DanRequested == true)
+        {
+            Shell.Sounds?.Bank.Play("SE_SELECT", 7); // traced session30, as Song Select ends
+            // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
+            Shell.Hosts.DanSeries = Shell.Hosts.SongSelect.DanSeriesPicked ?? Shell.Arcade.DanSeries;
+            Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
+            return;
+        }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the
         // difficulty selector opens, so it is there when the rainbow closes.
         if (Shell.Hosts.SongSelect?.CourseSelectSong is { } picked && _titled != picked.Descriptor.Key)
@@ -122,16 +153,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             _titled = picked.Descriptor.Key;
             _ = Shell.Titles.Resolve(Shell.Titles.GetTransitionTitle(picked));
         }
-        if (_composing is { IsCompleted: true } composed)
-        {
-            _composing = null;
-            if (composed.IsCompletedSuccessfully)
-            {
-                _prefetch = composed.Result;
-                Shell.Prefetch(_prefetch.Scene);
-                Console.WriteLine($"Prefetching gameplay for '{_prefetch.Song}' at tick {Shell.Tick}.");
-            }
-        }
+        finishComposing();
         // The mode-switch folder: reload as the other song select (normal <-> Waiwai).
         if (Shell.Hosts.SongSelect?.ModeSwitchRequested == true)
         {
@@ -167,8 +189,28 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
         if (GameActions.Down(input.Keys, GameAction.Favourite) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
             Console.WriteLine("Favourite: the cursor is on no song.");
-        if (Shell.PlayRequests.Pending is not { } request)
+        if (Shell.PlayRequests.Pending is { } request)
+            coverForGameplay(request);
+    }
+
+    // The gameplay layout, composed in the background, starts decoding.
+    private void finishComposing()
+    {
+        if (_composing is not { IsCompleted: true } composed)
             return;
+        _composing = null;
+        if (composed.IsCompletedSuccessfully)
+        {
+            _prefetch = composed.Result;
+            Shell.Prefetch(_prefetch.Scene);
+            Console.WriteLine($"Prefetching gameplay for '{_prefetch.Song}' at tick {Shell.Tick}.");
+        }
+    }
+
+    // The pending play's rainbow, and gameplay under it once it covers the screen.
+    private void coverForGameplay(PlayRequest request)
+    {
+        finishComposing();
         var rainbow = gameplay.Rainbow;
         if (rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete)
         {
@@ -186,7 +228,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             player.SetNativeFill(
                 RainbowTransitionComposition.SongTitleFill,
                 gameplay.RainbowTitle ?? throw new InvalidOperationException("Rainbow transition has no song title."));
-            player.GotoLabel(RainbowTransitionComposition.CoverLabel, play: true);
+            // Traced session30: a course's first song opens under the plain rainbow, no title.
+            player.GotoLabel(Shell.Gameplay.Dan is null ? RainbowTransitionComposition.CoverLabel
+                : RainbowTransitionComposition.PlainCoverLabel, play: true);
             rainbow.StartCover();
             Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
@@ -254,6 +298,23 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Show(FlowScenes.SongSelect);
     }
 
+    private DanCourseStatus? _course;
+
+    private void playCourse(DanCourseStatus course)
+    {
+        _course = course;
+        var first = course.Songs[0];
+        var key = first.Chart!;
+        var song = find(key.Song).Song.Descriptor;
+        var chart = song.Charts.First(candidate => candidate.Key == key);
+        Shell.Gameplay.Dan = course.Course;
+        var challenge = Shell.Hosts.DanChallenge = Shell.Hosts.Dan!.ChallengeNumber(Shell.Hosts.DanSeries, course.Course);
+        Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Hosts.DanSeries, challenge, "mini");
+        var side = Shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
+        Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,
+            [new PlayerChartRequest(side, key, chart.ChartAsset, (TaikoCourse)first.Song.Course)]));
+    }
+
     private (string Category, SongSelectSong Song) find(SongKey song) => Shell.SongCatalog.Categories
         .SelectMany(category => category.Songs.Select(entry => (category.Name, entry)))
         .First(entry => entry.entry.Descriptor.Key == song);
@@ -276,6 +337,25 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             gameplay.ResetRainbow();
             Shell.Show(FlowScenes.SongSelect);
             return;
+        }
+        // A course: all its songs as one chart.
+        DanCourseTimeline? timeline = null;
+        var courseSongs = new List<SongSelectSong>();
+        var courseStatus = _course;
+        if (_course is { } picked)
+        {
+            _course = null;
+            var loaded = new List<(PlayableChart, TaikoCourse)>();
+            foreach (var entry in picked.Songs)
+            {
+                var (_, courseSong) = find(entry.Chart!.Song);
+                courseSongs.Add(courseSong);
+                var descriptor = courseSong.Descriptor.Charts.First(candidate => candidate.Key == entry.Chart);
+                loaded.Add((Shell.Assets.LoadChartAsync(entry.Chart, descriptor.ChartAsset).AsTask().GetAwaiter().GetResult(),
+                    (TaikoCourse)entry.Song.Course));
+            }
+            timeline = DanCourseTimeline.Merge(loaded);
+            charts = [timeline.Chart];
         }
         var (category, song) = find(request.Song);
         var side = request.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
@@ -314,8 +394,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Catalog.Replace(prefetched?.Scene ?? (waiwai is not null
             ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
             : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
-                twoPlayers: twoPlayers)));
+                twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
         gameplay.Prepare(charts, song, side, waiwai);
+        if (timeline is not null)
+            gameplay.PrepareCourse(timeline, courseSongs, courseStatus!);
         Shell.Show(FlowScenes.Gameplay);
     }
 }

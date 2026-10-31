@@ -22,6 +22,16 @@ public readonly record struct PlayableHitObject
         IsHand = isHand;
     }
 
+    /// <summary>The same note at another time.</summary>
+    public PlayableHitObject At(TimeSpan startTime) => new(startTime, Kind, IsHand)
+    {
+        IsSynchro = IsSynchro,
+        InRun = InRun,
+        IsKo = IsKo,
+        IsRare = IsRare,
+        Branch = Branch,
+    };
+
     public TimeSpan StartTime { get; }
     public PlayableNoteKind Kind { get; }
 
@@ -67,6 +77,9 @@ public readonly record struct PlayableLongNote
         Kind = kind;
         RequiredHits = requiredHits;
     }
+    /// <summary>The same note at another time.</summary>
+    public PlayableLongNote At(TimeSpan startTime, TimeSpan endTime) => new(startTime, endTime, Kind, RequiredHits) { Branch = Branch };
+
     public TimeSpan StartTime { get; }
     public TimeSpan EndTime { get; }
     public PlayableLongNoteKind Kind { get; }
@@ -133,6 +146,8 @@ public readonly record struct ChartTimingPoint
         BeatUnit = beatUnit;
     }
 
+    public ChartTimingPoint At(TimeSpan time) => new(time, BeatsPerMinute, BeatsPerMeasure, BeatUnit);
+
     public TimeSpan Time { get; }
     public double BeatsPerMinute { get; }
     public int BeatsPerMeasure { get; }
@@ -150,6 +165,8 @@ public readonly record struct ChartScrollPoint
         Multiplier = multiplier;
     }
 
+    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier);
+
     public TimeSpan Time { get; }
     public double Multiplier { get; }
 }
@@ -162,6 +179,8 @@ public readonly record struct ChartEffectPoint
         Time = time;
         IsGoGo = isGoGo;
     }
+
+    public ChartEffectPoint At(TimeSpan time) => new(time, IsGoGo);
 
     public TimeSpan Time { get; }
     public bool IsGoGo { get; }
@@ -176,9 +195,14 @@ public readonly record struct ChartBarLine
         IsVisible = isVisible;
     }
 
+    public ChartBarLine At(TimeSpan time) => new(time, IsVisible);
+
     public TimeSpan Time { get; }
     public bool IsVisible { get; }
 }
+
+/// <summary>One song of a chart made of several (a dan course): its own rates apply from <paramref name="Start"/>.</summary>
+public sealed record ChartSegment(TimeSpan Start, TaikoCourse Course, PlayableChart Source);
 
 public sealed record PlayableChart
 {
@@ -268,6 +292,9 @@ public sealed record PlayableChart
         }
         return low == 0 ? 1 : ScrollPoints[low - 1].Multiplier;
     }
+
+    /// <summary>The songs this chart is made of, when several: score and gauge use each one's rates.</summary>
+    public ImmutableArray<ChartSegment> Segments { get; init; } = [];
 
     /// <summary>Whether a note tagged <paramref name="branch"/> plays on <paramref name="route"/>.</summary>
     public static bool IsOn(ChartBranch? branch, ChartBranch route) => branch is null || branch == route;

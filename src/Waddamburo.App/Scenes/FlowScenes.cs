@@ -22,6 +22,18 @@ internal static class FlowScenes
     public static readonly SceneId Retry = new("retry");
     public static readonly SceneId GameOver = new("gameover");
     public static readonly SceneId Tutorial = new("tutorial");
+    public static readonly SceneId DaniSelect = new("dani-select");
+
+    // Traced session30: the game plays this as Song Select ends and sends it out once dani_select has loaded.
+    public static SceneDefinition DanCover { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-cover"), [
+        new SceneLayerDefinition("intermission/packeddata.ddp", "scene_change_dani1/scene_change_dani1.lm",
+            LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
+    ]);
+
+    public static SceneDefinition DanExitCover { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-exit-cover"), [
+        new SceneLayerDefinition("intermission/packeddata.ddp", "scene_change_dani2/scene_change_dani2.lm",
+            LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
+    ]);
 
     public static SceneDefinition Rainbow { get; } = RainbowTransitionComposition.Create(new SceneId("rainbow-transition"));
 
@@ -29,6 +41,16 @@ internal static class FlowScenes
     public static SceneDefinition Results { get; } = new(SceneDefinition.CurrentVersion, Result, [
         new SceneLayerDefinition("enso_result/packeddata.ddp", "result/result.lm", LumenMatrix.Identity, "result"),
         new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
+    ]);
+
+    // A dan course's results (traced sessions 30 and 31), and the shutter closing over its last song.
+    public static SceneDefinition DaniResults { get; } = new(SceneDefinition.CurrentVersion, Result, [
+        new SceneLayerDefinition("dani_result/packeddata.ddp", "dani_result/dani_result.lm", LumenMatrix.Identity, "dani-result"),
+    ]);
+
+    public static SceneDefinition DanShutter { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-shutter"), [
+        new SceneLayerDefinition("intermission/packeddata.ddp", "dani_shutter/dani_shutter.lm",
+            LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
     ]);
 
     // Waiwai's results (traced): its movie full screen, the two name boards at (-580|308, 220) centred.
@@ -90,10 +112,24 @@ internal static class FlowScenes
         new SceneDefinition(SceneDefinition.CurrentVersion, Tutorial, [
             new SceneLayerDefinition("tutorial/packeddata.ddp", "tutorial/tutorial.lm", LumenMatrix.Identity, "tutorial"),
         ]),
+        // Traced session30: full screen at depth 0, the indicator's parts above it.
+        new SceneDefinition(SceneDefinition.CurrentVersion, DaniSelect, [
+            new SceneLayerDefinition("dani_select/packeddata.ddp", "dani_select/dani_select.lm", LumenMatrix.Identity, "dani-select"),
+        ]),
+        NormalGameOver,
+    ];
+
+    public static SceneDefinition NormalGameOver { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
-        ]),
-    ];
+        ]);
+
+    // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.
+    public static SceneDefinition DaniGameOver { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
+            new SceneLayerDefinition("dani_result/packeddata.ddp", "dani_gameover/dani_gameover.lm", LumenMatrix.Identity, "gameover"),
+        ]);
+
 
     // Traced final name-board positions are (-580, 278) for the left drum's player and (308, 278) for
     // the right one's in the cabinet's centered coordinates, or (60, 638) / (948, 638) in our top-left

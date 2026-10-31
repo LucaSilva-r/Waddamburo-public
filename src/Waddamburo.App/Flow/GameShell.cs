@@ -9,6 +9,7 @@ using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -76,6 +77,8 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
+
+    private readonly DanCourses _danCourses;
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
     public ScoreSync Sync { get; }
@@ -160,6 +163,7 @@ internal sealed class GameShell : IDisposable
     private readonly IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
     private readonly CostumeIconTextures _costumeIcons;
+    private readonly DanChallengeArt _danArt;
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
     private readonly NameTextTextures _nameTexts;
@@ -227,6 +231,20 @@ internal sealed class GameShell : IDisposable
             keys.Presses.SelectMany(press => drumToo(press.Key).Select(key => press with { Key = key })), keys.Timestamp);
     }
 
+    // --start-scene=dani-result-fail or dani-result-clear: 五級 with made-up numbers.
+    private static DanCourseResult diagnosticDan(bool clear)
+    {
+        var course = new DanCourse(7, "五級", "", [new("soul_gauge", [94], [97]), new("bads", [55], [44]), new("hits", [610], [640])],
+            [new("a", 3, null, 400, []), new("b", 3, null, 400, []), new("c", 3, null, 400, [])]);
+        var total = clear ? new DanProgress(100, 900, 200, 20, 400, 120, 900_000) : new DanProgress(51, 209, 37, 59, 136, 165, 646_920);
+        DanSongCounts song(int goods, int oks, int bads, int rolls) => new(goods, oks, bads, rolls);
+        return new DanCourseResult(course, [
+            new(0, 3, 7, clear ? song(300, 60, 8, 40) : song(65, 5, 52, 45)),
+            new(1, 3, 8, clear ? song(300, 70, 6, 40) : song(144, 32, 7, 120)),
+            new(2, 3, 9, clear ? song(300, 70, 6, 40) : default)],
+            clear ? 3 : 2, total, DanCourseResult.LevelOf(course, total));
+    }
+
     /// <summary>Applies the display settings (vsync, fullscreen, letterbox) and sizes the upscaled textures for them.</summary>
     public void ApplyDisplay()
     {
@@ -274,6 +292,8 @@ internal sealed class GameShell : IDisposable
         // Server crowns need every chart's hash before song select lists it.
         if (Sync.Online)
             ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
+        _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
+            ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
 
         Application = new SdlApplication(
             Waddamburo.App.Hosting.SelfUpdate.WindowTitle,
@@ -331,6 +351,7 @@ internal sealed class GameShell : IDisposable
             Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
             () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
         _costumeIcons = new CostumeIconTextures(Application, dataRoot);
+        _danArt = new DanChallengeArt(Application, dataRoot);
         _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
         Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
             Path.Combine(dataRoot, "config", "S11100-1", "musicinfo.xml"));
@@ -355,7 +376,8 @@ internal sealed class GameShell : IDisposable
                 GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
                 // Placeholder: the audio calibration replaces it with a fresh lane each time.
                 GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
-                _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
+                options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear ? FlowScenes.DaniResults
+                    : _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
             ]),
             [
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
@@ -381,6 +403,10 @@ internal sealed class GameShell : IDisposable
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
+            DanBests = () => TaikoGuest.Profiles[Hosts!.PlayerSide] is { } player && Sync.Scores is { } scores
+                ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
+            DanResult = options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
+                ? diagnosticDan(options.StartScene == StartScene.DaniResultClear) : null,
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => SongsPlayed,
             ShowOni = () => Arcade.ShowOni,
@@ -399,6 +425,7 @@ internal sealed class GameShell : IDisposable
                 Sync.RefreshBests(card);
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
+            Dan = _danCourses,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
@@ -429,7 +456,7 @@ internal sealed class GameShell : IDisposable
         Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
         Overlay = new IntermissionOverlay(Application, _loader);
         // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
-        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade })
+        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
             Overlay.Preload(intermission);
 
         _gameplay = new GameplayFlow(this);
@@ -454,6 +481,7 @@ internal sealed class GameShell : IDisposable
             [FlowScenes.Entry] = entry,
             [FlowScenes.SongSelect] = songSelect,
             [FlowScenes.Tutorial] = songSelect,
+            [FlowScenes.DaniSelect] = songSelect,
             [FlowScenes.Gameplay] = _gameplay,
             [FlowScenes.Calibration] = calibration,
             [FlowScenes.Result] = ending,
@@ -499,11 +527,15 @@ internal sealed class GameShell : IDisposable
             StartScene.Attract => FlowScenes.Logo,
             StartScene.Entry => FlowScenes.Entry,
             StartScene.SongSelect => FlowScenes.SongSelect,
-            StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult => FlowScenes.Result,
+            StartScene.DaniSelect => FlowScenes.DaniSelect,
+            StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult
+                or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
-            StartScene.GameOver => FlowScenes.GameOver,
+            StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
         };
+        if (Options.StartScene == StartScene.DaniGameOver)
+            Catalog.Replace(FlowScenes.DaniGameOver);
         Coordinator.StartAsync(initialScene).AsTask().GetAwaiter().GetResult();
         try
         {
@@ -518,7 +550,7 @@ internal sealed class GameShell : IDisposable
                 if (Don is null) return;
                 if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
                     Don.MapPlayerZero = Hosts.PlayerSide == 1;
-                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial")
+                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial" or "dani-select")
                     Don.MapPlayerZero = false;
             };
             Hosts.CardDialog = open => _indicators.CardDialog(open);
@@ -994,7 +1026,7 @@ internal sealed class GameShell : IDisposable
 
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
+        ?? _danArt.Resolve(surface) ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
         ?? Titles.Resolve(surface);
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),

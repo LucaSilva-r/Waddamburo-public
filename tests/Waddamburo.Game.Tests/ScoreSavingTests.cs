@@ -331,4 +331,33 @@ public sealed class ScoreSavingTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void ACoursesBestIsItsHighestResultAndStaysOutOfSongScores()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".db");
+        try
+        {
+            using var store = new ScoreStore(path);
+            var course = new Waddamburo.Game.Dan.DanCourse(7, "Test", "course", [], []);
+            Waddamburo.Game.Dan.DanCourseResult result(int level) => new(course, [new(0, 3, 7, default)], 1, default, level);
+            store.SaveDan(new DanPlayRecord(Guid.NewGuid(), 5, result(1), ["a"], DateTimeOffset.UtcNow, [[1]]));
+            store.SaveDan(new DanPlayRecord(Guid.NewGuid(), 5, result(0), [null], DateTimeOffset.UtcNow, [[2]]));
+
+            Assert.Equal(1, store.DanBests(5)["course"]);
+            Assert.Empty(store.DanBests(6));
+            Assert.Empty(store.PendingPlays(5, 10));
+            var pending = store.PendingDanPlays(5, 10);
+            Assert.Equal(2, pending.Count);
+            Assert.Equal(Convert.ToBase64String([1]), pending[0].Songs[0].Replay);
+            store.MarkDanUploaded(pending.Select(static play => play.Id));
+            Assert.Empty(store.PendingDanPlays(5, 10));
+            Assert.Equal(1, store.DanBests(5)["course"]);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
 }

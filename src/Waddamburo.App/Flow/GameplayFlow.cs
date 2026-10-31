@@ -3,6 +3,7 @@ using Waddamburo.App.Gameplay;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Online;
@@ -69,8 +70,25 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private bool revealed => _directStart || Rainbow.State is RainbowTransitionState.Revealing or RainbowTransitionState.Complete;
 
     /// <summary>The next song's charts (one per player) and layout, for <see cref="Enter"/>.</summary>
+    /// <summary>Plays a dan course: after <see cref="Prepare"/> with its merged chart.</summary>
+    public void PrepareCourse(DanCourseTimeline course, IReadOnlyList<SongSelectSong> songs, DanCourseStatus status)
+    {
+        _courseStatus = status;
+        _course = course;
+        _courseSongs = songs;
+        _courseSong = 0;
+        _courseHold = TimeSpan.Zero;
+        _courseEndsAt = null;
+    }
+
+    private DanCourseTimeline? _course;
+    private DanCourseStatus? _courseStatus;
+    private IReadOnlyList<SongSelectSong> _courseSongs = [];
+    private int _courseSong;
+
     public void Prepare(PlayableChart[] charts, SongSelectSong song, int side, WaiwaiComposition? waiwai)
     {
+        _course = null;
         _directStart = false;
         _charts = _sourceCharts = charts;
         _song = song;
@@ -166,7 +184,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
             ModeLabel.Show(active.Player.Layers[songInfoIndex].Player, modeLabel(_demo ? Strings.T("mode.demo") : ModeText(request)));
         }
-        _timeline = new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
+        _timeline = _course is { } course
+            ? new GameplayTimeline(course.Songs[0].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn)
+            : new GameplayTimeline(_charts[0].AuthoredOffset, TimeSpan.FromSeconds(3));
         _startTick = Shell.Tick;
         _clock.Reset();
         _musicEndPosition = null;
@@ -176,7 +196,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _review?.Dispose();
         // Home: a recorded play (a replay picked in song select) or the autoplay is reviewed (pause,
         // scrub, speed) rather than played live; it is never saved.
-        _review = !Shell.Arcade.Home || Shell.Headless ? null
+        _review = !Shell.Arcade.Home || Shell.Headless || _course is not null ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
             : Shell.Options.Autoplay
@@ -185,7 +205,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A replay or autoplay review is scrubbed back and forth: the end banner would stay up once reached.
         Shell.Gameplay.EndBanner = _review is null && !_demo;
         _training = null;
-        _voided = request.Review is not null || _demo;
+        // A course saves apart, whole (saveCourse).
+        _voided = request.Review is not null || _demo || _course is not null;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.WatchAs(_side, watched);
         _autoplay = (Shell.Options.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
@@ -254,7 +275,19 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// The chart position: held at zero under the rainbow, then the music's (or the ticks', headless),
     /// less the audio offset.
     /// </summary>
-    private TimeSpan chartTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
+    private TimeSpan chartTime()
+    {
+        if (_course is not { } course)
+            return songTime();
+        // A new song's audio clock starts a little behind where the last one stopped: time holds until it catches up.
+        var time = course.Songs[_courseSong].Zero + songTime();
+        return time > _courseHold ? time : _courseHold;
+    }
+
+    private TimeSpan _courseHold;
+    private TimeSpan? _courseEndsAt;
+
+    private TimeSpan songTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
         !revealed ? TimeSpan.Zero
         : _musicEndPosition is { } ended ? ended + _afterMusic.Elapsed
         : _music is not null ? Shell.Audio!.GetPosition(_music)
@@ -488,7 +521,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _startTick = Shell.Tick;
             _music = _review is null ? startAudio(request) : null; // a review plays its own music
             _clock.Restart();
-            rainbow.GotoLabel(RainbowTransitionComposition.RevealLabel, play: true);
+            showCourseSong();
+            rainbow.GotoLabel(_course is null ? RainbowTransitionComposition.RevealLabel
+                : RainbowTransitionComposition.PlainRevealLabel, play: true);
             Rainbow.StartReveal();
             Console.WriteLine($"Rainbow reveal and gameplay started at tick {Shell.Tick}.");
             return;
@@ -501,6 +536,20 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it
             return;
         var elapsed = chartTime();
+        // Traced session31: a requirement that can no longer be met ends the course with the song being played.
+        if (_course is { } failing && _courseEndsAt is null && Shell.Gameplay.DanFailed)
+        {
+            var failed = failing.Songs[_courseSong];
+            var banner = failed.Zero + TaikoResultBanner.Time(failed.Chart);
+            _courseEndsAt = banner > elapsed ? banner : elapsed;
+            Shell.Gameplay.EndCourseAt(_courseEndsAt.Value);
+            dropNextAudio();
+        }
+        if (_course is { } playing && _courseEndsAt is null && _courseSong + 1 < playing.Songs.Count && elapsed >= playing.Songs[_courseSong].End)
+        {
+            nextCourseSong(Shell.PlayRequests.Active!);
+            elapsed = chartTime();
+        }
         if (Shell.Headless)
             Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
         if (Shell.Audio?.Failure is { } device)
@@ -523,7 +572,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _afterMusic.Restart();
         }
         var chartFinished = _charts.Length != 0
-            && elapsed >= _charts.Max(TaikoResultBanner.Time) + TaikoResultBanner.ShutterDelay;
+            && elapsed >= (_courseEndsAt ?? _charts.Max(TaikoResultBanner.Time)) + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0
             && (_skipToShutter || chartFinished && !Shell.Gameplay.OverlayActive))
         {
@@ -532,7 +581,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 Shell.Audio?.Mixer.Stop(outro.Handle, TimeSpan.FromSeconds(1));
             // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
             if (Shell.Gameplay.WaiwaiOutcome is null)
-                overlay.Show(FlowScenes.Shutter);
+                overlay.Show(_course is null ? FlowScenes.Shutter : FlowScenes.DanShutter);
+            // Traced sessions 30 and 31, as the course's shutter closes.
+            if (_course is not null && Shell.Sounds is { } sounds)
+            {
+                sounds.Frontend.PlayCue("VO_RESULT", 19);
+                sounds.Frontend.PlayCue("SE_GAME", 15);
+            }
             _shutterStartTick = Shell.Tick;
             _shutterClosing = false;
         }
@@ -545,6 +600,51 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
         if (input.Escape && !Shell.Arcade.Home || _shutterStartTick >= 0 && Shell.Tick - _shutterStartTick >= 70)
             end(finished: !input.Escape || Shell.Arcade.Home);
+    }
+
+    // A course's next song: its music, on the course's clock, from under its card.
+    private void nextCourseSong(PlayRequest request)
+    {
+        var course = _course!;
+        _courseHold = chartTime();
+        if (_music is { } music)
+            Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
+        _courseSong++;
+        _timeline = new GameplayTimeline(course.Songs[_courseSong].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn);
+        _musicEndPosition = null;
+        _afterMusic.Reset();
+        _clock.Restart();
+        _music = startAudio(request);
+        showCourseSong();
+    }
+
+    // Traced session30, at each song's start: between's clip nextsong goes to "start" (its sounds are its own),
+    // with the song's title, and song_info shows the song's title, genre and number.
+    private void showCourseSong()
+    {
+        if (_course is null)
+            return;
+        var song = _courseSongs[_courseSong];
+        LumenPlayer? layer(string movie)
+        {
+            var index = Shell.Active.Layers.ToList().FindIndex(entry => Path.GetFileNameWithoutExtension(entry.Definition.MovieId) == movie);
+            return index < 0 ? null : Shell.Active.Player.Layers[index].Player;
+        }
+        var card = Shell.Titles.GetTransitionTitle(song);
+        _ = Shell.Titles.Resolve(card);
+        if (layer("between") is { } between)
+        {
+            between.SetNativeFill("next_song_name", card);
+            if (!between.TryGotoLabel("nextsong", "start"))
+                Console.Error.WriteLine("between has no nextsong clip to start.");
+        }
+        Shell.SongInfo = Shell.SongInfo with { Stage = _courseSong + 1 };
+        if (layer("song_info") is { } info)
+        {
+            var title = Shell.Titles.GetGameplayTitle(song);
+            _ = Shell.Titles.Resolve(title);
+            info.SetNativeFill("song_name", title);
+        }
     }
 
     // A finished song shows its results (the shutter stays over them until their first frames are
@@ -566,17 +666,89 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         ResetRainbow();
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
+        var finishedCourse = _course;
+        Shell.Hosts.DanResult = finished && _course is { } course ? danResult(course) : null;
+        var dan = Shell.Hosts.DanResult is not null;
+        CourseSongs = dan ? _courseSongs : [];
         Shell.Gameplay.Stop();
+        Shell.Gameplay.Dan = null;
+        _course = null;
+        dropNextAudio();
         if (finished && Shell.PlayRequests.Active is { } played)
+        {
             saveScore(played);
+            if (Shell.Hosts.DanResult is { } danPlay && finishedCourse is not null)
+                saveCourse(played, danPlay, finishedCourse);
+        }
         Shell.PlayRequests.ClearActive();
-        if (finished)
+        if (finished && !dan)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
-        Shell.Catalog.Replace(Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
+        Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
+            : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _charts = [];
         _autoplay = null;
         Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
+    }
+
+    /// <summary>The songs of the course the results are showing.</summary>
+    public IReadOnlyList<SongSelectSong> CourseSongs { get; private set; } = [];
+
+    private DanCourseResult danResult(DanCourseTimeline course)
+    {
+        var total = Shell.Gameplay.DanTotal;
+        var counts = Shell.Gameplay.DanSongs(course.Songs.Count);
+        var plan = Shell.Gameplay.Dan!;
+        return new DanCourseResult(plan, [.. course.Songs.Select((song, index) => new DanSongResult(
+                Shell.Hosts.Dan?.Genre(_courseSongs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
+            _courseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total));
+    }
+
+    // Offline too: nothing here waits for the server; it goes up with the next upload.
+    private void saveCourse(PlayRequest request, DanCourseResult result, DanCourseTimeline course)
+    {
+        if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores
+            || TaikoGuest.Profiles[(int)request.Players[0].Player] is not { } profile)
+            return;
+        var replays = course.Split(Shell.Gameplay.Replays[0]);
+        try
+        {
+            scores.SaveDan(new DanPlayRecord(Guid.NewGuid(), profile.Baid, result,
+                [.. course.Authored.Select(static song => (string?)ChartHash.Compute(song.Chart, song.Course))], DateTimeOffset.UtcNow,
+                [.. replays.Select(static replay => replay.Encode())])
+            {
+                AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
+                InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
+            });
+        }
+        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
+        {
+            // A lost score must not end the credit.
+            Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
+        }
+        var encoded = replays.Select(static replay => replay.Encode()).ToList();
+        _ = Task.Run(() => checkCourseScore(result, course, encoded));
+        Shell.Sync.Upload(profile);
+    }
+
+    // The server scores a course from its songs' replays and stored charts: this play should score the same there.
+    private static void checkCourseScore(DanCourseResult result, DanCourseTimeline course, IReadOnlyList<byte[]> replays)
+    {
+        try
+        {
+            var stored = course.Authored.Select(static song => ChartHash.Deserialize(ChartHash.Serialize(song.Chart, song.Course), song.Chart.Key.Song.Source)).ToList();
+            var first = stored[0];
+            var again = PlayRescore.ScoreCourse(result.Course, DanCourseTimeline.Merge(stored), [.. replays.Select(TaikoReplay.Decode)],
+                Gameplay.TaikoGameplayPresentation.WindowsFor(first.Chart, first.Course), Gameplay.TaikoGameplayPresentation.StrongSecondHitWindow);
+            var same = again.Total == result.Total && again.Level == result.Level && again.SongsPlayed == result.SongsPlayed
+                && again.Songs.SequenceEqual(result.Songs.Select(static song => song.Counts));
+            Console.WriteLine(same ? "Dan play rescored the same from its replays."
+                : $"Error DAN_RESCORE: played {result.Total} level {result.Level} songs {result.SongsPlayed}; rescored {again.Total} level {again.Level} songs {again.SongsPlayed}.");
+        }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException or IOException or EndOfStreamException or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"Error DAN_RESCORE: {exception.Message}");
+        }
     }
 
     // Each lane whose drum has a profile saves its play. ponytail: Waiwai (shared voltage, its own
@@ -635,7 +807,61 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     private AudioStreamTransport? startAudio(PlayRequest request)
     {
-        if (Shell.Audio is not { } audio || request.AudioAsset is not { } audioAsset)
+        var playback = openAudio(request);
+        prepareNextCourseSong();
+        return playback;
+    }
+
+    // A course's next song decodes ahead, off this thread: starting it there would stall the game.
+    private Task<BufferedAudioSource>? _nextAudio;
+
+    private void prepareNextCourseSong()
+    {
+        if (_course is null || _courseSong + 1 >= _courseSongs.Count || Shell.Audio is not { } audio
+            || _courseSongs[_courseSong + 1].Descriptor.AudioAsset is not { } asset)
+            return;
+        var next = _courseSongs[_courseSong + 1];
+        _ = Shell.Titles.Resolve(Shell.Titles.GetTransitionTitle(next));
+        _ = Shell.Titles.Resolve(Shell.Titles.GetGameplayTitle(next));
+        _nextAudio = Task.Run(async () =>
+        {
+            var stream = await Shell.Assets.OpenReadAsync(asset).ConfigureAwait(false);
+            BufferedAudioSource source;
+            try
+            {
+                source = new BufferedAudioSource(stream, audio.Mixer.Format);
+            }
+            catch
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+            await source.Ready.ConfigureAwait(false);
+            return source;
+        });
+    }
+
+    private void dropNextAudio()
+    {
+        _nextAudio?.ContinueWith(static task =>
+        {
+            if (task.IsCompletedSuccessfully)
+                task.Result.Dispose();
+        }, TaskScheduler.Default);
+        _nextAudio = null;
+    }
+
+    private AudioStreamTransport? openAudio(PlayRequest request)
+    {
+        var playing = _course?.Songs[_courseSong];
+        if (_nextAudio is { } prepared && Shell.Audio is { } ready)
+        {
+            _nextAudio = null;
+            return ready.PlayTransport(new ScheduledAudioSource(prepared.GetAwaiter().GetResult(),
+                _timeline!.AudioStart, _timeline.LeadIn + playing!.Chart.Duration + TimeSpan.FromSeconds(1)));
+        }
+        var asset = playing is null ? request.AudioAsset : _courseSongs[_courseSong].Descriptor.AudioAsset;
+        if (Shell.Audio is not { } audio || asset is not { } audioAsset)
             return null;
         var inputStream = Shell.Assets.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
         BufferedAudioSource? source = null;
@@ -652,7 +878,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
             source.Ready.GetAwaiter().GetResult();
             var playback = audio.PlayTransport(new ScheduledAudioSource(source,
-                _timeline!.AudioStart, _timeline.LeadIn + _charts[0].Duration + TimeSpan.FromSeconds(1)));
+                _timeline!.AudioStart, _timeline.LeadIn + (playing?.Chart ?? _charts[0]).Duration + TimeSpan.FromSeconds(1)));
             source = null;
             return playback;
         }

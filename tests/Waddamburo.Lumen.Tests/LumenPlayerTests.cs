@@ -1430,6 +1430,24 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void ObjectInitializersRun()
+    {
+        var player = new LumenPlayer(createMovie(actionBytecode: [
+            0x96, 0x0D, 0x00,
+                0x09, 0x09, 0x00,
+                0x07, 0x05, 0x00, 0x00, 0x00,
+                0x07, 0x01, 0x00, 0x00, 0x00,
+            0x43,
+            0x17,
+            0x00,
+        ]), 1280, 720);
+
+        player.Advance();
+
+        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
+    }
+
+    [Fact]
     public void ArrayIndexWritesOverrideInitialValues()
     {
         var player = new LumenPlayer(createMovie(actionBytecode: [

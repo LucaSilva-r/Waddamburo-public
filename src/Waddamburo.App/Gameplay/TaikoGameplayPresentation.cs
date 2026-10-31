@@ -48,6 +48,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
 
+    /// <summary>The dan course being played (null: a normal song): its gauge and requirements panel show.</summary>
+    public Waddamburo.Game.Dan.DanCourse? Dan { get; set; }
+
+    /// <summary>A challenge course's name art for dani_enso's fill challenge_lv_mini.</summary>
+    public LumenNativeSurfaceKey? DanChallengeArt { get; set; }
+
     /// <summary>The first lane's numbers for the results screen (null before a song).</summary>
     public TaikoPlayResult? Result => _lanes.Length == 0 ? null : _lanes[0].Result;
 
@@ -76,7 +82,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), endBanner: EndBanner)];
+                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -104,6 +110,22 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);
+
+    /// <summary>A dan course's requirement can no longer be met: the course ends with the song being played.</summary>
+    public bool DanFailed => _lanes.Any(static lane => lane.DanFailed);
+
+    /// <summary>A dan course's whole play.</summary>
+    public Waddamburo.Game.Dan.DanProgress DanTotal => _lanes[0].DanTotal;
+
+    /// <summary>Each of a course's songs' own counts; songs not reached have none.</summary>
+    public IReadOnlyList<Waddamburo.Game.Dan.DanSongCounts> DanSongs(int songs) => _lanes[0].DanSongs(songs);
+
+    /// <summary>Brings the end banner to <paramref name="time"/>, for a course ending early.</summary>
+    public void EndCourseAt(TimeSpan time)
+    {
+        foreach (var lane in _lanes)
+            lane.EndsAt = time;
+    }
 
     public void Stop()
     {
@@ -235,6 +257,31 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         public TaikoPlayResult Result => _result();
 
+        /// <summary>A dan course's requirement can no longer be met.</summary>
+        public bool DanFailed { get; private set; }
+
+        /// <summary>A dan course's play so far.</summary>
+        public Waddamburo.Game.Dan.DanProgress DanTotal { get; private set; }
+
+        private readonly List<Waddamburo.Game.Dan.DanProgress> _danSongEnds = [];
+
+        /// <summary>Each song's own counts, the song being played last, for <paramref name="songs"/> songs.</summary>
+        public List<Waddamburo.Game.Dan.DanSongCounts> DanSongs(int songs)
+        {
+            var counts = new List<Waddamburo.Game.Dan.DanSongCounts>();
+            var before = default(Waddamburo.Game.Dan.DanProgress);
+            for (var index = 0; index < songs; index++)
+            {
+                var end = index < _danSongEnds.Count ? _danSongEnds[index] : index == _danSongEnds.Count ? DanTotal : before;
+                counts.Add(new(end.Goods - before.Goods, end.Oks - before.Oks, end.Bads - before.Bads, end.Rolls - before.Rolls));
+                before = end;
+            }
+            return counts;
+        }
+
+        /// <summary>The end banner's time, when a course ends before its last song.</summary>
+        public TimeSpan? EndsAt { get; set; }
+
         public TaikoJudgementSession Session => _session;
 
         public TaikoReplay Replay { get; } = new();
@@ -250,7 +297,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
-            TaikoPlayOptions options = default, bool endBanner = true)
+            TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null)
         {
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -281,10 +328,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
             if (stage is not null) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
             if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
-                || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(courseLabel)]))
+                || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(dan is null ? courseLabel : "dani")]))
                 throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
             // The three gauge movies differ in their authored clear line (60/70/80%).
-            var gaugeName = course switch
+            if (dan is not null)
+                board.TryInvokeCallback("SetDani", []);
+            var gaugeName = dan is not null ? "gage_don_1p_dani" : course switch
             {
                 TaikoCourse.Easy => "gage_don_1p_easy",
                 TaikoCourse.Normal or TaikoCourse.Hard => "gage_don_1p_normal",
@@ -294,7 +343,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
             if (gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]) == false)
                 throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
-            var gauge = new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
+            var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments) : new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
             var score = new TaikoScore(chart);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
             if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
@@ -391,13 +440,31 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
+            var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
+            if (dan is not null && danArt is { } challengeArt)
+                layers["dani_enso"].Player.SetNativeFill("challenge_lv_mini", challengeArt);
+            var danProgress = default(Waddamburo.Game.Dan.DanProgress);
+            var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
+            _danSongEnds = danSongEnds;
             var bannerTime = TaikoResultBanner.Time(chart);
             var bannerShown = !endBanner;
             _onChartTime = time =>
             {
+                // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
+                danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
+                    great, good, miss, maxCombo, score.RollHits + score.BalloonHits, score.Value);
+                danPanel?.Update(danProgress);
+                // A song's counts are what has built up by the time the next song's card starts.
+                while (danSongEnds.Count + 1 < chart.Segments.Length && time >= chart.Segments[danSongEnds.Count + 1].Start)
+                    danSongEnds.Add(danProgress);
+                DanTotal = danProgress;
+                DanFailed = danPanel?.Failed == true;
+                if (EndsAt is { } end)
+                    bannerTime = end;
                 if (bannerShown || time < bannerTime) return;
                 bannerShown = true;
-                var cleared = (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
+                var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false)
+                    : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
                 if (banner is not null) label(banner, TaikoResultBanner.Label(cleared, !missed));
                 sound(!cleared ? GameplaySoundEvent.FailBanner
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);

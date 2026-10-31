@@ -135,6 +135,10 @@ internal static class GameplaySceneComposition
         ("enso_system/don1p", "gage_don_1p_easy", 14, 2002),
         ("enso_system/don1p", "gage_don_1p_normal", 14, 2002),
         ("enso_system/don1p", "gage_don_1p_hard", 14, 2002),
+        // Traced session30: a course's gauge, requirements panel and next-song card.
+        ("enso_dojo", "gage_don_1p_dani", 14, 2002),
+        ("enso_dojo", "dani_enso", 0, 2003),
+        ("enso_dojo", "between", 14, 1000),
         ("enso_system/common", "lane_hit", 14, 2001),
         ("enso_system/common", "lane_syousetsu", null, 2000),
         // Note templates: the game gives each note its own depth from 1002 up.
@@ -196,8 +200,10 @@ internal static class GameplaySceneComposition
     /// the lower half's backgrounds, dancers and Go-Go splash are not loaded (traced session9-2p).
     /// </summary>
     public static SceneDefinition Create(SceneId id, Random random, EnsoLayout layout, ThemedSkin? theme = null,
-        int side = 0, bool twoPlayers = false)
+        int side = 0, bool twoPlayers = false, bool dojo = false)
     {
+        if (dojo)
+            theme = DojoSkin;
         // Random original parts are picked once; both lanes use the same variants (traced).
         var variants = OriginalParts.ToDictionary(entry => entry.Part, entry => random.Next(1, entry.Variants + 1));
         (SceneLayerDefinition Layer, int Depth)? skin(string role, int index, int depth, string sideSuffix, string host)
@@ -229,6 +235,9 @@ internal static class GameplaySceneComposition
                 .Where(entry => !(twoPlayers && entry.Movie == "action_gogotime"))
                 .Where(entry => twoPlayers || !entry.Movie.StartsWith("onp_tetunagi", StringComparison.Ordinal))
                 .Where(entry => lane == 0 || !SharedRoles.Contains(entry.Movie))
+                .Where(entry => dojo
+                    ? entry.Archive == "enso_dojo" || !entry.Movie.StartsWith("gage_don_1p_", StringComparison.Ordinal) && entry.Movie != "action_gogotime"
+                    : entry.Archive != "enso_dojo")
                 .Select(entry =>
                 {
                     var at = entry.Index is { } i ? layout[index(i)] : default;
@@ -236,6 +245,7 @@ internal static class GameplaySceneComposition
                     {
                         (1, _, "enso_system/don1p") => ("enso_system/katsu2p", entry.Movie.Replace("_don_1p", "_katsu_2p")),
                         (1, _, "enso_system/base1p") => ("enso_system/base2p", entry.Movie.Replace("_1p", "_2p")),
+                        (0, 1, "enso_dojo") => (entry.Archive, entry.Movie.Replace("_don_1p", "_katsu_1p")),
                         (0, 1, "enso_system/don1p") => ("enso_system/katsu1p", entry.Movie.Replace("_don_1p", "_katsu_1p")),
                         _ => (entry.Archive, entry.Movie),
                     };
@@ -280,6 +290,9 @@ internal static class GameplaySceneComposition
     /// <summary>A themed gameplay skin: its archive and the movies it contains.</summary>
     public sealed record ThemedSkin(string Archive, IReadOnlyList<string> Movies);
 
+    private static readonly ThemedSkin DojoSkin = new("enso_dojo/packeddata.ddp",
+        ["bg_nomal_dojo/bg_nomal_dojo.lm", "dodai_dojo/dodai_dojo.lm", "donbg_dojo_1p/donbg_dojo_1p.lm", "chibi_dojo/chibi_dojo.lm"]);
+
     /// <summary>
     /// Gameplay role of a layer name: skin parts lose their variant ("bg_nomal_a_02", "donbg_b_01_2p" ->
     /// role), and Katsu-chan's and the second player's parts share Don-chan's first-player roles
@@ -287,6 +300,11 @@ internal static class GameplaySceneComposition
     /// </summary>
     public static string Role(string layerName)
     {
+        // The dojo's own parts play the skin's roles.
+        if (layerName is "bg_nomal_dojo" or "dodai_dojo" or "chibi_dojo")
+            return layerName[..^5];
+        if (layerName == "donbg_dojo_1p")
+            return "donbg";
         // Skin quirks: enso_gb/enso_kobayashi spell "bg_normal"; enso_dq10 has two dancer sets
         // (dance_b_10_01/_02; ponytail: the first is used).
         if (System.Text.RegularExpressions.Regex.Match(layerName, "^(.+?)_[ab]_[0-9]+(?:_[0-9]+)?(?:_1p|_2p|_common)?$") is { Success: true } match)
