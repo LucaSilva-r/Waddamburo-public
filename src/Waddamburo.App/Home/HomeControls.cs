@@ -193,7 +193,7 @@ internal sealed class HomeControls : IDisposable
         if (escape || !_focused)
         {
             countdown.Cancel();
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, quitOnly: _gameplay.InCourse);
         }
         else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
             resumeSong();
@@ -203,10 +203,11 @@ internal sealed class HomeControls : IDisposable
     // Escape opens the menu: settings and back to the title in the attract, the entry and Song Select (a
     // cabinet's operator too); home, a song pauses under it. A home song still unpausable when the window
     // lost focus (under the rainbow) pauses once it can; once every note and long note is over (the song's
-    // tail), leaving the window no longer pauses. A cabinet's song keeps Escape (it ends the song).
+    // tail), leaving the window no longer pauses. A cabinet's song keeps Escape (it ends the song). A dan
+    // course only pauses on Escape: its pause can only quit, which leaving the window shouldn't cost.
     private bool openMenu(bool escape)
     {
-        if (_menu.IsOpen || !(escape || home && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver))
+        if (_menu.IsOpen || !(escape || home && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
         if (active == FlowScenes.Gameplay)
         {
@@ -220,7 +221,7 @@ internal sealed class HomeControls : IDisposable
             _restart.CancelHold();
             _pauseInterpolation = _lastInterpolation;
             _gameplay.SetPaused(true, _pauseInterpolation);
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, quitOnly: _gameplay.InCourse);
             return true;
         }
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.

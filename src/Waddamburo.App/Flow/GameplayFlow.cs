@@ -79,7 +79,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _courseSong = 0;
         _courseHold = TimeSpan.Zero;
         _courseEndsAt = null;
+        _restartCourse = (course, Shell.Gameplay.Dan!);
     }
+
+    // What a restart starts over: the course stays known after its results, which end it.
+    private (DanCourseTimeline Timeline, DanCourse Plan)? _restartCourse;
 
     private DanCourseTimeline? _course;
     private DanCourseStatus? _courseStatus;
@@ -89,6 +93,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public void Prepare(PlayableChart[] charts, SongSelectSong song, int side, WaiwaiComposition? waiwai)
     {
         _course = null;
+        _restartCourse = null;
         _directStart = false;
         _charts = _sourceCharts = charts;
         _song = song;
@@ -219,6 +224,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             _music = _review is null ? startAudio(request) : null;
             _clock.Restart();
+            showCourseSong();
         }
         Console.WriteLine(
             $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
@@ -401,6 +407,17 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _music = null;
         _clock.Reset();
         Shell.Gameplay.Stop();
+        // A course starts over from its first song, also from its results.
+        if (_restartCourse is { } again)
+        {
+            dropNextAudio();
+            _course = again.Timeline;
+            Shell.Gameplay.Dan = again.Plan;
+            Shell.Hosts.DanResult = null;
+            _courseSong = 0;
+            _courseHold = TimeSpan.Zero;
+            _courseEndsAt = null;
+        }
         Shell.PlayRequests.ClearActive();
         if (!Shell.PlayRequests.TryRequestPlay(request))
             throw new InvalidOperationException("The restarted play request could not be queued.");
@@ -453,7 +470,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>Home: the song is under way and not already a review, so its pause menu can replay it.</summary>
     public bool CanInstantReplay => Shell.Arcade.Home && _review is null && revealed && _charts.Length == 1 && _waiwai is null
-        && Shell.Active.Id == FlowScenes.Gameplay;
+        && Shell.Active.Id == FlowScenes.Gameplay && _course is null;
+
+    /// <summary>A dan course is under way: it cannot be resumed once paused, so a break can't be taken inside a run.</summary>
+    public bool InCourse => _course is not null;
 
     /// <summary>
     /// Turns the song under way into a review of what was played: paused where the player paused, and
