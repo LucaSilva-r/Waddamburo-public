@@ -701,7 +701,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         var plan = Shell.Gameplay.Dan!;
         return new DanCourseResult(plan, [.. course.Songs.Select((song, index) => new DanSongResult(
                 Shell.Hosts.Dan?.Genre(_courseSongs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
-            _courseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total));
+            _courseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total, Shell.Gameplay.DanSongEnds))
+            { SongEnds = [.. Shell.Gameplay.DanSongEnds] };
     }
 
     // Offline too: nothing here waits for the server; it goes up with the next upload.

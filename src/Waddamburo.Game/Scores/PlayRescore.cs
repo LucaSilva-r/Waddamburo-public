@@ -103,6 +103,7 @@ public static class PlayRescore
         for (var song = 0; song < timeline.Songs.Count && !failed; song++)
         {
             playing = song;
+            var begun = ends.Count == 0 ? default : ends[^1];
             // Up to the next song's first possible note, past every late hit and miss of this one's.
             var zero = timeline.Songs[song].Zero;
             var end = song + 1 < timeline.Songs.Count ? timeline.Songs[song + 1].Zero - TimeSpan.FromMilliseconds(1) : TimeSpan.MaxValue;
@@ -112,10 +113,11 @@ public static class PlayRescore
                 if (time >= end)
                     break;
                 session.SubmitInput(input.Action, time < session.CurrentTime ? session.CurrentTime : time);
-                failed |= exams.Requirements.Any(requirement => !exams.StillPossible(requirement, progress()));
+                failed |= exams.Requirements.Any(requirement => !exams.StillPossible(requirement, progress(), song, begun));
             }
             session.AdvanceTo(end);
-            failed |= exams.Requirements.Any(requirement => !exams.StillPossible(requirement, progress()));
+            failed |= exams.Requirements.Any(requirement => !exams.StillPossible(requirement, progress(), song, begun))
+                || exams.MissedOnSong(progress(), song, begun);
             ends.Add(progress());
         }
         var counts = new List<DanSongCounts>();
@@ -127,6 +129,6 @@ public static class PlayRescore
             before = at;
         }
         var total = progress();
-        return (total, counts, ends.Count, failed ? 0 : DanCourseResult.LevelOf(course, total));
+        return (total, counts, ends.Count, failed ? 0 : DanCourseResult.LevelOf(course, total, ends));
     }
 }

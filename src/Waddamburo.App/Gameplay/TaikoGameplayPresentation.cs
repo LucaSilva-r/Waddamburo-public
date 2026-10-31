@@ -120,6 +120,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Each of a course's songs' own counts; songs not reached have none.</summary>
     public IReadOnlyList<Waddamburo.Game.Dan.DanSongCounts> DanSongs(int songs) => _lanes[0].DanSongs(songs);
 
+    /// <summary>The play at each finished song's end.</summary>
+    public IReadOnlyList<Waddamburo.Game.Dan.DanProgress> DanSongEnds => _lanes[0].DanSongEnds;
+
     /// <summary>Brings the end banner to <paramref name="time"/>, for a course ending early.</summary>
     public void EndCourseAt(TimeSpan time)
     {
@@ -262,6 +265,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         /// <summary>A dan course's play so far.</summary>
         public Waddamburo.Game.Dan.DanProgress DanTotal { get; private set; }
+
+        /// <summary>The play at each finished song's end.</summary>
+        public IReadOnlyList<Waddamburo.Game.Dan.DanProgress> DanSongEnds => _danSongEnds;
 
         private readonly List<Waddamburo.Game.Dan.DanProgress> _danSongEnds = [];
 
@@ -453,7 +459,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
                 danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
                     great, good, miss, maxCombo, score.RollHits + score.BalloonHits, score.Value);
-                danPanel?.Update(danProgress);
+                var danSong = Math.Min(danSongEnds.Count, Math.Max(chart.Segments.Length - 1, 0));
+                var danStart = danSong == 0 ? default : danSongEnds[danSong - 1];
+                danPanel?.Update(danProgress, danSong, danStart);
+                if (danPanel is not null && !chart.Segments.IsEmpty
+                    && time >= chart.Segments[danSong].Start + TaikoResultBanner.Time(chart.Segments[danSong].Source))
+                    danPanel.EndSong(danProgress, danSong, danStart);
                 // A song's counts are what has built up by the time the next song's card starts.
                 while (danSongEnds.Count + 1 < chart.Segments.Length && time >= chart.Segments[danSongEnds.Count + 1].Start)
                     danSongEnds.Add(danProgress);
@@ -463,7 +474,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     bannerTime = end;
                 if (bannerShown || time < bannerTime) return;
                 bannerShown = true;
-                var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false)
+                var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false, danSongEnds)
                     : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
                 if (banner is not null) label(banner, TaikoResultBanner.Label(cleared, !missed));
                 sound(!cleared ? GameplaySoundEvent.FailBanner

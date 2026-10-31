@@ -79,11 +79,12 @@ public sealed class DaniResultHostBinding(DanCourseResult result, IDonPresentati
         call(player, "SetGauge", total.GaugePercent / 2);
         call(player, "SetDaniLevel", result.Course.Rank + 1);
         call(player, "SetMedleyCourse", 3);
-        var exams = new DanExams(result.Course).Requirements;
+        var exams = new DanExams(result.Course).OnResults(total, result.SongEnds);
         for (var index = 0; index < exams.Count; index++)
         {
             call(player, "SetAchieveType", index, DanExams.TypeOf(exams[index].Type));
-            call(player, "SetAchieveSuccess", index, exams[index].Red[0]);
+            // A per-song requirement has no one value here: the songs' together, against the course's count.
+            call(player, "SetAchieveSuccess", index, exams[index].Red.Sum());
             call(player, "SetAchieve", index, DanExams.ValueOf(exams[index].Type, total));
         }
         call(player, "SetAchieveCount", exams.Count);
