@@ -105,6 +105,19 @@ public sealed class DanCourseTimelineTests
     }
 
     [Fact]
+    public void ACourseReportsItsProgressOnEachSongsOwnTime()
+    {
+        var seen = new List<(int Song, TimeSpan Time, int Bads)>();
+
+        PlayRescore.ScoreCourse(exams(10), merged(), [], TaikoJudgementWindows.ForCourse(TaikoCourse.Hard), TimeSpan.FromMilliseconds(30),
+            (song, time, at) => seen.Add((song, time, at.Bads)));
+
+        Assert.Equal([0, 1, 2], seen.Select(static row => row.Song));
+        Assert.Equal([1, 2, 3], seen.Select(static row => row.Bads));
+        Assert.All(seen, static row => Assert.InRange(row.Time, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
     public void ACourseWithNoFailurePlaysEverySong()
     {
         var (total, _, played, level) = PlayRescore.ScoreCourse(exams(10), merged(), [],

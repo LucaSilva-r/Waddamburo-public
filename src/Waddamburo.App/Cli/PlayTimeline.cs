@@ -23,11 +23,15 @@ internal static class PlayTimeline
     private static readonly string[] Routes = ["normal", "expert", "master"];
 
     /// <summary>Writes <paramref name="play"/>'s timeline as properties of the object <paramref name="writer"/> is in.</summary>
-    public static void Write(Rescore.ChartCache charts, Rescore.StoredPlay play, Utf8JsonWriter writer)
+    /// <param name="charts">The batch's stored charts.</param>
+    /// <param name="play">The play.</param>
+    /// <param name="writer">Where the timeline goes.</param>
+    /// <param name="courseWindows">A song of a dan course: the course's windows, and its normal route, as a course plays it.</param>
+    public static void Write(Rescore.ChartCache charts, Rescore.StoredPlay play, Utf8JsonWriter writer, TaikoJudgementWindows? courseWindows = null)
     {
         var stored = Rescore.Chart(charts, play.Notes, play.Source);
-        var chart = TaikoPlayOptions.FromBits(play.Options).Apply(stored.Chart, play.Seed ?? 0);
-        var windows = TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course);
+        var chart = courseWindows is null ? TaikoPlayOptions.FromBits(play.Options).Apply(stored.Chart, play.Seed ?? 0) : stored.Chart.OnRoute(ChartBranch.Normal);
+        var windows = courseWindows ?? TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course);
         var replay = TaikoReplay.Decode(play.Replay);
         // As PlayRescore and ReviewTimeline play it: one solo lane, inputs in time order, then past the chart's end.
         var session = new TaikoJudgementSession(chart, windows, TaikoGameplayPresentation.StrongSecondHitWindow);

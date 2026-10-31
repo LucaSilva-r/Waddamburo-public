@@ -62,8 +62,10 @@ public static class PlayRescore
     /// <param name="replays">Each song's drum inputs, on its own time.</param>
     /// <param name="windows">The first song's windows, which the whole course plays with.</param>
     /// <param name="strongSecondHitWindow">How soon a big note's second hit must follow the first.</param>
+    /// <param name="onProgress">Told the play so far after each judgement and roll hit: the song, its time and the numbers.</param>
     public static (DanProgress Total, IReadOnlyList<DanSongCounts> Songs, int SongsPlayed, int Level) ScoreCourse(DanCourse course,
-        DanCourseTimeline timeline, IReadOnlyList<TaikoReplay> replays, TaikoJudgementWindows windows, TimeSpan strongSecondHitWindow)
+        DanCourseTimeline timeline, IReadOnlyList<TaikoReplay> replays, TaikoJudgementWindows windows, TimeSpan strongSecondHitWindow,
+        Action<int, TimeSpan, DanProgress>? onProgress = null)
     {
         ArgumentNullException.ThrowIfNull(course);
         ArgumentNullException.ThrowIfNull(timeline);
@@ -72,25 +74,35 @@ public static class PlayRescore
         var score = new TaikoScore(timeline.Chart);
         var gauge = new TaikoSoulGauge(timeline.Chart.Segments);
         int great = 0, good = 0, miss = 0, maxCombo = 0;
+        var playing = 0;
         session.Judged += judgement =>
         {
             score.Apply(judgement, session.CurrentTime);
             gauge.Apply(judgement);
-            if (judgement.StrongHitCompleted || judgement.Result is not { } result)
-                return;
-            if (result == TaikoHitResult.Great) great++;
-            else if (result == TaikoHitResult.Good) good++;
-            else miss++;
-            maxCombo = Math.Max(maxCombo, score.Combo);
+            if (!judgement.StrongHitCompleted && judgement.Result is { } result)
+            {
+                if (result == TaikoHitResult.Great) great++;
+                else if (result == TaikoHitResult.Good) good++;
+                else miss++;
+                maxCombo = Math.Max(maxCombo, score.Combo);
+            }
+            // A note left alone is judged when the session next moves: it counts from when its window closed.
+            report(judgement.TimedOut ? judgement.HitObject.StartTime + windows.Miss : session.CurrentTime);
         };
-        session.LongNoteHit += progress => score.Apply(progress, session.CurrentTime);
+        session.LongNoteHit += hit =>
+        {
+            score.Apply(hit, session.CurrentTime);
+            report(session.CurrentTime);
+        };
         DanProgress progress() => new(gauge.Value * 100 / TaikoSoulGauge.Max, great, good, miss, maxCombo,
             score.RollHits + score.BalloonHits, score.Value);
+        void report(TimeSpan time) => onProgress?.Invoke(playing, time - timeline.Songs[playing].Zero, progress());
         var exams = new DanExams(course);
         var ends = new List<DanProgress>();
         var failed = false;
         for (var song = 0; song < timeline.Songs.Count && !failed; song++)
         {
+            playing = song;
             // Up to the next song's first possible note, past every late hit and miss of this one's.
             var zero = timeline.Songs[song].Zero;
             var end = song + 1 < timeline.Songs.Count ? timeline.Songs[song + 1].Zero - TimeSpan.FromMilliseconds(1) : TimeSpan.MaxValue;

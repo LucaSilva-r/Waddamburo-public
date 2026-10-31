@@ -42,7 +42,8 @@ internal static class Rescore
     /// <summary>
     /// --rescore-dan: dan courses, one JSON line each: <c>id</c>, <c>requirements</c> (type, red, gold), <c>songs</c>
     /// (<c>notes</c>, <c>source</c>, <c>note_count</c>, <c>replay</c>, base64; no replay: not reached). Writes its id with
-    /// the total, each song's counts, <c>songs_played</c> and <c>level</c>, or its id and an error.
+    /// the total, each song's counts, <c>songs_played</c>, <c>result_level</c>, <c>progress</c> and each song reached's
+    /// <c>timelines</c> entry, or its id and an error.
     /// </summary>
     public static int RunCourses(Stream input, Stream output)
     {
@@ -87,10 +88,12 @@ internal static class Rescore
         var course = new DanCourse(0, "", "", [.. play.GetProperty("requirements").EnumerateArray().Select(static requirement =>
                 new DanRequirement(requirement.GetProperty("type").GetString() ?? "", values(requirement, "red"), values(requirement, "gold")))],
             [.. songs.Select(static song => new DanCourseSong("", 0, null, song.GetProperty("note_count").GetInt32(), []))]);
+        var windows = TaikoGameplayPresentation.WindowsFor(stored[0].Chart, stored[0].Course);
+        var replays = songs.Select(static song => song.TryGetProperty("replay", out var replay) ? Convert.FromBase64String(replay.GetString() ?? "") : []).ToList();
+        var progress = new List<(int Song, TimeSpan Time, DanProgress At)>();
         var (total, counts, played, level) = PlayRescore.ScoreCourse(course, DanCourseTimeline.Merge(stored),
-            [.. songs.Select(static song => song.TryGetProperty("replay", out var replay) && replay.GetString() is { Length: > 0 } inputs
-                ? TaikoReplay.Decode(Convert.FromBase64String(inputs)) : new TaikoReplay())],
-            TaikoGameplayPresentation.WindowsFor(stored[0].Chart, stored[0].Course), TaikoGameplayPresentation.StrongSecondHitWindow);
+            [.. replays.Select(static replay => replay.Length > 0 ? TaikoReplay.Decode(replay) : new TaikoReplay())],
+            windows, TaikoGameplayPresentation.StrongSecondHitWindow, (song, time, at) => progress.Add((song, time, at)));
         writer.WriteNumber("score", total.Score);
         writer.WriteNumber("great", total.Goods);
         writer.WriteNumber("good", total.Oks);
@@ -109,6 +112,34 @@ internal static class Rescore
             writer.WriteNumber("good", song.Oks);
             writer.WriteNumber("miss", song.Bads);
             writer.WriteNumber("rolls", song.Rolls);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        // The numbers as the course goes, for the run page's requirements: song, ms, gauge %, goods, oks, bads, combo, rolls, score.
+        writer.WriteStartArray("progress");
+        foreach (var (song, time, at) in progress)
+        {
+            writer.WriteStartArray();
+            writer.WriteNumberValue(song);
+            writer.WriteNumberValue((long)time.TotalMilliseconds);
+            writer.WriteNumberValue(at.GaugePercent);
+            writer.WriteNumberValue(at.Goods);
+            writer.WriteNumberValue(at.Oks);
+            writer.WriteNumberValue(at.Bads);
+            writer.WriteNumberValue(at.MaxCombo);
+            writer.WriteNumberValue(at.Rolls);
+            writer.WriteNumberValue(at.Score);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+        // Each song reached as a normal replay of its chart.
+        writer.WriteStartArray("timelines");
+        for (var song = 0; song < played; song++)
+        {
+            writer.WriteStartObject();
+            PlayTimeline.Write(charts, new StoredPlay(Convert.FromBase64String(songs[song].GetProperty("notes").GetString() ?? ""),
+                songs[song].TryGetProperty("source", out var source) ? source.GetString() : null, 0, null, replays[song].Length > 0 ? replays[song] : new TaikoReplay().Encode()),
+                writer, windows);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
