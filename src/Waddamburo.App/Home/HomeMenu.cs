@@ -635,12 +635,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="replayable"/>: a song's pause menu offers the instant replay of what was played.
     /// <paramref name="reviewing"/>: a replay or practice is on: restarting plays the song for real.
     /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
-    /// <paramref name="quitOnly"/>: a dan course: the only way out of its pause is to leave it.
+    /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool quitOnly = false)
+        bool reportable = false, bool noResume = false)
     {
-        _quitOnly = quitOnly;
+        _noResume = noResume;
         _calibrationOffered = songSelect;
         var restart = reviewing ? "menu.play_song" : "menu.restart_song";
         _choices = gameplay ? replayable
@@ -649,8 +649,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
         if (reportable)
             _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
-        if (quitOnly)
-            _choices = ["menu.song_select"];
+        if (noResume)
+            _choices = [restart, "menu.settings", "menu.song_select"];
         IsOpen = true;
         Selection = 0;
         _settingsPage = _editing = _restartPrompt = _reportPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
@@ -737,7 +737,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         if (!_settingsPage)
         {
             if (escape)
-                return _quitOnly ? HomeMenuAction.None : close(HomeMenuAction.Resume);
+                return _noResume ? HomeMenuAction.None : close(HomeMenuAction.Resume);
             if (up || down)
                 Selection = (Selection + (up ? _choices.Length - 1 : 1)) % _choices.Length;
             else if (decide)
@@ -943,7 +943,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             Math.Clamp(setting.Step(setting.Get(settings), direction * size), setting.Minimum, setting.Maximum)));
     }
 
-    private bool _quitOnly;
+    private bool _noResume;
 
     private HomeMenuAction close(HomeMenuAction action)
     {
