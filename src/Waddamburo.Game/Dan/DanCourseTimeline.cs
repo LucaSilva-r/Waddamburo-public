@@ -45,7 +45,9 @@ public sealed class DanCourseTimeline
             songs.SelectMany(static song => song.Chart.HitObjects.Select(note => note.At(note.StartTime + song.Zero))),
             startAtZero(songs.SelectMany(static song => song.Chart.TimingPoints.Select(point => point.At(point.Time + song.Zero))), first.TimingPoints[0]),
             startAtZero(songs.SelectMany(static song => song.Chart.ScrollPoints.Select(point => point.At(point.Time + song.Zero))), first.ScrollPoints[0]),
-            startAtZero(songs.SelectMany(static song => song.Chart.EffectPoints.Select(point => point.At(point.Time + song.Zero))), first.EffectPoints[0]),
+            // No Go-Go under a song's card, whatever the last song ended in or this one starts in.
+            songs.SelectMany(static song => song.Chart.EffectPoints.Select(point => point.At(point.Time + song.Zero))
+                .Prepend(new ChartEffectPoint(song.Start, false))),
             songs.SelectMany(static song => song.Chart.BarLines.Select(line => line.At(line.Time + song.Zero))),
             songs.SelectMany(static song => song.Chart.LongNotes.Select(note => note.At(note.StartTime + song.Zero, note.EndTime + song.Zero))))
         {

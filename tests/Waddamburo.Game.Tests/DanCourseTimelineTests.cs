@@ -7,14 +7,30 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class DanCourseTimelineTests
 {
-    private static PlayableChart chart(string id, int seconds, int level = 5) => new(
+    private static PlayableChart chart(string id, int seconds, int level = 5, bool startsInGoGo = false) => new(
         new ChartKey(new SongKey(SongSourceKind.Stock, id), "m"), TimeSpan.Zero, TimeSpan.FromSeconds(seconds),
         [new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.Don)],
         [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4)],
         [new ChartScrollPoint(TimeSpan.Zero, 1)],
-        [new ChartEffectPoint(TimeSpan.Zero, false)],
+        [new ChartEffectPoint(TimeSpan.Zero, startsInGoGo)],
         [new ChartBarLine(TimeSpan.Zero, true)])
     { Level = level };
+
+    [Fact]
+    public void GoGoWaitsForTheSongUnderItsCard()
+    {
+        var course = DanCourseTimeline.Merge([(chart("a", 10, startsInGoGo: true), TaikoCourse.Hard),
+            (chart("b", 20, startsInGoGo: true), TaikoCourse.Hard), (chart("c", 30), TaikoCourse.Oni)]);
+        var (first, second) = (course.Songs[0], course.Songs[1]);
+
+        Assert.False(course.Chart.IsGoGoAt(TimeSpan.Zero));
+        Assert.False(course.Chart.IsGoGoAt(first.Zero - TimeSpan.FromMilliseconds(1)));
+        Assert.True(course.Chart.IsGoGoAt(first.Zero));
+        Assert.True(course.Chart.IsGoGoAt(second.Start - TimeSpan.FromMilliseconds(1)));
+        Assert.False(course.Chart.IsGoGoAt(second.Start));
+        Assert.True(course.Chart.IsGoGoAt(second.Zero));
+        Assert.False(course.Chart.IsGoGoAt(course.Songs[2].Start));
+    }
 
     private static DanCourseTimeline merged() => DanCourseTimeline.Merge(
         [(chart("a", 10), TaikoCourse.Hard), (chart("b", 20), TaikoCourse.Hard), (chart("c", 30), TaikoCourse.Oni)]);
