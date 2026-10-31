@@ -11,8 +11,8 @@ namespace Waddamburo.App.Cli;
 /// <summary>
 /// --export-charts=FILE: every stock chart and every chart of the Nijiiro folder from the settings (home mode or
 /// not), as gzipped JSON lines, one chart import each (<see cref="ChartUpload"/> plus its sha256), for TaikOnline's
-/// <c>php artisan app:import-waddamburo-charts</c>. A Nijiiro install may hold community songs: which Nijiiro songs
-/// are official (rank) is the server's list (its --nijiiro-songs), the rest still get their notes and songs there.
+/// <c>php artisan app:import-waddamburo-charts</c>. A Nijiiro install may hold fan-made and other games' songs, so
+/// only exports of unmodified dumps count as official there (its --nijiiro-dumps); the rest still get their notes and songs.
 /// </summary>
 internal static class ChartExport
 {
