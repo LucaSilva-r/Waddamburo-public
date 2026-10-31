@@ -16,6 +16,9 @@ public sealed class DanCourseTimeline
     /// <summary>Traced session30: from the card's start to the song's first note, about 6.3 s.</summary>
     public static readonly TimeSpan CardLeadIn = TimeSpan.FromSeconds(6);
 
+    // Longer than the widest window a note can still score in (125.125 ms).
+    private static readonly TimeSpan LastHit = TimeSpan.FromMilliseconds(130);
+
     private DanCourseTimeline(PlayableChart merged, IReadOnlyList<DanTimelineSong> songs) => (Chart, Songs) = (merged, songs);
 
     public PlayableChart Chart { get; }
@@ -45,9 +48,10 @@ public sealed class DanCourseTimeline
             songs.SelectMany(static song => song.Chart.HitObjects.Select(note => note.At(note.StartTime + song.Zero))),
             startAtZero(songs.SelectMany(static song => song.Chart.TimingPoints.Select(point => point.At(point.Time + song.Zero))), first.TimingPoints[0]),
             startAtZero(songs.SelectMany(static song => song.Chart.ScrollPoints.Select(point => point.At(point.Time + song.Zero))), first.ScrollPoints[0]),
-            // No Go-Go under a song's card, whatever the last song ended in or this one starts in.
-            songs.SelectMany(static song => song.Chart.EffectPoints.Select(point => point.At(point.Time + song.Zero))
-                .Prepend(new ChartEffectPoint(song.Start, false))),
+            // No Go-Go under a song's card, whatever the last song ended in or this one starts in. A later card's
+            // waits out the late hits on the last song's last note, which keep their Go-Go score.
+            songs.SelectMany((song, index) => song.Chart.EffectPoints.Select(point => point.At(point.Time + song.Zero))
+                .Prepend(new ChartEffectPoint(index == 0 ? song.Start : song.Start + LastHit, false))),
             songs.SelectMany(static song => song.Chart.BarLines.Select(line => line.At(line.Time + song.Zero))),
             songs.SelectMany(static song => song.Chart.LongNotes.Select(note => note.At(note.StartTime + song.Zero, note.EndTime + song.Zero))))
         {

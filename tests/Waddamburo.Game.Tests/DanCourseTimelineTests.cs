@@ -27,9 +27,11 @@ public sealed class DanCourseTimelineTests
         Assert.False(course.Chart.IsGoGoAt(first.Zero - TimeSpan.FromMilliseconds(1)));
         Assert.True(course.Chart.IsGoGoAt(first.Zero));
         Assert.True(course.Chart.IsGoGoAt(second.Start - TimeSpan.FromMilliseconds(1)));
-        Assert.False(course.Chart.IsGoGoAt(second.Start));
+        // A late hit on the song's last note still scores in Go-Go.
+        Assert.True(course.Chart.IsGoGoAt(second.Start + TimeSpan.FromMilliseconds(126)));
+        Assert.False(course.Chart.IsGoGoAt(second.Start + TimeSpan.FromMilliseconds(130)));
         Assert.True(course.Chart.IsGoGoAt(second.Zero));
-        Assert.False(course.Chart.IsGoGoAt(course.Songs[2].Start));
+        Assert.False(course.Chart.IsGoGoAt(course.Songs[2].Start + TimeSpan.FromSeconds(1)));
     }
 
     private static DanCourseTimeline merged() => DanCourseTimeline.Merge(
