@@ -1,6 +1,7 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Scores;
 
 namespace Waddamburo.Game.Tests;
 
@@ -52,5 +53,65 @@ public sealed class DanCourseTimelineTests
         gauge.Apply(great);
 
         Assert.Equal(normal.Value / 3, gauge.Value);
+    }
+
+    private static DanCourse exams(int bads) => new(1, "Test", "hash", [new("bads", [bads], [bads])],
+        [new("a", 3, null, 1, []), new("b", 3, null, 1, []), new("c", 3, null, 1, [])]);
+
+    [Fact]
+    public void AReplaySplitsIntoOnePerSongOnItsOwnTime()
+    {
+        var course = merged();
+        var replay = new TaikoReplay();
+        replay.Add(TaikoInputAction.LeftDon, course.Songs[0].Zero + TimeSpan.FromSeconds(1));
+        replay.Add(TaikoInputAction.LeftDon, course.Songs[1].Start + TimeSpan.FromSeconds(1));
+
+        var replays = course.Split(replay);
+
+        Assert.Equal(TimeSpan.FromSeconds(1), Assert.Single(replays[0].Inputs).Time);
+        Assert.Equal(course.Songs[1].Start + TimeSpan.FromSeconds(1) - course.Songs[1].Zero, Assert.Single(replays[1].Inputs).Time);
+        Assert.Empty(replays[2].Inputs);
+    }
+
+    [Fact]
+    public void ACourseScoresTheSameFromItsSplitReplays()
+    {
+        var course = merged();
+        var windows = TaikoJudgementWindows.ForCourse(TaikoCourse.Hard);
+        var replay = new TaikoReplay();
+        foreach (var song in course.Songs)
+            replay.Add(TaikoInputAction.LeftDon, song.Zero + TimeSpan.FromSeconds(1));
+
+        var (total, songs, played, _) = PlayRescore.ScoreCourse(exams(10), merged(), course.Split(replay), windows, TimeSpan.FromMilliseconds(30));
+
+        Assert.Equal(3, played);
+        Assert.Equal(3, total.Goods);
+        Assert.Equal(3, total.MaxCombo);
+        Assert.Equal([1, 1, 1], songs.Select(static song => song.Goods));
+    }
+
+    [Fact]
+    public void AFailedRequirementEndsTheCourseWithItsSong()
+    {
+        var course = merged();
+        var windows = TaikoJudgementWindows.ForCourse(TaikoCourse.Hard);
+
+        var (total, songs, played, level) = PlayRescore.ScoreCourse(exams(1), course, [], windows, TimeSpan.FromMilliseconds(30));
+
+        Assert.Equal(1, played);
+        Assert.Equal(0, level);
+        Assert.Equal(1, total.Bads);
+        Assert.Equal([1, 0, 0], songs.Select(static song => song.Bads));
+    }
+
+    [Fact]
+    public void ACourseWithNoFailurePlaysEverySong()
+    {
+        var (total, _, played, level) = PlayRescore.ScoreCourse(exams(10), merged(), [],
+            TaikoJudgementWindows.ForCourse(TaikoCourse.Hard), TimeSpan.FromMilliseconds(30));
+
+        Assert.Equal(3, played);
+        Assert.Equal(3, total.Bads);
+        Assert.Equal(2, level);
     }
 }

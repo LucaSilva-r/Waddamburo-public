@@ -22,6 +22,9 @@ public sealed class DanCourseTimeline
 
     public IReadOnlyList<DanTimelineSong> Songs { get; }
 
+    /// <summary>The charts as authored, routes and all: what identifies and scores them.</summary>
+    public IReadOnlyList<(PlayableChart Chart, TaikoCourse Course)> Authored { get; private init; } = [];
+
     // ponytail: a branched song plays its normal route; the merged chart would need each song's branch checks.
     public static DanCourseTimeline Merge(IReadOnlyList<(PlayableChart Chart, TaikoCourse Course)> charts)
     {
@@ -47,7 +50,25 @@ public sealed class DanCourseTimeline
             songs.SelectMany(static song => song.Chart.LongNotes.Select(note => note.At(note.StartTime + song.Zero, note.EndTime + song.Zero))))
         {
             Segments = [.. songs.Select(static song => new ChartSegment(song.Zero, song.Course, song.Chart))],
-        }, songs);
+        }, songs) { Authored = charts };
+    }
+
+    /// <summary>
+    /// A play's replay as one per song, each on its song's own time, so each is a normal replay of a normal chart.
+    /// The cards' time belongs to the song they lead into. Songs not reached get an empty one.
+    /// </summary>
+    public IReadOnlyList<TaikoReplay> Split(TaikoReplay replay)
+    {
+        ArgumentNullException.ThrowIfNull(replay);
+        var replays = Songs.Select(static _ => new TaikoReplay()).ToList();
+        foreach (var input in replay.Inputs)
+        {
+            var song = Songs.Count - 1;
+            while (song > 0 && input.Time < Songs[song].Start)
+                song--;
+            replays[song].Add(input.Action, input.Time - Songs[song].Zero);
+        }
+        return replays;
     }
 
     private static IEnumerable<T> startAtZero<T>(IEnumerable<T> points, T first) => [first, .. points];

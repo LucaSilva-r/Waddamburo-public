@@ -666,6 +666,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         ResetRainbow();
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
+        var finishedCourse = _course;
         Shell.Hosts.DanResult = finished && _course is { } course ? danResult(course) : null;
         var dan = Shell.Hosts.DanResult is not null;
         CourseSongs = dan ? _courseSongs : [];
@@ -676,8 +677,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (finished && Shell.PlayRequests.Active is { } played)
         {
             saveScore(played);
-            if (Shell.Hosts.DanResult is { } danPlay)
-                saveCourse(played, danPlay);
+            if (Shell.Hosts.DanResult is { } danPlay && finishedCourse is not null)
+                saveCourse(played, danPlay, finishedCourse);
         }
         Shell.PlayRequests.ClearActive();
         if (finished && !dan)
@@ -703,16 +704,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             _courseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total));
     }
 
-    // Offline too: nothing here waits for the server. ponytail: not uploaded yet (uploaded_at stays null).
-    private void saveCourse(PlayRequest request, DanCourseResult result)
+    // Offline too: nothing here waits for the server; it goes up with the next upload.
+    private void saveCourse(PlayRequest request, DanCourseResult result, DanCourseTimeline course)
     {
         if (Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores
             || TaikoGuest.Profiles[(int)request.Players[0].Player] is not { } profile)
             return;
+        var replays = course.Split(Shell.Gameplay.Replays[0]);
         try
         {
             scores.SaveDan(new DanPlayRecord(Guid.NewGuid(), profile.Baid, result,
-                [.. _courseStatus!.Songs.Select(static song => song.Sha256)], DateTimeOffset.UtcNow, Shell.Gameplay.Replays[0].Encode())
+                [.. course.Authored.Select(static song => (string?)ChartHash.Compute(song.Chart, song.Course))], DateTimeOffset.UtcNow,
+                [.. replays.Select(static replay => replay.Encode())])
             {
                 AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
                 InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
@@ -722,6 +725,29 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             // A lost score must not end the credit.
             Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
+        }
+        var encoded = replays.Select(static replay => replay.Encode()).ToList();
+        _ = Task.Run(() => checkCourseScore(result, course, encoded));
+        Shell.Sync.Upload(profile);
+    }
+
+    // The server scores a course from its songs' replays and stored charts: this play should score the same there.
+    private static void checkCourseScore(DanCourseResult result, DanCourseTimeline course, IReadOnlyList<byte[]> replays)
+    {
+        try
+        {
+            var stored = course.Authored.Select(static song => ChartHash.Deserialize(ChartHash.Serialize(song.Chart, song.Course), song.Chart.Key.Song.Source)).ToList();
+            var first = stored[0];
+            var again = PlayRescore.ScoreCourse(result.Course, DanCourseTimeline.Merge(stored), [.. replays.Select(TaikoReplay.Decode)],
+                Gameplay.TaikoGameplayPresentation.WindowsFor(first.Chart, first.Course), Gameplay.TaikoGameplayPresentation.StrongSecondHitWindow);
+            var same = again.Total == result.Total && again.Level == result.Level && again.SongsPlayed == result.SongsPlayed
+                && again.Songs.SequenceEqual(result.Songs.Select(static song => song.Counts));
+            Console.WriteLine(same ? "Dan play rescored the same from its replays."
+                : $"Error DAN_RESCORE: played {result.Total} level {result.Level} songs {result.SongsPlayed}; rescored {again.Total} level {again.Level} songs {again.SongsPlayed}.");
+        }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException or IOException or EndOfStreamException or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"Error DAN_RESCORE: {exception.Message}");
         }
     }
 

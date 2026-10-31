@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.Game.Scores;
@@ -49,5 +50,71 @@ public static class PlayRescore
             Options = options,
             RollMax = Enum.GetValues<ChartBranch>().Max(route => TaikoJudgementSession.MaxRollHits(played.OnRoute(route))),
         };
+    }
+
+    /// <summary>
+    /// A dan course played again from its songs' replays, as one run on a timeline of the scorer's own: combo and
+    /// gauge carry across, the requirements are checked as it goes, and a failed one ends the course with the
+    /// song being played. A song without inputs is all misses, so one cannot be skipped. No scoring option applies.
+    /// </summary>
+    /// <param name="course">The course's requirements.</param>
+    /// <param name="timeline">The charts as stored.</param>
+    /// <param name="replays">Each song's drum inputs, on its own time.</param>
+    /// <param name="windows">The first song's windows, which the whole course plays with.</param>
+    /// <param name="strongSecondHitWindow">How soon a big note's second hit must follow the first.</param>
+    public static (DanProgress Total, IReadOnlyList<DanSongCounts> Songs, int SongsPlayed, int Level) ScoreCourse(DanCourse course,
+        DanCourseTimeline timeline, IReadOnlyList<TaikoReplay> replays, TaikoJudgementWindows windows, TimeSpan strongSecondHitWindow)
+    {
+        ArgumentNullException.ThrowIfNull(course);
+        ArgumentNullException.ThrowIfNull(timeline);
+        ArgumentNullException.ThrowIfNull(replays);
+        var session = new TaikoJudgementSession(timeline.Chart, windows, strongSecondHitWindow);
+        var score = new TaikoScore(timeline.Chart);
+        var gauge = new TaikoSoulGauge(timeline.Chart.Segments);
+        int great = 0, good = 0, miss = 0, maxCombo = 0;
+        session.Judged += judgement =>
+        {
+            score.Apply(judgement, session.CurrentTime);
+            gauge.Apply(judgement);
+            if (judgement.StrongHitCompleted || judgement.Result is not { } result)
+                return;
+            if (result == TaikoHitResult.Great) great++;
+            else if (result == TaikoHitResult.Good) good++;
+            else miss++;
+            maxCombo = Math.Max(maxCombo, score.Combo);
+        };
+        session.LongNoteHit += progress => score.Apply(progress, session.CurrentTime);
+        DanProgress progress() => new(gauge.Value * 100 / TaikoSoulGauge.Max, great, good, miss, maxCombo,
+            score.RollHits + score.BalloonHits, score.Value);
+        var exams = new DanExams(course);
+        var ends = new List<DanProgress>();
+        var failed = false;
+        for (var song = 0; song < timeline.Songs.Count && !failed; song++)
+        {
+            // Up to the next song's first possible note, past every late hit and miss of this one's.
+            var zero = timeline.Songs[song].Zero;
+            var end = song + 1 < timeline.Songs.Count ? timeline.Songs[song + 1].Zero - TimeSpan.FromMilliseconds(1) : TimeSpan.MaxValue;
+            foreach (var input in (song < replays.Count ? replays[song].Inputs : []).OrderBy(static input => input.Time))
+            {
+                var time = zero + input.Time;
+                if (time >= end)
+                    break;
+                session.SubmitInput(input.Action, time < session.CurrentTime ? session.CurrentTime : time);
+                failed |= exams.Requirements.Any(requirement => !exams.StillPossible(requirement, progress()));
+            }
+            session.AdvanceTo(end);
+            failed |= exams.Requirements.Any(requirement => !exams.StillPossible(requirement, progress()));
+            ends.Add(progress());
+        }
+        var counts = new List<DanSongCounts>();
+        var before = default(DanProgress);
+        for (var song = 0; song < timeline.Songs.Count; song++)
+        {
+            var at = song < ends.Count ? ends[song] : before;
+            counts.Add(new(at.Goods - before.Goods, at.Oks - before.Oks, at.Bads - before.Bads, at.Rolls - before.Rolls));
+            before = at;
+        }
+        var total = progress();
+        return (total, counts, ends.Count, failed ? 0 : DanCourseResult.LevelOf(course, total));
     }
 }

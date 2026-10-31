@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Waddamburo.App.Gameplay;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scores;
 
@@ -37,6 +38,81 @@ internal static class Rescore
         PlayTimeline.Write(charts, play, writer);
         writer.WriteEndObject();
     });
+
+    /// <summary>
+    /// --rescore-dan: dan courses, one JSON line each: <c>id</c>, <c>requirements</c> (type, red, gold), <c>songs</c>
+    /// (<c>notes</c>, <c>source</c>, <c>note_count</c>, <c>replay</c>, base64; no replay: not reached). Writes its id with
+    /// the total, each song's counts, <c>songs_played</c> and <c>level</c>, or its id and an error.
+    /// </summary>
+    public static int RunCourses(Stream input, Stream output)
+    {
+        using var reader = new StreamReader(input);
+        var charts = new ChartCache();
+        for (var line = reader.ReadLine(); line is not null; line = reader.ReadLine())
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+            using var writer = new Utf8JsonWriter(output);
+            writer.WriteStartObject();
+            string? id = null;
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var play = document.RootElement;
+                id = play.GetProperty("id").GetString();
+                writer.WriteString("id", id);
+                writeCourse(charts, play, writer);
+            }
+            catch (Exception exception) when (IsBadPlay(exception) || exception is JsonException or KeyNotFoundException
+                or InvalidOperationException)
+            {
+                if (id is null)
+                    writer.WriteNull("id");
+                writer.WriteString("error", exception.Message);
+            }
+            writer.WriteEndObject();
+            writer.Flush();
+            output.WriteByte((byte)'\n');
+            output.Flush();
+        }
+        return 0;
+    }
+
+    private static void writeCourse(ChartCache charts, JsonElement play, Utf8JsonWriter writer)
+    {
+        var songs = play.GetProperty("songs").EnumerateArray().ToList();
+        var stored = songs.Select(song => Chart(charts, Convert.FromBase64String(song.GetProperty("notes").GetString() ?? ""),
+            song.TryGetProperty("source", out var source) ? source.GetString() : null)).ToList();
+        static int[] values(JsonElement requirement, string name) => [.. requirement.GetProperty(name).EnumerateArray().Select(static value => value.GetInt32())];
+        var course = new DanCourse(0, "", "", [.. play.GetProperty("requirements").EnumerateArray().Select(static requirement =>
+                new DanRequirement(requirement.GetProperty("type").GetString() ?? "", values(requirement, "red"), values(requirement, "gold")))],
+            [.. songs.Select(static song => new DanCourseSong("", 0, null, song.GetProperty("note_count").GetInt32(), []))]);
+        var (total, counts, played, level) = PlayRescore.ScoreCourse(course, DanCourseTimeline.Merge(stored),
+            [.. songs.Select(static song => song.TryGetProperty("replay", out var replay) && replay.GetString() is { Length: > 0 } inputs
+                ? TaikoReplay.Decode(Convert.FromBase64String(inputs)) : new TaikoReplay())],
+            TaikoGameplayPresentation.WindowsFor(stored[0].Chart, stored[0].Course), TaikoGameplayPresentation.StrongSecondHitWindow);
+        writer.WriteNumber("score", total.Score);
+        writer.WriteNumber("great", total.Goods);
+        writer.WriteNumber("good", total.Oks);
+        writer.WriteNumber("miss", total.Bads);
+        writer.WriteNumber("max_combo", total.MaxCombo);
+        writer.WriteNumber("rolls", total.Rolls);
+        writer.WriteNumber("gauge_percent", total.GaugePercent);
+        writer.WriteNumber("songs_played", played);
+        writer.WriteNumber("result_level", level);
+        writer.WriteNumber("scoring_version", PlayRecord.CurrentScoringVersion);
+        writer.WriteStartArray("songs");
+        foreach (var song in counts)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("great", song.Goods);
+            writer.WriteNumber("good", song.Oks);
+            writer.WriteNumber("miss", song.Bads);
+            writer.WriteNumber("rolls", song.Rolls);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
 
     /// <summary>One stored play as TaikOnline sends it.</summary>
     public readonly record struct StoredPlay(byte[] Notes, string? Source, int Options, int? Seed, byte[] Replay);
