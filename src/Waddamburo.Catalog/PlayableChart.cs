@@ -283,9 +283,9 @@ public sealed record PlayableChart
 
     /// <summary>
     /// How each route's notes move, indexed by <see cref="ChartBranch"/>; empty when every route moves as
-    /// <see cref="TimingPoints"/> and <see cref="ScrollPoints"/> say. Only drawing reads tempo, scroll and bar lines:
-    /// they change no judgement or score, so they stay out of <see cref="ChartHash"/> and a server's stored chart.
-    /// A route's own Go-Go scores its notes, so <see cref="ChartHash"/> carries it.
+    /// <see cref="TimingPoints"/> and <see cref="ScrollPoints"/> say. Only drawing reads tempo and scroll: they change
+    /// no judgement or score, so they stay out of <see cref="ChartHash"/> and a server's stored chart. A route's own
+    /// Go-Go scores its notes and its bar lines are drawn by a server's replay, so <see cref="ChartHash"/> carries them.
     /// </summary>
     public ImmutableArray<ChartRouteControls> RouteControls { get; init; } = [];
 

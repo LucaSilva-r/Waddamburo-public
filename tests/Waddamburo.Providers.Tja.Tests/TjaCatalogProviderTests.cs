@@ -489,7 +489,8 @@ public sealed class TjaCatalogProviderTests
             Assert.Equal(chart.BeatsPerMinuteAt(TimeSpan.FromSeconds(5)), chart.BeatsPerMinuteAt(TimeSpan.FromSeconds(5), route));
         }
         // They only change how notes move: the chart's identity does not depend on them.
-        Assert.Equal(ChartHash.Compute(chart, TaikoCourse.Oni), ChartHash.Compute(chart with { RouteControls = [] }, TaikoCourse.Oni));
+        Assert.Equal(ChartHash.Compute(chart, TaikoCourse.Oni), ChartHash.Compute(chart with
+            { RouteControls = [.. chart.RouteControls.Select(static route => route with { Timing = [], Scroll = [] })] }, TaikoCourse.Oni));
     }
 
     [Fact]
@@ -550,6 +551,7 @@ public sealed class TjaCatalogProviderTests
         Assert.Equal(bytes, ChartHash.Serialize(stored, TaikoCourse.Oni));
         Assert.True(stored.IsGoGoAt(start, ChartBranch.Expert));
         Assert.False(stored.IsGoGoAt(start, ChartBranch.Normal));
+        Assert.Equal(chart.BarLinesOn(ChartBranch.Master).ToArray(), stored.BarLinesOn(ChartBranch.Master).ToArray());
     }
 
     [Fact]

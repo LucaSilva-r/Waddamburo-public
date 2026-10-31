@@ -92,11 +92,11 @@ public static class ChartHash
                     writer.Write(row.Master);
                 }
             }
-            // A route's own Go-Go changes its notes' score. After the rest, only when some route has one: other
-            // branched charts keep their hash.
-            if (chart.RouteControls.Any(static route => !route.Effects.IsEmpty))
+            // A route's own Go-Go changes its notes' score, and its own bar lines are what a server's replay draws.
+            // After the rest, only when some route has either: other branched charts keep their hash.
+            if (chart.RouteControls.Any(static route => !route.Effects.IsEmpty || !route.Bars.IsEmpty))
             {
-                writer.Write("GOGO"u8);
+                writer.Write("ROUT"u8);
                 foreach (var route in chart.RouteControls)
                 {
                     writer.Write(route.Effects.Length);
@@ -104,6 +104,12 @@ public static class ChartHash
                     {
                         writer.Write(micros(point.Time));
                         writer.Write(point.IsGoGo);
+                    }
+                    writer.Write(route.Bars.Length);
+                    foreach (var line in route.Bars)
+                    {
+                        writer.Write(micros(line.Time));
+                        writer.Write(line.IsVisible);
                     }
                 }
             }
@@ -174,7 +180,7 @@ public static class ChartHash
             branching = new ChartBranching([.. checks], points);
             if (reader.BaseStream.Position != reader.BaseStream.Length)
             {
-                if (!reader.ReadBytes(4).AsSpan().SequenceEqual("GOGO"u8))
+                if (!reader.ReadBytes(4).AsSpan().SequenceEqual("ROUT"u8))
                     throw new InvalidDataException("Trailing bytes after the chart.");
                 routes = new ChartRouteControls[3];
                 for (var route = 0; route < routes.Length; route++)
@@ -182,7 +188,10 @@ public static class ChartHash
                     var own = new ChartEffectPoint[count(reader)];
                     for (var index = 0; index < own.Length; index++)
                         own[index] = new ChartEffectPoint(time(reader), reader.ReadBoolean());
-                    routes[route] = new ChartRouteControls([.. timing], [.. scroll]) { Effects = [.. own] };
+                    var ownBars = new ChartBarLine[count(reader)];
+                    for (var index = 0; index < ownBars.Length; index++)
+                        ownBars[index] = new ChartBarLine(time(reader), reader.ReadBoolean());
+                    routes[route] = new ChartRouteControls([.. timing], [.. scroll]) { Effects = [.. own], Bars = [.. ownBars] };
                 }
                 if (reader.BaseStream.Position != reader.BaseStream.Length)
                     throw new InvalidDataException("Trailing bytes after the chart.");

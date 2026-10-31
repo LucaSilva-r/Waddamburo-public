@@ -146,6 +146,30 @@ internal static class PlayTimeline
         writer.WriteEndArray();
         if (chart.Branching is null)
             return;
+        // Routes with Go-Go or bar lines of their own; a replay falls back on the two lists above for the rest.
+        if (chart.RouteControls.Any(static route => !route.Effects.IsEmpty || !route.Bars.IsEmpty))
+        {
+            writer.WriteStartObject("routes");
+            for (var route = 0; route < chart.RouteControls.Length; route++)
+            {
+                writer.WriteStartObject(Routes[route]);
+                writer.WriteStartArray("bars");
+                foreach (var bar in chart.BarLinesOn((ChartBranch)route).Where(static bar => bar.IsVisible))
+                    writer.WriteNumberValue(ms(bar.Time));
+                writer.WriteEndArray();
+                writer.WriteStartArray("gogo");
+                foreach (var point in chart.EffectPointsOn((ChartBranch)route))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("t", ms(point.Time));
+                    writer.WriteBoolean("on", point.IsGoGo);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }
+            writer.WriteEndObject();
+        }
         writer.WriteStartArray("branches");
         foreach (var (check, route) in branches)
         {
