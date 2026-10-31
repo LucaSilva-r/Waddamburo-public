@@ -533,6 +533,34 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task EachRouteKeepsItsOwnGoGoAndBarLines()
+    {
+        // Measures of two seconds. Expert goes Go-Go at the route's start, Master halves its measures.
+        var chart = await loadSynthetic("#BRANCHSTART p,50,80\n#N\n1,\n#E\n#GOGOSTART\n1,\n#GOGOEND\n#M\n#MEASURE 2/4\n1,\n1,\n#MEASURE 4/4\n#BRANCHEND\n1,");
+        var (start, next) = (chart.Branching!.Checks[0].Start, chart.Branching.Checks[0].Start + TimeSpan.FromSeconds(2));
+        Assert.False(chart.IsGoGoAt(start, ChartBranch.Normal));
+        Assert.True(chart.IsGoGoAt(start, ChartBranch.Expert));
+        Assert.False(chart.IsGoGoAt(next, ChartBranch.Expert));
+        Assert.True(chart.RouteControls[(int)ChartBranch.Expert].Bars.IsEmpty);
+        Assert.Equal([start, start + TimeSpan.FromSeconds(1), next],
+            chart.BarLinesOn(ChartBranch.Master).Select(static bar => bar.Time));
+
+        var bytes = ChartHash.Serialize(chart, TaikoCourse.Oni);
+        var (stored, _) = ChartHash.Deserialize(bytes, SongSourceKind.Tja);
+        Assert.Equal(bytes, ChartHash.Serialize(stored, TaikoCourse.Oni));
+        Assert.True(stored.IsGoGoAt(start, ChartBranch.Expert));
+        Assert.False(stored.IsGoGoAt(start, ChartBranch.Normal));
+    }
+
+    [Fact]
+    public async Task RoutesWithTheSameGoGoLeaveTheHashAlone()
+    {
+        var chart = await loadSynthetic("#BRANCHSTART p,50,80\n#N\n#GOGOSTART\n1,\n#E\n#GOGOSTART\n2,\n#M\n#GOGOSTART\n3,\n#BRANCHEND\n1,");
+        Assert.All(chart.RouteControls, static route => Assert.True(route.Effects.IsEmpty));
+        Assert.True(chart.IsGoGoAt(chart.Branching!.Checks[0].Start, ChartBranch.Master));
+    }
+
+    [Fact]
     public async Task LongNotesSpanMeasuresAndConsumeBalloonQuotas()
     {
         var chart = await loadSynthetic("50,\n08,\n7080,\n9090,\n6080,", "BALLOON:3,5\n");

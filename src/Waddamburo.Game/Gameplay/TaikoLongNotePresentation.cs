@@ -246,7 +246,7 @@ public sealed class TaikoLongNotePresentation
             // Kusudama overlay (reference trace): the quota, then whether Go-Go is on.
             _sharedKusudama?.Enter(note.RequiredHits);
             call(_kusudama.Player, "AddNorma", LumenHostValue.FromNumber(note.RequiredHits));
-            call(_kusudama.Player, "SetGogoTime", LumenHostValue.FromBoolean(isGoGo(note.StartTime)));
+            call(_kusudama.Player, "SetGogoTime", LumenHostValue.FromBoolean(_chart.IsGoGoAt(note.StartTime, note.Branch)));
             _balloonVisible = true;
             _don?.SetMotion(new DonMotionRequest(_player, $"{_kusu}_in", $"{_kusu}_nobeat"));
         }
@@ -371,17 +371,6 @@ public sealed class TaikoLongNotePresentation
         note.Kind == PlayableLongNoteKind.Kusudama
             ? ($"{_kusu}_loop", $"{_kusu}_nobeat")
             : ("don_balloon_loop", "don_balloon_nobeat");
-
-    private bool isGoGo(TimeSpan time)
-    {
-        var active = false;
-        foreach (var point in _chart.EffectPoints)
-        {
-            if (point.Time > time) break;
-            active = point.IsGoGo;
-        }
-        return active;
-    }
 
     private static void call(LumenPlayer player, string name, LumenHostValue argument)
     {

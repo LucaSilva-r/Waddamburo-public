@@ -139,7 +139,14 @@ public sealed record ChartBranching(ImmutableArray<ChartBranchCheck> Checks, Cha
 }
 
 /// <summary>One route's tempo and scroll over the whole chart, ordered by time.</summary>
-public sealed record ChartRouteControls(ImmutableArray<ChartTimingPoint> Timing, ImmutableArray<ChartScrollPoint> Scroll);
+public sealed record ChartRouteControls(ImmutableArray<ChartTimingPoint> Timing, ImmutableArray<ChartScrollPoint> Scroll)
+{
+    /// <summary>This route's Go-Go, only when it differs from <see cref="PlayableChart.EffectPoints"/> (TJA); else empty.</summary>
+    public ImmutableArray<ChartEffectPoint> Effects { get; init; } = [];
+
+    /// <summary>This route's bar lines, only when they differ from <see cref="PlayableChart.BarLines"/> (TJA); else empty.</summary>
+    public ImmutableArray<ChartBarLine> Bars { get; init; } = [];
+}
 
 public readonly record struct ChartTimingPoint
 {
@@ -269,14 +276,16 @@ public sealed record PlayableChart
     /// <summary>
     /// The chart's 譜面分岐, when it has one: its notes then carry <see cref="PlayableHitObject.Branch"/>
     /// and only the route being played is judged and drawn (<c>TaikoJudgementSession.BranchAt</c>).
-    /// Go-Go and bar lines are the main route's; each route's tempo and scroll are <see cref="RouteControls"/>.
+    /// <see cref="TimingPoints"/>, <see cref="ScrollPoints"/>, <see cref="EffectPoints"/> and <see cref="BarLines"/>
+    /// are the main route's; each route's own are <see cref="RouteControls"/>.
     /// </summary>
     public ChartBranching? Branching { get; init; }
 
     /// <summary>
     /// How each route's notes move, indexed by <see cref="ChartBranch"/>; empty when every route moves as
-    /// <see cref="TimingPoints"/> and <see cref="ScrollPoints"/> say. Only drawing reads these: they change no
-    /// judgement or score, so they stay out of <see cref="ChartHash"/> and a server's stored chart.
+    /// <see cref="TimingPoints"/> and <see cref="ScrollPoints"/> say. Only drawing reads tempo, scroll and bar lines:
+    /// they change no judgement or score, so they stay out of <see cref="ChartHash"/> and a server's stored chart.
+    /// A route's own Go-Go scores its notes, so <see cref="ChartHash"/> carries it.
     /// </summary>
     public ImmutableArray<ChartRouteControls> RouteControls { get; init; } = [];
 
@@ -312,6 +321,28 @@ public sealed record PlayableChart
         return low == 0 ? 1 : points[low - 1].Multiplier;
     }
 
+    /// <summary>The Go-Go points of <paramref name="route"/>; null, or a route without its own, the main route's.</summary>
+    public ImmutableArray<ChartEffectPoint> EffectPointsOn(ChartBranch? route) =>
+        route is { } own && !RouteControls.IsEmpty && !RouteControls[(int)own].Effects.IsEmpty
+            ? RouteControls[(int)own].Effects : EffectPoints;
+
+    /// <summary>The bar lines of <paramref name="route"/>; null, or a route without its own, the main route's.</summary>
+    public ImmutableArray<ChartBarLine> BarLinesOn(ChartBranch? route) =>
+        route is { } own && !RouteControls.IsEmpty && !RouteControls[(int)own].Bars.IsEmpty
+            ? RouteControls[(int)own].Bars : BarLines;
+
+    /// <summary>Whether <paramref name="route"/> is in Go-Go at <paramref name="time"/>.</summary>
+    public bool IsGoGoAt(TimeSpan time, ChartBranch? route = null)
+    {
+        var active = false;
+        foreach (var point in EffectPointsOn(route))
+        {
+            if (point.Time > time) break;
+            active = point.IsGoGo;
+        }
+        return active;
+    }
+
     /// <summary>
     /// The checks with <see cref="ChartBranchCheck.Time"/> when they are really judged: as their route's first
     /// measure enters the lane, one 4/4 measure before it is hit, whatever the measure before it (traced on
@@ -335,7 +366,7 @@ public sealed record PlayableChart
     /// </summary>
     public PlayableChart OnRoute(ChartBranch route) => Branching is null ? this
         : new PlayableChart(Key, AuthoredOffset, Duration, HitObjects.Where(note => IsOn(note.Branch, route)),
-            TimingPoints, ScrollPoints, EffectPoints, BarLines, LongNotes.Where(note => IsOn(note.Branch, route)))
+            TimingPoints, ScrollPoints, EffectPointsOn(route), BarLinesOn(route), LongNotes.Where(note => IsOn(note.Branch, route)))
         {
             Level = Level,
             ScoreInit = ScoreInit,

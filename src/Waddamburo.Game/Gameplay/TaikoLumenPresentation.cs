@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Waddamburo.Catalog;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -66,7 +67,7 @@ public sealed class TaikoLumenPresentation
         _board = board;
         _flights = flights;
         _longNotes = longNotes;
-        _gogo = new TaikoGoGoPresentation(chart.EffectPoints, active =>
+        _gogo = new TaikoGoGoPresentation(now => chart.IsGoGoAt(now, judgement.BranchAt(now)), active =>
         {
             callback(_target.Player, "SetGogo", LumenHostValue.FromBoolean(active));
             GoGoChanged?.Invoke(active);
@@ -154,13 +155,18 @@ public sealed class TaikoLumenPresentation
         var layers = new List<LumenSceneLayer>(_background);
         if (character is { } don)
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
-        var barWindows = _barWindows ??= [.. _chart.BarLines.Select(bar => barWindow(bar.Time))];
-        for (var index = 0; index < barWindows.Length; index++)
-        {
-            var bar = _chart.BarLines[index];
-            if (bar.IsVisible && time >= barWindows[index].From && time <= barWindows[index].Until)
-                addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time, _judgement.BranchAt(bar.Time));
-        }
+        // Each route's bar lines show while that route is played; without bars of their own, one list for all.
+        _barStreams ??= _chart.RouteControls.Any(static route => !route.Bars.IsEmpty)
+            ? [.. Enum.GetValues<ChartBranch>().Select(route => ((ChartBranch?)route, barTimes(_chart.BarLinesOn(route))))]
+            : [(null, barTimes(_chart.BarLines))];
+        foreach (var (route, bars) in _barStreams)
+            foreach (var (bar, from, until) in bars)
+            {
+                if (!bar.IsVisible || time < from || time > until) continue;
+                var at = _judgement.BranchAt(bar.Time);
+                if (route is null || route == at)
+                    addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time, at);
+            }
         // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
         // deeper depth), so an earlier roll body covers the notes that follow it.
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
@@ -230,7 +236,9 @@ public sealed class TaikoLumenPresentation
     // When each note and bar is on the lane, so a frame skips the rest of a chart with one comparison each.
     // ponytail: still a pass over every note, a cursor needs care as scroll changes reorder arrivals.
     private (TimeSpan From, TimeSpan Until)[]? _noteWindows;
-    private (TimeSpan From, TimeSpan Until)[]? _barWindows;
+    private (ChartBranch? Route, (ChartBarLine Bar, TimeSpan From, TimeSpan Until)[] Bars)[]? _barStreams;
+    private (ChartBarLine Bar, TimeSpan From, TimeSpan Until)[] barTimes(ImmutableArray<ChartBarLine> bars) =>
+        [.. bars.Select(bar => barWindow(bar.Time) is var window ? (bar, window.From, window.Until) : default)];
 
     private (TimeSpan From, TimeSpan Until) window(TimeSpan noteTime, ChartBranch? route) =>
         VisibleWindow(noteTime, pixelsPerSecond(noteTime, route), _hitX);
