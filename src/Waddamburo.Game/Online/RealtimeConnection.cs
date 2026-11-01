@@ -4,17 +4,22 @@ using System.Text.Json;
 
 namespace Waddamburo.Game.Online;
 
+/// <summary>A channel's signature for one socket; a presence channel's also signs who is joining.</summary>
+public sealed record ChannelAuthorization(string Auth, string? ChannelData = null);
+
+/// <summary>Someone on a presence channel: their user id and what the server says about them.</summary>
+public sealed record PresenceMember(string Id, JsonElement Info);
+
 /// <summary>
 /// A Pusher-protocol (v7) WebSocket client, as TaikOnline's Reverb speaks it: subscribes channels
-/// (private ones signed through <see cref="Authorize"/>), answers the server's pings, pings back when
+/// (private and presence ones signed through <see cref="Authorize"/>), answers the server's pings, pings back when
 /// the line goes quiet and reconnects with jittered backoff, subscribing everything again.
 /// </summary>
 /// <remarks>
 /// Close codes follow the Pusher protocol: 4000-4099 the server will refuse a reconnect as well (the
 /// client stops), 4100-4199 reconnect after backing off, 4200-4299 reconnect at once; anything else
 /// (a dropped line) backs off. pusher:error messages never decide this: Reverb sends them for a refused
-/// private channel (4009) on a connection that stays open. ponytail: receive-only (no client events)
-/// and no presence channels; multiplayer will need both.
+/// private channel (4009) on a connection that stays open. ponytail: receive-only (no client events).
 /// </remarks>
 public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncDisposable
 {
@@ -27,8 +32,8 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
     private string? _socketId;
     private Task? _run;
 
-    /// <summary>Signs a private channel for this connection's socket id: the "auth" string, or null to skip it.</summary>
-    public Func<string, string, CancellationToken, Task<string?>>? Authorize { get; init; }
+    /// <summary>Signs a private or presence channel for this connection's socket id; null to skip it.</summary>
+    public Func<string, string, CancellationToken, Task<ChannelAuthorization?>>? Authorize { get; init; }
 
     /// <summary>The first reconnect delay; doubled per failed attempt up to <see cref="MaxReconnectDelay"/>.</summary>
     public TimeSpan ReconnectDelay { get; init; } = TimeSpan.FromSeconds(1);
@@ -40,6 +45,15 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
 
     /// <summary>An event on a subscribed channel: channel, event name, data (the decoded payload).</summary>
     public event Action<string, string, JsonElement>? Received;
+
+    /// <summary>A presence channel was joined: everyone on it, this connection's user included. Sent again after a reconnect.</summary>
+    public event Action<string, IReadOnlyList<PresenceMember>>? PresenceSynced;
+
+    /// <summary>Someone else joined a presence channel.</summary>
+    public event Action<string, PresenceMember>? MemberAdded;
+
+    /// <summary>Someone left a presence channel: their user id.</summary>
+    public event Action<string, string>? MemberRemoved;
 
     /// <summary>Connected (true) or lost (false); a lost connection keeps retrying unless <see cref="Stopped"/>.</summary>
     public event Action<bool>? ConnectionChanged;
@@ -217,6 +231,17 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
                     break;
                 case "pusher:pong":
                     break;
+                case "pusher_internal:subscription_succeeded" when channelName is not null && data is not null
+                    && data.RootElement.ValueKind == JsonValueKind.Object && data.RootElement.TryGetProperty("presence", out var presence):
+                    PresenceSynced?.Invoke(channelName, members(presence));
+                    break;
+                case "pusher_internal:member_added" when channelName is not null && data is not null:
+                    MemberAdded?.Invoke(channelName, new PresenceMember(userId(data.RootElement),
+                        data.RootElement.TryGetProperty("user_info", out var info) ? info.Clone() : default));
+                    break;
+                case "pusher_internal:member_removed" when channelName is not null && data is not null:
+                    MemberRemoved?.Invoke(channelName, userId(data.RootElement));
+                    break;
                 default:
                     if (channelName is not null && !name.StartsWith("pusher_internal:", StringComparison.Ordinal) && data is not null)
                         Received?.Invoke(channelName, name, data.RootElement);
@@ -227,8 +252,8 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
 
     private async Task subscribeAsync(string channel, string socketId, CancellationToken cancellationToken)
     {
-        string? auth = null;
-        if (channel.StartsWith("private-", StringComparison.Ordinal))
+        ChannelAuthorization? auth = null;
+        if (channel.StartsWith("private-", StringComparison.Ordinal) || channel.StartsWith("presence-", StringComparison.Ordinal))
         {
             try
             {
@@ -248,7 +273,9 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
         {
             writer.WriteString("channel", channel);
             if (auth is not null)
-                writer.WriteString("auth", auth);
+                writer.WriteString("auth", auth.Auth);
+            if (auth?.ChannelData is { } channelData)
+                writer.WriteString("channel_data", channelData);
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -280,6 +307,15 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
             _send.Release();
         }
     }
+
+    // A user id is a JSON number or string, depending on the server's user model.
+    private static string userId(JsonElement member) => member.GetProperty("user_id").ToString();
+
+    // Reverb sends an empty hash as [] rather than {}.
+    private static List<PresenceMember> members(JsonElement presence) =>
+        presence.TryGetProperty("hash", out var hash) && hash.ValueKind == JsonValueKind.Object
+            ? [.. hash.EnumerateObject().Select(static member => new PresenceMember(member.Name, member.Value.Clone()))]
+            : [];
 
     private static JsonDocument decode(JsonElement data)
     {

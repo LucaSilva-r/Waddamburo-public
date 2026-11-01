@@ -131,7 +131,7 @@ public sealed class RealtimeConnectionTests
     {
         await using var server = new PusherTestServer();
         var failed = Channel.CreateUnbounded<string>();
-        await using var connection = server.Connect(static options => options with { Authorize = static (_, _, _) => Task.FromResult<string?>(null) });
+        await using var connection = server.Connect(static options => options with { Authorize = static (_, _, _) => Task.FromResult<ChannelAuthorization?>(null) });
         connection.SubscriptionFailed += channel => failed.Writer.TryWrite(channel);
         connection.Subscribe("private-App.Models.User.7");
         connection.Subscribe("wdb.notices");
@@ -148,6 +148,121 @@ public sealed class RealtimeConnectionTests
         Assert.Equal("private-x", await failed.Reader.ReadAsync().AsTask().WaitAsync(Wait));
         Assert.True(connection.Connected);
         await Assert.ThrowsAsync<TimeoutException>(() => server.AcceptAsync(TimeSpan.FromMilliseconds(300)));
+    }
+
+    [Fact]
+    public async Task JoinsPresenceChannelsWithSignedChannelDataAndTracksMembers()
+    {
+        await using var server = new PusherTestServer();
+        const string channel = "presence-wdb.online";
+        const string channelData = """{"user_id":7,"user_info":{"name":"Don"}}""";
+        var events = Channel.CreateUnbounded<string>();
+        await using var connection = server.Connect(static options => options with
+        {
+            Authorize = static (socketId, name, _) => Task.FromResult<ChannelAuthorization?>(new($"key:{socketId}:{name}", channelData)),
+        });
+        connection.PresenceSynced += (name, members) => events.Writer.TryWrite(
+            $"{name} synced {string.Join(',', members.Select(static member => $"{member.Id}={member.Info.GetProperty("name").GetString()}"))}");
+        connection.MemberAdded += (name, member) => events.Writer.TryWrite($"{name} added {member.Id}={member.Info.GetProperty("name").GetString()}");
+        connection.MemberRemoved += (name, id) => events.Writer.TryWrite($"{name} removed {id}");
+        connection.Subscribe(channel);
+        connection.Start();
+
+        var socket = await server.AcceptAsync();
+        await PusherTestServer.EstablishAsync(socket);
+        using (var subscribe = JsonDocument.Parse(await PusherTestServer.ReceiveAsync(socket)))
+        {
+            var data = subscribe.RootElement.GetProperty("data");
+            Assert.Equal($"key:1.2:{channel}", data.GetProperty("auth").GetString());
+            // Byte for byte: the signature covers this string.
+            Assert.Equal(channelData, data.GetProperty("channel_data").GetString());
+        }
+
+        await PusherTestServer.SendAsync(socket, """{"event":"pusher_internal:subscription_succeeded","channel":"presence-wdb.online","data":"{\"presence\":{\"count\":2,\"ids\":[7,8],\"hash\":{\"7\":{\"name\":\"Don\"},\"8\":{\"name\":\"Katsu\"}}}}"}""");
+        Assert.Equal($"{channel} synced 7=Don,8=Katsu", await events.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        await PusherTestServer.SendAsync(socket, """{"event":"pusher_internal:member_added","channel":"presence-wdb.online","data":"{\"user_id\":9,\"user_info\":{\"name\":\"Wada\"}}"}""");
+        Assert.Equal($"{channel} added 9=Wada", await events.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        await PusherTestServer.SendAsync(socket, """{"event":"pusher_internal:member_removed","channel":"presence-wdb.online","data":"{\"user_id\":8}"}""");
+        Assert.Equal($"{channel} removed 8", await events.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+    }
+
+    [Fact]
+    public async Task StatusIsSentWhenItChangesAndAtEachHeartbeatOneRequestAtATime()
+    {
+        var sent = new List<PlayerStatus>();
+        var now = TimeSpan.Zero;
+        var hold = new TaskCompletionSource();
+        var reporter = new StatusReporter(status =>
+        {
+            sent.Add(status);
+            return hold.Task;
+        }, () => now);
+
+        reporter.Report(PlayerStatus.Online);
+        reporter.Report(PlayerStatus.Afk); // the first is still running: wait
+        Assert.Equal([PlayerStatus.Online], sent);
+        hold.SetResult();
+        await Task.Yield();
+
+        reporter.Report(PlayerStatus.Online); // unchanged: nothing
+        Assert.Single(sent);
+        reporter.Report(PlayerStatus.Playing("abc")); // changed: now
+        Assert.Equal(PlayerStatus.Playing("abc"), sent[^1]);
+        now = StatusReporter.Heartbeat;
+        reporter.Report(PlayerStatus.Playing("abc")); // the server would forget it otherwise
+        Assert.Equal(3, sent.Count);
+    }
+
+    [Fact]
+    public async Task StatusReachesTheServerWithItsChart()
+    {
+        var handler = new CapturingHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://taikonline.test/") };
+
+        await new NoticeClient(http).SetStatusAsync(PlayerStatus.Playing("abc"));
+
+        Assert.Equal(HttpMethod.Put, handler.Method);
+        Assert.Equal("/api/wdb/status", handler.Path);
+        using var body = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("playing", body.RootElement.GetProperty("state").GetString());
+        Assert.Equal("abc", body.RootElement.GetProperty("chart_sha256").GetString());
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public HttpMethod? Method { get; private set; }
+
+        public string? Path { get; private set; }
+
+        public string? Body { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Method = request.Method;
+            Path = request.RequestUri?.AbsolutePath;
+            Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
+    }
+
+    [Fact]
+    public async Task AFailedStatusIsTriedAgainAtTheNextHeartbeat()
+    {
+        var attempts = 0;
+        var now = TimeSpan.Zero;
+        var reporter = new StatusReporter(_ =>
+        {
+            attempts++;
+            return Task.FromException(new HttpRequestException("down"));
+        }, () => now);
+
+        reporter.Report(PlayerStatus.Online);
+        await Task.Yield();
+        reporter.Report(PlayerStatus.Online);
+        Assert.Equal(1, attempts);
+        now = StatusReporter.Heartbeat;
+        reporter.Report(PlayerStatus.Online);
+        Assert.Equal(2, attempts);
     }
 
     [Fact]
@@ -253,8 +368,8 @@ public sealed class RealtimeConnectionTests
 
         public sealed record Options
         {
-            public Func<string, string, CancellationToken, Task<string?>>? Authorize { get; init; } =
-                static (socketId, channel, _) => Task.FromResult<string?>($"key:{socketId}:{channel}");
+            public Func<string, string, CancellationToken, Task<ChannelAuthorization?>>? Authorize { get; init; } =
+                static (socketId, channel, _) => Task.FromResult<ChannelAuthorization?>(new($"key:{socketId}:{channel}"));
 
             public TimeSpan ReconnectDelay { get; init; } = TimeSpan.FromMilliseconds(50);
 

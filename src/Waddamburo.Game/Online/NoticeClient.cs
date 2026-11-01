@@ -52,15 +52,31 @@ public sealed class NoticeClient(HttpClient http)
         response.EnsureSuccessStatusCode();
     }
 
-    /// <summary>Signs a private realtime channel for a socket (Pusher auth); null when refused.</summary>
-    public async Task<string?> AuthorizeChannelAsync(string socketId, string channel, CancellationToken cancellationToken = default)
+    /// <summary>Signs a private or presence realtime channel for a socket (Pusher auth); null when refused.</summary>
+    public async Task<ChannelAuthorization?> AuthorizeChannelAsync(string socketId, string channel, CancellationToken cancellationToken = default)
     {
         using var response = await http.PostAsJsonAsync("api/wdb/broadcasting/auth", new ChannelAuthRequest(socketId, channel),
             OnlineJson.Default.ChannelAuthRequest, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
             return null;
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync(OnlineJson.Default.ChannelAuthResult, cancellationToken).ConfigureAwait(false))?.Auth;
+        return await response.Content.ReadFromJsonAsync(OnlineJson.Default.ChannelAuthResult, cancellationToken).ConfigureAwait(false) is { Auth: { } auth } result
+            ? new ChannelAuthorization(auth, result.ChannelData) : null;
+    }
+
+    /// <summary>Tells the website what the token's player is doing.</summary>
+    public async Task SetStatusAsync(PlayerStatus status, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PutAsJsonAsync("api/wdb/status", new StatusRequest(status.State, status.ChartSha256),
+            OnlineJson.Default.StatusRequest, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>The token's player left the game.</summary>
+    public async Task ClearStatusAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.DeleteAsync("api/wdb/status", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
     }
 
     /// <summary>A notice pushed over the realtime connection (the event's data).</summary>
@@ -74,9 +90,11 @@ public sealed class NoticeClient(HttpClient http)
 
     internal sealed record ReadRequest(IReadOnlyCollection<string> Ids);
 
+    internal sealed record StatusRequest(string State, string? ChartSha256);
+
     internal sealed record ChannelAuthRequest(string SocketId, string ChannelName);
 
-    internal sealed record ChannelAuthResult(string? Auth);
+    internal sealed record ChannelAuthResult(string? Auth, string? ChannelData);
 }
 
 /// <summary>The notice endpoints' JSON (snake_case), generated at compile time for NativeAOT.</summary>
@@ -86,6 +104,7 @@ public sealed class NoticeClient(HttpClient http)
 [JsonSerializable(typeof(NoticeClient.NoticesResult))]
 [JsonSerializable(typeof(NoticeClient.NotificationsResult))]
 [JsonSerializable(typeof(NoticeClient.ReadRequest))]
+[JsonSerializable(typeof(NoticeClient.StatusRequest))]
 [JsonSerializable(typeof(NoticeClient.ChannelAuthRequest))]
 [JsonSerializable(typeof(NoticeClient.ChannelAuthResult))]
 internal sealed partial class OnlineJson : JsonSerializerContext;

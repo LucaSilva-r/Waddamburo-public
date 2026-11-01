@@ -20,6 +20,12 @@ internal sealed class ScoreSync : IDisposable
     private RealtimeConnection? _realtime;
     private readonly Dictionary<long, NoticeClient> _noticeClients = [];
 
+    private readonly object _onlineLock = new();
+    // The home player's account: the one the website shows as online, while the game runs.
+    private string? _onlineToken;
+    private NoticeClient? _onlineClient;
+    private StatusReporter? _statusReporter;
+
     // accounts: the ones stored on this PC (home mode; null in arcade).
     public ScoreSync(ArcadeSettings arcade, string? scoresPath, AccountBook? accounts)
     {
@@ -35,6 +41,7 @@ internal sealed class ScoreSync : IDisposable
             if (notice.Kind == "sanction")
                 RefreshProfiles();
         };
+        SetOnlineAccount(accounts?.Default?.Token);
         if (arcade.Server is { } realtimeServer)
             startRealtime(realtimeServer);
         Scores = (arcade.Home || cabinet) && scoresPath is not null ? new ScoreStore(scoresPath) : null;
@@ -259,7 +266,7 @@ internal sealed class ScoreSync : IDisposable
                     {
                         Authorize = (socketId, channel, cancellationToken) => ownerOf(channel) is { } owner
                             ? owner.Client.AuthorizeChannelAsync(socketId, channel, cancellationToken)
-                            : Task.FromResult<string?>(null),
+                            : Task.FromResult<ChannelAuthorization?>(null),
                     };
                     realtime.Received += (channel, name, data) =>
                     {
@@ -313,6 +320,44 @@ internal sealed class ScoreSync : IDisposable
         });
     }
 
+    /// <summary>
+    /// Reports this account's status from now on, in place of any before it; null (a guest, or no account) reports nothing.
+    /// </summary>
+    public void SetOnlineAccount(string? token)
+    {
+        if (_arcade.Server is not { } server)
+            return;
+        NoticeClient? previous;
+        lock (_onlineLock)
+        {
+            if (token == _onlineToken)
+                return;
+            _onlineToken = token;
+            previous = _onlineClient;
+            var client = token is null ? null : new NoticeClient(ScoreClient.CreateHttp(server, _arcade.ServerInsecure, token));
+            _onlineClient = client;
+            _statusReporter = client is null ? null : new StatusReporter(status => client.SetStatusAsync(status), static () => TimeSpan.FromMilliseconds(Environment.TickCount64));
+        }
+        clearStatus(previous);
+    }
+
+    /// <summary>What the online account is doing, each tick: sent when it changes and now and then otherwise.</summary>
+    public void ReportStatus(PlayerStatus status)
+    {
+        lock (_onlineLock)
+            _statusReporter?.Report(status);
+    }
+
+    private static Task clearStatus(NoticeClient? client) => client is null ? Task.CompletedTask
+        : client.ClearStatusAsync().ContinueWith(static task => Console.Error.WriteLine(
+            $"Warning STATUS: not cleared ({task.Exception?.GetBaseException().Message})."), TaskContinuationOptions.OnlyOnFaulted);
+
+    private NoticeClient? onlineClient()
+    {
+        lock (_onlineLock)
+            return _onlineClient;
+    }
+
     /// <summary>Notices the player has seen: personal ones are marked read on the server (in the background).</summary>
     public void MarkShown(IReadOnlyList<Notice> notices)
     {
@@ -332,6 +377,8 @@ internal sealed class ScoreSync : IDisposable
 
     public void Dispose()
     {
+        // Offline now rather than when the server's status runs out; a dead line doesn't hold up closing.
+        clearStatus(onlineClient()).Wait(TimeSpan.FromSeconds(1));
         _stopping.Cancel();
         _realtime?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
         _stopping.Dispose();

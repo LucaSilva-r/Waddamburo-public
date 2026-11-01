@@ -9,6 +9,7 @@ using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
+using Waddamburo.Game.Online;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
@@ -573,6 +574,8 @@ internal sealed class GameShell : IDisposable
                 updateFrame: keyboard =>
                 {
                     _input.Frame(keyboard);
+                    if (!keyboard.Presses.IsEmpty)
+                        _sinceInput.Restart();
                     // The notice sidebar (live presses only reach this callback; not over a lane, nor while the
                     // search field takes the letters).
                     if (_notices is not null && !onLane && !_search.IsOpen && GameActions.Pressed(keyboard, GameAction.Notices))
@@ -615,6 +618,21 @@ internal sealed class GameShell : IDisposable
         }
     }
 
+    // No key or drum for this long at home, outside a song, shows the player as away.
+    private static readonly TimeSpan AfkAfter = TimeSpan.FromMinutes(5);
+    private readonly System.Diagnostics.Stopwatch _sinceInput = System.Diagnostics.Stopwatch.StartNew();
+
+    private void reportStatus()
+    {
+        if (!Arcade.Home)
+            return;
+        // A song counts as activity, so leaving one is never AFK. Key presses are noted per frame (ticks only see held keys).
+        if (_gameplay.Playing)
+            _sinceInput.Restart();
+        Sync.ReportStatus(_gameplay.Playing ? PlayerStatus.Playing(_gameplay.PlayingChart)
+            : _sinceInput.Elapsed >= AfkAfter ? PlayerStatus.Afk : PlayerStatus.Online);
+    }
+
     // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
     // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
     private void tick(SdlKeyboardSnapshot keyboard)
@@ -622,6 +640,7 @@ internal sealed class GameShell : IDisposable
         Tick++;
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
         var presses = _input.Take(keys);
+        reportStatus();
         if (backToAttract(presses.Attract))
             return;
         coins(_input.TakeCoins(keys));
@@ -882,6 +901,9 @@ internal sealed class GameShell : IDisposable
     {
         JoinedSides.Add(side);
         applyPlayers();
+        // At home, the player who joined is the one online (the first of two; a guest is nobody).
+        if (Arcade.Home)
+            Sync.SetOnlineAccount(JoinedSides.Select(static joined => TaikoGuest.Profiles[joined]?.Token).FirstOrDefault(static token => token is not null));
     }
 
     // The drum's own player while a replay shows another's (restored back in Song Select).

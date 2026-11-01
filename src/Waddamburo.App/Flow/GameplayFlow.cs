@@ -151,6 +151,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public override void Exit(SceneId scene)
     {
+        Playing = false;
+        PlayingChart = null;
         if (!_demo)
             return;
         _demo = false;
@@ -166,10 +168,19 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.PlayRequests.ClearActive();
     }
 
+    /// <summary>A real play is on (not the attract demo or a watched replay), for the website's status.</summary>
+    public bool Playing { get; private set; }
+
+    /// <summary>The play's chart hash; null for a dan course, whose songs change along the way.</summary>
+    public string? PlayingChart { get; private set; }
+
     public override void Enter(SceneId scene)
     {
         var request = Shell.PlayRequests.ActivatePending();
         _lastRequest = request;
+        Playing = !_demo && request.Review is null;
+        PlayingChart = Playing && _course is null && Shell.Arcade.Home && _sourceCharts.Length > 0
+            ? ChartHash.Compute(_sourceCharts[0], request.Players[0].Course) : null;
         // Each player's options on their chart; the random ones from the play's seed (a replay's own).
         _seed = request.Seed ?? Random.Shared.Next();
         _charts = [.. _sourceCharts.Select((chart, lane) => (request.Players.ElementAtOrDefault(lane)?.Options ?? default).Apply(chart, _seed + lane))];
