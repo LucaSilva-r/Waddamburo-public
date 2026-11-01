@@ -236,12 +236,17 @@ public sealed class RealtimeConnectionTests
 
         public string? Body { get; private set; }
 
+        public Func<HttpRequestMessage, (HttpStatusCode Status, string Json)>? Respond { get; init; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Method = request.Method;
             Path = request.RequestUri?.AbsolutePath;
             Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.NoContent);
+            if (Respond is null)
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            var (status, json) = Respond(request);
+            return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         }
     }
 
@@ -263,6 +268,63 @@ public sealed class RealtimeConnectionTests
         now = StatusReporter.Heartbeat;
         reporter.Report(PlayerStatus.Online);
         Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task WhispersToAChannelAndHearsOtherMembersOnly()
+    {
+        await using var server = new PusherTestServer();
+        var whispers = Channel.CreateUnbounded<string>();
+        var received = Channel.CreateUnbounded<string>();
+        await using var connection = server.Connect(static options => options);
+        connection.Whispered += (channel, name, sender, data) => whispers.Writer.TryWrite($"{channel} {name} {sender} {data.GetProperty("sdp").GetString()}");
+        connection.Received += (_, name, _) => received.Writer.TryWrite(name);
+        connection.Subscribe("presence-wdb.room.ABC234");
+        connection.Start();
+
+        var socket = await server.AcceptAsync();
+        await PusherTestServer.EstablishAsync(socket);
+        await PusherTestServer.ReceiveAsync(socket); // the subscription
+
+        await connection.WhisperAsync("presence-wdb.room.ABC234", "client-candidate", static writer => writer.WriteString("sdp", "a=candidate"));
+        using (var sent = JsonDocument.Parse(await PusherTestServer.ReceiveAsync(socket)))
+        {
+            Assert.Equal("client-candidate", sent.RootElement.GetProperty("event").GetString());
+            Assert.Equal("presence-wdb.room.ABC234", sent.RootElement.GetProperty("channel").GetString());
+            Assert.Equal("a=candidate", sent.RootElement.GetProperty("data").GetProperty("sdp").GetString());
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() => connection.WhisperAsync("presence-wdb.room.ABC234", "notice", static _ => { }));
+
+        await PusherTestServer.SendAsync(socket, """{"event":"client-candidate","channel":"presence-wdb.room.ABC234","user_id":"8","data":{"sdp":"theirs"}}""");
+        Assert.Equal("presence-wdb.room.ABC234 client-candidate 8 theirs", await whispers.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        await PusherTestServer.SendAsync(socket, """{"event":"notice","channel":"presence-wdb.room.ABC234","data":"{}"}""");
+        Assert.Equal("notice", await received.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+    }
+
+    [Fact]
+    public async Task RoomsAreOpenedJoinedAndGiveTheirIceServers()
+    {
+        var handler = new CapturingHandler
+        {
+            Respond = request => (request.Method.Method, request.RequestUri!.AbsolutePath) switch
+            {
+                ("POST", "/api/wdb/rooms") => (HttpStatusCode.Created, """{"code":"ABC234","channel":"presence-wdb.room.ABC234"}"""),
+                ("POST", "/api/wdb/rooms/ABC234/join") => (HttpStatusCode.OK, """{"code":"ABC234","channel":"presence-wdb.room.ABC234"}"""),
+                ("POST", "/api/wdb/rooms/GONE22/join") => (HttpStatusCode.NotFound, "{}"),
+                ("GET", "/api/wdb/rooms/ABC234/ice-servers") => (HttpStatusCode.OK, """{"ice_servers":[{"urls":["stun:stun.cloudflare.com:3478"]},{"urls":["turn:turn.cloudflare.com:3478?transport=udp"],"username":"u","credential":"c"}]}"""),
+                _ => (HttpStatusCode.InternalServerError, "{}"),
+            },
+        };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://taikonline.test/") };
+        var rooms = new RoomClient(http);
+
+        Assert.Equal(new OnlineRoom("ABC234", "presence-wdb.room.ABC234"), await rooms.CreateAsync());
+        Assert.Equal("presence-wdb.room.ABC234", (await rooms.JoinAsync("ABC234"))?.Channel);
+        Assert.Null(await rooms.JoinAsync("GONE22"));
+        var servers = await rooms.IceServersAsync("ABC234");
+        Assert.Equal("stun:stun.cloudflare.com:3478", Assert.Single(servers[0].Urls));
+        Assert.Null(servers[0].Username);
+        Assert.Equal(("u", "c"), (servers[1].Username, servers[1].Credential));
     }
 
     [Fact]

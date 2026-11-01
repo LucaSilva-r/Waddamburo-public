@@ -19,7 +19,7 @@ public sealed record PresenceMember(string Id, JsonElement Info);
 /// Close codes follow the Pusher protocol: 4000-4099 the server will refuse a reconnect as well (the
 /// client stops), 4100-4199 reconnect after backing off, 4200-4299 reconnect at once; anything else
 /// (a dropped line) backs off. pusher:error messages never decide this: Reverb sends them for a refused
-/// private channel (4009) on a connection that stays open. ponytail: receive-only (no client events).
+/// private channel (4009) on a connection that stays open.
 /// </remarks>
 public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncDisposable
 {
@@ -55,6 +55,12 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
     /// <summary>Someone left a presence channel: their user id.</summary>
     public event Action<string, string>? MemberRemoved;
 
+    /// <summary>
+    /// Another member's client event: channel, event name, the sender's user id (Reverb's word, on presence channels;
+    /// empty on others) and data. Valid only during the call. The data is whatever the sender wrote: treat it as untrusted.
+    /// </summary>
+    public event Action<string, string, string, JsonElement>? Whispered;
+
     /// <summary>Connected (true) or lost (false); a lost connection keeps retrying unless <see cref="Stopped"/>.</summary>
     public event Action<bool>? ConnectionChanged;
 
@@ -85,6 +91,17 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
                 return;
         if (_socketId is not null)
             _ = sendAsync("pusher:unsubscribe", writer => writer.WriteString("channel", channel), _stop.Token);
+    }
+
+    /// <summary>
+    /// Sends a client event to the channel's other members, when connected and once subscribed; otherwise it's lost.
+    /// <paramref name="name"/> starts with "client-". Reverb's limit is 10 kB by default.
+    /// </summary>
+    public Task WhisperAsync(string channel, string name, Action<Utf8JsonWriter> data)
+    {
+        if (!name.StartsWith("client-", StringComparison.Ordinal))
+            throw new ArgumentException("A client event's name starts with client-.", nameof(name));
+        return sendAsync(name, data, _stop.Token, channel);
     }
 
     public async ValueTask DisposeAsync()
@@ -243,7 +260,11 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
                     MemberRemoved?.Invoke(channelName, userId(data.RootElement));
                     break;
                 default:
-                    if (channelName is not null && !name.StartsWith("pusher_internal:", StringComparison.Ordinal) && data is not null)
+                    if (channelName is null || data is null || name.StartsWith("pusher_internal:", StringComparison.Ordinal))
+                        break;
+                    if (name.StartsWith("client-", StringComparison.Ordinal))
+                        Whispered?.Invoke(channelName, name, root.TryGetProperty("user_id", out var sender) ? sender.ToString() : "", data.RootElement);
+                    else
                         Received?.Invoke(channelName, name, data.RootElement);
                     break;
             }
@@ -279,7 +300,7 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task sendAsync(string name, Action<Utf8JsonWriter>? data, CancellationToken cancellationToken)
+    private async Task sendAsync(string name, Action<Utf8JsonWriter>? data, CancellationToken cancellationToken, string? channel = null)
     {
         if (_socket is not { State: WebSocketState.Open } socket)
             return;
@@ -288,6 +309,8 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
         {
             writer.WriteStartObject();
             writer.WriteString("event", name);
+            if (channel is not null)
+                writer.WriteString("channel", channel);
             writer.WriteStartObject("data");
             data?.Invoke(writer);
             writer.WriteEndObject();

@@ -1,0 +1,174 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Threading.Channels;
+using Waddamburo.Game.Online;
+
+namespace Waddamburo.Game.Tests;
+
+public sealed class PeerLinkTests
+{
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
+
+    private static PeerCandidate loopback(PeerLink link) => new(PeerCandidateKind.Host, new IPEndPoint(IPAddress.Loopback, link.LocalPort));
+
+    private static async Task until(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + Wait;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Timed out.");
+            await Task.Delay(20);
+        }
+    }
+
+    [Fact]
+    public async Task TwoLinksConnectAndCarryPayloadsBothWays()
+    {
+        await using var left = new PeerLink();
+        await using var right = new PeerLink();
+        var toLeft = Channel.CreateUnbounded<byte[]>();
+        var toRight = Channel.CreateUnbounded<byte[]>();
+        left.Received += payload => toLeft.Writer.TryWrite(payload);
+        right.Received += payload => toRight.Writer.TryWrite(payload);
+
+        left.Connect(right.LocalToken, [loopback(right)]);
+        right.Connect(left.LocalToken, [loopback(left)]);
+        await until(() => left.State == PeerLinkState.Direct && right.State == PeerLinkState.Direct);
+
+        left.Send([1, 2, 3]);
+        right.Send([4, 5]);
+        Assert.Equal([1, 2, 3], await toRight.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        Assert.Equal([4, 5], await toLeft.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        Assert.NotNull(left.RoundTrip);
+    }
+
+    [Fact]
+    public async Task AWrongTokenNeverConnects()
+    {
+        await using var left = new PeerLink { ConnectTimeout = TimeSpan.FromMilliseconds(500) };
+        await using var right = new PeerLink { ConnectTimeout = TimeSpan.FromMilliseconds(500) };
+
+        left.Connect(RandomNumberGenerator.GetBytes(8), [loopback(right)]);
+        right.Connect(left.LocalToken, [loopback(left)]);
+
+        await until(() => left.State == PeerLinkState.Failed);
+        await until(() => right.State == PeerLinkState.Failed);
+    }
+
+    [Fact]
+    public async Task APeerThatGoesSilentCountsAsDisconnected()
+    {
+        await using var left = new PeerLink { PeerTimeout = TimeSpan.FromMilliseconds(500) };
+        var right = new PeerLink();
+        left.Connect(right.LocalToken, [loopback(right)]);
+        right.Connect(left.LocalToken, [loopback(left)]);
+        await until(() => left.State == PeerLinkState.Direct);
+
+        await right.DisposeAsync();
+
+        await until(() => left.State == PeerLinkState.Disconnected);
+        left.Send([1]); // dropped, not thrown
+    }
+
+    [Fact]
+    public async Task GarbageFromStrangersIsIgnored()
+    {
+        await using var left = new PeerLink();
+        await using var right = new PeerLink();
+        var received = 0;
+        left.Received += _ => Interlocked.Increment(ref received);
+        using var stranger = new UdpClient(AddressFamily.InterNetwork);
+        var target = new IPEndPoint(IPAddress.Loopback, left.LocalPort);
+        left.Connect(right.LocalToken, [loopback(right)]);
+        right.Connect(left.LocalToken, [loopback(left)]);
+
+        for (var size = 0; size < 64; size++)
+        {
+            var garbage = RandomNumberGenerator.GetBytes(size);
+            await stranger.SendAsync(garbage, target);
+            if (size >= 9)
+            {
+                garbage[0] = 0xD3; // a payload without the token
+                await stranger.SendAsync(garbage, target);
+            }
+            if (size >= 20)
+            {
+                // STUN's magic, with attributes that run past the end, and a relay's data from someone not our relay.
+                new byte[] { 0x00, 0x17, 0x00, (byte)(size - 20), 0x21, 0x12, 0xA4, 0x42 }.CopyTo(garbage, 0);
+                await stranger.SendAsync(garbage, target);
+            }
+        }
+
+        await until(() => left.State == PeerLinkState.Direct);
+        Assert.Equal(0, Volatile.Read(ref received));
+    }
+
+    [Fact]
+    public void StunMessagesSurviveTheWireAndBrokenOnesAreRefused()
+    {
+        var address = new IPEndPoint(IPAddress.Parse("203.0.113.9"), 40000);
+        var message = new StunMessage(StunMessage.SendIndication).WithAddress(StunMessage.XorPeerAddress, address).With(StunMessage.Data, [1, 2, 3]);
+        var wire = message.Encode();
+
+        var parsed = StunMessage.Parse(wire);
+        Assert.NotNull(parsed);
+        Assert.Equal(StunMessage.SendIndication, parsed.Type);
+        Assert.Equal(address, parsed.Address(StunMessage.XorPeerAddress));
+        Assert.Equal([1, 2, 3], parsed.Find(StunMessage.Data));
+        Assert.Equal(0, wire.Length % 4); // attributes are padded
+
+        Assert.Null(StunMessage.Parse(wire.AsSpan(0, wire.Length - 1)));
+        wire[4] ^= 0xFF;
+        Assert.Null(StunMessage.Parse(wire));
+    }
+
+    [Theory]
+    [InlineData("relay 203.0.113.9:40000", true)]
+    [InlineData("host 192.168.1.2:1234", true)]
+    [InlineData("nonsense", false)]
+    [InlineData("relay 203.0.113.9", false)]
+    [InlineData("7 203.0.113.9:40000", false)]
+    [InlineData("host [::1]:1234", false)]
+    public void CandidatesFromTheOtherPlayerAreParsedCarefully(string text, bool valid)
+    {
+        var candidate = PeerCandidate.Parse(text);
+        Assert.Equal(valid, candidate is not null);
+        if (candidate is { } parsed)
+            Assert.Equal(text, parsed.ToString());
+    }
+
+    /// <summary>
+    /// Against a real coturn that allows private peers, so it can relay on one machine: set WADDAMBURO_TEST_TURN to
+    /// host:port and WADDAMBURO_TEST_TURN_SECRET to its secret. Without them this checks nothing and passes.
+    /// </summary>
+    [Fact]
+    public async Task TwoLinksConnectThroughARealRelay()
+    {
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_TEST_TURN") is not { Length: > 0 } turn
+            || Environment.GetEnvironmentVariable("WADDAMBURO_TEST_TURN_SECRET") is not { Length: > 0 } secret)
+            return;
+        var username = $"{DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds()}:1";
+#pragma warning disable CA5350 // coturn's use-auth-secret is defined on HMAC-SHA1.
+        var credential = Convert.ToBase64String(HMACSHA1.HashData(System.Text.Encoding.UTF8.GetBytes(secret), System.Text.Encoding.UTF8.GetBytes(username)));
+#pragma warning restore CA5350
+        IceServer[] servers = [new([$"stun:{turn}"]), new([$"turn:{turn}?transport=udp"], username, credential)];
+        await using var left = new PeerLink();
+        await using var right = new PeerLink();
+        var toRight = Channel.CreateUnbounded<byte[]>();
+        right.Received += payload => toRight.Writer.TryWrite(payload);
+
+        var leftRelay = (await left.GatherAsync(servers)).Single(static candidate => candidate.Kind == PeerCandidateKind.Relay);
+        var rightCandidates = await right.GatherAsync(servers);
+        var rightRelay = rightCandidates.Single(static candidate => candidate.Kind == PeerCandidateKind.Relay);
+        Assert.Contains(rightCandidates, static candidate => candidate.Kind == PeerCandidateKind.Reflexive);
+
+        // Only the relays, as for two players whose NATs block everything else.
+        left.Connect(right.LocalToken, [rightRelay]);
+        right.Connect(left.LocalToken, [leftRelay]);
+        await until(() => left.State == PeerLinkState.Relayed && right.State == PeerLinkState.Relayed);
+
+        left.Send([9, 9]);
+        Assert.Equal([9, 9], await toRight.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+    }
+}
