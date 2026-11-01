@@ -32,6 +32,7 @@ internal sealed class OnlineEcho
         {
             any.RemoteLane = null;
             any.Relay = null;
+            any.RemoteLaneIndex = 1;
         }
         if (gameplay is null || Delay is not { } delay)
             return null;

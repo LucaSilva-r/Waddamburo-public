@@ -177,6 +177,9 @@ internal sealed class GameShell : IDisposable
     // Overlays that take the keyboard (topmost last) and the painter Waddamburo's own overlays draw with.
     private readonly IInputOverlay[] _inputOverlays;
 
+    /// <summary>A song played with the room's other player.</summary>
+    public OnlineMatch Match { get; private set; } = null!;
+
     /// <summary>The Online folder's panel, and the room it holds.</summary>
     public RoomOverlay Room { get; private set; } = null!;
     public OverlayPainter Painter { get; }
@@ -472,6 +475,7 @@ internal sealed class GameShell : IDisposable
         _search = new SongSearch(this, _libraries.Snapshot, Painter);
         _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
         Room = new RoomOverlay(this, Painter);
+        Match = new OnlineMatch(this);
         _inputOverlays = [_search, _scores, Room];
         Reload = new SongSelectReload(this);
         var entry = new EntryFlow(this);
@@ -646,6 +650,7 @@ internal sealed class GameShell : IDisposable
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
         var presses = _input.Take(keys);
         reportStatus();
+        Match.Tick();
         if (backToAttract(presses.Attract))
             return;
         coins(_input.TakeCoins(keys));

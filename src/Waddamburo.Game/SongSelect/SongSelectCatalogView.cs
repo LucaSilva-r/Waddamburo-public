@@ -130,7 +130,8 @@ public sealed class SongSelectCatalogView
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
-        IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, OnlineFolderView? onlineFolder = null)
+        IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, OnlineFolderView? onlineFolder = null,
+        SongKey? onlySong = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -215,6 +216,11 @@ public sealed class SongSelectCatalogView
         if (online)
             categories = categories.Append(control(SongBrowseControl.Online, "Online"));
         Categories = onlineFolder is null ? [.. categories] : [.. OnlineSpines(onlineFolder)];
+        // An online guest picks a course on the host's song: it alone, in a folder of its own.
+        if (onlySong is not null && Categories.SelectMany(static category => category.Songs)
+                .FirstOrDefault(entry => entry.Descriptor.Key == onlySong) is { } only)
+            Categories = [new SongSelectCategory(new CategoryKey(onlySong.Source, "online-song"), "Online", FeatureLabel,
+                SongCategoryPresentation.AlwaysVisible, boardStyle(""), [only])];
     }
 
     /// <summary>The Online folder's spines: a room's settings when in one, otherwise how to get into one.</summary>

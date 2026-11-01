@@ -207,7 +207,9 @@ internal sealed class HomeControls : IDisposable
     // course only pauses on Escape: its pause can't be resumed, which leaving the window shouldn't cost.
     private bool openMenu(bool escape)
     {
-        if (_menu.IsOpen || !(escape || home && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
+        // Online, the song goes on whatever this player does: leaving the window doesn't stop it.
+        var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
+        if (_menu.IsOpen || !(escape || home && !online && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
         if (active == FlowScenes.Gameplay)
         {
@@ -220,7 +222,9 @@ internal sealed class HomeControls : IDisposable
                 return true;
             _restart.CancelHold();
             _pauseInterpolation = _lastInterpolation;
-            _gameplay.SetPaused(true, _pauseInterpolation);
+            // Online, Escape opens the menu over a song that keeps playing.
+            if (!online)
+                _gameplay.SetPaused(true, _pauseInterpolation);
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse);
             return true;
         }
@@ -259,7 +263,7 @@ internal sealed class HomeControls : IDisposable
         switch (action)
         {
             // A reviewed play carries on at once: there is nothing to get ready for.
-            case HomeMenuAction.Resume when active == FlowScenes.Gameplay && _resume is { } resume && !_gameplay.Reviewing:
+            case HomeMenuAction.Resume when active == FlowScenes.Gameplay && !_shell.Match.InSong && _resume is { } resume && !_gameplay.Reviewing:
                 resume.Start();
                 break;
             case HomeMenuAction.Resume:

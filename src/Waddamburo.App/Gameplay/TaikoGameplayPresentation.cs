@@ -55,6 +55,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// </summary>
     public RemoteLaneFeed? RemoteLane { get; set; }
 
+    /// <summary>Online play: which of the two lanes is the other player's (the drum they'd stand at).</summary>
+    public int RemoteLaneIndex { get; set; } = 1;
+
     /// <summary>Online play: this player's hits go to the other player through it.</summary>
     public HitRelay? Relay { get; set; }
 
@@ -110,8 +113,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
             courses[lane], lane, lane, players: 2, kusudama,
             // The other player's drum isn't heard: only this player's own drum sounds under their hands.
-            lane == 1 && RemoteLane is not null ? null : playHitSound, don, playEventSound, stage, reviews?[lane],
-            Options.ElementAtOrDefault(lane), EndBanner, remote: lane == 1 ? RemoteLane : null, relay: lane == 0 ? Relay : null))];
+            lane == RemoteLaneIndex && RemoteLane is not null ? null : playHitSound, don, playEventSound, stage, reviews?[lane],
+            Options.ElementAtOrDefault(lane), EndBanner, remote: lane == RemoteLaneIndex ? RemoteLane : null,
+            relay: lane != RemoteLaneIndex ? Relay : null))];
         // ponytail: online, the kusudama stays shared (both lanes pop it, the other player's hits a delay late).
         if (RemoteLane is not null)
             return;

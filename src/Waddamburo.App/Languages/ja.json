@@ -315,5 +315,13 @@
   "online.room_gone": "ルームが閉じられました。",
   "online.searching": "対戦相手を探しています...",
   "online.connecting": "相手に接続中...",
-  "online.peer_left": "相手が退出しました。"
+  "online.peer_left": "相手が退出しました。",
+  "online.waiting_pick": "{0}が選ぶのを待っています...",
+  "online.partner_picked": "{0}が{1}を選びました。むずかしさを選んでね!",
+  "online.pick_host_song": "ホストの曲を選んでください。",
+  "online.no_course": "その曲にそのむずかしさがありません。",
+  "online.partner_missing": "{0}はその曲を持っていません。",
+  "online.song_missing": "ホストの曲を持っていません。",
+  "online.waiting_ready": "相手の準備を待っています...",
+  "online.you_pick": "あなたがホストです。曲を選んでね!"
 }

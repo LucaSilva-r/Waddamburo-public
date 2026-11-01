@@ -175,6 +175,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>The play's chart hash; null for a dan course, whose songs change along the way.</summary>
     public string? PlayingChart { get; private set; }
 
+    // The drum this game's own player stands at.
+    private LocalPlayerSlot localSlot() => Shell.JoinedSides.Count > 0 && Shell.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
+
     public override void Enter(SceneId scene)
     {
         var request = Shell.PlayRequests.ActivatePending();
@@ -233,6 +236,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
         _echo = _demo || _review is not null || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
+        if (Shell.Match.InSong)
+            Shell.Match.Start(Shell.Gameplay, request.Players.ToList().FindIndex(player => player.Player != localSlot()));
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
@@ -551,7 +556,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
         }
         var overlay = Shell.Overlay;
-        if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick))
+        // Online: both games open the rainbow together, once both could.
+        if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick) && Shell.Match.MayReveal())
         {
             var request = Shell.PlayRequests.Active
                 ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
@@ -714,7 +720,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Dan = null;
         _course = null;
         dropNextAudio();
-        if (finished && Shell.PlayRequests.Active is { } played)
+        var online = Shell.Match.InSong;
+        Shell.Match.SongEnded();
+        // Online plays are for fun: never kept or uploaded.
+        if (finished && !online && Shell.PlayRequests.Active is { } played)
         {
             saveScore(played);
             if (Shell.Hosts.DanResult is { } danPlay && finishedCourse is not null)

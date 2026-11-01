@@ -12,6 +12,9 @@ public sealed record OnlineRoom(string Code, string Channel)
     public bool IsPublic { get; init; }
 
     public bool HasPassword { get; init; }
+
+    /// <summary>This player opened the room (or waited in it for quick play): they pick the songs.</summary>
+    public bool IsHost { get; init; }
 }
 
 /// <summary>A room anyone can join, as the list shows it.</summary>

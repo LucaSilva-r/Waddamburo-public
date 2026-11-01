@@ -195,7 +195,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
         if (GameActions.Down(input.Keys, GameAction.Favourite) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
             Console.WriteLine("Favourite: the cursor is on no song.");
-        if (Shell.PlayRequests.Pending is { } request)
+        // Online, a guest only plays the host's song.
+        if (Shell.PlayRequests.Pending is { } request && Shell.Match.Accept(request))
             coverForGameplay(request);
     }
 
@@ -250,6 +251,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (Shell.Overlay.Player is { } cover && rainbow.FinishCoverWhenStopped(cover.IsPlaying, Shell.Tick))
             _coveredAt = Shell.Tick;
+        // Online: held on the song title until the other player has picked, then it plays with them.
+        if (_coveredAt is not null)
+        {
+            if (Shell.Match.Together(request) is not { } together)
+                return;
+            request = together;
+        }
         // Held on the song title (shown) until the song's scene is decoded and uploaded (then its switch is quick).
         if (_coveredAt is { } coveredAt && ((titleReady && _prefetch is not null && _composing is null && Shell.PrefetchReady)
                 || Shell.Tick - coveredAt >= CoverHoldLimitTicks))

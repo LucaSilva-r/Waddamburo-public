@@ -315,5 +315,13 @@
   "online.room_gone": "The room closed.",
   "online.searching": "Looking for a player...",
   "online.connecting": "Connecting to the other player...",
-  "online.peer_left": "The other player left."
+  "online.peer_left": "The other player left.",
+  "online.waiting_pick": "Waiting for {0} to choose...",
+  "online.partner_picked": "{0} chose {1}. Pick your course!",
+  "online.pick_host_song": "Pick the host's song to play together.",
+  "online.no_course": "That course isn't in your copy of the song.",
+  "online.partner_missing": "{0} doesn't have that song.",
+  "online.song_missing": "You don't have the host's song.",
+  "online.waiting_ready": "Waiting for the other player to load...",
+  "online.you_pick": "You're the host: pick a song!"
 }

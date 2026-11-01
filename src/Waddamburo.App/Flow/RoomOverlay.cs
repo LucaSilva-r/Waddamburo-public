@@ -38,6 +38,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     public bool IsOpen => _prompt != Prompt.None;
 
+    /// <summary>The room the player is in, once they're in it.</summary>
+    public OnlineSession? Session => _start is { IsCompletedSuccessfully: true, Result: true } ? _session : null;
+
     /// <summary>The player is typing: the keyboard's letters and Backspace aren't shortcuts now.</summary>
     public bool Typing => IsOpen;
 
@@ -156,7 +159,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 painter.Text(hint, OverlayPainter.StageWidth / 2, y + 108, Width - 48, 28),
             ];
         }
-        if (banner() is not { } text || shell.Active.Id != FlowScenes.SongSelect)
+        if (banner() is not { } text || shell.Active.Id != FlowScenes.SongSelect && !(shell.Match.HoldsReveal && shell.Active.Id == FlowScenes.Gameplay))
             return [];
         return
         [
@@ -325,6 +328,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         if (_session is not { Room: not null } session || _start is { IsCompleted: true, Result: false })
             return null;
+        if (session.Link.State is PeerLinkState.Direct or PeerLinkState.Relayed && shell.Match.Status is { } status)
+            return status;
         return session.Link.State switch
         {
             PeerLinkState.Idle => _quickPlay ? T("online.searching")

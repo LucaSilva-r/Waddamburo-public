@@ -165,6 +165,29 @@ internal sealed class LayerHostFactory(
     /// <summary>Song Select shows the Online folder's spines in place of the songs (null: the songs).</summary>
     public OnlineFolderView? OnlineFolder { get; private set; }
 
+    /// <summary>The next Song Select opens on this song (an online host's pick), in its own library.</summary>
+    public void FocusSong(SongKey song)
+    {
+        if (catalog.Categories.FirstOrDefault(category => category.Songs.Contains(song)) is not { } category)
+            return;
+        if (libraries().Contains(category.Key.Source))
+            _library = category.Key.Source;
+        _focus = (category.Key, song);
+        (OnlineFolder, _browseLeft, _searchShown) = (null, null, false);
+    }
+
+    private (CategoryKey Category, SongKey Song)? _focus;
+
+    /// <summary>Song Select lists only this song (the online host's pick, for the guest's course), from any library; null: as usual.</summary>
+    public SongKey? OnlineSong { get; private set; }
+
+    public void ShowOnlineSong(SongKey? song)
+    {
+        OnlineSong = song;
+        if (song is not null)
+            (OnlineFolder, _browseLeft, _searchShown) = (null, null, false);
+    }
+
     /// <summary>What the next Song Select lists, with the cursor on that spine.</summary>
     public void ShowOnlineFolder(OnlineFolderView? view, SongBrowseControl? cursor = null)
     {
@@ -347,17 +370,21 @@ internal sealed class LayerHostFactory(
     {
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
-            modeSwitch: TwoPlayers, library: linked.Length > 0 ? Library : null,
+            modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null,
             danSeries: arcade.Home ? Dan?.Series : null,
-            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlineFolder: OnlineFolder);
+            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlineFolder: OnlineFolder, onlySong: OnlineSong);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;
+        if (_focus is { } focus)
+            (_lastPick, _focus) = (focus, null);
         var (start, startSong) = (0, -1);
-        if (_searchShown)
+        if (OnlineSong is not null)
+            (start, startSong) = (0, 0);
+        else if (_searchShown)
             start = Math.Max(view.Categories.ToList().FindIndex(category => category.Key == SongSelectCatalogView.SearchKey), 0);
         else if (_browseLeft is { } control)
             start = Math.Max(view.Categories.ToList().FindIndex(category => category.Control == control), 0);

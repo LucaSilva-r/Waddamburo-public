@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.Game.Online;
 
@@ -61,6 +62,37 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
 
     public PeerLink Link { get; } = new();
 
+    /// <summary>The players' messages to each other (a song picked, ready, go).</summary>
+    public RoomMessages Messages { get; } = new();
+
+    /// <summary>
+    /// A song being played together: this player's hits go out through the relay, the other player's come in to the
+    /// feed. Set for a song, cleared after it (null meanwhile: their hits aren't expected).
+    /// </summary>
+    public (HitRelay Relay, RemoteLaneFeed Feed)? Song { get; set; }
+
+    /// <summary>Sends what's due over the link: the messages not yet confirmed, and the song's hits. Each game tick.</summary>
+    public void Pump()
+    {
+        foreach (var packet in Messages.Due())
+            Link.Send(packet);
+        if (Song is { } song)
+            Link.Send(song.Relay.Build());
+    }
+
+    // What the other player sends: a message, or (in a song) their hits.
+    private void received(byte[] packet)
+    {
+        if (Messages.Read(packet, out var reply))
+        {
+            if (reply is not null)
+                Link.Send(reply);
+            return;
+        }
+        if (Song is { } song)
+            song.Relay.Read(packet, song.Feed);
+    }
+
     /// <summary>This player opened the room (or is waiting in quick play) rather than joining it.</summary>
     public bool IsHost { get; private set; }
 
@@ -105,6 +137,8 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     public async Task<bool> QuickPlayAsync(CancellationToken cancellationToken = default)
     {
         Room = await _rooms.QuickPlayAsync(cancellationToken).ConfigureAwait(false);
+        // Whoever was waiting hosts: the server says which.
+        IsHost = Room.IsHost;
         _strangers = true;
         await connectAsync(cancellationToken).ConfigureAwait(false);
         return true;
@@ -143,6 +177,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     private async Task connectAsync(CancellationToken cancellationToken)
     {
         var room = Room!;
+        Link.Received += received;
         _keepingAlive = Task.Run(() => keepAliveAsync(room.Code, _stop.Token), CancellationToken.None);
         var servers = await _rooms.IceServersAsync(room.Code, cancellationToken).ConfigureAwait(false);
         _candidates = await Link.GatherAsync(servers, cancellationToken).ConfigureAwait(false);
