@@ -252,6 +252,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
     public SongBrowseControl? BrowseRequested { get; private set; }
 
+    /// <summary>The room that spine stands for, if any.</summary>
+    public string? BrowseRoom { get; private set; }
+
     /// <summary>Song Select reloads for the host (library, grouping, order, search): its music plays on.</summary>
     public bool Reloading { get; set; }
 
@@ -413,6 +416,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     {
                         LibraryRequested = _session.Catalog.Categories[genre].Link;
                         BrowseRequested = _session.Catalog.Categories[genre].Control;
+                        BrowseRoom = _session.Catalog.Categories[genre].RoomCode;
                     }
                 }
                 return LumenHostValue.FromBoolean(true);

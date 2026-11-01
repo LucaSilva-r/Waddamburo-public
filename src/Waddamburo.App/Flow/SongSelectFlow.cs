@@ -165,6 +165,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             return;
         // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, Song Select
         // reloading on that spine.
+        // The Online folder's spines.
+        if (Shell.Hosts.SongSelect?.BrowseRequested is { } online and not (SongBrowseControl.Group or SongBrowseControl.Sort))
+        {
+            Shell.Room.Handle(online, Shell.Hosts.SongSelect.BrowseRoom);
+            return;
+        }
         if (Shell.Hosts.SongSelect?.BrowseRequested is { } control)
         {
             Shell.Reload.Start(() =>

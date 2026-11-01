@@ -35,18 +35,23 @@ public sealed record PeerOffer(byte[] Token, IReadOnlyList<PeerCandidate> Candid
 }
 
 /// <summary>
-/// Opening a room or taking a seat in one, then connecting to the other player: gathers this side's addresses, joins
-/// the room's channel, and swaps offers there. Whoever finds the other already in the room speaks first, and the other
-/// answers, so it doesn't matter who arrives when. After that the link needs neither the channel nor the server.
+/// Being in a room, and connecting to the other player: gathers this side's addresses, joins the room's channel, and swaps
+/// offers there. Whoever finds the other already in the room speaks first, and the other answers, so it doesn't matter who
+/// arrives when. After that the link needs neither the channel nor the server, though the room is kept alive until left.
 /// </summary>
+/// <remarks>ponytail: one link per session, so once the other player leaves the room is over; a new guest would need a new link.</remarks>
 public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsyncDisposable
 {
     private const string OfferEvent = "client-peer-offer";
+    private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(15);
 
     private readonly RoomClient _rooms = new(http);
     private readonly NoticeClient _notices = new(http);
+    private readonly CancellationTokenSource _stop = new();
     private RealtimeConnection? _realtime;
-    private PeerOffer? _offer;
+    private Task? _keepingAlive;
+    private IReadOnlyList<PeerCandidate> _candidates = [];
+    private bool _strangers;
     private int _offered;
     private int _connected;
 
@@ -54,19 +59,88 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
 
     public PeerLink Link { get; } = new();
 
-    /// <summary>Where this side can be reached, once started.</summary>
-    public IReadOnlyList<PeerCandidate> Candidates => _offer?.Candidates ?? [];
+    /// <summary>This player opened the room (or is waiting in quick play) rather than joining it.</summary>
+    public bool IsHost { get; private set; }
 
-    /// <summary>Hosts a new room, or with a <paramref name="code"/> joins one; false when that room can't be joined.</summary>
-    public async Task<bool> StartAsync(string? code = null, CancellationToken cancellationToken = default)
+    /// <summary>Joining was refused for the password.</summary>
+    public bool WrongPassword { get; private set; }
+
+    /// <summary>The room no longer exists: the host left, or it ran out.</summary>
+    public bool RoomGone { get; private set; }
+
+    /// <summary>Offer this player's own network's addresses even to strangers (testing two games on one machine).</summary>
+    public bool ShareLanWithStrangers { get; init; }
+
+    /// <summary>Where this side can be reached, once started.</summary>
+    public IReadOnlyList<PeerCandidate> Candidates => _candidates;
+
+    /// <summary>Opens a room hosted by this player.</summary>
+    public async Task<bool> HostAsync(string? name = null, bool isPublic = true, string? password = null, CancellationToken cancellationToken = default)
     {
-        Room = code is null ? await _rooms.CreateAsync(cancellationToken).ConfigureAwait(false)
-            : await _rooms.JoinAsync(code, cancellationToken).ConfigureAwait(false);
-        if (Room is not { } room)
+        Room = await _rooms.CreateAsync(name, isPublic, password, cancellationToken).ConfigureAwait(false);
+        IsHost = true;
+        await connectAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Joins a room; false when that can't be done. <paramref name="listed"/>: found in the public list, so its host is a stranger.</summary>
+    public async Task<bool> JoinAsync(string code, string? password = null, bool listed = false, CancellationToken cancellationToken = default)
+    {
+        var result = await _rooms.JoinAsync(code, password, cancellationToken).ConfigureAwait(false);
+        WrongPassword = result.WrongPassword;
+        Room = result.Room;
+        _strangers = listed;
+        if (Room is null)
             return false;
+        await connectAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Takes the waiting player's room, or waits for the next one in a new room.</summary>
+    public async Task<bool> QuickPlayAsync(CancellationToken cancellationToken = default)
+    {
+        Room = await _rooms.QuickPlayAsync(cancellationToken).ConfigureAwait(false);
+        _strangers = true;
+        await connectAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>The host changes the room: what's null stays as it is; an empty password removes it.</summary>
+    public async Task UpdateAsync(string? name = null, bool? isPublic = null, string? password = null, CancellationToken cancellationToken = default)
+    {
+        if (Room is { } room)
+            Room = await _rooms.UpdateAsync(room.Code, name, isPublic, password, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Leaves the room: a host's closes.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync().ConfigureAwait(false);
+        if (_keepingAlive is { } keepingAlive)
+            await keepingAlive.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        _stop.Dispose();
+        if (_realtime is { } realtime)
+            await realtime.DisposeAsync().ConfigureAwait(false);
+        if (Room is { } room)
+        {
+            try
+            {
+                await _rooms.LeaveAsync(room.Code).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                Console.Error.WriteLine($"Warning ONLINE: room not left ({exception.Message}); it runs out by itself.");
+            }
+        }
+        await Link.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private async Task connectAsync(CancellationToken cancellationToken)
+    {
+        var room = Room!;
+        _keepingAlive = Task.Run(() => keepAliveAsync(room.Code, _stop.Token), CancellationToken.None);
         var servers = await _rooms.IceServersAsync(room.Code, cancellationToken).ConfigureAwait(false);
-        var candidates = await Link.GatherAsync(servers, cancellationToken).ConfigureAwait(false);
-        _offer = new PeerOffer(Link.LocalToken.ToArray(), candidates);
+        _candidates = await Link.GatherAsync(servers, cancellationToken).ConfigureAwait(false);
         if (await _notices.RealtimeAsync(cancellationToken).ConfigureAwait(false) is not { } url)
             throw new InvalidOperationException("The server has no realtime connection.");
         var realtime = new RealtimeConnection(url, insecure)
@@ -91,31 +165,44 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
         realtime.Subscribe(room.Channel);
         realtime.Start();
         _realtime = realtime;
-        return true;
     }
 
-    /// <summary>Leaves the room: a host's closes.</summary>
-    public async ValueTask DisposeAsync()
+    private async Task keepAliveAsync(string code, CancellationToken cancellationToken)
     {
-        if (_realtime is { } realtime)
-            await realtime.DisposeAsync().ConfigureAwait(false);
-        if (Room is { } room)
+        try
         {
-            try
+            while (true)
             {
-                await _rooms.LeaveAsync(room.Code).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-            {
-                Console.Error.WriteLine($"Warning ONLINE: room not left ({exception.Message}); it expires by itself.");
+                await Task.Delay(KeepAliveInterval, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (!await _rooms.KeepAliveAsync(code, cancellationToken).ConfigureAwait(false))
+                    {
+                        RoomGone = true;
+                        return;
+                    }
+                }
+                catch (HttpRequestException exception)
+                {
+                    // The server being away doesn't end a game already connected.
+                    Console.Error.WriteLine($"Warning ONLINE: {exception.Message}");
+                }
             }
         }
-        await Link.DisposeAsync().ConfigureAwait(false);
+        catch (OperationCanceledException)
+        {
+            // Left.
+        }
     }
 
+    // Someone met through the list or quick play is a stranger: they get no addresses from this player's own network.
+    // Two players on one LAN then connect through their router. Decided now: a host may have changed the room.
     private void sendOffer()
     {
-        if (Interlocked.Exchange(ref _offered, 1) == 0 && _realtime is { } realtime && Room is { } room && _offer is { } offer)
-            _ = realtime.WhisperAsync(room.Channel, OfferEvent, offer.Write);
+        if (Interlocked.Exchange(ref _offered, 1) != 0 || _realtime is not { } realtime || Room is not { } room)
+            return;
+        var strangers = (_strangers || IsHost && room.IsPublic) && !ShareLanWithStrangers;
+        var offer = new PeerOffer(Link.LocalToken.ToArray(), strangers ? [.. _candidates.Where(static candidate => candidate.Kind != PeerCandidateKind.Host)] : _candidates);
+        _ = realtime.WhisperAsync(room.Channel, OfferEvent, offer.Write);
     }
 }

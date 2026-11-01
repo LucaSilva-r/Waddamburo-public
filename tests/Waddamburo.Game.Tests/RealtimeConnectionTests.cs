@@ -309,6 +309,12 @@ public sealed class RealtimeConnectionTests
             Respond = request => (request.Method.Method, request.RequestUri!.AbsolutePath) switch
             {
                 ("POST", "/api/wdb/rooms") => (HttpStatusCode.Created, """{"code":"ABC234","channel":"presence-wdb.room.ABC234"}"""),
+                ("POST", "/api/wdb/rooms/quick-play") => (HttpStatusCode.OK, """{"code":"QUICK2","channel":"presence-wdb.room.QUICK2"}"""),
+                ("POST", "/api/wdb/rooms/QUICK2/keep-alive") => (HttpStatusCode.NoContent, "{}"),
+                ("POST", "/api/wdb/rooms/GONE22/keep-alive") => (HttpStatusCode.NotFound, "{}"),
+                ("POST", "/api/wdb/rooms/LOCKED/join") => (HttpStatusCode.Forbidden, """{"message":"Wrong password.","wrong_password":true}"""),
+                ("GET", "/api/wdb/rooms") => (HttpStatusCode.OK, """{"rooms":[{"code":"ABC234","name":"Oni only","host":"Don","has_password":true}]}"""),
+                ("PATCH", "/api/wdb/rooms/ABC234") => (HttpStatusCode.OK, """{"code":"ABC234","channel":"c","name":"New","is_public":false,"has_password":true}"""),
                 ("POST", "/api/wdb/rooms/ABC234/join") => (HttpStatusCode.OK, """{"code":"ABC234","channel":"presence-wdb.room.ABC234"}"""),
                 ("POST", "/api/wdb/rooms/GONE22/join") => (HttpStatusCode.NotFound, "{}"),
                 ("GET", "/api/wdb/rooms/ABC234/ice-servers") => (HttpStatusCode.OK, """{"ice_servers":[{"urls":["stun:stun.cloudflare.com:3478"]},{"urls":["turn:turn.cloudflare.com:3478?transport=udp"],"username":"u","credential":"c"}]}"""),
@@ -318,9 +324,18 @@ public sealed class RealtimeConnectionTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://taikonline.test/") };
         var rooms = new RoomClient(http);
 
-        Assert.Equal(new OnlineRoom("ABC234", "presence-wdb.room.ABC234"), await rooms.CreateAsync());
-        Assert.Equal("presence-wdb.room.ABC234", (await rooms.JoinAsync("ABC234"))?.Channel);
-        Assert.Null(await rooms.JoinAsync("GONE22"));
+        Assert.Equal("presence-wdb.room.ABC234", (await rooms.CreateAsync()).Channel);
+        Assert.Equal("presence-wdb.room.ABC234", (await rooms.JoinAsync("ABC234")).Room?.Channel);
+        Assert.Null((await rooms.JoinAsync("GONE22")).Room);
+        Assert.Equal("QUICK2", (await rooms.QuickPlayAsync()).Code);
+        Assert.True(await rooms.KeepAliveAsync("QUICK2"));
+        Assert.False(await rooms.KeepAliveAsync("GONE22"));
+        Assert.True((await rooms.JoinAsync("LOCKED", "wrong")).WrongPassword);
+        Assert.Equal(new ListedRoom("ABC234", "Oni only", "Don", true), Assert.Single(await rooms.ListAsync()));
+        var updated = await rooms.UpdateAsync("ABC234", password: "");
+        Assert.Equal(("New", false, true), (updated.Name, updated.IsPublic, updated.HasPassword));
+        // What wasn't changed isn't sent: null would clear it.
+        Assert.Equal("""{"password":""}""", handler.Body);
         var servers = await rooms.IceServersAsync("ABC234");
         Assert.Equal("stun:stun.cloudflare.com:3478", Assert.Single(servers[0].Urls));
         Assert.Null(servers[0].Username);

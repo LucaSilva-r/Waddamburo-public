@@ -107,6 +107,9 @@ public sealed class NoticeClient(HttpClient http)
 [JsonSerializable(typeof(NoticeClient.StatusRequest))]
 [JsonSerializable(typeof(OnlineRoom))]
 [JsonSerializable(typeof(RoomClient.IceServersResult))]
+[JsonSerializable(typeof(RoomClient.ListResult))]
+[JsonSerializable(typeof(RoomClient.JoinRefusal))]
+[JsonSerializable(typeof(RoomClient.SettingsRequest))]
 [JsonSerializable(typeof(NoticeClient.ChannelAuthRequest))]
 [JsonSerializable(typeof(NoticeClient.ChannelAuthResult))]
 internal sealed partial class OnlineJson : JsonSerializerContext;

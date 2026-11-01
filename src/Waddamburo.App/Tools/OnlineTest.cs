@@ -83,7 +83,7 @@ internal static class OnlineTest
         var received = 0L;
         session.Link.Received += _ => Interlocked.Increment(ref received);
         session.Link.StateChanged += state => say($"Link: {state}{(session.Link.RemoteEndPoint is { } remote ? $" via {remote}" : "")}");
-        if (!await session.StartAsync(code).ConfigureAwait(false))
+        if (!(code is null ? await session.HostAsync(isPublic: false).ConfigureAwait(false) : await session.JoinAsync(code).ConfigureAwait(false)))
         {
             say($"Room {code} doesn't exist or is full.");
             return 3;

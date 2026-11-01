@@ -156,6 +156,19 @@ internal sealed class LayerHostFactory(
     }
     private SongBrowseControl? _browseLeft;
 
+    /// <summary>Whether Song Select offers the Online folder.</summary>
+    public Func<bool>? OnlineAvailable { get; init; }
+
+    /// <summary>Song Select shows the Online folder's spines in place of the songs (null: the songs).</summary>
+    public OnlineFolderView? OnlineFolder { get; private set; }
+
+    /// <summary>What the next Song Select lists, with the cursor on that spine.</summary>
+    public void ShowOnlineFolder(OnlineFolderView? view, SongBrowseControl? cursor = null)
+    {
+        OnlineFolder = view;
+        _browseLeft = cursor;
+    }
+
     /// <summary>The last search's results, listed first in Song Select (null: no search folder).</summary>
     public SongSearchResults? Search
     {
@@ -335,7 +348,8 @@ internal sealed class LayerHostFactory(
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null,
-            danSeries: arcade.Home ? Dan?.Series : null);
+            danSeries: arcade.Home ? Dan?.Series : null,
+            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlineFolder: OnlineFolder);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;

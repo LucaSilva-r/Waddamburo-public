@@ -298,5 +298,22 @@
   "score_list.offline": "スコアを見るにはアカウントにログインしてください（オンライン）。",
   "score_list.crown.clear": "クリア",
   "score_list.crown.full_combo": "フルコンボ",
-  "score_list.crown.all_great": "全良"
+  "score_list.crown.all_great": "全良",
+  "online.type_hint": "入力してEnter。Escでキャンセル",
+  "online.no_server": "サーバーに接続できませんでした。",
+  "online.no_room": "そのルームは存在しないか、満員です。",
+  "online.waiting_guest": "参加を待っています...",
+  "online.waiting_host": "ホストを待っています...",
+  "online.connected": "接続しました! 往復 {0:F0} ms",
+  "online.failed": "相手に接続できませんでした。",
+  "online.type_code": "ルームコード: {0}",
+  "online.type_name": "ルーム名: {0}",
+  "online.type_password": "パスワード: {0}",
+  "online.name_hint": "空欄ならあなたの名前を使います。Escでキャンセル",
+  "online.password_hint": "空欄ならパスワードなし。Escでキャンセル",
+  "online.wrong_password": "パスワードが違います。",
+  "online.room_gone": "ルームが閉じられました。",
+  "online.searching": "対戦相手を探しています...",
+  "online.connecting": "相手に接続中...",
+  "online.peer_left": "相手が退出しました。"
 }

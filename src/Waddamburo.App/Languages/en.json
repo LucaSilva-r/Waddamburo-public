@@ -298,5 +298,22 @@
   "score_list.offline": "Log in to an account (online) to see scores.",
   "score_list.crown.clear": "Clear",
   "score_list.crown.full_combo": "Full combo",
-  "score_list.crown.all_great": "All Great"
+  "score_list.crown.all_great": "All Great",
+  "online.type_hint": "Type, then Enter. Esc cancels.",
+  "online.no_server": "Couldn't reach the server.",
+  "online.no_room": "That room doesn't exist or is full.",
+  "online.waiting_guest": "Waiting for someone to join...",
+  "online.waiting_host": "Waiting for the host...",
+  "online.connected": "Connected! Round trip {0:F0} ms",
+  "online.failed": "Couldn't connect to the other player.",
+  "online.type_code": "Room code: {0}",
+  "online.type_name": "Room name: {0}",
+  "online.type_password": "Password: {0}",
+  "online.name_hint": "Leave empty to use your name. Esc cancels.",
+  "online.password_hint": "Leave empty for no password. Esc cancels.",
+  "online.wrong_password": "Wrong password.",
+  "online.room_gone": "The room closed.",
+  "online.searching": "Looking for a player...",
+  "online.connecting": "Connecting to the other player...",
+  "online.peer_left": "The other player left."
 }
