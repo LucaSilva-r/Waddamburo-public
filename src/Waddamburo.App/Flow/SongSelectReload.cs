@@ -33,8 +33,7 @@ internal sealed class SongSelectReload(GameShell shell)
         _change = change;
         _next = next;
         // The movies decode and upload on worker threads while the rainbow covers (the reload's cost).
-        _scene = FlowScenes.SongSelectScene(
-            shell.JoinedSides.Count > 0 ? [.. shell.JoinedSides] : [shell.Hosts.PlayerSide], shell.Hosts.Waiwai);
+        _scene = FlowScenes.SongSelectScene(shell.SongSelectSides, shell.Hosts.Waiwai);
         if (next is null)
             shell.Prefetch(_scene);
         shell.Overlay.Show(cover ?? FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);

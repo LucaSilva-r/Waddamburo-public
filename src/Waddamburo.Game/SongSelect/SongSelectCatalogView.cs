@@ -232,6 +232,7 @@ public sealed class SongSelectCatalogView
                     yield return control(SongBrowseControl.RoomInfo, $"Code: {room.Code}", room.Code);
             }
             yield return control(SongBrowseControl.LeaveRoom, "Leave Room");
+            yield return control(SongBrowseControl.LeaveOnline, "Back");
             yield break;
         }
         yield return control(SongBrowseControl.QuickPlay, "Quick Play");

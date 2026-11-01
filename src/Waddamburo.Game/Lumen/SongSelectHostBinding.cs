@@ -177,6 +177,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
+    // Those, and an online partner's side: their name board shows, though only this game's players choose.
+    private readonly int[] _shown;
     private readonly IReadOnlyDictionary<string, TaikoCrown>?[] _crowns; // per drum; null: a guest
     private readonly CountdownCues _countdownCues = new();
 
@@ -225,10 +227,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         IndicatorParts? parts = null,
         int side = 0,
         bool twoPlayers = false,
-        IReadOnlyDictionary<string, TaikoCrown>?[]? crowns = null)
+        IReadOnlyDictionary<string, TaikoCrown>?[]? crowns = null,
+        int? partner = null)
     {
         _crowns = crowns ?? [null, null];
         _sides = twoPlayers ? [0, 1] : [side];
+        _shown = partner is { } other && !_sides.Contains(other) ? [.. _sides.Append(other).Order()] : _sides;
         _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
@@ -534,6 +538,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // drum alone, both joined for two players. hasData (a profile) lets the boards show crowns.
         foreach (var player in new[] { 0, 1 })
         {
+            // An online partner isn't joined for the movie: it would wait for them to choose, with nobody at that drum.
             invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
                 LumenHostValue.FromBoolean(_crowns[player] is not null && _sides.Contains(player)),
                 // ponytail: jukuLevel -1 (none); the game sent 12 for a carded player (session13-card), from
@@ -565,7 +570,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             foreach (var player in new[] { 0, 1 })
                 if (!requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.isMania.{player}", true))
                     Console.Error.WriteLine("Song Select has no CourseResource.isMania; Oni stays hidden.");
-        _parts?.ShowGuestNames(_sides);
+        _parts?.ShowGuestNames(_shown);
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
         return true;
     }
@@ -627,6 +632,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         invoke("SetPapamamaSeparateBits", LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(separate));
         publishCrowns(song);
         return LumenHostValue.Undefined;
+    }
+
+    // An online partner's Don-chan: the movie frames in only joined players' (Resource.TweenDon_FrameIn), and hides them
+    // all as its Don models start. So each tick it's framed in: DonModel.Tween_FrameIn does nothing to one already showing.
+    private void showPartnerDon()
+    {
+        if (_player is not { } player)
+            return;
+        foreach (var partner in _shown.Except(_sides))
+            player.TryCallScriptMethod($"_global.CppConnection.resource.donFillrect.{partner}", "Tween_FrameIn", []);
     }
 
     // SetClearBits(player, silver, gold): one bit per authored course slot (ura = hidden oni, 7);
@@ -833,6 +848,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void Poll()
     {
+        showPartnerDon();
         hideSongPartsOnSeries();
         showSpeeds();
         if (_featureFolders.Count <= FeatureSlots || _player is null)

@@ -29,11 +29,17 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
 
     private int slot(int playerIndex) => MapPlayerZero && playerIndex == 0 ? 1 : playerIndex;
 
+    /// <summary>
+    /// An online partner on the right in Song Select: the movie turns only a joined second player's Don-chan inward, so
+    /// theirs takes the mirrored camera to face the centre (user-confirmed).
+    /// </summary>
+    public bool MirrorPartner { get; set; }
+
     public void Reset(DonPresentationLayout layout)
     {
         // A right-drum player's Katsu-chan is never mirrored: he faces the centre as in entry
         // (the mirrored camera only suits a second player standing beside a first).
-        _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers && GameplaySide != 1,
+        _renderer.Reset(mirrorPlayerTwoCamera: (layout != DonPresentationLayout.OpposedPlayers || MirrorPartner) && GameplaySide != 1,
             layout: cameraLayout(layout));
     }
 

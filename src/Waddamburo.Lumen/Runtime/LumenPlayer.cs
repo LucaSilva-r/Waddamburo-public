@@ -249,10 +249,17 @@ public sealed class LumenPlayer
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(arguments);
-        if (ReadScriptValue(targetPath) is not Avm1Object target
-            || target.GetProperty(method).Value is not Avm1FunctionValue function)
+        // A script object, or a clip (a class registered on it gives its methods through its prototype).
+        var target = ReadScriptValue(targetPath);
+        var function = target switch
+        {
+            Avm1Object script => script.GetProperty(method).Value,
+            DisplayInstance clip => clip.ScriptPrototype?.GetProperty(method).Value,
+            _ => null,
+        };
+        if (target is null || function is not Avm1FunctionValue callable)
             return false;
-        var invoked = invokeFunction(_root, function, target, arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
+        var invoked = invokeFunction(_root, callable, target, arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
         if (invoked)
             drainActions();
         return invoked;

@@ -34,6 +34,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private string? _joining;
     private bool _joiningListed;
     private IReadOnlyList<ListedRoom> _rooms = [];
+    private ScoreProfile? _shownPartner;
 
     public bool IsOpen => _prompt != Prompt.None;
 
@@ -48,16 +49,20 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         switch (control)
         {
-            case SongBrowseControl.Online or SongBrowseControl.RefreshRooms:
-                reload(listRooms: true, control);
+            // In a room, its folder holds the room's settings; otherwise the rooms to join.
+            case SongBrowseControl.Online:
+                show(_session is null ? Folder.Rooms : Folder.Room, control);
+                break;
+            case SongBrowseControl.RefreshRooms:
+                show(Folder.Rooms, control);
                 break;
             case SongBrowseControl.LeaveOnline:
-                shell.Reload.Start(() => shell.Hosts.ShowOnlineFolder(null, SongBrowseControl.Online));
+                show(Folder.Songs, SongBrowseControl.Online);
                 break;
             case SongBrowseControl.QuickPlay:
                 _quickPlay = true;
                 begin(session => session.QuickPlayAsync());
-                reload(listRooms: false);
+                show(Folder.Songs, SongBrowseControl.Online);
                 break;
             case SongBrowseControl.HostRoom:
                 ask(Prompt.RoomName);
@@ -74,17 +79,17 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                     join(null);
                 break;
             case SongBrowseControl.RoomVisibility when _session is { Room: { } current } session:
-                update(session.UpdateAsync(isPublic: !current.IsPublic));
+                update(session.UpdateAsync(isPublic: !current.IsPublic), control);
                 break;
             case SongBrowseControl.RoomPassword:
                 ask(Prompt.NewPassword);
                 break;
             case SongBrowseControl.LeaveRoom:
                 Leave();
-                reload(listRooms: true);
+                show(Folder.Rooms, SongBrowseControl.Online);
                 break;
             default:
-                reload(listRooms: false, control);
+                show(_session is null ? Folder.Rooms : Folder.Room, control);
                 break;
         }
     }
@@ -94,6 +99,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         if (!IsOpen)
         {
             watchRoom();
+            showPartner();
             return false;
         }
         var maximum = _prompt == Prompt.Code ? CodeLength : TextLength;
@@ -104,8 +110,10 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             _typed = _typed[..StringInfo.ParseCombiningCharacters(_typed)[^1]];
         if (escape)
         {
+            var prompt = _prompt;
             close();
-            reload(listRooms: false);
+            // Back where the prompt was asked from.
+            show(prompt == Prompt.NewPassword ? Folder.Room : Folder.Rooms, SongBrowseControl.Online);
         }
         else if (keys.IsDown(SdlKeyboardKey.Enter) && (_prompt != Prompt.Code || _typed.Length == CodeLength))
             submit();
@@ -116,6 +124,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     public void Leave()
     {
         close();
+        if (_shownPartner is not null)
+            showPartnerAs(null);
         if (_session is { } session)
             _ = leaveAsync(session, _start);
         _session = null;
@@ -155,6 +165,34 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         ];
     }
 
+    // Someone joined the room, or left it: Song Select shows them, Don-chan and name board, on the other side.
+    private void showPartner()
+    {
+        var partner = _session?.Partner;
+        if (ReferenceEquals(partner, _shownPartner) || shell.Active.Id != FlowScenes.SongSelect || shell.Reload.Busy
+            || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active)
+            return;
+        showPartnerAs(partner);
+        // Wherever the player is, again with the partner on screen.
+        var view = shell.Hosts.OnlineFolder;
+        shell.Reload.Start(() => shell.Hosts.ShowOnlineFolder(view is null ? null : view.Room is null ? folder(Folder.Rooms) : folder(Folder.Room)));
+    }
+
+    private void showPartnerAs(ScoreProfile? partner)
+    {
+        _shownPartner = partner;
+        var side = shell.JoinedSides.Count == 0 ? 1 : 1 - shell.JoinedSides.Min;
+        TaikoGuest.Profiles[side] = partner;
+        shell.Don?.SetLook(side, partner?.Look);
+        if (shell.Don is { } don)
+            don.MirrorPartner = partner is not null && side == 1;
+        // The side the player didn't join on (a host on the right drum has their partner on the left). Set before the
+        // reload: it lays Song Select out for these sides as it starts.
+        shell.Hosts.PartnerSide = partner is null ? null : side;
+        if (shell.Indicators is { } indicators)
+            indicators.Partner = partner is not null;
+    }
+
     private void ask(Prompt prompt)
     {
         _prompt = prompt;
@@ -178,10 +216,10 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         {
             case Prompt.RoomName:
                 begin(session => session.HostAsync(typed.Trim().Length == 0 ? null : typed.Trim()));
-                reload(listRooms: false);
+                show(Folder.Songs, SongBrowseControl.Online);
                 break;
             case Prompt.NewPassword when _session is { } session:
-                update(session.UpdateAsync(password: typed));
+                update(session.UpdateAsync(password: typed), SongBrowseControl.RoomPassword);
                 break;
             case Prompt.Code:
                 _joining = typed;
@@ -191,7 +229,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 join(typed);
                 break;
             default:
-                reload(listRooms: false);
+                show(Folder.Rooms, SongBrowseControl.Online);
                 break;
         }
     }
@@ -200,7 +238,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         var (code, listed) = (_joining!, _joiningListed);
         begin(session => session.JoinAsync(code, password, listed));
-        reload(listRooms: false);
+        show(Folder.Songs, SongBrowseControl.Online);
     }
 
     private void begin(Func<OnlineSession, Task<bool>> start)
@@ -223,25 +261,25 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         _start = null;
     }
 
-    private void update(Task change)
+    private void update(Task change, SongBrowseControl cursor) => shell.Reload.Start(() =>
     {
-        shell.Reload.Start(() =>
-        {
-            waitFor(change, RoomTimeout);
-            shell.Hosts.ShowOnlineFolder(folder());
-            if (change.IsFaulted)
-                warn(T("online.no_server"));
-        });
-    }
+        waitFor(change, RoomTimeout);
+        if (change.IsFaulted)
+            warn(T("online.no_server"));
+        shell.Hosts.ShowOnlineFolder(folder(Folder.Room), cursor);
+    });
 
-    private void reload(bool listRooms, SongBrowseControl? cursor = null) => shell.Reload.Start(() =>
+    private enum Folder { Songs, Rooms, Room }
+
+    // Song Select reloads on the songs (the Online spine opening the room), the rooms to join, or the room's settings.
+    private void show(Folder target, SongBrowseControl? cursor = null) => shell.Reload.Start(() =>
     {
         // Under the reload's cover: a short wait here shows nothing, and the folder is right when it opens.
         if (_session is { } session)
             SpinWait.SpinUntil(() => session.Room is not null || _start?.IsCompleted != false, RoomTimeout);
-        else if (listRooms)
+        if (target == Folder.Rooms)
             fetchRooms();
-        shell.Hosts.ShowOnlineFolder(folder(), cursor);
+        shell.Hosts.ShowOnlineFolder(target == Folder.Songs ? null : folder(target), cursor);
     });
 
     private void fetchRooms()
@@ -254,8 +292,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             warn(T("online.no_server"));
     }
 
-    private OnlineFolderView folder() =>
-        new(_rooms, _session?.Room, _session?.IsHost == true);
+    private OnlineFolderView folder(Folder target) =>
+        target == Folder.Room ? new(_rooms, _session?.Room, _session?.IsHost == true) : new(_rooms);
 
     // A room that couldn't be had, or is gone: back to the list, saying why.
     private void watchRoom()
@@ -272,7 +310,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             return;
         warn(problem);
         Leave();
-        reload(listRooms: true);
+        show(Folder.Rooms, SongBrowseControl.Online);
     }
 
     private (string Line, string Hint) promptText() => _prompt switch

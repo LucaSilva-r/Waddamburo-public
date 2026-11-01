@@ -110,6 +110,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Both drums joined.</summary>
     public bool TwoPlayers { get; set; }
 
+    /// <summary>An online partner's side in Song Select: their Don-chan and name board show there (null: none).</summary>
+    public int? PartnerSide { get; set; }
+
     /// <summary>Two players browse Waiwai's song select (and may switch to the normal one).</summary>
     public bool Waiwai { get; set; }
 
@@ -376,7 +379,8 @@ internal sealed class LayerHostFactory(
             parts: _parts,
             side: PlayerSide,
             twoPlayers: TwoPlayers,
-            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)])
+            crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)],
+            partner: PartnerSide)
         {
             StartCategory = start,
             StartSong = startSong,

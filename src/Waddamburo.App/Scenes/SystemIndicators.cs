@@ -67,6 +67,24 @@ internal sealed class SystemIndicators
     /// <summary>Both drums have a player: nobody is left to prompt (traced session9-2p).</summary>
     public bool TwoPlayers { get; set; }
 
+    /// <summary>An online partner holds the other drum's side in Song Select: nobody is asked to join it.</summary>
+    public bool Partner
+    {
+        get => _partner;
+        set
+        {
+            _partner = value;
+            // Song Select reloads without starting the indicators over: the message changes now.
+            if (_scene == IndicatorScene.SongSelect && !TwoPlayers && Coins is null)
+            {
+                call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(!value && !_cardDialog));
+                setSideNumbers(-1, value ? -1 : 0);
+            }
+        }
+    }
+
+    private bool _partner;
+
     /// <summary>
     /// The next entry is a second player joining from Song Select: its messages stay hidden until they
     /// are in (traced session28: msg_coins SetScene 1, SetVisibieMsg false every frame, then the panel
@@ -95,7 +113,7 @@ internal sealed class SystemIndicators
         // positions it on the available side and runs its fade animation.
         var rejoin = scene == IndicatorScene.Entry && Rejoin;
         var prompt = (scene is IndicatorScene.AttractPrompt or IndicatorScene.Demo or IndicatorScene.Entry
-            || scene == IndicatorScene.SongSelect && !TwoPlayers) && !rejoin;
+            || scene == IndicatorScene.SongSelect && !TwoPlayers && !Partner) && !rejoin;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {
             IndicatorScene.Entry => 1,

@@ -967,8 +967,12 @@ internal sealed class GameShell : IDisposable
             _indicators.TwoPlayers = two;
         }
         if (Don is not null) Don.GameplaySide = first;
-        Catalog.Replace(FlowScenes.SongSelectScene(JoinedSides.Count == 0 ? [0] : [.. JoinedSides], Hosts.Waiwai));
+        Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, Hosts.Waiwai));
     }
+
+    /// <summary>The sides Song Select shows a player on: the joined ones, and an online partner's.</summary>
+    public int[] SongSelectSides => [.. (JoinedSides.Count == 0 ? [Hosts.PlayerSide] : JoinedSides)
+        .Concat(Hosts.PartnerSide is { } partner ? [partner] : []).Distinct().Order()];
 
     /// <summary>The system indicators (panels, coins, network), once loaded.</summary>
     public SystemIndicators? Indicators => _indicators;

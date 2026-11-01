@@ -8,7 +8,22 @@ namespace Waddamburo.Game.Online;
 public sealed record ChannelAuthorization(string Auth, string? ChannelData = null);
 
 /// <summary>Someone on a presence channel: their user id and what the server says about them.</summary>
-public sealed record PresenceMember(string Id, JsonElement Info);
+public sealed record PresenceMember(string Id, JsonElement Info)
+{
+    /// <summary>The user id in a presence channel's channel_data; null when it has none.</summary>
+    public static string? UserIdOf(string channelData)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(channelData);
+            return document.RootElement.TryGetProperty("user_id", out var id) ? id.ToString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}
 
 /// <summary>
 /// A Pusher-protocol (v7) WebSocket client, as TaikOnline's Reverb speaks it: subscribes channels

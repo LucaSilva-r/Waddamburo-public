@@ -54,6 +54,8 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     private bool _strangers;
     private int _offered;
     private int _connected;
+    private string? _selfId;
+    private string? _partnerId;
 
     public OnlineRoom? Room { get; private set; }
 
@@ -70,6 +72,9 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
 
     /// <summary>Offer this player's own network's addresses even to strangers (testing two games on one machine).</summary>
     public bool ShareLanWithStrangers { get; init; }
+
+    /// <summary>The other player in the room, as their name board and Don-chan show them (null: nobody yet, or they left).</summary>
+    public Scores.ScoreProfile? Partner { get; private set; }
 
     /// <summary>Where this side can be reached, once started.</summary>
     public IReadOnlyList<PeerCandidate> Candidates => _candidates;
@@ -145,14 +150,32 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             throw new InvalidOperationException("The server has no realtime connection.");
         var realtime = new RealtimeConnection(url, insecure)
         {
-            Authorize = (socketId, channel, token) => _notices.AuthorizeChannelAsync(socketId, channel, token),
+            Authorize = async (socketId, channel, token) =>
+            {
+                // Who this player is on the channel, so the member who isn't is the partner.
+                var authorization = await _notices.AuthorizeChannelAsync(socketId, channel, token).ConfigureAwait(false);
+                if (authorization?.ChannelData is { } data)
+                    _selfId = PresenceMember.UserIdOf(data);
+                return authorization;
+            },
         };
         realtime.PresenceSynced += (_, members) =>
         {
+            foreach (var member in members)
+                meet(member);
             if (members.Count > 1)
                 sendOffer();
         };
-        realtime.MemberAdded += (_, _) => sendOffer();
+        realtime.MemberAdded += (_, member) =>
+        {
+            meet(member);
+            sendOffer();
+        };
+        realtime.MemberRemoved += (_, id) =>
+        {
+            if (id == _partnerId)
+                (Partner, _partnerId) = (null, null);
+        };
         realtime.Whispered += (_, name, _, data) =>
         {
             if (name != OfferEvent || PeerOffer.Parse(data) is not { } offer)
@@ -165,6 +188,22 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
         realtime.Subscribe(room.Channel);
         realtime.Start();
         _realtime = realtime;
+    }
+
+    // The member who isn't this player; what they show comes signed by the server, but a token never travels this way.
+    private void meet(PresenceMember member)
+    {
+        if (member.Id == _selfId || member.Info.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return;
+        try
+        {
+            if (System.Text.Json.JsonSerializer.Deserialize(member.Info, Scores.ScoreJson.Default.ScoreProfile) is { } profile)
+                (Partner, _partnerId) = (profile with { Token = null }, member.Id);
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Console.Error.WriteLine($"Warning ONLINE: the other player's profile wasn't read ({exception.Message}).");
+        }
     }
 
     private async Task keepAliveAsync(string code, CancellationToken cancellationToken)
