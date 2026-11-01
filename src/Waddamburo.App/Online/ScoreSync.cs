@@ -338,7 +338,7 @@ internal sealed class ScoreSync : IDisposable
             _onlineClient = client;
             _statusReporter = client is null ? null : new StatusReporter(status => client.SetStatusAsync(status), static () => TimeSpan.FromMilliseconds(Environment.TickCount64));
         }
-        clearStatus(previous);
+        _ = clearStatus(previous);
     }
 
     /// <summary>What the online account is doing, each tick: sent when it changes and now and then otherwise.</summary>
@@ -348,9 +348,19 @@ internal sealed class ScoreSync : IDisposable
             _statusReporter?.Report(status);
     }
 
-    private static Task clearStatus(NoticeClient? client) => client is null ? Task.CompletedTask
-        : client.ClearStatusAsync().ContinueWith(static task => Console.Error.WriteLine(
-            $"Warning STATUS: not cleared ({task.Exception?.GetBaseException().Message})."), TaskContinuationOptions.OnlyOnFaulted);
+    private static async Task clearStatus(NoticeClient? client)
+    {
+        if (client is null)
+            return;
+        try
+        {
+            await client.ClearStatusAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            Console.Error.WriteLine($"Warning STATUS: not cleared ({exception.Message}).");
+        }
+    }
 
     private NoticeClient? onlineClient()
     {
