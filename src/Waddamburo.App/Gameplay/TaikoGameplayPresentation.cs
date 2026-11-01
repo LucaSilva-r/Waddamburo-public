@@ -3,6 +3,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Online;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
@@ -48,6 +49,15 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
 
+    /// <summary>
+    /// Online play (set before <see cref="Start"/>): the second lane is the other player's, driven by their hits through this
+    /// feed and running its delay behind; the lanes don't share hand notes, so each ends as its player's own game did.
+    /// </summary>
+    public RemoteLaneFeed? RemoteLane { get; set; }
+
+    /// <summary>Online play: this player's hits go to the other player through it.</summary>
+    public HitRelay? Relay { get; set; }
+
     /// <summary>The dan course being played (null: a normal song): its gauge and requirements panel show.</summary>
     public Waddamburo.Game.Dan.DanCourse? Dan { get; set; }
 
@@ -82,7 +92,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             _shared = [];
             _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
+                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), relay: Relay, dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
@@ -98,8 +108,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
-            courses[lane], lane, lane, players: 2, kusudama, playHitSound, don, playEventSound, stage, reviews?[lane],
-            Options.ElementAtOrDefault(lane), EndBanner))];
+            courses[lane], lane, lane, players: 2, kusudama,
+            // The other player's drum isn't heard: only this player's own drum sounds under their hands.
+            lane == 1 && RemoteLane is not null ? null : playHitSound, don, playEventSound, stage, reviews?[lane],
+            Options.ElementAtOrDefault(lane), EndBanner, remote: lane == 1 ? RemoteLane : null, relay: lane == 0 ? Relay : null))];
+        // ponytail: online, the kusudama stays shared (both lanes pop it, the other player's hits a delay late).
+        if (RemoteLane is not null)
+            return;
         var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
             handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
@@ -246,6 +261,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly TaikoLongNotePresentation _longNotes;
         private readonly TaikoDonPresentation? _character;
         private readonly TaikoAnimationClock _animationClock;
+        private readonly RemoteLaneFeed? _remote;
+        private readonly HitRelay? _relay;
+
+        // The other player's lane shows its feed's delay behind; this player's own, as it is.
+        private TimeSpan shown(TimeSpan time) => _remote is null ? time : _remote.DisplayTime(time);
         private readonly int _characterSlot;
         private readonly int _side;
         private readonly int? _soundLane;
@@ -303,8 +323,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
-            TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null)
+            TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null,
+            RemoteLaneFeed? remote = null, HitRelay? relay = null)
         {
+            _remote = remote;
+            _relay = relay;
             _side = side;
             _soundLane = players == 2 ? lane : null;
             _playHitSound = playHitSound;
@@ -370,7 +393,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _noteFaces = [.. NoteMovieNames.Where(layers.ContainsKey).Select(name => layers[name].Player)];
             _combo = () => score.Combo;
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
-            _session = new TaikoJudgementSession(chart, WindowsFor(chart, course), StrongSecondHitWindow, partnerHandNotes: players == 2);
+            // Online lanes play alone, as each player's own game plays them.
+            _session = new TaikoJudgementSession(chart, WindowsFor(chart, course), StrongSecondHitWindow,
+                partnerHandNotes: players == 2 && remote is null && relay is null);
             if (review is null)
                 _source = _session;
             else
@@ -640,6 +665,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public double AdvanceAnimations(TimeSpan chartTime, LumenInputSnapshot input)
         {
             if (_stopped) return 0;
+            chartTime = shown(chartTime);
             var delta = _animationClock.Advance(chartTime);
             foreach (var layer in _fixedLayers) layer.Player.Advance(input);
             for (var i = 0; i < _animationClock.FramesToAdvance; i++)
@@ -690,6 +716,18 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default, double clockSpeed = 1)
         {
             if (_stopped) return;
+            if (_remote is not null)
+            {
+                var display = _remote.Apply(_session, chartTime, (hit, time) =>
+                {
+                    _presentation.Hit(hit);
+                    Replay.Add(hit, time);
+                });
+                _presentation.Update(display);
+                _onChartTime(display);
+                _character?.SetBalloonVisible(_longNotes.BalloonVisible);
+                return;
+            }
             foreach (var press in keyboard.Presses)
             {
                 // The player's own drum only: D/F/J/K on the left, Z/X/C/V on the right (ka, don, don, ka).
@@ -718,9 +756,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 _presentation.Hit(hit);
                 _playHitSound?.Invoke(_soundLane, hit);
                 Replay.Add(hit, eventTime);
+                _relay?.Record(hit, eventTime);
                 _session.SubmitInput(hit, eventTime);
             }
             _session.AdvanceTo(chartTime);
+            _relay?.SetClock(chartTime);
             _presentation.Update(chartTime);
             _onChartTime(chartTime);
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
@@ -731,7 +771,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public void FlashTarget() => _presentation.FlashTarget();
 
         public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time) =>
-            _presentation.CreateLayers(time, _character?.Layer, _characterSlot);
+            _presentation.CreateLayers(shown(time), _character?.Layer, _characterSlot);
 
         /// <summary>The beat clock's interpolation for this lane's beat-driven movies, else null.</summary>
         public float? BeatInterpolation(LumenPlayer player)

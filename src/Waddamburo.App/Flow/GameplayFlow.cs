@@ -106,6 +106,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // The attract loop's demo play (between its CMs): a stock song on autoplay, unsaved, no banner or pause;
     // it fades back to logo_namco after DemoLength, and a drum, coin or card (takeOver) starts a credit.
     private bool _demo;
+    private OnlineEcho? _echo;
     private Func<FlowInput, bool>? _demoTakeOver;
     private static readonly TimeSpan DemoLength = TimeSpan.FromSeconds(30);
 
@@ -183,8 +184,11 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             ? ChartHash.Compute(_sourceCharts[0], request.Players[0].Course) : null;
         // Each player's options on their chart; the random ones from the play's seed (a replay's own).
         _seed = request.Seed ?? Random.Shared.Next();
-        _charts = [.. _sourceCharts.Select((chart, lane) => (request.Players.ElementAtOrDefault(lane)?.Options ?? default).Apply(chart, _seed + lane))];
-        Shell.Gameplay.Options = [.. request.Players.Select(static player => player.Options)];
+        // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
+        var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
+        _charts = [.. _sourceCharts.Select((chart, lane) => (players.ElementAtOrDefault(lane)?.Options ?? default)
+            .Apply(chart, _seed + (lane < request.Players.Length ? lane : 0)))];
+        Shell.Gameplay.Options = [.. players.Select(static player => player.Options)];
         _paused = false;
         _pausedTicks = 0;
         _shutterStartTick = -1;
@@ -228,7 +232,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _autoplay = (Shell.Options.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
-        Shell.Gameplay.Start(_charts, active, [.. request.Players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
+        _echo = _demo || _review is not null || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
+        Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
@@ -477,6 +482,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             var time = chartTime() - _inputOffset;
             Shell.Gameplay.Advance(_autoplay?.Apply(keys, time) ?? keys, time);
         }
+        _echo?.Pump();
     }
 
     /// <summary>Home: the song is under way and not already a review, so its pause menu can replay it.</summary>
@@ -582,7 +588,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             elapsed = chartTime();
         }
         if (Shell.Headless)
+        {
             Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
+            _echo?.Pump();
+        }
         if (Shell.Audio?.Failure is { } device)
             throw new IOException("Gameplay audio failed.", device);
         // The song's decoder fell behind (or its file broke): back to Song Select, unsaved, with a notice.

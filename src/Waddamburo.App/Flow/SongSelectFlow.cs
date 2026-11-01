@@ -365,7 +365,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         var (category, song) = find(request.Song);
         var side = request.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
-        var twoPlayers = request.Players.Length == 2;
+        // Testing online play alone: this player's own hits come back as the second lane's (OnlineEcho).
+        if (Gameplay.OnlineEcho.Delay is not null && charts.Length == 1 && timeline is null && !Shell.Hosts.Waiwai)
+            charts = [charts[0], charts[0]];
+        var twoPlayers = charts.Length == 2;
         // Waiwai: both players on the song's Waiwai layout (its duet charts reshaped by section).
         WaiwaiComposition? waiwai = null;
         if (Shell.Hosts.Waiwai && charts.Length == 2 && song.Descriptor.WaiwaiComposition is { } compositionAsset)
