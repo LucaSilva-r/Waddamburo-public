@@ -1,12 +1,11 @@
 using System.Buffers.Binary;
 using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace Waddamburo.Game.Online;
 
-/// <summary>The parts of STUN (RFC 8489) and TURN (RFC 8656) that <see cref="PeerLink"/> speaks, IPv4 only.</summary>
+/// <summary>The parts of STUN (RFC 8489) and TURN (RFC 8656) that <see cref="PeerLink"/> speaks.</summary>
 public sealed class StunMessage
 {
     public const ushort BindingRequest = 0x0001, BindingSuccess = 0x0101;
@@ -57,13 +56,13 @@ public sealed class StunMessage
 
     public IPEndPoint? Address(ushort type)
     {
-        if (Find(type) is not { Length: 8 } value || value[1] != 1)
+        if (Find(type) is not { } value || value.Length < 8)
+            return null;
+        var size = value[1] switch { 1 => 4, 2 => 16, _ => 0 };
+        if (size == 0 || value.Length != 4 + size)
             return null;
         var port = (ushort)(BinaryPrimitives.ReadUInt16BigEndian(value.AsSpan(2)) ^ (Cookie >> 16));
-        var address = BinaryPrimitives.ReadUInt32BigEndian(value.AsSpan(4)) ^ Cookie;
-        Span<byte> bytes = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(bytes, address);
-        return new IPEndPoint(new IPAddress(bytes), port);
+        return new IPEndPoint(new IPAddress(xored(value.AsSpan(4))), port);
     }
 
     /// <summary>The wire form; with a <paramref name="key"/>, ending in a MESSAGE-INTEGRITY made with it.</summary>
@@ -127,14 +126,25 @@ public sealed class StunMessage
 
     private static int padded(int length) => (length + 3) & ~3;
 
-    private static byte[] xorAddress(IPEndPoint endPoint)
+    private byte[] xorAddress(IPEndPoint endPoint)
     {
-        if (endPoint.AddressFamily != AddressFamily.InterNetwork)
-            throw new ArgumentException("Only IPv4 addresses are supported.", nameof(endPoint));
-        var output = new byte[8];
-        output[1] = 1;
+        var address = endPoint.Address.GetAddressBytes();
+        var output = new byte[4 + address.Length];
+        output[1] = (byte)(address.Length == 4 ? 1 : 2);
         BinaryPrimitives.WriteUInt16BigEndian(output.AsSpan(2), (ushort)(endPoint.Port ^ (Cookie >> 16)));
-        BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(4), BinaryPrimitives.ReadUInt32BigEndian(endPoint.Address.GetAddressBytes()) ^ Cookie);
+        xored(address).CopyTo(output, 4);
+        return output;
+    }
+
+    // An address XORed with the cookie and then the transaction id, which undoes itself.
+    private byte[] xored(ReadOnlySpan<byte> address)
+    {
+        Span<byte> mask = stackalloc byte[16];
+        BinaryPrimitives.WriteUInt32BigEndian(mask, Cookie);
+        TransactionId.CopyTo(mask[4..]);
+        var output = address.ToArray();
+        for (var index = 0; index < output.Length; index++)
+            output[index] ^= mask[index];
         return output;
     }
 }

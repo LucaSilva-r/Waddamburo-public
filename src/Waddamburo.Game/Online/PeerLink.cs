@@ -25,8 +25,11 @@ public readonly record struct PeerCandidate(PeerCandidateKind Kind, IPEndPoint E
     public static PeerCandidate? Parse(string text)
     {
         var parts = text.Split(' ');
-        return parts.Length == 2 && Enum.TryParse<PeerCandidateKind>(parts[0], true, out var kind) && Enum.IsDefined(kind)
-            && IPEndPoint.TryParse(parts[1], out var endPoint) && endPoint.AddressFamily == AddressFamily.InterNetwork && endPoint.Port != 0
+        // Probes go wherever this says, so nothing that points back at this machine or everyone on a network.
+        return parts.Length == 2 && !char.IsDigit(parts[0][0]) && Enum.TryParse<PeerCandidateKind>(parts[0], true, out var kind) && Enum.IsDefined(kind)
+            && IPEndPoint.TryParse(parts[1], out var endPoint) && endPoint.Port != 0 && !IPAddress.IsLoopback(endPoint.Address) && !endPoint.Address.IsIPv6Multicast
+            && !endPoint.Address.Equals(IPAddress.Any) && !endPoint.Address.Equals(IPAddress.IPv6Any)
+            && !(endPoint.AddressFamily == AddressFamily.InterNetwork && endPoint.Address.GetAddressBytes()[0] is >= 224)
                 ? new PeerCandidate(kind, endPoint) : null;
     }
 }
@@ -48,7 +51,10 @@ public enum PeerLinkState
 /// Packets carry the receiver's token, so strangers' datagrams are dropped. Delivery isn't guaranteed: callers repeat
 /// what must arrive. Events are raised on a background thread.
 /// </summary>
-/// <remarks>ponytail: IPv4 only; an IPv6-only network needs the relay's IPv4 path or a dual-stack socket added here.</remarks>
+/// <remarks>
+/// One dual-stack socket speaks both. IPv6 addresses go straight to the other player: STUN and the relay are reached
+/// over IPv4, and the relay only relays to IPv4.
+/// </remarks>
 public sealed class PeerLink : IAsyncDisposable
 {
     private const byte Probe = 0xD1, ProbeAnswer = 0xD2, Payload = 0xD3;
@@ -58,7 +64,7 @@ public sealed class PeerLink : IAsyncDisposable
     private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan PermissionLifetime = TimeSpan.FromMinutes(4);
 
-    private readonly Socket _socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+    private readonly Socket _socket;
     private readonly CancellationTokenSource _stop = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<StunMessage>> _pending = new();
     private readonly byte[] _localToken = RandomNumberGenerator.GetBytes(TokenLength);
@@ -78,7 +84,25 @@ public sealed class PeerLink : IAsyncDisposable
     private TimeSpan _relayLifetime;
     private long _relayRefreshed, _permissionsSent;
 
-    public PeerLink() => _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+    public PeerLink()
+    {
+        if (Socket.OSSupportsIPv6)
+        {
+            try
+            {
+                _socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp) { DualMode = true };
+                _socket.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+                return;
+            }
+            catch (SocketException)
+            {
+                // IPv6 turned off on this machine.
+                _socket?.Dispose();
+            }
+        }
+        _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+    }
 
     /// <summary>Give up connecting after this long.</summary>
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(20);
@@ -90,6 +114,9 @@ public sealed class PeerLink : IAsyncDisposable
 
     /// <summary>The latest measured round trip, once connected.</summary>
     public TimeSpan? RoundTrip { get; private set; }
+
+    /// <summary>Where the peer is being reached, once connected.</summary>
+    public IPEndPoint? RemoteEndPoint => _route?.Target;
 
     /// <summary>The token the other player must be told (it proves their packets came from them).</summary>
     public ReadOnlyMemory<byte> LocalToken => _localToken;
@@ -191,7 +218,8 @@ public sealed class PeerLink : IAsyncDisposable
         return interfaces.Where(static adapter => adapter.OperationalStatus == OperationalStatus.Up && adapter.NetworkInterfaceType != NetworkInterfaceType.Loopback)
             .SelectMany(static adapter => adapter.GetIPProperties().UnicastAddresses)
             .Select(static unicast => unicast.Address)
-            .Where(static address => address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address));
+            .Where(static address => !IPAddress.IsLoopback(address) && (address.AddressFamily == AddressFamily.InterNetwork
+                || address.AddressFamily == AddressFamily.InterNetworkV6 && !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !address.IsIPv6Multicast && !address.IsIPv4MappedToIPv6));
     }
 
     // "stun:host:port" or "turn:host:port?transport=udp": only UDP is spoken here.
@@ -266,7 +294,7 @@ public sealed class PeerLink : IAsyncDisposable
     private async Task receiveAsync()
     {
         var buffer = new byte[2048];
-        EndPoint any = new IPEndPoint(IPAddress.Any, 0);
+        EndPoint any = new IPEndPoint(_socket.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
         while (!_stop.IsCancellationRequested)
         {
             SocketReceiveFromResult result;
@@ -286,7 +314,10 @@ public sealed class PeerLink : IAsyncDisposable
             {
                 continue; // Windows reports an unreachable probe target on the next receive.
             }
+            // A dual-stack socket reports IPv4 senders as ::ffff:a.b.c.d.
             var from = (IPEndPoint)result.RemoteEndPoint;
+            if (from.Address.IsIPv4MappedToIPv6)
+                from = new IPEndPoint(from.Address.MapToIPv4(), from.Port);
             var data = buffer.AsSpan(0, result.ReceivedBytes);
             if (data.Length >= HeaderLength && data[0] is Probe or ProbeAnswer or Payload)
                 handlePacket(data, from, viaRelay: false);
@@ -403,7 +434,7 @@ public sealed class PeerLink : IAsyncDisposable
         foreach (var candidate in remote)
         {
             sendProbe(candidate.EndPoint, viaRelay: false);
-            if (_relayServer is not null && candidate.Kind != PeerCandidateKind.Host)
+            if (_relayServer is not null && candidate.Kind != PeerCandidateKind.Host && candidate.EndPoint.AddressFamily == AddressFamily.InterNetwork)
                 sendProbe(candidate.EndPoint, viaRelay: true);
         }
     }
@@ -451,7 +482,7 @@ public sealed class PeerLink : IAsyncDisposable
                 PeerCandidate[] remote;
                 lock (_lock)
                     remote = _remote;
-                foreach (var address in remote.Where(static candidate => candidate.Kind != PeerCandidateKind.Host).Select(static candidate => candidate.EndPoint.Address).Distinct())
+                foreach (var address in remote.Where(static candidate => candidate.Kind != PeerCandidateKind.Host && candidate.EndPoint.AddressFamily == AddressFamily.InterNetwork).Select(static candidate => candidate.EndPoint.Address).Distinct())
                     await signedAsync(new StunMessage(StunMessage.CreatePermissionRequest).WithAddress(StunMessage.XorPeerAddress, new IPEndPoint(address, 1)), server).ConfigureAwait(false);
             }
             if (Stopwatch.GetElapsedTime(_relayRefreshed) >= _relayLifetime / 2)

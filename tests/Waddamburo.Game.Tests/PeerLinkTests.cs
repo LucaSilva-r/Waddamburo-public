@@ -44,6 +44,59 @@ public sealed class PeerLinkTests
     }
 
     [Fact]
+    public async Task TwoLinksConnectOverIPv6()
+    {
+        if (!Socket.OSSupportsIPv6)
+            return;
+        await using var left = new PeerLink();
+        await using var right = new PeerLink();
+        var toRight = Channel.CreateUnbounded<byte[]>();
+        right.Received += payload => toRight.Writer.TryWrite(payload);
+
+        left.Connect(right.LocalToken, [new PeerCandidate(PeerCandidateKind.Host, new IPEndPoint(IPAddress.IPv6Loopback, right.LocalPort))]);
+        right.Connect(left.LocalToken, [new PeerCandidate(PeerCandidateKind.Host, new IPEndPoint(IPAddress.IPv6Loopback, left.LocalPort))]);
+        await until(() => left.State == PeerLinkState.Direct && right.State == PeerLinkState.Direct);
+
+        left.Send([7]);
+        Assert.Equal([7], await toRight.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        Assert.Equal(IPAddress.IPv6Loopback, left.RemoteEndPoint?.Address);
+    }
+
+    [Fact]
+    public void AnIPv6StunAddressSurvivesTheWire()
+    {
+        var address = new IPEndPoint(IPAddress.Parse("2001:db8::1234:5678"), 40000);
+        var wire = new StunMessage(StunMessage.BindingSuccess).WithAddress(StunMessage.XorMappedAddress, address).Encode();
+
+        Assert.Equal(address, StunMessage.Parse(wire)?.Address(StunMessage.XorMappedAddress));
+    }
+
+    [Fact]
+    public void PeerOffersFromTheOtherPlayerAreCheckedAndSurviveTheChannel()
+    {
+        PeerOffer offer = new(RandomNumberGenerator.GetBytes(8), [new PeerCandidate(PeerCandidateKind.Reflexive, IPEndPoint.Parse("203.0.113.9:40000"))]);
+        using var output = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(output))
+        {
+            writer.WriteStartObject();
+            offer.Write(writer);
+            writer.WriteEndObject();
+        }
+        using var good = System.Text.Json.JsonDocument.Parse(output.ToArray());
+        var parsed = PeerOffer.Parse(good.RootElement);
+        Assert.Equal(offer.Token, parsed?.Token);
+        Assert.Equal(offer.Candidates, parsed?.Candidates);
+
+        foreach (var bad in new[] { "[]", "{}", """{"token":"AAAA","candidates":[]}""", """{"token":7,"candidates":[]}""", """{"token":"AAAAAAAAAAA=","candidates":"x"}""" })
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(bad);
+            Assert.Null(PeerOffer.Parse(document.RootElement));
+        }
+        using var mixed = System.Text.Json.JsonDocument.Parse("""{"token":"AAAAAAAAAAA=","candidates":[7,"nonsense","host 127.0.0.1:1","host 192.168.1.2:1234"]}""");
+        Assert.Equal("host 192.168.1.2:1234", Assert.Single(PeerOffer.Parse(mixed.RootElement)!.Candidates).ToString());
+    }
+
+    [Fact]
     public async Task AWrongTokenNeverConnects()
     {
         await using var left = new PeerLink { ConnectTimeout = TimeSpan.FromMilliseconds(500) };
@@ -129,7 +182,13 @@ public sealed class PeerLinkTests
     [InlineData("nonsense", false)]
     [InlineData("relay 203.0.113.9", false)]
     [InlineData("7 203.0.113.9:40000", false)]
+    [InlineData("host [2001:db8::1]:1234", true)]
     [InlineData("host [::1]:1234", false)]
+    [InlineData("host 127.0.0.1:1234", false)]
+    [InlineData("host 0.0.0.0:1234", false)]
+    [InlineData("host 239.1.1.1:1234", false)]
+    [InlineData("host [ff02::1]:1234", false)]
+    [InlineData("host 192.168.1.2:0", false)]
     public void CandidatesFromTheOtherPlayerAreParsedCarefully(string text, bool valid)
     {
         var candidate = PeerCandidate.Parse(text);

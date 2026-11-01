@@ -56,6 +56,27 @@ public static partial class ReleaseConsole
     }
 
     /// <summary>
+    /// Opens a console whatever the settings say, for a tool whose whole point is what it prints. A Windows GUI program
+    /// has no standard handles at all, which .NET reports as redirected, so only real ones count as a redirect here.
+    /// </summary>
+    public static void OpenForTool()
+    {
+        if (!OperatingSystem.IsWindows() || GetConsoleWindow() != 0 || _held is null && GetStdHandle(StandardOutput) is not (0 or -1))
+        {
+            Show(true);
+            return;
+        }
+        var log = _held?.ToString() ?? "";
+        _held = null;
+        if (!AllocConsole())
+            return;
+        var output = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+        output.Write(log);
+        _out.Inner = output;
+        _error.Inner = new StreamWriter(Console.OpenStandardError()) { AutoFlush = true };
+    }
+
+    /// <summary>
     /// Reports a fatal error: its message (and the crash file) on the console when there is one,
     /// otherwise all of it in a message box.
     /// </summary>
@@ -153,6 +174,11 @@ public static partial class ReleaseConsole
 
     [LibraryImport("kernel32.dll")]
     private static partial nint GetConsoleWindow();
+
+    private const int StandardOutput = -11;
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint GetStdHandle(int handle);
 
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

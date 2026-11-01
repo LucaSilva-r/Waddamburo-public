@@ -119,7 +119,11 @@ try
         Console.WriteLine($"Cache: {layout.Cache(arcade.CacheFolder)}");
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache(arcade.CacheFolder);
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
-        ReleaseConsole.Show(arcade.ShowConsole);
+        // The online test reports on the console, whatever the settings say.
+        if (args.Any(static arg => arg.StartsWith("--online-test", StringComparison.Ordinal)))
+            ReleaseConsole.OpenForTool();
+        else
+            ReleaseConsole.Show(arcade.ShowConsole);
         Strings.Use(arcade.Language);
         Console.WriteLine($"Language: {Strings.Language}");
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
@@ -144,6 +148,10 @@ try
         var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
         if (login || logout)
             return AccountCommands.Run(arcade, accounts, login);
+        if (parseOption(args, "--online-test=") is { } onlineRoom)
+            return OnlineTest.Run(arcade, accounts, onlineRoom, Path.Combine(layout.Home, "logs"));
+        if (args.Contains("--online-test", StringComparer.Ordinal))
+            return OnlineTest.Run(arcade, accounts, null, Path.Combine(layout.Home, "logs"));
         Console.WriteLine(!arcade.Home
             ? arcade is { Server: not null, CabinetToken: not null }
                 ? $"Scores: cabinet mode, players log in with a code from {arcade.Server} (cabinet {Waddamburo.App.Online.CabinetPairing.CabinetId})."
