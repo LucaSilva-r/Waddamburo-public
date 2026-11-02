@@ -13,6 +13,9 @@ public sealed record OnlineRoom(string Code, string Channel)
 
     public bool HasPassword { get; init; }
 
+    /// <summary>A quick play room: only quick play fills it, and it has no settings.</summary>
+    public bool IsQuick { get; init; }
+
     /// <summary>This player opened the room (or waited in it for quick play): they pick the songs.</summary>
     public bool IsHost { get; init; }
 }

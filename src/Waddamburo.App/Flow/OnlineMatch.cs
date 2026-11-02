@@ -30,7 +30,8 @@ internal sealed class OnlineMatch(GameShell shell)
 
     /// <summary>What the banner says about the song being agreed on; null when there's nothing to say.</summary>
     public string? Status => connected() is not { } session ? null
-        : InSong && !_go ? T("online.waiting_ready")
+        // Both picked, the song not loading yet: already waiting, so the banner doesn't drop back to the round trip for a moment.
+        : InSong && !_go || !InSong && _mine is not null && _theirs is not null ? T("online.waiting_ready")
         : _mine is not null && _theirs is null ? T("online.waiting_pick", name(session)) + " " + T("online.esc_cancel")
         : _mine is null && _theirs is { } theirs && !session.IsHost ? T("online.partner_picked", name(session), title(theirs.Song))
         : _mine is null && session.IsHost ? T("online.you_pick")
@@ -112,6 +113,7 @@ internal sealed class OnlineMatch(GameShell shell)
         shell.PlayRequests.CancelPending();
         shell.PlayRequests.TryRequestPlay(play);
         InSong = true;
+        shell.PlayOnlineAsTwoPlayers(true);
         return play;
     }
 

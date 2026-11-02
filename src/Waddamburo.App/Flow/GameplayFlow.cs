@@ -191,6 +191,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
         _charts = [.. _sourceCharts.Select((chart, lane) => (players.ElementAtOrDefault(lane)?.Options ?? default)
             .Apply(chart, _seed + (lane < request.Players.Length ? lane : 0)))];
+        // Online, the kusudama is each player's own: the other player's lane gets balloons in its place.
+        if (Shell.Match.InSong && request.Players.ToList().FindIndex(player => player.Player != localSlot()) is var remote and >= 0
+            && remote < _charts.Length)
+            _charts[remote] = TaikoPlayOptions.KusudamaAsBalloons(_charts[remote]);
         Shell.Gameplay.Options = [.. players.Select(static player => player.Options)];
         _paused = false;
         _pausedTicks = 0;
@@ -722,6 +726,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         dropNextAudio();
         var online = Shell.Match.InSong;
         Shell.Match.SongEnded();
+        // Results show the last saved play's bests and rankings otherwise.
+        if (online)
+        {
+            Array.Clear(Shell.Bests);
+            Array.Clear(Shell.Placements);
+        }
         // Online plays are for fun: never kept or uploaded.
         if (finished && !online && Shell.PlayRequests.Active is { } played)
         {

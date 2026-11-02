@@ -98,8 +98,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), relay: Relay, dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
             return;
         }
-        // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama.
-        var kusudama = new TaikoSharedKusudama(layers.Single(entry => role(entry.Definition) == "action_kusudama").Layer, 2);
+        // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama. Online only this
+        // player's lane has kusudamas (the other's are balloons), so it's theirs alone.
+        var kusudama = new TaikoSharedKusudama(layers.Single(entry => role(entry.Definition) == "action_kusudama").Layer,
+            RemoteLane is null ? 2 : 1);
         _shared = [.. layers.Where(entry => GameplaySceneComposition.SharedRoles.Contains(role(entry.Definition)))
             .Select(entry => entry.Layer)];
         // Waiwai: one voltage stage for both players (its movies are the first lane's).
@@ -116,7 +118,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             lane == RemoteLaneIndex && RemoteLane is not null ? null : playHitSound, don, playEventSound, stage, reviews?[lane],
             Options.ElementAtOrDefault(lane), EndBanner, remote: lane == RemoteLaneIndex ? RemoteLane : null,
             relay: lane != RemoteLaneIndex ? Relay : null))];
-        // ponytail: online, the kusudama stays shared (both lanes pop it, the other player's hits a delay late).
+        // Online, each lane has its own notes: nothing links hand notes across the network.
         if (RemoteLane is not null)
             return;
         var handNotes = new TaikoHandNoteLink();

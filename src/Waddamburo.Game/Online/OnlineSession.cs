@@ -162,6 +162,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             await realtime.DisposeAsync().ConfigureAwait(false);
         if (Room is { } room)
         {
+            log($"leaving room {room.Code}.");
             try
             {
                 await _rooms.LeaveAsync(room.Code).ConfigureAwait(false);
@@ -174,9 +175,12 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
         await Link.DisposeAsync().ConfigureAwait(false);
     }
 
+    private static void log(string message) => Console.WriteLine($"Online: {message}");
+
     private async Task connectAsync(CancellationToken cancellationToken)
     {
         var room = Room!;
+        log($"in room {room.Code}{(room.IsQuick ? " (quick play)" : "")} as {(IsHost ? "host" : "guest")}.");
         Link.Received += received;
         _keepingAlive = Task.Run(() => keepAliveAsync(room.Code, _stop.Token), CancellationToken.None);
         var servers = await _rooms.IceServersAsync(room.Code, cancellationToken).ConfigureAwait(false);
@@ -208,8 +212,10 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
         };
         realtime.MemberRemoved += (_, id) =>
         {
-            if (id == _partnerId)
-                (Partner, _partnerId) = (null, null);
+            if (id != _partnerId)
+                return;
+            (Partner, _partnerId) = (null, null);
+            log("the other player left the channel.");
         };
         realtime.Whispered += (_, name, _, data) =>
         {
@@ -218,7 +224,10 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             // The answer to a player who arrived first, and whose offer we hadn't answered.
             sendOffer();
             if (Interlocked.Exchange(ref _connected, 1) == 0)
+            {
+                log($"connecting to the other player ({offer.Candidates.Count} addresses).");
                 Link.Connect(offer.Token, offer.Candidates);
+            }
         };
         realtime.Subscribe(room.Channel);
         realtime.Start();
@@ -233,7 +242,10 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
         try
         {
             if (System.Text.Json.JsonSerializer.Deserialize(member.Info, Scores.ScoreJson.Default.ScoreProfile) is { } profile)
+            {
                 (Partner, _partnerId) = (profile with { Token = null }, member.Id);
+                log($"{profile.DisplayName} is in the room.");
+            }
         }
         catch (System.Text.Json.JsonException exception)
         {

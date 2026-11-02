@@ -259,7 +259,7 @@ public sealed record PlayableChart
     public ImmutableArray<ChartScrollPoint> ScrollPoints { get; }
     public ImmutableArray<ChartEffectPoint> EffectPoints { get; }
     public ImmutableArray<ChartBarLine> BarLines { get; }
-    public ImmutableArray<PlayableLongNote> LongNotes { get; }
+    public ImmutableArray<PlayableLongNote> LongNotes { get; init; }
     public int NoteCount => HitObjects.Length;
     /// <summary>Authored star rating, when the source has one.</summary>
     public int? Level { get; init; }

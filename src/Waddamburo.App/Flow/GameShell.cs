@@ -564,8 +564,11 @@ internal sealed class GameShell : IDisposable
             Hosts.LayerLoading = host =>
             {
                 if (Don is null) return;
+                // Song Select is back after an online song: one player again.
+                if (host is "song-select" && _onlineTwoPlayers)
+                    PlayOnlineAsTwoPlayers(false);
                 if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
-                    Don.MapPlayerZero = Hosts.PlayerSide == 1;
+                    Don.MapPlayerZero = Hosts.PlayerSide == 1 && !Hosts.TwoPlayers;
                 else if (host is "player-entry" or "song-select" or "gameover" or "tutorial" or "dani-select")
                     Don.MapPlayerZero = false;
             };
@@ -986,6 +989,20 @@ internal sealed class GameShell : IDisposable
         }
         if (Don is not null) Don.GameplaySide = first;
         Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, Hosts.Waiwai));
+    }
+
+    private bool _onlineTwoPlayers;
+
+    /// <summary>
+    /// An online song and its results run as two players at the drums do (shutter, Don-chans, results), with the partner on
+    /// the other drum; Song Select stays one player's, with the partner shown beside them.
+    /// </summary>
+    public void PlayOnlineAsTwoPlayers(bool on)
+    {
+        _onlineTwoPlayers = on;
+        Hosts.TwoPlayers = on || JoinedSides.Count == 2;
+        if (Don is not null)
+            Don.GameplaySide = on ? 0 : Hosts.PlayerSide;
     }
 
     /// <summary>The sides Song Select shows a player on: the joined ones, and an online partner's.</summary>

@@ -50,6 +50,14 @@ public sealed class TaikoPlayOptionsTests
     }
 
     [Fact]
+    public void AnOnlinePartnersKusudamaBecomesABalloonOfTheSameHits()
+    {
+        var balloons = TaikoPlayOptions.KusudamaAsBalloons(chart());
+        Assert.Equal((PlayableLongNoteKind.Balloon, 20), (balloons.LongNotes[0].Kind, balloons.LongNotes[0].RequiredHits));
+        Assert.Equal(100, balloons.NoteCount);
+    }
+
+    [Fact]
     public void SpeedScalesTheScrollAndNoOptionsLeaveTheChartAlone()
     {
         var original = chart();

@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 21;
+    public const int CurrentVersion = 22;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -219,6 +219,12 @@ public sealed record ArcadeSettings
         mouse_controls = true
 
         """,
+        """
+        # online_warning_accepted: the player agreed, the first time they opened the online lobby, that playing
+        # online shows their IP address to the other player. false = the lobby asks again.
+        online_warning_accepted = false
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -397,6 +403,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
+
+    /// <summary>The player accepted that playing online shows their IP address to the other player.</summary>
+    public bool OnlineWarningAccepted { get; init; }
 
     /// <summary>The forced GPU backend (vulkan, gles, opengl, d3d11, metal), or null for auto.</summary>
     public string? Renderer { get; init; }
@@ -604,6 +613,7 @@ public sealed record ArcadeSettings
                 "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
+                "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
@@ -699,6 +709,7 @@ public sealed record ArcadeSettings
             ["upscale_threads"] = settings.UpscaleThreads,
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
+            ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",

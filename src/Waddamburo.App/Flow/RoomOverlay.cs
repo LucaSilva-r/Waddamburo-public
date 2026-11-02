@@ -15,7 +15,7 @@ namespace Waddamburo.App.Flow;
 /// The online lobby, the home menu's buttons over Song Select: Quick Play, hosting, joining by code and the public rooms
 /// (refreshing by themselves), then the room's own page. Song Select's own Don-chans and name boards stay in view at the
 /// sides, both players'. A hit on the Online spine opens it before the movie decides that spine. A text box takes a room's name, password or code (like song search's). Closed, a banner says how the room
-/// is doing. Rims or Up/Down move, a centre hit or Enter picks, Escape closes.
+/// is doing. Rims, Up/Down or the mouse wheel (as in the Settings menu) move, a centre hit or Enter picks, Escape closes.
 /// For testing, WADDAMBURO_ONLINE_SERVER and WADDAMBURO_ONLINE_TOKEN play online on another server or account, leaving the
 /// player's settings and logins alone, and WADDAMBURO_ONLINE_LAN=1 shares LAN addresses with strangers, for two games on
 /// one machine.
@@ -24,7 +24,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 {
     private enum Prompt { None, RoomName, NewPassword, JoinPassword, Code }
 
-    private enum Action { QuickPlay, Host, Code, Join, Back, ChooseSong, Visibility, Password, Leave }
+    private enum Action { QuickPlay, Host, Rooms, Code, Join, Back, ChooseSong, Visibility, Password, Leave, Accept, Refuse }
 
     private sealed record Row(string Text, Action Action, ListedRoom? Room = null);
 
@@ -47,6 +47,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private Task<IReadOnlyList<ListedRoom>>? _listing;
     private long _listedAt;
     private ScoreProfile? _shownPartner;
+    private bool _browsing; // the public rooms' page
+    private bool _warning; // the first time: playing online shows the player's IP address, accepted or not
+    private readonly object _bannerSlot = new(), _statusSlot = new();
 
     public bool IsOpen => _panel || _prompt != Prompt.None;
 
@@ -78,6 +81,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private void open()
     {
         _panel = true;
+        _warning = !shell.Arcade.OnlineWarningAccepted;
+        _browsing = false;
         _selection = 0;
         _listedAt = 0;
         decide();
@@ -124,16 +129,19 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             typeInto(keys, escape);
             return true;
         }
-        refreshRooms();
+        if (_browsing)
+            refreshRooms();
         var rows = this.rows();
         _selection = Math.Clamp(_selection, 0, rows.Count - 1);
         bool pressed(params SdlKeyboardKey[] candidates) => candidates.Any(keys.IsDown);
         var pads = SdlInputBindings.Pads;
-        if (escape)
+        if (escape && _browsing && _session is null)
+            browse(false);
+        else if (escape)
             ClosePanel();
-        else if (pressed(SdlKeyboardKey.Up, SdlKeyboardKey.Left, pads[0], pads[4]))
+        else if (pressed(SdlKeyboardKey.Up, SdlKeyboardKey.Left, SdlKeyboardKey.WheelUp, pads[0], pads[4]))
             move(-1, rows.Count);
-        else if (pressed(SdlKeyboardKey.Down, SdlKeyboardKey.Right, pads[3], pads[7]))
+        else if (pressed(SdlKeyboardKey.Down, SdlKeyboardKey.Right, SdlKeyboardKey.WheelDown, pads[3], pads[7]))
             move(1, rows.Count);
         else if (decidePressed(keys))
         {
@@ -176,7 +184,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             // Over the free play line, between the name boards.
             float x = (OverlayPainter.StageWidth - BannerWidth) / 2;
             quads.AddRange(painter.Panel(x, BannerTop, BannerWidth, BannerHeight, (254, 205, 1), (0, 0, 0), radius: 14, outlineWidth: 3));
-            quads.Add(painter.Text(text, OverlayPainter.StageWidth / 2, BannerTop + BannerHeight / 2, BannerWidth - 36, 30));
+            quads.Add(painter.Text(text, OverlayPainter.StageWidth / 2, BannerTop + BannerHeight / 2, BannerWidth - 36, 30, slot: _bannerSlot));
         }
         if (_prompt != Prompt.None)
         {
@@ -193,14 +201,25 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private void lobby(List<RenderQuad> quads)
     {
         var art = shell.HomeArt;
-        var title = _session?.Room?.Name ?? T("online.lobby");
-        quads.Add(painter.Text(title, Centre, 92, 700, 64));
-        quads.Add(painter.Text(status(), Centre, 160, 900, 34));
+        var rowsTop = RowsTop;
+        if (_warning)
+        {
+            quads.Add(painter.Text(T("online.warning_title"), Centre, 92, 900, 64, tint: (254, 205, 1)));
+            string[] lines = [T("online.warning_direct"), T("online.warning_ip"), T("online.warning_ok")];
+            for (var line = 0; line < lines.Length; line++)
+                quads.Add(painter.Text(lines[line], Centre, 175 + line * 50, 1000, 36));
+            rowsTop = 360;
+        }
+        else
+        {
+            quads.Add(painter.Text(_session?.Room is { IsQuick: true } ? T("online.quick_play") : _session?.Room?.Name ?? T("online.lobby"), Centre, 92, 700, 64));
+            quads.Add(painter.Text(status(), Centre, 160, 900, 34, slot: _statusSlot));
+        }
         var rows = this.rows();
         var first = Math.Clamp(_selection - VisibleRows / 2, 0, Math.Max(0, rows.Count - VisibleRows));
         for (var index = first; index < Math.Min(rows.Count, first + VisibleRows); index++)
         {
-            var y = RowsTop + (index - first) * RowSpacing;
+            var y = rowsTop + (index - first) * RowSpacing;
             if (art is not null)
                 art.Choice(quads, RowX, y, RowWidth, RowHeight, index == _selection, rows[index].Text);
             else
@@ -211,29 +230,39 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             }
         }
         if (first > 0)
-            quads.Add(painter.Text("▲", Centre, RowsTop - 22, 40, 24));
+            quads.Add(painter.Text("▲", Centre, rowsTop - 22, 40, 24));
         if (first + VisibleRows < rows.Count)
-            quads.Add(painter.Text("▼", Centre, RowsTop + VisibleRows * RowSpacing - 4, 40, 24));
+            quads.Add(painter.Text("▼", Centre, rowsTop + VisibleRows * RowSpacing - 4, 40, 24));
     }
 
     private List<Row> rows()
     {
+        if (_warning)
+            return [new(T("online.accept"), Action.Accept), new(T("online.refuse"), Action.Refuse)];
         if (_session is not { } session)
         {
-            List<Row> lobby = [new(T("online.quick_play"), Action.QuickPlay), new(T("online.host"), Action.Host), new(T("online.join_code"), Action.Code)];
-            lobby.AddRange(_rooms.Select(room => new Row(room.HasPassword ? $"{room.Name} ({T("online.locked")})" : room.Name, Action.Join, room)));
-            lobby.Add(new(T("menu.back"), Action.Back));
-            return lobby;
+            if (!_browsing)
+                return [new(T("online.quick_play"), Action.QuickPlay), new(T("online.host"), Action.Host), new(T("online.rooms"), Action.Rooms),
+                    new(T("online.join_code"), Action.Code), new(T("menu.back"), Action.Back)];
+            List<Row> rooms = [.. _rooms.Select(room => new Row(room.HasPassword ? $"{room.Name} ({T("online.locked")})" : room.Name, Action.Join, room))];
+            rooms.Add(new(T("menu.back"), Action.Back));
+            return rooms;
         }
+        // Quick play still looking: only a way out.
+        if (_quickPlay && !partnerConnected())
+            return [new(T("online.stop_search"), Action.Leave)];
         if (!session.IsHost || session.Room is not { } current)
             return [new(T("online.leave"), Action.Leave), new(T("menu.back"), Action.Back)];
-        return
-        [
-            new(T("online.choose_song"), Action.ChooseSong),
-            new(current.IsPublic ? T("online.visibility_public") : T("online.visibility_private"), Action.Visibility),
-            new(current.HasPassword ? T("online.password_on") : T("online.password_off"), Action.Password),
-            new(T("online.leave"), Action.Leave),
-        ];
+        List<Row> host = partnerConnected() ? [new(T("online.choose_song"), Action.ChooseSong)] : [];
+        if (!current.IsQuick)
+        {
+            host.Add(new(current.IsPublic ? T("online.visibility_public") : T("online.visibility_private"), Action.Visibility));
+            host.Add(new(current.HasPassword ? T("online.password_on") : T("online.password_off"), Action.Password));
+        }
+        host.Add(new(T("online.leave"), Action.Leave));
+        if (!partnerConnected())
+            host.Add(new(T("menu.back"), Action.Back));
+        return host;
     }
 
     private void pick(Row row)
@@ -246,6 +275,12 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 break;
             case Action.Host:
                 ask(Prompt.RoomName);
+                break;
+            case Action.Rooms:
+                browse(true);
+                break;
+            case Action.Back when _browsing && _session is null:
+                browse(false);
                 break;
             case Action.Code:
                 (_joining, _joiningListed) = (null, false);
@@ -268,9 +303,39 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 Leave();
                 _listedAt = 0;
                 break;
-            case Action.Back or Action.ChooseSong:
+            case Action.Accept:
+                acceptWarning();
+                break;
+            case Action.Back or Action.ChooseSong or Action.Refuse:
                 ClosePanel();
                 break;
+        }
+    }
+
+    private void browse(bool on)
+    {
+        _browsing = on;
+        _selection = 0;
+        _listedAt = 0;
+    }
+
+    private bool partnerConnected() => _session is { Partner: not null, Link.State: PeerLinkState.Direct or PeerLinkState.Relayed };
+
+    // Asked once: the answer is kept in config.cfg.
+    private void acceptWarning()
+    {
+        _warning = false;
+        _selection = 0;
+        shell.Arcade = shell.Arcade with { OnlineWarningAccepted = true };
+        if (shell.Options.ArcadePath is not { } path)
+            return;
+        try
+        {
+            Waddamburo.Game.Flow.ArcadeSettings.SaveMenuSettings(path, shell.Arcade);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
         }
     }
 
@@ -298,10 +363,10 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private string status()
     {
         if (_session is null)
-            return T("online.lobby_hint");
+            return _browsing && _rooms.Count == 0 ? T("online.no_rooms") : T("online.lobby_hint");
         if (banner() is { } text)
             return text;
-        return _session.Room is { IsPublic: false } room && _session.IsHost ? T("online.room_code", room.Code) : T("online.starting");
+        return _session.Room is { IsPublic: false, IsQuick: false } room && _session.IsHost ? T("online.room_code", room.Code) : T("online.starting");
     }
 
     // Someone joined the room, or left it: Song Select shows them, Don-chan and name board, on the other side.
@@ -325,8 +390,6 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         var side = shell.JoinedSides.Count == 0 ? 1 : 1 - shell.JoinedSides.Min;
         TaikoGuest.Profiles[side] = partner;
         shell.Don?.SetLook(side, partner?.Look);
-        if (shell.Don is { } don)
-            don.MirrorPartner = partner is not null && side == 1;
         // The side the player didn't join on (a host on the right drum has their partner on the left). Set before the
         // reload: it lays Song Select out for these sides as it starts.
         shell.Hosts.PartnerSide = partner is null ? null : side;

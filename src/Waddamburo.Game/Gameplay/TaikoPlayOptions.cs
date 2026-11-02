@@ -94,8 +94,7 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
         var abekobe = Abekobe;
         var notes = chart.HitObjects.Select(note => abekobe ^ (chance > 0 && random.NextDouble() < chance) ? swapped(note) : note).ToArray();
         var longNotes = Shinuchi
-            ? chart.LongNotes.Select(static note => note.Kind == PlayableLongNoteKind.Kusudama
-                ? new PlayableLongNote(note.StartTime, note.EndTime, PlayableLongNoteKind.Balloon, note.RequiredHits) { Branch = note.Branch } : note)
+            ? chart.LongNotes.Select(balloon)
             : chart.LongNotes;
         var speed = ScrollSpeed;
         var played = new PlayableChart(chart.Key, chart.AuthoredOffset, chart.Duration, notes, chart.TimingPoints,
@@ -112,6 +111,13 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
         // 真打 on a branched chart: the master route's all-Great comes to about a million.
         return Shinuchi ? played with { ShinuchiBase = ShinuchiBase(played.OnRoute(ChartBranch.Master)) } : played;
     }
+
+    /// <summary>The chart with each kusudama a balloon of the same hits (an online partner's lane: the kusudama is this player's).</summary>
+    public static PlayableChart KusudamaAsBalloons(PlayableChart chart) => chart.LongNotes.Any(static note => note.Kind == PlayableLongNoteKind.Kusudama)
+        ? chart with { LongNotes = [.. chart.LongNotes.Select(balloon)] } : chart;
+
+    private static PlayableLongNote balloon(PlayableLongNote note) => note.Kind == PlayableLongNoteKind.Kusudama
+        ? new PlayableLongNote(note.StartTime, note.EndTime, PlayableLongNoteKind.Balloon, note.RequiredHits) { Branch = note.Branch } : note;
 
     /// <summary>
     /// A chart's 真打 base: the all-Great ceiling, (notes + big notes) × base plus each balloon's (hits − 1)
