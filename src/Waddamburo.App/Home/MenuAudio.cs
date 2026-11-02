@@ -10,6 +10,9 @@ namespace Waddamburo.App.Home;
 /// The home menu's sound: the player's volume settings on the mixer, a sample of the bus whose volume
 /// is being edited, and the menus' music held while the menu is open.
 /// </summary>
+/// <summary>Where the game is, for the volumes on top of the master one: the attract (with its demo plays), the menus, or a song.</summary>
+internal enum MenuVolumeScope { Song, Menus, Attract }
+
 internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSelectCatalogView catalog, CatalogAssetRouter assets)
 {
     private AudioBus? _sampleBus;
@@ -17,13 +20,13 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
     private int _sampleNextTick;
     private bool _menuMusicHeld;
     private ArcadeSettings? _settings;
-    private bool _inMenus;
+    private MenuVolumeScope _scope;
 
-    /// <summary>The attract, the entry or Song Select is on: the menu volume applies (re-applied on a change).</summary>
-    public void InMenus(bool inMenus)
+    /// <summary>Which of the menus' own volumes applies now (re-applied on a change).</summary>
+    public void Scope(MenuVolumeScope scope)
     {
-        if (_inMenus == inMenus) return;
-        _inMenus = inMenus;
+        if (_scope == scope) return;
+        _scope = scope;
         if (_settings is { } settings)
             Apply(settings);
     }
@@ -34,7 +37,12 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
         _settings = settings;
         if (audio?.Mixer is not { } mixer) return;
         static float level(int percent) => percent * percent / 10000f;
-        mixer.MasterVolume = level(settings.MasterVolume) * (_inMenus ? level(settings.MenuVolume) : 1);
+        mixer.MasterVolume = level(settings.MasterVolume) * _scope switch
+        {
+            MenuVolumeScope.Attract => level(settings.AttractVolume),
+            MenuVolumeScope.Menus => level(settings.MenuVolume),
+            _ => 1,
+        };
         mixer.SetBusGain(AudioBus.Bgm, level(settings.MusicVolume));
         mixer.SetBusGain(AudioBus.Preview, level(settings.MusicVolume));
         mixer.SetBusGain(AudioBus.DrumHit, level(settings.DrumVolume));

@@ -168,7 +168,8 @@ internal sealed class HomeControls : IDisposable
     /// </summary>
     public void FollowFocus()
     {
-        _audio.InMenus(AttractScenes.Contains(active) || active == FlowScenes.Entry || active == FlowScenes.SongSelect);
+        _audio.Scope(AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo ? MenuVolumeScope.Attract
+            : active == FlowScenes.Entry || active == FlowScenes.SongSelect ? MenuVolumeScope.Menus : MenuVolumeScope.Song);
         if (_shell.Application.Focused == _focused)
             return;
         _focused = _shell.Application.Focused;
@@ -215,6 +216,17 @@ internal sealed class HomeControls : IDisposable
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
         if (_menu.IsOpen || !(escape || home && !online && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
+        // The attract's demo play: Escape pauses it under the attract's menu, and closing the menu goes on with it.
+        if (home && active == FlowScenes.Gameplay && _gameplay.Demo)
+        {
+            // Leaving the window doesn't stop a demo; while it fades out, Escape waits for the logo.
+            if (!escape || _shell.FadePending)
+                return escape;
+            _pauseInterpolation = _lastInterpolation;
+            _gameplay.SetPaused(true, _pauseInterpolation);
+            _menu.Open(gameplay: false, attract: true);
+            return true;
+        }
         if (active == FlowScenes.Gameplay)
         {
             if (!home)
@@ -266,6 +278,8 @@ internal sealed class HomeControls : IDisposable
         _audio.Sample(_menu.PreviewBus, _shell.Tick);
         if (!_menu.IsOpen)
             _audio.HoldMenuMusic(false);
+        if (!_menu.IsOpen && active == FlowScenes.Gameplay && _gameplay.Demo)
+            resumeSong();
         switch (action)
         {
             // A reviewed play carries on at once: there is nothing to get ready for.

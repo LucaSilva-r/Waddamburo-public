@@ -106,6 +106,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // The attract loop's demo play (between its CMs): a stock song on autoplay, unsaved, no banner or pause;
     // it fades back to logo_namco after DemoLength, and a drum, coin or card (takeOver) starts a credit.
     private bool _demo;
+
+    /// <summary>The attract loop's demo play is on.</summary>
+    public bool Demo => _demo;
     private OnlineEcho? _echo;
     private Func<FlowInput, bool>? _demoTakeOver;
     private static readonly TimeSpan DemoLength = TimeSpan.FromSeconds(30);
@@ -548,8 +551,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (_paused) return;
         if (_demo)
         {
-            // Exit (on the switch either makes) ends the demo.
-            if (_demoTakeOver?.Invoke(input) == true || Shell.FinishFade())
+            // Exit (on the switch either makes) ends the demo. Once it's fading out, a hit waits for the logo: taking over
+            // then left the fade's black over entry.
+            if (!Shell.FadePending && _demoTakeOver?.Invoke(input) == true || Shell.FinishFade())
                 return;
             if (revealed && (chartTime() >= DemoLength || ChartOver))
             {

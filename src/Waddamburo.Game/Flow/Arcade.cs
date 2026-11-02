@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 23;
+    public const int CurrentVersion = 24;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -184,8 +184,8 @@ public sealed record ArcadeSettings
 
         """,
         """
-        # menu_volume (also in the Settings menu, percent): the attract, the entry and song select, on top
-        # of the master volume; songs and their results play at the master volume.
+        # menu_volume (also in the Settings menu, percent): the entry and song select, on top of the master
+        # volume; songs and their results play at the master volume.
         menu_volume = 100
 
         """,
@@ -229,6 +229,12 @@ public sealed record ArcadeSettings
         # share_warning_accepted: the player confirmed, the first time a song of theirs was sent to another player, that
         # they're authorized to share its chart and audio. false = asked again next time.
         share_warning_accepted = false
+
+        """,
+        """
+        # attract_volume (also in the Settings menu, percent): the attract loop and its demo plays, on top of the master
+        # volume. The menu volume covers the entry and song select.
+        attract_volume = 100
 
         """,
     ];
@@ -382,6 +388,9 @@ public sealed record ArcadeSettings
 
     /// <summary>The attract, the entry and Song Select play at this much of the master volume (songs and results at all of it).</summary>
     public int MenuVolume { get; init; } = 100;
+
+    /// <summary>The attract loop and its demo plays, in percent, on top of the master volume.</summary>
+    public int AttractVolume { get; init; } = 100;
 
     /// <summary>Milliseconds the heard music lags the chart clock: notes and judgement move this much later.</summary>
     public int AudioOffsetMs { get; init; }
@@ -613,6 +622,7 @@ public sealed record ArcadeSettings
                 "effects_volume" => settings with { EffectsVolume = integer(value, index, 0, 100) },
                 "voice_volume" => settings with { VoiceVolume = integer(value, index, 0, 100) },
                 "menu_volume" => settings with { MenuVolume = integer(value, index, 0, 100) },
+                "attract_volume" => settings with { AttractVolume = integer(value, index, 0, 100) },
                 "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
                 "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
@@ -710,6 +720,7 @@ public sealed record ArcadeSettings
             ["effects_volume"] = settings.EffectsVolume,
             ["voice_volume"] = settings.VoiceVolume,
             ["menu_volume"] = settings.MenuVolume,
+            ["attract_volume"] = settings.AttractVolume,
             ["audio_offset_ms"] = settings.AudioOffsetMs,
             ["input_offset_ms"] = settings.InputOffsetMs,
             ["audio_buffer_frames"] = settings.AudioBufferFrames,
