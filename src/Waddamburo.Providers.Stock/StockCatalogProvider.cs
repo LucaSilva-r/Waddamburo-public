@@ -35,6 +35,18 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
 
     public SongSourceKind Source => SongSourceKind.Stock;
 
+    /// <summary>
+    /// The game data folder a player pointed at: the folder itself, its <c>data</c>, or a game folder's
+    /// <c>USRDIR/data</c> (an RPCS3 install); null when none holds songs.
+    /// </summary>
+    public static string? FindDataRoot(string folder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+        return new[] { folder, Path.Combine(folder, "data"), Path.Combine(folder, "USRDIR", "data") }
+            .Select(static path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)))
+            .FirstOrDefault(IsStockData);
+    }
+
     /// <summary>True when the folder holds metadata and charts this provider can read.</summary>
     public static bool IsStockData(string dataRoot) =>
         Directory.Exists(Path.Combine(dataRoot, "fumen")) && metadataCandidates(dataRoot).Any();

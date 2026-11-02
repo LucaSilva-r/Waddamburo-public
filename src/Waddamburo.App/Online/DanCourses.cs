@@ -149,6 +149,13 @@ internal sealed class DanCourses
         return Math.Max(stock.FindIndex(category => category.Songs.Contains(song.Key)), 0);
     }
 
+    /// <summary>Matches the library against the courses again (after the library was hashed again).</summary>
+    public void Rematch()
+    {
+        if (_catalogue is { } catalogue)
+            _ = Task.Run(async () => _library = await libraryAsync(catalogue).ConfigureAwait(false));
+    }
+
     private async Task refreshAsync(Uri? server, bool insecure)
     {
         if (server is not null)

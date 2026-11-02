@@ -257,6 +257,12 @@ public sealed class ScoreStore : IDisposable
         DELETE FROM plays WHERE cleared = 0;
         DELETE FROM dan_plays WHERE result_level = 0;
         """,
+        // The library's hashes again, from the chart reader as it is now: branched charts read differently since they
+        // were cached (a dan course's song showed as another chart, locking the course). Add another such step whenever
+        // a reader change moves charts' hashes.
+        """
+        DELETE FROM chart_hashes;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -522,6 +528,17 @@ public sealed class ScoreStore : IDisposable
     }
 
     /// <summary>The chart keys already hashed (as strings).</summary>
+    /// <summary>Forgets every stored chart hash: the library is hashed again (Settings > Song Libraries).</summary>
+    public void ForgetChartHashes()
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "DELETE FROM chart_hashes";
+            command.ExecuteNonQuery();
+        }
+    }
+
     public HashSet<string> HashedCharts()
     {
         lock (_connection)

@@ -27,8 +27,12 @@ internal enum HomeMenuAction
     LeaveRoom,
     /// <summary>Open the folder picker for the custom TJA library.</summary>
     PickTjaFolder,
-    /// <summary>Open the folder picker for the Nijiiro installation.</summary>
-    PickNijiiroFolder,
+    /// <summary>Open the folder picker for another release's game data or a Nijiiro installation.</summary>
+    PickOfficialFolder,
+    /// <summary>Open the Song Libraries page.</summary>
+    SongLibraries,
+    /// <summary>Forget the library's chart hashes and work them out again.</summary>
+    RehashLibrary,
     /// <summary>Open the folder picker for the osu!lazer data folder.</summary>
     PickOsuFolder,
     /// <summary>Start upscaling every texture the game uses (the bake page shows it).</summary>
@@ -74,8 +78,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         public Func<ArcadeSettings, string>? FormatFor { get; init; }
     }
 
-    /// <summary>A song library the player points at a folder (picked in the system's folder dialog).</summary>
-    private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, SongSourceKind Kind);
+    /// <summary>
+    /// A song library the player points at a folder (picked in the system's folder dialog). With
+    /// <paramref name="Added"/>: one of several official installs added to the library, which picking removes.
+    /// </summary>
+    private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, SongSourceKind Kind,
+        string? Added = null);
 
     /// <summary>A row that starts something (the texture bake, the audio calibration).</summary>
     private sealed record Command(string Label, HomeMenuAction Action, string Hint);
@@ -138,9 +146,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new(T("settings.title_language"), static s => s.EnglishTitles ? 0 : 1, static (s, v) => s with { EnglishTitles = v == 0 },
             static (value, _) => 1 - value, 0, static value => Name(value == 0 ? "en" : "ja"), 1, Hint: T("settings.title_language.hint"))),
         new(T("section.songs")),
-        new(Library: new(T("library.tja"), static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, SongSourceKind.Tja)),
-        new(Library: new(T("library.nijiiro"), static s => s.NijiiroFolder, HomeMenuAction.PickNijiiroFolder, SongSourceKind.Nijiiro)),
-        new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
+        new(Command: new(T("settings.song_libraries"), HomeMenuAction.SongLibraries, T("settings.song_libraries.hint"))),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
         new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
@@ -248,6 +254,25 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, _) => 1 - value, 0, static value => T(value != 0 ? "settings.long_titles.squash" : "settings.long_titles.shrink"), 1,
             Hint: T("settings.long_titles.hint"))),
         new(Command: new(T("settings.bake"), HomeMenuAction.BakeTextures, T("settings.bake.hint"))),
+        new(),
+    ];
+
+    // The Song Libraries page: the custom libraries, then every official install added to the game's own songs.
+    private bool _librariesPage;
+
+    private Row[] libraryRows =>
+    [
+        new(Library: new(T("library.tja"), static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, SongSourceKind.Tja)),
+        new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
+        new(T("library.official")),
+        .. ArcadeSettings.Folders(get().StockFolders).Select(folder => new Row(Library: new(
+            Cli.GameDataLayout.ReleaseOf(StockCatalogProvider.FindDataRoot(folder) ?? folder).Name ?? T("library.release"),
+            _ => folder, HomeMenuAction.None, SongSourceKind.Stock, folder))),
+        .. ArcadeSettings.Folders(get().NijiiroFolder).Select(folder => new Row(Library: new(
+            T("library.nijiiro"), _ => folder, HomeMenuAction.None, SongSourceKind.Nijiiro, folder))),
+        new(Command: new(T("library.add"), HomeMenuAction.PickOfficialFolder, T("library.add.hint"))),
+        new(T("library.maintenance")),
+        new(Command: new(T("library.rehash"), HomeMenuAction.RehashLibrary, T("library.rehash.hint"))),
         new(),
     ];
 
@@ -377,7 +402,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report" : _buttonsPage ? "menu.title.buttons" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
+        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report" : _buttonsPage ? "menu.title.buttons" : _librariesPage ? "menu.title.libraries" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
         : "menu.title.paused");
 
     /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
@@ -421,10 +446,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         var now = get();
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
             || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder
+            || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.OsuFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The pause page's choices (the settings page draws <see cref="Items"/>).</summary>
@@ -442,7 +468,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // The rows shown for the current settings; Selection indexes these. Only rows below the one being
     // changed come and go, so the selection stays on it.
-    private Row[] rows => [.. (_guidePage ? guideRows : _buttonsPage ? buttonRows : _controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
+    private Row[] rows => [.. (_guidePage ? guideRows : _buttonsPage ? buttonRows : _librariesPage ? libraryRows : _controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
         && (row.Command?.Action != HomeMenuAction.Calibrate || _calibrationOffered))];
 
     // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
@@ -561,6 +587,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     private Item libraryItem(Library library)
     {
+        if (library.Added is { } added)
+        {
+            var unusable = library.Kind == SongSourceKind.Stock
+                ? StockCatalogProvider.FindDataRoot(added) is null ? T("library.no_release") : null
+                : nijiiroProblem(added);
+            var restart = ArcadeSettings.Folders(library.Kind == SongSourceKind.Stock ? _atStart.StockFolders : _atStart.NijiiroFolder)
+                .Contains(added) ? "" : $"{T("library.restart")} ";
+            return new(ItemKind.Library, library.Label, Path.GetFileName(Path.TrimEndingDirectorySeparator(added)),
+                unusable is null ? $"{restart}{T("library.remove")}" : $"{unusable} {T("library.remove")}",
+                unusable is null ? LibraryState.Ready : LibraryState.Missing);
+        }
         var chosen = library.Get(get());
         var path = library.Kind switch
         {
@@ -662,7 +699,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = ["menu.resume", "menu.settings", "online.leave"];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = _restartPrompt = _reportPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
+        _settingsPage = _editing = _restartPrompt = _reportPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = _librariesPage = false;
         input.CancelCapture();
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
@@ -810,6 +847,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _guidePage = false;
             Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.ButtonGuide);
         }
+        else if (_librariesPage && (escape || decide && row == Rows_[^1]))
+        {
+            _librariesPage = false;
+            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.SongLibraries);
+        }
         else if (_controlsPage && (escape || decide && row == Rows_[^1]))
         {
             _controlsPage = false;
@@ -831,8 +873,21 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         }
         else if (up || down)
             Selection = move(Selection + (up ? -1 : 1), up ? -1 : 1);
+        // An added install: picking it takes it out of the library.
+        else if (decide && row.Library is { Added: { } added } install)
+        {
+            apply(install.Kind == SongSourceKind.Stock
+                ? get() with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(get().StockFolders).Where(folder => folder != added)) }
+                : get() with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(get().NijiiroFolder).Where(folder => folder != added)) });
+            Selection = Math.Min(Selection, rows.Length - 1);
+        }
         else if (decide && row.Library is { } library)
             return library.Pick;
+        else if (decide && row.Command is { Action: HomeMenuAction.SongLibraries })
+        {
+            _librariesPage = true;
+            Selection = 0;
+        }
         else if (decide && row.Command is { Action: HomeMenuAction.Calibrate })
         {
             // It leaves Song Select: the settings are saved and the menu closes, as with Back then Resume.
@@ -879,6 +934,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             var pad = _player * 4 + binding.Pad;
             apply(get() with { Controls = get().Controls.With(pad, string.Join(", ", inputs(get().Controls[pad]).Where(token => !onDevice(token)))) });
         }
+        else if (decide && row.Command is { Action: HomeMenuAction.RehashLibrary or HomeMenuAction.PickOfficialFolder } libraryCommand)
+            return libraryCommand.Action;
         else if (decide && row.Command is { } command && cachedTextures() is not null)
             return command.Action;
         else if (decide && row.Setting is not null)

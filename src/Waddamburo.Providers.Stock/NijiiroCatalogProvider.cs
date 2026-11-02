@@ -14,7 +14,8 @@ namespace Waddamburo.Providers.Stock;
 /// <c>items</c>), charts <c>fumen/&lt;id&gt;/&lt;id&gt;_&lt;e|n|h|m|x&gt;[_1|_2].bin</c> in the arcade fumen
 /// layout (either byte order), music <c>sound/song_&lt;id&gt;.nus3bank</c>. Files are plain, gzip, or
 /// AES-256-CBC (16-byte IV first, PKCS#7, then maybe gzip); keys are the 64-hex-digit literals in the
-/// installation's own <c>Executable/Release/bnusio.dll</c> that decrypt to valid data.
+/// installation's own <c>Executable/Release/bnusio.dll</c> that decrypt to valid data. The keys are the cabinet's (its
+/// dongle's), the same for every version: a plain dump needs a bnusio.dll that carries them (TaikoArcadeLoader's).
 /// </summary>
 public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
 {
@@ -49,6 +50,9 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     public CatalogProviderId Id { get; }
 
+    /// <summary>The data folder read (the installation's <c>Data/x64</c>).</summary>
+    public string Root => _root;
+
     public SongSourceKind Source => SongSourceKind.Nijiiro;
 
     /// <summary>True when the folder resolves to a Nijiiro data folder.</summary>
@@ -73,6 +77,27 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                 or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException)
             {
                 return exception.Message;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The highest song number in the installation's song table (0 when it can't be read): a later release adds songs
+    /// with higher numbers, so between two installations the higher one is the newer.
+    /// </summary>
+    public int NewestSong
+    {
+        get
+        {
+            try
+            {
+                return table("musicinfo").Select(static entry => entry.TryGetProperty("uniqueId", out var number)
+                    && number.TryGetInt32(out var value) ? value : 0).DefaultIfEmpty().Max();
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException
+                or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                return 0;
             }
         }
     }

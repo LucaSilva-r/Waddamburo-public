@@ -9,8 +9,9 @@ using Waddamburo.Providers.Stock;
 namespace Waddamburo.App.Cli;
 
 /// <summary>
-/// --export-charts=FILE: every stock chart and every chart of the Nijiiro folder from the settings (home mode or
-/// not), as gzipped JSON lines, one chart import each (<see cref="ChartUpload"/> plus its sha256), for TaikOnline's
+/// --export-charts=FILE: every chart of the game's own data, of every other release in stock_folders and of every
+/// Nijiiro installation in nijiiro_folder (home mode or not), each install read on its own so every version of a chart
+/// is there (once per song and hash), as gzipped JSON lines, one chart import each (<see cref="ChartUpload"/> plus its sha256), for TaikOnline's
 /// <c>php artisan app:import-waddamburo-charts</c>. A Nijiiro install may hold fan-made and other games' songs, so
 /// only exports of unmodified dumps count as official there (its --nijiiro-dumps); the rest still get their notes and songs.
 /// </summary>
@@ -20,18 +21,18 @@ internal static class ChartExport
     {
         ISongCatalogProvider[] providers =
         [
-            .. StockCatalogProvider.IsStockData(dataRoot) ? [new StockCatalogProvider(dataRoot)] : Array.Empty<ISongCatalogProvider>(),
-            .. arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is var installed
-                && installed.Problem is null ? [installed] : Array.Empty<ISongCatalogProvider>(),
+            .. new[] { dataRoot }.Concat(ArcadeSettings.Folders(arcade.StockFolders).Select(StockCatalogProvider.FindDataRoot).OfType<string>())
+                .Where(StockCatalogProvider.IsStockData).Distinct().Select(static root => new StockCatalogProvider(root)),
+            .. ArcadeSettings.Folders(arcade.NijiiroFolder).Select(static folder => new NijiiroCatalogProvider(folder))
+                .Where(static installed => installed.Problem is null),
         ];
-        using var catalog = new GlobalSongCatalog(providers);
-        var snapshot = catalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
-        var assets = new CatalogAssetRouter(providers);
         var exported = 0;
         var skipped = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         using var file = File.Create(path);
         using var output = new GZipStream(file, CompressionLevel.Optimal);
-        foreach (var song in snapshot.Songs.Values)
+        foreach (var provider in providers)
+        foreach (var song in provider.ScanAsync(null, CancellationToken.None).AsTask().GetAwaiter().GetResult().Songs)
         {
             foreach (var chart in song.Charts)
             {
@@ -40,7 +41,7 @@ internal static class ChartExport
                 PlayableChart playable;
                 try
                 {
-                    playable = assets.LoadChartAsync(chart.Key, chart.ChartAsset).AsTask().GetAwaiter().GetResult();
+                    playable = ((IPlayableChartProvider)provider).LoadChartAsync(chart.Key, chart.ChartAsset).AsTask().GetAwaiter().GetResult();
                 }
                 catch (Exception exception) when (exception is InvalidDataException or NotSupportedException
                     or IOException or OverflowException or ArgumentException)
@@ -48,11 +49,15 @@ internal static class ChartExport
                     skipped++;
                     continue;
                 }
+                var sha = ChartHash.Compute(playable, course);
+                // Once per song: a chart a Nijiiro song shares with a stock one still joins (and proves) its Nijiiro song.
+                if (!seen.Add($"{song.Key}|{sha}"))
+                    continue;
                 var upload = ChartUpload.From(playable, course, song);
                 using (var writer = new Utf8JsonWriter(output))
                 {
                     writer.WriteStartObject();
-                    writer.WriteString("sha256", ChartHash.Compute(playable, course));
+                    writer.WriteString("sha256", sha);
                     // A 譜面分岐 chart's hash before branching was played (clients up to v0.18 read its normal
                     // route alone): TaikOnline marks that chart legacy and keeps its plays apart.
                     if (playable.Branching is { SameNotes: false })
@@ -80,7 +85,7 @@ internal static class ChartExport
                 exported++;
             }
         }
-        Console.WriteLine($"Exported {exported} charts to {path} ({skipped} unreadable, skipped).");
+        Console.WriteLine($"Exported {exported} charts from {providers.Length} installs to {path} ({skipped} unreadable, skipped).");
         return 0;
     }
 }

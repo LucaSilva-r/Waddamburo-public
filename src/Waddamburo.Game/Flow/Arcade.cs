@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 24;
+    public const int CurrentVersion = 25;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -237,6 +237,13 @@ public sealed record ArcadeSettings
         attract_volume = 100
 
         """,
+        """
+        # stock_folders (also in Settings > Song libraries): other Taiko no Tatsujin releases' game data (an RPCS3 game
+        # folder, its USRDIR or USRDIR/data), separated by |. Their songs join the game's own; a song several have comes
+        # from the newest release. nijiiro_folder takes several installations the same way.
+        stock_folders =
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -431,8 +438,19 @@ public sealed record ArcadeSettings
     /// <summary>The custom TJA library (null: custom_songs beside the game data).</summary>
     public string? TjaFolder { get; init; }
 
-    /// <summary>A Nijiiro installation (null: none).</summary>
+    /// <summary>Nijiiro installations, separated by | (null: none); see <see cref="Folders"/>.</summary>
     public string? NijiiroFolder { get; init; }
+
+    /// <summary>Other releases' game data folders, separated by | (null: none); see <see cref="Folders"/>.</summary>
+    public string? StockFolders { get; init; }
+
+    /// <summary>The folders a | separated setting names (none for null or empty).</summary>
+    public static IReadOnlyList<string> Folders(string? setting) =>
+        setting?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+
+    /// <summary>The setting naming these folders (null for none).</summary>
+    public static string? JoinFolders(IEnumerable<string> folders) =>
+        string.Join('|', folders.Distinct()) is { Length: > 0 } joined ? joined : null;
 
     /// <summary>
     /// The cache folder for decoded songs and upscaled textures: null or <see cref="UserCacheValue"/> =
@@ -637,6 +655,7 @@ public sealed record ArcadeSettings
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
+                "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
                 "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
                 "osu_group" => settings with { OsuBrowse = settings.OsuBrowse with
@@ -734,6 +753,7 @@ public sealed record ArcadeSettings
             ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
+            ["stock_folders"] = settings.StockFolders ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",
             ["cache_folder"] = settings.CacheFolder ?? "",
             ["osu_group"] = settings.OsuBrowse.Group.ToString().ToLowerInvariant(),

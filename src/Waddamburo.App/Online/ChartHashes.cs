@@ -34,13 +34,34 @@ internal sealed class ChartHashes(ScoreStore? store,
         return _known[chart.Key] = hash;
     }
 
+    /// <summary>Running: the library is being hashed again (<see cref="Rehash"/>).</summary>
+    public bool Rehashing { get; private set; }
+
+    /// <summary>
+    /// Forgets every hash and hashes the library again, as the chart reader reads it now (a reader change moves charts'
+    /// hashes: dan courses then miss songs the player has). <paramref name="done"/> runs once it has finished.
+    /// </summary>
+    public void Rehash(IEnumerable<SongDescriptor> songs, Action done)
+    {
+        if (store is null || Rehashing)
+            return;
+        Rehashing = true;
+        _known.Clear();
+        store.ForgetChartHashes();
+        HashLibraryInBackground(songs).ContinueWith(_ =>
+        {
+            Rehashing = false;
+            done();
+        }, TaskScheduler.Default);
+    }
+
     /// <summary>Hashes every library chart the store does not know yet (unreadable charts are skipped).</summary>
-    public void HashLibraryInBackground(IEnumerable<SongDescriptor> songs)
+    public Task HashLibraryInBackground(IEnumerable<SongDescriptor> songs)
     {
         if (store is null)
-            return;
+            return Task.CompletedTask;
         var charts = songs.SelectMany(static song => song.Charts).Where(static chart => chart.Course is not null).ToList();
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
             var known = store.HashedCharts();
             var missing = charts.Where(chart => !known.Contains(chart.Key.ToString())).ToList();

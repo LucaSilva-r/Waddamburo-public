@@ -162,21 +162,36 @@ internal sealed record GameDataLayout(
             || extension.Equals(".otf", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".ttc", StringComparison.OrdinalIgnoreCase);
 
-    // The AC15 releases by the code in their PARAM.SFO title, "Taiko no Tatsujin(S111)" (TITLE_01 always has it).
-    private static readonly Dictionary<string, string> Releases = new(StringComparer.Ordinal)
+    // The AC15 releases by the code in their PARAM.SFO title, "Taiko no Tatsujin(S111)" (TITLE_01 always has it), oldest first.
+    private static readonly (string Code, string Name)[] Releases =
+    [
+        ("ST1-A07", "Taiko no Tatsujin (2011)"),
+        ("ST21", "Katsu-Don Ver."),
+        ("ST31", "Sorairo Ver."),
+        ("ST41", "Momoiro Ver."),
+        ("ST48", "Wadaiko Ver."),
+        ("ST51", "Kimidori Ver."),
+        ("ST61", "Murasaki Ver."),
+        ("ST71", "White Ver."),
+        ("ST87", "Red Ver."),
+        ("ST91", "Yellow Ver."),
+        ("S101", "Blue Ver."),
+        ("S111", "Green Ver."),
+    ];
+
+    /// <summary>
+    /// The release a game data folder (<c>USRDIR/data</c>) comes from, by its game folder's PARAM.SFO: its name and its
+    /// place among the releases (higher is newer). Unknown (no PARAM.SFO, or another title): -1 and null.
+    /// </summary>
+    public static (int Order, string? Name) ReleaseOf(string dataRoot)
     {
-        ["ST1-A07"] = "Taiko no Tatsujin (2011)",
-        ["ST21"] = "Katsu-Don Ver.",
-        ["ST31"] = "Sorairo Ver.",
-        ["ST41"] = "Momoiro Ver.",
-        ["ST48"] = "Wadaiko Ver.",
-        ["ST51"] = "Kimidori Ver.",
-        ["ST61"] = "Murasaki Ver.",
-        ["ST71"] = "White Ver.",
-        ["ST87"] = "Red Ver.",
-        ["ST91"] = "Yellow Ver.",
-        ["S101"] = "Blue Ver.",
-    };
+        var sfo = Path.Combine(dataRoot, "..", "..", "PARAM.SFO");
+        if (!File.Exists(sfo) || sfoTitle(File.ReadAllBytes(sfo)) is not { } title
+            || System.Text.RegularExpressions.Regex.Match(title, @"\(([A-Z0-9-]+)\)\s*$") is not { Success: true } code
+            || Array.FindIndex(Releases, release => release.Code == code.Groups[1].Value) is not (>= 0 and var order))
+            return (-1, null);
+        return (order, Releases[order].Name);
+    }
 
     // Waddamburo runs Green (S111) only. The game folder (USRDIR's parent) names its release in PARAM.SFO;
     // without one (USRDIR copied on its own) nothing is checked. Downloads often hold an older release
@@ -188,7 +203,7 @@ internal sealed record GameDataLayout(
             || System.Text.RegularExpressions.Regex.Match(title, @"\(([A-Z0-9-]+)\)\s*$") is not { Success: true } code
             || code.Groups[1].Value == "S111")
             return;
-        var release = Releases.GetValueOrDefault(code.Groups[1].Value, $"\"{title}\"");
+        var release = Releases.FirstOrDefault(release => release.Code == code.Groups[1].Value).Name ?? $"\"{title}\"";
         throw new InvalidDataException(
             $"{release} is not supported: Waddamburo runs Taiko no Tatsujin Green Ver. (S111) only. "
             + "If this download came with an update package (dev_usb000/VERSIONUP), install it in RPCS3 first: "

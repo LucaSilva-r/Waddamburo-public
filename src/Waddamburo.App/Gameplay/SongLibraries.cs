@@ -8,9 +8,10 @@ using Waddamburo.Providers.Tja;
 namespace Waddamburo.App.Gameplay;
 
 /// <summary>
-/// The song sources this run lists, scanned once at start: the game's own songs beside the Lumen data,
-/// and in home mode the custom TJA and Nijiiro libraries set in the settings. Either may be absent: a
-/// stock install without custom songs, or custom songs alone.
+/// The song sources this run lists, scanned once at start: the game's own songs beside the Lumen data (in home mode
+/// joined by other releases' set in the settings), and in home mode the custom TJA, Nijiiro and osu! libraries. Either
+/// may be absent: a stock install without custom songs, or custom songs alone. Several official installs of a kind are
+/// one library (<see cref="MergedCatalogProvider"/>): a song more of them have comes from the newest release.
 /// </summary>
 internal sealed class SongLibraries : IDisposable
 {
@@ -32,14 +33,13 @@ internal sealed class SongLibraries : IDisposable
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
         var libraries = new SongLibraries([
-            .. StockCatalogProvider.IsStockData(dataRoot) ? [new StockCatalogProvider(dataRoot)] : Array.Empty<ISongCatalogProvider>(),
+            .. stock(dataRoot, arcade),
             // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
             // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
             .. (arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(tja)
                 ? [new TjaCatalogProvider(tja)] : Array.Empty<ISongCatalogProvider>(),
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
-            .. arcade.Home && arcade.NijiiroFolder is { } nijiiro && new NijiiroCatalogProvider(nijiiro) is var installed
-                && usable(installed) ? [installed] : Array.Empty<ISongCatalogProvider>(),
+            .. arcade.Home ? nijiiro(arcade) : [],
             // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
             .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
                 ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
@@ -59,6 +59,50 @@ internal sealed class SongLibraries : IDisposable
         foreach (var diagnostic in snapshot.Diagnostics)
             Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
         return libraries;
+    }
+
+    // The game's own songs, then (home mode) other releases' that it lacks, newest release first.
+    private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade)
+    {
+        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
+            .Select(static folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder))
+            .OfType<string>()
+            .Where(root => !string.Equals(root, Path.GetFullPath(dataRoot), StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(static root => Cli.GameDataLayout.ReleaseOf(root).Order)
+            .ToList() : [];
+        // The running game's data is Green, the newest release: it comes first whatever the others are.
+        List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
+        return roots.Count switch
+        {
+            0 => [],
+            1 => [new StockCatalogProvider(roots[0])],
+            _ => [new MergedCatalogProvider([.. roots.Select(static root => new StockCatalogProvider(root))])],
+        };
+    }
+
+    // Nijiiro installations that can play, the newest (highest song number) first.
+    private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade)
+    {
+        var installs = ArcadeSettings.Folders(arcade.NijiiroFolder)
+            .Select(static folder => new NijiiroCatalogProvider(folder))
+            .Where(usable)
+            .OrderByDescending(static installation => installation.NewestSong)
+            .ToList();
+        foreach (var installation in installs)
+            Console.WriteLine($"Nijiiro installation {installation.Root}: newest song #{installation.NewestSong}.");
+        return installs.Count switch
+        {
+            0 => [],
+            1 => [installs[0]],
+            _ => [new MergedCatalogProvider(installs)],
+        };
+    }
+
+    private static string? warnMissing(string folder)
+    {
+        Console.Error.WriteLine($"Game data left out: no songs in {folder}.");
+        return null;
     }
 
     /// <summary>

@@ -169,7 +169,8 @@ internal sealed class HomeControls : IDisposable
     public void FollowFocus()
     {
         _audio.Scope(AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo ? MenuVolumeScope.Attract
-            : active == FlowScenes.Entry || active == FlowScenes.SongSelect ? MenuVolumeScope.Menus : MenuVolumeScope.Song);
+            : active == FlowScenes.Entry || active == FlowScenes.SongSelect || active == FlowScenes.DaniSelect
+                ? MenuVolumeScope.Menus : MenuVolumeScope.Song);
         if (_shell.Application.Focused == _focused)
             return;
         _focused = _shell.Application.Focused;
@@ -269,7 +270,7 @@ internal sealed class HomeControls : IDisposable
             {
                 HomeMenuAction.PickTjaFolder => _shell.Arcade with { TjaFolder = folder },
                 HomeMenuAction.PickOsuFolder => _shell.Arcade with { OsuFolder = folder },
-                _ => _shell.Arcade with { NijiiroFolder = folder },
+                _ => officialFolder(folder),
             };
             save();
             _pickingFolder = null;
@@ -309,13 +310,13 @@ internal sealed class HomeControls : IDisposable
                 resumeSong();
                 _gameplay.Abandon();
                 break;
-            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickNijiiroFolder or HomeMenuAction.PickOsuFolder:
+            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickOfficialFolder or HomeMenuAction.PickOsuFolder:
                 _pickingFolder = action;
                 _shell.Application.PickFolder(action switch
                 {
                     HomeMenuAction.PickTjaFolder => _shell.Arcade.TjaFolder ?? _shell.Options.TjaRoot,
                     HomeMenuAction.PickOsuFolder => _shell.Arcade.OsuFolder,
-                    _ => _shell.Arcade.NijiiroFolder,
+                    _ => ArcadeSettings.Folders(_shell.Arcade.StockFolders).LastOrDefault(),
                 });
                 break;
             // Mid-song: the song ends for this player (the other is told the room is gone) and Song Select comes back.
@@ -343,6 +344,10 @@ internal sealed class HomeControls : IDisposable
                 save();
                 _shell.RequestRestart();
                 break;
+            // Once at a time; its progress shows in the notice sidebar.
+            case HomeMenuAction.RehashLibrary:
+                _shell.RehashLibrary();
+                break;
             // A bake already running is shown again rather than started twice.
             case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                 _menu.Bake = _shell.Bake is { Running: true } running ? running
@@ -356,6 +361,19 @@ internal sealed class HomeControls : IDisposable
     {
         if (active == FlowScenes.Gameplay)
             _gameplay.SetPaused(false);
+    }
+
+    // A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else is
+    // said and left out.
+    private ArcadeSettings officialFolder(string folder)
+    {
+        var arcade = _shell.Arcade;
+        if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null)
+            return arcade with { StockFolders = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.StockFolders), folder]) };
+        if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder).Exists)
+            return arcade with { NijiiroFolder = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.NijiiroFolder), folder]) };
+        _shell.Sync.Notices.AddLocal(Strings.T("library.no_official"), Waddamburo.Game.Online.NoticeSeverity.Warning);
+        return arcade;
     }
 
     private void save()

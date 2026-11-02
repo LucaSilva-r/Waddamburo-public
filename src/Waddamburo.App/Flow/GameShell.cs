@@ -79,6 +79,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
 
+    /// <summary>Hashes the whole library again (Settings > Song Libraries), then matches the dan courses again.</summary>
+    public void RehashLibrary() => ChartHashes.Rehash(_libraries.Snapshot.Songs.Values, _danCourses.Rematch);
+
     private readonly DanCourses _danCourses;
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
