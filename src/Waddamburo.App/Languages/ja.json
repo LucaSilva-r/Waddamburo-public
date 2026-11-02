@@ -51,6 +51,7 @@
   "library.not_usable": "使用不可",
   "library.no_tja": ".tjaの曲がありません。",
   "library.no_nijiiro": "ニジイロのデータがありません。",
+  "library.no_keys": "このニジイロの Executable/Release/bnusio.dll には、ファイルを開くキーがありません。キーの入ったもの（TaikoArcadeLoader のもの）に入れかえてから、もう一度追加してください。",
   "library.no_vgmstream": "音楽の再生にはゲームと同じフォルダに vgmstream-cli が必要です: github.com/vgmstream/vgmstream/releases から入手してください。",
   "library.choose": "面: {0}を選ぶ。",
   "library.choose_another": "面: 別のフォルダを選ぶ。",

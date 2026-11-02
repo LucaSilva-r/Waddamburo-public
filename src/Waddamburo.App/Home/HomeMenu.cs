@@ -655,13 +655,18 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         return found;
     }
 
+    /// <summary>Why a Nijiiro installation can't be read, in the player's language; null when it can.</summary>
+    public static string? NijiiroProblemText(NijiiroCatalogProvider installation) =>
+        !installation.Exists ? T("library.no_nijiiro")
+        : installation.Problem is not { } problem ? null
+        : installation.KeysMissing ? T("library.no_keys") : problem;
+
     // The installation's own problem is remembered per path like valid() (it decrypts the song table);
     // vgmstream-cli is looked for again each time the menu opens.
     private string? nijiiroProblem(string path)
     {
         if (!_nijiiroProblems.TryGetValue(path, out var problem))
-            _nijiiroProblems[path] = problem = new NijiiroCatalogProvider(path) is var installation && !installation.Exists
-                ? T("library.no_nijiiro") : installation.Problem;
+            _nijiiroProblems[path] = problem = NijiiroProblemText(new NijiiroCatalogProvider(path));
         return problem ?? SongLibraries.VgmstreamProblem;
     }
 

@@ -55,6 +55,12 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     public SongSourceKind Source => SongSourceKind.Nijiiro;
 
+    /// <summary>
+    /// After <see cref="Problem"/>: the files are encrypted and the installation's loader carries no key that opens
+    /// them (a plain dump: the keys are the cabinet's, in TaikoArcadeLoader's bnusio.dll).
+    /// </summary>
+    public bool KeysMissing { get; private set; }
+
     /// <summary>True when the folder resolves to a Nijiiro data folder.</summary>
     public bool Exists => Directory.Exists(Path.Combine(_root, "fumen")) && Directory.Exists(Path.Combine(_root, "sound"));
 
@@ -300,7 +306,8 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             if (plausible(plain, table))
                 return plain;
         }
-        throw new InvalidDataException("A Nijiiro file cannot be decrypted: the installation's Executable/Release/bnusio.dll is needed.");
+        KeysMissing = true;
+        throw new InvalidDataException("The installation's Executable/Release/bnusio.dll has no key that opens its files: use one that carries them (TaikoArcadeLoader's).");
     }
 
     // Key candidates: every 64-hex-digit literal in the installation's loader (never executed).

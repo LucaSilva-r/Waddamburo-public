@@ -370,8 +370,16 @@ internal sealed class HomeControls : IDisposable
         var arcade = _shell.Arcade;
         if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null)
             return arcade with { StockFolders = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.StockFolders), folder]) };
-        if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder).Exists)
+        if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder) is { Exists: true } installation)
+        {
+            // One it can't read (a plain dump's loader has no keys) is said, and not added.
+            if (HomeMenu.NijiiroProblemText(installation) is { } problem)
+            {
+                _shell.Sync.Notices.AddLocal(problem, Waddamburo.Game.Online.NoticeSeverity.Warning);
+                return arcade;
+            }
             return arcade with { NijiiroFolder = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.NijiiroFolder), folder]) };
+        }
         _shell.Sync.Notices.AddLocal(Strings.T("library.no_official"), Waddamburo.Game.Online.NoticeSeverity.Warning);
         return arcade;
     }
