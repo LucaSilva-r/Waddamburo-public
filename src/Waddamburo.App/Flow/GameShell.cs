@@ -299,7 +299,7 @@ internal sealed class GameShell : IDisposable
         var dataRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
         _libraries = SongLibraries.Load(dataRoot, Arcade, options.TjaRoot);
         var snapshot = _libraries.Snapshot;
-        Assets = new CatalogAssetRouter(_libraries.Providers);
+        Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
         ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
         SongCatalog = new SongSelectCatalogView(snapshot);
         // Server crowns need every chart's hash before song select lists it.
@@ -441,6 +441,7 @@ internal sealed class GameShell : IDisposable
             Dan = _danCourses,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             OnlineAvailable = () => Room.Available,
+            Received = ReceivedSongs.Find,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
         };
@@ -992,6 +993,15 @@ internal sealed class GameShell : IDisposable
     }
 
     private bool _onlineTwoPlayers;
+
+    /// <summary>Songs another player sent this session, in memory only.</summary>
+    public ReceivedSongs ReceivedSongs { get; } = new();
+
+    /// <summary>A song by its key: one of the libraries', else one received this session; null when neither has it.</summary>
+    public SongSelectSong? FindSong(SongKey song) =>
+        SongCatalog.Categories.SelectMany(static category => category.Songs).FirstOrDefault(entry => entry.Descriptor.Key == song)
+        ?? (ReceivedSongs.Find(song) is { } received ? SongSelectCatalogView.CreateSong(received) : null);
+
 
     /// <summary>
     /// An online song and its results run as two players at the drums do (shutter, Don-chans, results), with the partner on

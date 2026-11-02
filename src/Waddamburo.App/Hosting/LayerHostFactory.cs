@@ -162,6 +162,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Whether Song Select offers the Online folder.</summary>
     public Func<bool>? OnlineAvailable { get; init; }
 
+    /// <summary>A song another player sent this session (Song Select lists it while it's the online song).</summary>
+    public Func<SongKey, SongDescriptor?>? Received { get; init; }
+
 
     /// <summary>The next Song Select opens on this song (an online host's pick), in its own library.</summary>
     public void FocusSong(SongKey song)
@@ -371,7 +374,7 @@ internal sealed class LayerHostFactory(
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null,
             danSeries: arcade.Home ? Dan?.Series : null,
-            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong);
+            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;

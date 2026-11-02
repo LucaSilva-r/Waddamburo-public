@@ -251,9 +251,9 @@ public sealed record PlayableChart
             throw new ArgumentException("A hit object cannot occur after the chart duration.", nameof(duration));
     }
 
-    public ChartKey Key { get; }
+    public ChartKey Key { get; init; }
     public TimeSpan AuthoredOffset { get; }
-    public TimeSpan Duration { get; }
+    public TimeSpan Duration { get; init; }
     public ImmutableArray<PlayableHitObject> HitObjects { get; }
     public ImmutableArray<ChartTimingPoint> TimingPoints { get; }
     public ImmutableArray<ChartScrollPoint> ScrollPoints { get; }

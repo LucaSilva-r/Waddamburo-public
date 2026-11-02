@@ -65,6 +65,9 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     /// <summary>The players' messages to each other (a song picked, ready, go).</summary>
     public RoomMessages Messages { get; } = new();
 
+    /// <summary>A song one player sends the other, who lacks it.</summary>
+    public SongTransfer Transfer { get; } = new();
+
     /// <summary>
     /// A song being played together: this player's hits go out through the relay, the other player's come in to the
     /// feed. Set for a song, cleared after it (null meanwhile: their hits aren't expected).
@@ -76,6 +79,8 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     {
         foreach (var packet in Messages.Due())
             Link.Send(packet);
+        foreach (var packet in Transfer.Due())
+            Link.Send(packet);
         if (Song is { } song)
             Link.Send(song.Relay.Build());
     }
@@ -83,7 +88,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     // What the other player sends: a message, or (in a song) their hits.
     private void received(byte[] packet)
     {
-        if (Messages.Read(packet, out var reply))
+        if (Messages.Read(packet, out var reply) || Transfer.Read(packet, out reply))
         {
             if (reply is not null)
                 Link.Send(reply);

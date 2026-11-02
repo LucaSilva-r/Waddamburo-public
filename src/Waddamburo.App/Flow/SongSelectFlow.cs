@@ -342,7 +342,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     private (string Category, SongSelectSong Song) find(SongKey song) => Shell.SongCatalog.Categories
         .SelectMany(category => category.Songs.Select(entry => (category.Name, entry)))
-        .First(entry => entry.entry.Descriptor.Key == song);
+        .FirstOrDefault(entry => entry.entry.Descriptor.Key == song) is ({ } name, { } found) ? (name, found)
+        : ("Online", Shell.FindSong(song) ?? throw new InvalidOperationException($"Song '{song}' is in no library."));
 
     // Under the closed rainbow: load every player's chart and the song's scene, then show gameplay.
     private void startSong(PlayRequest request)

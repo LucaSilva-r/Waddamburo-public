@@ -124,7 +124,8 @@ public sealed class SongSelectCatalogView
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
-        IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null)
+        IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null,
+        Func<SongKey, SongDescriptor?>? received = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -152,7 +153,7 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(SearchKey, $"Search: {search.Query}", FeatureLabel, SongCategoryPresentation.AlwaysVisible,
                 boardStyle(""), [.. search.Songs.Where(snapshot.Songs.ContainsKey).Select(key => snapshot.Songs[key])
                     .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-                    .Select(createSong)])
+                    .Select(CreateSong)])
             {
                 Tint = (255, 200, 40),
                 Art = new FolderArt(FolderArtStyle.Search, $"Search: {search.Query}",
@@ -172,7 +173,7 @@ public sealed class SongSelectCatalogView
                     category.Descriptor?.OutlineColour is { } outline ? new SongBoardTextureStyle(outline) : boardStyle(label == FeatureLabel ? category.Name : label),
                     [.. category.Songs
                         .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-                        .Select(createSong)])
+                        .Select(CreateSong)])
                 {
                     Tint = library == SongSourceKind.OsuLazer && browse is not null ? LibraryTint(SongSourceKind.OsuLazer)
                         : category.Descriptor?.Colour is { } rgb ? ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) : null,
@@ -217,8 +218,9 @@ public sealed class SongSelectCatalogView
             });
         Categories = [.. categories];
         // An online guest picks a course on the host's song: it alone, in a folder of its own.
-        if (onlySong is not null && Categories.SelectMany(static category => category.Songs)
-                .FirstOrDefault(entry => entry.Descriptor.Key == onlySong) is { } only)
+        if (onlySong is not null && (Categories.SelectMany(static category => category.Songs)
+                .FirstOrDefault(entry => entry.Descriptor.Key == onlySong)
+                ?? (received?.Invoke(onlySong) is { } sent ? CreateSong(sent) : null)) is { } only)
             Categories = [new SongSelectCategory(new CategoryKey(onlySong.Source, "online-song"), "Online", FeatureLabel,
                 SongCategoryPresentation.AlwaysVisible, boardStyle(""), [only])];
     }
@@ -301,7 +303,7 @@ public sealed class SongSelectCatalogView
         .Where(key => (_library is null || key.Source == _library) && _snapshot.Songs.ContainsKey(key))
         .Select(key => _snapshot.Songs[key])
         .Where(song => Mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
-        .Select(createSong)];
+        .Select(CreateSong)];
 
     /// <summary>Index of the folder that switches to <paramref name="library"/>, or -1.</summary>
     public int LinkCategory(SongSourceKind library) => Categories.ToList().FindIndex(category => category.Link == library);
@@ -381,7 +383,8 @@ public sealed class SongSelectCatalogView
         return false;
     }
 
-    private static SongSelectSong createSong(SongDescriptor descriptor)
+    /// <summary>A song as Song Select lists it: its courses and their levels.</summary>
+    public static SongSelectSong CreateSong(SongDescriptor descriptor)
     {
         var bits = SongCourseBits.None;
         var levels = new int?[5];

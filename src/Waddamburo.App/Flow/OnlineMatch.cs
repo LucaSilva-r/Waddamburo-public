@@ -14,7 +14,8 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal sealed class OnlineMatch(GameShell shell)
 {
-    private sealed record Pick(SongKey Song, TaikoCourse Course, int Options, int Seed);
+    // Chart: the picked course's chart id, by which a guest finds their own copy of a custom song kept elsewhere.
+    private sealed record Pick(SongKey Song, TaikoCourse Course, int Options, int Seed, string? Chart = null);
 
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(20);
 
@@ -24,12 +25,18 @@ internal sealed class OnlineMatch(GameShell shell)
     private bool _partnerMissing;
     private bool _go;
     private long _readySince;
+    private SongKey? _hostSong; // the guest plays their own copy of the host's song, under this key on the host's side
+    private Pick? _awaiting; // the guest is receiving the host's song for this pick
+    private Task<byte[]?>? _packing; // the host is packing their song for the guest
+    private bool _sending;
 
     /// <summary>A song with the other player is loading or being played.</summary>
     public bool InSong { get; private set; }
 
     /// <summary>What the banner says about the song being agreed on; null when there's nothing to say.</summary>
     public string? Status => connected() is not { } session ? null
+        : _awaiting is not null ? T("online.receiving", name(session), percent(session.Transfer.ReceiveProgress))
+        : _packing is not null || _sending ? T("online.sending", name(session), percent(session.Transfer.SendProgress))
         // Both picked, the song not loading yet: already waiting, so the banner doesn't drop back to the round trip for a moment.
         : InSong && !_go || !InSong && _mine is not null && _theirs is not null ? T("online.waiting_ready")
         : _mine is not null && _theirs is null ? T("online.waiting_pick", name(session)) + " " + T("online.esc_cancel")
@@ -49,6 +56,25 @@ internal sealed class OnlineMatch(GameShell shell)
         session.Pump();
         while (session.Messages.TryTake(out var message))
             handle(session, message);
+        if (_awaiting is { } awaited && session.Transfer.TakeComplete() is { } blob)
+            received(session, awaited, blob);
+        if (_packing is { IsCompleted: true } packing)
+        {
+            _packing = null;
+            if (packing.IsCompletedSuccessfully && packing.Result is { } package)
+            {
+                session.Transfer.Send(package);
+                _sending = true;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Warning ONLINE: the song wasn't sent ({packing.Exception?.GetBaseException().Message ?? "too big"}).");
+                shell.Sync.Notices.AddLocal(T("online.not_sent"), NoticeSeverity.Warning);
+                unshared(session);
+            }
+        }
+        if (_sending && session.Transfer.SendProgress is null)
+            _sending = false;
         if (InSong && !_go && session.IsHost && _readySince != 0 && (_theirReady || readyTimedOut()))
         {
             session.Messages.Send(static writer => writer.WriteString("kind", "go"));
@@ -86,9 +112,12 @@ internal sealed class OnlineMatch(GameShell shell)
         session.Messages.Send(writer =>
         {
             writer.WriteString("kind", "pick");
-            writer.WriteString("source", mine.Song.Source.ToString());
-            writer.WriteString("song", mine.Song.StableId);
+            // A guest playing their own copy names the host's song as the host knows it.
+            var song = session.IsHost ? mine.Song : _hostSong ?? mine.Song;
+            writer.WriteString("source", song.Source.ToString());
+            writer.WriteString("song", song.StableId);
             writer.WriteNumber("course", (int)mine.Course);
+            writer.WriteString("chart", player.Chart.StableId);
             writer.WriteNumber("options", mine.Options);
             writer.WriteNumber("seed", mine.Seed);
         });
@@ -176,6 +205,8 @@ internal sealed class OnlineMatch(GameShell shell)
     private void reset()
     {
         (_mine, _theirs, _theirReady, _go, InSong, _partnerMissing, _readySince, _goAt) = (null, null, false, false, false, false, 0, 0);
+        (_hostSong, _awaiting, _packing, _sending) = (null, null, null, false);
+        shell.Room.Session?.Transfer.Cancel();
         shell.Hosts.ShowOnlineSong(null);
     }
 
@@ -186,9 +217,27 @@ internal sealed class OnlineMatch(GameShell shell)
         switch (RoomMessages.KindOf(message))
         {
             case "pick" when pick(message) is { } theirs:
-                _theirs = theirs;
-                if (!session.IsHost && _mine is null)
-                    comeToSong(theirs.Song);
+                if (session.IsHost || _mine is not null)
+                    _theirs = theirs;
+                else if (local(session, theirs) is { } playable)
+                {
+                    _theirs = playable;
+                    comeToSong(playable.Song);
+                }
+                break;
+            // The guest lacks the host's custom song: it goes to them, once the host confirms they may share it.
+            case "need" when session.IsHost && _mine is { } mine && _packing is null && !_sending:
+                shell.Room.AskShare(share =>
+                {
+                    if (!share)
+                        unshared(session);
+                    else if (_mine == mine)
+                        _packing = Task.Run(() => pack(mine.Song));
+                });
+                break;
+            case "unshared" when _awaiting is not null:
+                shell.Sync.Notices.AddLocal(T("online.not_shared", name(session)), NoticeSeverity.Warning);
+                _awaiting = null;
                 break;
             // They don't have the song: it plays alone.
             case "missing":
@@ -212,16 +261,72 @@ internal sealed class OnlineMatch(GameShell shell)
         }
     }
 
-    // The host's song: the guest's Song Select opens on it, or says they don't have it.
-    private void comeToSong(SongKey song)
+    /// <summary>
+    /// The host's pick as this guest can play it: the same song, or their own copy of a custom one kept elsewhere (found by
+    /// its chart). Without one, a custom song is asked for (null until it arrives) and the game's own songs can't be had.
+    /// </summary>
+    private Pick? local(OnlineSession session, Pick host)
     {
-        if (!shell.SongCatalog.Categories.Any(category => category.Songs.Any(entry => entry.Descriptor.Key == song)))
+        _hostSong = null;
+        if (shell.FindSong(host.Song) is not null)
+            return host;
+        var custom = host.Song.Source is SongSourceKind.Tja or SongSourceKind.OsuLazer;
+        if (custom && host.Chart is { } chart && shell.SongCatalog.Categories.SelectMany(static category => category.Songs)
+                .FirstOrDefault(entry => entry.Descriptor.Key.Source == host.Song.Source
+                    && entry.Descriptor.Charts.Any(own => own.Key.StableId == chart)) is { } copy)
         {
-            shell.Sync.Notices.AddLocal(T("online.song_missing"), NoticeSeverity.Warning);
-            shell.Room.Session?.Messages.Send(static writer => writer.WriteString("kind", "missing"));
-            _theirs = null;
+            _hostSong = host.Song;
+            return host with { Song = copy.Descriptor.Key };
+        }
+        if (custom)
+        {
+            _awaiting = host;
+            session.Messages.Send(static writer => writer.WriteString("kind", "need"));
+            return null;
+        }
+        shell.Sync.Notices.AddLocal(T("online.song_missing"), NoticeSeverity.Warning);
+        session.Messages.Send(static writer => writer.WriteString("kind", "missing"));
+        return null;
+    }
+
+    // The host's song arrived: kept in memory for this session, and Song Select opens on it.
+    private void received(OnlineSession session, Pick host, byte[] blob)
+    {
+        _awaiting = null;
+        if (SongPackage.Decode(blob, host.Song) is not { } package)
+        {
+            shell.Sync.Notices.AddLocal(T("online.song_broken"), NoticeSeverity.Warning);
+            session.Messages.Send(static writer => writer.WriteString("kind", "missing"));
             return;
         }
+        shell.ReceivedSongs.Add(package);
+        Console.WriteLine($"Online: received {package.Title.Primary} ({blob.Length / 1024} kB).");
+        _theirs = host;
+        comeToSong(host.Song);
+    }
+
+    // The host's custom song, as it goes to the guest; null when it can't (too big, or unreadable).
+    private async Task<byte[]?> pack(SongKey song)
+    {
+        if (shell.FindSong(song)?.Descriptor is not { } descriptor
+            || await SongPackage.FromAsync(descriptor, shell.Assets, shell.Assets).ConfigureAwait(false) is not { } package)
+            return null;
+        var bytes = package.Encode();
+        return bytes.Length <= SongTransfer.MaxBytes ? bytes : null;
+    }
+
+    // The song isn't going to the guest: they're told, and the host plays alone.
+    private void unshared(OnlineSession session)
+    {
+        _partnerMissing = true;
+        session.Messages.Send(static writer => writer.WriteString("kind", "unshared"));
+    }
+
+    private static int percent(double? progress) => (int)Math.Floor((progress ?? 0) * 100);
+
+    // The host's song: the guest's Song Select opens on it.
+    private void comeToSong(SongKey song)
+    {
         // Song Select shows only that song, to pick a course on; the lobby makes way.
         shell.Room.ClosePanel();
         shell.Reload.Start(() => shell.Hosts.ShowOnlineSong(song));
@@ -231,8 +336,7 @@ internal sealed class OnlineMatch(GameShell shell)
     private PlayRequest? together(PlayRequest request, Pick theirs, int seed)
     {
         var mine = request.Players[0];
-        var song = shell.SongCatalog.Categories.SelectMany(static category => category.Songs)
-            .FirstOrDefault(entry => entry.Descriptor.Key == request.Song);
+        var song = shell.FindSong(request.Song);
         if (song?.Descriptor.Charts.FirstOrDefault(chart => chart.Course == theirs.Course) is not { } chart)
             return null;
         var localSlot = shell.JoinedSides.Count > 0 && shell.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
@@ -249,13 +353,16 @@ internal sealed class OnlineMatch(GameShell shell)
     // A pick from the other player: anything in it may be nonsense.
     private static Pick? pick(JsonElement message)
     {
-        if (!message.TryGetProperty("source", out var source) || !Enum.TryParse<SongSourceKind>(source.GetString(), out var kind)
-            || !Enum.IsDefined(kind) || !message.TryGetProperty("song", out var id) || id.GetString() is not { Length: > 0 } stableId
+        if (!message.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.String
+            || !Enum.TryParse<SongSourceKind>(source.GetString(), out var kind) || !Enum.IsDefined(kind)
+            || !message.TryGetProperty("song", out var id) || id.ValueKind != JsonValueKind.String || id.GetString() is not { Length: > 0 } stableId
             || !message.TryGetProperty("course", out var course) || !course.TryGetInt32(out var courseIndex) || (uint)courseIndex > 4
             || !message.TryGetProperty("options", out var options) || !options.TryGetInt32(out var bits)
             || !message.TryGetProperty("seed", out var seed) || !seed.TryGetInt32(out var seedValue))
             return null;
-        return new Pick(new SongKey(kind, stableId), (TaikoCourse)courseIndex, bits & 0xFFFF, seedValue);
+        var chart = message.TryGetProperty("chart", out var chartId) && chartId.ValueKind == JsonValueKind.String
+            && chartId.GetString() is { Length: > 0 and <= 256 } found ? found : null;
+        return new Pick(new SongKey(kind, stableId), (TaikoCourse)courseIndex, bits & 0xFFFF, seedValue, chart);
     }
 
     private OnlineSession? connected() => shell.Room.Session is { Partner: not null, Link.State: PeerLinkState.Direct or PeerLinkState.Relayed } session
@@ -263,6 +370,5 @@ internal sealed class OnlineMatch(GameShell shell)
 
     private static string name(OnlineSession session) => session.Partner?.DisplayName ?? "";
 
-    private string title(SongKey song) => shell.SongCatalog.Categories.SelectMany(static category => category.Songs)
-        .FirstOrDefault(entry => entry.Descriptor.Key == song)?.Descriptor.Title.Primary ?? song.StableId;
+    private string title(SongKey song) => shell.FindSong(song)?.Descriptor.Title.Primary ?? song.StableId;
 }

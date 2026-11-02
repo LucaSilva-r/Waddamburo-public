@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 22;
+    public const int CurrentVersion = 23;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -225,6 +225,12 @@ public sealed record ArcadeSettings
         online_warning_accepted = false
 
         """,
+        """
+        # share_warning_accepted: the player confirmed, the first time a song of theirs was sent to another player, that
+        # they're authorized to share its chart and audio. false = asked again next time.
+        share_warning_accepted = false
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -406,6 +412,9 @@ public sealed record ArcadeSettings
 
     /// <summary>The player accepted that playing online shows their IP address to the other player.</summary>
     public bool OnlineWarningAccepted { get; init; }
+
+    /// <summary>The player confirmed they're authorized to share their custom songs' charts and audio with other players.</summary>
+    public bool ShareWarningAccepted { get; init; }
 
     /// <summary>The forced GPU backend (vulkan, gles, opengl, d3d11, metal), or null for auto.</summary>
     public string? Renderer { get; init; }
@@ -614,6 +623,7 @@ public sealed record ArcadeSettings
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
+                "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
@@ -710,6 +720,7 @@ public sealed record ArcadeSettings
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
+            ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",

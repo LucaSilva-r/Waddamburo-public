@@ -49,6 +49,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private ScoreProfile? _shownPartner;
     private bool _browsing; // the public rooms' page
     private bool _warning; // the first time: playing online shows the player's IP address, accepted or not
+    private Action<bool>? _share; // the first time a song of the player's is sent: whether they may share it
     private readonly object _bannerSlot = new(), _statusSlot = new();
 
     public bool IsOpen => _panel || _prompt != Prompt.None;
@@ -56,7 +57,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     /// <summary>The lobby shades Song Select (the shell draws its players again over <see cref="Shade"/>).</summary>
     public bool ShadesScene => _panel;
 
-    public IEnumerable<RenderQuad> Shade() => [painter.Rect(0, 0, 1280, 720, new RenderColor(0, 0, 0, 0.6f))];
+    public IEnumerable<RenderQuad> Shade() => [painter.Rect(0, 0, 1280, 720, new RenderColor(0, 0, 0, 0.8f))];
 
     /// <summary>The room the player is in, once they're in it.</summary>
     public OnlineSession? Session => _start is { IsCompletedSuccessfully: true, Result: true } ? _session : null;
@@ -135,7 +136,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         _selection = Math.Clamp(_selection, 0, rows.Count - 1);
         bool pressed(params SdlKeyboardKey[] candidates) => candidates.Any(keys.IsDown);
         var pads = SdlInputBindings.Pads;
-        if (escape && _browsing && _session is null)
+        if (escape && _share is not null)
+            answerShare(false);
+        else if (escape && _browsing && _session is null)
             browse(false);
         else if (escape)
             ClosePanel();
@@ -204,8 +207,12 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         var rowsTop = RowsTop;
         if (_warning)
         {
-            quads.Add(painter.Text(T("online.warning_title"), Centre, 92, 900, 64, tint: (254, 205, 1)));
-            string[] lines = [T("online.warning_direct"), T("online.warning_ip"), T("online.warning_ok")];
+            // The outlined title, then its fill in yellow over it (a tint draws the fill alone).
+            var title = _share is null ? T("online.warning_title") : T("online.share_title");
+            quads.Add(painter.Text(title, Centre, 92, 900, 64));
+            quads.Add(painter.Text(title, Centre, 92, 900, 64, tint: (254, 205, 1)));
+            string[] lines = _share is null ? [T("online.warning_direct"), T("online.warning_ip"), T("online.warning_ok")]
+                : [T("online.share_sent"), T("online.share_authorized"), T("online.share_memory")];
             for (var line = 0; line < lines.Length; line++)
                 quads.Add(painter.Text(lines[line], Centre, 175 + line * 50, 1000, 36));
             rowsTop = 360;
@@ -238,7 +245,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private List<Row> rows()
     {
         if (_warning)
-            return [new(T("online.accept"), Action.Accept), new(T("online.refuse"), Action.Refuse)];
+            return _share is null ? [new(T("online.accept"), Action.Accept), new(T("online.refuse"), Action.Refuse)]
+                : [new(T("online.share_accept"), Action.Accept), new(T("online.share_refuse"), Action.Refuse)];
         if (_session is not { } session)
         {
             if (!_browsing)
@@ -303,6 +311,12 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 Leave();
                 _listedAt = 0;
                 break;
+            case Action.Accept when _share is not null:
+                answerShare(true);
+                break;
+            case Action.Refuse when _share is not null:
+                answerShare(false);
+                break;
             case Action.Accept:
                 acceptWarning();
                 break;
@@ -321,12 +335,42 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private bool partnerConnected() => _session is { Partner: not null, Link.State: PeerLinkState.Direct or PeerLinkState.Relayed };
 
+    /// <summary>
+    /// The other player lacks the host's custom song: the first time, the host confirms they may share it (kept in
+    /// config.cfg); after that it goes at once. <paramref name="answer"/> says whether it may be sent.
+    /// </summary>
+    public void AskShare(Action<bool> answer)
+    {
+        if (shell.Arcade.ShareWarningAccepted)
+        {
+            answer(true);
+            return;
+        }
+        closePrompt();
+        (_share, _warning, _panel, _selection) = (answer, true, true, 0);
+    }
+
+    private void answerShare(bool share)
+    {
+        var answer = _share!;
+        (_share, _warning) = (null, false);
+        if (share)
+            save(shell.Arcade with { ShareWarningAccepted = true });
+        ClosePanel();
+        answer(share);
+    }
+
     // Asked once: the answer is kept in config.cfg.
     private void acceptWarning()
     {
         _warning = false;
         _selection = 0;
-        shell.Arcade = shell.Arcade with { OnlineWarningAccepted = true };
+        save(shell.Arcade with { OnlineWarningAccepted = true });
+    }
+
+    private void save(Waddamburo.Game.Flow.ArcadeSettings settings)
+    {
+        shell.Arcade = settings;
         if (shell.Options.ArcadePath is not { } path)
             return;
         try
