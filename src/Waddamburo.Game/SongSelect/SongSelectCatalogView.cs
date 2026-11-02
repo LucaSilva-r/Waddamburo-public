@@ -76,7 +76,7 @@ public sealed record SongSelectCategory(
 public sealed record SongSearchResults(string Query, IReadOnlyList<SongKey> Songs);
 
 /// <summary>The host-drawn look of a built-in folder (a library or the search results).</summary>
-public enum FolderArtStyle { Original, Osu, Nijiiro, Tja, Search }
+public enum FolderArtStyle { Original, Osu, Nijiiro, Tja, Search, Online }
 
 /// <summary>A drawn part of a built-in folder: its open-folder emblem, or its front's pattern.</summary>
 public enum FolderArtPart { Box, Pattern }
@@ -214,7 +214,14 @@ public sealed class SongSelectCatalogView
                 mode == SongSelectMode.Waiwai ? "To Normal" : "To Waiwai", ModeSwitchLabel,
                 SongCategoryPresentation.FolderEnd, boardStyle(""), []));
         if (online)
-            categories = categories.Append(control(SongBrowseControl.Online, "Online"));
+            // Drawn like a library's folder, with the two-player mode folder's picture.
+            categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "online"), "Online",
+                FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [],
+                Control: SongBrowseControl.Online)
+            {
+                Tint = (40, 130, 230),
+                Art = new FolderArt(FolderArtStyle.Online, "Online", "Play\ntogether\nonline!!"),
+            });
         Categories = onlineFolder is null ? [.. categories] : [.. OnlineSpines(onlineFolder)];
         // An online guest picks a course on the host's song: it alone, in a folder of its own.
         if (onlySong is not null && Categories.SelectMany(static category => category.Songs)
@@ -370,7 +377,7 @@ public sealed class SongSelectCatalogView
     };
 
     /// <summary>Index of the mode-switch folder, or -1.</summary>
-    public int ModeSwitchCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == ModeSwitchLabel);
+    public int ModeSwitchCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == ModeSwitchLabel && category.Control is null);
 
     /// <summary>Index of the how-to-play folder, or -1.</summary>
     public int TutorialCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == TutorialLabel);

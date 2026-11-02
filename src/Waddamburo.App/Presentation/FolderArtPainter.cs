@@ -19,18 +19,23 @@ internal static class FolderArtPainter
     private static readonly ConcurrentDictionary<string, RgbaTextSurface> Images = new();
 
     /// <summary>The folder front's pattern (any size: drawn over the open front, revealed as it opens).</summary>
-    public static RgbaTextSurface Pattern(FolderArt art) => image(art.Style, "pattern");
+    public static RgbaTextSurface Pattern(FolderArt art) => image(art.Style == FolderArtStyle.Online ? FolderArtStyle.Original : art.Style, "pattern");
 
     /// <summary>The open folder's emblem (any size: drawn into the 192x360 mascot slot).</summary>
-    public static RgbaTextSurface Box(FolderArt art) => image(art.Style == FolderArtStyle.Nijiiro ? FolderArtStyle.Original : art.Style, "box");
+    public static RgbaTextSurface Box(FolderArt art) => image(art.Style is FolderArtStyle.Nijiiro or FolderArtStyle.Online ? FolderArtStyle.Original : art.Style, "box");
 
     /// <summary>Waiwai's Normal-mode mascot (its mode-switch folder's 192x360 picture), read from the user's game data; null without it.</summary>
-    public static RgbaTextSurface? NormalModeBox(string assetRoot)
+    public static RgbaTextSurface? NormalModeBox(string assetRoot) => modeSwitchBox(assetRoot, "waiwai_song_select");
+
+    /// <summary>The normal Song Select's two-player mode folder picture (Don and Katsu together), for the Online folder; null without it.</summary>
+    public static RgbaTextSurface? TwoPlayerModeBox(string assetRoot) => modeSwitchBox(assetRoot, "song_select");
+
+    private static RgbaTextSurface? modeSwitchBox(string assetRoot, string movieName)
     {
-        var path = Path.Combine(assetRoot, "waiwai_song_select", "packeddata.ddp");
+        var path = Path.Combine(assetRoot, movieName, "packeddata.ddp");
         if (!File.Exists(path))
             return null;
-        var content = LumenMovieContent.Load(DdpArchive.Open(File.ReadAllBytes(path)).OpenMovie("waiwai_song_select/waiwai_song_select.lm"));
+        var content = LumenMovieContent.Load(DdpArchive.Open(File.ReadAllBytes(path)).OpenMovie($"{movieName}/{movieName}.lm"));
         var movie = content.Definition;
         foreach (var sprite in movie.Sprites)
         {

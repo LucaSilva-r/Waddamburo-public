@@ -25,6 +25,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
     private readonly bool _english;
     private readonly Func<bool> _squash;
     private readonly Lazy<RgbaTextSurface?> _normalModeBox;
+    private readonly Lazy<RgbaTextSurface?> _twoPlayerModeBox;
 
     /// <remarks><paramref name="squash"/>: Song-select titles too long for their column: squashed vertically at full
     /// width (the arcade's way) instead of shrunk; read live.</remarks>
@@ -32,6 +33,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         Func<bool>? squash = null, string? assetRoot = null)
     {
         _normalModeBox = new(() => assetRoot is null ? null : FolderArtPainter.NormalModeBox(assetRoot));
+        _twoPlayerModeBox = new(() => assetRoot is null ? null : FolderArtPainter.TwoPlayerModeBox(assetRoot));
         _squash = squash ?? (static () => false);
         _english = english;
         _application = application ?? throw new ArgumentNullException(nameof(application));
@@ -263,7 +265,8 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             return FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)rasterScale, squash);
         if (request.Art is { } art)
             return request.Part == FolderArtPart.Box
-                ? (art.Style is FolderArtStyle.Original or FolderArtStyle.Nijiiro ? _normalModeBox.Value : null) ?? FolderArtPainter.Box(art)
+                ? (art.Style is FolderArtStyle.Original or FolderArtStyle.Nijiiro ? _normalModeBox.Value
+                    : art.Style == FolderArtStyle.Online ? _twoPlayerModeBox.Value : null) ?? FolderArtPainter.Box(art)
                 : FolderArtPainter.Pattern(art);
         if (request.Kind != TitleTextureKind.Banner)
             return NativeVerticalTextRasterizer.RenderSongTitle(
