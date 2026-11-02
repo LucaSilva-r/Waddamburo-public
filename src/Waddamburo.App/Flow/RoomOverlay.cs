@@ -24,7 +24,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 {
     private enum Prompt { None, RoomName, NewPassword, JoinPassword, Code }
 
-    private enum Action { QuickPlay, Host, Rooms, Code, Join, Back, ChooseSong, Visibility, Password, Leave, Accept, Refuse }
+    private enum Action { QuickPlay, Host, Rooms, Code, Join, Back, ChooseSong, Choice, Visibility, Password, Leave, Accept, Refuse }
 
     private sealed record Row(string Text, Action Action, ListedRoom? Room = null);
 
@@ -110,6 +110,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         watchRoom();
         showPartner();
+        // The other player is choosing: the lobby stays over Song Select until their song comes.
+        if (!IsOpen && shell.Match.WaitingForTheirPick && shell.Active.Id == FlowScenes.SongSelect && !shell.Reload.Busy)
+            (_panel, _selection) = (true, 0);
         if (!IsOpen)
         {
             // The host under the rainbow, the guest not picking: Escape stops waiting.
@@ -140,7 +143,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             answerShare(false);
         else if (escape && _browsing && _session is null)
             browse(false);
-        else if (escape)
+        else if (escape && !shell.Match.WaitingForTheirPick)
             ClosePanel();
         else if (pressed(SdlKeyboardKey.Up, SdlKeyboardKey.Left, SdlKeyboardKey.WheelUp, pads[0], pads[4]))
             move(-1, rows.Count);
@@ -158,7 +161,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     public void Leave()
     {
         closePrompt();
-        if (_shownPartner is not null)
+        // In Song Select, showPartner() takes the partner off as it lays Song Select out again.
+        if (_shownPartner is not null && shell.Active.Id != FlowScenes.SongSelect)
             showPartnerAs(null);
         if (_session is { } session)
             _ = leaveAsync(session, _start);
@@ -221,6 +225,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         {
             quads.Add(painter.Text(_session?.Room is { IsQuick: true } ? T("online.quick_play") : _session?.Room?.Name ?? T("online.lobby"), Centre, 92, 700, 64));
             quads.Add(painter.Text(status(), Centre, 160, 900, 34, slot: _statusSlot));
+            // The host's own room: its code, to give to whoever they're playing with, whatever else the page says.
+            if (_session is { IsHost: true, Room: { IsQuick: false } room })
+                quads.Add(painter.Text(T("online.room_code", room.Code), Centre, 200, 900, 30, tint: (254, 205, 1)));
         }
         var rows = this.rows();
         var first = Math.Clamp(_selection - VisibleRows / 2, 0, Math.Max(0, rows.Count - VisibleRows));
@@ -259,17 +266,26 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         // Quick play still looking: only a way out.
         if (_quickPlay && !partnerConnected())
             return [new(T("online.stop_search"), Action.Leave)];
+        List<Row> choose = shell.Match.MyTurn ? [new(T("online.choose_song"), Action.ChooseSong)] : [];
+        // Waiting on the other's pick: nothing to go back to.
+        List<Row> back = shell.Match.WaitingForTheirPick ? [] : [new(T("menu.back"), Action.Back)];
         if (!session.IsHost || session.Room is not { } current)
-            return [new(T("online.leave"), Action.Leave), new(T("menu.back"), Action.Back)];
-        List<Row> host = partnerConnected() ? [new(T("online.choose_song"), Action.ChooseSong)] : [];
+            return [.. choose, new(T("online.leave"), Action.Leave), .. choose.Count == 0 ? back : []];
+        List<Row> host = choose;
         if (!current.IsQuick)
         {
+            host.Add(new(shell.Match.Choice switch
+            {
+                SongChoice.Host => T("online.choice_host"),
+                SongChoice.Guest => T("online.choice_guest"),
+                _ => T("online.choice_turns"),
+            }, Action.Choice));
             host.Add(new(current.IsPublic ? T("online.visibility_public") : T("online.visibility_private"), Action.Visibility));
             host.Add(new(current.HasPassword ? T("online.password_on") : T("online.password_off"), Action.Password));
         }
         host.Add(new(T("online.leave"), Action.Leave));
-        if (!partnerConnected())
-            host.Add(new(T("menu.back"), Action.Back));
+        if (choose.Count == 0)
+            host.AddRange(back);
         return host;
     }
 
@@ -303,6 +319,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 break;
             case Action.Visibility when _session is { Room: { } current } session:
                 _ = change(session.UpdateAsync(isPublic: !current.IsPublic));
+                break;
+            case Action.Choice:
+                shell.Match.Choice = (SongChoice)(((int)shell.Match.Choice + 1) % 3);
                 break;
             case Action.Password:
                 ask(Prompt.NewPassword);
@@ -410,7 +429,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             return _browsing && _rooms.Count == 0 ? T("online.no_rooms") : T("online.lobby_hint");
         if (banner() is { } text)
             return text;
-        return _session.Room is { IsPublic: false, IsQuick: false } room && _session.IsHost ? T("online.room_code", room.Code) : T("online.starting");
+        return T("online.starting");
     }
 
     // Someone joined the room, or left it: Song Select shows them, Don-chan and name board, on the other side.

@@ -3,13 +3,15 @@ using Waddamburo.App.Gameplay;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Online;
+using Waddamburo.Game.Scores;
 using static Waddamburo.App.Strings;
 
 namespace Waddamburo.App.Flow;
 
 /// <summary>
-/// A song played with the room's other player. The host picks a song and course and waits; the guest's Song Select comes
-/// to that song and they pick theirs; then both games load it with the other player's chart, options and the host's seed
+/// A song played with the room's other player. Whoever's turn it is picks a song and course and waits (<see cref="MyTurn"/>:
+/// the host's room setting, <see cref="Choice"/>, says whose); the other's Song Select comes to that song and they pick
+/// their course; then both games load it with the other player's chart, options and the host's seed
 /// on the second lane, wait for each other under the rainbow, and start together. Nothing played this way is saved.
 /// </summary>
 internal sealed class OnlineMatch(GameShell shell)
@@ -25,10 +27,31 @@ internal sealed class OnlineMatch(GameShell shell)
     private bool _partnerMissing;
     private bool _go;
     private long _readySince;
-    private SongKey? _hostSong; // the guest plays their own copy of the host's song, under this key on the host's side
-    private Pick? _awaiting; // the guest is receiving the host's song for this pick
-    private Task<byte[]?>? _packing; // the host is packing their song for the guest
+    private SongKey? _chooserSong; // this player plays their own copy of the chooser's song, under this key on the chooser's side
+    private Pick? _awaiting; // receiving the chooser's song for this pick
+    private Task<byte[]?>? _packing; // packing this player's song for the other
+    private Task<SongPackage?>? _unpacking; // reading the song that arrived, off the game's thread
+    private (SongKey Song, string Title)? _title; // the last song named on the banner (looked up once, not every frame)
     private bool _sending;
+    private OnlineSession? _session; // the room the turns below are for
+    private ScoreProfile? _partner; // the guest they're for
+    private bool _guestsTurn; // taking turns: the guest picks next
+    private bool _guestChooses; // as the host last said (a guest's copy)
+    private bool? _sentTurn; // what the host last told the guest
+
+    /// <summary>Who picks the songs in this room (the host's setting; Quick Play takes turns).</summary>
+    public SongChoice Choice { get; set; }
+
+    /// <summary>Connected, and this player picks the next song.</summary>
+    public bool MyTurn => connected() is { } session && (session.IsHost ? !guestChooses : _guestChooses);
+
+    /// <summary>
+    /// Connected, and the other player is choosing: Song Select isn't this player's to browse (the lobby stays over it)
+    /// until their song comes.
+    /// </summary>
+    public bool WaitingForTheirPick => connected() is not null && !MyTurn && !InSong && _theirs is null;
+
+    private bool guestChooses => Choice == SongChoice.Guest || Choice == SongChoice.Turns && _guestsTurn;
 
     /// <summary>A song with the other player is loading or being played.</summary>
     public bool InSong { get; private set; }
@@ -80,8 +103,8 @@ internal sealed class OnlineMatch(GameShell shell)
         // Both picked, the song not loading yet: already waiting, so the banner doesn't drop back to the round trip for a moment.
         : InSong && !_go || !InSong && _mine is not null && _theirs is not null ? T("online.waiting_ready")
         : _mine is not null && _theirs is null ? T("online.waiting_pick", name(session)) + " " + T("online.esc_cancel")
-        : _mine is null && _theirs is { } theirs && !session.IsHost ? T("online.partner_picked", name(session), title(theirs.Song))
-        : _mine is null && session.IsHost ? T("online.you_pick")
+        : _mine is null && _theirs is { } theirs && !MyTurn ? T("online.partner_picked", name(session), title(theirs.Song))
+        : _mine is null && MyTurn ? T("online.you_pick")
         : _mine is null && _theirs is null ? T("online.host_choosing", name(session))
         : null;
 
@@ -93,11 +116,17 @@ internal sealed class OnlineMatch(GameShell shell)
             reset();
             return;
         }
+        turns(session);
         session.Pump();
         while (session.Messages.TryTake(out var message))
             handle(session, message);
-        if (_awaiting is { } awaited && session.Transfer.TakeComplete() is { } blob)
-            received(session, awaited, blob);
+        if (_awaiting is { } awaited && _unpacking is null && session.Transfer.TakeComplete() is { } blob)
+            _unpacking = Task.Run(() => SongPackage.Decode(blob, awaited.Song));
+        if (_awaiting is { } song && _unpacking is { IsCompleted: true } unpacking)
+        {
+            _unpacking = null;
+            received(session, song, unpacking.IsCompletedSuccessfully ? unpacking.Result : null);
+        }
         if (_packing is { IsCompleted: true } packing)
         {
             _packing = null;
@@ -135,10 +164,10 @@ internal sealed class OnlineMatch(GameShell shell)
         if (connected() is not { } session || request.Players.Length != 1 || request.Review is not null || _mine is not null)
             return true;
         var player = request.Players[0];
-        // The guest plays the host's song: picking another goes back to it.
-        if (!session.IsHost && (_theirs is not { } hostPick || hostPick.Song != request.Song))
+        // Not their turn: they play the other's song, and picking another goes back to it.
+        if (!MyTurn && (_theirs is not { } chosen || chosen.Song != request.Song))
         {
-            shell.Sync.Notices.AddLocal(T("online.pick_host_song"), NoticeSeverity.Warning);
+            shell.Sync.Notices.AddLocal(T("online.pick_host_song", name(session)), NoticeSeverity.Warning);
             shell.PlayRequests.CancelPending();
             shell.Reload.Start(() =>
             {
@@ -152,8 +181,8 @@ internal sealed class OnlineMatch(GameShell shell)
         session.Messages.Send(writer =>
         {
             writer.WriteString("kind", "pick");
-            // A guest playing their own copy names the host's song as the host knows it.
-            var song = session.IsHost ? mine.Song : _hostSong ?? mine.Song;
+            // Playing their own copy names the chooser's song as the chooser knows it.
+            var song = _chooserSong ?? mine.Song;
             writer.WriteString("source", song.Source.ToString());
             writer.WriteString("song", song.StableId);
             writer.WriteNumber("course", (int)mine.Course);
@@ -187,10 +216,10 @@ internal sealed class OnlineMatch(GameShell shell)
         return play;
     }
 
-    /// <summary>The host is under the rainbow waiting for the guest's pick (Escape gives up: <see cref="Cancel"/>).</summary>
-    public bool WaitingForPartner => _mine is not null && !InSong && connected() is { IsHost: true };
+    /// <summary>The chooser is under the rainbow waiting for the other's pick (Escape gives up: <see cref="Cancel"/>).</summary>
+    public bool WaitingForPartner => _mine is not null && !InSong && MyTurn;
 
-    /// <summary>The host stops waiting: back to Song Select, still in the room, and the guest's song goes too.</summary>
+    /// <summary>The chooser stops waiting: back to Song Select, still in the room, and the other's song goes too.</summary>
     public void Cancel()
     {
         shell.Room.Session?.Messages.Send(static writer => writer.WriteString("kind", "cancel"));
@@ -234,18 +263,45 @@ internal sealed class OnlineMatch(GameShell shell)
     /// <summary>The song waits under the rainbow until both games can open it.</summary>
     public bool HoldsReveal => InSong && (!_go || System.Diagnostics.Stopwatch.GetTimestamp() < _goAt);
 
-    /// <summary>The song with the other player is over: back to choosing.</summary>
+    /// <summary>The song with the other player is over: back to choosing, the other player's turn when taking turns.</summary>
     public void SongEnded()
     {
         if (shell.Room.Session is { } session)
+        {
             session.Song = null;
+            if (InSong && session.IsHost)
+                _guestsTurn = !_guestsTurn;
+        }
         reset();
+    }
+
+    // The host says who picks: again whenever that changes, and to each new guest. A new room starts over.
+    private void turns(OnlineSession session)
+    {
+        if (!ReferenceEquals(session, _session))
+        {
+            (_session, _partner, _guestsTurn, _guestChooses, _sentTurn) = (session, null, false, false, null);
+            Choice = session.Room is { IsQuick: true } ? SongChoice.Turns : SongChoice.Host;
+        }
+        if (connected() is null)
+            return;
+        if (!ReferenceEquals(session.Partner, _partner))
+            (_partner, _guestsTurn, _guestChooses, _sentTurn) = (session.Partner, false, false, null);
+        if (!session.IsHost || _sentTurn == guestChooses)
+            return;
+        var guest = guestChooses;
+        _sentTurn = guest;
+        session.Messages.Send(writer =>
+        {
+            writer.WriteString("kind", "turn");
+            writer.WriteBoolean("guest", guest);
+        });
     }
 
     private void reset()
     {
         (_mine, _theirs, _theirReady, _go, InSong, _partnerMissing, _readySince, _goAt) = (null, null, false, false, false, false, 0, 0);
-        (_hostSong, _awaiting, _packing, _sending) = (null, null, null, false);
+        (_chooserSong, _awaiting, _packing, _unpacking, _sending) = (null, null, null, null, false);
         shell.Room.Session?.Transfer.Cancel();
         shell.Hosts.ShowOnlineSong(null);
     }
@@ -257,7 +313,7 @@ internal sealed class OnlineMatch(GameShell shell)
         switch (RoomMessages.KindOf(message))
         {
             case "pick" when pick(message) is { } theirs:
-                if (session.IsHost || _mine is not null)
+                if (MyTurn || _mine is not null)
                     _theirs = theirs;
                 else if (local(session, theirs) is { } playable)
                 {
@@ -265,8 +321,8 @@ internal sealed class OnlineMatch(GameShell shell)
                     comeToSong(playable.Song);
                 }
                 break;
-            // The guest lacks the host's custom song: it goes to them, once the host confirms they may share it.
-            case "need" when session.IsHost && _mine is { } mine && _packing is null && !_sending:
+            // The other player lacks this player's custom song: it goes to them, once this player confirms they may share it.
+            case "need" when MyTurn && _mine is { } mine && _packing is null && !_sending:
                 shell.Room.AskShare(share =>
                 {
                     if (!share)
@@ -279,10 +335,14 @@ internal sealed class OnlineMatch(GameShell shell)
                 shell.Sync.Notices.AddLocal(T("online.not_shared", name(session)), NoticeSeverity.Warning);
                 _awaiting = null;
                 break;
-            // They don't have the song: it plays alone.
-            case "missing":
+            // They don't have the song: back to Song Select to choose another.
+            case "missing" when _mine is not null && !InSong:
                 shell.Sync.Notices.AddLocal(T("online.partner_missing", name(session)), NoticeSeverity.Warning);
-                _partnerMissing = true;
+                reset();
+                shell.SongSelectFlow.CancelCover();
+                break;
+            case "turn" when !session.IsHost && message.TryGetProperty("guest", out var guest) && guest.ValueKind is JsonValueKind.True or JsonValueKind.False:
+                _guestChooses = guest.GetBoolean();
                 break;
             // The host stopped waiting: back to the usual list (unless the song is already on its way).
             case "cancel" when !InSong:
@@ -309,12 +369,12 @@ internal sealed class OnlineMatch(GameShell shell)
     }
 
     /// <summary>
-    /// The host's pick as this guest can play it: the same song, or their own copy of a custom one kept elsewhere (found by
+    /// The chooser's pick as this player can play it: the same song, or their own copy of a custom one kept elsewhere (found by
     /// its chart). Without one, a custom song is asked for (null until it arrives) and the game's own songs can't be had.
     /// </summary>
     private Pick? local(OnlineSession session, Pick host)
     {
-        _hostSong = null;
+        _chooserSong = null;
         if (shell.FindSong(host.Song) is not null)
             return host;
         var custom = host.Song.Source is SongSourceKind.Tja or SongSourceKind.OsuLazer;
@@ -322,7 +382,7 @@ internal sealed class OnlineMatch(GameShell shell)
                 .FirstOrDefault(entry => entry.Descriptor.Key.Source == host.Song.Source
                     && entry.Descriptor.Charts.Any(own => own.Key.StableId == chart)) is { } copy)
         {
-            _hostSong = host.Song;
+            _chooserSong = host.Song;
             return host with { Song = copy.Descriptor.Key };
         }
         if (custom)
@@ -331,23 +391,23 @@ internal sealed class OnlineMatch(GameShell shell)
             session.Messages.Send(static writer => writer.WriteString("kind", "need"));
             return null;
         }
-        shell.Sync.Notices.AddLocal(T("online.song_missing"), NoticeSeverity.Warning);
+        shell.Sync.Notices.AddLocal(T("online.song_missing", name(session)), NoticeSeverity.Warning);
         session.Messages.Send(static writer => writer.WriteString("kind", "missing"));
         return null;
     }
 
     // The host's song arrived: kept in memory for this session, and Song Select opens on it.
-    private void received(OnlineSession session, Pick host, byte[] blob)
+    private void received(OnlineSession session, Pick host, SongPackage? package)
     {
         _awaiting = null;
-        if (SongPackage.Decode(blob, host.Song) is not { } package)
+        if (package is null)
         {
             shell.Sync.Notices.AddLocal(T("online.song_broken"), NoticeSeverity.Warning);
             session.Messages.Send(static writer => writer.WriteString("kind", "missing"));
             return;
         }
         shell.ReceivedSongs.Add(package);
-        Console.WriteLine($"Online: received {package.Title.Primary} ({blob.Length / 1024} kB).");
+        Console.WriteLine($"Online: received {package.Title.Primary} ({package.Audio.Length / 1024} kB of audio).");
         _theirs = host;
         comeToSong(host.Song);
     }
@@ -430,5 +490,13 @@ internal sealed class OnlineMatch(GameShell shell)
 
     private static string name(OnlineSession session) => session.Partner?.DisplayName ?? "";
 
-    private string title(SongKey song) => shell.FindSong(song)?.Descriptor.Title.Primary ?? song.StableId;
+    private string title(SongKey song)
+    {
+        if (_title is not { } named || named.Song != song)
+            _title = named = (song, shell.FindSong(song)?.Descriptor.Title.Primary ?? song.StableId);
+        return named.Title;
+    }
 }
+
+/// <summary>Who picks the songs in a room.</summary>
+internal enum SongChoice { Host, Guest, Turns }

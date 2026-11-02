@@ -324,9 +324,10 @@ internal sealed class HomeControls : IDisposable
                 _gameplay.Abandon();
                 _shell.Room.Leave();
                 break;
+            // Song Select lays itself out again once the partner's gone (RoomOverlay.showPartner).
             case HomeMenuAction.LeaveRoom:
                 _shell.Room.Leave();
-                _shell.Reload.Start(() => _shell.Hosts.ShowOnlineSong(null));
+                _shell.Hosts.ShowOnlineSong(null);
                 break;
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();

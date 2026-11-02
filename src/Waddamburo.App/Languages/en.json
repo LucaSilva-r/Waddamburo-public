@@ -320,12 +320,12 @@
   "online.peer_left": "The other player left.",
   "online.waiting_pick": "Waiting for {0} to choose...",
   "online.partner_picked": "{0} chose {1}. Pick your course!",
-  "online.pick_host_song": "Pick the host's song to play together.",
+  "online.pick_host_song": "Pick {0}'s song to play together.",
   "online.no_course": "That course isn't in your copy of the song.",
   "online.partner_missing": "{0} doesn't have that song.",
-  "online.song_missing": "You don't have the host's song.",
+  "online.song_missing": "You don't have {0}'s song.",
   "online.waiting_ready": "Waiting for the other player to load...",
-  "online.you_pick": "You're the host: pick a song!",
+  "online.you_pick": "Your turn: pick a song!",
   "online.lobby": "Online",
   "online.lobby_hint": "Play a song together with another player.",
   "online.receiving": "Receiving {0}'s song... {1}%",
@@ -362,5 +362,8 @@
   "online.locked": "password",
   "online.host_choosing": "{0} is choosing a song...",
   "online.host_cancelled": "{0} chose another song.",
-  "online.esc_cancel": "(Esc to cancel)"
+  "online.esc_cancel": "(Esc to cancel)",
+  "online.choice_host": "Songs: Host chooses",
+  "online.choice_guest": "Songs: Guest chooses",
+  "online.choice_turns": "Songs: Take turns"
 }

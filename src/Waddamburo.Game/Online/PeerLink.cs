@@ -88,7 +88,9 @@ public sealed class PeerLink : IAsyncDisposable
         {
             try
             {
-                _socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp) { DualMode = true };
+                // Non-blocking: a full send buffer (a song going out) drops the packet, to be sent again, rather than
+                // holding up the game's frame.
+                _socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp) { DualMode = true, Blocking = false };
                 _socket.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
                 return;
             }
@@ -98,7 +100,7 @@ public sealed class PeerLink : IAsyncDisposable
                 _socket?.Dispose();
             }
         }
-        _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp) { Blocking = false };
         _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
     }
 
