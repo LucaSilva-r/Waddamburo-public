@@ -5,16 +5,17 @@ using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Security.Cryptography;
+using System.Threading.Channels;
 
 namespace Waddamburo.Game.Online;
 
-/// <summary>Where a peer might be reached: its own network (Host), its public address (Reflexive), or a relay (Relay).</summary>
+/// <summary>Where a peer might be reached: its own network (Host), or its public address (Reflexive).</summary>
 public enum PeerCandidateKind
 {
     Host,
     Reflexive,
-    Relay,
 }
 
 public readonly record struct PeerCandidate(PeerCandidateKind Kind, IPEndPoint EndPoint)
@@ -45,16 +46,14 @@ public enum PeerLinkState
 }
 
 /// <summary>
-/// A UDP link to one other Waddamburo. Both ends are ours, so it needs no full ICE: each side gathers where it can be
+/// A link to one other Waddamburo. Both ends are ours, so it needs no full ICE: each side gathers where it can be
 /// reached (<see cref="GatherAsync"/>), they swap that and a token through the room channel, then each probes every
-/// address (<see cref="Connect"/>). The first answer opens the link, a route without a relay replaces one with.
-/// Packets carry the receiver's token, so strangers' datagrams are dropped. Delivery isn't guaranteed: callers repeat
-/// what must arrive. Events are raised on a background thread.
+/// address (<see cref="Connect"/>) over UDP, and through the relay when there is one (<see cref="Relay"/>: a WebSocket
+/// server behind the Cloudflare tunnel that pairs the room's two players and passes their packets on). The first answer
+/// opens the link; a direct route replaces the relay. Packets carry the receiver's token, so strangers' datagrams are
+/// dropped. Delivery isn't guaranteed: callers repeat what must arrive. Events are raised on a background thread.
 /// </summary>
-/// <remarks>
-/// One dual-stack socket speaks both. IPv6 addresses go straight to the other player: STUN and the relay are reached
-/// over IPv4, and the relay only relays to IPv4.
-/// </remarks>
+/// <remarks>One dual-stack socket speaks both IPv4 and IPv6; STUN is reached over IPv4.</remarks>
 public sealed class PeerLink : IAsyncDisposable
 {
     private const byte Probe = 0xD1, ProbeAnswer = 0xD2, Payload = 0xD3;
@@ -62,7 +61,7 @@ public sealed class PeerLink : IAsyncDisposable
     private const int HeaderLength = 1 + TokenLength;
     private static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan PermissionLifetime = TimeSpan.FromMinutes(4);
+    private static readonly IPEndPoint RelayEndPoint = new(IPAddress.None, 0);
 
     private readonly Socket _socket;
     private readonly CancellationTokenSource _stop = new();
@@ -77,12 +76,11 @@ public sealed class PeerLink : IAsyncDisposable
     private long _connectStarted;
     private long _lastHeard;
 
-    private IPEndPoint? _relayServer;
-    private IPEndPoint? _relayAddress;
-    private byte[]? _relayKey;
-    private string? _relayUsername, _relayRealm, _relayNonce;
-    private TimeSpan _relayLifetime;
-    private long _relayRefreshed, _permissionsSent;
+    private ClientWebSocket? _relay;
+    private bool _relayOpen;
+    private Task? _relaying;
+    // What goes through the relay, in order; a stalled relay drops the oldest rather than holding up the game.
+    private readonly Channel<byte[]> _relayOut = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(4096) { FullMode = BoundedChannelFullMode.DropOldest });
 
     public PeerLink()
     {
@@ -128,7 +126,10 @@ public sealed class PeerLink : IAsyncDisposable
     /// <summary>A payload from the peer. Untrusted: they could send anything.</summary>
     public event Action<byte[]>? Received;
 
-    /// <summary>Everywhere this link might be reached, asking <paramref name="servers"/> for the public and relayed addresses.</summary>
+    /// <summary>The relay to try alongside the direct addresses (its address carries this player's ticket); set before <see cref="Connect"/>.</summary>
+    public Uri? Relay { get; set; }
+
+    /// <summary>Everywhere this link might be reached, asking <paramref name="servers"/> (STUN) for the public address.</summary>
     public async Task<IReadOnlyList<PeerCandidate>> GatherAsync(IReadOnlyList<IceServer> servers, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(servers);
@@ -144,9 +145,6 @@ public sealed class PeerLink : IAsyncDisposable
                         continue;
                     if (scheme == "stun" && await reflexiveAsync(endPoint, cancellationToken).ConfigureAwait(false) is { } reflexive)
                         candidates.Add(new PeerCandidate(PeerCandidateKind.Reflexive, reflexive));
-                    else if (scheme == "turn" && _relayAddress is null && server is { Username: { } username, Credential: { } credential }
-                        && await allocateAsync(endPoint, username, credential, cancellationToken).ConfigureAwait(false) is { } relayed)
-                        candidates.Add(new PeerCandidate(PeerCandidateKind.Relay, relayed));
                 }
                 catch (Exception exception) when (exception is SocketException or TimeoutException)
                 {
@@ -173,6 +171,8 @@ public sealed class PeerLink : IAsyncDisposable
         setState(PeerLinkState.Connecting);
         _receiving ??= Task.Run(receiveAsync, CancellationToken.None);
         _ticking ??= Task.Run(tickAsync, CancellationToken.None);
+        if (Relay is { } relay)
+            _relaying ??= Task.Run(() => relayAsync(relay), CancellationToken.None);
     }
 
     /// <summary>Sends to the peer when connected; otherwise it's dropped. Never blocks on the network.</summary>
@@ -191,7 +191,9 @@ public sealed class PeerLink : IAsyncDisposable
     {
         await _stop.CancelAsync().ConfigureAwait(false);
         _socket.Dispose();
-        foreach (var task in new[] { _receiving, _ticking }.OfType<Task>())
+        _relayOut.Writer.TryComplete();
+        _relay?.Abort();
+        foreach (var task in new[] { _receiving, _ticking, _relaying }.OfType<Task>())
             await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _stop.Dispose();
     }
@@ -222,11 +224,11 @@ public sealed class PeerLink : IAsyncDisposable
                 || address.AddressFamily == AddressFamily.InterNetworkV6 && !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !address.IsIPv6Multicast && !address.IsIPv4MappedToIPv6));
     }
 
-    // "stun:host:port" or "turn:host:port?transport=udp": only UDP is spoken here.
+    // "stun:host:port": only UDP is spoken here.
     private static async Task<(string Scheme, IPEndPoint EndPoint)?> resolveAsync(string url, CancellationToken cancellationToken)
     {
         var scheme = url.Split(':', 2)[0];
-        if (scheme is not ("stun" or "turn") || url.Contains("transport=tcp", StringComparison.OrdinalIgnoreCase))
+        if (scheme != "stun")
             return null;
         var rest = url[(scheme.Length + 1)..].Split('?')[0];
         var separator = rest.LastIndexOf(':');
@@ -242,30 +244,6 @@ public sealed class PeerLink : IAsyncDisposable
         var request = new StunMessage(StunMessage.BindingRequest);
         var response = await transactAsync(request, null, server, cancellationToken).ConfigureAwait(false);
         return response.Type == StunMessage.BindingSuccess ? response.Address(StunMessage.XorMappedAddress) : null;
-    }
-
-    private async Task<IPEndPoint?> allocateAsync(IPEndPoint server, string username, string credential, CancellationToken cancellationToken)
-    {
-        byte[] transport = [17, 0, 0, 0]; // UDP
-        // The first try is refused with the realm and nonce to sign with.
-        var challenge = await transactAsync(new StunMessage(StunMessage.AllocateRequest).With(StunMessage.RequestedTransport, transport), null, server, cancellationToken).ConfigureAwait(false);
-        if (challenge.Type == StunMessage.AllocateError && challenge.Error == 401 && challenge.Text(StunMessage.Realm) is { } realm && challenge.Text(StunMessage.Nonce) is { } nonce)
-        {
-            var key = StunMessage.LongTermKey(username, realm, credential);
-            var request = new StunMessage(StunMessage.AllocateRequest).With(StunMessage.RequestedTransport, transport)
-                .With(StunMessage.Username, username).With(StunMessage.Realm, realm).With(StunMessage.Nonce, nonce);
-            var response = await transactAsync(request, key, server, cancellationToken).ConfigureAwait(false);
-            if (response.Type == StunMessage.AllocateSuccess && response.Address(StunMessage.XorRelayedAddress) is { } relayed)
-            {
-                (_relayServer, _relayKey, _relayUsername, _relayRealm, _relayNonce) = (server, key, username, realm, nonce);
-                _relayLifetime = TimeSpan.FromSeconds(response.Find(StunMessage.Lifetime) is { Length: 4 } lifetime ? BinaryPrimitives.ReadUInt32BigEndian(lifetime) : 600);
-                _relayRefreshed = Stopwatch.GetTimestamp();
-                _relayAddress = relayed;
-                return relayed;
-            }
-            Console.Error.WriteLine($"Warning PEERLINK: the relay refused the allocation ({response.Error}).");
-        }
-        return null;
     }
 
     // A STUN request and its answer, sent again twice if nothing comes back (it's UDP).
@@ -328,13 +306,6 @@ public sealed class PeerLink : IAsyncDisposable
 
     private void handleStun(StunMessage message, IPEndPoint from)
     {
-        if (message.Type == StunMessage.DataIndication)
-        {
-            // Only our own relay may speak for someone else.
-            if (from.Equals(_relayServer) && message.Address(StunMessage.XorPeerAddress) is { } peer && message.Find(StunMessage.Data) is { Length: >= HeaderLength } data)
-                handlePacket(data, peer, viaRelay: true);
-            return;
-        }
         if (_pending.TryRemove(Convert.ToHexString(message.TransactionId), out var answer))
             answer.TrySetResult(message);
     }
@@ -372,7 +343,7 @@ public sealed class PeerLink : IAsyncDisposable
         bool relayed;
         lock (_lock)
         {
-            relayed = viaRelay || _remote.Any(candidate => candidate.Kind == PeerCandidateKind.Relay && candidate.EndPoint.Equals(target));
+            relayed = viaRelay;
             if (_route is { Relayed: false } || _route is not null && relayed)
                 return;
             _route = (target, viaRelay, relayed);
@@ -396,7 +367,6 @@ public sealed class PeerLink : IAsyncDisposable
                             setState(PeerLinkState.Failed);
                             return;
                         }
-                        await refreshRelayAsync().ConfigureAwait(false);
                         probeAll();
                         break;
                     case PeerLinkState.Direct or PeerLinkState.Relayed:
@@ -409,7 +379,6 @@ public sealed class PeerLink : IAsyncDisposable
                         if (Stopwatch.GetElapsedTime(lastSlowProbe) >= KeepAliveInterval)
                         {
                             lastSlowProbe = Stopwatch.GetTimestamp();
-                            await refreshRelayAsync().ConfigureAwait(false);
                             // While relayed, keep looking for a route without the relay: NATs can open late.
                             if (State == PeerLinkState.Relayed)
                                 probeAll();
@@ -432,11 +401,9 @@ public sealed class PeerLink : IAsyncDisposable
         lock (_lock)
             remote = _remote;
         foreach (var candidate in remote)
-        {
             sendProbe(candidate.EndPoint, viaRelay: false);
-            if (_relayServer is not null && candidate.Kind != PeerCandidateKind.Host && candidate.EndPoint.AddressFamily == AddressFamily.InterNetwork)
-                sendProbe(candidate.EndPoint, viaRelay: true);
-        }
+        if (Volatile.Read(ref _relayOpen))
+            sendProbe(RelayEndPoint, viaRelay: true);
     }
 
     private void sendProbe(IPEndPoint target, bool viaRelay)
@@ -459,9 +426,8 @@ public sealed class PeerLink : IAsyncDisposable
                 _socket.SendTo(packet, SocketFlags.None, target);
                 return;
             }
-            if (_relayServer is { } relay)
-                _socket.SendTo(new StunMessage(StunMessage.SendIndication).WithAddress(StunMessage.XorPeerAddress, target)
-                    .With(StunMessage.Data, packet.ToArray()).Encode(), SocketFlags.None, relay);
+            if (Volatile.Read(ref _relayOpen))
+                _relayOut.Writer.TryWrite(packet.ToArray());
         }
         catch (Exception exception) when (exception is SocketException or ObjectDisposedException)
         {
@@ -469,54 +435,53 @@ public sealed class PeerLink : IAsyncDisposable
         }
     }
 
-    // The relay only passes traffic from addresses it has permission for, and forgets both those and the allocation.
-    private async Task refreshRelayAsync()
+    // The relay: connects with this player's ticket, then sends what's queued and hands on what arrives, until the link
+    // goes. A relay that can't be reached just leaves the direct addresses.
+    private async Task relayAsync(Uri address)
     {
-        if (_relayServer is not { } server)
-            return;
+        using var relay = new ClientWebSocket();
+        relay.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        _relay = relay;
         try
         {
-            if (Stopwatch.GetElapsedTime(_permissionsSent) >= PermissionLifetime)
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token))
             {
-                _permissionsSent = Stopwatch.GetTimestamp();
-                PeerCandidate[] remote;
-                lock (_lock)
-                    remote = _remote;
-                foreach (var address in remote.Where(static candidate => candidate.Kind != PeerCandidateKind.Host && candidate.EndPoint.AddressFamily == AddressFamily.InterNetwork).Select(static candidate => candidate.EndPoint.Address).Distinct())
-                    await signedAsync(new StunMessage(StunMessage.CreatePermissionRequest).WithAddress(StunMessage.XorPeerAddress, new IPEndPoint(address, 1)), server).ConfigureAwait(false);
+                timeout.CancelAfter(ConnectTimeout);
+                await relay.ConnectAsync(address, timeout.Token).ConfigureAwait(false);
             }
-            if (Stopwatch.GetElapsedTime(_relayRefreshed) >= _relayLifetime / 2)
+            Volatile.Write(ref _relayOpen, true);
+            var sending = Task.Run(async () =>
             {
-                _relayRefreshed = Stopwatch.GetTimestamp();
-                await signedAsync(new StunMessage(StunMessage.RefreshRequest).With(StunMessage.Lifetime, [0, 0, 2, 88]), server).ConfigureAwait(false);
+                await foreach (var packet in _relayOut.Reader.ReadAllAsync(_stop.Token).ConfigureAwait(false))
+                    await relay.SendAsync(packet, WebSocketMessageType.Binary, true, _stop.Token).ConfigureAwait(false);
+            });
+            var buffer = new byte[4096];
+            while (!_stop.IsCancellationRequested)
+            {
+                var length = 0;
+                ValueWebSocketReceiveResult result;
+                do
+                {
+                    result = await relay.ReceiveAsync(buffer.AsMemory(length), _stop.Token).ConfigureAwait(false);
+                    length += result.Count;
+                }
+                while (!result.EndOfMessage && length < buffer.Length);
+                if (result.MessageType == WebSocketMessageType.Close)
+                    break;
+                if (result.MessageType == WebSocketMessageType.Binary && result.EndOfMessage && length >= HeaderLength
+                    && buffer[0] is Probe or ProbeAnswer or Payload)
+                    handlePacket(buffer.AsSpan(0, length), RelayEndPoint, viaRelay: true);
             }
+            await sending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
-        catch (TimeoutException exception)
+        catch (Exception exception) when (exception is WebSocketException or OperationCanceledException or ObjectDisposedException)
         {
-            Console.Error.WriteLine($"Warning PEERLINK: the relay didn't answer ({exception.Message}).");
+            if (!_stop.IsCancellationRequested)
+                Console.Error.WriteLine($"Warning PEERLINK: the relay at {address.Host} isn't usable ({exception.Message}).");
         }
-        catch (SocketException exception)
+        finally
         {
-            Console.Error.WriteLine($"Warning PEERLINK: the relay didn't answer ({exception.Message}).");
+            Volatile.Write(ref _relayOpen, false);
         }
     }
-
-    // A signed relay request; a stale nonce (438) gets a fresh one and a second try.
-    private async Task signedAsync(StunMessage request, IPEndPoint server)
-    {
-        var response = await transactAsync(sign(request), _relayKey, server, _stop.Token).ConfigureAwait(false);
-        if (response.Error == 438 && response.Text(StunMessage.Nonce) is { } nonce)
-        {
-            _relayNonce = nonce;
-            var again = new StunMessage(request.Type);
-            foreach (var attribute in request.Attributes.Where(static attribute => attribute.Type is not (StunMessage.Username or StunMessage.Realm or StunMessage.Nonce)))
-                again.Attributes.Add(attribute);
-            response = await transactAsync(sign(again), _relayKey, server, _stop.Token).ConfigureAwait(false);
-        }
-        // Refused permissions are normal: the relay won't let us reach private addresses.
-        if (response.Error is { } error and not 403)
-            Console.Error.WriteLine($"Warning PEERLINK: relay request {request.Type:X4} refused ({error}).");
-    }
-
-    private StunMessage sign(StunMessage request) => request.With(StunMessage.Username, _relayUsername!).With(StunMessage.Realm, _relayRealm!).With(StunMessage.Nonce, _relayNonce!);
 }

@@ -162,9 +162,15 @@ internal sealed class OnlineMatch(GameShell shell)
     {
         if (!InSong || connected() is not { } session)
             return;
-        // A little more than a hit takes to arrive, so their notes are judged where they hit them.
+        // A little more than a hit takes to arrive, so their notes are judged where they hit them. Through the relay hits
+        // also wait for the next batch, and the way is longer, so the lane may run further behind.
         var oneWay = (session.Link.RoundTrip ?? TimeSpan.FromMilliseconds(100)) / 2;
-        var feed = new RemoteLaneFeed { Delay = TimeSpan.FromMilliseconds(Math.Clamp(oneWay.TotalMilliseconds + 100, 120, 400)) };
+        var relayed = session.Link.State == PeerLinkState.Relayed;
+        var margin = 100 + (relayed ? OnlineSession.RelayedHitInterval.TotalMilliseconds : 0);
+        var feed = new RemoteLaneFeed
+        {
+            Delay = TimeSpan.FromMilliseconds(Math.Clamp(oneWay.TotalMilliseconds + margin, 120, relayed ? 800 : 400)),
+        };
         var relay = new HitRelay();
         session.Song = (relay, feed);
         gameplay.RemoteLane = feed;
@@ -254,6 +260,10 @@ internal sealed class OnlineMatch(GameShell shell)
                 break;
             case "ready":
                 _theirReady = true;
+                break;
+            // They left the room: gone now rather than once the server or the link notices.
+            case "bye":
+                session.PartnerLeft();
                 break;
             case "go":
                 _go = true;

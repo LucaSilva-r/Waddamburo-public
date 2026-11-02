@@ -29,6 +29,14 @@ public sealed record RoomJoinResult(OnlineRoom? Room, bool WrongPassword = false
 /// <summary>A STUN or TURN server, with credentials for TURN.</summary>
 public sealed record IceServer(IReadOnlyList<string> Urls, string? Username = null, string? Credential = null);
 
+/// <summary>The relay for players who can't reach each other directly: its WebSocket address and this player's ticket for the room.</summary>
+public sealed record RelayTicket(string Url, string Ticket)
+{
+    /// <summary>The address to connect to, the ticket in it; null when the server sent something that isn't one.</summary>
+    public Uri? Address => Uri.TryCreate(Url, UriKind.Absolute, out var url) && url.Scheme is "ws" or "wss" && Ticket.Length is > 0 and <= 512
+        ? new UriBuilder(url) { Query = "ticket=" + Uri.EscapeDataString(Ticket) }.Uri : null;
+}
+
 /// <summary>TaikOnline's room endpoints (api/wdb/rooms). <paramref name="http"/> carries the player's token.</summary>
 public sealed class RoomClient(HttpClient http)
 {
@@ -101,15 +109,16 @@ public sealed class RoomClient(HttpClient http)
         response.EnsureSuccessStatusCode();
     }
 
-    /// <summary>The servers for connecting to the other player, with short-lived TURN credentials when the server has them.</summary>
-    public async Task<IReadOnlyList<IceServer>> IceServersAsync(string code, CancellationToken cancellationToken = default)
+    /// <summary>The STUN servers for finding this player's public address, and the relay with this player's ticket when the server has one.</summary>
+    public async Task<(IReadOnlyList<IceServer> Servers, RelayTicket? Relay)> IceServersAsync(string code, CancellationToken cancellationToken = default)
     {
         using var response = await http.GetAsync($"api/wdb/rooms/{Uri.EscapeDataString(code)}/ice-servers", cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync(OnlineJson.Default.IceServersResult, cancellationToken).ConfigureAwait(false))!.IceServers;
+        var result = (await response.Content.ReadFromJsonAsync(OnlineJson.Default.IceServersResult, cancellationToken).ConfigureAwait(false))!;
+        return (result.IceServers, result.Relay);
     }
 
-    internal sealed record IceServersResult(List<IceServer> IceServers);
+    internal sealed record IceServersResult(List<IceServer> IceServers, RelayTicket? Relay = null);
 
     internal sealed record ListResult(List<ListedRoom> Rooms);
 

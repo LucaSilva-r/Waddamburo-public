@@ -352,7 +352,11 @@ internal sealed class GameShell : IDisposable
         _textFields = new TextFieldTextures(Application, options.FontPath);
         _nameTexts = new NameTextTextures(Application, options.FontPath);
         _toneArt = new ToneArt(Application, dataRoot);
-        _performance = new PerformanceOverlay(Application, () => Audio);
+        _performance = new PerformanceOverlay(Application, () => Audio)
+        {
+            Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
+                ? (link.State == Waddamburo.Game.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
+        };
         _timingMarks = new TimingMarkOverlay(Application);
         Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
         _reviewBar = new ReviewOverlay(Painter);

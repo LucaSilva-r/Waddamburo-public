@@ -74,6 +74,12 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     /// </summary>
     public (HitRelay Relay, RemoteLaneFeed Feed)? Song { get; set; }
 
+    /// <summary>Through the relay, hits go this often rather than every tick: each packet still carries every unconfirmed hit
+    /// with its own time, so fewer packets lose nothing, they just queue less on the relay's TCP stream.</summary>
+    public static readonly TimeSpan RelayedHitInterval = TimeSpan.FromMilliseconds(50);
+
+    private long _hitsSent;
+
     /// <summary>Sends what's due over the link: the messages not yet confirmed, and the song's hits. Each game tick.</summary>
     public void Pump()
     {
@@ -81,8 +87,12 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             Link.Send(packet);
         foreach (var packet in Transfer.Due())
             Link.Send(packet);
-        if (Song is { } song)
+        if (Song is { } song && (Link.State != PeerLinkState.Relayed
+            || System.Diagnostics.Stopwatch.GetElapsedTime(_hitsSent) >= RelayedHitInterval))
+        {
+            _hitsSent = System.Diagnostics.Stopwatch.GetTimestamp();
             Link.Send(song.Relay.Build());
+        }
     }
 
     // What the other player sends: a message, or (in a song) their hits.
@@ -109,6 +119,9 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
 
     /// <summary>Offer this player's own network's addresses even to strangers (testing two games on one machine).</summary>
     public bool ShareLanWithStrangers { get; init; }
+
+    /// <summary>Connect through the relay alone, never directly (testing the relay on one machine).</summary>
+    public bool RelayOnly { get; init; }
 
     /// <summary>The other player in the room, as their name board and Don-chan show them (null: nobody yet, or they left).</summary>
     public Scores.ScoreProfile? Partner { get; private set; }
@@ -156,9 +169,29 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             Room = await _rooms.UpdateAsync(room.Code, name, isPublic, password, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Leaves the room: a host's closes.</summary>
+    /// <summary>The other player said they're leaving: they're gone at once, and a guest's room with them.</summary>
+    public void PartnerLeft()
+    {
+        (Partner, _partnerId) = (null, null);
+        if (!IsHost)
+            RoomGone = true;
+        log("the other player left the room.");
+    }
+
+    /// <summary>Leaves the room: a host's closes. The other player is told straight away over the link.</summary>
     public async ValueTask DisposeAsync()
     {
+        if (Link.State is PeerLinkState.Direct or PeerLinkState.Relayed)
+        {
+            // Sent a few times rather than confirmed: nothing waits for an answer now. The room going, the link going
+            // quiet and the channel's presence still tell them if this is lost.
+            Messages.Send(static writer => writer.WriteString("kind", "bye"));
+            for (var attempt = 0; attempt < 3; attempt++)
+                foreach (var packet in Messages.Due(force: true))
+                    Link.Send(packet);
+            // The relay sends from its own queue: a moment for it to go out.
+            await Task.Delay(TimeSpan.FromMilliseconds(150)).ConfigureAwait(false);
+        }
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_keepingAlive is { } keepingAlive)
             await keepingAlive.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -188,7 +221,8 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
         log($"in room {room.Code}{(room.IsQuick ? " (quick play)" : "")} as {(IsHost ? "host" : "guest")}.");
         Link.Received += received;
         _keepingAlive = Task.Run(() => keepAliveAsync(room.Code, _stop.Token), CancellationToken.None);
-        var servers = await _rooms.IceServersAsync(room.Code, cancellationToken).ConfigureAwait(false);
+        var (servers, relay) = await _rooms.IceServersAsync(room.Code, cancellationToken).ConfigureAwait(false);
+        Link.Relay = relay?.Address;
         _candidates = await Link.GatherAsync(servers, cancellationToken).ConfigureAwait(false);
         if (await _notices.RealtimeAsync(cancellationToken).ConfigureAwait(false) is not { } url)
             throw new InvalidOperationException("The server has no realtime connection.");
@@ -231,7 +265,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             if (Interlocked.Exchange(ref _connected, 1) == 0)
             {
                 log($"connecting to the other player ({offer.Candidates.Count} addresses).");
-                Link.Connect(offer.Token, offer.Candidates);
+                Link.Connect(offer.Token, RelayOnly ? [] : offer.Candidates);
             }
         };
         realtime.Subscribe(room.Channel);

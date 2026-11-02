@@ -35,6 +35,9 @@ internal sealed class PerformanceOverlay : IDisposable
 
     public bool Visible { get; private set; }
 
+    /// <summary>The online link, while connected: whether it goes through the relay, and its round trip.</summary>
+    public Func<(bool Relayed, TimeSpan? RoundTrip)?>? Online { get; init; }
+
     public void Toggle()
     {
         Visible = !Visible;
@@ -132,6 +135,15 @@ internal sealed class PerformanceOverlay : IDisposable
             : _intervalMs > 4.17 ? rgb(255, 206, 91) : rgb(133, 229, 130);
         write(quads, $"{_intervalMs:F1} MS", pillLeft + 11, top + 5, 2, timingColor);
         write(quads, $"{_fps:F0} FPS", pillLeft + 11, top + 21, 1, rgb(255, 157, 121));
+        // Online: the round trip and the route, in a pill of their own under the panel.
+        if (Online?.Invoke() is { } online)
+        {
+            var onlineTop = top + height + 6;
+            quads.Add(rect(_compactBackground!.Value, pillLeft, onlineTop, CompactWidth, CompactHeight, RenderColor.White));
+            write(quads, online.RoundTrip is { } trip ? $"{trip.TotalMilliseconds:F0} MS" : "-- MS", pillLeft + 11, onlineTop + 5, 2,
+                online.Relayed ? rgb(255, 206, 91) : rgb(133, 229, 130));
+            write(quads, online.Relayed ? "ONLINE RELAYED" : "ONLINE DIRECT", pillLeft + 11, onlineTop + 21, 1, rgb(140, 200, 255));
+        }
         if (_hovered)
         {
             write(quads, "PERFORMANCE", left + 14, top + 52, 2, rgb(242, 244, 250));

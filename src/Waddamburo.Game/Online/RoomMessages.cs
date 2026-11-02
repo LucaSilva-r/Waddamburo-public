@@ -46,8 +46,8 @@ public sealed class RoomMessages
         }
     }
 
-    /// <summary>The packets to send now: unconfirmed messages not sent in the last quarter second.</summary>
-    public IReadOnlyList<byte[]> Due()
+    /// <summary>The packets to send now: unconfirmed messages not sent in the last quarter second (every one with <paramref name="force"/>).</summary>
+    public IReadOnlyList<byte[]> Due(bool force = false)
     {
         var now = Stopwatch.GetTimestamp();
         List<byte[]> due = [];
@@ -56,7 +56,7 @@ public sealed class RoomMessages
             for (var index = 0; index < _unconfirmed.Count; index++)
             {
                 var (seq, packet, sentAt) = _unconfirmed[index];
-                if (sentAt != 0 && Stopwatch.GetElapsedTime(sentAt, now) < Resend)
+                if (!force && sentAt != 0 && Stopwatch.GetElapsedTime(sentAt, now) < Resend)
                     continue;
                 due.Add(packet);
                 _unconfirmed[index] = (seq, packet, now);

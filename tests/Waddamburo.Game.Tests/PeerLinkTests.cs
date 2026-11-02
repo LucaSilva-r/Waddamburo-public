@@ -177,7 +177,7 @@ public sealed class PeerLinkTests
     }
 
     [Theory]
-    [InlineData("relay 203.0.113.9:40000", true)]
+    [InlineData("relay 203.0.113.9:40000", false)] // relays are a WebSocket now, never an address
     [InlineData("host 192.168.1.2:1234", true)]
     [InlineData("nonsense", false)]
     [InlineData("relay 203.0.113.9", false)]
@@ -197,37 +197,60 @@ public sealed class PeerLinkTests
             Assert.Equal(text, parsed.ToString());
     }
 
-    /// <summary>
-    /// Against a real coturn that allows private peers, so it can relay on one machine: set WADDAMBURO_TEST_TURN to
-    /// host:port and WADDAMBURO_TEST_TURN_SECRET to its secret. Without them this checks nothing and passes.
-    /// </summary>
     [Fact]
-    public async Task TwoLinksConnectThroughARealRelay()
+    public async Task TwoLinksWithNoDirectRouteConnectThroughTheRelay()
     {
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_TEST_TURN") is not { Length: > 0 } turn
-            || Environment.GetEnvironmentVariable("WADDAMBURO_TEST_TURN_SECRET") is not { Length: > 0 } secret)
-            return;
-        var username = $"{DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds()}:1";
-#pragma warning disable CA5350 // coturn's use-auth-secret is defined on HMAC-SHA1.
-        var credential = Convert.ToBase64String(HMACSHA1.HashData(System.Text.Encoding.UTF8.GetBytes(secret), System.Text.Encoding.UTF8.GetBytes(username)));
-#pragma warning restore CA5350
-        IceServer[] servers = [new([$"stun:{turn}"]), new([$"turn:{turn}?transport=udp"], username, credential)];
-        await using var left = new PeerLink();
-        await using var right = new PeerLink();
+        // A stand-in for relay/server.js: pairs the first two connections and passes binary frames between them.
+        var port = freeTcpPort();
+        using var listener = new System.Net.HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        var sockets = new System.Net.WebSockets.WebSocket[2];
+        var paired = new TaskCompletionSource();
+        _ = Task.Run(async () =>
+        {
+            for (var index = 0; index < 2; index++)
+            {
+                var context = await listener.GetContextAsync();
+                Assert.Equal("t", context.Request.QueryString["ticket"]);
+                sockets[index] = (await context.AcceptWebSocketAsync(null)).WebSocket;
+            }
+            paired.SetResult();
+            await Task.WhenAll(forward(sockets[0], sockets[1]), forward(sockets[1], sockets[0]));
+        });
+
+        await using var left = new PeerLink { Relay = new Uri($"ws://127.0.0.1:{port}/?ticket=t") };
+        await using var right = new PeerLink { Relay = new Uri($"ws://127.0.0.1:{port}/?ticket=t") };
         var toRight = Channel.CreateUnbounded<byte[]>();
         right.Received += payload => toRight.Writer.TryWrite(payload);
 
-        var leftRelay = (await left.GatherAsync(servers)).Single(static candidate => candidate.Kind == PeerCandidateKind.Relay);
-        var rightCandidates = await right.GatherAsync(servers);
-        var rightRelay = rightCandidates.Single(static candidate => candidate.Kind == PeerCandidateKind.Relay);
-        Assert.Contains(rightCandidates, static candidate => candidate.Kind == PeerCandidateKind.Reflexive);
-
-        // Only the relays, as for two players whose NATs block everything else.
-        left.Connect(right.LocalToken, [rightRelay]);
-        right.Connect(left.LocalToken, [leftRelay]);
+        // No addresses at all, as for two players whose networks block everything else.
+        left.Connect(right.LocalToken, []);
+        right.Connect(left.LocalToken, []);
+        await paired.Task.WaitAsync(Wait);
         await until(() => left.State == PeerLinkState.Relayed && right.State == PeerLinkState.Relayed);
 
         left.Send([9, 9]);
         Assert.Equal([9, 9], await toRight.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        Assert.NotNull(left.RoundTrip);
+
+        static async Task forward(System.Net.WebSockets.WebSocket from, System.Net.WebSockets.WebSocket to)
+        {
+            var buffer = new byte[4096];
+            while (from.State == System.Net.WebSockets.WebSocketState.Open)
+            {
+                var result = await from.ReceiveAsync(buffer, CancellationToken.None);
+                if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                    return;
+                await to.SendAsync(buffer.AsMemory(0, result.Count), System.Net.WebSockets.WebSocketMessageType.Binary, result.EndOfMessage, CancellationToken.None);
+            }
+        }
+
+        static int freeTcpPort()
+        {
+            using var probe = new TcpListener(IPAddress.Loopback, 0);
+            probe.Start();
+            return ((IPEndPoint)probe.LocalEndpoint).Port;
+        }
     }
 }

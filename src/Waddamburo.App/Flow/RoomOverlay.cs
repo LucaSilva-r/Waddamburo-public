@@ -17,8 +17,8 @@ namespace Waddamburo.App.Flow;
 /// sides, both players'. A hit on the Online spine opens it before the movie decides that spine. A text box takes a room's name, password or code (like song search's). Closed, a banner says how the room
 /// is doing. Rims, Up/Down or the mouse wheel (as in the Settings menu) move, a centre hit or Enter picks, Escape closes.
 /// For testing, WADDAMBURO_ONLINE_SERVER and WADDAMBURO_ONLINE_TOKEN play online on another server or account, leaving the
-/// player's settings and logins alone, and WADDAMBURO_ONLINE_LAN=1 shares LAN addresses with strangers, for two games on
-/// one machine.
+/// player's settings and logins alone, WADDAMBURO_ONLINE_LAN=1 shares LAN addresses with strangers, for two games on
+/// one machine, and WADDAMBURO_ONLINE_RELAY_ONLY=1 connects through the relay alone.
 /// </summary>
 internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IInputOverlay, IDisposable
 {
@@ -507,6 +507,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         var session = new OnlineSession(ScoreClient.CreateHttp(server()!, insecure, token()), insecure)
         {
             ShareLanWithStrangers = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_LAN") == "1",
+            RelayOnly = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_RELAY_ONLY") == "1",
         };
         _session = session;
         _start = Task.Run(() => start(session));
@@ -559,6 +560,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             return null;
         if (session.Link.State is PeerLinkState.Direct or PeerLinkState.Relayed && shell.Match.Status is { } status)
             return status;
+        // The other player left, the link not closed yet: waiting for the next one.
+        if (session.Link.State is PeerLinkState.Direct or PeerLinkState.Relayed && session.Partner is null)
+            return session.IsHost ? T("online.waiting_guest") : T("online.peer_left");
         return session.Link.State switch
         {
             PeerLinkState.Idle => _quickPlay && !session.IsHost ? T("online.searching")

@@ -79,7 +79,11 @@ internal static class OnlineTest
         }
         var insecure = serverOverride is null && arcade.ServerInsecure;
         say($"Server: {server}");
-        await using var session = new OnlineSession(ScoreClient.CreateHttp(server, insecure, token), insecure);
+        await using var session = new OnlineSession(ScoreClient.CreateHttp(server, insecure, token), insecure)
+        {
+            ShareLanWithStrangers = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_LAN") == "1",
+            RelayOnly = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_RELAY_ONLY") == "1",
+        };
         var received = 0L;
         session.Link.Received += _ => Interlocked.Increment(ref received);
         session.Link.StateChanged += state => say($"Link: {state}{(session.Link.RemoteEndPoint is { } remote ? $" via {remote}" : "")}");
