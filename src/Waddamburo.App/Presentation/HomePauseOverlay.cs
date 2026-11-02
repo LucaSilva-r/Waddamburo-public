@@ -282,6 +282,18 @@ internal sealed class HomePauseOverlay : IDisposable
         quads.Add(_painter.Rect(x + width, y, 3, height, yellow));
     }
 
+    /// <summary>A menu button with its text, and the arrow beside it when selected.</summary>
+    public void Choice(List<RenderQuad> quads, float x, float y, float width, float height, bool selected, string text)
+    {
+        button(quads, x, y, width, height, selected);
+        if (selected && _art.TryGetValue(Arrow, out var arrow))
+            quads.Add(rect(arrow.Texture, x - 9 - height * 0.7f, y + height * 0.15f, height * 0.7f, height * 0.7f));
+        quads.Add(label(text, x + width / 2, y + height / 2, (int)width - 24, (int)(height * 0.7f)));
+    }
+
+    /// <summary>Text in the menu's style, centred on x.</summary>
+    public RenderQuad Text(string value, float x, float centreY, int width, int height) => label(value, x, centreY, width, height);
+
     private void button(List<RenderQuad> quads, float x, float y, float width, float height, bool selected)
     {
         if (!_art.TryGetValue(selected ? SelectedButton : Button, out var art) || art.Width < 32)

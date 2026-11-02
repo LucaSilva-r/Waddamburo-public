@@ -323,5 +323,22 @@
   "online.partner_missing": "{0}はその曲を持っていません。",
   "online.song_missing": "ホストの曲を持っていません。",
   "online.waiting_ready": "相手の準備を待っています...",
-  "online.you_pick": "あなたがホストです。曲を選んでね!"
+  "online.you_pick": "あなたがホストです。曲を選んでね!",
+  "online.lobby": "オンライン",
+  "online.lobby_hint": "ほかのプレイヤーといっしょに演奏しよう!",
+  "online.quick_play": "クイックプレイ",
+  "online.host": "ルームを作る",
+  "online.join_code": "コードで参加",
+  "online.choose_song": "曲をえらぶ",
+  "online.visibility_public": "公開: する",
+  "online.visibility_private": "公開: しない",
+  "online.password_on": "パスワード: あり",
+  "online.password_off": "パスワード: なし",
+  "online.leave": "ルームを出る",
+  "online.starting": "ルームを準備しています...",
+  "online.room_code": "ルームコード: {0}",
+  "online.locked": "パスワード",
+  "online.host_choosing": "{0}が曲を選んでいます...",
+  "online.host_cancelled": "{0}が曲を選びなおします。",
+  "online.esc_cancel": "(Escでキャンセル)"
 }

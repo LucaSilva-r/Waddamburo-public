@@ -27,6 +27,9 @@ internal sealed class HomeControls : IDisposable
     private readonly MenuAudio _audio;
     private readonly QuickRestart _restart;
     private readonly HomePauseOverlay? _overlay;
+
+    /// <summary>The menu's artwork, for other panels drawn the same way.</summary>
+    public HomePauseOverlay? Art => _overlay;
     private ResumeCountdown? _resume;
     private RenderTextureId[] _resumeTextures = [];
     private HomeMenuAction? _pickingFolder;
@@ -193,7 +196,8 @@ internal sealed class HomeControls : IDisposable
         if (escape || !_focused)
         {
             countdown.Cancel();
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
+                inRoom: _shell.Match.InSong);
         }
         else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
             resumeSong();
@@ -225,7 +229,8 @@ internal sealed class HomeControls : IDisposable
             // Online, Escape opens the menu over a song that keeps playing.
             if (!online)
                 _gameplay.SetPaused(true, _pauseInterpolation);
-            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse);
+            _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
+                inRoom: _shell.Match.InSong);
             return true;
         }
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
@@ -234,7 +239,8 @@ internal sealed class HomeControls : IDisposable
         if (_shell.Overlay.IsShown || _shell.Coordinator.Flow.State == GameFlowState.TransitionPending || _restart.Black != 0)
             return true;
         _pauseInterpolation = _lastInterpolation;
-        _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect);
+        _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect,
+            inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null);
         _audio.HoldMenuMusic(true);
         return true;
     }
@@ -297,6 +303,16 @@ internal sealed class HomeControls : IDisposable
                     HomeMenuAction.PickOsuFolder => _shell.Arcade.OsuFolder,
                     _ => _shell.Arcade.NijiiroFolder,
                 });
+                break;
+            // Mid-song: the song ends for this player (the other is told the room is gone) and Song Select comes back.
+            case HomeMenuAction.LeaveRoom when active == FlowScenes.Gameplay:
+                resumeSong();
+                _gameplay.Abandon();
+                _shell.Room.Leave();
+                break;
+            case HomeMenuAction.LeaveRoom:
+                _shell.Room.Leave();
+                _shell.Reload.Start(() => _shell.Hosts.ShowOnlineSong(null));
                 break;
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();

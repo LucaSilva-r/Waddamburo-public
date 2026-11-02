@@ -23,6 +23,8 @@ internal enum HomeMenuAction
     Report,
     SongSelect,
     Title,
+    /// <summary>Leave the online room, back to the usual Song Select.</summary>
+    LeaveRoom,
     /// <summary>Open the folder picker for the custom TJA library.</summary>
     PickTjaFolder,
     /// <summary>Open the folder picker for the Nijiiro installation.</summary>
@@ -638,7 +640,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -651,6 +653,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
         if (noResume)
             _choices = [restart, "menu.settings", "menu.song_select"];
+        // In an online room: a way out of it, back to the usual Song Select. A song with the other player can't be
+        // restarted or replayed alone, so that's all its menu offers besides the settings.
+        if (inRoom && !gameplay)
+            _choices = [.. _choices[..^1], "online.leave", _choices[^1]];
+        else if (inRoom)
+            _choices = ["menu.resume", "menu.settings", "online.leave"];
         IsOpen = true;
         Selection = 0;
         _settingsPage = _editing = _restartPrompt = _reportPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = false;
@@ -757,6 +765,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                         break;
                     case "menu.song_select": return close(HomeMenuAction.SongSelect);
                     case "menu.return_to_title": return close(HomeMenuAction.Title);
+                    case "online.leave": return close(HomeMenuAction.LeaveRoom);
                     default: return close(HomeMenuAction.Resume);
                 }
             return HomeMenuAction.None;

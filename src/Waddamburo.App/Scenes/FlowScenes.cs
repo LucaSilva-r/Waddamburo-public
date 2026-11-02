@@ -137,8 +137,10 @@ internal static class FlowScenes
     public static SceneDefinition SongSelectScene(IReadOnlyList<int> sides, bool waiwai = false)
     {
         var movie = waiwai ? "waiwai_song_select" : "song_select";
+        // The second board waits on the other drum's side (hidden), so an online partner's name shows there without a reload.
         SceneLayerDefinition board(int index) => index < sides.Count
             ? indicatorPart("player_name", sides[index] == 1 ? 948 : 60, 638)
+            : index == 1 && sides.Count == 1 ? indicatorPart("player_name", sides[0] == 1 ? 60 : 948, 638)
             : indicatorPart("player_name", 640, 360);
         return new(SceneDefinition.CurrentVersion, SongSelect, [
             new SceneLayerDefinition($"{movie}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, "song-select"),

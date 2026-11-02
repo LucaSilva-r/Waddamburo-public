@@ -178,7 +178,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
     // Those, and an online partner's side: their name board shows, though only this game's players choose.
-    private readonly int[] _shown;
+    private int[] _shown;
     private readonly IReadOnlyDictionary<string, TaikoCrown>?[] _crowns; // per drum; null: a guest
     private readonly CountdownCues _countdownCues = new();
 
@@ -232,7 +232,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     {
         _crowns = crowns ?? [null, null];
         _sides = twoPlayers ? [0, 1] : [side];
-        _shown = partner is { } other && !_sides.Contains(other) ? [.. _sides.Append(other).Order()] : _sides;
+        _shown = shownWith(partner);
         _parts = parts;
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
@@ -255,9 +255,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
     public SongBrowseControl? BrowseRequested { get; private set; }
-
-    /// <summary>The room that spine stands for, if any.</summary>
-    public string? BrowseRoom { get; private set; }
 
     /// <summary>Song Select reloads for the host (library, grouping, order, search): its music plays on.</summary>
     public bool Reloading { get; set; }
@@ -326,7 +323,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 _parts?.StopCountdown();
                 return LumenHostValue.Undefined;
             });
-            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(Math.Ceiling(_timer.Remaining.TotalSeconds)));
+            // An online guest: little time left, as on a cabinet whose timer is nearly out, so the courses can't be left.
+            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(ForcePick ? ForcedSeconds : Math.Ceiling(_timer.Remaining.TotalSeconds)));
             // With the cabinet countdown off the timer never runs out (the counter still shows).
             lumen.RegisterMethod("IsTimeup", _ =>
             {
@@ -334,6 +332,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if ((_parts?.Countdown ?? true) && _timer.IsRunning)
                     foreach (var (bank, cue) in _countdownCues.Advance((int)Math.Ceiling(_timer.Remaining.TotalSeconds)))
                         PlayCue?.Invoke(bank, cue);
+                // An online guest: time is up at once, so the movie rolls onto the one song listed (the host's) and opens
+                // its courses, as a cabinet's timer running out does; then the player picks.
+                if (ForcePick && CourseSelectSong is null)
+                    return LumenHostValue.FromBoolean(true);
                 return LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _timer.IsTimeUp);
             });
             lumen.RegisterMethod("IsInitWait", _ =>
@@ -420,7 +422,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     {
                         LibraryRequested = _session.Catalog.Categories[genre].Link;
                         BrowseRequested = _session.Catalog.Categories[genre].Control;
-                        BrowseRoom = _session.Catalog.Categories[genre].RoomCode;
                     }
                 }
                 return LumenHostValue.FromBoolean(true);
@@ -897,6 +898,27 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             _sounds?.SelectCategoryVoice(_session.Catalog.Categories[category].Name);
         return LumenHostValue.Undefined;
     }
+
+    /// <summary>Song Select picks the song for the player, as when the time runs out (the online guest, on the host's song).</summary>
+    public bool ForcePick { get; init; }
+
+    // Under the time a cabinet stops letting players back out of the courses (15 or 30 s), never out.
+    private const int ForcedSeconds = 10;
+
+    /// <summary>An online partner arrives (or their side changes): their name board and Don-chan show now, no reload.</summary>
+    public void ShowPartner(int? side)
+    {
+        _shown = shownWith(side);
+        _parts?.ShowGuestNames(_shown);
+    }
+
+    // The board order follows the scene's: this game's players, then the partner (FlowScenes.SongSelectScene).
+    private int[] shownWith(int? partner) => partner is { } other && !_sides.Contains(other) ? [.. _sides, other] : _sides;
+
+    /// <summary>The list's cursor is on the Online spine (so a hit there opens the lobby before the movie decides it).</summary>
+    public bool OnlineSpineUnderCursor => _player is { } player && CourseSelectSong is null
+        && _session.Catalog.Categories.ToList().FindIndex(static category => category.Control == SongBrowseControl.Online) is var online and >= 0
+        && player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") is { } cursor && (int)cursor == online;
 
     private (int Category, int Song)? _centre; // the song the centre board's titles show
     private int _openFolder = -1;

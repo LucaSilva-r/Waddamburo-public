@@ -33,7 +33,18 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
     /// An online partner on the right in Song Select: the movie turns only a joined second player's Don-chan inward, so
     /// theirs takes the mirrored camera to face the centre (user-confirmed).
     /// </summary>
-    public bool MirrorPartner { get; set; }
+    public bool MirrorPartner
+    {
+        get => _mirrorPartner;
+        set
+        {
+            // Song Select is already showing: the camera turns now.
+            _mirrorPartner = value;
+            _renderer.MirrorPlayerTwoCamera = value && GameplaySide != 1;
+        }
+    }
+
+    private bool _mirrorPartner;
 
     public void Reset(DonPresentationLayout layout)
     {

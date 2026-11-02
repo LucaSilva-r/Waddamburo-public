@@ -177,10 +177,16 @@ internal sealed class GameShell : IDisposable
     // Overlays that take the keyboard (topmost last) and the painter Waddamburo's own overlays draw with.
     private readonly IInputOverlay[] _inputOverlays;
 
+    /// <summary>Song Select's flow (an online host's cover is cancelled through it).</summary>
+    public SongSelectFlow SongSelectFlow { get; private set; } = null!;
+
     /// <summary>A song played with the room's other player.</summary>
     public OnlineMatch Match { get; private set; } = null!;
 
-    /// <summary>The Online folder's panel, and the room it holds.</summary>
+    /// <summary>The home menu's artwork (panel, buttons, the entry's drum stand), when the game data has it.</summary>
+    public HomePauseOverlay? HomeArt => _home.Art;
+
+    /// <summary>The online lobby, and the room it holds.</summary>
     public RoomOverlay Room { get; private set; } = null!;
     public OverlayPainter Painter { get; }
 
@@ -480,7 +486,7 @@ internal sealed class GameShell : IDisposable
         Reload = new SongSelectReload(this);
         var entry = new EntryFlow(this);
         var ending = new CreditEndFlow(this, _gameplay);
-        var songSelect = new SongSelectFlow(this, _gameplay, calibration);
+        var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
         _scenes = new()
         {
             [FlowScenes.Boot] = _attract,
@@ -674,7 +680,15 @@ internal sealed class GameShell : IDisposable
             return;
         }
         if (_home.Tick(keys, held, escape))
+        {
+            // Online, the menu doesn't stop the song: its movies keep moving and it ends as it would.
+            if (Match.InSong && Active.Id == FlowScenes.Gameplay)
+            {
+                advance(scene, SdlKeyboardSnapshot.Empty);
+                scene.Tick(new FlowInput(SdlKeyboardSnapshot.Empty, null, false, false));
+            }
             return;
+        }
         if (!onLane)
             keys = menuKeys(keys);
         // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
@@ -943,7 +957,6 @@ internal sealed class GameShell : IDisposable
     public void ResetPlayers()
     {
         Room?.Leave();
-        Hosts.ShowOnlineFolder(null);
         // A credit starts with guests (default Dons); cards and the home account attach as players join,
         // with the website's current looks.
         if (!Arcade.Home)
@@ -977,7 +990,7 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>The sides Song Select shows a player on: the joined ones, and an online partner's.</summary>
     public int[] SongSelectSides => [.. (JoinedSides.Count == 0 ? [Hosts.PlayerSide] : JoinedSides)
-        .Concat(Hosts.PartnerSide is { } partner ? [partner] : []).Distinct().Order()];
+        .Concat(Hosts.PartnerSide is { } partner ? [partner] : []).Distinct()];
 
     /// <summary>The system indicators (panels, coins, network), once loaded.</summary>
     public SystemIndicators? Indicators => _indicators;
@@ -1072,6 +1085,18 @@ internal sealed class GameShell : IDisposable
     private readonly System.Collections.Immutable.ImmutableArray<RenderQuad>.Builder _frameQuads =
         System.Collections.Immutable.ImmutableArray.CreateBuilder<RenderQuad>();
 
+    // The scene's Don-chans (their native surfaces) and its name board layers, on their own.
+    private System.Collections.Immutable.ImmutableArray<RenderQuad> players(LumenRenderSnapshot scene, float interpolation)
+    {
+        var dons = scene.Quads.Where(quad => quad.NativeSurface is { } surface && Don?.Resolve(surface) is not null);
+        var boards = Active.Layers.Select((layer, index) => (layer, index))
+            .Where(entry => Path.GetFileNameWithoutExtension(entry.layer.Definition.MovieId) == "player_name")
+            .Select(entry => Active.Player.Layers[entry.index]);
+        var boardQuads = new LumenScenePlayer(scene.StageWidth, scene.StageHeight, boards).CreateRenderSnapshot(interpolation).Quads;
+        return SceneTextures.Compose(new LumenRenderSnapshot(scene.StageWidth, scene.StageHeight, [.. dons, .. boardQuads]),
+            _presenter.Textures, "Players", ResolveSurface).Quads;
+    }
+
     private RenderFrame createFrame(double interpolationFraction)
     {
         var interpolation = _home.Interpolation(interpolationFraction);
@@ -1113,6 +1138,12 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(_playerSetup.Quads(interpolation));
         quads.AddRange(indicatorQuads(false));
         quads.AddRange(Overlay.Quads(interpolation, Titles.Resolve));
+        // The online lobby shades Song Select, all but its Don-chans and name boards: those come again over the shade.
+        if (Room.ShadesScene && Active.Id == FlowScenes.SongSelect)
+        {
+            quads.AddRange(Room.Shade());
+            quads.AddRange(players(scene, interpolation));
+        }
         foreach (var overlay in _inputOverlays)
             quads.AddRange(overlay.Quads());
         quads.AddRange(indicatorQuads(true));

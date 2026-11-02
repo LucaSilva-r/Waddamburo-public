@@ -165,10 +165,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             return;
         // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, Song Select
         // reloading on that spine.
-        // The Online folder's spines.
-        if (Shell.Hosts.SongSelect?.BrowseRequested is { } online and not (SongBrowseControl.Group or SongBrowseControl.Sort))
+        // The Online spine: the lobby opens over Song Select.
+        if (Shell.Hosts.SongSelect?.BrowseRequested == SongBrowseControl.Online)
         {
-            Shell.Room.Handle(online, Shell.Hosts.SongSelect.BrowseRoom);
+            Shell.Room.OpenLobby();
             return;
         }
         if (Shell.Hosts.SongSelect?.BrowseRequested is { } control)
@@ -212,6 +212,17 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.Prefetch(_prefetch.Scene);
             Console.WriteLine($"Prefetching gameplay for '{_prefetch.Song}' at tick {Shell.Tick}.");
         }
+    }
+
+    /// <summary>The rainbow over a pick goes, and Song Select comes back without it (an online host giving up waiting).</summary>
+    public void CancelCover()
+    {
+        Shell.PlayRequests.CancelPending();
+        Shell.Overlay.Clear();
+        gameplay.ResetRainbow();
+        _coveredAt = null;
+        _prefetch = null;
+        Shell.Show(FlowScenes.SongSelect);
     }
 
     // The pending play's rainbow, and gameplay under it once it covers the screen.

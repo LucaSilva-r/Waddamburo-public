@@ -50,9 +50,6 @@ public sealed record SongSelectCategory(
     SongSourceKind? Link = null,
     SongBrowseControl? Control = null)
 {
-    /// <summary>The room an Online folder spine stands for.</summary>
-    public string? RoomCode { get; init; }
-
     /// <summary>
     /// A named folder's colour (custom genre art, see Patching.SongSelectGenrePatch); null keeps the
     /// white art.
@@ -88,10 +85,7 @@ public enum FolderArtPart { Box, Pattern }
 public sealed record FolderArt(FolderArtStyle Style, string Name, string Lines);
 
 /// <summary>A spine that cycles the library's folder grouping or song order (decides at once).</summary>
-public enum SongBrowseControl { Group, Sort, Online, QuickPlay, HostRoom, JoinByCode, RefreshRooms, JoinListed, LeaveOnline, RoomInfo, RoomVisibility, RoomPassword, LeaveRoom }
-
-/// <summary>What the Online folder lists: the room this player is in with its settings, otherwise the rooms to join.</summary>
-public sealed record OnlineFolderView(IReadOnlyList<Online.ListedRoom> Rooms, Online.OnlineRoom? Room = null, bool IsHost = false);
+public enum SongBrowseControl { Group, Sort, Online }
 
 /// <summary>Source-neutral, revision-pinned data consumed by the authored Song Select host.</summary>
 public sealed class SongSelectCatalogView
@@ -123,15 +117,14 @@ public sealed class SongSelectCatalogView
     /// <paramref name="search"/> lists a search's songs (any library) in a folder before the others.
     /// <paramref name="browse"/> (the osu!lazer library only) groups its songs into folders and sorts
     /// them, with a Group and a Sort spine after the folders to change either.
-    /// <paramref name="online"/> adds an Online spine; <paramref name="onlineFolder"/> lists only what it opens to.
+    /// <paramref name="online"/> adds an Online spine (it opens the online lobby); <paramref name="onlySong"/> lists that song alone.
     /// </summary>
     // ponytail: Waiwai's "how to play" folder (id 21, before the switch; waiwai_tutorial) is left out, untraced.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
-        IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, OnlineFolderView? onlineFolder = null,
-        SongKey? onlySong = null)
+        IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -222,39 +215,12 @@ public sealed class SongSelectCatalogView
                 Tint = (40, 130, 230),
                 Art = new FolderArt(FolderArtStyle.Online, "Online", "Play\ntogether\nonline!!"),
             });
-        Categories = onlineFolder is null ? [.. categories] : [.. OnlineSpines(onlineFolder)];
+        Categories = [.. categories];
         // An online guest picks a course on the host's song: it alone, in a folder of its own.
         if (onlySong is not null && Categories.SelectMany(static category => category.Songs)
                 .FirstOrDefault(entry => entry.Descriptor.Key == onlySong) is { } only)
             Categories = [new SongSelectCategory(new CategoryKey(onlySong.Source, "online-song"), "Online", FeatureLabel,
                 SongCategoryPresentation.AlwaysVisible, boardStyle(""), [only])];
-    }
-
-    /// <summary>The Online folder's spines: a room's settings when in one, otherwise how to get into one.</summary>
-    private static IEnumerable<SongSelectCategory> OnlineSpines(OnlineFolderView view)
-    {
-        if (view.Room is { } room)
-        {
-            yield return control(SongBrowseControl.RoomInfo, $"Room: {room.Name}");
-            if (view.IsHost)
-            {
-                yield return control(SongBrowseControl.RoomVisibility, room.IsPublic ? "Visibility: Public" : "Visibility: Private");
-                yield return control(SongBrowseControl.RoomPassword, room.HasPassword ? "Password: On" : "Password: Off");
-                // Only a room left out of the list needs its code: that's how a friend gets in.
-                if (!room.IsPublic)
-                    yield return control(SongBrowseControl.RoomInfo, $"Code: {room.Code}", room.Code);
-            }
-            yield return control(SongBrowseControl.LeaveRoom, "Leave Room");
-            yield return control(SongBrowseControl.LeaveOnline, "Back");
-            yield break;
-        }
-        yield return control(SongBrowseControl.QuickPlay, "Quick Play");
-        yield return control(SongBrowseControl.HostRoom, "Host");
-        foreach (var listed in view.Rooms)
-            yield return control(SongBrowseControl.JoinListed, listed.HasPassword ? $"[Locked] {listed.Name}" : listed.Name, listed.Code);
-        yield return control(SongBrowseControl.RefreshRooms, "Refresh");
-        yield return control(SongBrowseControl.JoinByCode, "Join by Code");
-        yield return control(SongBrowseControl.LeaveOnline, "Back");
     }
 
     public SongSelectMode Mode { get; }
@@ -310,9 +276,9 @@ public sealed class SongSelectCatalogView
             _ => "J-POP",
         }) : Categories[category].BoardStyle;
 
-    private static SongSelectCategory control(SongBrowseControl control, string name, string? roomCode = null) =>
-        new(new CategoryKey(SongSourceKind.OsuLazer, $"control:{control}:{roomCode}"), name, FeatureLabel,
-            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control) { RoomCode = roomCode };
+    private static SongSelectCategory control(SongBrowseControl control, string name) =>
+        new(new CategoryKey(SongSourceKind.OsuLazer, $"control:{control}"), name, FeatureLabel,
+            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control);
 
     private readonly SongCatalogSnapshot _snapshot;
     private readonly SongSourceKind? _library;

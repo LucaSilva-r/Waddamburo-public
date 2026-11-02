@@ -31,9 +31,10 @@ internal sealed class OnlineMatch(GameShell shell)
     /// <summary>What the banner says about the song being agreed on; null when there's nothing to say.</summary>
     public string? Status => connected() is not { } session ? null
         : InSong && !_go ? T("online.waiting_ready")
-        : _mine is not null && _theirs is null ? T("online.waiting_pick", name(session))
+        : _mine is not null && _theirs is null ? T("online.waiting_pick", name(session)) + " " + T("online.esc_cancel")
         : _mine is null && _theirs is { } theirs && !session.IsHost ? T("online.partner_picked", name(session), title(theirs.Song))
         : _mine is null && session.IsHost ? T("online.you_pick")
+        : _mine is null && _theirs is null ? T("online.host_choosing", name(session))
         : null;
 
     /// <summary>Each tick: sends what's due, and takes the other player's messages.</summary>
@@ -114,6 +115,17 @@ internal sealed class OnlineMatch(GameShell shell)
         return play;
     }
 
+    /// <summary>The host is under the rainbow waiting for the guest's pick (Escape gives up: <see cref="Cancel"/>).</summary>
+    public bool WaitingForPartner => _mine is not null && !InSong && connected() is { IsHost: true };
+
+    /// <summary>The host stops waiting: back to Song Select, still in the room, and the guest's song goes too.</summary>
+    public void Cancel()
+    {
+        shell.Room.Session?.Messages.Send(static writer => writer.WriteString("kind", "cancel"));
+        reset();
+        shell.SongSelectFlow.CancelCover();
+    }
+
     /// <summary>The song with the other player is under the rainbow: their hits feed lane <paramref name="remoteLane"/>.</summary>
     public void Start(TaikoGameplayPresentation gameplay, int remoteLane)
     {
@@ -181,6 +193,14 @@ internal sealed class OnlineMatch(GameShell shell)
                 shell.Sync.Notices.AddLocal(T("online.partner_missing", name(session)), NoticeSeverity.Warning);
                 _partnerMissing = true;
                 break;
+            // The host stopped waiting: back to the usual list (unless the song is already on its way).
+            case "cancel" when !InSong:
+                shell.Sync.Notices.AddLocal(T("online.host_cancelled", name(session)), NoticeSeverity.Info);
+                if (_mine is not null)
+                    shell.SongSelectFlow.CancelCover();
+                reset();
+                shell.Reload.Start(() => shell.Hosts.ShowOnlineSong(null));
+                break;
             case "ready":
                 _theirReady = true;
                 break;
@@ -200,7 +220,8 @@ internal sealed class OnlineMatch(GameShell shell)
             _theirs = null;
             return;
         }
-        // Song Select shows only that song, to pick a course on.
+        // Song Select shows only that song, to pick a course on; the lobby makes way.
+        shell.Room.ClosePanel();
         shell.Reload.Start(() => shell.Hosts.ShowOnlineSong(song));
     }
 
