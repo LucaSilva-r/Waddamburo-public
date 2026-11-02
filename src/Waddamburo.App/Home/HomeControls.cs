@@ -316,7 +316,7 @@ internal sealed class HomeControls : IDisposable
                 {
                     HomeMenuAction.PickTjaFolder => _shell.Arcade.TjaFolder ?? _shell.Options.TjaRoot,
                     HomeMenuAction.PickOsuFolder => _shell.Arcade.OsuFolder,
-                    _ => ArcadeSettings.Folders(_shell.Arcade.StockFolders).LastOrDefault(),
+                    _ => ArcadeSettings.Folders(_shell.Arcade.StockFolders) is [.., var last] ? last : null,
                 });
                 break;
             // Mid-song: the song ends for this player (the other is told the room is gone) and Song Select comes back.
