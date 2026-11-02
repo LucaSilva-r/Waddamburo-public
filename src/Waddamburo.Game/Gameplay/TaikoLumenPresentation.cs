@@ -253,13 +253,19 @@ public sealed class TaikoLumenPresentation
             ? (TimeSpan.MinValue, TimeSpan.MaxValue)
             : (noteTime - TimeSpan.FromSeconds((1380 - hitX) / pixelsPerSecond), noteTime + TimeSpan.FromSeconds((hitX + 100) / pixelsPerSecond));
 
+    /// <summary>The combo shown is set from outside (<see cref="SetCombo"/>), not counted from the judgements shown (an online partner's lane).</summary>
+    public bool ExternalCombo { get; set; }
+
     private void onJudged(TaikoNoteJudgement result)
     {
         _flights?.Trigger(result);
-        if (result.StrongHitCompleted)
+        if (result.StrongHitCompleted || result.Placeholder)
             return;
-        _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
-        callback(_board, "SetComboCount", LumenHostValue.FromNumber(_combo));
+        if (!ExternalCombo)
+        {
+            _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
+            callback(_board, "SetComboCount", LumenHostValue.FromNumber(_combo));
+        }
         if (result.TimedOut)
             return;
         var label = result.Result switch

@@ -57,6 +57,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private TimeSpan _inputOffset;
     // The music's position stops with the music: after it, the song's time goes on by a stopwatch.
     private TimeSpan? _musicEndPosition;
+    private bool _resultSent;
     private readonly Stopwatch _afterMusic = new();
 
     /// <summary>The song select -> gameplay rainbow, begun by Song Select and finished here.</summary>
@@ -220,6 +221,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _startTick = Shell.Tick;
         _clock.Reset();
         _musicEndPosition = null;
+        _resultSent = false;
         _afterMusic.Reset();
         _audioOffset = TimeSpan.FromMilliseconds(Shell.Arcade.AudioOffsetMs);
         _inputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
@@ -615,6 +617,14 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Sync.Notices.AddLocal(Strings.T("gameplay.audio_failed"), NoticeSeverity.Warning);
             end(finished: false);
             return;
+        }
+        // Online: once this player's notes are over, their result goes to the other player as it stands.
+        if (Shell.Match.InSong && !_resultSent && ChartOver)
+        {
+            _resultSent = true;
+            var lane = 1 - Shell.Gameplay.RemoteLaneIndex;
+            if ((uint)lane < (uint)Shell.Gameplay.Results.Count)
+                Shell.Match.SendResult(Shell.Gameplay.Results[lane]);
         }
         // Traced: the shutter closes 9 s after the end banner, by the chart, not the audio (whose end only
         // freezes the chart clock below). Audio running past it fades under the shutter: some songs' files

@@ -414,7 +414,7 @@ internal sealed class GameShell : IDisposable
             PlayRequests,
             () => SongInfo,
             options.Countdown,
-            () => Gameplay.Results is { Count: > 0 } results ? results
+            () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
                 : diagnosticResult is { } diagnostic ? [diagnostic] : [],
             Arcade,
             Coins)

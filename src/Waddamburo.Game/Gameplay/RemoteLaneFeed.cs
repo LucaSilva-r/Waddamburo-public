@@ -46,7 +46,9 @@ public sealed class RemoteLaneFeed
     /// Brings <paramref name="session"/> up to the lane's time, hit by hit: <paramref name="hit"/> is told of each, for the
     /// drum's presentation. Returns the time the lane shows.
     /// </summary>
-    public TimeSpan Apply(TaikoJudgementSession session, TimeSpan localTime, Action<TaikoInputAction, TimeSpan>? hit = null)
+    /// <remarks><paramref name="offNote"/> is told of each hit that judged no note (a stray hit, or one on a roll or balloon).</remarks>
+    public TimeSpan Apply(TaikoJudgementSession session, TimeSpan localTime, Action<TaikoInputAction, TimeSpan>? hit = null,
+        Action<TaikoInputAction>? offNote = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var display = DisplayTime(localTime);
@@ -63,7 +65,8 @@ public sealed class RemoteLaneFeed
             // The other player's data: never back in time, whatever it says.
             var time = input.Time < session.CurrentTime ? session.CurrentTime : input.Time;
             hit?.Invoke(input.Action, time);
-            session.SubmitInput(input.Action, time);
+            if (session.SubmitInput(input.Action, time) is not (TaikoInputResult.Judged or TaikoInputResult.StrongHitCompleted))
+                offNote?.Invoke(input.Action);
         }
         var until = known < display ? known : display;
         if (until > session.CurrentTime)

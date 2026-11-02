@@ -33,6 +33,46 @@ internal sealed class OnlineMatch(GameShell shell)
     /// <summary>A song with the other player is loading or being played.</summary>
     public bool InSong { get; private set; }
 
+    /// <summary>The other player's own result of the last song together, as their game counted it (null until it arrives).</summary>
+    public TaikoPlayResult? PartnerResult { get; private set; }
+
+    /// <summary>
+    /// This player's notes are over: their result goes to the other player, whose results screen shows it as it is,
+    /// rather than as their copy of this lane counted it.
+    /// </summary>
+    public void SendResult(TaikoPlayResult result)
+    {
+        if (connected() is not { } session)
+            return;
+        session.Messages.Send(writer =>
+        {
+            writer.WriteString("kind", "result");
+            writer.WriteNumber("score", result.Score);
+            writer.WriteNumber("great", result.Great);
+            writer.WriteNumber("good", result.Good);
+            writer.WriteNumber("miss", result.Miss);
+            writer.WriteNumber("combo", result.MaxCombo);
+            writer.WriteNumber("rolls", result.Rolls);
+            writer.WriteNumber("gauge", result.GaugeSegments);
+            writer.WriteBoolean("cleared", result.Cleared);
+        });
+    }
+
+    /// <summary>The song's results, the other player's lane as their own game counted it when that has arrived.</summary>
+    public IReadOnlyList<TaikoPlayResult> WithPartnerResult(IReadOnlyList<TaikoPlayResult> results)
+    {
+        var lane = shell.Gameplay.RemoteLaneIndex;
+        if (PartnerResult is not { } partner || results.Count != 2 || (uint)lane >= 2)
+            return results;
+        var merged = results.ToArray();
+        merged[lane] = merged[lane] with
+        {
+            Score = partner.Score, Great = partner.Great, Good = partner.Good, Miss = partner.Miss, MaxCombo = partner.MaxCombo,
+            Rolls = partner.Rolls, GaugeSegments = partner.GaugeSegments, Cleared = partner.Cleared,
+        };
+        return merged;
+    }
+
     /// <summary>What the banner says about the song being agreed on; null when there's nothing to say.</summary>
     public string? Status => connected() is not { } session ? null
         : _awaiting is not null ? T("online.receiving", name(session), percent(session.Transfer.ReceiveProgress))
@@ -142,6 +182,7 @@ internal sealed class OnlineMatch(GameShell shell)
         shell.PlayRequests.CancelPending();
         shell.PlayRequests.TryRequestPlay(play);
         InSong = true;
+        PartnerResult = null;
         shell.PlayOnlineAsTwoPlayers(true);
         return play;
     }
@@ -162,21 +203,14 @@ internal sealed class OnlineMatch(GameShell shell)
     {
         if (!InSong || connected() is not { } session)
             return;
-        // A little more than a hit takes to arrive, so their notes are judged where they hit them. Through the relay hits
-        // also wait for the next batch, and the way is longer, so the lane may run further behind.
-        var oneWay = (session.Link.RoundTrip ?? TimeSpan.FromMilliseconds(100)) / 2;
-        var relayed = session.Link.State == PeerLinkState.Relayed;
-        var margin = 100 + (relayed ? OnlineSession.RelayedHitInterval.TotalMilliseconds : 0);
-        var feed = new RemoteLaneFeed
-        {
-            Delay = TimeSpan.FromMilliseconds(Math.Clamp(oneWay.TotalMilliseconds + margin, 120, relayed ? 800 : 400)),
-        };
+        // Their lane runs in time with this player's song (LiveLaneSource): their hits are judged as they arrive.
+        var feed = new RemoteLaneFeed { Delay = TimeSpan.Zero };
         var relay = new HitRelay();
         session.Song = (relay, feed);
         gameplay.RemoteLane = feed;
         gameplay.Relay = relay;
         gameplay.RemoteLaneIndex = remoteLane;
-        Console.WriteLine($"Online song: the other player's lane runs {feed.Delay.TotalMilliseconds:F0} ms behind.");
+        Console.WriteLine($"Online song: the other player's lane runs live ({(session.Link.State == PeerLinkState.Relayed ? "relayed" : "direct")}, round trip {session.Link.RoundTrip?.TotalMilliseconds ?? 0:F0} ms).");
     }
 
     /// <summary>
@@ -260,6 +294,9 @@ internal sealed class OnlineMatch(GameShell shell)
                 break;
             case "ready":
                 _theirReady = true;
+                break;
+            case "result" when partnerResult(message) is { } result:
+                PartnerResult = result;
                 break;
             // They left the room: gone now rather than once the server or the link notices.
             case "bye":
@@ -358,6 +395,19 @@ internal sealed class OnlineMatch(GameShell shell)
         };
         return new PlayRequest(request.CatalogRevision, request.Song, request.AudioAsset,
             localSlot == LocalPlayerSlot.PlayerOne ? [local, partner] : [partner, local]) { Seed = seed };
+    }
+
+    // The other player's result: only its numbers are taken (the course and options are this game's own copy's).
+    private static TaikoPlayResult? partnerResult(JsonElement message)
+    {
+        int number(string name) => message.TryGetProperty(name, out var value) && value.TryGetInt32(out var parsed) && parsed is >= 0 and <= 100_000
+            ? parsed : -1;
+        if (!message.TryGetProperty("score", out var scoreValue) || !scoreValue.TryGetInt64(out var score) || score is < 0 or > 100_000_000
+            || !message.TryGetProperty("cleared", out var clearedValue) || clearedValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            return null;
+        int[] counts = [number("great"), number("good"), number("miss"), number("combo"), number("rolls"), number("gauge")];
+        return counts.Any(static count => count < 0) ? null
+            : new TaikoPlayResult(TaikoCourse.Oni, score, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], clearedValue.GetBoolean());
     }
 
     // A pick from the other player: anything in it may be nonsense.

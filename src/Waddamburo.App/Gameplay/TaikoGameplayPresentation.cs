@@ -267,11 +267,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly TaikoLongNotePresentation _longNotes;
         private readonly TaikoDonPresentation? _character;
         private readonly TaikoAnimationClock _animationClock;
-        private readonly RemoteLaneFeed? _remote;
+        private readonly LiveLaneSource? _live; // an online partner's lane
         private readonly HitRelay? _relay;
 
-        // The other player's lane shows its feed's delay behind; this player's own, as it is.
-        private TimeSpan shown(TimeSpan time) => _remote is null ? time : _remote.DisplayTime(time);
+        /// <summary>An online partner's banner waits for their play to catch up, this long at most.</summary>
+        private static readonly TimeSpan PartnerGrace = TimeSpan.FromSeconds(3);
+
+        private static TimeSpan shown(TimeSpan time) => time;
         private readonly int _characterSlot;
         private readonly int _side;
         private readonly int? _soundLane;
@@ -332,7 +334,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null,
             RemoteLaneFeed? remote = null, HitRelay? relay = null)
         {
-            _remote = remote;
             _relay = relay;
             _side = side;
             _soundLane = players == 2 ? lane : null;
@@ -402,7 +403,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Online lanes play alone, as each player's own game plays them.
             _session = new TaikoJudgementSession(chart, WindowsFor(chart, course), StrongSecondHitWindow,
                 partnerHandNotes: players == 2 && remote is null && relay is null);
-            if (review is null)
+            if (review is null && remote is not null)
+            {
+                // Online: the lane shows in time with this player's song; its numbers are the shadow's (their own play).
+                _live = new LiveLaneSource(chart, _session, remote);
+                _source = _live;
+            }
+            else if (review is null)
                 _source = _session;
             else
             {
@@ -455,10 +462,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _fixedLayers = [.. layers.Values.Except(_beatLayers)];
             var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg") ?? skin("donbg_w_00"),
                 skin("dance"), skin("bg_fever"), skin("fever"), skin("renda") ?? skin("renda_w_00")));
-            _source.LongNoteHit += progress =>
+            // What the score, combo, gauge and results count: the play itself (an online partner's shadow), not what's shown.
+            ITaikoJudgementSource counted = _live is null ? _source : _session;
+            counted.LongNoteHit += progress =>
             {
                 var previousScore = score.Value;
-                if (score.Apply(progress, _source.CurrentTime)) updateScore(score.Value - previousScore);
+                if (score.Apply(progress, counted.CurrentTime)) updateScore(score.Value - previousScore);
                 if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
             };
             var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
@@ -514,7 +523,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             };
             (float X, float Y) hitPoint = default; // the lane's target, once its presentation exists below
             var hitRadius = 0f;
-            _source.Judged += judgement =>
+            counted.Judged += judgement =>
             {
                 // Every hit was early or late (the setting picks which are shown); a note that passed
                 // unhit has no hit to time.
@@ -526,7 +535,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 }
                 stage?.Apply(judgement);
                 var previousScore = score.Value;
-                if (score.Apply(judgement, _source.CurrentTime)) updateScore(score.Value - previousScore);
+                if (score.Apply(judgement, counted.CurrentTime)) updateScore(score.Value - previousScore);
                 // Combo bonus popup at every 100 combo (the movie picks its label from the count).
                 if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
                     comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
@@ -556,7 +565,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     full = !full;
                     label(gaugeFire, full ? "fever_start" : "fever_end");
                 }
-                _character?.OnJudged(judgement);
+                if (_live is null)
+                    _character?.OnJudged(judgement);
+                else
+                    _presentation!.SetCombo(score.Combo);
                 skinPresentation.OnJudged(judgement, gauge);
             };
             // A reviewed play shows the baked state of its moment: the score, combo and gauge are set
@@ -644,6 +656,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 return player;
             }
             hitPoint = _presentation.HitPoint;
+            if (_live is not null)
+            {
+                _presentation.ExternalCombo = true;
+                _source.Judged += judgement => _character?.OnJudged(judgement);
+            }
             _presentation.Doron = options.Doron;
             // The options' icons on the lane (traced SetSpeed(1) for none). lane_obi's setOption shows
             // speedx<n> above 1, doron and abekobe when true, random<level> above 0 (1 きまぐれ, 2 でたらめ),
@@ -722,15 +739,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default, double clockSpeed = 1)
         {
             if (_stopped) return;
-            if (_remote is not null)
+            if (_live is not null)
             {
-                var display = _remote.Apply(_session, chartTime, (hit, time) =>
-                {
-                    _presentation.Hit(hit);
-                    Replay.Add(hit, time);
-                });
-                _presentation.Update(display);
-                _onChartTime(display);
+                _live.Advance(chartTime, _presentation.Hit, Replay.Add);
+                _presentation.Update(chartTime);
+                // Their banner shows once their play has caught up, or after a short wait (a partner who dropped out).
+                var late = chartTime - PartnerGrace;
+                _onChartTime(_session.CurrentTime > late ? _session.CurrentTime : late);
                 _character?.SetBalloonVisible(_longNotes.BalloonVisible);
                 return;
             }

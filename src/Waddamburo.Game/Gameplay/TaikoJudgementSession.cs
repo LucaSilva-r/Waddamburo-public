@@ -81,7 +81,11 @@ public readonly record struct TaikoNoteJudgement(
     TaikoHitResult? Result,
     TimeSpan? Offset,
     bool StrongHitCompleted,
-    bool TimedOut = false);
+    bool TimedOut = false)
+{
+    /// <summary>An online partner's note shown before their judgement arrived: it pops, with no judgement of its own.</summary>
+    public bool Placeholder { get; init; }
+}
 
 /// <summary>
 /// What the lane's presentation reads of a play's judgements: the live session's, or a reviewed play's

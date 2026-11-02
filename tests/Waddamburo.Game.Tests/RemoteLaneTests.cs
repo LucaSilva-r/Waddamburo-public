@@ -186,4 +186,36 @@ public sealed class RemoteLaneTests
         Assert.Equal(HitRelay.MaxInputsPerPacket + 10, receiver.Received);
         Assert.Equal(ms(5_000), feed.Known);
     }
+
+    [Fact]
+    public void ALiveLaneShowsPlaceholdersUntilJudgementsArriveThenShiftsThemOntoTheNextNotes()
+    {
+        var inputs = play(5);
+        var feed = new RemoteLaneFeed { Delay = TimeSpan.Zero };
+        var shadow = new TaikoJudgementSession(chart(), Windows, Strong);
+        var live = new LiveLaneSource(chart(), shadow, feed);
+        var shown = new List<TaikoNoteJudgement>();
+        live.Judged += shown.Add;
+        var latency = ms(250);
+        var sent = 0;
+
+        for (var tick = 0; tick < 700; tick++)
+        {
+            var now = TimeSpan.FromTicks(tick * Tick.Ticks);
+            // Their hits get here 250 ms after they were made.
+            var arrived = inputs.Skip(sent).TakeWhile(input => input.Time <= now - latency).ToList();
+            sent += arrived.Count;
+            feed.Receive(arrived, now - latency);
+            live.Advance(now);
+        }
+
+        // The lane kept time: every note was shown once, in order, as it reached the line.
+        Assert.Equal(Enumerable.Range(0, 60), shown.Select(static judgement => judgement.NoteIndex));
+        // 250 ms of notes 100 ms apart had nothing to show yet: placeholders, then real judgements a few notes late.
+        Assert.InRange(shown.TakeWhile(static judgement => judgement.Placeholder).Count(), 2, 4);
+        Assert.InRange(shown.Count(static judgement => judgement.Placeholder), 2, 4);
+        // The shadow is their play exactly, whatever was shown: every judgement of theirs is shown or still owed.
+        Assert.Equal(solo(inputs).Count(static line => !line.StartsWith("roll", StringComparison.Ordinal)
+            && line.EndsWith("False", StringComparison.Ordinal)), shown.Count(static judgement => !judgement.Placeholder) + live.Behind);
+    }
 }
