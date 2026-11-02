@@ -12,7 +12,7 @@ namespace Waddamburo.App.Flow;
 /// A song played with the room's other player. Whoever's turn it is picks a song and course and waits (<see cref="MyTurn"/>:
 /// the host's room setting, <see cref="Choice"/>, says whose); the other's Song Select comes to that song and they pick
 /// their course; then both games load it with the other player's chart, options and the host's seed
-/// on the second lane, wait for each other under the rainbow, and start together. Nothing played this way is saved.
+/// on the second lane, wait for each other under the rainbow, and start together. Each player keeps their own lane's play, as any.
 /// </summary>
 internal sealed class OnlineMatch(GameShell shell)
 {

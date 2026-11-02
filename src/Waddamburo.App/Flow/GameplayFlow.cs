@@ -738,18 +738,15 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Dan = null;
         _course = null;
         dropNextAudio();
-        var online = Shell.Match.InSong;
+        // Online, the other player's lane is theirs to keep (their own game saves it); this player's is kept as any play.
+        var remoteLane = Shell.Match.InSong ? Shell.Gameplay.RemoteLaneIndex : -1;
         Shell.Match.SongEnded();
         // Results show the last saved play's bests and rankings otherwise.
-        if (online)
+        Array.Clear(Shell.Bests);
+        Array.Clear(Shell.Placements);
+        if (finished && Shell.PlayRequests.Active is { } played)
         {
-            Array.Clear(Shell.Bests);
-            Array.Clear(Shell.Placements);
-        }
-        // Online plays are for fun: never kept or uploaded.
-        if (finished && !online && Shell.PlayRequests.Active is { } played)
-        {
-            saveScore(played);
+            saveScore(played, remoteLane);
             if (Shell.Hosts.DanResult is { } danPlay && finishedCourse is not null)
                 saveCourse(played, danPlay, finishedCourse);
         }
@@ -828,7 +825,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     // Each lane whose drum has a profile saves its play. ponytail: Waiwai (shared voltage, its own
     // results) is not saved until its mode is worked out.
-    private void saveScore(PlayRequest request)
+    private void saveScore(PlayRequest request, int remoteLane)
     {
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
@@ -838,6 +835,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
         {
             var player = request.Players[lane];
+            if (lane == remoteLane)
+                continue;
             // Home: a guest's play is kept on this PC (baid 0, never uploaded).
             if ((TaikoGuest.Profiles[(int)player.Player] ?? (Shell.Arcade.Home ? ScoreProfile.LocalGuest : null)) is not { } profile)
                 continue;
