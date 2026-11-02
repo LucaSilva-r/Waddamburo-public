@@ -291,9 +291,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         Scroll = new SongSelectScroll(player, () => _openFolder, side => PlayCue?.Invoke("SE_COM", side == 0 ? 19 : 20));
         if (_don is null)
             return;
-        // Like entry, the movie's 2P slot already turns Katsu-chan inward (user-confirmed: the
-        // mirrored camera faced him the wrong way).
-        DonLumenBinding.Attach(player, _don, DonPresentationLayout.OpposedPlayers);
+        // As in entry, the movie doesn't turn the second player's Don-chan: the mirrored camera faces them inward, joined
+        // or an online partner (user-confirmed with an asymmetric costume; Katsu-chan looks alike either way).
+        DonLumenBinding.Attach(player, _don);
     }
 
     public void Install(LumenHostContext context)

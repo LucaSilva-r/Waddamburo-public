@@ -335,7 +335,9 @@ internal sealed class LayerHostFactory(
     {
         if (don is not null)
         {
-            DonLumenBinding.Attach(player, don, DonPresentationLayout.OpposedPlayers);
+            // The entry's movie doesn't turn the second player's Don-chan: the mirrored camera faces them inward
+            // (user-confirmed with an asymmetric costume; Katsu-chan looks alike either way).
+            DonLumenBinding.Attach(player, don);
             player.SetNativeFill("donExM", don.GetSurface(2), DonLumenBinding.Placement);
         }
         // SetPrevious(scene, trigger): entry starts from the attract loop (scene 0) after a P1 drum

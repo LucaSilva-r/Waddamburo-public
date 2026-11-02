@@ -42,7 +42,9 @@ public sealed record DonLook(int[] Costume, string Face, string Body, string Lim
 
 public enum DonPresentationLayout
 {
+    /// <summary>The second player's Don-chan on the right, the mirrored camera turning them inward (entry, Song Select).</summary>
     Standard,
+    /// <summary>The second player's Don-chan unmirrored, facing the same way as the first (results).</summary>
     OpposedPlayers,
     Gameplay,
     Retry,

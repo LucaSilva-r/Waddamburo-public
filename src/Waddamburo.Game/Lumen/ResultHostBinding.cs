@@ -104,8 +104,9 @@ public sealed class ResultHostBinding(
     public void Attach(LumenPlayer player)
     {
         ArgumentNullException.ThrowIfNull(player);
+        // Both players stand left of their panel, facing it: the second's Don-chan takes the unmirrored camera too.
         if (don is not null)
-            DonLumenBinding.Attach(player, don);
+            DonLumenBinding.Attach(player, don, DonPresentationLayout.OpposedPlayers);
         var plays = results();
         var two = plays.Count == 2;
         call(player, "SetRunMode", number(0));
