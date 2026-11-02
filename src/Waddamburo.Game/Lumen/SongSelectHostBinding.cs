@@ -560,7 +560,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 tryInvoke("SetDefaultTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(TaikoGuest.Tones[player]));
                 var options = TaikoGuest.Options[player];
                 tryInvoke("AssignSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0b11111111));
-                tryInvoke("SetDefaultSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(options.SessionBits),
+                tryInvoke("SetDefaultSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(options.DefaultSessionBits),
                     LumenHostValue.FromBoolean(options.Shinuchi));
                 tryInvoke("SetValidOptionMenu", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(true), LumenHostValue.FromBoolean(true));
             }
@@ -572,8 +572,53 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 if (!requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.isMania.{player}", true))
                     Console.Error.WriteLine("Song Select has no CourseResource.isMania; Oni stays hidden.");
         _parts?.ShowGuestNames(_shown);
+        _optionsPending = true;
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
         return true;
+    }
+
+    // The drums' last options wait for their rows: SetDefaultSession above finds no selection to set yet (the
+    // movie makes each player's, at none, after setup), so they go in on the first tick the rows are there. The
+    // bottom bar's icons (PlayerBoard), drawn at none, are then drawn again as the movie does when an option board
+    // closes (traced playerBoard.ChangeIcon).
+    private bool _optionsPending;
+
+    private void restoreOptions()
+    {
+        if (!_optionsPending || _player is null
+            || _sides.Any(player => _player.ReadScriptValue($"{SessionRoot}.selected.{player}.0") is null))
+            return;
+        _optionsPending = false;
+        foreach (var player in _sides)
+        {
+            var options = TaikoGuest.Options[player];
+            if (!_player.TryCallScriptMethod(SessionRoot, "SetSelectedItems", [LumenHostValue.FromNumber(player),
+                    LumenHostValue.FromNumber(options.DefaultSessionBits), LumenHostValue.FromBoolean(options.Shinuchi)]))
+                Console.Error.WriteLine("Song Select has no SessionResource.SetSelectedItems; the last options are not shown again.");
+            // ponytail: SetSelectedItems takes 真打 (its own argument) but not the rows from the bits (their bit
+            // order is unclear); each row's choice is set by its label, as the option board leaves it.
+            for (var row = 0; _player.ReadScriptValue($"{SessionRoot}.list.{player}.{row}.label") is { } label; row++)
+                if (label.ToString() switch
+                    {
+                        SpeedRowLabel => options.SpeedIcon - 1,
+                        "ドロン" => options.Doron ? 1 : 0,
+                        "あべこべ" => options.Abekobe ? 1 : 0,
+                        "ランダム" => (int)options.Random,
+                        _ => (int?)null,
+                    } is { } item)
+                    _player.TryWriteScriptValue($"{SessionRoot}.selected.{player}.{row}", (double)item);
+            showOptionIcons(player);
+        }
+    }
+
+    private static readonly string[] PlayerBoardPaths = ["main.playerBoard_", "main.courseSelect_.playerBoard_", "playerBoard_"];
+
+    private void showOptionIcons(int player)
+    {
+        foreach (var path in PlayerBoardPaths)
+            if (requirePlayer().TryCallScriptMethod(path, "ChangeIcon", [LumenHostValue.FromNumber(player)]))
+                return;
+        Console.Error.WriteLine("Song Select has no playerBoard.ChangeIcon; the chosen options show no icons until changed.");
     }
 
     // SetMusicData(rank, musicBits): each bit shows MusicInfo.LABEL_M_ICON[bit] on the board (spine and
@@ -849,6 +894,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void Poll()
     {
+        restoreOptions();
         showPartnerDon();
         hideSongPartsOnSeries();
         showSpeeds();

@@ -65,6 +65,14 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
 
     public static TaikoPlayOptions FromBits(int bits) => FromSession(bits & 0x1FF, bits >> 9 is > 0 and var index ? index : null);
 
+    /// <summary>
+    /// The options as song_select's SetDefaultSession takes them (its SetSelectedItems), numbered as its script reads
+    /// them: bit 0 x2, 1 x3, 2 x4, 3 ドロン, 4 あべこべ, 5 きまぐれ, 6 でたらめ (真打 is its own argument). That is
+    /// <see cref="SessionBits"/> without its two lowest items (none and 真打). Song Select still sets each row by its
+    /// label after (the movie leaves the rows at none with these).
+    /// </summary>
+    public int DefaultSessionBits => SessionBits >> 2;
+
     /// <summary>The options as <see cref="FromSession"/> reads them (no bit for a row left at none).</summary>
     public int SessionBits => (Shinuchi ? 1 << 1 : 0) | (SpeedIcon > 1 ? 1 << SpeedIcon : 0) | (Doron ? 1 << 5 : 0)
         | (Abekobe ? 1 << 6 : 0) | Random switch

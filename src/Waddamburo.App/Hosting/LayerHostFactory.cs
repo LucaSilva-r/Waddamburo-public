@@ -315,6 +315,8 @@ internal sealed class LayerHostFactory(
             "dani-result" => daniResultHost(),
             "waiwai-result-board-0" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 0)),
             "waiwai-result-board-1" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 1)),
+            "dani-board-0" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 0)),
+            "dani-board-1" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 1)),
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
             "tutorial" => tutorialHost(),

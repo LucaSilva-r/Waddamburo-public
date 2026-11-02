@@ -143,6 +143,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.Sounds?.Bank.Play("SE_SELECT", 7); // traced session30, as Song Select ends
             // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
             Shell.Hosts.DanSeries = Shell.Hosts.SongSelect.DanSeriesPicked ?? Shell.Arcade.DanSeries;
+            Shell.Catalog.Replace(FlowScenes.DaniSelectScene(Shell.Hosts.PlayerSide));
             Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
             return;
         }

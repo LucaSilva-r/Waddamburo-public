@@ -25,6 +25,8 @@ public sealed class TaikoPlayOptionsTests
 
         Assert.Equal(new TaikoPlayOptions(true, 14, true, false, TaikoRandom.Detarame), options);
         Assert.Equal(1 << 1 | 1 << 4 | 1 << 5 | 1 << 8, options.SessionBits);
+        // SetDefaultSession's own numbering (x4 bit 2, ドロン 3, でたらめ 6; 真打 apart).
+        Assert.Equal(1 << 2 | 1 << 3 | 1 << 6, options.DefaultSessionBits);
         // Nijiiro's speeds: the exact one is kept beside its art's range (1.3x shows ばいそく).
         var slow = TaikoPlayOptions.FromSession(1 << 2, speedIndex: 3);
         Assert.Equal((1.3, 2, "1.3x"), (slow.ScrollSpeed, slow.SpeedIcon, TaikoPlayOptions.SpeedText(3)));

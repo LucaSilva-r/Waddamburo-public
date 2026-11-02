@@ -112,12 +112,19 @@ internal static class FlowScenes
         new SceneDefinition(SceneDefinition.CurrentVersion, Tutorial, [
             new SceneLayerDefinition("tutorial/packeddata.ddp", "tutorial/tutorial.lm", LumenMatrix.Identity, "tutorial"),
         ]),
-        // Traced session30: full screen at depth 0, the indicator's parts above it.
-        new SceneDefinition(SceneDefinition.CurrentVersion, DaniSelect, [
-            new SceneLayerDefinition("dani_select/packeddata.ddp", "dani_select/dani_select.lm", LumenMatrix.Identity, "dani-select"),
-        ]),
+        DaniSelectScene(0),
         NormalGameOver,
     ];
+
+    /// <summary>
+    /// Traced sessions 30-32: dani_select full screen at depth 0, the indicator's parts above it, among them one name
+    /// board (the player's, on their drum's side as in Song Select).
+    /// </summary>
+    public static SceneDefinition DaniSelectScene(int side) => new(SceneDefinition.CurrentVersion, DaniSelect, [
+        new SceneLayerDefinition("dani_select/packeddata.ddp", "dani_select/dani_select.lm", LumenMatrix.Identity, "dani-select"),
+        new SceneLayerDefinition("indicator/packeddata.ddp", "player_name/player_name.lm",
+            LumenMatrix.Identity with { X = side == 1 ? 948 : 60, Y = 638 }, side == 1 ? "dani-board-1" : "dani-board-0"),
+    ]);
 
     public static SceneDefinition NormalGameOver { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
