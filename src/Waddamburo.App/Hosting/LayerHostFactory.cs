@@ -162,6 +162,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Whether Song Select offers the Online folder.</summary>
     public Func<bool>? OnlineAvailable { get; init; }
 
+    /// <summary>The player is in an online room: songs are played together, so no dan dojo.</summary>
+    public Func<bool>? InOnlineRoom { get; init; }
+
     /// <summary>A song another player sent this session (Song Select lists it while it's the online song).</summary>
     public Func<SongKey, SongDescriptor?>? Received { get; init; }
 
@@ -374,7 +377,8 @@ internal sealed class LayerHostFactory(
             modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
             links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
-            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null,
+            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
+                && InOnlineRoom?.Invoke() != true,
             danSeries: arcade.Home ? Dan?.Series : null,
             online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last

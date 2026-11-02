@@ -110,6 +110,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         watchRoom();
         showPartner();
+        listDanDojo();
         // The other player is choosing: the lobby stays over Song Select until their song comes.
         if (!IsOpen && shell.Match.WaitingForTheirPick && shell.Active.Id == FlowScenes.SongSelect && !shell.Reload.Busy)
             (_panel, _selection) = (true, 0);
@@ -445,6 +446,18 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             songSelect.ShowPartner(shell.Hosts.PartnerSide);
         else
             shell.Reload.Start(static () => { });
+    }
+
+    // In a room Song Select has no dan dojo (a course is played alone): it lays itself out again on joining and leaving.
+    private bool _roomListed;
+
+    private void listDanDojo()
+    {
+        var inRoom = Session is not null;
+        if (inRoom == _roomListed || shell.Active.Id != FlowScenes.SongSelect || shell.Reload.Busy)
+            return;
+        _roomListed = inRoom;
+        shell.Reload.Start(static () => { });
     }
 
     private void showPartnerAs(ScoreProfile? partner)

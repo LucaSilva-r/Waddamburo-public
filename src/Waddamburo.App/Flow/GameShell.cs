@@ -448,6 +448,7 @@ internal sealed class GameShell : IDisposable
             Dan = _danCourses,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             OnlineAvailable = () => Room.Available,
+            InOnlineRoom = () => Room.Session is not null,
             Received = ReceivedSongs.Find,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
