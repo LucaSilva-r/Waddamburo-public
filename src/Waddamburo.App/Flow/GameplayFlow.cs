@@ -467,6 +467,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         end(finished: false);
     }
 
+    /// <summary>The song is dropped where it is (the service menu resets the game): cleaned up, nothing saved, no scene shown.</summary>
+    public void Discard()
+    {
+        if (_paused) SetPaused(false);
+        end(finished: false, show: false);
+    }
+
     public override void Advance(LumenInputSnapshot input)
     {
         if (_paused) return;
@@ -716,7 +723,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     // A finished song shows its results (the shutter stays over them until their first frames are
     // drawn); Escape goes straight back to Song Select.
-    private void end(bool finished)
+    private void end(bool finished, bool show = true)
     {
         _shutterStartTick = -1;
         _skipToShutter = false;
@@ -756,6 +763,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.PlayRequests.ClearActive();
         if (finished && !dan)
             Shell.Sounds?.Gameplay.Play(null, GameplaySoundEvent.SongFinished);
+        if (!show)
+        {
+            _charts = [];
+            _autoplay = null;
+            return;
+        }
         Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
             : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _charts = [];

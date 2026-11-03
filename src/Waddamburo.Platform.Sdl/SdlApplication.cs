@@ -68,7 +68,7 @@ public sealed unsafe class SdlApplication : IDisposable
                 windowFlags);
             if (_window is null)
                 throw sdlFailure("create the window");
-            // The game is played with drums and keys: no pointer over the window (F3 inspect shows it).
+            // The game is played with drums and keys: no pointer over the window (F4 inspect shows it).
             if (showCursor) SDL_ShowCursor(); else SDL_HideCursor();
 
             int pixelWidth, pixelHeight;
@@ -627,7 +627,7 @@ public sealed unsafe class SdlApplication : IDisposable
             ? new FrameProfile() : null;
         var previousProfileEligible = false;
         var windowFocused = true;
-        var inspecting = false; // F3: a click inspects, it does not decide
+        var inspecting = false; // F4: a click inspects, it does not decide
         _quitRequested = false;
         while (running && !_quitRequested && (frameLimit is null || renderedFrames < frameLimit))
         {
@@ -690,9 +690,9 @@ public sealed unsafe class SdlApplication : IDisposable
                     pointerReleased();
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
-                    && currentEvent.key.key == SDL_Keycode.SDLK_F3 && toggleInspect is not null)
+                    && currentEvent.key.key == SDL_Keycode.SDLK_F4 && toggleInspect is not null)
                 {
-                    // F3: inspect mode (a left click lists what is drawn under the pointer).
+                    // F4: inspect mode (a left click lists what is drawn under the pointer).
                     if (!currentEvent.key.repeat)
                     {
                         toggleInspect();
@@ -997,6 +997,7 @@ public sealed unsafe class SdlApplication : IDisposable
         SDL_Keycode.SDLK_PAGEDOWN => SdlKeyboardKey.PageDown,
         SDL_Keycode.SDLK_F1 => SdlKeyboardKey.F1,
         SDL_Keycode.SDLK_F2 => SdlKeyboardKey.F2,
+        SDL_Keycode.SDLK_F3 => SdlKeyboardKey.F3,
         SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,
         SDL_Keycode.SDLK_F8 => SdlKeyboardKey.F8,
         SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,

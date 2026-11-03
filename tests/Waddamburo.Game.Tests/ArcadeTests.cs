@@ -87,6 +87,26 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void TheServiceMenuSavesTheCabinetSettings()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "free_play = true\ncredits_1p = 1\n");
+            var cabinet = new ArcadeSettings { FreePlay = false, CreditsOnePlayer = 2, CreditsTwoPlayers = 3, SongsPerSession = 4 };
+            ArcadeSettings.SaveMenuSettings(path, cabinet);
+            Assert.True(ArcadeSettings.Parse(File.ReadAllText(path)).FreePlay); // the home menu leaves them alone
+            ArcadeSettings.SaveMenuSettings(path, cabinet, cabinet: true);
+            var saved = ArcadeSettings.Parse(File.ReadAllText(path));
+            Assert.Equal((false, 2, 3, 4), (saved.FreePlay, saved.CreditsOnePlayer, saved.CreditsTwoPlayers, saved.SongsPerSession));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ServerDefaultsToTaikOnlineAndEmptyIsOffline()
     {
         var defaults = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText);

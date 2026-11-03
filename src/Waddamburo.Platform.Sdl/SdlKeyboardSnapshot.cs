@@ -82,6 +82,7 @@ public enum SdlKeyboardKey
     Z = 90,
     F1 = 112,
     F2 = 113,
+    F3 = 114,
     F5 = 116,
     F8 = 119,
     // Not keys: a notch of the mouse wheel, as a press (menus only).

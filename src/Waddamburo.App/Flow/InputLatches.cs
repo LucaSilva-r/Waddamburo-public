@@ -16,7 +16,7 @@ internal sealed class InputLatches
     private int? _drumSide;
     private bool _skip;
     private bool _attract;
-    private int _coins;
+    private int _coins, _services;
     private readonly HashSet<SdlKeyboardKey> _presses = [];
     private ImmutableHashSet<SdlKeyboardKey> _heldLastTick = [];
     private bool _escapeWasDown;
@@ -29,6 +29,7 @@ internal sealed class InputLatches
         _attract |= keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.F1);
         _presses.UnionWith(keyboard.Presses.Select(static press => press.Key));
         _coins += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
+        _services += keyboard.Presses.Count(static press => press.Key == SdlKeyboardKey.F3);
     }
 
     /// <summary>The tick's presses (latched and its own), cleared for the next tick.</summary>
@@ -43,11 +44,15 @@ internal sealed class InputLatches
         return presses;
     }
 
-    /// <summary>Coins inserted (F2) since the last call.</summary>
-    public int TakeCoins(SdlKeyboardSnapshot keys)
+    /// <summary>
+    /// Coins inserted (the coin button, F2 unless rebound) and service credits asked for (the service button, F3)
+    /// since the last call.
+    /// </summary>
+    public (int Coins, int Services) TakeCoins(SdlKeyboardSnapshot keys)
     {
-        var coins = _coins + keys.Presses.Count(static press => press.Key == SdlKeyboardKey.F2);
-        _coins = 0;
+        var coins = (_coins + keys.Presses.Count(static press => press.Key == SdlKeyboardKey.F2),
+            _services + keys.Presses.Count(static press => press.Key == SdlKeyboardKey.F3));
+        _coins = _services = 0;
         return coins;
     }
 

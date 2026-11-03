@@ -167,7 +167,7 @@ public sealed class LumenPlayer
     }
 
     /// <summary>
-    /// Diagnostics (F3 in the game window): quads carry <see cref="LumenRenderQuad.Source"/>, what drew
+    /// Diagnostics (F4 in the game window): quads carry <see cref="LumenRenderQuad.Source"/>, what drew
     /// them. Off by default: building the strings every frame is not free.
     /// </summary>
     public static bool Inspect { get; set; }

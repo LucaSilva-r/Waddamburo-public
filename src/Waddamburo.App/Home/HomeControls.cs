@@ -89,6 +89,29 @@ internal sealed class HomeControls : IDisposable
     /// <summary>The menu is open over the attract or its demo play, which go on under it (muted).</summary>
     public bool AttractUnderMenu => _menu.IsOpen && (AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo);
 
+    /// <summary>
+    /// The service menu resets the game: the menu, its fades and the quick restart are dropped, the menus' music is
+    /// let go and the output is back at full volume (a fade to black leaves it silent).
+    /// </summary>
+    public void Reset()
+    {
+        _menu.Close();
+        _restart.Reset();
+        _resume?.Cancel();
+        _audio.HoldMenuMusic(false);
+        _audio.MuteAttract(false);
+        _shell.Audio?.Mixer.FadeOutput(1, TimeSpan.Zero);
+    }
+
+    /// <summary>Settings changed elsewhere (the service menu) take effect: volumes, display and controls.</summary>
+    public void Apply(ArcadeSettings settings)
+    {
+        _shell.Arcade = settings;
+        _audio.Apply(settings);
+        _shell.ApplyDisplay();
+        _shell.ApplyControls();
+    }
+
     public bool Tick(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
     {
         FollowFocus();
@@ -374,9 +397,15 @@ internal sealed class HomeControls : IDisposable
 
     // A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else is
     // said and left out.
-    private ArcadeSettings officialFolder(string folder)
+    private ArcadeSettings officialFolder(string folder) =>
+        AddOfficialFolder(_shell.Arcade, folder, problem => _shell.Sync.Notices.AddLocal(problem, Waddamburo.Game.Online.NoticeSeverity.Warning));
+
+    /// <summary>
+    /// A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else
+    /// (or a Nijiiro one it can't read) is told to <paramref name="warn"/> and left out.
+    /// </summary>
+    public static ArcadeSettings AddOfficialFolder(ArcadeSettings arcade, string folder, Action<string> warn)
     {
-        var arcade = _shell.Arcade;
         if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null)
             return arcade with { StockFolders = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.StockFolders), folder]) };
         if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder) is { Exists: true } installation)
@@ -384,12 +413,12 @@ internal sealed class HomeControls : IDisposable
             // One it can't read (a plain dump's loader has no keys) is said, and not added.
             if (HomeMenu.NijiiroProblemText(installation) is { } problem)
             {
-                _shell.Sync.Notices.AddLocal(problem, Waddamburo.Game.Online.NoticeSeverity.Warning);
+                warn(problem);
                 return arcade;
             }
             return arcade with { NijiiroFolder = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.NijiiroFolder), folder]) };
         }
-        _shell.Sync.Notices.AddLocal(Strings.T("library.no_official"), Waddamburo.Game.Online.NoticeSeverity.Warning);
+        warn(Strings.T("library.no_official"));
         return arcade;
     }
 

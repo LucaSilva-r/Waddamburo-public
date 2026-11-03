@@ -55,10 +55,10 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
     {
         if (Shell.Active.Id == FlowScenes.Boot)
         {
-            // Any key, drum hit or controller button skips the boot screens (the copyright notice); the
-            // function keys (coins, back to the attract, ...) do not. Not cabinet behaviour.
-            if (input.Skip || input.DrumSide is not null
-                || input.Keys.Presses.Any(static press => press.Key is < SdlKeyboardKey.F1 or > SdlKeyboardKey.F8)
+            // Home: any key, drum hit or controller button skips the boot screens (the copyright notice); the
+            // function keys (coins, back to the attract, ...) do not. Not cabinet behaviour: a cabinet waits for them.
+            if (Shell.Arcade.Home && (input.Skip || input.DrumSide is not null
+                || input.Keys.Presses.Any(static press => press.Key is < SdlKeyboardKey.F1 or > SdlKeyboardKey.F8))
                 || AttractHostBinding.IsBootEnd(Shell.Active.Player.Layers.Single().Player))
                 Shell.Show(FlowScenes.Logo);
             return;
@@ -172,6 +172,8 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         }
         else
             return false;
+        if (!Shell.Arcade.Home)
+            Shell.Book.CountCredit(free: Shell.Coins is null);
         return true;
     }
 

@@ -95,6 +95,10 @@ The missing player can join from Song Select by hitting their drum.
 
 To change keys or set up a controller or MIDI drum, open **Escape → Settings → Drum Controls**.
 
+**Arcade mode** (`mode = arcade` in `waddamburo/config.cfg`) plays like a cabinet: **F2** inserts a coin,
+**F3** gives a service credit, and **Escape** is the test switch. It opens the service menu from anywhere
+(the game stops and the credits are dropped); all the settings are there, and EXIT goes back to the attract.
+
 ## Make it your own
 
 Open **Escape → Settings** to change language, volume, graphics, controls, and timing.
@@ -182,6 +186,10 @@ chmod +x Waddamburo-x86_64.AppImage
 | **Qを長押し** | 演奏中または結果画面から曲をやり直す |
 
 キーの変更やコントローラー・MIDI太鼓の設定は、**Escape → Settings → Drum Controls**から行えます。
+
+**アーケードモード**（`waddamburo/config.cfg`の`mode = arcade`）は筐体と同じ遊び方です。**F2**でコイン投入、
+**F3**でサービスクレジット、**Escape**はテストスイッチで、どこからでもサービスメニューを開きます（ゲームは止まり、
+クレジットは消えます）。すべての設定はそこにあり、EXITでアトラクトに戻ります。
 メニュー項目名は、画面で見つけやすいよう英語表記で記載しています。
 
 ### 設定と追加楽曲

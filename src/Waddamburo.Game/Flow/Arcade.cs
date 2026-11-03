@@ -16,7 +16,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 25;
+    public const int CurrentVersion = 26;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -244,6 +244,14 @@ public sealed record ArcadeSettings
         stock_folders =
 
         """,
+        """
+        # The cabinet's coin switches (also in the arcade service menu, DRUM CONTROLS), bound like the buttons:
+        # button_coin inserts a coin; button_service gives a service credit in place of the coins inserted (it isn't
+        # counted as a coin in the bookkeeping).
+        button_coin = f2
+        button_service = f3
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -271,7 +279,8 @@ public sealed record ArcadeSettings
 
     /// <summary>The buttons beside the drum, in the order of <see cref="Buttons"/> (SdlInputBindings.Buttons).</summary>
     public static readonly string[] ButtonKeys =
-        ["button_back", "button_search", "button_scores", "button_practise", "button_notices", "button_restart", "button_confirm"];
+        ["button_back", "button_search", "button_scores", "button_practise", "button_notices", "button_restart", "button_confirm",
+            "button_coin", "button_service"];
 
     /// <summary>What presses each button (<see cref="ButtonKeys"/> order), as <see cref="Controls"/> lists a pad's.</summary>
     public EquatableList Buttons { get; init; } = new(
@@ -283,6 +292,8 @@ public sealed record ArcadeSettings
         "e, pad1:right_shoulder",
         "q, pad1:left_shoulder",
         "return, pad1:south",
+        "f2",
+        "f3",
     ]);
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
@@ -727,7 +738,8 @@ public sealed record ArcadeSettings
     /// Writes the settings the in-game menu changes into the file, replacing their lines and keeping
     /// every other line (and the user's comments) as it is.
     /// </summary>
-    public static void SaveMenuSettings(string path, ArcadeSettings settings)
+    /// <remarks><paramref name="cabinet"/>: the arcade service menu's settings too (free play, coins, stages).</remarks>
+    public static void SaveMenuSettings(string path, ArcadeSettings settings, bool cabinet = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(settings);
@@ -782,6 +794,14 @@ public sealed record ArcadeSettings
             ["language"] = settings.Language,
             ["title_language"] = settings.EnglishTitles ? "english" : "japanese",
         };
+        if (cabinet)
+        {
+            values["free_play"] = settings.FreePlay ? "true" : "false";
+            values["credits_per_coin"] = settings.CreditsPerCoin;
+            values["credits_1p"] = settings.CreditsOnePlayer;
+            values["credits_2p"] = settings.CreditsTwoPlayers;
+            values["songs_per_session"] = settings.SongsPerSession;
+        }
         for (var pad = 0; pad < ControlKeys.Length; pad++)
             values[ControlKeys[pad]] = settings.Controls[pad];
         for (var button = 0; button < ButtonKeys.Length; button++)
@@ -850,6 +870,15 @@ public sealed class CoinBank(ArcadeSettings settings)
     public int Credits { get; private set; }
 
     public void InsertCoin() => Credits += Settings.CreditsPerCoin;
+
+    /// <summary>
+    /// The service switch: a service credit, one player's game, in place of whatever coins were inserted (it isn't a
+    /// coin: the bookkeeping doesn't count it).
+    /// </summary>
+    public void Service() => Credits = Settings.CreditsOnePlayer;
+
+    /// <summary>The credits inserted are dropped (the service menu opening).</summary>
+    public void Clear() => Credits = 0;
 
     /// <summary>What the next player to join pays: one player's price, or the rest of the two-player price.</summary>
     public int JoinCost(int joinedPlayers) => joinedPlayers == 0

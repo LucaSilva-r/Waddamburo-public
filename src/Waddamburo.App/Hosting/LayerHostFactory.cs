@@ -39,6 +39,9 @@ internal sealed class LayerHostFactory(
     private EntrySceneHost? _entry;
     private int _entryPrevious;
 
+    /// <summary>The cabinet's coins (null on free play); replaced when the service menu changes the coin settings.</summary>
+    public CoinBank? Coins { get; set; } = coins;
+
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
@@ -269,7 +272,7 @@ internal sealed class LayerHostFactory(
             _parts = new IndicatorParts(IndicatorPartsScene.Entry, countdown);
             _entry = new EntrySceneHost(_parts)
             {
-                Coins = coins,
+                Coins = Coins,
                 PlayVoice = sounds is null ? null : sounds.Frontend.PlayEntryVoice,
                 PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null

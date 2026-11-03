@@ -32,7 +32,10 @@ internal sealed class ScoreSync : IDisposable
         _arcade = arcade;
         _accounts = accounts;
         var cabinet = !arcade.Home && arcade is { Server: not null, CabinetToken: not null };
-        Health = arcade.Server is { } healthServer ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure)) : null;
+        // A cabinet's indicator also says whether the server takes its token.
+        Health = arcade.Server is { } healthServer
+            ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure, arcade.Home ? null : arcade.CabinetToken), cabinet: !arcade.Home)
+            : null;
         // ponytail: printed until the notice sidebar draws them.
         Notices.Added += static notice => Console.WriteLine($"Notice [{notice.Severity}] {notice.Message}");
         // A sanction changes the name board (RESTRICTED while banned): show it now, not at the next credit.

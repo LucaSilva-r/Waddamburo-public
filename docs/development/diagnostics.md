@@ -180,10 +180,13 @@ Cabinet settings live in `waddamburo/config.cfg` (written with defaults on first
 `free_play`, `credits_per_coin`, `credits_1p`, `credits_2p`, `songs_per_session`,
 `fullscreen`, `console`, `auto_update` and `renderer` (`auto`, or `vulkan`/`gles`/`opengl`/`d3d11`/`metal` to force a GPU backend). Scores go to `server` (default `https://taikonline.com`; `server =` left empty plays offline). The file records its `config_version`; a
 newer build appends the settings it added, with their defaults, keeping the user's edits. In coin
-mode F2 inserts a coin; the first coin opens player Entry, and joining pays the credits. Space
-skips the startup screens.
+mode the coin button (F2, `button_coin`) inserts a coin and the service button (F3, `button_service`) gives a
+service credit in place of the coins inserted; the first credit opens player Entry, and joining pays the
+credits. At home Space skips the startup screens (a cabinet waits for them). In arcade mode Escape is the test
+switch: the service menu (`Home/ServiceMenu.cs`) stops the game, clears its state and the credits, holds the
+settings, and EXIT starts the attract again; its BOOKKEEPING counts live in `waddamburo/bookkeeping.cfg`.
 
-F3 toggles inspect mode: a left click then prints every scene quad under the pointer, topmost
+F4 toggles inspect mode: a left click then prints every scene quad under the pointer, topmost
 first, with its movie, runtime texture index (or native surface) and clip chain (character ids and
 instance names up to `_level0`). Texture indices are the runtime ones, which can differ from an
 offline texture dump's order. The click maps the window to the stage directly, so a letterboxed

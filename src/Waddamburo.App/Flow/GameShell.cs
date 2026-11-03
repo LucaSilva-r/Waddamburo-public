@@ -48,7 +48,8 @@ internal sealed record GameOptions(
     AccountBook? Accounts = null,
     string? ScoresPath = null,
     bool Autoplay = false,
-    bool Fullscreen = false);
+    bool Fullscreen = false,
+    string? ServiceFontPath = null);
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -68,7 +69,7 @@ internal sealed class GameShell : IDisposable
     public GameSounds? Sounds { get; }
     public SongPreviewController? Previews { get; }
     public SongTitleTextureCache Titles { get; }
-    public CoinBank? Coins { get; }
+    public CoinBank? Coins { get; private set; }
 
     /// <summary>Per lane, the best before the last saved play on its chart, or that play's score when it is the first (for results).</summary>
     public long?[] Bests { get; } = new long?[2];
@@ -206,6 +207,12 @@ internal sealed class GameShell : IDisposable
         [FlowScenes.Logo, FlowScenes.Title, FlowScenes.Caution, FlowScenes.Movie];
     private readonly InputLatches _input = new();
     private bool _returnToAttract; // the entry gave up (applied on the next tick, outside its callbacks)
+    // Arcade: the service menu (Escape, the test switch) and the cabinet's running totals.
+    private readonly ServiceMenu? _service;
+    private bool _serviceEscape;
+
+    /// <summary>The cabinet's bookkeeping (the service menu's counts).</summary>
+    public Bookkeeping Book { get; }
     private int _queuedCoinSounds;
     private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
     private readonly int _dumpTreeTick =
@@ -362,6 +369,14 @@ internal sealed class GameShell : IDisposable
         };
         _timingMarks = new TimingMarkOverlay(Application);
         Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
+        Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
+            ? Path.Combine(Path.GetDirectoryName(settingsPath)!, Bookkeeping.FileName) : null);
+        if (!Arcade.Home)
+        {
+            Book.PowerOnCount++;
+            Book.Save();
+            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book);
+        }
         _reviewBar = new ReviewOverlay(Painter);
         if (Arcade.Home)
             _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,
@@ -607,7 +622,8 @@ internal sealed class GameShell : IDisposable
                     // search field takes the letters).
                     if (_notices is not null && !onLane && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
                         _notices.Toggle();
-                    flowOf(Active.Id).UpdateFrame(keyboard);
+                    if (_service?.IsOpen != true)
+                        flowOf(Active.Id).UpdateFrame(keyboard);
                 },
                 profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown,
                 togglePerformanceOverlay: _performance.Toggle,
@@ -640,6 +656,8 @@ internal sealed class GameShell : IDisposable
             _presenter.Dispose();
             SceneTextures.Release(Application, _indicatorTextures);
             _home.Dispose();
+            _service?.Dispose();
+            Book.Save();
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
@@ -666,10 +684,18 @@ internal sealed class GameShell : IDisposable
     {
         Tick++;
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
+        Book.PowerOnTicks++;
+        if (_gameplay.Playing)
+            Book.PlayTicks++;
+        if (Tick % 3600 == 0)
+            Book.Save();
+        if (serviceMenu(keys))
+            return;
         var presses = _input.Take(keys);
         reportStatus();
         Match.Tick();
-        if (backToAttract(presses.Attract))
+        // F1 (back to the attract loop) is a home shortcut; a cabinet only gets there through its movies.
+        if (backToAttract(Arcade.Home && presses.Attract))
             return;
         coins(_input.TakeCoins(keys));
         // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
@@ -801,13 +827,123 @@ internal sealed class GameShell : IDisposable
 
     // F2 = coin, in any scene (the cabinet handles coins apart from the game). The credit counts at
     // once; each coin's sound queues and plays in full, one after another.
-    private void coins(int inserted)
+    // Arcade: Escape (the test switch) opens the service menu from anywhere, whatever is going on: the game stops and
+    // its state is cleared (the active flow's own clean-up, then a fresh attract that waits under the menu), the
+    // credits are dropped; leaving it applies its settings and the attract starts. True while it takes the tick.
+    private bool serviceMenu(SdlKeyboardSnapshot keys)
     {
+        if (_service is not { } service)
+            return false;
+        var escape = keys.IsDown(SdlKeyboardKey.Escape);
+        var opening = escape && !_serviceEscape && !service.IsOpen;
+        _serviceEscape = escape;
+        if (opening)
+        {
+            var credits = Coins?.Credits ?? 0;
+            resetForService();
+            service.Health = Sync.Health;
+            Book.Save();
+            service.Open(Arcade, credits,
+                don => Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
+                leaveService,
+                settings =>
+                {
+                    Arcade = settings;
+                    ApplyControls(); // the I/O test and the drum controls page use them at once
+                },
+                RehashLibrary, Options.TjaRoot);
+        }
+        if (!service.IsOpen)
+            return false;
+        _input.Take(keys); // the latched drum hits, Space and F1 go nowhere
+        _input.TakeCoins(keys);
+        service.Tick(_input.Pulses(keys), keys);
+        return true;
+    }
+
+    // Everything the game is doing stops and its state goes: sounds, fades, menus, the song (dropped unsaved), a
+    // pending scene switch or play, the room, the credit's players; the active flow cleans up as it leaves for the
+    // attract's logo, which waits (not ticked) under the service menu.
+    private void resetForService()
+    {
+        Audio?.Mixer.StopAll();
+        Sounds?.StopAll();
+        CancelFade();
+        _home.Reset();
+        _search.Close();
+        ClosePlayerSetup();
+        if (Room.Session is not null)
+            Room.Leave();
+        if (Active.Id == FlowScenes.Gameplay)
+            _gameplay.Discard();
+        Coordinator.Flow.CancelPendingTransition();
+        PlayRequests.CancelPending();
+        Overlay.Clear();
+        Don?.SetDialogDon(false);
+        ResetPlayers();
+        SongsPlayed = 0;
+        _returnToAttract = false;
+        Coins?.Clear();
+        Show(FlowScenes.Logo);
+        Audio?.Mixer.StopAll(); // anything the switch started
+        Console.WriteLine($"Service menu: game reset at tick {Tick}.");
+    }
+
+    // The service menu's EXIT: its settings are saved and take effect, and the attract loop starts from the logo.
+    // Those read only at start (languages, song folders, the audio device, the cache) restart the game.
+    private void leaveService(ArcadeSettings settings)
+    {
+        var before = Arcade;
+        if (Options.ArcadePath is { } path)
+            try
+            {
+                ArcadeSettings.SaveMenuSettings(path, settings, cabinet: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+            }
+        Book.Save();
+        if (settings.Language != before.Language || settings.EnglishTitles != before.EnglishTitles
+            || settings.TjaFolder != before.TjaFolder || settings.OsuFolder != before.OsuFolder
+            || settings.NijiiroFolder != before.NijiiroFolder || settings.StockFolders != before.StockFolders
+            || settings.CacheFolder != before.CacheFolder || settings.AudioBufferFrames != before.AudioBufferFrames
+            || settings.AudioExclusive != before.AudioExclusive)
+        {
+            Console.WriteLine("Service menu left: a setting read at start changed, restarting.");
+            RequestRestart();
+            return;
+        }
+        _home.Apply(settings);
+        Coins = settings.FreePlay ? null : new CoinBank(settings);
+        Hosts.Coins = Coins;
+        if (_indicators is { } indicators)
+        {
+            indicators.Coins = Coins;
+            indicators.CoinsChanged();
+        }
+        Show(FlowScenes.Logo);
+        Console.WriteLine("Service menu left: back to the attract.");
+    }
+
+    private void coins((int Coins, int Services) switches)
+    {
+        var inserted = switches.Coins;
+        if (Coins is not null && switches.Services > 0)
+        {
+            // A service credit replaces the coins inserted, and isn't counted as a coin.
+            Coins.Service();
+            Console.WriteLine($"Service credit at tick {Tick}: {Coins.Credits} credit(s).");
+            _indicators?.CoinsChanged();
+            if (Active.Id == FlowScenes.Entry)
+                Hosts.EntryCoinsChanged();
+        }
         if (Coins is not null && inserted > 0)
         {
             for (var coin = 0; coin < inserted; coin++)
                 Coins.InsertCoin();
             _queuedCoinSounds += inserted;
+            Book.CoinCount += inserted;
             Console.WriteLine($"Coin credited at tick {Tick}: {Coins.Credits} credit(s).");
             _indicators?.CoinsChanged();
             if (Active.Id == FlowScenes.Entry)
@@ -1135,6 +1271,15 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame createFrame(double interpolationFraction)
     {
+        if (_service is { IsOpen: true } service)
+        {
+            // The menu's frame is the one shown: the switch under it lets go of its held frame, and the switch out
+            // of it (EXIT) holds this one, not the scene from before the menu.
+            _presenter.Held(Tick);
+            var menu = service.Frame();
+            _presenter.Presented(menu, withIntermission: false);
+            return menu;
+        }
         var interpolation = _home.Interpolation(interpolationFraction);
         if (_presenter.Held(Tick) is { } held)
         {

@@ -59,7 +59,7 @@ internal sealed class SystemIndicators
     public Func<int>? NetworkIcon { get; set; }
 
     /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
-    public CoinBank? Coins { get; init; }
+    public CoinBank? Coins { get; set; }
 
     /// <summary>The (expected) player's drum: 0 left, 1 right. The panels mirror for the right one (traced).</summary>
     public int Side { get; set; }

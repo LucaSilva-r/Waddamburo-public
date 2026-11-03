@@ -257,6 +257,35 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(),
     ];
 
+    /// <summary>One of the settings page's settings, for the arcade service menu (which draws and edits it its own way).</summary>
+    public sealed record SharedSetting(string Label, Func<ArcadeSettings, int> Get, Func<ArcadeSettings, int, ArcadeSettings> Set,
+        Func<int, int, int> Step, int Minimum, int Maximum, Func<ArcadeSettings, string> Show, Func<ArcadeSettings, bool>? Shown, string Hint);
+
+    /// <summary>The settings page's sections (by their title) and their settings; its commands (libraries, controls,
+    /// calibration, the bake) are left out.</summary>
+    public static IReadOnlyList<(string Title, SharedSetting[] Settings)> Sections { get; } = sections();
+
+    private static List<(string Title, SharedSetting[] Settings)> sections()
+    {
+        var result = new List<(string Title, SharedSetting[] Settings)>();
+        string? title = null;
+        var settings = new List<SharedSetting>();
+        foreach (var row in Rows_.Append(new Row(Header: "")))
+        {
+            if (row.Header is not null)
+            {
+                if (title is not null && settings.Count != 0)
+                    result.Add((title, [.. settings]));
+                (title, settings) = (row.Header, []);
+            }
+            else if (row.Setting is { } setting)
+                settings.Add(new(setting.Label, setting.Get, setting.Set, setting.Step, setting.Minimum, setting.Maximum,
+                    setting.FormatFor ?? (s => setting.Format(Math.Clamp(setting.Get(s), setting.Minimum, setting.Maximum))),
+                    row.Shown, setting.Hint));
+        }
+        return result;
+    }
+
     // The Song Libraries page: the custom libraries, then every official install added to the game's own songs.
     private bool _librariesPage;
 
@@ -499,37 +528,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         _ => new(ItemKind.Back, T("menu.back"), null, T("menu.back.hint")),
     };
 
-    private static string[] inputs(string list) =>
-        list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private static string[] inputs(string list) => ControlBindings.Inputs(list);
 
-    private static string describe(string token) =>
-        SdlInput.TryParse(token, out var parsed) ? SdlApplication.Describe(parsed) : token;
+    private static string describe(string token) => ControlBindings.Describe(token);
 
     // Keyboard 0, controller 1, MIDI 2 (the Devices).
-    private static int deviceOf(SdlInput input) => input.Kind switch { SdlInputKind.Key => 0, SdlInputKind.Midi => 2, _ => 1 };
+    private static int deviceOf(SdlInput input) => ControlBindings.DeviceOf(input);
 
-    private bool onDevice(string token) => SdlInput.TryParse(token, out var parsed) && deviceOf(parsed) == _device;
+    private bool onDevice(string token) => ControlBindings.OnDevice(token, _device);
 
-    // The input joins the pad, leaving any other pad it hit (either player's). replace: the pad's others
-    // on this device go; else one already on the pad leaves it instead, and the oldest keys over the limit.
-    private void bind(int pad, SdlInput captured, bool replace)
-    {
-        var controls = get().Controls;
-        for (var other = 0; other < controls.Count; other++)
-        {
-            var bound = inputs(controls[other]);
-            var kept = bound.Where(token => token != captured.Token && !(replace && other == pad && onDevice(token)));
-            if (other == pad && (replace || !bound.Contains(captured.Token)))
-                kept = kept.Append(captured.Token);
-            if (other == pad && _device == 0)
-            {
-                var surplus = kept.Where(onDevice).SkipLast(MaximumKeys).ToHashSet();
-                kept = kept.Where(token => !surplus.Contains(token));
-            }
-            controls = controls.With(other, string.Join(", ", kept));
-        }
-        apply(get() with { Controls = controls });
-    }
+    private void bind(int pad, SdlInput captured, bool replace) =>
+        apply(get() with { Controls = ControlBindings.Bind(get().Controls, pad, captured, replace, _device) });
 
     // The input joins the button, leaving any other button it pressed (as a pad's; listed already: it goes).
     private void bindButton(int button, SdlInput captured)
@@ -563,20 +572,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         apply(get() with { Buttons = buttons });
     }
 
-    // The player's pads get their default inputs of this device back (taken from wherever they are now).
-    private void resetControls()
-    {
-        var defaults = new ArcadeSettings().Controls;
-        var controls = get().Controls;
-        var restored = Enumerable.Range(_player * 4, 4).SelectMany(pad => inputs(defaults[pad]).Where(onDevice)).ToHashSet();
-        for (var pad = 0; pad < controls.Count; pad++)
-        {
-            var mine = pad / 4 == _player;
-            var kept = inputs(controls[pad]).Where(token => !restored.Contains(token) && !(mine && onDevice(token)));
-            controls = controls.With(pad, string.Join(", ", mine ? kept.Concat(inputs(defaults[pad]).Where(onDevice)) : kept));
-        }
-        apply(get() with { Controls = controls });
-    }
+    private void resetControls() => apply(get() with { Controls = ControlBindings.Reset(get().Controls, _player, _device) });
 
     private void listen(int pads)
     {
@@ -1016,6 +1012,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     }
 
     private bool _noResume;
+
+    /// <summary>Closed from outside (the service menu resets the game), a binding capture included.</summary>
+    public void Close()
+    {
+        IsOpen = false;
+        input.CancelCapture();
+    }
 
     private HomeMenuAction close(HomeMenuAction action)
     {

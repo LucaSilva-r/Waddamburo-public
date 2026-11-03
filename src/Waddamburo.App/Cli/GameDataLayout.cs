@@ -15,7 +15,8 @@ internal sealed record GameDataLayout(
     string TjaRoot,
     string SoundRoot,
     string FontPath,
-    IReadOnlyList<string> FallbackFonts)
+    IReadOnlyList<string> FallbackFonts,
+    string ServiceFontPath)
 {
     public static GameDataLayout Resolve(string root, string? fontOverride = null)
     {
@@ -40,7 +41,7 @@ internal sealed record GameDataLayout(
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
         string[] fallbacks = font == bundled.Title ? [bundled.Fallback] : [bundled.Title, bundled.Fallback];
-        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks);
+        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service);
     }
 
     /// <summary>

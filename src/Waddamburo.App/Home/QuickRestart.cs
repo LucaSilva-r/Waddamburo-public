@@ -38,6 +38,15 @@ internal sealed class QuickRestart(Func<bool> restart)
     /// <summary>The screen is black under a restart (or the menu's Song Select) switching scenes.</summary>
     public bool Covering { get; private set; }
 
+    /// <summary>Every hold, fade and pending menu action is dropped (the service menu resets the game).</summary>
+    public void Reset()
+    {
+        _qPressedAt = _restartCancelAt = _menuRestartAt = _restartRevealAt = 0;
+        _qNeedsRelease = false;
+        _menuThen = null;
+        Covering = false;
+    }
+
     /// <summary>The game paused: a Q hold in progress is dropped.</summary>
     public void CancelHold() => _qPressedAt = 0;
 

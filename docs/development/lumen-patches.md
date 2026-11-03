@@ -49,7 +49,7 @@ black-outlined text.
 
 Renderer: Flash blend mode 3 (multiply) is drawn as a real multiply.
 
-Texture indices come from song_select.lm (Green); the F3 click inspector (see diagnostics.md)
+Texture indices come from song_select.lm (Green); the F4 click inspector (see diagnostics.md)
 shows them at runtime.
 
 A custom TJA folder's `box.def` (TJAPlayer3/OpenTaiko) sets its folder: `#TITLE`, `#GENRE` (a known

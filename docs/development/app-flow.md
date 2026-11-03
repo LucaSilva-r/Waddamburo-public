@@ -7,7 +7,7 @@ front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, 
 |---|---|
 | `Cli/` | Command-line parsing (`--start-scene`, `--press`, `--invoke`, game data layout). |
 | `Flow/` | `GameShell` and one `FlowScene` per scene group (see below); `InputLatches` (presses between ticks, key pulses). Drum bindings: [input](input.md). |
-| `Home/` | Home mode: `HomeControls` (Escape menu, pause and resume countdown, quick restart, folder picker), `HomeMenu`, `MenuAudio`, `QuickRestart`, the player setup (`PlayerSetupController`, `PlayerSetupFlow`). |
+| `Home/` | Home mode: `HomeControls` (Escape menu, pause and resume countdown, quick restart, folder picker), `HomeMenu`, `MenuAudio`, `QuickRestart`, the player setup (`PlayerSetupController`, `PlayerSetupFlow`); arcade mode's service menu (`ServiceMenu`, the test switch: it resets the game, holds the settings, and EXIT starts the attract) and `ControlBindings`. |
 | `Online/` | `ScoreSync` (score database, uploads, server bests, rankings), cabinet pairing, server health, chart hashes. |
 | `Scenes/` | Scene ids and traced compositions (`FlowScenes`), gameplay layout, intermission, system indicators. |
 | `Hosting/` | `LayerHostFactory` (a Lumen host per layer, by host id) and the console fallbacks for services. |
@@ -28,7 +28,7 @@ the active scene's movies, and hands the tick to that scene's `FlowScene`:
 | `AttractFlow` | boot, logo, title, caution, CM | attract rotation; a coin or drum hit starts the entry |
 | `EntryFlow` | entry | entry jingle; the movie requests Song Select itself |
 | `SongSelectFlow` | song select | mode switch; the rainbow cover, chart loading, handoff to gameplay |
-| `GameplayFlow` | gameplay | rainbow reveal and music; song end -> shutter -> results; pause and restart for `HomeControls`; cabinet Escape abandonment |
+| `GameplayFlow` | gameplay | rainbow reveal and music; song end -> shutter -> results; pause and restart for `HomeControls`; `Discard` when the service menu resets the game |
 | `CreditEndFlow` | results, revival, game over | what follows the results per the credit rules |
 
 Every scene change goes through `GameShell.Show` (or a pending Lumen transition), which calls the

@@ -48,12 +48,12 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
             search(_query[..elements[^1]]);
         }
         if (escape || GameActions.Down(keys, GameAction.Search))
-            close();
+            Close();
         else if (keys.IsDown(SdlKeyboardKey.Enter) && _matches.Length > 0)
         {
             var results = new SongSearchResults(_query.Trim(), _matches);
             Console.WriteLine($"Search '{results.Query}': {results.Songs.Count} songs.");
-            close();
+            Close();
             shell.Reload.Start(() => shell.Hosts.Search = results);
         }
         return true;
@@ -69,7 +69,8 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
             .Select(static song => song.Key)];
     }
 
-    private void close()
+    /// <summary>Closes the field (also when the service menu resets the game).</summary>
+    public void Close()
     {
         IsOpen = false;
         shell.Application.StopTextInput();
