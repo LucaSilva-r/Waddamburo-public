@@ -48,10 +48,18 @@ internal sealed class GameplayAutoplay
         // a chart whose first check cannot reach master leaves the bot hitting master notes on a lower route.
         chart = chart.OnRoute(ChartBranch.Master);
         var inputs = new List<TaikoReplayInput>();
+        var right = false; // small notes alternate hands, like a person (#19: the bot drummed one side)
         foreach (var note in chart.HitObjects)
         {
             var ka = note.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa;
-            inputs.Add(new(ka ? TaikoInputAction.LeftKa : TaikoInputAction.LeftDon, note.StartTime));
+            right = !note.IsStrong && !right;
+            inputs.Add(new((ka, right) switch
+            {
+                (true, false) => TaikoInputAction.LeftKa,
+                (true, true) => TaikoInputAction.RightKa,
+                (false, false) => TaikoInputAction.LeftDon,
+                _ => TaikoInputAction.RightDon,
+            }, note.StartTime));
             if (note.IsStrong)
                 inputs.Add(new(ka ? TaikoInputAction.RightKa : TaikoInputAction.RightDon, note.StartTime));
         }

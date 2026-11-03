@@ -86,6 +86,9 @@ internal sealed class HomeControls : IDisposable
     /// One tick, before the scene: focus, the resume countdown, opening the menu, the open menu's input,
     /// then the quick restart. True: the controls took the tick (the scene does not advance).
     /// </summary>
+    /// <summary>The menu is open over the attract or its demo play, which go on under it (muted).</summary>
+    public bool AttractUnderMenu => _menu.IsOpen && (AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo);
+
     public bool Tick(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
     {
         FollowFocus();
@@ -217,15 +220,15 @@ internal sealed class HomeControls : IDisposable
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
         if (_menu.IsOpen || !(escape || home && !online && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
-        // The attract's demo play: Escape pauses it under the attract's menu, and closing the menu goes on with it.
+        // The attract's demo play: like an online song, it goes on muted under the attract's menu.
         if (home && active == FlowScenes.Gameplay && _gameplay.Demo)
         {
             // Leaving the window doesn't stop a demo; while it fades out, Escape waits for the logo.
             if (!escape || _shell.FadePending)
                 return escape;
             _pauseInterpolation = _lastInterpolation;
-            _gameplay.SetPaused(true, _pauseInterpolation);
             _menu.Open(gameplay: false, attract: true);
+            _audio.MuteAttract(true);
             return true;
         }
         if (active == FlowScenes.Gameplay)
@@ -254,7 +257,11 @@ internal sealed class HomeControls : IDisposable
         _pauseInterpolation = _lastInterpolation;
         _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect,
             inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null);
-        _audio.HoldMenuMusic(true);
+        // The attract goes on muted under the menu; the entry's and Song Select's music hold.
+        if (AttractScenes.Contains(active))
+            _audio.MuteAttract(true);
+        else
+            _audio.HoldMenuMusic(true);
         return true;
     }
 
@@ -278,13 +285,15 @@ internal sealed class HomeControls : IDisposable
         var action = _menu.Input(keys, escape, held);
         _audio.Sample(_menu.PreviewBus, _shell.Tick);
         if (!_menu.IsOpen)
+        {
             _audio.HoldMenuMusic(false);
-        if (!_menu.IsOpen && active == FlowScenes.Gameplay && _gameplay.Demo)
-            resumeSong();
+            _audio.MuteAttract(false);
+        }
         switch (action)
         {
             // A reviewed play carries on at once: there is nothing to get ready for.
-            case HomeMenuAction.Resume when active == FlowScenes.Gameplay && !_shell.Match.InSong && _resume is { } resume && !_gameplay.Reviewing:
+            case HomeMenuAction.Resume when active == FlowScenes.Gameplay && !_shell.Match.InSong && _resume is { } resume && !_gameplay.Reviewing
+                && !_gameplay.Demo:
                 resume.Start();
                 break;
             case HomeMenuAction.Resume:

@@ -114,11 +114,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private Func<FlowInput, bool>? _demoTakeOver;
     private static readonly TimeSpan DemoLength = TimeSpan.FromSeconds(30);
 
-    /// <summary>Starts a demo play of <paramref name="song"/> (its Oni or Hard chart); false when it cannot load.</summary>
+    /// <summary>Starts a demo play of <paramref name="song"/> (its Normal chart); false when it cannot load.</summary>
     public bool StartDemo(SongSelectSong song, string category, Func<FlowInput, bool> takeOver)
     {
-        var chart = song.Descriptor.Charts.Where(static chart => chart.Course is TaikoCourse.Oni or TaikoCourse.Hard)
-            .OrderByDescending(static chart => chart.Course).FirstOrDefault();
+        var chart = song.Descriptor.Charts.FirstOrDefault(static chart => chart.Course is TaikoCourse.Normal);
         if (chart?.Course is not { } course)
             return false;
         PlayableChart loaded;
@@ -139,7 +138,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (Shell.Sounds?.Gameplay is { } sounds)
         {
             sounds.Waiwai = false;
-            sounds.Tones = [TaikoGuest.Tones[0]];
+            sounds.Tones = [0]; // the default 太鼓, not the last player's tone (#19)
             sounds.PrepareDrums(false);
         }
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), 1, Final: false);
@@ -153,6 +152,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Console.WriteLine($"Demo play: {song.Descriptor.Key} ({course}).");
         return true;
     }
+
+    // The demo's bot drums alone: the players' keys only take over (#19).
+    private SdlKeyboardSnapshot drums(SdlKeyboardSnapshot keys) => _demo ? new([], null, keys.Timestamp) : keys;
 
     public override void Exit(SceneId scene)
     {
@@ -494,7 +496,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!Shell.Headless && revealed && !_paused)
         {
             var time = chartTime() - _inputOffset;
-            Shell.Gameplay.Advance(_autoplay?.Apply(keys, time) ?? keys, time);
+            Shell.Gameplay.Advance(_autoplay?.Apply(drums(keys), time) ?? keys, time);
         }
         _echo?.Pump();
     }
@@ -557,7 +559,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             // then left the fade's black over entry.
             if (!Shell.FadePending && _demoTakeOver?.Invoke(input) == true || Shell.FinishFade())
                 return;
-            if (revealed && (chartTime() >= DemoLength || ChartOver))
+            // Escape ends the demo like its timer (it abandoned the song into Song Select, #19).
+            if (input.Escape || revealed && (chartTime() >= DemoLength || ChartOver))
             {
                 if (_music is { } demoMusic)
                     Shell.Audio?.Mixer.Stop(demoMusic.Handle, TimeSpan.FromSeconds(1));
@@ -605,7 +608,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
         if (Shell.Headless)
         {
-            Shell.Gameplay.Advance(_autoplay?.Apply(input.Keys, elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
+            Shell.Gameplay.Advance(_autoplay?.Apply(drums(input.Keys), elapsed - _inputOffset) ?? input.Keys, elapsed - _inputOffset);
             _echo?.Pump();
         }
         if (Shell.Audio?.Failure is { } device)

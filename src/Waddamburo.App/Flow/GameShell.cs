@@ -693,8 +693,9 @@ internal sealed class GameShell : IDisposable
         }
         if (_home.Tick(keys, held, escape))
         {
-            // Online, the menu doesn't stop the song: its movies keep moving and it ends as it would.
-            if (Match.InSong && Active.Id == FlowScenes.Gameplay)
+            // Online, the menu doesn't stop the song: its movies keep moving and it ends as it would. The attract
+            // and its demo play go on too (muted).
+            if (Match.InSong && Active.Id == FlowScenes.Gameplay || _home.AttractUnderMenu)
             {
                 advance(scene, SdlKeyboardSnapshot.Empty);
                 scene.Tick(new FlowInput(SdlKeyboardSnapshot.Empty, null, false, false));

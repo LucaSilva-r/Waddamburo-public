@@ -21,6 +21,7 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
     private bool _menuMusicHeld;
     private ArcadeSettings? _settings;
     private MenuVolumeScope _scope;
+    private bool _attractMuted;
 
     /// <summary>Which of the menus' own volumes applies now (re-applied on a change).</summary>
     public void Scope(MenuVolumeScope scope)
@@ -63,6 +64,20 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
     }
 
     /// <summary>
+    /// The attract (and its demo play) goes on silent under the menu: its music, voices and drums. The bus of
+    /// a volume being sampled still sounds, and the menu's own sounds (drum and effect buses) do too.
+    /// </summary>
+    public void MuteAttract(bool muted)
+    {
+        _attractMuted = muted;
+        if (sounds is not null)
+            sounds.Gameplay.Muted = sounds.Attract.Muted = muted;
+        if (audio is null) return;
+        foreach (var bus in (AudioBus[])[AudioBus.Bgm, AudioBus.Preview, AudioBus.Voice])
+            audio.Mixer.SetBusMuted(bus, muted && bus != _sampleBus);
+    }
+
+    /// <summary>
     /// While a volume is edited its bus keeps sounding (<paramref name="bus"/>; null: nothing): a random
     /// song, a menu sound, or a Don-chan line, each repeated once it has finished.
     /// </summary>
@@ -77,6 +92,8 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
             _sampleMusic = null;
             _sampleBus = bus;
             _sampleNextTick = 0;
+            if (_attractMuted)
+                MuteAttract(true);
         }
         if (bus is not { } playing || audio is null || tick < _sampleNextTick)
             return;

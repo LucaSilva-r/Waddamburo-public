@@ -42,7 +42,14 @@ internal sealed class GameplaySounds(SoundBank bank)
                 bank.Preload(drumBank(lane), cue);
     }
 
-    public void PlayDrum(int? lane, bool don) => bank.Play(drumBank(lane), don ? 0 : 1, AudioBus.DrumHit, trace: false);
+    /// <summary>Silent (the attract's demo play under the menu).</summary>
+    public bool Muted { get; set; }
+
+    public void PlayDrum(int? lane, bool don)
+    {
+        if (!Muted)
+            bank.Play(drumBank(lane), don ? 0 : 1, AudioBus.DrumHit, trace: false);
+    }
 
     /// <summary>
     /// <paramref name="lane"/> is null for one player. Two players: 0 left, 1 right; a player's own
@@ -51,6 +58,7 @@ internal sealed class GameplaySounds(SoundBank bank)
     /// </summary>
     public void Play(int? lane, GameplaySoundEvent sound, int combo = 0)
     {
+        if (Muted) return;
         int own(int cue) => lane is { } player && Panning ? cue + 1 + player : cue;
         switch (sound)
         {

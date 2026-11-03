@@ -124,6 +124,14 @@ internal sealed class SoundBank
     public bool IsPlaying(AudioPlaybackHandle? handle) => handle is { } value && _audio.Mixer.IsPlaying(value);
 
     /// <summary>Fades a track out (20 ms).</summary>
+    /// <summary>Every one-shot cue of <paramref name="bank"/> still sounding stops.</summary>
+    public void StopBank(string bank)
+    {
+        foreach (var (key, handle) in _lastPlayed)
+            if (key.Bank == bank)
+                _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+    }
+
     public void Stop(AudioPlaybackHandle? handle)
     {
         if (handle is { } value)

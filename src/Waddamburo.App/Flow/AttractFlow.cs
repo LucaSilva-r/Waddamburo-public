@@ -94,14 +94,14 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         }
     }
 
-    // A random stock (Green) song with an Oni or Hard chart, from the game's own demo list (musicinfo demoplay,
+    // A random stock (Green) song with a Normal chart (#19: the cabinet's demo plays Normal), from the game's own demo list (musicinfo demoplay,
     // 114 songs in Green) when it has one; no TJA, osu! or Nijiiro picks.
     private bool startDemo()
     {
         var songs = Shell.SongCatalog.Categories
             .SelectMany(category => category.Songs.Select(song => (category.Name, Song: song)))
             .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock
-                && (entry.Song.HasCourse(TaikoCourse.Oni) || entry.Song.HasCourse(TaikoCourse.Hard)))
+                && entry.Song.HasCourse(TaikoCourse.Normal))
             .ToArray();
         // Mostly songs with their own gameplay skin (collabs, Vocaloid...), as the cabinet seemed to favour:
         // three demos in four from those (the skin table, no archive loaded), the rest from any song.
@@ -125,6 +125,9 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
     /// </summary>
     public bool TryStart(FlowInput input)
     {
+        // Under the menu the attract only goes on; a coin starts the entry once it closes.
+        if (Shell.HomeMenuOpen)
+            return false;
         // Free play: a drum hit starts. Coin mode: any credit does, at once (traced: entry loads right
         // after the first coin, even short of a full credit; coins inserted during the boot screens
         // start it as soon as the attract is reached). The drum does nothing there.
