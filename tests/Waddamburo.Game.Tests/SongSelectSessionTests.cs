@@ -158,7 +158,7 @@ public sealed class SongSelectSessionTests
 
         var selection = session.Select(0, 0, -1, (int)TaikoCourse.Oni);
 
-        Assert.True(previews.Stopped); // silence until gameplay, not the background music
+        Assert.True(previews.Held); // the preview plays on under the rainbow, nothing else starts
         Assert.Null(selection.PlayerOneChart);
         Assert.Equal("oni", selection.PlayerTwoChart!.StableId);
         var player = Assert.Single(Assert.IsType<PlayRequest>(playRequests.Pending).Players);
@@ -203,7 +203,8 @@ public sealed class SongSelectSessionTests
         Assert.Equal(snapshot.Revision, selection.CatalogRevision);
         Assert.Equal("oni", selection.PlayerOneChart!.StableId);
         Assert.Null(selection.PlayerTwoChart);
-        Assert.Null(previews.Current);
+        Assert.Same(preview, previews.Current); // held under the rainbow until its title appears
+        Assert.True(previews.Held);
         var request = Assert.IsType<PlayRequest>(playRequests.Pending);
         Assert.Equal(snapshot.Revision, request.CatalogRevision);
         Assert.Equal(selection.Song, request.Song);
@@ -425,5 +426,9 @@ public sealed class SongSelectSessionTests
         public void SetPreview(SongPreviewRequest? request) => (Current, Stopped) = (request, false);
 
         public void Silence() => (Current, Stopped) = (null, true);
+
+        public bool Held { get; private set; }
+
+        public void Hold() => Held = true;
     }
 }

@@ -79,6 +79,8 @@ internal sealed class TracePreviewController : ISongPreviewController
     }
 
     public void Silence() { }
+
+    public void Hold() { }
 }
 
 internal static class HostValueText

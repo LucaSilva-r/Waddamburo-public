@@ -226,6 +226,22 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Show(FlowScenes.SongSelect);
     }
 
+    private bool _musicUnderCover;
+
+    private void stopMusic()
+    {
+        Shell.Previews?.Silence();
+        Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
+        Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
+    }
+
+    // The rainbow's song title is placed and drawn on the stage (it comes in partway through the cover).
+    private static bool titleShown(Waddamburo.Lumen.Runtime.LumenPlayer rainbow) =>
+        rainbow.TryGetInstanceBounds(RainbowTransitionComposition.SongTitleFill, out var title)
+        && title is { Width: > 0, Height: > 0 } && title.X + title.Width > 0 && title.X < OverlayStageWidth;
+
+    private const float OverlayStageWidth = 1280;
+
     // The pending play's rainbow, and gameplay under it once it covers the screen.
     private void coverForGameplay(PlayRequest request)
     {
@@ -251,9 +267,19 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             player.GotoLabel(Shell.Gameplay.Dan is null ? RainbowTransitionComposition.CoverLabel
                 : RainbowTransitionComposition.PlainCoverLabel, play: true);
             rainbow.StartCover();
-            Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
-            Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
+            // The song's preview plays on under the closing rainbow and stops as its title appears (#17); a course's
+            // plain rainbow has no title: it stops now.
+            _musicUnderCover = Shell.Gameplay.Dan is null;
+            if (!_musicUnderCover)
+                stopMusic();
             Console.WriteLine($"Rainbow cover started at tick {Shell.Tick}.");
+        }
+        if (_musicUnderCover && (Shell.Overlay.Player is not { } closing || titleShown(closing) || _coveredAt is not null
+            || rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete))
+        {
+            _musicUnderCover = false;
+            stopMusic();
+            Console.WriteLine($"Song Select music stopped as the rainbow's title appeared, at tick {Shell.Tick}.");
         }
         var titleReady = gameplay.RainbowTitle is { } title && Shell.Titles.Resolve(title) is not null;
         if (titleReady && !_titleReported && rainbow.State is not RainbowTransitionState.Idle)

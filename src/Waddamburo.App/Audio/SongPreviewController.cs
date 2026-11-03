@@ -22,6 +22,8 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     private AudioClip? _background => _waiwai ? _waiwaiBackground : _normalBackground;
     private Operation? _current;
     private bool _disposed;
+    // A song was chosen: what plays goes on and nothing replaces it, until Silence (or Song Select's music again).
+    private bool _held;
 
     public SongPreviewController(
         AudioEngine audio,
@@ -40,6 +42,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     {
         lock (_gate)
         {
+            _held = false;
             if (_waiwai != waiwai)
             {
                 _waiwai = waiwai;
@@ -53,7 +56,16 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     public void Silence()
     {
         lock (_gate)
+        {
+            _held = false;
             stopCurrent();
+        }
+    }
+
+    public void Hold()
+    {
+        lock (_gate)
+            _held = true;
     }
 
     public void SetPreview(SongPreviewRequest? request) =>
@@ -65,6 +77,9 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            // Held (a song chosen): the music under the rainbow stays as it is; only a looping preview starts again.
+            if (_held && (request is null || _current is not null))
+                return;
             if (request is not null && !_resolver.Resolves(request.Audio))
                 throw new ArgumentException("The preview asset belongs to another catalog provider.", nameof(request));
             if (request is null
@@ -85,6 +100,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     {
         BufferedAudioSource? source = null;
         var restoreBackground = false;
+        var again = false;
         try
         {
             if (operation.Delay > TimeSpan.Zero)
@@ -136,9 +152,15 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
                     $"Song preview started at {operation.Request.Start.TotalSeconds:0.###}s for {operation.Request.Song}.");
             }
 
+            var playing = System.Diagnostics.Stopwatch.StartNew();
             while (operation.Handle is { } handle && _audio.Mixer.IsPlaying(handle))
                 await Task.Delay(CompletionPoll, operation.Cancellation.Token).ConfigureAwait(false);
-            restoreBackground = operation.Request is not null && finish(operation);
+            // A preview that reaches the song's end starts again from its preview point (#18: it used to hand back to
+            // Song Select's music), as long as the song stays under the cursor.
+            // One that ends at once (a preview point past the audio's end) gives the music back instead of spinning.
+            var ended = operation.Request is not null && finish(operation);
+            again = ended && playing.Elapsed >= TimeSpan.FromSeconds(1);
+            restoreBackground = ended && !again;
         }
         catch (OperationCanceledException) when (operation.Cancellation.IsCancellationRequested)
         {
@@ -157,11 +179,11 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
             source?.Dispose();
         }
 
-        if (restoreBackground)
+        if (restoreBackground || again)
         {
             try
             {
-                replace(null, TimeSpan.Zero);
+                replace(again ? operation.Request : null, TimeSpan.Zero);
             }
             catch (ObjectDisposedException)
             {

@@ -51,8 +51,14 @@ public interface ISongPreviewController
     /// <summary>A song preview, or null for Song Select's background music.</summary>
     void SetPreview(SongPreviewRequest? request);
 
-    /// <summary>Silence: no preview and no background music (a song was chosen, or Song Select closed).</summary>
+    /// <summary>Silence: no preview and no background music (Song Select closed, or the chosen song's title is up).</summary>
     void Silence();
+
+    /// <summary>
+    /// A song was chosen: what plays goes on (under the rainbow, until its title appears and the host silences it)
+    /// and nothing else starts.
+    /// </summary>
+    void Hold();
 }
 
 public sealed record SongSelection(
@@ -155,8 +161,8 @@ public sealed class SongSelectSession
         if (!_playRequests.TryRequestPlay(playRequest))
             throw new InvalidOperationException("Another play request is already pending.");
 
-        // The preview fades out and the background stays off until gameplay.
-        StopMusic();
+        // The preview plays on, unchanged, under the rainbow; the host silences it as the song's title appears (#17).
+        _previews.Hold();
         return Selection = selection;
     }
 
