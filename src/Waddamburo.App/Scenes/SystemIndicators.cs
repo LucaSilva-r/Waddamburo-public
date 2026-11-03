@@ -127,9 +127,8 @@ internal sealed class SystemIndicators
         _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Tutorial or IndicatorScene.Gameplay or IndicatorScene.Result;
         if (Coins is not null)
         {
-            // Coin mode (traced session2-coins): coin type 0, the credit count, and per side the
-            // credits still missing (-1 once joined). The split panel only comes with a join.
-            call(_coins, "SetCoinType", LumenHostValue.FromNumber(0));
+            // Coin mode (traced session2-coins): coin type 0 (1 for service credits, CoinsChanged), the credit
+            // count, and per side the credits still missing (-1 once joined). The split panel only comes with a join.
             CoinsChanged();
             return;
         }
@@ -220,6 +219,8 @@ internal sealed class SystemIndicators
     {
         if (Coins is not { } bank) return;
         var settings = bank.Settings;
+        // Traced session-service-coin: SetCoinType 1 (the service text) with each service credit, 0 for coins.
+        call(_coins, "SetCoinType", LumenHostValue.FromNumber(bank.Service ? 1 : 0));
         call(_coins, "SetCoinNum", LumenHostValue.FromNumber(bank.Credits));
         if (_cardDialog)
             return;

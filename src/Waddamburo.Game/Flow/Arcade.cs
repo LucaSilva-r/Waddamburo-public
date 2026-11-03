@@ -871,14 +871,22 @@ public sealed class CoinBank(ArcadeSettings settings)
 
     public void InsertCoin() => Credits += Settings.CreditsPerCoin;
 
+    /// <summary>The credits are service credits (the counter shows its service text) until they are used up.</summary>
+    public bool Service { get; private set; }
+
     /// <summary>
-    /// The service switch: a service credit, one player's game, in place of whatever coins were inserted (it isn't a
-    /// coin: the bookkeeping doesn't count it).
+    /// The service switch (traced session-service-coin): one more service credit; the first one replaces whatever
+    /// coins were inserted (1 coin, then service: 1 service credit). It isn't a coin: the bookkeeping doesn't count it.
     /// </summary>
-    public void Service() => Credits = Settings.CreditsOnePlayer;
+    public void ServiceCredit()
+    {
+        if (!Service)
+            (Credits, Service) = (0, true);
+        Credits++;
+    }
 
     /// <summary>The credits inserted are dropped (the service menu opening).</summary>
-    public void Clear() => Credits = 0;
+    public void Clear() => (Credits, Service) = (0, false);
 
     /// <summary>What the next player to join pays: one player's price, or the rest of the two-player price.</summary>
     public int JoinCost(int joinedPlayers) => joinedPlayers == 0
@@ -894,6 +902,8 @@ public sealed class CoinBank(ArcadeSettings settings)
         if (Credits < cost)
             return false;
         Credits -= cost;
+        if (Credits == 0)
+            Service = false;
         return true;
     }
 }

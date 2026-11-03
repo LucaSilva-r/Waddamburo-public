@@ -27,6 +27,8 @@ internal sealed class SoundBank
     private AudioPlaybackHandle? _oneShotVoice;
     private AudioPlaybackHandle? _loopVoice;
     private AudioPlaybackHandle? _coin;
+    // When the coin channel takes the next queued sound: a coin sound's length after the last one started.
+    private long _coinSlotEnds;
 
     public SoundBank(AudioEngine audio, string soundRoot)
     {
@@ -177,25 +179,33 @@ internal sealed class SoundBank
         Console.WriteLine("Authored voice replay -> Voice.");
     }
 
+    /// <summary>SE_COM's coin cue (traced per credited coin) and its service credit cue (traced session-service-coin).</summary>
+    public const int CoinCue = 9, ServiceCue = 10;
+
     /// <summary>
-    /// One queued coin's sound (traced SE_COM cue 9 per credited coin), on its own bus. The caller
-    /// credits the next coin only once this has finished, so every coin is heard in full.
+    /// One queued coin's (or service credit's, <paramref name="cue"/>) sound, on its own bus. Each takes a coin
+    /// sound's length (<see cref="IsCoinPlaying"/>); the next one cuts what is left of it, as the cabinet cuts its
+    /// 3 s service sound when credits are spammed. The last one plays in full.
     /// </summary>
-    public void PlayCoin()
+    public void PlayCoin(int cue = CoinCue)
     {
         try
         {
-            var clip = load(("SE_COM", 9));
+            var clip = load(("SE_COM", cue));
+            var slot = cue == CoinCue ? clip.Duration : load(("SE_COM", CoinCue)).Duration;
+            Stop(_coin);
             _coin = _audio.Mixer.Play(clip, AudioBus.Coin);
-            Console.WriteLine($"Authored sound SE_COM#9 -> Coin ({clip.Duration.TotalSeconds:0.00} s).");
+            _coinSlotEnds = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(slot.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+            Console.WriteLine($"Authored sound SE_COM#{cue} -> Coin ({clip.Duration.TotalSeconds:0.00} s).");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
-            reportUnavailable(("SE_COM", 9), exception);
+            reportUnavailable(("SE_COM", cue), exception);
         }
     }
 
-    public bool IsCoinPlaying => IsPlaying(_coin);
+    /// <summary>The coin channel's slot is still taken (a coin sound's length after the last one started).</summary>
+    public bool IsCoinPlaying => IsPlaying(_coin) && System.Diagnostics.Stopwatch.GetTimestamp() < _coinSlotEnds;
 
     private AudioClip load((string Bank, int Cue) key)
     {

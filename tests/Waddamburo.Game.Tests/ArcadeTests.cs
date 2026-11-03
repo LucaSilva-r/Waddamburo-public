@@ -236,6 +236,22 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void ServiceCreditsReplaceTheCoinsAndLastUntilUsedUp()
+    {
+        // Traced: 1 coin, then service: 1 service credit; each press adds one; the service text stays until spent.
+        var bank = new CoinBank(new ArcadeSettings { FreePlay = false, CreditsOnePlayer = 1, CreditsTwoPlayers = 2 });
+        bank.InsertCoin();
+        bank.ServiceCredit();
+        Assert.Equal((1, true), (bank.Credits, bank.Service));
+        bank.ServiceCredit();
+        Assert.True(bank.TryJoin(0) && bank.TryJoin(1));
+        Assert.Equal((0, false), (bank.Credits, bank.Service));
+        bank.ServiceCredit();
+        bank.Clear();
+        Assert.Equal((0, false), (bank.Credits, bank.Service));
+    }
+
+    [Fact]
     public void UpgradingKeepsASettingTheFileHasAlready()
     {
         // The menu saved menu_volume into a version 17 file before version 18 added it.

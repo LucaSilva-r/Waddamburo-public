@@ -213,7 +213,8 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>The cabinet's bookkeeping (the service menu's counts).</summary>
     public Bookkeeping Book { get; }
-    private int _queuedCoinSounds;
+    // Coin and service credit sounds still to play, in order (SoundBank.CoinCue / ServiceCue).
+    private readonly Queue<int> _queuedCoinSounds = new();
     private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
     private readonly int _dumpTreeTick =
         int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
@@ -884,6 +885,7 @@ internal sealed class GameShell : IDisposable
         SongsPlayed = 0;
         _returnToAttract = false;
         Coins?.Clear();
+        _queuedCoinSounds.Clear();
         Show(FlowScenes.Logo);
         Audio?.Mixer.StopAll(); // anything the switch started
         Console.WriteLine($"Service menu: game reset at tick {Tick}.");
@@ -931,8 +933,13 @@ internal sealed class GameShell : IDisposable
         var inserted = switches.Coins;
         if (Coins is not null && switches.Services > 0)
         {
-            // A service credit replaces the coins inserted, and isn't counted as a coin.
-            Coins.Service();
+            // Traced: each press is one service credit with its own sound (SE_COM 10); the first replaces the coins
+            // inserted, and the counter shows the service text until they're used up. Not a coin for the bookkeeping.
+            for (var press = 0; press < switches.Services; press++)
+            {
+                Coins.ServiceCredit();
+                _queuedCoinSounds.Enqueue(SoundBank.ServiceCue);
+            }
             Console.WriteLine($"Service credit at tick {Tick}: {Coins.Credits} credit(s).");
             _indicators?.CoinsChanged();
             if (Active.Id == FlowScenes.Entry)
@@ -942,18 +949,16 @@ internal sealed class GameShell : IDisposable
         {
             for (var coin = 0; coin < inserted; coin++)
                 Coins.InsertCoin();
-            _queuedCoinSounds += inserted;
+            for (var coin = 0; coin < inserted; coin++)
+                _queuedCoinSounds.Enqueue(SoundBank.CoinCue);
             Book.CoinCount += inserted;
             Console.WriteLine($"Coin credited at tick {Tick}: {Coins.Credits} credit(s).");
             _indicators?.CoinsChanged();
             if (Active.Id == FlowScenes.Entry)
                 Hosts.EntryCoinsChanged();
         }
-        if (_queuedCoinSounds > 0 && Sounds?.Bank.IsCoinPlaying != true)
-        {
-            _queuedCoinSounds--;
-            Sounds?.Bank.PlayCoin();
-        }
+        if (_queuedCoinSounds.Count > 0 && Sounds?.Bank.IsCoinPlaying != true)
+            Sounds?.Bank.PlayCoin(_queuedCoinSounds.Dequeue());
     }
 
     /// <summary>Leaves the active scene and shows <paramref name="scene"/> (loaded fresh from the catalog).</summary>
