@@ -567,8 +567,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         }
         // CourseResource.isMania[player] is what repeated right-rim hits set (Callback_SetCourse's
         // isMania_ also writes it, but with the remembered course too); CheckMania reads it per board.
-        if (ShowOni)
-            foreach (var player in new[] { 0, 1 })
+        // Oni unlocked earlier in the credit stays unlocked, as on the cabinet.
+        foreach (var player in new[] { 0, 1 })
+            if (ShowOni || TaikoGuest.Mania[player])
                 if (!requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.isMania.{player}", true))
                     Console.Error.WriteLine("Song Select has no CourseResource.isMania; Oni stays hidden.");
         _parts?.ShowGuestNames(_shown);
@@ -1054,6 +1055,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (requirePlayer().TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
                 && bits.Kind == LumenHostValueKind.Number)
                 TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+        foreach (var player in _sides)
+            if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.course.isMania.{player}") is true)
+                TaikoGuest.Mania[player] = true;
         // Each joined drum's drum sound: the tone board's selected entry (ToneResource.selected / list).
         foreach (var player in _sides)
             if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.selected.{player}") is IConvertible index

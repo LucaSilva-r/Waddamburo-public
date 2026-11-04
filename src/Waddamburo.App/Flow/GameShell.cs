@@ -1246,6 +1246,7 @@ internal sealed class GameShell : IDisposable
             _indicators.TwoPlayers = two;
         }
         if (Don is not null) Don.GameplaySide = first;
+        Array.Clear(TaikoGuest.Mania);
         Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, Hosts.Waiwai));
     }
 
