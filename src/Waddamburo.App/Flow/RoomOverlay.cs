@@ -419,7 +419,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         if (partner is not null && shell.Hosts.SongSelect is { } songSelect)
             songSelect.ShowPartner(shell.Hosts.PartnerSide);
         else
-            _relayout = true;
+            (_relayout, _partnerLeft) = (true, true);
     }
 
     // In a room Song Select has no dan dojo (a course is played alone): it lays itself out again on joining and leaving.
@@ -427,19 +427,30 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     // host goes to choose a song. A reload for anything else (the guest's coming to the host's song) lays it out too.
     private bool _roomListed;
     private bool _relayout;
+    // A partner who left stays on screen (Don-chan, name board) until Song Select lays itself out again, so that
+    // reload can't wait for the lobby: the lobby steps aside for its rainbow and comes back after it.
+    private bool _partnerLeft;
+    private bool _lobbyAside;
 
     private void listDanDojo()
     {
         var inRoom = Session is not null;
         if (shell.Reload.Busy)
         {
-            (_roomListed, _relayout) = (inRoom, false);
+            (_roomListed, _relayout, _partnerLeft) = (inRoom, false, false);
             return;
         }
-        if (inRoom == _roomListed && !_relayout || _panel || shell.Active.Id != FlowScenes.SongSelect)
+        if (_lobbyAside)
+            (_panel, _lobbyAside) = (true, false);
+        if (inRoom == _roomListed && !_relayout || _panel && !_partnerLeft || shell.Active.Id != FlowScenes.SongSelect)
             return;
-        (_roomListed, _relayout) = (inRoom, false);
+        var aside = _panel;
+        _panel = false;
         shell.Reload.Start(static () => { });
+        if (shell.Reload.Busy)
+            (_roomListed, _relayout, _partnerLeft, _lobbyAside) = (inRoom, false, false, aside);
+        else
+            _panel = aside; // a scene switch under way: next tick
     }
 
     private void showPartnerAs(ScoreProfile? partner)
