@@ -23,8 +23,14 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
 
     public int TitlePlate { get; init; }
 
+    /// <summary>The equipped nameplate rank (0 hidden, 1-25 Beginner through Tatsujin).</summary>
+    public int DanRank { get; init; }
+
+    public bool DanGold { get; init; }
+
     public ScoreProfile Profile => new(Baid, Name)
-        { Look = Look, Avatar = Avatar, Token = Token, AccountName = AccountName, Title = Title, TitlePlate = TitlePlate };
+        { Look = Look, Avatar = Avatar, Token = Token, AccountName = AccountName, Title = Title, TitlePlate = TitlePlate,
+            DanRank = DanRank, DanGold = DanGold };
 }
 
 /// <summary>A device login in progress: the code to show and where to enter it.</summary>

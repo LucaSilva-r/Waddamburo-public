@@ -94,10 +94,11 @@ public sealed class DaniResultHostBinding(DanCourseResult result, IDonPresentati
         call(player, "SetPlayerForPlayerName", 0, 0);
         player.TryInvokeCallback("SetTitleForPlayerName", [LumenHostValue.FromString(TaikoGuest.Title(0)), LumenHostValue.FromNumber(0)]);
         call(player, "SetTitlePanelForPlayerName", TaikoGuest.TitlePlate(0), 0);
-        player.TryInvokeCallback("SetDaniForPlayerName", [LumenHostValue.FromNumber(0), LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(0)]);
+        var rank = TaikoGuest.DanRank(0);
+        player.TryInvokeCallback("SetDaniForPlayerName", [LumenHostValue.FromNumber(rank), LumenHostValue.FromBoolean(TaikoGuest.DanGold(0)), LumenHostValue.FromNumber(0)]);
         call(player, "SetNameSizeForPlayerName", 0, 0);
         player.TryInvokeCallback("ApplyForPlayerName", []);
-        NameText.Show(player, "main/name_board/names", TaikoGuest.Name(0));
+        NameText.Show(player, "main/name_board/names", TaikoGuest.Name(0), ranked: rank > 0);
     }
 
     private LumenHostValue play(LumenHostCall call, bool effect)

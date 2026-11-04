@@ -20,13 +20,15 @@ public static class GuestNameBoard
         call(board, "SetKinotake", number(-1));
         call(board, "SetTitleName", LumenHostValue.FromString(profile is null ? Gameplay.TaikoGuest.Title(side) : profile.Title ?? ""));
         call(board, "SetTitlePanelID", number(profile is null ? Gameplay.TaikoGuest.TitlePlate(side) : profile.TitlePlate));
-        call(board, "SetDani", number(0), LumenHostValue.FromBoolean(false));
+        var rank = side == 2 ? 0 : profile?.DisplayDanRank ?? Gameplay.TaikoGuest.DanRank(side);
+        var gold = rank > 0 && (profile?.DanGold ?? Gameplay.TaikoGuest.DanGold(side));
+        call(board, "SetDani", number(rank), LumenHostValue.FromBoolean(gold));
         // Cover: greyed, a card given to a drum that has not joined yet (traced session13-card).
         call(board, "SetCover", LumenHostValue.FromBoolean(cover));
         // The board's own glyphs are kana only: the name is host text over its names clip (see NameText).
         call(board, "SetNameSize", number(0));
         call(board, "Apply");
-        NameText.Show(board, "board/names", name);
+        NameText.Show(board, "board/names", name, ranked: rank > 0);
         if (visible)
             call(board, "SetVisible", LumenHostValue.FromBoolean(true));
     }
@@ -48,6 +50,7 @@ public static class GuestNameBoard
 public static class NameText
 {
     public const string Prefix = "name:";
+    public const string RankedPrefix = "ranked-name:";
 
     /// <summary>
     /// The name's box in the names clip: 176x24, the player setup overlay's own box, so names are the same
@@ -55,17 +58,24 @@ public static class NameText
     /// </summary>
     public static readonly LumenNativeSurfacePlacement Box = new(155 - 88, 45 - 12, 176, 24);
 
-    public static LumenNativeSurfaceKey Key(string name) => new(Prefix + name);
+    /// <summary>Leaves a gap after the rank and an inset from the rounded right edge; text keeps its height.</summary>
+    public static readonly LumenNativeSurfacePlacement RankedBox = new(130, 33, 122, 24);
 
-    public static bool TryParse(LumenNativeSurfaceKey key, out string name)
+    public static LumenNativeSurfaceKey Key(string name, bool ranked = false) => new((ranked ? RankedPrefix : Prefix) + name);
+
+    public static bool TryParse(LumenNativeSurfaceKey key, out string name) => TryParse(key, out name, out _);
+
+    public static bool TryParse(LumenNativeSurfaceKey key, out string name, out bool ranked)
     {
-        name = key.Value.StartsWith(Prefix, StringComparison.Ordinal) ? key.Value[Prefix.Length..] : "";
+        ranked = key.Value.StartsWith(RankedPrefix, StringComparison.Ordinal);
+        name = ranked ? key.Value[RankedPrefix.Length..]
+            : key.Value.StartsWith(Prefix, StringComparison.Ordinal) ? key.Value[Prefix.Length..] : "";
         return name.Length > 0;
     }
 
     /// <summary>Puts <paramref name="name"/> over the clip at <paramref name="path"/> (empty: nothing, e.g. the entry's own overlay).</summary>
-    public static void Show(LumenPlayer board, string path, string name) =>
-        board.SetInstanceOverlay(path, string.IsNullOrWhiteSpace(name) ? null : Key(name), Box);
+    public static void Show(LumenPlayer board, string path, string name, bool ranked = false) =>
+        board.SetInstanceOverlay(path, string.IsNullOrWhiteSpace(name) ? null : Key(name, ranked), ranked ? RankedBox : Box);
 }
 
 /// <summary>

@@ -17,15 +17,17 @@ internal sealed class NameTextTextures(SdlApplication application, string fontPa
     {
         if (SpeedText.TryParse(key, out var speedWidth, out var speedHeight, out var speed))
             return speedLabel(speed, speedWidth, speedHeight);
-        if (!NameText.TryParse(key, out var name))
+        if (!NameText.TryParse(key, out var name, out var ranked))
             return null;
         var scale = Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
-        if (_uploaded.TryGetValue((name, scale), out var texture))
+        if (_uploaded.TryGetValue((key.Value, scale), out var texture))
             return texture;
-        var (width, height) = (NameText.Box.Width, NameText.Box.Height);
+        // Ranked names use less horizontal padding before being fitted into the plate, keeping
+        // the lettering close to its natural width while preserving the gap and rounded-edge inset.
+        var (width, height) = (ranked ? 144 : NameText.Box.Width, NameText.Box.Height);
         var canvas = new VectorCanvas((int)width, (int)height, scale, fontPath);
         canvas.Text(name, width / 2, height / 2, width, height);
-        return _uploaded[(name, scale)] = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
+        return _uploaded[(key.Value, scale)] = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
     }
 
     // A play speed on the option board, lettered as the names are.

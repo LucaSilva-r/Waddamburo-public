@@ -8,11 +8,65 @@ public sealed class AccountBookTests
     public void ReadsTheNameBoardTitleAndCostumeSets()
     {
         var account = System.Text.Json.JsonSerializer.Deserialize<ScoreAccount>("""
-            {"token":"t","baid":1,"name":"どん","title":"ほんのきもち","title_plate":3,
+            {"token":"t","baid":1,"name":"どん","title":"ほんのきもち","title_plate":3,"dan_rank":18,"dan_gold":true,
                "look":{"costume":[32,0,0,0,0],"presets":[[32,0,0,0],[0,10,2,4],[0,0,0,0]],"face":"#000000","body":"#000000","limb":"#000000"}}
             """, ScoreClient.Json)!;
         Assert.Equal(("ほんのきもち", 3), (account.Profile.Title, account.Profile.TitlePlate));
+        Assert.Equal((18, true), (account.Profile.DisplayDanRank, account.Profile.DanGold));
         Assert.Equal([0, 10, 2, 4], account.Profile.Look!.Presets![1]);
+    }
+
+    [Fact]
+    public async Task RefreshPersistsTheEquippedRankOfflineAndClearsItWhenAnOlderServerOmitsIt()
+    {
+        var directory = Directory.CreateTempSubdirectory("waddamburo-rank").FullName;
+        try
+        {
+            var book = AccountBook.Load(directory);
+            book.Add(new ScoreAccount("token", 1, "Player") { DanRank = 12 });
+            using var handler = new ProfileHandler();
+            using var http = new HttpClient(handler) { BaseAddress = new Uri("https://taikonline.test/") };
+            var client = new ScoreClient(http);
+            handler.Json = """{"baid":1,"name":"Player","dan_rank":18,"dan_gold":true}""";
+
+            await book.RefreshAsync(_ => client);
+
+            var stored = AccountBook.Load(directory).Default!;
+            Assert.Equal(("token", 18, true), (stored.Token, stored.Profile.DisplayDanRank, stored.Profile.DanGold));
+            handler.Json = """{"baid":1,"name":"Player"}""";
+            await book.RefreshAsync(_ => client);
+            stored = AccountBook.Load(directory).Default!;
+            Assert.Equal((0, false), (stored.Profile.DisplayDanRank, stored.Profile.DanGold));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(25, 25)]
+    [InlineData(26, 0)]
+    public void UnsupportedProfileRanksAreHidden(int rank, int expected)
+    {
+        Assert.Equal(expected, new ScoreProfile(1, "Player") { DanRank = rank }.DisplayDanRank);
+    }
+
+    private sealed class ProfileHandler : HttpMessageHandler
+    {
+        public string Json { get; set; } = "{}";
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Equal("/api/wdb/me", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(Json, System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
     }
 
     [Fact]

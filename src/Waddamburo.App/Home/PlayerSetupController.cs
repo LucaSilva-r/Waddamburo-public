@@ -24,7 +24,7 @@ internal sealed class PlayerSetupController : IDisposable
     public PlayerSetupController(GameShell shell, AccountBook accounts, string fontPath, string? scoresPath)
     {
         this.shell = shell;
-        _overlay = new EntrySetupOverlay(shell.Application, fontPath);
+        _overlay = new EntrySetupOverlay(shell.Application, fontPath, shell.ResolveSurface);
         _flow = new PlayerSetupFlow(accounts, shell.Arcade.Server, shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
             Path.Combine(Path.GetDirectoryName(scoresPath) ?? ".", "avatars"));
         _flow.Confirmed += joinSetupPlayers;
@@ -208,7 +208,9 @@ internal sealed class PlayerSetupController : IDisposable
         string?[] tags = live is not null
             ? [.. live.Select(static column => column.Choice.Label)]
             : [.. Enumerable.Range(0, 2).Select(side => shell.JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : null)];
-        var quads = overlay.Quads(columns, tags, standVisible);
+        bool[] ranked = [.. Enumerable.Range(0, 2).Select(side =>
+            (columns is not null ? columns[side].Choice.Profile?.DisplayDanRank : TaikoGuest.DanRank(side)) > 0)];
+        var quads = overlay.Quads(columns, tags, ranked, standVisible);
         if (columns is null)
             return quads;
         // The account that joins by itself (S): the entry's yellow sparkle over the Don's top-left, twinkling.

@@ -1,6 +1,8 @@
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
+using Waddamburo.Game.Lumen;
+using Waddamburo.Lumen.Rendering;
 
 namespace Waddamburo.App.Presentation;
 
@@ -10,14 +12,15 @@ namespace Waddamburo.App.Presentation;
 /// in for a Don (Sign in, Join with code), a code while pairing, and a status line. Text is the game
 /// font, rasterized once per content and window scale. (The arrows are the entry's own, SetupArrows.)
 /// </summary>
-internal sealed class EntrySetupOverlay(SdlApplication application, string fontPath) : IDisposable
+internal sealed class EntrySetupOverlay(SdlApplication application, string fontPath,
+    Func<LumenNativeSurfaceKey, RenderTextureId?> resolveName) : IDisposable
 {
     // Stage positions (1280x720), per side: the Don on its stand, the board's name line, the status line.
     private static readonly float[] StandX = [150, 1130];
     private const float StandY = 420, QrY = 368, QrSize = 150;
     // The board centres its own kana names at 214.75 (measured on 1-, 5- and 7-character names).
     private static readonly float[] TagX = [215, 1105];
-    private const float TagY = 683, TagWidth = 176, TagHeight = 24;
+    private const float TagY = 683;
     private const float MessageY = 560;
 
     private readonly Dictionary<(string Text, int Width, int Height, uint Scale), RenderTextureId> _text = [];
@@ -25,15 +28,22 @@ internal sealed class EntrySetupOverlay(SdlApplication application, string fontP
 
     /// <param name="setup">Each side's setup column while the setup is open (null: not in setup).</param>
     /// <param name="tags">Each side's name for its board (null: no board).</param>
+    /// <param name="ranked">Whether each displayed board has rank artwork beside its name.</param>
     /// <param name="standVisible">Per side, whether the stand's text may show (not while costume smoke covers it).</param>
-    public IEnumerable<RenderQuad> Quads(IReadOnlyList<SetupColumn>? setup, IReadOnlyList<string?> tags, IReadOnlyList<bool> standVisible)
+    public IEnumerable<RenderQuad> Quads(IReadOnlyList<SetupColumn>? setup, IReadOnlyList<string?> tags,
+        IReadOnlyList<bool> ranked, IReadOnlyList<bool> standVisible)
     {
         var scale = (uint)Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
         var quads = new List<RenderQuad>();
         for (var side = 0; side < 2; side++)
         {
-            if (tags[side] is { Length: > 0 } tag)
-                quads.Add(text(tag, TagX[side], TagY, TagWidth, TagHeight, scale));
+            if (tags[side] is { Length: > 0 } tag && resolveName(NameText.Key(tag, ranked[side])) is { } name)
+            {
+                var box = ranked[side] ? NameText.RankedBox : NameText.Box;
+                // The entry's existing tag anchor is the centre of the unranked name box.
+                var left = TagX[side] - NameText.Box.Width / 2 + box.X - NameText.Box.X;
+                quads.Add(quad(name, left, TagY - box.Height / 2, box.Width, box.Height, RenderRectangle.Full));
+            }
             if (setup?[side] is not { } column)
                 continue;
             var choice = column.Choice;

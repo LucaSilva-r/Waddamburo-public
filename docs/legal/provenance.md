@@ -1,5 +1,12 @@
 # Implementation provenance
 
+The equipped nameplate Dan rank is independently integrated from user-supplied
+movie callback behavior: ranks 1-25 and normal/gold variants, with 0 hidden.
+Name-text placement beside the rank uses measured movie geometry; Entry and the
+other nameplates share an inset text box with horizontal compression. Profile fields,
+validation and text fitting are project choices. No asset script, artwork or private
+implementation is copied. Public tests use synthetic server profiles.
+
 Gameplay scroll scaling is independently implemented from the behavioral rule in
 [AioiLight's scroll reference](https://aioilight.space/taiko-no-tatsujin/scroll/)
 (consulted 2026-11-04): each note's own BPM and scroll determine its velocity,

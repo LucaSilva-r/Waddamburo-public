@@ -122,7 +122,7 @@ public sealed class AccountBook
             }
             else
                 Add(account with { Name = current.Name, Look = current.Look, Avatar = current.Avatar, AccountName = current.AccountName,
-                    Title = current.Title, TitlePlate = current.TitlePlate });
+                    Title = current.Title, TitlePlate = current.TitlePlate, DanRank = current.DanRank, DanGold = current.DanGold });
         }
     }
 

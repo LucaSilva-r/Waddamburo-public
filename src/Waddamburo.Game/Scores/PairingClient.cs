@@ -23,6 +23,14 @@ public sealed record ScoreProfile(long Baid, string Name)
 
     public int TitlePlate { get; init; }
 
+    /// <summary>The equipped nameplate rank (0 hidden, 1-25 Beginner through Tatsujin).</summary>
+    public int DanRank { get; init; }
+
+    public bool DanGold { get; init; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int DisplayDanRank => DanRank is >= 1 and <= 25 ? DanRank : 0;
+
     /// <summary>What the home entry's name board shows: the account name, else the Don-chan's.</summary>
     public string DisplayName => AccountName is { Length: > 0 } account ? account : Name;
 

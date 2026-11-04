@@ -33,6 +33,10 @@ public static class TaikoGuest
 
     public static int TitlePlate(int side) => Profiles.ElementAtOrDefault(side)?.TitlePlate ?? 0;
 
+    public static int DanRank(int side) => Profiles.ElementAtOrDefault(side)?.DisplayDanRank ?? 0;
+
+    public static bool DanGold(int side) => DanRank(side) > 0 && Profiles.ElementAtOrDefault(side)?.DanGold == true;
+
     /// <summary>Each drum's last play options, offered again on its next song (a credit starts with none).</summary>
     public static TaikoPlayOptions[] Options { get; } = new TaikoPlayOptions[2];
 
