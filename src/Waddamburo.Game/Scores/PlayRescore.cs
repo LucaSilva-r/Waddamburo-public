@@ -16,16 +16,15 @@ public static class PlayRescore
     /// <param name="seed">The random options' seed (null: none drawn).</param>
     /// <param name="replay">The play's drum inputs.</param>
     /// <param name="windows">The judgement windows the game uses for it (osu! charts play with Oni's).</param>
-    /// <param name="strongSecondHitWindow">How soon a big note's second hit must follow the first.</param>
     public static TaikoPlayResult Score(PlayableChart chart, TaikoCourse course, TaikoPlayOptions options, int? seed,
-        TaikoReplay replay, TaikoJudgementWindows windows, TimeSpan strongSecondHitWindow)
+        TaikoReplay replay, TaikoJudgementWindows windows)
     {
         ArgumentNullException.ThrowIfNull(replay);
         var played = options.Apply(chart, seed ?? 0);
         // As a solo lane plays it (TaikoGameplayPresentation): the score and gauge follow each judgement
         // at the session's time, the counts skip a big note's second hit.
         // ponytail: a duet's hand notes take their bonus from the partner, whose inputs a solo replay lacks.
-        var session = new TaikoJudgementSession(played, windows, strongSecondHitWindow);
+        var session = new TaikoJudgementSession(played, windows);
         var score = new TaikoScore(played);
         var gauge = new TaikoSoulGauge(course, played.Level, played.OnRoute(ChartBranch.Normal).NoteCount);
         int great = 0, good = 0, miss = 0, maxCombo = 0;
@@ -61,16 +60,15 @@ public static class PlayRescore
     /// <param name="timeline">The charts as stored.</param>
     /// <param name="replays">Each song's drum inputs, on its own time.</param>
     /// <param name="windows">The first song's windows, which the whole course plays with.</param>
-    /// <param name="strongSecondHitWindow">How soon a big note's second hit must follow the first.</param>
     /// <param name="onProgress">Told the play so far after each judgement and roll hit: the song, its time and the numbers.</param>
     public static (DanProgress Total, IReadOnlyList<DanSongCounts> Songs, int SongsPlayed, int Level) ScoreCourse(DanCourse course,
-        DanCourseTimeline timeline, IReadOnlyList<TaikoReplay> replays, TaikoJudgementWindows windows, TimeSpan strongSecondHitWindow,
+        DanCourseTimeline timeline, IReadOnlyList<TaikoReplay> replays, TaikoJudgementWindows windows,
         Action<int, TimeSpan, DanProgress>? onProgress = null)
     {
         ArgumentNullException.ThrowIfNull(course);
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(replays);
-        var session = new TaikoJudgementSession(timeline.Chart, windows, strongSecondHitWindow);
+        var session = new TaikoJudgementSession(timeline.Chart, windows);
         var score = new TaikoScore(timeline.Chart);
         var gauge = new TaikoSoulGauge(timeline.Chart.Segments, course.ExactGauge);
         int great = 0, good = 0, miss = 0, maxCombo = 0;

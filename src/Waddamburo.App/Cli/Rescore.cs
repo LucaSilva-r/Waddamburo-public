@@ -94,7 +94,7 @@ internal static class Rescore
         var progress = new List<(int Song, TimeSpan Time, DanProgress At)>();
         var (total, counts, played, level) = PlayRescore.ScoreCourse(course, DanCourseTimeline.Merge(stored),
             [.. replays.Select(static replay => replay.Length > 0 ? TaikoReplay.Decode(replay) : new TaikoReplay())],
-            windows, TaikoGameplayPresentation.StrongSecondHitWindow, (song, time, at) => progress.Add((song, time, at)));
+            windows, (song, time, at) => progress.Add((song, time, at)));
         writer.WriteNumber("score", total.Score);
         writer.WriteNumber("great", total.Goods);
         writer.WriteNumber("good", total.Oks);
@@ -203,7 +203,7 @@ internal static class Rescore
     {
         var stored = Chart(charts, notes, source);
         return PlayRescore.Score(stored.Chart, stored.Course, TaikoPlayOptions.FromBits(options), seed, TaikoReplay.Decode(replay),
-            TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course), TaikoGameplayPresentation.StrongSecondHitWindow);
+            TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course));
     }
 
     /// <summary>A stored chart (gzipped canonical notes and its <see cref="SongSourceKind"/> name), read once per batch.</summary>

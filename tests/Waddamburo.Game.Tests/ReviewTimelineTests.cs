@@ -7,7 +7,6 @@ public sealed class ReviewTimelineTests
 {
     private static readonly TaikoJudgementWindows Windows = new(
         TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108));
-    private static readonly TimeSpan Strong = TimeSpan.FromMilliseconds(30);
 
     private static TimeSpan ms(double value) => TimeSpan.FromMilliseconds(value);
 
@@ -37,9 +36,9 @@ public sealed class ReviewTimelineTests
     [Fact]
     public void TheBakedPlayEndsAsTheLiveOneDoes()
     {
-        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs);
+        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Inputs);
 
-        var live = new TaikoJudgementSession(chart(), Windows, Strong);
+        var live = new TaikoJudgementSession(chart(), Windows);
         var score = new TaikoScore(chart());
         var gauge = new TaikoSoulGauge(TaikoCourse.Oni, chart().Level, chart().NoteCount);
         live.Judged += judgement =>
@@ -60,7 +59,7 @@ public sealed class ReviewTimelineTests
     [Fact]
     public void ThePlayheadShowsTheStateOfItsMoment()
     {
-        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs);
+        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Inputs);
 
         Assert.Null(timeline.StateAt(ms(900)));
         Assert.Equal(1, timeline.StateAt(ms(1_200))!.Value.Score.Combo);
@@ -75,14 +74,14 @@ public sealed class ReviewTimelineTests
     public void ATrainingAttemptJudgesOnlyItsOwnStretch()
     {
         // Played from 1.4 s until 2.5 s: the Don before it and the notes after it are never judged.
-        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs, from: ms(1_400), until: ms(2_500));
+        var timeline = ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Inputs, from: ms(1_400), until: ms(2_500));
 
         Assert.Equal([null, TaikoHitResult.Good, TaikoHitResult.Miss, null],
             Enumerable.Range(0, 4).Select(note => timeline.ResultAt(note, TimeSpan.FromSeconds(10))));
         Assert.Equal(0, timeline.StateAt(TimeSpan.FromSeconds(10))!.Value.Score.Combo);
 
         // Live, the skipped Don is gone (shown as done) and raises nothing.
-        var live = new TaikoJudgementSession(chart(), Windows, Strong);
+        var live = new TaikoJudgementSession(chart(), Windows);
         var judged = 0;
         live.Judged += _ => judged++;
         live.SkipTo(ms(1_400));
@@ -93,7 +92,7 @@ public sealed class ReviewTimelineTests
     [Fact]
     public void PlayingOnRaisesWhatItPassesAndAJumpRaisesNothing()
     {
-        var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs));
+        var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Inputs));
         var seen = new List<(int Note, bool Strong)>();
         source.Judged += judgement => seen.Add((judgement.NoteIndex, judgement.StrongHitCompleted));
 
@@ -111,7 +110,7 @@ public sealed class ReviewTimelineTests
     [Fact]
     public void PlayingOnSoundsTheHitsPassedOnceEvenAfterJumps()
     {
-        var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, Inputs));
+        var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Inputs));
         var hits = new List<TaikoInputAction>();
         source.Hit += hits.Add;
 

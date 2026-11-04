@@ -100,7 +100,7 @@ public sealed class DanCourseTimelineTests
         foreach (var song in course.Songs)
             replay.Add(TaikoInputAction.LeftDon, song.Zero + TimeSpan.FromSeconds(1));
 
-        var (total, songs, played, _) = PlayRescore.ScoreCourse(exams(10), merged(), course.Split(replay), windows, TimeSpan.FromMilliseconds(30));
+        var (total, songs, played, _) = PlayRescore.ScoreCourse(exams(10), merged(), course.Split(replay), windows);
 
         Assert.Equal(3, played);
         Assert.Equal(3, total.Goods);
@@ -114,7 +114,7 @@ public sealed class DanCourseTimelineTests
         var course = merged();
         var windows = TaikoJudgementWindows.ForCourse(TaikoCourse.Hard);
 
-        var (total, songs, played, level) = PlayRescore.ScoreCourse(exams(1), course, [], windows, TimeSpan.FromMilliseconds(30));
+        var (total, songs, played, level) = PlayRescore.ScoreCourse(exams(1), course, [], windows);
 
         Assert.Equal(1, played);
         Assert.Equal(0, level);
@@ -127,7 +127,7 @@ public sealed class DanCourseTimelineTests
     {
         var seen = new List<(int Song, TimeSpan Time, int Bads)>();
 
-        PlayRescore.ScoreCourse(exams(10), merged(), [], TaikoJudgementWindows.ForCourse(TaikoCourse.Hard), TimeSpan.FromMilliseconds(30),
+        PlayRescore.ScoreCourse(exams(10), merged(), [], TaikoJudgementWindows.ForCourse(TaikoCourse.Hard),
             (song, time, at) => seen.Add((song, time, at.Bads)));
 
         Assert.Equal([0, 1, 2], seen.Select(static row => row.Song));
@@ -139,7 +139,7 @@ public sealed class DanCourseTimelineTests
     public void ACourseWithNoFailurePlaysEverySong()
     {
         var (total, _, played, level) = PlayRescore.ScoreCourse(exams(10), merged(), [],
-            TaikoJudgementWindows.ForCourse(TaikoCourse.Hard), TimeSpan.FromMilliseconds(30));
+            TaikoJudgementWindows.ForCourse(TaikoCourse.Hard));
 
         Assert.Equal(3, played);
         Assert.Equal(3, total.Bads);

@@ -72,13 +72,13 @@ public sealed class ReviewTimeline
     /// [<paramref name="from"/>, <paramref name="until"/>): nothing before or after it is judged.
     /// </summary>
     public static ReviewTimeline Build(PlayableChart chart, TaikoCourse course, TaikoJudgementWindows windows,
-        TimeSpan strongSecondHitWindow, IEnumerable<TaikoReplayInput> inputs, TimeSpan? from = null, TimeSpan? until = null)
+        IEnumerable<TaikoReplayInput> inputs, TimeSpan? from = null, TimeSpan? until = null)
     {
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(inputs);
         ImmutableArray<TaikoReplayInput> played = [.. inputs.Where(input => (from is null || input.Time >= from) && (until is null || input.Time < until))
             .OrderBy(static input => input.Time)];
-        var session = new TaikoJudgementSession(chart, windows, strongSecondHitWindow);
+        var session = new TaikoJudgementSession(chart, windows);
         if (from is { } start)
             session.SkipTo(start);
         var score = new TaikoScore(chart);

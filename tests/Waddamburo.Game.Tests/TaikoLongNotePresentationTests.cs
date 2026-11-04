@@ -139,7 +139,7 @@ public sealed class TaikoLongNotePresentationTests
         [new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), kind, quota)]);
 
     private static TaikoJudgementSession sessionFor(PlayableChart chart) => new(chart,
-        new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)), TimeSpan.Zero);
+        new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)));
 
     // Original synthetic callback movie: each exported callback forwards its name/argument to a recording host.
     private static LumenSceneLayer movie(List<(string, double)> calls)

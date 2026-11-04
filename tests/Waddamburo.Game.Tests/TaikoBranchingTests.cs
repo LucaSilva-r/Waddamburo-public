@@ -7,7 +7,6 @@ public sealed class TaikoBranchingTests
 {
     private static readonly TaikoJudgementWindows Windows = new(
         TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108));
-    private static readonly TimeSpan Strong = TimeSpan.FromMilliseconds(30);
 
     private static TimeSpan s(double value) => TimeSpan.FromSeconds(value);
 
@@ -40,7 +39,7 @@ public sealed class TaikoBranchingTests
     [InlineData(2, ChartBranch.Master, 4)]
     public void GreatsBeforeTheCheckPickTheRouteAndOnlyItsNotesAreJudged(int greats, ChartBranch expected, int judgedNote)
     {
-        var session = new TaikoJudgementSession(chart(), Windows, Strong);
+        var session = new TaikoJudgementSession(chart(), Windows);
         var picked = new List<ChartBranch>();
         session.BranchChecked += (_, route) => picked.Add(route);
         var judged = new List<int>();
@@ -62,7 +61,7 @@ public sealed class TaikoBranchingTests
     [Fact]
     public void AnInputJudgesTheRoutesNoteNotAnotherRoutesAtTheSameTime()
     {
-        var session = new TaikoJudgementSession(chart(), Windows, Strong);
+        var session = new TaikoJudgementSession(chart(), Windows);
         session.SubmitInput(TaikoInputAction.LeftDon, s(0.5));
         session.SubmitInput(TaikoInputAction.LeftDon, s(1));
         session.AdvanceTo(s(4));
@@ -86,7 +85,7 @@ public sealed class TaikoBranchingTests
                 new ChartBranchPoints(1, 1, 0, 0, 1, 1, 0, 0, 0)),
         };
         var session = new TaikoJudgementSession(chart, new TaikoJudgementWindows(TimeSpan.FromMilliseconds(25),
-            TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108)), TimeSpan.FromMilliseconds(30));
+            TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108)));
         var judged = new List<ChartBranchCheck>();
         session.BranchChecked += (check, _) => judged.Add(check);
 
@@ -101,7 +100,7 @@ public sealed class TaikoBranchingTests
     public void AReviewedPlayShowsTheRoutesItsChecksPicked()
     {
         TaikoReplayInput[] inputs = [new(TaikoInputAction.LeftDon, s(0.5)), new(TaikoInputAction.LeftDon, s(1))];
-        var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, Strong, inputs));
+        var source = new ReviewJudgementSource(ReviewTimeline.Build(chart(), TaikoCourse.Oni, Windows, inputs));
         source.Jump(s(1.5));
         Assert.Equal(ChartBranch.Normal, source.Branch);
         Assert.Equal(ChartBranch.Normal, source.BranchAt(s(4.5))); // not checked yet at the playhead
@@ -118,7 +117,7 @@ public sealed class TaikoBranchingTests
         var shown = plain with { Branching = new ChartBranching([new ChartBranchCheck(s(2), s(4), new(0, 0), new(0, 0), new(0, 0))], ChartBranchPoints.Default) { SameNotes = true } };
         Assert.Equal(ChartHash.Compute(plain, TaikoCourse.Oni), ChartHash.Compute(shown, TaikoCourse.Oni));
 
-        var session = new TaikoJudgementSession(shown, Windows, Strong);
+        var session = new TaikoJudgementSession(shown, Windows);
         session.AdvanceTo(s(2));
         Assert.Equal(ChartBranch.Master, session.Branch);
     }

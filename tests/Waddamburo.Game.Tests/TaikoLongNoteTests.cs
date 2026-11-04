@@ -72,6 +72,6 @@ public sealed class TaikoLongNoteTests
             [new ChartScrollPoint(TimeSpan.Zero, 1)], [new ChartEffectPoint(TimeSpan.Zero, false)], [],
             [new PlayableLongNote(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), kind, hits)]);
         return new TaikoJudgementSession(chart, new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80),
-            TimeSpan.FromMilliseconds(95)), TimeSpan.FromMilliseconds(30));
+            TimeSpan.FromMilliseconds(95)));
     }
 }

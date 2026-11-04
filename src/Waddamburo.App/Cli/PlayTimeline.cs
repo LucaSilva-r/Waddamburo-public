@@ -34,7 +34,7 @@ internal static class PlayTimeline
         var windows = courseWindows ?? TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course);
         var replay = TaikoReplay.Decode(play.Replay);
         // As PlayRescore and ReviewTimeline play it: one solo lane, inputs in time order, then past the chart's end.
-        var session = new TaikoJudgementSession(chart, windows, TaikoGameplayPresentation.StrongSecondHitWindow);
+        var session = new TaikoJudgementSession(chart, windows);
         var judged = new TaikoNoteJudgement?[chart.NoteCount];
         var judgedAt = new TimeSpan[chart.NoteCount];
         var longHits = chart.LongNotes.Select(static _ => new List<TimeSpan>()).ToArray();
@@ -69,7 +69,6 @@ internal static class PlayTimeline
             writer.WriteString("hit", result switch
             {
                 TaikoInputResult.Judged => "note",
-                TaikoInputResult.StrongHitCompleted => "strong",
                 TaikoInputResult.LongNoteHit => "roll",
                 TaikoInputResult.BalloonPopped => "pop",
                 TaikoInputResult.RollHitCapped => "capped",

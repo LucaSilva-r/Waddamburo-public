@@ -223,8 +223,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     public static TaikoJudgementWindows WindowsFor(PlayableChart chart, TaikoCourse course) =>
         TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course);
 
-    /// <summary>How soon the second hit of a big note must follow the first.</summary>
-    public static readonly TimeSpan StrongSecondHitWindow = TimeSpan.FromMilliseconds(30);
 
     /// <summary>Each lane's latest judged hit, early or late, for the timing glow.</summary>
     public IEnumerable<TimingMark> TimingMarks => _lanes.Select(static lane => lane.LastTiming).OfType<TimingMark>();
@@ -401,7 +399,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _combo = () => score.Combo;
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
             // Online lanes play alone, as each player's own game plays them.
-            _session = new TaikoJudgementSession(chart, WindowsFor(chart, course), StrongSecondHitWindow,
+            _session = new TaikoJudgementSession(chart, WindowsFor(chart, course),
                 partnerHandNotes: players == 2 && remote is null && relay is null);
             if (review is null && remote is not null)
             {

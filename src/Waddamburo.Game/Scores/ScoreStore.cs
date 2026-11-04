@@ -100,7 +100,7 @@ public sealed record PlayRecord(
     /// The judgement and scoring rules a play was scored under. Bump when they change; older plays
     /// are rescored from their replays (leaderboards may then show only the current version).
     /// </summary>
-    public const int CurrentScoringVersion = 4;
+    public const int CurrentScoringVersion = 5; // 5: a big note hit is always a big hit
 
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 

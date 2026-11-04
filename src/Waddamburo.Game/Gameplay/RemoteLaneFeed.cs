@@ -65,7 +65,7 @@ public sealed class RemoteLaneFeed
             // The other player's data: never back in time, whatever it says.
             var time = input.Time < session.CurrentTime ? session.CurrentTime : input.Time;
             hit?.Invoke(input.Action, time);
-            if (session.SubmitInput(input.Action, time) is not (TaikoInputResult.Judged or TaikoInputResult.StrongHitCompleted))
+            if (session.SubmitInput(input.Action, time) is not TaikoInputResult.Judged)
                 offNote?.Invoke(input.Action);
         }
         var until = known < display ? known : display;

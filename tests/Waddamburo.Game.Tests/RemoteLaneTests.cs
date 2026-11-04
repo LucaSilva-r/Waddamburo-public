@@ -8,7 +8,6 @@ public sealed class RemoteLaneTests
 {
     private static readonly TaikoJudgementWindows Windows = new(
         TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108));
-    private static readonly TimeSpan Strong = TimeSpan.FromMilliseconds(30);
     private static readonly TimeSpan Tick = TimeSpan.FromTicks(TimeSpan.TicksPerSecond / 60);
 
     private static TimeSpan ms(double value) => TimeSpan.FromMilliseconds(value);
@@ -48,7 +47,7 @@ public sealed class RemoteLaneTests
 
     private static List<string> judge(Action<TaikoJudgementSession> run)
     {
-        var session = new TaikoJudgementSession(chart(), Windows, Strong);
+        var session = new TaikoJudgementSession(chart(), Windows);
         var judged = new List<string>();
         // A miss by timeout is judged when the clock passes it, so its offset depends on frame timing, here as in a
         // game: only a hit's offset is the player's.
@@ -123,7 +122,7 @@ public sealed class RemoteLaneTests
     {
         var feed = new RemoteLaneFeed { Delay = ms(100) };
         var missed = 0;
-        var session = new TaikoJudgementSession(chart(), Windows, Strong);
+        var session = new TaikoJudgementSession(chart(), Windows);
         session.Judged += judgement => missed += judgement.Result == TaikoHitResult.Miss ? 1 : 0;
 
         // Nothing heard from them for two seconds past the first note.
@@ -192,7 +191,7 @@ public sealed class RemoteLaneTests
     {
         var inputs = play(5);
         var feed = new RemoteLaneFeed { Delay = TimeSpan.Zero };
-        var shadow = new TaikoJudgementSession(chart(), Windows, Strong);
+        var shadow = new TaikoJudgementSession(chart(), Windows);
         var live = new LiveLaneSource(chart(), shadow, feed);
         var shown = new List<TaikoNoteJudgement>();
         live.Judged += shown.Add;

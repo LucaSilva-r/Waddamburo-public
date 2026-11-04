@@ -249,20 +249,20 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
-    public void StrongHitRequiresTheOtherSideWithinItsOwnWindow()
+    public void ABigNoteIsBigOnOneHitAndASecondHitIsAHitOfItsOwn()
     {
-        var session = createSession(new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon));
+        // Waddamburo's rule: a big note is judged like any note and always scores big; nothing waits for the other hand.
+        var session = createSession(
+            new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.05), PlayableNoteKind.Don));
+        var strong = 0;
+        session.Judged += judgement => strong += judgement.StrongHitCompleted ? 1 : 0;
 
-        Assert.Equal(TaikoInputResult.Judged,
-            session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1)));
-        Assert.Equal(TaikoInputResult.Ignored,
-            session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.010)));
-        Assert.Equal(TaikoInputResult.StrongHitCompleted,
-            session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.020)));
-
-        var judgement = Assert.Single(session.CreateSnapshot());
-        Assert.Equal(TaikoHitResult.Great, judgement.Result);
-        Assert.True(judgement.StrongHitCompleted);
+        Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1)));
+        Assert.True(session.CreateSnapshot()[0].StrongHitCompleted);
+        Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.020)));
+        Assert.Equal(1, strong);
+        Assert.Equal(TaikoHitResult.Great, session.CreateSnapshot()[1].Result);
     }
 
     [Fact]
@@ -307,7 +307,7 @@ public sealed class TaikoJudgementSessionTests
         var chart = new PlayableChart(new ChartKey(song, "chart"), TimeSpan.Zero, TimeSpan.FromSeconds(3), notes,
             [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4)], [new ChartScrollPoint(TimeSpan.Zero, 1)],
             [new ChartEffectPoint(TimeSpan.Zero, false)], [new ChartBarLine(TimeSpan.Zero, true)], [longNote]);
-        return new TaikoJudgementSession(chart, Windows, TimeSpan.FromMilliseconds(30));
+        return new TaikoJudgementSession(chart, Windows);
     }
 
     private static TaikoJudgementSession createSession(bool partner, params PlayableHitObject[] notes)
@@ -322,6 +322,6 @@ public sealed class TaikoJudgementSessionTests
             [new ChartScrollPoint(TimeSpan.Zero, 1)],
             [new ChartEffectPoint(TimeSpan.Zero, false)],
             [new ChartBarLine(TimeSpan.Zero, true)]);
-        return new TaikoJudgementSession(chart, Windows, TimeSpan.FromMilliseconds(30), partner);
+        return new TaikoJudgementSession(chart, Windows, partner);
     }
 }

@@ -58,8 +58,11 @@ above the cabinet's big-note strength limit (default 25, settable from the small
 to 100), with one hand or two. Home versions need both hands. A big note hit normally scores as a
 small note.
 
-**Status: implemented as two hands**, i.e. a second hit on the same colour within 30 ms
-(keyboards have no strength). That is the home rule, and the only one a keyboard can follow.
+**Status: Waddamburo's own rule (scoring version 5): every hit on a big note is a big hit**, one hand
+or two, however hard. Most drums and keyboards report no strength, and asking for both hands favours
+some setups over others, so the same rule applies to everyone. A big note is judged like any note;
+there is no second-hit window, and a second press is an ordinary hit (it may judge the next note).
+Plays scored under earlier versions are rescored from their replays.
 
 ### Rolls and balloons (W2)
 
@@ -125,9 +128,8 @@ From AC15 KATSU-DON to Green, a big Great is **twice the Great score after the G
 (W1): 660, or 780 in Go-Go (390 × 2, not 330 × 2.4 = 790). A big Good is **the Great halved with
 the ones digit dropped, then doubled**: 320, or 380 in Go-Go. This can be 10 below twice the Good.
 
-**Status: implemented for score arithmetic.** The second hit adds the first hit's truncated points
-again. The keyboard's 30 ms second-hit threshold remains a product approximation of the arcade's
-strength-based big-note rule.
+**Status: implemented.** A big note's hit adds its truncated points twice (see Big notes (W2) above:
+every hit is a big hit).
 
 ### Hand notes (手つなぎ音符)
 

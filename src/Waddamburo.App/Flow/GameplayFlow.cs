@@ -827,7 +827,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             var stored = course.Authored.Select(static song => ChartHash.Deserialize(ChartHash.Serialize(song.Chart, song.Course), song.Chart.Key.Song.Source)).ToList();
             var first = stored[0];
             var again = PlayRescore.ScoreCourse(result.Course, DanCourseTimeline.Merge(stored), [.. replays.Select(TaikoReplay.Decode)],
-                Gameplay.TaikoGameplayPresentation.WindowsFor(first.Chart, first.Course), Gameplay.TaikoGameplayPresentation.StrongSecondHitWindow);
+                Gameplay.TaikoGameplayPresentation.WindowsFor(first.Chart, first.Course));
             var same = again.Total == result.Total && again.Level == result.Level && again.SongsPlayed == result.SongsPlayed
                 && again.Songs.SequenceEqual(result.Songs.Select(static song => song.Counts));
             Console.WriteLine(same ? "Dan play rescored the same from its replays."

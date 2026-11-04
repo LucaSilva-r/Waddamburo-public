@@ -206,8 +206,8 @@ awards truncate to tens, so every score ends in zero. The score progression and 
 [Gen 3 scoring explanation](https://taikotime.blogspot.com/2018/08/feature-combo-scoring-visualized.html),
 [advanced scoring rules](https://taikotime.blogspot.com/2010/08/advanced-rules.html),
 and [TJA score mode 2 documentation](https://iepiweidieng.github.io/TJAPlayer3/tja/#scoremode).
-The strong-hit window and fallback estimate remain Waddamburo policies pending
-broader parity validation.
+Big notes always score as big hits (no strong-hit window; see scoring.md), and the fallback
+estimate remains a Waddamburo policy pending broader parity validation.
 
 
 ## Long-note presentation follow-up

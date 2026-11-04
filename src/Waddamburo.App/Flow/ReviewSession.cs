@@ -75,7 +75,7 @@ internal sealed class ReviewSession : IDisposable
     {
         var watch = Stopwatch.StartNew();
         ReviewTimeline[] timelines = [.. _charts.Select((chart, lane) => ReviewTimeline.Build(chart, _courses[lane],
-            TaikoGameplayPresentation.WindowsFor(chart, _courses[lane]), TaikoGameplayPresentation.StrongSecondHitWindow, inputs[lane], from, until))];
+            TaikoGameplayPresentation.WindowsFor(chart, _courses[lane]), inputs[lane], from, until))];
         Console.WriteLine($"Review: baked {timelines.Sum(static timeline => timeline.Events.Length)} events in {watch.Elapsed.TotalMilliseconds:F1} ms.");
         return timelines;
     }

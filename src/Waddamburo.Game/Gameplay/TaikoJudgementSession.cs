@@ -22,7 +22,6 @@ public enum TaikoInputResult
 {
     Ignored,
     Judged,
-    StrongHitCompleted,
     LongNoteHit,
     BalloonPopped,
     /// <summary>A roll, balloon or kusudama hit in a 1/60 s frame that already counted one: taken, not scored.</summary>
@@ -123,7 +122,6 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
 {
     private readonly PlayableChart _chart;
     private readonly TaikoJudgementWindows _windows;
-    private readonly TimeSpan _strongSecondHitWindow;
     private readonly TaikoHitResult?[] _results;
     private readonly TimeSpan?[] _offsets;
     private readonly bool[] _timedOut;
@@ -134,7 +132,6 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private int _nextLongIndex;
     private TimeSpan _currentTime = TimeSpan.MinValue;
     private int _nextNoteIndex;
-    private PendingStrongHit? _pendingStrong;
     private TimeSpan? _lastJudgedInputTime;
     private readonly bool _partnerHandNotes;
     // 譜面分岐: the route picked at each check passed (from its Start), the next check, the points since the last.
@@ -149,22 +146,18 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
 
     /// <param name="chart">The playable chart whose notes are judged.</param>
     /// <param name="windows">The timing windows for Great, Good, and Miss results.</param>
-    /// <param name="strongSecondHitWindow">Maximum time between hits for a strong note.</param>
     /// <param name="partnerHandNotes">Two players: a hand note's strong bonus comes from the partner
     /// (<see cref="TaikoHandNoteLink"/>), not from this player's second hit.</param>
     public TaikoJudgementSession(
         PlayableChart chart,
         TaikoJudgementWindows windows,
-        TimeSpan strongSecondHitWindow,
         bool partnerHandNotes = false)
     {
         _partnerHandNotes = partnerHandNotes;
         ArgumentNullException.ThrowIfNull(chart);
-        ArgumentOutOfRangeException.ThrowIfLessThan(strongSecondHitWindow, TimeSpan.Zero);
         _chart = chart;
         _checks = chart.JudgedChecks;
         _windows = windows;
-        _strongSecondHitWindow = strongSecondHitWindow;
         _results = new TaikoHitResult?[chart.NoteCount];
         _offsets = new TimeSpan?[chart.NoteCount];
         _timedOut = new bool[chart.NoteCount];
@@ -249,7 +242,6 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     {
         ensureMonotonic(time);
         _currentTime = time;
-        expireStrongHit(time);
         var missed = 0;
         while (_nextNoteIndex < _chart.NoteCount
                && time - _chart.HitObjects[_nextNoteIndex].StartTime > _windows.Miss)
@@ -302,8 +294,6 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     public TaikoInputResult SubmitInput(TaikoInputAction action, TimeSpan time)
     {
         AdvanceTo(time);
-        if (tryCompleteStrongHit(action, time))
-            return TaikoInputResult.StrongHitCompleted;
         if (_lastJudgedInputTime == time)
             return TaikoInputResult.Ignored;
 
@@ -352,7 +342,10 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
                 HandNoteHit?.Invoke(judgedIndex);
         }
         else if (result != TaikoHitResult.Miss && hitObject.IsStrong)
-            _pendingStrong = new PendingStrongHit(judgedIndex, action, time);
+            // Waddamburo's rule, the same for everyone: a big note is judged like any note, and a hit is always a big
+            // hit (特良 / 特可), one hand or two, however hard (the arcade asks for strength, home versions for both
+            // hands; most drums can report neither). A second hand's press is a hit of its own, as after any note.
+            CompleteStrongHit(judgedIndex);
         return TaikoInputResult.Judged;
     }
 
@@ -419,31 +412,6 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         return snapshot.MoveToImmutable();
     }
 
-    private bool tryCompleteStrongHit(TaikoInputAction action, TimeSpan time)
-    {
-        if (_pendingStrong is not { } pending
-            || time - pending.FirstInputTime > _strongSecondHitWindow
-            || action == pending.FirstAction
-            || !sameSurface(action, pending.FirstAction))
-        {
-            return false;
-        }
-        _strongHits[pending.NoteIndex] = true;
-        Judged?.Invoke(new TaikoNoteJudgement(pending.NoteIndex, _chart.HitObjects[pending.NoteIndex],
-            _results[pending.NoteIndex], _offsets[pending.NoteIndex], true));
-        _pendingStrong = null;
-        return true;
-    }
-
-    private void expireStrongHit(TimeSpan time)
-    {
-        if (_pendingStrong is { } pending
-            && time - pending.FirstInputTime > _strongSecondHitWindow)
-        {
-            _pendingStrong = null;
-        }
-    }
-
     private void judge(int index, TaikoHitResult result, TimeSpan offset, bool timedOut = false)
     {
         _results[index] = result;
@@ -471,14 +439,6 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private static bool matches(TaikoInputAction action, PlayableNoteKind kind) =>
         isDon(action) == (kind is PlayableNoteKind.Don or PlayableNoteKind.BigDon);
 
-    private static bool sameSurface(TaikoInputAction first, TaikoInputAction second) =>
-        isDon(first) == isDon(second);
-
     private static bool isDon(TaikoInputAction action) =>
         action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon;
-
-    private readonly record struct PendingStrongHit(
-        int NoteIndex,
-        TaikoInputAction FirstAction,
-        TimeSpan FirstInputTime);
 }

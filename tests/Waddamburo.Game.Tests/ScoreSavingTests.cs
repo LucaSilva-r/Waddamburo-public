@@ -83,15 +83,14 @@ public sealed class ScoreSavingTests
         var (chart, course) = ChartHash.Deserialize(ChartHash.Serialize(rescoreChart(), TaikoCourse.Oni), SongSourceKind.Tja);
 
         var result = PlayRescore.Score(chart, course, TaikoPlayOptions.None, null, TaikoReplay.Decode(replay.Encode()),
-            Windows, TimeSpan.FromMilliseconds(30));
+            Windows);
 
         Assert.Equal((1, 1, 2, 2), (result.Great, result.Good, result.Miss, result.MaxCombo));
         // Drumroll hits only (the balloon's 3 are not counted), beside the half-second roll's 30 frames.
         Assert.Equal((30, 30), (result.Rolls, result.RollMax));
-        // 1000 + Good in Go-Go (1000 / 20 * 10 * 1.2) doubled by the second hit, 30 rolls x 120, 2 x 360 + 6000.
+        // 1000 + Good in Go-Go (1000 / 20 * 10 * 1.2) doubled (a big note always scores big), 30 rolls x 120, 2 x 360 + 6000.
         Assert.Equal(1000 + 1200 + 30 * 120 + 2 * 360 + 6000, result.Score);
-        Assert.Equal(PlayRescore.Score(rescoreChart(), course, TaikoPlayOptions.None, null, replay, Windows,
-            TimeSpan.FromMilliseconds(30)), result);
+        Assert.Equal(PlayRescore.Score(rescoreChart(), course, TaikoPlayOptions.None, null, replay, Windows), result);
     }
 
     [Fact]
@@ -109,7 +108,7 @@ public sealed class ScoreSavingTests
     [Fact]
     public void ReplayReproducesTheJudgementAfterEncoding()
     {
-        var played = new TaikoJudgementSession(chart(), Windows, TimeSpan.FromMilliseconds(30));
+        var played = new TaikoJudgementSession(chart(), Windows);
         var replay = new TaikoReplay();
         foreach (var (action, ms) in new[]
         {
@@ -122,7 +121,7 @@ public sealed class ScoreSavingTests
         }
         played.AdvanceTo(TimeSpan.FromSeconds(3));
 
-        var replayed = new TaikoJudgementSession(chart(), Windows, TimeSpan.FromMilliseconds(30));
+        var replayed = new TaikoJudgementSession(chart(), Windows);
         TaikoReplay.Decode(replay.Encode()).Play(replayed);
 
         var actual = replayed.CreateSnapshot();
