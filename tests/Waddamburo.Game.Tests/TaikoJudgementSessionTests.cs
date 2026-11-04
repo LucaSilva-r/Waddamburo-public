@@ -249,9 +249,10 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
-    public void ABigNoteIsBigOnOneHitAndASecondHitIsAHitOfItsOwn()
+    public void ABigNoteIsBigOnOneHitAndTheOtherHandRightAfterIsPartOfIt()
     {
-        // Waddamburo's rule: a big note is judged like any note and always scores big; nothing waits for the other hand.
+        // Waddamburo's rule: a big note is judged like any note and always scores big; the other hand's press within
+        // SecondHandWindow is part of that hit, not an early hit on the next note.
         var session = createSession(
             new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon),
             new PlayableHitObject(TimeSpan.FromSeconds(1.05), PlayableNoteKind.Don));
@@ -260,9 +261,27 @@ public sealed class TaikoJudgementSessionTests
 
         Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1)));
         Assert.True(session.CreateSnapshot()[0].StrongHitCompleted);
-        Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.020)));
+        Assert.Equal(TaikoInputResult.SecondHand, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.020)));
+        Assert.Null(session.CreateSnapshot()[1].Result);
+        Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.05)));
         Assert.Equal(1, strong);
         Assert.Equal(TaikoHitResult.Great, session.CreateSnapshot()[1].Result);
+    }
+
+    [Theory]
+    [InlineData(TaikoInputAction.RightDon, 40)] // the other hand, too late to be part of it
+    [InlineData(TaikoInputAction.LeftDon, 20)]  // the same hand again
+    [InlineData(TaikoInputAction.RightKa, 20)]  // the other colour
+    public void OnlyTheOtherHandOfTheSameColourRightAfterIsPartOfABigHit(TaikoInputAction second, int afterMs)
+    {
+        var session = createSession(
+            new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.05), PlayableNoteKind.Don),
+            new PlayableHitObject(TimeSpan.FromSeconds(1.05), PlayableNoteKind.Ka));
+
+        session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+
+        Assert.NotEqual(TaikoInputResult.SecondHand, session.SubmitInput(second, TimeSpan.FromSeconds(1) + TimeSpan.FromMilliseconds(afterMs)));
     }
 
     [Fact]

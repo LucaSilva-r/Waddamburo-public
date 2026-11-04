@@ -22,6 +22,8 @@ public enum TaikoInputResult
 {
     Ignored,
     Judged,
+    /// <summary>The other hand's press right after a big note's hit: part of that hit, so it judges nothing else.</summary>
+    SecondHand,
     LongNoteHit,
     BalloonPopped,
     /// <summary>A roll, balloon or kusudama hit in a 1/60 s frame that already counted one: taken, not scored.</summary>
@@ -133,6 +135,14 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private TimeSpan _currentTime = TimeSpan.MinValue;
     private int _nextNoteIndex;
     private TimeSpan? _lastJudgedInputTime;
+    // The last big note hit (its hand and time): the other hand's press within SecondHandWindow belongs to it.
+    private (TaikoInputAction Action, TimeSpan Time)? _bigHit;
+
+    /// <summary>
+    /// How soon after a big note's hit the other hand's press (same colour) is taken as part of it rather than a hit
+    /// on the next note: two hands on a big note, or a keyboard's two keys, are one hit.
+    /// </summary>
+    public static readonly TimeSpan SecondHandWindow = TimeSpan.FromMilliseconds(30);
     private readonly bool _partnerHandNotes;
     // 譜面分岐: the route picked at each check passed (from its Start), the next check, the points since the last.
     private readonly List<(TimeSpan Start, ChartBranch Route)> _routes = [];
@@ -294,6 +304,11 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     public TaikoInputResult SubmitInput(TaikoInputAction action, TimeSpan time)
     {
         AdvanceTo(time);
+        if (_bigHit is { } big && time - big.Time <= SecondHandWindow && action != big.Action && isDon(action) == isDon(big.Action))
+        {
+            _bigHit = null;
+            return TaikoInputResult.SecondHand;
+        }
         if (_lastJudgedInputTime == time)
             return TaikoInputResult.Ignored;
 
@@ -344,8 +359,11 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         else if (result != TaikoHitResult.Miss && hitObject.IsStrong)
             // Waddamburo's rule, the same for everyone: a big note is judged like any note, and a hit is always a big
             // hit (特良 / 特可), one hand or two, however hard (the arcade asks for strength, home versions for both
-            // hands; most drums can report neither). A second hand's press is a hit of its own, as after any note.
+            // hands; most drums can report neither). The other hand's press right after is part of it (SecondHand).
+        {
             CompleteStrongHit(judgedIndex);
+            _bigHit = (action, time);
+        }
         return TaikoInputResult.Judged;
     }
 

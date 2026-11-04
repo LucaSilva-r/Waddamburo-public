@@ -69,6 +69,7 @@ internal static class PlayTimeline
             writer.WriteString("hit", result switch
             {
                 TaikoInputResult.Judged => "note",
+                TaikoInputResult.SecondHand => "second-hand",
                 TaikoInputResult.LongNoteHit => "roll",
                 TaikoInputResult.BalloonPopped => "pop",
                 TaikoInputResult.RollHitCapped => "capped",

@@ -60,9 +60,11 @@ small note.
 
 **Status: Waddamburo's own rule (scoring version 5): every hit on a big note is a big hit**, one hand
 or two, however hard. Most drums and keyboards report no strength, and asking for both hands favours
-some setups over others, so the same rule applies to everyone. A big note is judged like any note;
-there is no second-hit window, and a second press is an ordinary hit (it may judge the next note).
-Plays scored under earlier versions are rescored from their replays.
+some setups over others, so the same rule applies to everyone. A big note is judged like any note.
+Since version 6 the other hand's press of the same colour within 30 ms of the hit
+(`TaikoJudgementSession.SecondHandWindow`) is part of it and judges nothing else; in version 5 it was
+an ordinary hit, so hitting a big note with both hands gave the next note an early Bad. Plays scored
+under earlier versions are rescored from their replays.
 
 ### Rolls and balloons (W2)
 
