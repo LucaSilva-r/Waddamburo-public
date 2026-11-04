@@ -5,6 +5,46 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class NotePlacementTests
 {
+    [Theory]
+    [InlineData(60, 1, 237)]
+    [InlineData(120, 1, 474)]
+    [InlineData(180, 1, 711)]
+    [InlineData(240, 1, 948)]
+    [InlineData(120, 0.5, 237)]
+    [InlineData(120, 2, 948)]
+    [InlineData(120, 1.1, 521.4)]
+    [InlineData(120, 0, 0)]
+    [InlineData(120, -1, -474)]
+    public void ScrollSpeedUsesTheMeasuredFourBeatDistance(double bpm, double scroll, double expected)
+    {
+        Assert.Equal(expected, TaikoLumenPresentation.ScrollPixelsPerSecond(bpm, scroll), 8);
+    }
+
+    [Theory]
+    [InlineData(120, 4, 4, 948)]
+    [InlineData(180, 4, 4, 948)]
+    [InlineData(120, 3, 4, 711)]
+    [InlineData(120, 6, 8, 711)]
+    public void MeasureSpacingFollowsItsDurationWithoutRescalingVelocity(double bpm, int numerator, int denominator, double expected)
+    {
+        var duration = 60 / bpm * numerator * 4 / denominator;
+
+        Assert.Equal(expected, duration * TaikoLumenPresentation.ScrollPixelsPerSecond(bpm, 1), 8);
+    }
+
+    [Fact]
+    public void FourBeatsBeginOffscreenAndVisibilityUsesTheCorrectedVelocity()
+    {
+        const float hitX = 413;
+        var speed = TaikoLumenPresentation.ScrollPixelsPerSecond(120, 1);
+        var hitTime = TimeSpan.FromSeconds(10);
+
+        Assert.Equal(1361, hitX + 2 * speed);
+        var (from, until) = TaikoLumenPresentation.VisibleWindow(hitTime, speed, hitX);
+        Assert.InRange(Math.Abs(hitX + (hitTime - from).TotalSeconds * speed - 1380), 0, 0.0001);
+        Assert.InRange(Math.Abs(hitX + (hitTime - until).TotalSeconds * speed + 100), 0, 0.0001);
+    }
+
     [Fact]
     public void ControlPointsAreFoundByTimeTheLastOfATimeWinning()
     {

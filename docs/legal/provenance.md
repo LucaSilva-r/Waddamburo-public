@@ -1,5 +1,17 @@
 # Implementation provenance
 
+Gameplay scroll scaling is independently implemented from the behavioral rule in
+[AioiLight's scroll reference](https://aioilight.space/taiko-no-tatsujin/scroll/)
+(consulted 2026-11-04): each note's own BPM and scroll determine its velocity,
+with 948 stage pixels per four beats at scroll 1. Aggregate measurements of Green
+runtime note trajectories independently corroborate that distance. Target geometry
+is asset-derived; its screen-edge distance is not the scroll calibration.
+OpenTaiko revision `7b832277b79b8c72258c954db8f09cba9d618ca5` was consulted only
+to compare the separation of scroll distance from target position and its different
+960-pixel default; no code, constants, or assets were adapted from it. The original
+implementation and synthetic regressions introduce no dependency. Raw observations
+and private trace details remain outside this repository.
+
 Gameplay Don marker/state selection and fever callbacks were independently checked
 using the public runtime with user-supplied movie data. The tempo integrator,
 motion-state policy, and camera construction are original project choices; no

@@ -229,9 +229,16 @@ public sealed class TaikoLumenPresentation
     private float position(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, ChartBranch? route) =>
         (float)Math.Clamp(_hitX + (noteTime - time).TotalSeconds * pixelsPerSecond(controlTime, route), -100_000, 100_000);
 
-    // Product layout: four beats span the visible lane at scroll 1.
     private double pixelsPerSecond(TimeSpan controlTime, ChartBranch? route) =>
-        _chart.BeatsPerMinuteAt(controlTime, route) / 60 * (1280 - _hitX) / 4 * _chart.ScrollAt(controlTime, route);
+        ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), _chart.ScrollAt(controlTime, route));
+
+    /// <summary>
+    /// Scroll velocity on the 1280x720 stage: four beats at scroll 1 span 948 pixels,
+    /// including the offscreen approach. The hit target's position does not set the speed.
+    /// </summary>
+    // Public reference and independent runtime measurements: docs/development/gameplay-integration.md.
+    public static double ScrollPixelsPerSecond(double beatsPerMinute, double scrollMultiplier) =>
+        beatsPerMinute / 240 * 948 * scrollMultiplier;
 
     // When each note and bar is on the lane, so a frame skips the rest of a chart with one comparison each.
     // ponytail: still a pass over every note, a cursor needs care as scroll changes reorder arrivals.

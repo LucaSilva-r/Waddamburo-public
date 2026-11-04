@@ -71,7 +71,36 @@ Lumen remains unaware of notes, scores, and audio. It exposes named instance
 bounds and child label playback. The game presentation receives semantic layer
 roles, composes background, barlines, notes, then foreground feedback, and calls
 authored UI callbacks. Missing required target geometry/callbacks/states fail
-explicitly. Four beats span the visible lane at scroll 1, a product layout choice.
+explicitly. Scroll distance uses the independently checked scale below.
+
+### Note scroll scale
+
+On the 1280x720 stage, scroll 1 travels **948 pixels per four beats**:
+`pixelsPerSecond = BPM / 240 * 948 * chartScroll * playerSpeed`.
+The player option is already folded into the chart scroll by `TaikoPlayOptions`.
+Each note uses its own hit-time tempo and route scroll; an intervening tempo change
+does not change the speed of an approaching note. Bar lines and long notes use the
+same velocity calculation, as do the cached visibility windows.
+
+[AioiLight's scroll reference](https://aioilight.space/taiko-no-tatsujin/scroll/)
+(consulted 2026-11-04) describes this per-note rule and the 948-pixel distance.
+An independent check of existing Green runtime observations found 947.94–948.08
+pixels per four beats across ten trajectories (2,392 sampled positions at about
+177.598 BPM, scroll 1). This corroborates the published scale; raw observations
+remain private. OpenTaiko separately configures its four-beat distance, rather
+than deriving it from target position, but its default of 960 pixels is not used
+as Green's calibration.
+
+The previous implementation used `1280 - hitX`. With the asset-derived target
+center at x=413, that gave 867 pixels, about 8.5% too slow. The correct approach
+starts at x=1361, beyond the screen edge. The correction is `948 / 867`, about
+1.0934, explaining why the old 1.1x option felt close. At 120 BPM the corrected
+default is 474 pixels/second instead of 433.5. A 3/4 or 6/8 measure spans 711 pixels
+at scroll 1; time signature changes measure spacing, not the four-beat base scale.
+
+Synthetic regressions cover BPM and scroll multipliers, time signatures, the
+offscreen approach, and visibility-window boundaries. This establishes the base
+scale, not full compatibility for unsupported scroll gimmicks.
 
 Stopping a preview now cancels it without scheduling menu Bgm. Menu background
 playback is requested explicitly. Escape during reveal releases the overlay and
