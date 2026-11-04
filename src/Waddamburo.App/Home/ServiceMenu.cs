@@ -138,6 +138,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             }
             _down[pad] = down;
         }
+        // Backspace there clears instead of going back (it may be the BACK button too).
+        if (clearSelected(pulses))
+            return;
         _menu.Tick(pulses, held, escape && _home);
     }
 
@@ -242,11 +245,33 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : ["COIN", "SERVICE"];
 
     // A pad's (0-3) or a button's (4 on, see buttons) inputs on the shown device, by name.
-    private string padValue(int pad) =>
-        ControlBindings.Inputs(pad < 4 ? _settings.Controls[_player * 4 + pad] : _settings.Buttons[buttons[pad - 4]]).Where(token => ControlBindings.OnDevice(token, _device))
-            .Select(ControlBindings.Describe).ToArray() is { Length: > 0 } names
-            // Any number can be bound: the first few, then how many more (the line has room for about four).
-            ? upper(string.Join(" / ", names.Take(4))) + (names.Length > 4 ? $" +{names.Length - 4}" : "") : "NOT SET";
+    // line: a drum pad's second line, its inputs after the first four.
+    private string padValue(int pad, int line = 0)
+    {
+        var names = ControlBindings.Inputs(pad < 4 ? _settings.Controls[_player * 4 + pad] : _settings.Buttons[buttons[pad - 4]])
+            .Where(token => ControlBindings.OnDevice(token, _device)).Select(ControlBindings.Describe).ToArray();
+        if (line == 1)
+            // Controllers and MIDI take any number: past the eighth, how many more.
+            return upper(string.Join(" / ", names.Skip(4).Take(4))) + (names.Length > 8 ? $" +{names.Length - 8}" : "");
+        // A line has room for about four; the buttons have no second line.
+        return names.Length == 0 ? "NOT SET"
+            : upper(string.Join(" / ", names.Take(4))) + (pad >= 4 && names.Length > 4 ? $" +{names.Length - 4}" : "");
+    }
+
+    // DRUM CONTROLS: Backspace or Delete on a pad or button clears its inputs on the shown device. True when it did.
+    private bool clearSelected(SdlKeyboardSnapshot pulses)
+    {
+        var target = _menu.Selection - 2; // as in listening(): the pad rows follow PLAYER and DEVICE, then the buttons
+        if (_menu.Page?.Tag is not Page.Drums || target < 0 || target >= 4 + buttons.Length
+            || !(pulses.IsDown(SdlKeyboardKey.Backspace) || pulses.IsDown(SdlKeyboardKey.Delete)))
+            return false;
+        string kept(string list) => string.Join(", ", ControlBindings.Inputs(list).Where(token => !ControlBindings.OnDevice(token, _device)));
+        set(s => target < 4
+            ? s with { Controls = s.Controls.With(_player * 4 + target, kept(s.Controls[_player * 4 + target])) }
+            : s with { Buttons = s.Buttons.With(buttons[target - 4], kept(s.Buttons[buttons[target - 4]])) });
+        _drum?.Invoke(false);
+        return true;
+    }
 
     private static string folderName(string? path) =>
         path is null ? "NOT SET" : upper(Path.GetFileName(Path.TrimEndingDirectorySeparator(path)));
@@ -268,7 +293,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new("DRUM CONTROLS", Enter: () => open(Page.Drums)),
             new("SONG LIBRARIES", Enter: () => open(Page.Libraries)),
             .. _home ? (Row[])[] : [new("BOOKKEEPING", Enter: () => open(Page.Bookkeeping))],
-            new("OTHERS", Enter: () => open(Page.Others)),
+            new("OTHERS", Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
             new("EXIT", Gap: true, Enter: close),
             .. _home ? (Row[])[] :
             [
@@ -379,9 +404,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         [
             new("PLAYER", 400, () => $"{{{_player + 1}P}}", 640, _ => _player = 1 - _player, () => true),
             new("DEVICE", 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, 2), () => true),
-            .. PadNames.Concat(buttonNames).Select((name, pad) => new Row(name, 400,
+            // A drum pad takes up to eight keys: four on its row, the rest on the line under it (kept even when empty,
+            // so the page doesn't move as keys come and go).
+            .. PadNames.Concat(buttonNames).SelectMany((name, pad) => (Row[])[new Row(name, 400,
                 () => _listening && _menu.Selection == pad + 2 ? (_tick / 18 % 2 == 0 ? Prompts[_device] : "") : padValue(pad), 640,
-                Enter: () => listen(0), Hint: "ENTER, THEN PRESS THE INPUT FOR THIS PAD (ESCAPE CANCELS). IT JOINS THE PAD'S OTHERS.")),
+                Enter: () => listen(0), Hint: "ENTER, THEN PRESS THE INPUT FOR THIS PAD (ESCAPE CANCELS). IT JOINS THE PAD'S OTHERS. BACKSPACE OR DELETE CLEARS IT."),
+                .. pad < 4 ? [new Row("", 400, () => padValue(pad, line: 1), 640)] : (Row[])[]]),
             new("SET UP ALL PADS", 400, Gap: true, Enter: () => { _menu.Selection = 2; listen(4); },
                 Hint: "ASKS FOR THE FOUR PADS IN TURN, REPLACING THEIR INPUTS ON THIS DEVICE."),
             new("RESET TO DEFAULT", 400, Enter: () => set(s => s with { Controls = ControlBindings.Reset(s.Controls, _player, _device) }),

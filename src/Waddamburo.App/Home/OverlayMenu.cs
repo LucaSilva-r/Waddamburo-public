@@ -268,7 +268,10 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                 var row = rows[index];
                 if (row.Gap && index > 0)
                     y += spacing;
-                var colour = index == selected && (Editing || red) ? Red : row.Cyan ? Cyan : White;
+                // EXIT rows are red (blinking white when selected); cyan rows are information or, as OTHERS, the language.
+                // ponytail: EXIT known by its label; a row flag if a page names its way out otherwise.
+                var exit = row.Label == "EXIT";
+                var colour = index == selected && (Editing || red) ? (exit ? White : Red) : exit ? Red : row.Cyan ? Cyan : White;
                 // A line wider than the block (the sound test's note) is centred on its own.
                 if (values[index] is null && !row.Selectable && width(row.Label) > blockWidth)
                     centred(quads, row.Label, y, colour);
@@ -291,14 +294,14 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             {
                 var lines = wrapped(hint, 100);
                 for (var line = 0; line < Math.Min(2, lines.Count); line++)
-                    centred(quads, lines[line], 590 + line * 26, White);
+                    centred(quads, lines[line], 616 + line * 26, White); // a free line under the rows (the EXIT)
             }
         }
         if (page.Footer?.Invoke() is { } footerLines)
             for (var line = 0; line < footerLines.Length; line++)
                 centred(quads, footerLines[line].Text, 690 - (footerLines.Length - 1 - line) * 30, footerLines[line].Colour);
         else if (page.Legend)
-            centred(quads, footer(page), 660, White);
+            centred(quads, footer(page), 690, White); // under the hint's two lines
         return quads;
     }
 
