@@ -23,6 +23,7 @@ internal sealed class BootChecks : IDisposable
     {
         public string Name { get; } = name;
         public bool? Ok { get; set; } // null: under way
+        public string? Why { get; set; } // NG's reason, after it
     }
 
     private readonly SdlApplication _application;
@@ -48,7 +49,7 @@ internal sealed class BootChecks : IDisposable
         _menu.Open(new OverlayPage(static () => "", () => [.. _checks.Select(check => new OverlayRow(check.Name, Value: () => check.Ok switch
             {
                 true => "{OK}",
-                false => "{NG}",
+                false => check.Why is null ? "{NG}" : "{NG}  " + OverlayMenu.upper(check.Why),
                 // The cabinet's cursor: an underscore blinking where the result will be.
                 null => Environment.TickCount64 / 300 % 2 == 0 ? "{_}" : "",
             }, Colour: () => check.Ok == false ? OverlayMenu.Red : check.Ok == true ? OverlayMenu.Green : OverlayMenu.White))],
@@ -74,12 +75,20 @@ internal sealed class BootChecks : IDisposable
             last.Ok = true;
     }
 
-    /// <summary>A part that isn't fatal is NG (the game goes on without it); <paramref name="why"/> goes to the log.</summary>
-    public void Warn(string why)
+    /// <summary>
+    /// The last part is NG but not fatal (the game goes on without it): <paramref name="why"/> shows after it, briefly;
+    /// <paramref name="details"/> go to the log.
+    /// </summary>
+    public void Warn(string why, IEnumerable<string>? details = null)
     {
-        if (_checks is [.., { Ok: null } last])
+        if (_checks is [.., var last])
+        {
             last.Ok = false;
+            last.Why = why;
+        }
         Console.Error.WriteLine($"Warning BOOT: {why}");
+        foreach (var detail in details ?? [])
+            Console.Error.WriteLine($"Warning BOOT:   {detail}");
         present();
     }
 
@@ -87,6 +96,12 @@ internal sealed class BootChecks : IDisposable
     public T Background<T>(string name, Func<T> work)
     {
         Begin(name);
+        return Await(work);
+    }
+
+    /// <summary>The part under way goes on on a background thread while the screen keeps drawing; its result once done.</summary>
+    public T Await<T>(Func<T> work)
+    {
         var task = Task.Run(work);
         while (!task.IsCompleted)
         {

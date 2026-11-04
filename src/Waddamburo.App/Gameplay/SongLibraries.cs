@@ -28,22 +28,31 @@ internal sealed class SongLibraries : IDisposable
 
     public SongCatalogSnapshot Snapshot { get; }
 
+    /// <summary>The libraries left out (a folder set that has no songs, a Nijiiro installation that can't play): for the boot's NG.</summary>
+    public List<string> Problems { get; } = [];
+
     /// <summary>Scans the libraries; throws when none lists a song. <paramref name="dataRoot"/>: the game's data folder.</summary>
     public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder)
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
+        List<string> problems = [];
+        if (arcade.Home && arcade.TjaFolder is not null && !Directory.Exists(tja))
+            problems.Add($"TJA folder not found: {tja}");
+        if (arcade.Home && !string.IsNullOrEmpty(arcade.OsuFolder) && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is null)
+            problems.Add($"osu!lazer data not found: {arcade.OsuFolder}");
         var libraries = new SongLibraries([
-            .. stock(dataRoot, arcade),
+            .. stock(dataRoot, arcade, problems),
             // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
             // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
             .. (arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(tja)
                 ? [new TjaCatalogProvider(tja)] : Array.Empty<ISongCatalogProvider>(),
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
-            .. arcade.Home ? nijiiro(arcade) : [],
+            .. arcade.Home ? nijiiro(arcade, problems) : [],
             // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
             .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
                 ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
         ]);
+        libraries.Problems.AddRange(problems);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)
             Console.WriteLine(status.Succeeded
@@ -62,10 +71,10 @@ internal sealed class SongLibraries : IDisposable
     }
 
     // The game's own songs, then (home mode) other releases' that it lacks, newest release first.
-    private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade)
+    private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<string> problems)
     {
         var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
-            .Select(static folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder))
+            .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
             .OfType<string>()
             .Where(root => !string.Equals(root, Path.GetFullPath(dataRoot), StringComparison.Ordinal))
             .Distinct(StringComparer.Ordinal)
@@ -82,11 +91,11 @@ internal sealed class SongLibraries : IDisposable
     }
 
     // Nijiiro installations that can play, the newest (highest song number) first.
-    private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade)
+    private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade, List<string> problems)
     {
         var installs = ArcadeSettings.Folders(arcade.NijiiroFolder)
             .Select(static folder => new NijiiroCatalogProvider(folder))
-            .Where(usable)
+            .Where(installation => usable(installation, problems))
             .OrderByDescending(static installation => installation.NewestSong)
             .ToList();
         foreach (var installation in installs)
@@ -99,9 +108,10 @@ internal sealed class SongLibraries : IDisposable
         };
     }
 
-    private static string? warnMissing(string folder)
+    private static string? warnMissing(string folder, List<string> problems)
     {
         Console.Error.WriteLine($"Game data left out: no songs in {folder}.");
+        problems.Add($"No game songs in {folder}");
         return null;
     }
 
@@ -115,11 +125,12 @@ internal sealed class SongLibraries : IDisposable
     public static string? VgmstreamProblem => VgmstreamCli.IsInstalled ? null
         : Strings.T("library.no_vgmstream");
 
-    private static bool usable(NijiiroCatalogProvider installation)
+    private static bool usable(NijiiroCatalogProvider installation, List<string> problems)
     {
         if (NijiiroProblem(installation) is not { } problem)
             return true;
         Console.Error.WriteLine($"Nijiiro library left out: {problem}");
+        problems.Add($"Nijiiro {installation.Root}: {problem}");
         return false;
     }
 

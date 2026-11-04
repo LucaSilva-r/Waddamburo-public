@@ -232,13 +232,20 @@ internal sealed class GameShell : IDisposable
     }
 
     /// <summary>Applies the drum pads' keys, buttons and MIDI notes (<paramref name="warn"/>: report the ones not understood).</summary>
-    public void ApplyControls(bool warn = false)
+    /// <returns>The bindings not understood (reported only with <paramref name="warn"/>).</returns>
+    public List<string> ApplyControls(bool warn = false)
     {
+        List<string> problems = [];
         GameActions.Buttons = Arcade.Buttons;
         Application.Bindings = SdlInputBindings.Parse(Arcade.Controls, Arcade.Buttons,
-            warn ? problem => Console.Error.WriteLine($"Warning CONTROLS: {ArcadeSettings.FileName}: {problem}.") : null);
+            warn ? problem =>
+            {
+                problems.Add(problem);
+                Console.Error.WriteLine($"Warning CONTROLS: {ArcadeSettings.FileName}: {problem}.");
+            } : null);
         Application.PadsAsGamepad = !Arcade.PadMenusAsDrum;
         Application.MouseControls = Arcade.MouseControls;
+        return problems;
     }
 
     // In the menus the arrows and Enter also work the drum: Left/Up and Right/Down are its rims, Enter its
@@ -362,7 +369,30 @@ internal sealed class GameShell : IDisposable
         {
             _boot.Begin("NETWORK SERVICE");
             Sync = new ScoreSync(Arcade, options.ScoresPath, Accounts);
+            // Not fatal: the game plays offline (scores wait for the server). Its first answer, up to 3 s.
+            if (Sync.Health is { } health)
+            {
+                var link = _boot.Await(() =>
+                {
+                    for (var waited = 0; health.State == Online.LinkState.Checking && waited < 3000; waited += 50)
+                        Thread.Sleep(50);
+                    return health.State;
+                });
+                if (link != Online.LinkState.Online)
+                    _boot.Warn(link switch
+                    {
+                        Online.LinkState.Checking or Online.LinkState.Timeout => "No answer",
+                        Online.LinkState.NoInternet => "No internet",
+                        Online.LinkState.Unreachable => "Server unreachable",
+                        Online.LinkState.ServerError => $"Server error {health.StatusCode}",
+                        Online.LinkState.NoToken => "No cabinet token",
+                        _ => "Cabinet token refused",
+                    });
+            }
             _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot));
+            // Not fatal: the libraries that load are listed (the settings say what's wrong with the others).
+            if (_libraries.Problems is { Count: > 0 } problems)
+                _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out", problems);
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
@@ -375,7 +405,8 @@ internal sealed class GameShell : IDisposable
                 ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
 
             _boot.Begin("I/O");
-            ApplyControls(warn: true);
+            if (ApplyControls(warn: true) is { Count: > 0 } controls)
+                _boot.Warn(controls.Count == 1 ? "Binding not understood" : $"{controls.Count} bindings not understood", controls);
             _boot.Begin("DON-CHAN");
             DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
             Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
