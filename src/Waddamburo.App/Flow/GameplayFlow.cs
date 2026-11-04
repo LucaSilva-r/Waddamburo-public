@@ -676,7 +676,16 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 [LumenHostValue.FromNumber(Shell.Hosts.TwoPlayers ? 2 : Shell.Hosts.PlayerSide)]);
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
         if (input.Escape && !Shell.Arcade.Home || _shutterStartTick >= 0 && Shell.Tick - _shutterStartTick >= 70)
+        {
+            // An abandoned song gives its stage back: Song Select counts it again when the next one starts (#21).
+            if (input.Escape && !Shell.Arcade.Home && Shell.SongsPlayed > 0)
+            {
+                var tutorialSeen = Shell.Hosts.TutorialSeen; // back at 0 would offer the tutorial again
+                Shell.SongsPlayed--;
+                Shell.Hosts.TutorialSeen = tutorialSeen;
+            }
             end(finished: !input.Escape || Shell.Arcade.Home);
+        }
     }
 
     // A course's next song: its music, on the course's clock, from under its card.
