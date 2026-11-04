@@ -7,6 +7,9 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 
+// The normal boot's start (the game folder, its settings, the update check), before the game opens its window: a
+// failure there shows the error screen in a window of its own (people launch the game without a console).
+var startingUp = false;
 try
 {
     // TaikOnline's scorer: stdin to stdout, before anything that touches the console, updates or game data.
@@ -106,6 +109,7 @@ try
         if (seekFrame is not null || !callbackInvocations.IsEmpty)
             throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
+        startingUp = screenshotPath is null && frameLimit is null && tickLimit is null;
         var layout = GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
         ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
         Console.WriteLine($"Game data: {layout.Root}");
@@ -137,6 +141,8 @@ try
         Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
             : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "
                 + $"{arcade.SongsPerSession} songs per session).");
+        // From here the tools report on the console, and the game shows its own errors (BootChecks, CrashScreen).
+        startingUp = false;
         // Fills the texture upscale cache ahead of play, with no game window (see TextureCacheBuilder).
         if (args.FirstOrDefault(static arg => arg.StartsWith("--upscale-textures", StringComparison.Ordinal)) is { } upscale)
             return TextureCacheBuilder.Run(layout.UpscaleCache(arcade.CacheFolder), layout.LumenRoot, upscale.Split('=') is [_, var count]
@@ -339,6 +345,12 @@ try
 
 catch (Exception exception)
 {
+    if (startingUp)
+    {
+        Console.Error.WriteLine(exception.Message);
+        if (CrashScreen.ShowAlone(exception, ReleaseConsole.WriteCrashFile(exception)))
+            return 1;
+    }
     ReleaseConsole.Fail(exception);
     return 1;
 }

@@ -26,13 +26,19 @@ internal sealed class BootChecks : IDisposable
     }
 
     private readonly SdlApplication _application;
+    private readonly string _fontPath;
     private readonly OverlayMenu _menu;
     private readonly List<Check> _checks = [];
     private readonly (string Text, RenderColor Colour)[] _footer;
 
-    public BootChecks(SdlApplication application, string fontPath, string? release)
+    // Nobody at the window (a scripted run): a failure is thrown on, not waited on.
+    private readonly bool _interactive;
+
+    public BootChecks(SdlApplication application, string fontPath, string? release, bool interactive = true)
     {
+        _interactive = interactive;
         _application = application;
+        _fontPath = fontPath;
         _menu = new OverlayMenu(application, fontPath);
         _footer =
         [
@@ -94,8 +100,9 @@ internal sealed class BootChecks : IDisposable
     }
 
     /// <summary>
-    /// The part under way failed: NG, then the error screen until the window is closed or Escape is pressed (the
-    /// cabinet waits for its operator). Always ends with <see cref="BootClosedException"/>.
+    /// The part under way failed: NG, then the error screen (<see cref="CrashScreen"/>) until the window is closed or
+    /// Escape is pressed (the cabinet waits for its operator). Then the exception to throw: a
+    /// <see cref="BootClosedException"/>, or in a scripted run (nobody at the window) the failure itself.
     /// </summary>
     public Exception Fail(Exception exception)
     {
@@ -103,22 +110,12 @@ internal sealed class BootChecks : IDisposable
         if (failed >= 0)
             _checks[failed].Ok = false;
         var name = failed >= 0 ? _checks[failed].Name : "SYSTEM";
-        var log = ReleaseConsole.WriteCrashFile(exception);
         Console.Error.WriteLine($"Boot failed at {name}: {exception}");
+        if (!_interactive)
+            return exception;
+        var log = ReleaseConsole.WriteCrashFile(exception);
         // Its code: the part's place in the startup, as the cabinet numbers its errors (22-2 ...).
-        var code = $"{Math.Max(failed, 0) + 1:00}-1";
-        var japanese = Strings.Language == "ja";
-        var page = new OverlayPage(() => $"{code} {name} ERROR", static () => [], Centred: true, Legend: false,
-            Body: () =>
-            [
-                (japanese ? "エラーが発生しています。" : "An error has occurred.", OverlayMenu.Red),
-                (exception.Message, OverlayMenu.White),
-                (log is null ? "" : (japanese ? "ログ: " : "Log: ") + log, OverlayMenu.White),
-                (japanese ? "ウィンドウを閉じるか、Escapeで終了します。" : "Close the window or press Escape to quit.", OverlayMenu.White),
-            ], Footer: () => _footer);
-        _menu.Open(page, home: false);
-        while (_application.PumpAndPresent(_menu.Frame(), out var escape) && !escape)
-            Thread.Sleep(15);
+        CrashScreen.Show(_application, _fontPath, $"{Math.Max(failed, 0) + 1:00}-1", name, exception, log, _footer);
         var closed = new BootClosedException();
         closed.Data[FailedKey] = true;
         return closed;

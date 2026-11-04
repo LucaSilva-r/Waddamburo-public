@@ -289,9 +289,10 @@ internal sealed class GameShell : IDisposable
 
     public static int Run(GameOptions options)
     {
+        GameShell? shell = null;
         try
         {
-            using var shell = new GameShell(options);
+            shell = new GameShell(options);
             return shell.run();
         }
         // The window closed while the game loaded, or after its error screen (BootChecks.Fail).
@@ -299,7 +300,31 @@ internal sealed class GameShell : IDisposable
         {
             return closed.Data.Contains(BootChecks.FailedKey) ? 1 : 0;
         }
+        // A crash while the game runs: everything stops and the error screen takes the window, as a cabinet's would
+        // (scripted runs, screenshots or a tick or frame limit, fail as before rather than wait on it).
+        catch (Exception exception) when (shell is { Interactive: true } running)
+        {
+            running.crashed(exception);
+            return 1;
+        }
+        finally
+        {
+            shell?.Dispose();
+        }
     }
+
+    // A person is at the window (no screenshot, tick or frame limit): a crash can wait on its error screen.
+    private bool Interactive => !Headless && Options.TickLimit is null && Options.FrameLimit is null;
+
+    private void crashed(Exception exception)
+    {
+        Audio?.Mixer.StopAll();
+        var log = ReleaseConsole.WriteCrashFile(exception);
+        Console.Error.WriteLine($"Crash: {exception}");
+        CrashScreen.Show(Application, Options.ServiceFontPath ?? Options.FontPath, "99-1", "GAME", exception, log);
+    }
+
+    private readonly int _crashAt = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_CRASH_AT"), out var crashAt) ? crashAt : -1;
 
     // The startup's check screen, until the attract (or the scene asked for) shows.
     private BootChecks? _boot;
@@ -331,7 +356,8 @@ internal sealed class GameShell : IDisposable
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"Renderer: {Application.GpuDriver}");
-        _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, Cli.GameDataLayout.ReleaseOf(dataRoot).Name);
+        _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, Cli.GameDataLayout.ReleaseOf(dataRoot).Name,
+            interactive: Interactive);
         try
         {
             _boot.Begin("NETWORK SERVICE");
@@ -729,6 +755,9 @@ internal sealed class GameShell : IDisposable
     private void tick(SdlKeyboardSnapshot keyboard)
     {
         Tick++;
+        // Diagnostic: WADDAMBURO_CRASH_AT=<tick> crashes the game there, to see its error screen.
+        if (_crashAt == Tick)
+            throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
         Book.PowerOnTicks++;
         if (_gameplay.Playing)
