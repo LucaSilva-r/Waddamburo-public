@@ -300,7 +300,8 @@ internal sealed class GameShell : IDisposable
         try
         {
             shell = new GameShell(options);
-            return shell.run();
+            shell.run(); // its frame count is for the profiler, not the exit code
+            return 0;
         }
         // The window closed while the game loaded, or after its error screen (BootChecks.Fail).
         catch (BootClosedException closed)
