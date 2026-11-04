@@ -1,12 +1,7 @@
-using Waddamburo.App.Flow;
 using System.Diagnostics;
 using System.Globalization;
-using Waddamburo.App.Gameplay;
-using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
-using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Providers.OsuLazer;
 using Waddamburo.Providers.Stock;
 using static Waddamburo.App.Strings;
 
@@ -25,16 +20,6 @@ internal enum HomeMenuAction
     Title,
     /// <summary>Leave the online room, back to the usual Song Select.</summary>
     LeaveRoom,
-    /// <summary>Open the folder picker for the custom TJA library.</summary>
-    PickTjaFolder,
-    /// <summary>Open the folder picker for another release's game data or a Nijiiro installation.</summary>
-    PickOfficialFolder,
-    /// <summary>Open the Song Libraries page.</summary>
-    SongLibraries,
-    /// <summary>Forget the library's chart hashes and work them out again.</summary>
-    RehashLibrary,
-    /// <summary>Open the folder picker for the osu!lazer data folder.</summary>
-    PickOsuFolder,
     /// <summary>Start upscaling every texture the game uses (the bake page shows it).</summary>
     BakeTextures,
     /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
@@ -43,34 +28,18 @@ internal enum HomeMenuAction
     Calibrate,
     /// <summary>The calibration page closed (saved or not): its sound stops.</summary>
     EndCalibration,
-    /// <summary>Open the drum controls page (this and the next two are done by the menu itself).</summary>
-    Controls,
-    /// <summary>Ask for each of the player's pads in turn on the chosen device.</summary>
-    BindAllPads,
-    /// <summary>The player's pads on the chosen device back to their defaults.</summary>
-    ResetControls,
-    /// <summary>Open the button guide (done by the menu itself).</summary>
-    ButtonGuide,
-    /// <summary>Open the buttons' bindings page (done by the menu itself).</summary>
-    Buttons,
-    /// <summary>The buttons on the chosen device back to their defaults.</summary>
-    ResetButtons,
+    /// <summary>Open the settings overlay (the service menu's home pages) over the pause choices.</summary>
+    Settings,
 }
 
 /// <summary>
-/// Home mode's Escape menu: the pause choices (gameplay) or the session choices (entry, Song Select),
-/// and a settings page. Rims or Up/Down move, centre or Enter picks; on a setting, centre starts
-/// editing and the rims (or Left/Right at any time) change it: by 1, or by 5 then 10 when pressed
-/// quickly again and again. Each move plays a Ka, each pick a Don. The drum controls have their own
-/// page: one player's four pads on one device (keyboard, controller, MIDI) at a time.
+/// Home mode's Escape menu, behind the overlay that draws it (<see cref="OverlayMenu"/>): which choices there are (a
+/// song's pause, the entry's and Song Select's, the attract's, online) and what each does (<see cref="Pick"/>,
+/// <see cref="Back"/>), the restart and report prompts shown in their place, the texture bake's and the calibration's
+/// pages; and the settings' definitions (<see cref="Sections"/>) that the settings overlay shows.
 /// </summary>
-/// <remarks><paramref name="cachedTextures"/>: Textures in the upscale cache; null when upscaling is unavailable.</remarks>
-internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> apply, Action save, Action<bool> drum,
-    string defaultTjaFolder, Func<int?> cachedTextures, SdlApplication input)
+internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> apply, Action save, Action<bool> drum)
 {
-    // Presses closer together than this keep a streak going; its length picks the step.
-    private static readonly TimeSpan StreakGap = TimeSpan.FromMilliseconds(200);
-
     private sealed record Setting(string Label, Func<ArcadeSettings, int> Get, Func<ArcadeSettings, int, ArcadeSettings> Set,
         Func<int, int, int> Step, int Minimum, Func<int, string> Format, int Maximum, AudioBus? Bus = null, string Hint = "")
     {
@@ -78,30 +47,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         public Func<ArcadeSettings, string>? FormatFor { get; init; }
     }
 
-    /// <summary>
-    /// A song library the player points at a folder (picked in the system's folder dialog). With
-    /// <paramref name="Added"/>: one of several official installs added to the library, which picking removes.
-    /// </summary>
-    private sealed record Library(string Label, Func<ArcadeSettings, string?> Get, HomeMenuAction Pick, SongSourceKind Kind,
-        string? Added = null);
-
-    /// <summary>A row that starts something (the texture bake, the audio calibration).</summary>
-    private sealed record Command(string Label, HomeMenuAction Action, string Hint);
-
-    /// <summary>
-    /// A drum pad's inputs on the controls page (Pad: 0-3 of the chosen player), or with
-    /// <paramref name="Button"/> a button's on the buttons page (Pad: its index in ArcadeSettings.Buttons).
-    /// </summary>
-    private sealed record Binding(string Label, int Pad, bool Button = false, string? Hint = null);
-
-    // One settings row: a section header, a setting, a song library, a command, a drum pad, or Back (all null).
-    // Shown: whether the row applies to the current settings (hidden rows are skipped); null = always.
-    private sealed record Row(string? Header = null, Setting? Setting = null, Library? Library = null, Command? Command = null,
-        Func<ArcadeSettings, bool>? Shown = null, Binding? Binding = null, Guide? Guide = null);
-
-    /// <summary>A button guide line: what it does, and its keyboard · Tatacon · gamepad buttons.</summary>
-    private sealed record Guide(string Label, string Keys);
-
+    // One settings row: a section header or a setting; Shown: whether it applies to the current settings (null: always).
+    private sealed record Row(string? Header = null, Setting? Setting = null, Func<ArcadeSettings, bool>? Shown = null);
 
     // Background upscaling may take all threads but one (the game needs its own).
     private static readonly int UpscaleThreadsMaximum = Math.Max(1, Environment.ProcessorCount - 1);
@@ -146,7 +93,6 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new(T("settings.title_language"), static s => s.EnglishTitles ? 0 : 1, static (s, v) => s with { EnglishTitles = v == 0 },
             static (value, _) => 1 - value, 0, static value => Name(value == 0 ? "en" : "ja"), 1, Hint: T("settings.title_language.hint"))),
         new(T("section.songs")),
-        new(Command: new(T("settings.song_libraries"), HomeMenuAction.SongLibraries, T("settings.song_libraries.hint"))),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
         new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
@@ -184,7 +130,6 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: volume("settings.menu_volume", static s => s.MenuVolume, static (s, v) => s with { MenuVolume = v }, AudioBus.Bgm)),
         new(Setting: volume("settings.attract_volume", static s => s.AttractVolume, static (s, v) => s with { AttractVolume = v }, AudioBus.Bgm)),
         new(T("section.timing")),
-        new(Command: new(T("settings.calibrate"), HomeMenuAction.Calibrate, T("settings.calibrate.hint"))),
         new(Setting: offset("settings.audio_offset", static s => s.AudioOffsetMs, static (s, v) => s with { AudioOffsetMs = v })),
         new(Setting: offset("settings.input_offset", static s => s.InputOffsetMs, static (s, v) => s with { InputOffsetMs = v })),
         new(Setting: new(T("settings.timing_indicator"), static s => (int)s.TimingIndicator,
@@ -196,7 +141,6 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static value => value == 0 ? T("value.off") : T("settings.drum_debounce.value", value, 2000 / value), 100,
             Hint: T("settings.drum_debounce.hint"))),
         new(T("section.controls")),
-        new(Command: new(T("settings.drum_controls"), HomeMenuAction.Controls, T("settings.drum_controls.hint"))),
         new(T("section.sound")),
         new(Setting: toggle("settings.stereo_panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v })),
         new(Setting: toggle("settings.mute_in_background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v })),
@@ -253,7 +197,6 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new(T("settings.long_titles"), static s => s.SquashTitles ? 1 : 0, static (s, v) => s with { SquashTitles = v != 0 },
             static (value, _) => 1 - value, 0, static value => T(value != 0 ? "settings.long_titles.squash" : "settings.long_titles.shrink"), 1,
             Hint: T("settings.long_titles.hint"))),
-        new(Command: new(T("settings.bake"), HomeMenuAction.BakeTextures, T("settings.bake.hint"))),
         new(),
     ];
 
@@ -286,62 +229,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         return result;
     }
 
-    // The Song Libraries page: the custom libraries, then every official install added to the game's own songs.
-    private bool _librariesPage;
+    /// <summary>The buttons beside the drum's label and hint keys, in ArcadeSettings.Buttons order (the coin switches after).</summary>
+    public static IReadOnlyList<(string Label, string Hint)> ButtonLabels => ButtonNames;
 
-    private Row[] libraryRows =>
-    [
-        new(Library: new(T("library.tja"), static s => s.TjaFolder, HomeMenuAction.PickTjaFolder, SongSourceKind.Tja)),
-        new(Library: new(T("library.osu"), static s => s.OsuFolder, HomeMenuAction.PickOsuFolder, SongSourceKind.OsuLazer)),
-        new(T("library.official")),
-        .. ArcadeSettings.Folders(get().StockFolders).Select(folder => new Row(Library: new(
-            Cli.GameDataLayout.ReleaseOf(StockCatalogProvider.FindDataRoot(folder) ?? folder).Name ?? T("library.release"),
-            _ => folder, HomeMenuAction.None, SongSourceKind.Stock, folder))),
-        .. ArcadeSettings.Folders(get().NijiiroFolder).Select(folder => new Row(Library: new(
-            T("library.nijiiro"), _ => folder, HomeMenuAction.None, SongSourceKind.Nijiiro, folder))),
-        new(Command: new(T("library.add"), HomeMenuAction.PickOfficialFolder, T("library.add.hint"))),
-        new(T("library.maintenance")),
-        new(Command: new(T("library.rehash"), HomeMenuAction.RehashLibrary, T("library.rehash.hint"))),
-        new(),
-    ];
-
-    // The controls page: one player's pads on one kind of device at a time.
-    private static readonly string[] Devices = ["controls.device.keyboard", "controls.device.controller", "controls.device.midi"];
-    private static readonly string[] Prompts = ["controls.prompt.keyboard", "controls.prompt.controller", "controls.prompt.midi"];
-    // A pad takes two keyboard keys at most (controllers and MIDI: any number).
-    private const int MaximumKeys = 2;
-    private bool _controlsPage;
-    private int _player, _device;
-    // Pads still to ask for in Set Up All Pads, the selected one included; 0: one pad was picked.
-    private int _guided;
-    private Row[]? _controlRows;
-
-    private Row[] controlRows => _controlRows ??=
-    [
-        new(Setting: new(T("controls.player"), _ => _player, (s, v) => { _player = v; return s; }, static (value, _) => 1 - value, 0,
-            static value => value == 0 ? "1" : "2", 1, Hint: T("controls.player.hint"))),
-        new(Setting: new(T("controls.device"), _ => _device, (s, v) => { _device = v; return s; },
-            static (value, step) => value + Math.Sign(step), 0, static value => T(Devices[value]), Devices.Length - 1,
-            Hint: T("controls.device.hint"))),
-        new(Shown: _ => _device == 1, Setting: new(T("controls.in_menus"), static s => s.PadMenusAsDrum ? 1 : 0,
-            static (s, v) => s with { PadMenusAsDrum = v != 0 }, static (value, _) => 1 - value, 0,
-            static value => T(value != 0 ? "controls.in_menus.drum" : "controls.in_menus.gamepad"), 1,
-            Hint: T("controls.in_menus.hint"))),
-        new(T("controls.pads")),
-        new(Binding: new(T("controls.left_ka"), 0)),
-        new(Binding: new(T("controls.left_don"), 1)),
-        new(Binding: new(T("controls.right_don"), 2)),
-        new(Binding: new(T("controls.right_ka"), 3)),
-        new(Command: new(T("controls.set_up_all"), HomeMenuAction.BindAllPads, T("controls.set_up_all.hint"))),
-        new(Command: new(T("controls.reset"), HomeMenuAction.ResetControls, T("controls.reset.hint"))),
-        new(Command: new(T("buttons.open"), HomeMenuAction.Buttons, T("buttons.open.hint"))),
-        new(Command: new(T("guide.open"), HomeMenuAction.ButtonGuide, T("guide.open.hint"))),
-        new(),
-    ];
-
-    // The buttons beside the drum (ArcadeSettings.Buttons order), bound on the keyboard or a controller.
-    private bool _buttonsPage;
-    private Row[]? _buttonRows;
     // Label and hint keys, in ArcadeSettings.Buttons order.
     private static readonly (string Label, string Hint)[] ButtonNames =
     [
@@ -351,90 +241,22 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         ("buttons.confirm", "buttons.confirm.hint"),
     ];
 
-    private Row[] buttonRows => _buttonRows ??=
-    [
-        new(Setting: new(T("controls.device"), _ => _device, (s, v) => { _device = v; return s; },
-            static (value, step) => value + Math.Sign(step), 0, static value => T(Devices[value]), 1,
-            Hint: T("buttons.device.hint"))),
-        new(T("buttons.header")),
-        .. ButtonNames.Select((name, index) => new Row(Binding: new(T(name.Label), index, Button: true, T(name.Hint)))),
-        new(Command: new(T("controls.reset"), HomeMenuAction.ResetButtons, T("buttons.reset.hint"))),
-        new(),
-    ];
-
-    // The button guide: every action's keyboard (a Tatacon's) · gamepad buttons, from GameActions, by where
-    // it is used.
-    private bool _guidePage;
-    private Row[]? _guideRows;
-
-    private static Row guide(string label, GameAction action, string? gamepadNote = null) =>
-        new(Guide: new(T(label), $"{GameActions.Name(action)} · {GameActions.Gamepad(action)}{gamepadNote}"));
-
-    private static Row guide(string label, string keyboard, string gamepad) => new(Guide: new(T(label), $"{keyboard} · {gamepad}"));
-
-    private Row[] guideRows => _guideRows ??=
-    [
-        new(Guide: new("", T("guide.columns"))),
-        new(T("guide.menus")),
-        guide("guide.menu", $"Esc / {GameActions.Name(GameAction.Menu)}", GameActions.Gamepad(GameAction.Menu)),
-        guide("guide.confirm", GameAction.Confirm),
-        guide("guide.move", "← ↑ → ↓", "D-pad"),
-        guide("guide.search", GameAction.Search),
-        guide("guide.scores", GameAction.Scores),
-        guide("guide.favourite", GameAction.Favourite),
-        guide("guide.notices", GameAction.Notices),
-        guide("guide.restart", GameAction.Restart),
-        new(T("guide.score_list")),
-        guide("guide.mine", GameAction.Leaderboard),
-        guide("guide.shinuchi", GameAction.ShinuchiBoard),
-        guide("guide.watch", GameAction.Confirm),
-        new(T("guide.replay")),
-        guide("guide.pause", GameActions.PauseKeys, GameActions.Gamepad(GameAction.Pause)),
-        guide("guide.scrub", "← →", "D-pad"),
-        guide("guide.speed", "↑ ↓", "D-pad"),
-        guide("guide.practise_here", GameAction.Practise),
-        new(T("guide.practice")),
-        guide("guide.pause", GameActions.PauseKeys, $"{GameActions.Gamepad(GameAction.Pause)} (Back while playing)"),
-        guide("guide.loop", $"{GameActions.Name(GameAction.LoopStart)} / {GameActions.Name(GameAction.LoopEnd)}",
-            $"{GameActions.Gamepad(GameAction.LoopStart)} / {GameActions.Gamepad(GameAction.LoopEnd)}"),
-        guide("guide.clear_loop", $"{GameActions.Name(GameAction.LoopStart)} + {GameActions.Name(GameAction.LoopEnd)}",
-            $"{GameActions.Gamepad(GameAction.LoopStart)} + {GameActions.Gamepad(GameAction.LoopEnd)}"),
-        guide("guide.notes", $"{GameActions.Name(GameAction.NoteJump)} + ← →", $"{GameActions.Gamepad(GameAction.NoteJump)} + D-pad"),
-        guide("guide.after_pass", GameAction.AfterPass),
-        new(),
-    ];
-
-    public enum ItemKind { Header, Setting, Library, Command, Binding, Back }
-
-    /// <summary>A song library's state: red (not set up), orange (set up, something missing), green.</summary>
-    public enum LibraryState { Missing, Warning, Ready }
-
-    /// <summary>One settings row as drawn, with what it does.</summary>
-    public readonly record struct Item(ItemKind Kind, string Label, string? Value, string Hint, LibraryState State = default);
-
-    // The folders the running game loaded its songs from: a change needs a restart.
-    private readonly ArcadeSettings _atStart = get();
-    private readonly Dictionary<string, bool> _valid = [];
-    private readonly Dictionary<string, string?> _nijiiroProblems = [];
-    private readonly Dictionary<string, string?> _osuFolders = [];
+    /// <summary>Why a Nijiiro installation can't be read, in the player's language; null when it can.</summary>
+    public static string? NijiiroProblemText(NijiiroCatalogProvider installation) =>
+        !installation.Exists ? T("library.no_nijiiro")
+        : installation.Problem is not { } problem ? null
+        : installation.KeysMissing ? T("library.no_keys") : problem;
 
     private string[] _choices = [];
-    private bool _settingsPage;
-    private bool _editing;
-    // Waiting for the input to bind to the selected pad.
-    private bool _listening;
-    private long _lastChangeAt;
-    private int _streak;
 
     public bool IsOpen { get; private set; }
 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report" : _buttonsPage ? "menu.title.buttons" : _librariesPage ? "menu.title.libraries" : _guidePage ? "menu.title.guide" : _controlsPage ? "menu.title.controls" : _settingsPage ? "menu.title.settings"
-        : "menu.title.paused");
+        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report" : "menu.title.paused");
 
-    /// <summary>The texture bake shown instead of the settings (running or finished).</summary>
+    /// <summary>The texture bake shown instead of the choices (running or finished).</summary>
     public Presentation.TextureBake? Bake
     {
         get => _bake;
@@ -449,9 +271,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private bool _baked;
 
     /// <summary>A finished audio calibration, shown instead of the pause choices until saved or discarded.</summary>
-    public LatencyCalibration? Calibration { get; set; }
+    public LatencyCalibration? Calibration
+    {
+        get;
+        set
+        {
+            field = value;
+            _calibrationDoneAt = value is null ? 0 : Stopwatch.GetTimestamp();
+        }
+    }
 
-    // When the calibration was first seen finished: a drum hit right after the last one does not save.
+    // When the calibration's result showed: a drum hit right after its last one does not save.
     private long _calibrationDoneAt;
 
     /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
@@ -466,6 +296,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
+    private readonly ArcadeSettings _atStart = get();
     private bool _restartPrompt;
     private string? _declined;
     private string[] _pauseChoices = [];
@@ -482,195 +313,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
-    /// <summary>The pause page's choices (the settings page draws <see cref="Items"/>).</summary>
+    /// <summary>The choices shown (the pause choices, or a prompt's).</summary>
     public string[] Rows => [.. _choices.Select(static choice => T(choice))];
-
-    public bool SettingsPage => _settingsPage;
-
-    /// <summary>A binding is waiting for its input (every key is that input then).</summary>
-    public bool Listening => IsOpen && _listening;
-
-    /// <summary>The selected setting is being changed (drawn between arrows).</summary>
-    public bool Editing => _editing;
-
-    public Item[] Items => [.. rows.Select(item)];
-
-    // The rows shown for the current settings; Selection indexes these. Only rows below the one being
-    // changed come and go, so the selection stays on it.
-    private Row[] rows => [.. (_guidePage ? guideRows : _buttonsPage ? buttonRows : _librariesPage ? libraryRows : _controlsPage ? controlRows : Rows_).Where(row => (row.Shown?.Invoke(get()) ?? true)
-        && (row.Command?.Action != HomeMenuAction.Calibrate || _calibrationOffered))];
 
     // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
     private bool _calibrationOffered;
-
-    private Item item(Row row) => row switch
-    {
-        { Header: { } header } => new(ItemKind.Header, header, null, ""),
-        // Wide like a pad's inputs.
-        { Guide: { } guide } => new(ItemKind.Binding, guide.Label, guide.Keys, T("guide.hint")),
-        { Setting: { } setting } => new(ItemKind.Setting, setting.Label,
-            setting.FormatFor?.Invoke(get()) ?? setting.Format(setting.Get(get())), setting.Hint),
-        { Library: { } library } => libraryItem(library),
-        { Binding: { Button: true } button } => new(ItemKind.Binding, button.Label,
-            _listening && rows[Selection].Binding == button ? T(Prompts[_device])
-            : inputs(get().Buttons[button.Pad]).Where(onDevice).ToArray() is { Length: > 0 } pressing
-                ? string.Join(", ", pressing.Select(describe)) : T("value.none"),
-            $"{button.Hint} {T("buttons.bind.hint")}"),
-        { Binding: { } binding } => new(ItemKind.Binding, binding.Label,
-            _listening && rows[Selection].Binding == binding ? T(Prompts[_device])
-            : inputs(get().Controls[_player * 4 + binding.Pad]).Where(onDevice).ToArray() is { Length: > 0 } bound
-                ? string.Join(", ", bound.Select(describe)) : T("value.none"),
-            T(_device == 0 ? "controls.pad.hint_keyboard" : "controls.pad.hint")),
-        { Command: { Action: not HomeMenuAction.BakeTextures } command } => new(ItemKind.Command, command.Label, null, command.Hint),
-        { Command: { } command } => cachedTextures() is { } cached
-            ? new(ItemKind.Command, command.Label, T("settings.bake.cached", cached), command.Hint)
-            : new(ItemKind.Command, command.Label, T("settings.bake.unavailable"), T("settings.bake.unavailable_hint")),
-        _ => new(ItemKind.Back, T("menu.back"), null, T("menu.back.hint")),
-    };
-
-    private static string[] inputs(string list) => ControlBindings.Inputs(list);
-
-    private static string describe(string token) => ControlBindings.Describe(token);
-
-    // Keyboard 0, controller 1, MIDI 2 (the Devices).
-    private static int deviceOf(SdlInput input) => ControlBindings.DeviceOf(input);
-
-    private bool onDevice(string token) => ControlBindings.OnDevice(token, _device);
-
-    private void bind(int pad, SdlInput captured, bool replace) =>
-        apply(get() with { Controls = ControlBindings.Bind(get().Controls, pad, captured, replace, _device) });
-
-    // The input joins the button, leaving any other button it pressed (as a pad's; listed already: it goes).
-    private void bindButton(int button, SdlInput captured)
-    {
-        var buttons = get().Buttons;
-        for (var other = 0; other < buttons.Count; other++)
-        {
-            var bound = inputs(buttons[other]);
-            var kept = bound.Where(token => token != captured.Token);
-            if (other == button && !bound.Contains(captured.Token))
-                kept = kept.Append(captured.Token);
-            if (other == button && _device == 0)
-            {
-                var surplus = kept.Where(onDevice).SkipLast(MaximumKeys).ToHashSet();
-                kept = kept.Where(token => !surplus.Contains(token));
-            }
-            buttons = buttons.With(other, string.Join(", ", kept));
-        }
-        apply(get() with { Buttons = buttons });
-    }
-
-    // The buttons get their default inputs of this device back.
-    private void resetButtons()
-    {
-        var defaults = new ArcadeSettings().Buttons;
-        var buttons = get().Buttons;
-        var restored = defaults.SelectMany(list => inputs(list).Where(onDevice)).ToHashSet();
-        for (var button = 0; button < buttons.Count; button++)
-            buttons = buttons.With(button, string.Join(", ", inputs(buttons[button]).Where(token => !onDevice(token) && !restored.Contains(token))
-                .Concat(inputs(defaults[button]).Where(onDevice))));
-        apply(get() with { Buttons = buttons });
-    }
-
-    private void resetControls() => apply(get() with { Controls = ControlBindings.Reset(get().Controls, _player, _device) });
-
-    private void listen(int pads)
-    {
-        _guided = pads;
-        _listening = true;
-        input.BeginCapture();
-    }
-
-    private Item libraryItem(Library library)
-    {
-        if (library.Added is { } added)
-        {
-            var unusable = library.Kind == SongSourceKind.Stock
-                ? StockCatalogProvider.FindDataRoot(added) is null ? T("library.no_release") : null
-                : nijiiroProblem(added);
-            var restart = ArcadeSettings.Folders(library.Kind == SongSourceKind.Stock ? _atStart.StockFolders : _atStart.NijiiroFolder)
-                .Contains(added) ? "" : $"{T("library.restart")} ";
-            return new(ItemKind.Library, library.Label, Path.GetFileName(Path.TrimEndingDirectorySeparator(added)),
-                unusable is null ? $"{restart}{T("library.remove")}" : $"{unusable} {T("library.remove")}",
-                unusable is null ? LibraryState.Ready : LibraryState.Missing);
-        }
-        var chosen = library.Get(get());
-        var path = library.Kind switch
-        {
-            SongSourceKind.Tja => chosen ?? defaultTjaFolder,
-            SongSourceKind.OsuLazer => osuFolder(chosen),
-            _ => chosen,
-        };
-        var choose = T("library.choose", T(library.Kind switch
-        {
-            SongSourceKind.Nijiiro => "library.nijiiro.what",
-            SongSourceKind.OsuLazer => "library.osu.what",
-            _ => "library.tja.what",
-        }));
-        if (path is null)
-            return new(ItemKind.Library, library.Label, T(chosen is null ? "library.not_set_up" : "library.not_usable"),
-                chosen is null ? choose : $"{T("library.no_osu")} {choose}", LibraryState.Missing);
-        path = Path.TrimEndingDirectorySeparator(path);
-        // Nijiiro: the same checks as loading it (a library that cannot play is left out of Song Select).
-        if (library.Kind == SongSourceKind.Nijiiro && nijiiroProblem(path) is { } problem)
-            return new(ItemKind.Library, library.Label, T("library.not_usable"), $"{problem} {choose}",
-                LibraryState.Missing);
-        if (library.Kind == SongSourceKind.Tja && !valid(path))
-            return new(ItemKind.Library, library.Label, T("library.not_set_up"), $"{T("library.no_tja")} {choose}",
-                LibraryState.Missing);
-        return new(ItemKind.Library, library.Label, Path.GetFileName(path),
-            T(chosen != library.Get(_atStart) ? "library.restart" : "library.choose_another"),
-            LibraryState.Ready);
-    }
-
-    // ponytail: remembered per path for the session (the menu redraws every frame); a folder filled
-    // while the game runs shows as set up after choosing it again.
-    private bool valid(string path)
-    {
-        if (!_valid.TryGetValue(path, out var ok))
-        {
-            try
-            {
-                ok = Directory.Exists(path) && Directory.EnumerateFiles(path, "*.tja", SearchOption.AllDirectories).Any();
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                ok = false;
-            }
-            _valid[path] = ok;
-        }
-        return ok;
-    }
-
-    // Looked up once per chosen path like valid() (the default install when none is chosen).
-    private string? osuFolder(string? chosen)
-    {
-        var key = chosen ?? "";
-        if (!_osuFolders.TryGetValue(key, out var found))
-            _osuFolders[key] = found = OsuLazerCatalogProvider.FindDataFolder(chosen);
-        return found;
-    }
-
-    /// <summary>Why a Nijiiro installation can't be read, in the player's language; null when it can.</summary>
-    public static string? NijiiroProblemText(NijiiroCatalogProvider installation) =>
-        !installation.Exists ? T("library.no_nijiiro")
-        : installation.Problem is not { } problem ? null
-        : installation.KeysMissing ? T("library.no_keys") : problem;
-
-    // The installation's own problem is remembered per path like valid() (it decrypts the song table);
-    // vgmstream-cli is looked for again each time the menu opens.
-    private string? nijiiroProblem(string path)
-    {
-        if (!_nijiiroProblems.TryGetValue(path, out var problem))
-            _nijiiroProblems[path] = problem = NijiiroProblemText(new NijiiroCatalogProvider(path));
-        return problem ?? SongLibraries.VgmstreamProblem;
-    }
-
-    /// <summary>
-    /// The bus to keep a sample playing on while its volume is edited (music for the master; none for
-    /// the drum, whose Ka on each change is already its sample).
-    /// </summary>
-    public AudioBus? PreviewBus => IsOpen && _settingsPage && _editing ? rows[Selection].Setting?.Bus : null;
 
     /// <remarks>
     /// <paramref name="replayable"/>: a song's pause menu offers the instant replay of what was played.
@@ -700,325 +347,136 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = ["menu.resume", "menu.settings", "online.leave"];
         IsOpen = true;
         Selection = 0;
-        _settingsPage = _editing = _restartPrompt = _reportPrompt = _listening = _controlsPage = _guidePage = _buttonsPage = _librariesPage = false;
-        input.CancelCapture();
+        _restartPrompt = _reportPrompt = false;
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
-    }
-
-    /// <summary>One tick of menu input (key pulses); returns what the shell should do.</summary>
-    public HomeMenuAction Input(SdlKeyboardSnapshot keys, bool escape, SdlKeyboardSnapshot held)
-    {
-        if (Calibration is { } calibration)
-            return calibrationInput(calibration, keys, escape);
-        // The platform holds the next input back for the pad (Escape there cancels, ending a guided setup).
-        if (_listening)
-        {
-            if (input.Capturing)
-                return HomeMenuAction.None;
-            if (input.TakeCaptured() is not { } captured)
-                _listening = false;
-            // Another device's input is not for this page: keep waiting.
-            else if (deviceOf(captured) != _device)
-                input.BeginCapture();
-            else
-            {
-                drum(true);
-                if (rows[Selection].Binding is { Button: true } button)
-                    bindButton(button.Pad, captured);
-                else
-                    bind(_player * 4 + rows[Selection].Binding!.Pad, captured, replace: _guided > 0);
-                if (_guided > 1)
-                {
-                    Selection++;
-                    listen(_guided - 1);
-                }
-                else
-                    _listening = false;
-            }
-            return HomeMenuAction.None;
-        }
-        var up = keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Z)
-            || keys.IsDown(SdlKeyboardKey.WheelUp);
-        var down = keys.IsDown(SdlKeyboardKey.Down) || keys.IsDown(SdlKeyboardKey.K) || keys.IsDown(SdlKeyboardKey.V)
-            || keys.IsDown(SdlKeyboardKey.WheelDown);
-        var decide = keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.Space)
-            || keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J)
-            || keys.IsDown(SdlKeyboardKey.X) || keys.IsDown(SdlKeyboardKey.C);
-        var arrows = keys.IsDown(SdlKeyboardKey.Right) ? 1 : keys.IsDown(SdlKeyboardKey.Left) ? -1 : 0;
-        if (decide)
-            drum(true);
-        else if (up || down || arrows != 0)
-            drum(false);
-        if (_restartPrompt)
-        {
-            if (up || down)
-                Selection = 1 - Selection;
-            else if (escape || decide)
-            {
-                if (decide && Selection == 0)
-                    return close(HomeMenuAction.RestartGame);
-                _declined = restartState();
-                _restartPrompt = false;
-                _choices = _pauseChoices;
-                Selection = Array.IndexOf(_choices, "menu.settings");
-            }
-            return HomeMenuAction.None;
-        }
-        if (_reportPrompt)
-        {
-            if (up || down)
-                Selection = (Selection + (up ? ReportChoices.Length - 1 : 1)) % ReportChoices.Length;
-            else if (decide && _choices[Selection] is var choice && choice != "menu.back")
-            {
-                ReportReason = choice["report.".Length..];
-                return close(HomeMenuAction.Report);
-            }
-            else if (escape || decide)
-            {
-                _reportPrompt = false;
-                _choices = _pauseChoices;
-                Selection = Array.IndexOf(_choices, "menu.report_player");
-            }
-            return HomeMenuAction.None;
-        }
-        if (!_settingsPage)
-        {
-            if (escape)
-                return _noResume ? HomeMenuAction.None : close(HomeMenuAction.Resume);
-            if (up || down)
-                Selection = (Selection + (up ? _choices.Length - 1 : 1)) % _choices.Length;
-            else if (decide)
-                switch (_choices[Selection])
-                {
-                    case "menu.settings":
-                        _settingsPage = true;
-                        Selection = move(0, 1);
-                        break;
-                    case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
-                    case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
-                    case "menu.report_player":
-                        _reportPrompt = true;
-                        _pauseChoices = _choices;
-                        _choices = ReportChoices;
-                        Selection = 0;
-                        break;
-                    case "menu.song_select": return close(HomeMenuAction.SongSelect);
-                    case "menu.return_to_title": return close(HomeMenuAction.Title);
-                    case "online.leave": return close(HomeMenuAction.LeaveRoom);
-                    default: return close(HomeMenuAction.Resume);
-                }
-            return HomeMenuAction.None;
-        }
-        // The bake page: Escape or a pick stops a running bake, and leaves a finished one.
-        if (Bake is { } bake)
-        {
-            if (escape || decide)
-            {
-                if (bake.Running)
-                    bake.Stop();
-                else
-                    Bake = null;
-            }
-            return HomeMenuAction.None;
-        }
-        var row = rows[Selection];
-        if (row.Setting is not null && !(up || down || arrows != 0 || decide || escape) && repeat(held) is { } step)
-        {
-            drum(false);
-            change(step);
-            return HomeMenuAction.None;
-        }
-        if (_editing)
-        {
-            if (escape || decide)
-                _editing = false;
-            // Up raises and Down lowers the value; the left rim lowers, the right rim raises.
-            else if (up || down || arrows != 0)
-                change(arrows != 0 ? arrows : keys.IsDown(SdlKeyboardKey.Up) ? 1 : keys.IsDown(SdlKeyboardKey.Down) ? -1
-                    : up ? -1 : 1);
-        }
-        else if (_buttonsPage && (escape || decide && row == Rows_[^1]))
-        {
-            _buttonsPage = false;
-            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.Buttons);
-            save();
-        }
-        else if (_guidePage && (escape || decide && row == Rows_[^1]))
-        {
-            _guidePage = false;
-            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.ButtonGuide);
-        }
-        else if (_librariesPage && (escape || decide && row == Rows_[^1]))
-        {
-            _librariesPage = false;
-            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.SongLibraries);
-        }
-        else if (_controlsPage && (escape || decide && row == Rows_[^1]))
-        {
-            _controlsPage = false;
-            Selection = Array.FindIndex(rows, static shown => shown.Command?.Action == HomeMenuAction.Controls);
-            save();
-        }
-        else if (escape || decide && row == Rows_[^1])
-        {
-            _settingsPage = false;
-            Selection = Array.IndexOf(_choices, "menu.settings");
-            save();
-            if (restartState() is { Length: > 0 } state && state != _declined)
-            {
-                _restartPrompt = true;
-                _pauseChoices = _choices;
-                _choices = ["menu.restart_now", "menu.later"];
-                Selection = 0;
-            }
-        }
-        else if (up || down)
-            Selection = move(Selection + (up ? -1 : 1), up ? -1 : 1);
-        // An added install: picking it takes it out of the library.
-        else if (decide && row.Library is { Added: { } added } install)
-        {
-            apply(install.Kind == SongSourceKind.Stock
-                ? get() with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(get().StockFolders).Where(folder => folder != added)) }
-                : get() with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(get().NijiiroFolder).Where(folder => folder != added)) });
-            Selection = Math.Min(Selection, rows.Length - 1);
-        }
-        else if (decide && row.Library is { } library)
-            return library.Pick;
-        else if (decide && row.Command is { Action: HomeMenuAction.SongLibraries })
-        {
-            _librariesPage = true;
-            Selection = 0;
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.Calibrate })
-        {
-            // It leaves Song Select: the settings are saved and the menu closes, as with Back then Resume.
-            _settingsPage = false;
-            save();
-            return close(HomeMenuAction.Calibrate);
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.Buttons })
-        {
-            _buttonsPage = true;
-            _device = Math.Min(_device, 1); // no MIDI buttons
-            Selection = 0;
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.ResetButtons })
-            resetButtons();
-        else if (decide && row.Command is { Action: HomeMenuAction.ButtonGuide })
-        {
-            _guidePage = true;
-            Selection = 0;
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.Controls })
-        {
-            _controlsPage = true;
-            Selection = 0;
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.BindAllPads })
-        {
-            Selection = Array.FindIndex(rows, static shown => shown.Binding is not null);
-            listen(pads: 4);
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.ResetControls })
-            resetControls();
-        else if (decide && row.Binding is not null)
-            listen(pads: 0);
-        else if (keys.IsDown(SdlKeyboardKey.Delete) && row.Binding is { Button: true } cleared)
-        {
-            drum(false);
-            apply(get() with { Buttons = get().Buttons.With(cleared.Pad,
-                string.Join(", ", inputs(get().Buttons[cleared.Pad]).Where(token => !onDevice(token)))) });
-        }
-        else if (keys.IsDown(SdlKeyboardKey.Delete) && row.Binding is { } binding)
-        {
-            drum(false);
-            var pad = _player * 4 + binding.Pad;
-            apply(get() with { Controls = get().Controls.With(pad, string.Join(", ", inputs(get().Controls[pad]).Where(token => !onDevice(token)))) });
-        }
-        else if (decide && row.Command is { Action: HomeMenuAction.RehashLibrary or HomeMenuAction.PickOfficialFolder } libraryCommand)
-            return libraryCommand.Action;
-        else if (decide && row.Command is { } command && cachedTextures() is not null)
-            return command.Action;
-        else if (decide && row.Setting is not null)
-            _editing = true;
-        else if (arrows != 0 && row.Setting is not null)
-            change(arrows);
-        return HomeMenuAction.None;
-    }
-
-    // The calibration's result: Enter or centre saves the Audio Offset (from half a second on, so the
-    // confirming big don does not), Escape discards it.
-    private HomeMenuAction calibrationInput(LatencyCalibration calibration, SdlKeyboardSnapshot keys, bool escape)
-    {
-        var decide = keys.IsDown(SdlKeyboardKey.Enter) || keys.IsDown(SdlKeyboardKey.F) || keys.IsDown(SdlKeyboardKey.J);
-        if (_calibrationDoneAt == 0)
-            _calibrationDoneAt = Stopwatch.GetTimestamp();
-        var save = decide && Stopwatch.GetElapsedTime(_calibrationDoneAt) >= TimeSpan.FromSeconds(0.5);
-        if (!escape && !save)
-            return HomeMenuAction.None;
-        drum(save);
-        if (save)
-            apply(get() with { AudioOffsetMs = calibration.AudioOffsetMs });
-        Calibration = null;
-        _calibrationDoneAt = 0;
-        return close(HomeMenuAction.EndCalibration);
-    }
-
-    // A held key repeats its change after RepeatDelay, every RepeatInterval: Left/Right on a setting, and
-    // the rims too while it is being edited.
-    private static readonly TimeSpan RepeatDelay = TimeSpan.FromMilliseconds(400), RepeatInterval = TimeSpan.FromMilliseconds(60);
-    private long _heldSince, _repeatedAt;
-
-    private int? repeat(SdlKeyboardSnapshot held)
-    {
-        var less = held.IsDown(SdlKeyboardKey.Left)
-            || _editing && (held.IsDown(SdlKeyboardKey.Down) || held.IsDown(SdlKeyboardKey.D) || held.IsDown(SdlKeyboardKey.Z));
-        var more = held.IsDown(SdlKeyboardKey.Right)
-            || _editing && (held.IsDown(SdlKeyboardKey.Up) || held.IsDown(SdlKeyboardKey.K) || held.IsDown(SdlKeyboardKey.V));
-        var now = Stopwatch.GetTimestamp();
-        if (less == more)
-        {
-            _heldSince = 0;
-            return null;
-        }
-        if (_heldSince == 0)
-            _heldSince = _repeatedAt = now; // the press itself changed it already
-        if (Stopwatch.GetElapsedTime(_heldSince, now) < RepeatDelay || Stopwatch.GetElapsedTime(_repeatedAt, now) < RepeatInterval)
-            return null;
-        _repeatedAt = now;
-        return more ? 1 : -1;
-    }
-
-    // The next selectable row from index on, going in direction (headers are skipped; the list wraps).
-    private int move(int index, int direction)
-    {
-        var shown = rows;
-        index = (index % shown.Length + shown.Length) % shown.Length;
-        while (shown[index].Header is not null)
-            index = ((index + direction) % shown.Length + shown.Length) % shown.Length;
-        return index;
-    }
-
-    private void change(int direction)
-    {
-        var now = Stopwatch.GetTimestamp();
-        _streak = _lastChangeAt != 0 && Stopwatch.GetElapsedTime(_lastChangeAt, now) < StreakGap ? _streak + 1 : 0;
-        _lastChangeAt = now;
-        var size = _streak >= 12 ? 10 : _streak >= 4 ? 5 : 1;
-        var setting = rows[Selection].Setting!;
-        var settings = get();
-        apply(setting.Set(settings,
-            Math.Clamp(setting.Step(setting.Get(settings), direction * size), setting.Minimum, setting.Maximum)));
     }
 
     private bool _noResume;
 
-    /// <summary>Closed from outside (the service menu resets the game), a binding capture included.</summary>
-    public void Close()
+    /// <summary>The calibration can start from here (Song Select's menu: it runs on its own lane and ends there).</summary>
+    public bool CalibrationOffered => _calibrationOffered;
+
+    /// <summary>The texture bake's page shows (started from the settings overlay).</summary>
+    public void ShowBake(Presentation.TextureBake bake) => Bake = bake;
+
+    /// <summary>
+    /// The settings overlay closed: its settings are saved and, when one that applies at start changed, the restart
+    /// prompt shows as after the settings page.
+    /// </summary>
+    public void SettingsOverlayClosed()
     {
-        IsOpen = false;
-        input.CancelCapture();
+        Selection = Array.IndexOf(_choices, "menu.settings");
+        save();
+        if (restartState() is { Length: > 0 } state && state != _declined)
+        {
+            _restartPrompt = true;
+            _pauseChoices = _choices;
+            _choices = ["menu.restart_now", "menu.later"];
+            Selection = 0;
+        }
     }
+
+    /// <summary>
+    /// The choice at <paramref name="index"/> of the pause choices (or of the restart or report prompt shown in their
+    /// place) is picked: what the shell should do, or None when the menu itself goes on (a prompt opening or closing).
+    /// </summary>
+    public HomeMenuAction Pick(int index)
+    {
+        Selection = Math.Clamp(index, 0, _choices.Length - 1);
+        if (_restartPrompt)
+        {
+            if (Selection == 0)
+                return close(HomeMenuAction.RestartGame);
+            return Back();
+        }
+        if (_reportPrompt)
+        {
+            if (_choices[Selection] is var reason && reason != "menu.back")
+            {
+                ReportReason = reason["report.".Length..];
+                return close(HomeMenuAction.Report);
+            }
+            return Back();
+        }
+        switch (_choices[Selection])
+        {
+            case "menu.settings":
+                return HomeMenuAction.Settings;
+            case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
+            case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
+            case "menu.report_player":
+                _reportPrompt = true;
+                _pauseChoices = _choices;
+                _choices = ReportChoices;
+                Selection = 0;
+                return HomeMenuAction.None;
+            case "menu.song_select": return close(HomeMenuAction.SongSelect);
+            case "menu.return_to_title": return close(HomeMenuAction.Title);
+            case "online.leave": return close(HomeMenuAction.LeaveRoom);
+            default: return close(HomeMenuAction.Resume);
+        }
+    }
+
+    /// <summary>Escape (or the back button) on the pause choices: a prompt goes back to them, else the menu resumes.</summary>
+    public HomeMenuAction Back()
+    {
+        if (_restartPrompt)
+        {
+            _declined = restartState();
+            _restartPrompt = false;
+            _choices = _pauseChoices;
+            Selection = Array.IndexOf(_choices, "menu.settings");
+            return HomeMenuAction.None;
+        }
+        if (_reportPrompt)
+        {
+            _reportPrompt = false;
+            _choices = _pauseChoices;
+            Selection = Array.IndexOf(_choices, "menu.report_player");
+            return HomeMenuAction.None;
+        }
+        return _noResume ? HomeMenuAction.None : close(HomeMenuAction.Resume);
+    }
+
+    /// <summary>
+    /// The texture bake's page: its one choice stops a running bake, or leaves a finished one (back to the settings
+    /// overlay when it was started there).
+    /// </summary>
+    public HomeMenuAction BakeChoice()
+    {
+        if (Bake is not { } bake)
+            return HomeMenuAction.None;
+        drum(true);
+        if (bake.Running)
+        {
+            bake.Stop();
+            return HomeMenuAction.None;
+        }
+        Bake = null;
+        return HomeMenuAction.Settings; // back to the settings it was started from
+    }
+
+    /// <summary>
+    /// The calibration's result: saved (<paramref name="save"/>) or not, and the menu closes. A pick in the first half
+    /// second after it ends is ignored (a last drum hit of the calibration).
+    /// </summary>
+    public HomeMenuAction FinishCalibration(bool save)
+    {
+        if (Calibration is not { } calibration)
+            return HomeMenuAction.None;
+        if (save && Stopwatch.GetElapsedTime(_calibrationDoneAt) < TimeSpan.FromSeconds(0.5))
+            return HomeMenuAction.None;
+        if (save)
+            apply(get() with { AudioOffsetMs = calibration.AudioOffsetMs });
+        Calibration = null;
+        return close(HomeMenuAction.EndCalibration);
+    }
+
+    /// <summary>The pause choices (or a prompt in their place) are showing, not one of the menu's own pages.</summary>
+    public bool ShowsChoices => IsOpen && Bake is null && Calibration is null;
+
+    /// <summary>Closed from outside (the service menu resets the game).</summary>
+    public void Close() => IsOpen = false;
 
     private HomeMenuAction close(HomeMenuAction action)
     {

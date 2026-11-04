@@ -29,10 +29,8 @@ internal sealed class HomeControls : IDisposable
     private readonly HomePauseOverlay? _overlay;
 
     /// <summary>The menu's artwork, for other panels drawn the same way.</summary>
-    public HomePauseOverlay? Art => _overlay;
     private ResumeCountdown? _resume;
     private RenderTextureId[] _resumeTextures = [];
-    private HomeMenuAction? _pickingFolder;
     private readonly string _assetRoot;
     private bool _focused = true;
     private float _lastInterpolation;
@@ -43,7 +41,7 @@ internal sealed class HomeControls : IDisposable
         _calibration = calibration;
         _shell = shell;
         _gameplay = gameplay;
-        _audio = new MenuAudio(shell.Audio, shell.Sounds, shell.SongCatalog, shell.Assets);
+        _audio = new MenuAudio(shell.Audio, shell.Sounds);
         _audio.Apply(shell.Arcade);
         _menu = new HomeMenu(() => shell.Arcade, settings =>
         {
@@ -51,14 +49,12 @@ internal sealed class HomeControls : IDisposable
             _audio.Apply(settings);
             shell.ApplyDisplay();
             shell.ApplyControls();
-        }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
-            shell.Options.TjaRoot, () => shell.Upscale?.CachedCount, shell.Application);
+        }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.Skins = shell.Skins.Names;
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart);
-        // A cabinet has the menu too (outside songs): its operator's settings.
-        _overlay = new HomePauseOverlay(shell.Application, shell.Painter, assetRoot, shell.Upscale, shell.Arcade.UpscaleTextures);
+        _overlay = new HomePauseOverlay(shell.Painter);
     }
 
     private bool home => _shell.Arcade.Home;
@@ -66,8 +62,127 @@ internal sealed class HomeControls : IDisposable
     /// <summary>The Escape menu is up (over a song too: controllers are gamepads in it).</summary>
     public bool MenuOpen => _menu.IsOpen;
 
+    // The Escape menu's Settings: the service menu's home pages, over the darkened game (the menu stays open
+    // under it, so the song stays paused and the attract muted). Changes apply as they are made, as on the
+    // settings page; the calibration and the bake go to the home menu's own pages.
+    private bool _settingsOverlay;
+
+    // The pause choices (and the restart and report prompts shown in their place) in the overlay look: the home menu
+    // decides what they are and does what they say (Pick, Back); the overlay draws them and takes the input.
+    private OverlayMenu? _pause;
+    private OverlayPage? _pausePage, _bakePage, _calibrationPage;
+    private HomeMenuAction? _picked;
+
+    // The home menu shows one of its pages in the overlay look: its choices (or a prompt), the texture bake, or the
+    // calibration's result (its old settings page is the only one left on its panel).
+    private bool overlayPage => _menu.IsOpen && (_menu.ShowsChoices || _menu.Bake is not null || _menu.Calibration is not null);
+
+    // The bake's page: what it is doing, a bar of how far, and Stop (Back once it's over).
+    private string bakeMessage()
+    {
+        if (_menu.Bake is not { } bake)
+            return "";
+        var fraction = bake.Phase switch
+        {
+            TextureBake.BakePhase.Scanning => bake.ArchivesTotal == 0 ? 0 : (double)bake.ArchivesScanned / bake.ArchivesTotal,
+            TextureBake.BakePhase.Done => 1,
+            _ => bake.PixelsTotal == 0 ? 1 : (double)bake.PixelsDone / bake.PixelsTotal,
+        };
+        var filled = (int)Math.Round(Math.Clamp(fraction, 0, 1) * 30);
+        var lines = HomePauseOverlay.bakeText(bake);
+        return $"{lines[0]}\n[{new string('#', filled)}{new string('-', 30 - filled)}] {Math.Floor(fraction * 100):0}%\n{lines[1]}";
+    }
+
+    private OverlayMenu pause()
+    {
+        _pause ??= new OverlayMenu(_shell.Application, _shell.Options.ServiceFontPath ?? _shell.Options.FontPath)
+        {
+            Sound = don => _shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
+        };
+        _pausePage ??= new OverlayPage(() => _menu.Title,
+            () => [.. _menu.Rows.Select((label, index) => new OverlayRow(label, Enter: () => _picked = _menu.Pick(index)))],
+            Centred: true, Message: () => _menu.Message, Back: () => _picked = _menu.Back());
+        _bakePage ??= new OverlayPage(() => _menu.Title,
+            () => [new OverlayRow(Strings.T(_menu.Bake?.Running == true ? "menu.stop" : "menu.back"), Enter: () => _picked = _menu.BakeChoice())],
+            Centred: true, Message: bakeMessage, Back: () => _picked = _menu.BakeChoice());
+        _calibrationPage ??= new OverlayPage(() => _menu.Title,
+            () => [new OverlayRow(Strings.T("menu.save"), Enter: () => _picked = _menu.FinishCalibration(true)),
+                new OverlayRow(Strings.T("menu.discard"), Enter: () => _picked = _menu.FinishCalibration(false))],
+            Centred: true, Message: () => _menu.Calibration is { } calibration
+                ? Strings.T("calibration.result", Strings.T("value.ms",
+                    calibration.AudioOffsetMs.ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture))) : null,
+            Back: () => _picked = _menu.FinishCalibration(false));
+        var page = _menu.Calibration is not null ? _calibrationPage : _menu.Bake is not null ? _bakePage : _pausePage;
+        if (_pause.Page != page)
+        {
+            _pause.Open(page, home: true);
+            if (page == _pausePage)
+                _pause.Selection = _menu.Selection;
+        }
+        return _pause;
+    }
+
+    private HomeMenuAction pauseInput(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
+    {
+        var menu = pause();
+        _picked = null;
+        menu.Tick(keys, held, escape);
+        if (_picked is not { } action)
+            return HomeMenuAction.None;
+        // A prompt opening or closing moves the selection; the menu closing takes the page with it.
+        menu.Selection = _menu.Selection;
+        if (!_menu.IsOpen)
+            menu.Close();
+        return action;
+    }
+
+    /// <summary>The game under an overlay menu, frosted: dimmed to this so its text reads.</summary>
+    public const float BackdropBrightness = 0.42f;
+
+    private void openSettings()
+    {
+        if (_shell.Service is not { } settings)
+            return;
+        _settingsOverlay = true;
+        settings.Health = _shell.Sync.Health;
+        settings.Open(_shell.Arcade, 0, don => _shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
+            _ => { }, applySettings, _shell.RehashLibrary, _shell.Options.TjaRoot, command, canCalibrate: _menu.CalibrationOffered);
+
+        void command(HomeMenuAction action)
+        {
+            _settingsOverlay = false;
+            switch (action)
+            {
+                // As the settings page's Calibrate: saved, the menu closes, Song Select covers and the lane opens.
+                case HomeMenuAction.Calibrate:
+                    save();
+                    _menu.Close();
+                    _audio.HoldMenuMusic(false);
+                    _audio.MuteAttract(false);
+                    _calibration.Requested = true;
+                    break;
+                case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
+                    _menu.ShowBake(_shell.Bake is { Running: true } running ? running
+                        : _shell.Bake = TextureBake.Start(upscale, _assetRoot));
+                    break;
+                default:
+                    _menu.SettingsOverlayClosed();
+                    if (_pause is not null) _pause.Selection = _menu.Selection;
+                    break;
+            }
+        }
+    }
+
+    private void applySettings(ArcadeSettings settings)
+    {
+        _shell.Arcade = settings;
+        _audio.Apply(settings);
+        _shell.ApplyDisplay();
+        _shell.ApplyControls();
+    }
+
     /// <summary>The menu is capturing a binding: Backspace is that binding, not Escape.</summary>
-    public bool CapturingBinding => _menu.Listening;
+    public bool CapturingBinding => _shell.Service?.Listening == true;
 
     private SceneId active => _shell.Active.Id;
 
@@ -170,19 +285,32 @@ internal sealed class HomeControls : IDisposable
     {
         if (_overlay is null)
             return frame;
+        // The pause menu's own choices take the overlay look; its other pages (the old settings page, the bake, the
+        // calibration's result) keep their panel.
+        var pauseChoices = overlayPage && !_settingsOverlay;
         var extra = (_resume is { Running: true } countdown
                 ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
                 : [])
-            .Concat(_overlay.Quads(_menu.IsOpen ? _menu : null, _restart.Black,
+            .Concat(_settingsOverlay && _shell.Service is { } settings ? settings.Quads()
+                : pauseChoices ? pause().Quads() : [])
+            .Concat(_overlay.Quads(_restart.Black,
                 _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration))
             .ToList();
         // Nothing on top (most frames): keep the frame rather than copying all its quads.
-        return extra.Count == 0 ? frame : new RenderFrame(frame.ClearColor, frame.Quads.Concat(extra), frame.ContentAspectRatio);
+        if (extra.Count == 0)
+            return frame;
+        // The settings overlay and the pause choices frost the game under them.
+        return new RenderFrame(frame.ClearColor, frame.Quads.Concat(extra), frame.ContentAspectRatio)
+        {
+            // (Or what the frame frosted already: the online lobby's Song Select.)
+            BlurredQuads = _settingsOverlay || pauseChoices ? frame.Quads.Length : frame.BlurredQuads,
+            BackdropBrightness = BackdropBrightness,
+        };
     }
 
     public void Dispose()
     {
-        _overlay?.Dispose();
+        _pause?.Dispose();
         SceneTextures.Release(_shell.Application, _resumeTextures);
         _resume?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
@@ -293,20 +421,19 @@ internal sealed class HomeControls : IDisposable
     {
         if (!_menu.IsOpen)
             return false;
-        // A folder picked in the system dialog opened from the settings.
-        if (_pickingFolder is { } picking && SdlApplication.TryTakePickedFolder(out var folder))
+        // The settings overlay takes the input; closed, the pause choices are back.
+        if (_settingsOverlay && _shell.Service is { } settings)
         {
-            _shell.Arcade = picking switch
+            settings.Tick(keys, held, escape);
+            if (!settings.IsOpen && _settingsOverlay)
             {
-                HomeMenuAction.PickTjaFolder => _shell.Arcade with { TjaFolder = folder },
-                HomeMenuAction.PickOsuFolder => _shell.Arcade with { OsuFolder = folder },
-                _ => officialFolder(folder),
-            };
-            save();
-            _pickingFolder = null;
+                _settingsOverlay = false;
+                _menu.SettingsOverlayClosed();
+                if (_pause is not null) _pause.Selection = _menu.Selection;
+            }
+            return true;
         }
-        var action = _menu.Input(keys, escape, held);
-        _audio.Sample(_menu.PreviewBus, _shell.Tick);
+        var action = pauseInput(keys, held, escape);
         if (!_menu.IsOpen)
         {
             _audio.HoldMenuMusic(false);
@@ -314,6 +441,9 @@ internal sealed class HomeControls : IDisposable
         }
         switch (action)
         {
+            case HomeMenuAction.Settings:
+                openSettings();
+                break;
             // A reviewed play carries on at once: there is nothing to get ready for.
             case HomeMenuAction.Resume when active == FlowScenes.Gameplay && !_shell.Match.InSong && _resume is { } resume && !_gameplay.Reviewing
                 && !_gameplay.Demo:
@@ -342,15 +472,6 @@ internal sealed class HomeControls : IDisposable
                 resumeSong();
                 _gameplay.Abandon();
                 break;
-            case HomeMenuAction.PickTjaFolder or HomeMenuAction.PickOfficialFolder or HomeMenuAction.PickOsuFolder:
-                _pickingFolder = action;
-                _shell.Application.PickFolder(action switch
-                {
-                    HomeMenuAction.PickTjaFolder => _shell.Arcade.TjaFolder ?? _shell.Options.TjaRoot,
-                    HomeMenuAction.PickOsuFolder => _shell.Arcade.OsuFolder,
-                    _ => ArcadeSettings.Folders(_shell.Arcade.StockFolders) is [.., var last] ? last : null,
-                });
-                break;
             // Mid-song: the song ends for this player (the other is told the room is gone) and Song Select comes back.
             case HomeMenuAction.LeaveRoom when active == FlowScenes.Gameplay:
                 resumeSong();
@@ -376,10 +497,6 @@ internal sealed class HomeControls : IDisposable
                 save();
                 _shell.RequestRestart();
                 break;
-            // Once at a time; its progress shows in the notice sidebar.
-            case HomeMenuAction.RehashLibrary:
-                _shell.RehashLibrary();
-                break;
             // A bake already running is shown again rather than started twice.
             case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                 _menu.Bake = _shell.Bake is { Running: true } running ? running
@@ -397,9 +514,6 @@ internal sealed class HomeControls : IDisposable
 
     // A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else is
     // said and left out.
-    private ArcadeSettings officialFolder(string folder) =>
-        AddOfficialFolder(_shell.Arcade, folder, problem => _shell.Sync.Notices.AddLocal(problem, Waddamburo.Game.Online.NoticeSeverity.Warning));
-
     /// <summary>
     /// A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else
     /// (or a Nijiiro one it can't read) is told to <paramref name="warn"/> and left out.

@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Force $outputRoot | Out-Null
 $shaders = @{
     "vs_quad" = "quad"; "fs_quad" = "quad"; "fs_mask" = "quad"
     "vs_don" = "don"; "fs_don" = "don"
-    "vs_don_post" = "post"; "fs_don_post" = "post"
+    "vs_don_post" = "post"; "fs_don_post" = "post"; "fs_blur" = "quad"
 }
 # token, profile, platform
 $targets = @(

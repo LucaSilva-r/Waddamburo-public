@@ -131,6 +131,14 @@ public sealed class RenderFrame
 
     public double? ContentAspectRatio { get; }
 
+    /// <summary>
+    /// The first this many quads are a backdrop drawn blurred like frosted glass (an overlay's background), at
+    /// <see cref="BackdropBrightness"/>; the rest draw sharp over it. Where the renderer cannot blur, they draw as usual.
+    /// </summary>
+    public int BlurredQuads { get; init; }
+
+    public float BackdropBrightness { get; init; } = 1;
+
     public RenderViewport ResolveViewport(uint surfaceWidth, uint surfaceHeight) =>
         ContentAspectRatio is double aspectRatio
             ? RenderViewport.AspectFit(surfaceWidth, surfaceHeight, aspectRatio)

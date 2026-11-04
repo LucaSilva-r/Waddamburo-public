@@ -9,8 +9,9 @@ namespace Waddamburo.App.Home;
 /// </summary>
 internal static class ControlBindings
 {
-    // A pad takes two keyboard keys at most (controllers and MIDI: any number).
-    public const int MaximumKeys = 2;
+    // A pad (or button) takes eight keyboard keys at most, a ninth replacing the oldest, so its list still fits the
+    // settings line (controllers and MIDI: any number).
+    public const int MaximumKeys = 8;
 
     public static string[] Inputs(string list) =>
         list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -35,17 +36,14 @@ internal static class ControlBindings
             if (other == pad && (replace || !bound.Contains(captured.Token)))
                 kept = kept.Append(captured.Token);
             if (other == pad && device == 0)
-            {
-                var surplus = kept.Where(token => OnDevice(token, device)).SkipLast(MaximumKeys).ToHashSet();
-                kept = kept.Where(token => !surplus.Contains(token));
-            }
+                kept = capped(kept);
             controls = controls.With(other, string.Join(", ", kept));
         }
         return controls;
     }
 
     /// <summary>The input joins the button, leaving any other button it pressed (listed already: it goes).</summary>
-    public static ArcadeSettings.EquatableList BindButton(ArcadeSettings.EquatableList buttons, int button, SdlInput captured, int device)
+    public static ArcadeSettings.EquatableList BindButton(ArcadeSettings.EquatableList buttons, int button, SdlInput captured)
     {
         for (var other = 0; other < buttons.Count; other++)
         {
@@ -53,14 +51,18 @@ internal static class ControlBindings
             var kept = bound.Where(token => token != captured.Token);
             if (other == button && !bound.Contains(captured.Token))
                 kept = kept.Append(captured.Token);
-            if (other == button && device == 0)
-            {
-                var surplus = kept.Where(token => OnDevice(token, device)).SkipLast(MaximumKeys).ToHashSet();
-                kept = kept.Where(token => !surplus.Contains(token));
-            }
+            if (other == button && captured.Kind == SdlInputKind.Key)
+                kept = capped(kept);
             buttons = buttons.With(other, string.Join(", ", kept));
         }
         return buttons;
+    }
+
+    // The newest MaximumKeys keyboard keys of a list (its other inputs all stay).
+    private static IEnumerable<string> capped(IEnumerable<string> inputs)
+    {
+        var surplus = inputs.Where(static token => OnDevice(token, 0)).SkipLast(MaximumKeys).ToHashSet();
+        return inputs.Where(token => !surplus.Contains(token));
     }
 
     /// <summary>The player's pads get their default inputs of this device back (taken from wherever they are now).</summary>

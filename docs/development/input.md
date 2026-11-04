@@ -21,14 +21,15 @@ of a pad hits while the first is still held. An input that is not bound keeps it
 the arrows, a letter used as a shortcut); a pad's own letter, once unbound, does nothing. A
 controller's Start is Escape.
 
-Home mode's Settings > Drum Controls (`HomeMenu`) shows one player's four pads on one device at a
-time (Player, then Device: Keyboard, Controller or MIDI). Centre on a pad, then the next input of
+Settings > Drum Controls (`ServiceMenu`: the arcade service menu's page, also the home settings') shows one
+player's four pads on one device at a time (Player, then Device: Keyboard, Controller or MIDI), then the
+buttons (at home the ones beside the drum, on a cabinet the coin and service switches). Enter on a pad, then the next input of
 that device is added to it (taken from the pad it was on, either player's; removed if the pad already
-had it; a pad keeps two keyboard keys at most, a third replacing the oldest); other
+had it; a pad keeps eight keyboard keys at most, a ninth replacing the oldest); other
 devices' inputs are ignored meanwhile. Set Up All Pads asks for the four pads in turn, each hit
 replacing what the pad had on that device. `SdlApplication.BeginCapture` holds the input back from
 the game. Escape cancels; Enter, the arrows and the other keys the menus need cannot be bound.
-Delete clears a pad on that device, and Reset to Default restores the player's defaults for it.
+Reset to Default restores the player's defaults for that device.
 
 ## Drum debounce
 

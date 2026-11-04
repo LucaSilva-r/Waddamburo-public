@@ -17,7 +17,7 @@ fi
 mkdir -p "$output_root"
 
 # name varying-def
-for entry in vs_quad:quad fs_quad:quad fs_mask:quad vs_don:don fs_don:don vs_don_post:post fs_don_post:post; do
+for entry in vs_quad:quad fs_quad:quad fs_mask:quad vs_don:don fs_don:don vs_don_post:post fs_don_post:post fs_blur:quad; do
     name=${entry%%:*}
     varying="$shader_root/${entry#*:}.varying.def.sc"
     type=fragment

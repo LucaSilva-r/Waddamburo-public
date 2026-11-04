@@ -188,7 +188,6 @@ internal sealed class GameShell : IDisposable
     public OnlineMatch Match { get; private set; } = null!;
 
     /// <summary>The home menu's artwork (panel, buttons, the entry's drum stand), when the game data has it.</summary>
-    public HomePauseOverlay? HomeArt => _home.Art;
 
     /// <summary>The online lobby, and the room it holds.</summary>
     public RoomOverlay Room { get; private set; } = null!;
@@ -210,6 +209,9 @@ internal sealed class GameShell : IDisposable
     // Arcade: the service menu (Escape, the test switch) and the cabinet's running totals.
     private readonly ServiceMenu? _service;
     private bool _serviceEscape;
+
+    /// <summary>The service menu (arcade) or the settings overlay (home).</summary>
+    public ServiceMenu? Service => _service;
 
     /// <summary>The cabinet's bookkeeping (the service menu's counts).</summary>
     public Bookkeeping Book { get; }
@@ -372,11 +374,12 @@ internal sealed class GameShell : IDisposable
         Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
         Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
             ? Path.Combine(Path.GetDirectoryName(settingsPath)!, Bookkeeping.FileName) : null);
+        // Arcade: the service menu (Escape); home: the Escape menu's settings overlay.
+        _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book);
         if (!Arcade.Home)
         {
             Book.PowerOnCount++;
             Book.Save();
-            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book);
         }
         _reviewBar = new ReviewOverlay(Painter);
         if (Arcade.Home)
@@ -623,7 +626,7 @@ internal sealed class GameShell : IDisposable
                     // search field takes the letters).
                     if (_notices is not null && !onLane && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
                         _notices.Toggle();
-                    if (_service?.IsOpen != true)
+                    if (Arcade.Home || _service?.IsOpen != true)
                         flowOf(Active.Id).UpdateFrame(keyboard);
                 },
                 profileFrame: () => Active.Id == FlowScenes.Gameplay && !Overlay.IsShown,
@@ -833,7 +836,7 @@ internal sealed class GameShell : IDisposable
     // credits are dropped; leaving it applies its settings and the attract starts. True while it takes the tick.
     private bool serviceMenu(SdlKeyboardSnapshot keys)
     {
-        if (_service is not { } service)
+        if (_service is not { } service || Arcade.Home)
             return false;
         var escape = keys.IsDown(SdlKeyboardKey.Escape);
         var opening = escape && !_serviceEscape && !service.IsOpen;
@@ -1276,7 +1279,7 @@ internal sealed class GameShell : IDisposable
 
     private RenderFrame createFrame(double interpolationFraction)
     {
-        if (_service is { IsOpen: true } service)
+        if (_service is { IsOpen: true } service && !Arcade.Home)
         {
             // The menu's frame is the one shown: the switch under it lets go of its held frame, and the switch out
             // of it (EXIT) holds this one, not the scene from before the menu.
@@ -1324,9 +1327,11 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(_playerSetup.Quads(interpolation));
         quads.AddRange(indicatorQuads(false));
         quads.AddRange(Overlay.Quads(interpolation, Titles.Resolve));
-        // The online lobby shades Song Select, all but its Don-chans and name boards: those come again over the shade.
+        // The online lobby shades (frosts) Song Select, all but its Don-chans and name boards: those come again over it.
+        var frosted = 0;
         if (Room.ShadesScene && Active.Id == FlowScenes.SongSelect)
         {
+            frosted = quads.Count;
             quads.AddRange(Room.Shade());
             quads.AddRange(players(scene, interpolation));
         }
@@ -1338,7 +1343,11 @@ internal sealed class GameShell : IDisposable
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
             quads.AddRange(_notices.Quads(onLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
         quads.AddRange(_performance.Quads());
-        var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio);
+        var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio)
+        {
+            BlurredQuads = frosted,
+            BackdropBrightness = HomeControls.BackdropBrightness,
+        };
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);

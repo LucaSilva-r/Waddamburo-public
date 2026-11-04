@@ -28,16 +28,58 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private sealed record Row(string Text, Action Action, ListedRoom? Room = null);
 
-    private const int PromptWidth = 640, PromptHeight = 150, BannerWidth = 520, BannerHeight = 50, BannerTop = 658, CodeLength = 6, TextLength = 32;
-    private const float Centre = 640;
-    private const float RowX = Centre - 280, RowWidth = 560, RowHeight = 54, RowSpacing = 64, RowsTop = 230;
-    private const int VisibleRows = 5;
+    private const int BannerWidth = 520, BannerHeight = 50, BannerTop = 658, CodeLength = 6, TextLength = 32;
     private static readonly TimeSpan RefreshEvery = TimeSpan.FromSeconds(5);
 
     private Prompt _prompt;
     private string _typed = "";
     private bool _panel;
-    private int _selection;
+    // The lobby and its text prompts in the overlay look (Home/OverlayMenu): the lobby's page, a prompt's on top of it.
+    private Home.OverlayMenu? _menu;
+    private Home.OverlayPage? _lobbyPage, _promptPage;
+
+    private Home.OverlayMenu menu()
+    {
+        _menu ??= new Home.OverlayMenu(shell.Application, shell.Options.ServiceFontPath ?? shell.Options.FontPath)
+        {
+            Sound = don => (don ? (System.Action)decide : step)(),
+        };
+        _lobbyPage ??= new(lobbyTitle, () => [.. rows().Select(row => new Home.OverlayRow(row.Text, Enter: () => pick(row)))],
+            Centred: true, Message: lobbyMessage, Back: back, Legend: false);
+        _promptPage ??= new(() => promptText().Line, () => [], Centred: true, Message: () => promptText().Hint, Legend: false);
+        if (_panel && !_menu.IsOpen)
+            _menu.Open(_lobbyPage, home: true);
+        if (_prompt != Prompt.None && _menu.Page != _promptPage)
+            _menu.Push(_promptPage);
+        return _menu;
+    }
+
+    // The lobby's selection is its page's.
+    private int _selection
+    {
+        get => menu().Selection;
+        set => menu().Selection = value;
+    }
+
+    // Escape: out of the share question (refused), the public rooms, then the lobby (not while the other player picks).
+    private void back()
+    {
+        if (_share is not null)
+            answerShare(false);
+        else if (_browsing && _session is null)
+            browse(false);
+        else if (!shell.Match.WaitingForTheirPick)
+            ClosePanel();
+    }
+
+    private string lobbyTitle() => _warning ? _share is null ? T("online.warning_title") : T("online.share_title")
+        : _session?.Room is { IsQuick: true } ? T("online.quick_play") : _session?.Room?.Name ?? T("online.lobby");
+
+    // What's going on: the first time's warning, or the status and, in the host's own room, its code to give out.
+    private string lobbyMessage() => _warning
+        ? string.Join('\n', _share is null ? [T("online.warning_direct"), T("online.warning_ip"), T("online.warning_ok")]
+            : (string[])[T("online.share_sent"), T("online.share_authorized"), T("online.share_memory")])
+        : _session is { IsHost: true, Room: { IsQuick: false } room } ? $"{status()}\n{T("online.room_code", room.Code)}" : status();
     private OnlineSession? _session;
     private Task<bool>? _start;
     private bool _quickPlay;
@@ -57,7 +99,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     /// <summary>The lobby shades Song Select (the shell draws its players again over <see cref="Shade"/>).</summary>
     public bool ShadesScene => _panel;
 
-    public IEnumerable<RenderQuad> Shade() => [painter.Rect(0, 0, 1280, 720, new RenderColor(0, 0, 0, 0.8f))];
+    public IEnumerable<RenderQuad> Shade() => shell.Application.BlursBackdrop ? []
+        : [painter.Rect(0, 0, 1280, 720, new RenderColor(0, 0, 0, 0.8f))];
 
     /// <summary>The room the player is in, once they're in it.</summary>
     public OnlineSession? Session => _start is { IsCompletedSuccessfully: true, Result: true } ? _session : null;
@@ -104,6 +147,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         closePrompt();
         _panel = false;
+        _menu?.Close();
     }
 
     public bool Tick(SdlKeyboardSnapshot keys, bool escape)
@@ -136,25 +180,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         }
         if (_browsing)
             refreshRooms();
-        var rows = this.rows();
-        _selection = Math.Clamp(_selection, 0, rows.Count - 1);
-        bool pressed(params SdlKeyboardKey[] candidates) => candidates.Any(keys.IsDown);
-        var pads = SdlInputBindings.Pads;
-        if (escape && _share is not null)
-            answerShare(false);
-        else if (escape && _browsing && _session is null)
-            browse(false);
-        else if (escape && !shell.Match.WaitingForTheirPick)
-            ClosePanel();
-        else if (pressed(SdlKeyboardKey.Up, SdlKeyboardKey.Left, SdlKeyboardKey.WheelUp, pads[0], pads[4]))
-            move(-1, rows.Count);
-        else if (pressed(SdlKeyboardKey.Down, SdlKeyboardKey.Right, SdlKeyboardKey.WheelDown, pads[3], pads[7]))
-            move(1, rows.Count);
-        else if (decidePressed(keys))
-        {
-            decide();
-            pick(rows[_selection]);
-        }
+        menu().Tick(keys, keys, escape);
         return true;
     }
 
@@ -185,8 +211,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     public IEnumerable<RenderQuad> Quads()
     {
         var quads = new List<RenderQuad>();
-        if (_panel)
-            lobby(quads);
+        if (IsOpen)
+            quads.AddRange(menu().Quads());
         else if (banner() is { } text && (shell.Active.Id == FlowScenes.SongSelect || shell.Match.HoldsReveal && shell.Active.Id == FlowScenes.Gameplay))
         {
             // Over the free play line, between the name boards.
@@ -194,60 +220,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             quads.AddRange(painter.Panel(x, BannerTop, BannerWidth, BannerHeight, (254, 205, 1), (0, 0, 0), radius: 14, outlineWidth: 3));
             quads.Add(painter.Text(text, OverlayPainter.StageWidth / 2, BannerTop + BannerHeight / 2, BannerWidth - 36, 30, slot: _bannerSlot));
         }
-        if (_prompt != Prompt.None)
-        {
-            float x = (OverlayPainter.StageWidth - PromptWidth) / 2, y = (OverlayPainter.StageHeight - PromptHeight) / 2f;
-            var (line, hint) = promptText();
-            quads.AddRange(painter.Panel(x, y, PromptWidth, PromptHeight, (254, 205, 1), (0, 0, 0), radius: 18, outlineWidth: 4));
-            quads.Add(painter.Text(line, OverlayPainter.StageWidth / 2, y + 52, PromptWidth - 48, 44));
-            quads.Add(painter.Text(hint, OverlayPainter.StageWidth / 2, y + 108, PromptWidth - 48, 28));
-        }
         return quads;
-    }
-
-    // What's going on and the choices (a window of them, around the selection), over the shade.
-    private void lobby(List<RenderQuad> quads)
-    {
-        var art = shell.HomeArt;
-        var rowsTop = RowsTop;
-        if (_warning)
-        {
-            // The outlined title, then its fill in yellow over it (a tint draws the fill alone).
-            var title = _share is null ? T("online.warning_title") : T("online.share_title");
-            quads.Add(painter.Text(title, Centre, 92, 900, 64));
-            quads.Add(painter.Text(title, Centre, 92, 900, 64, tint: (254, 205, 1)));
-            string[] lines = _share is null ? [T("online.warning_direct"), T("online.warning_ip"), T("online.warning_ok")]
-                : [T("online.share_sent"), T("online.share_authorized"), T("online.share_memory")];
-            for (var line = 0; line < lines.Length; line++)
-                quads.Add(painter.Text(lines[line], Centre, 175 + line * 50, 1000, 36));
-            rowsTop = 360;
-        }
-        else
-        {
-            quads.Add(painter.Text(_session?.Room is { IsQuick: true } ? T("online.quick_play") : _session?.Room?.Name ?? T("online.lobby"), Centre, 92, 700, 64));
-            quads.Add(painter.Text(status(), Centre, 160, 900, 34, slot: _statusSlot));
-            // The host's own room: its code, to give to whoever they're playing with, whatever else the page says.
-            if (_session is { IsHost: true, Room: { IsQuick: false } room })
-                quads.Add(painter.Text(T("online.room_code", room.Code), Centre, 200, 900, 30, tint: (254, 205, 1)));
-        }
-        var rows = this.rows();
-        var first = Math.Clamp(_selection - VisibleRows / 2, 0, Math.Max(0, rows.Count - VisibleRows));
-        for (var index = first; index < Math.Min(rows.Count, first + VisibleRows); index++)
-        {
-            var y = rowsTop + (index - first) * RowSpacing;
-            if (art is not null)
-                art.Choice(quads, RowX, y, RowWidth, RowHeight, index == _selection, rows[index].Text);
-            else
-            {
-                quads.Add(painter.Rect(RowX, y, RowWidth, RowHeight, index == _selection
-                    ? new RenderColor(0.19f, 0.88f, 1, 1) : new RenderColor(0.16f, 0.45f, 0.65f, 1)));
-                quads.Add(painter.Text(rows[index].Text, RowX + RowWidth / 2, y + RowHeight / 2, (int)RowWidth - 24, 36));
-            }
-        }
-        if (first > 0)
-            quads.Add(painter.Text("▲", Centre, rowsTop - 22, 40, 24));
-        if (first + VisibleRows < rows.Count)
-            quads.Add(painter.Text("▼", Centre, rowsTop + VisibleRows * RowSpacing - 4, 40, 24));
     }
 
     private List<Row> rows()
@@ -500,6 +473,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         if (_prompt != Prompt.None)
             shell.Application.StopTextInput();
         _prompt = Prompt.None;
+        if (_menu is not null && _menu.Page == _promptPage)
+            _menu.Pop();
     }
 
     private void submit()

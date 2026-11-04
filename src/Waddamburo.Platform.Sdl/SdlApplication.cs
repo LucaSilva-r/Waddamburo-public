@@ -199,6 +199,9 @@ public sealed unsafe class SdlApplication : IDisposable
     /// <summary>Whether BC7 textures can be drawn (natively, or decoded by bgfx).</summary>
     public bool SupportsBc7 => _renderer?.SupportsBc7 ?? false;
 
+    /// <summary>Overlays can blur what is under them (frosted glass); else they darken it.</summary>
+    public bool BlursBackdrop => _renderer?.BlursBackdrop ?? false;
+
     public RenderTextureId UploadBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
     {
         ensureOwnerThread();

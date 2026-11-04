@@ -1,27 +1,21 @@
 using Waddamburo.App.Audio;
-using Waddamburo.App.Gameplay;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
 
 namespace Waddamburo.App.Home;
 
-/// <summary>
-/// The home menu's sound: the player's volume settings on the mixer, a sample of the bus whose volume
-/// is being edited, and the menus' music held while the menu is open.
-/// </summary>
 /// <summary>Where the game is, for the volumes on top of the master one: the attract (with its demo plays), the menus, or a song.</summary>
 internal enum MenuVolumeScope { Song, Menus, Attract }
 
-internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSelectCatalogView catalog, CatalogAssetRouter assets)
+/// <summary>
+/// The home menu's sound: the player's volume settings on the mixer, the menus' music held while the menu is open,
+/// and the attract muted under it.
+/// </summary>
+internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds)
 {
-    private AudioBus? _sampleBus;
-    private AudioPlaybackHandle? _sampleMusic;
-    private int _sampleNextTick;
     private bool _menuMusicHeld;
     private ArcadeSettings? _settings;
     private MenuVolumeScope _scope;
-    private bool _attractMuted;
 
     /// <summary>Which of the menus' own volumes applies now (re-applied on a change).</summary>
     public void Scope(MenuVolumeScope scope)
@@ -64,83 +58,15 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, SongSele
     }
 
     /// <summary>
-    /// The attract (and its demo play) goes on silent under the menu: its music, voices and drums. The bus of
-    /// a volume being sampled still sounds, and the menu's own sounds (drum and effect buses) do too.
+    /// The attract (and its demo play) goes on silent under the menu: its music, voices and drums. The menu's own
+    /// sounds (drum and effect buses) still sound.
     /// </summary>
     public void MuteAttract(bool muted)
     {
-        _attractMuted = muted;
         if (sounds is not null)
             sounds.Gameplay.Muted = sounds.Attract.Muted = muted;
         if (audio is null) return;
         foreach (var bus in (AudioBus[])[AudioBus.Bgm, AudioBus.Preview, AudioBus.Voice])
-            audio.Mixer.SetBusMuted(bus, muted && bus != _sampleBus);
-    }
-
-    /// <summary>
-    /// While a volume is edited its bus keeps sounding (<paramref name="bus"/>; null: nothing): a random
-    /// song, a menu sound, or a Don-chan line, each repeated once it has finished.
-    /// </summary>
-    public void Sample(AudioBus? bus, int tick)
-    {
-        if (bus != _sampleBus)
-        {
-            if (_sampleMusic is { } music)
-                audio?.Mixer.Stop(music, TimeSpan.FromMilliseconds(20));
-            if (_sampleBus == AudioBus.Voice)
-                sounds?.Bank.StopVoice();
-            _sampleMusic = null;
-            _sampleBus = bus;
-            _sampleNextTick = 0;
-            if (_attractMuted)
-                MuteAttract(true);
-        }
-        if (bus is not { } playing || audio is null || tick < _sampleNextTick)
-            return;
-        switch (playing)
-        {
-            case AudioBus.Bgm when _sampleMusic is not { } music || !audio.Mixer.IsPlaying(music):
-                _sampleMusic = randomSong(audio);
-                _sampleNextTick = tick + 60;
-                break;
-            case AudioBus.MenuSound:
-                sounds?.Bank.Play("SE_COM", 13, AudioBus.MenuSound, trace: false);
-                _sampleNextTick = tick + 60;
-                break;
-            case AudioBus.Voice when sounds?.Bank is { IsVoicePlaying: false } bank:
-                bank.Play("VO_SELECT", 1, trace: false);
-                _sampleNextTick = tick + 30;
-                break;
-        }
-    }
-
-    // A random catalog song from its preview point, on the music bus.
-    // ponytail: opens the file on the tick (a short hitch); open it in the background if that shows.
-    private AudioPlaybackHandle? randomSong(AudioEngine engine)
-    {
-        var songs = catalog.Categories.SelectMany(static category => category.Songs)
-            .Where(static song => song.Descriptor.AudioAsset is not null).ToArray();
-        if (songs.Length == 0) return null;
-        var song = songs[Random.Shared.Next(songs.Length)].Descriptor;
-        try
-        {
-            var input = assets.OpenReadAsync(song.AudioAsset!).AsTask().GetAwaiter().GetResult();
-            BufferedAudioSource source;
-            try
-            {
-                source = new BufferedAudioSource(input, engine.Mixer.Format, song.PreviewStart ?? TimeSpan.Zero);
-            }
-            catch
-            {
-                input.Dispose();
-                throw;
-            }
-            return engine.Mixer.PlayStream(source, AudioBus.Bgm);
-        }
-        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
-        {
-            Console.Error.WriteLine($"Volume sample '{song.Title.Primary}' unavailable: {exception.Message}");
-            return null;
-        }
+            audio.Mixer.SetBusMuted(bus, muted);
     }
 }
