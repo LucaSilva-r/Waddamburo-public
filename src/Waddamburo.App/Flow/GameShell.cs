@@ -1482,9 +1482,10 @@ internal sealed class GameShell : IDisposable
     {
         if (Sync.Pairing is not { } pairing)
             return _pill.Quads(); // home: the account picker shows and hides it
-        // The game takes cards in the attract loop and in entry (not from song select on), one at a time.
+        // The game takes cards in the attract loop (its demo play too) and in entry (not from song select on), one at
+        // a time.
         var entry = flowOf(Active.Id) is EntryFlow;
-        pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow
+        pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow or GameplayFlow { Demo: true }
             || entry && !Hosts.EntryCardPending;
         if (entry && pairing.TakeCardFailure())
             Hosts.RejectEntryCard();

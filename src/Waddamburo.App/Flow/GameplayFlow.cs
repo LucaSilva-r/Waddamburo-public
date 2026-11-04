@@ -135,6 +135,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             [new PlayerChartRequest(LocalPlayerSlot.PlayerOne, chart.Key, chart.ChartAsset, course)]);
         if (!Shell.PlayRequests.TryRequestPlay(request))
             return false;
+        // The demo's player is the default Don (red plate, no name), not the last credit's card or account; the
+        // next credit resets the players anyway.
+        Shell.ResetPlayers();
         if (Shell.Sounds?.Gameplay is { } sounds)
         {
             sounds.Waiwai = false;
