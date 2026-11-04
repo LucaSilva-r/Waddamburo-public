@@ -330,7 +330,7 @@ internal sealed class GameShell : IDisposable
         Audio?.Mixer.StopAll();
         var log = ReleaseConsole.WriteCrashFile(exception);
         Console.Error.WriteLine($"Crash: {exception}");
-        CrashScreen.Show(Application, Options.ServiceFontPath ?? Options.FontPath, "99-1", "GAME", exception, log);
+        CrashScreen.Show(Application, Options.ServiceFontPath ?? Options.FontPath, "99-1", BootChecks.Shown("GAME"), exception, log);
     }
 
     private readonly int _crashAt = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_CRASH_AT"), out var crashAt) ? crashAt : -1;

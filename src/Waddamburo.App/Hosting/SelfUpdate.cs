@@ -103,17 +103,16 @@ internal static class SelfUpdate
         // The service menu's look, in the bundled font: this runs before the game folder is read.
         var fonts = Cli.BundledFonts.Extract(Path.Combine(Path.GetDirectoryName(ReleaseConsole.CrashFolder)!, "fonts"));
         using var menu = new OverlayMenu(application, fonts.Service);
-        var japanese = Strings.Language == "ja";
-        menu.Open(new OverlayPage(() => japanese ? "ソフトウェア更新" : "SOFTWARE UPDATE", static () => [], Centred: true, Legend: false,
+        menu.Open(new OverlayPage(() => Strings.T("service.update.title"), static () => [], Centred: true, Legend: false,
             Body: () =>
             {
                 var done = Volatile.Read(ref percent);
                 var filled = done * 30 / 100;
                 return
                 [
-                    ((japanese ? "ダウンロード中: " : "Downloading ") + release.Tag, OverlayMenu.White),
+                    (Strings.T("service.update.downloading", release.Tag), OverlayMenu.White),
                     ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {done}%", OverlayMenu.Green),
-                    (japanese ? "完了すると自動で再起動します。" : "The game restarts by itself when it is done.", OverlayMenu.White),
+                    (Strings.T("service.update.restarts"), OverlayMenu.White),
                 ];
             }, Footer: () => [(OverlayMenu.upper(WindowTitle), OverlayMenu.Cyan)]), home: false);
         var download = Task.Run(async () =>

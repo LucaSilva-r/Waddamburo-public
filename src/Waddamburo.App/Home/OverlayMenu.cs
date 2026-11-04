@@ -242,10 +242,9 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             centred(quads, page.Title(), 60, White);
             if (page.Defaults)
             {
-                var x = 640 - "[DEFAULT IN GREEN]".Length * Half / 2;
-                text(quads, "[", x, 90, White);
-                text(quads, "DEFAULT IN GREEN", x + Half, 90, Green);
-                text(quads, "]", x + Half * 17, 90, White);
+                var defaults = upper(Strings.T("service.default_in_green"));
+                var x = 640 - (width(defaults) + Half * 2) / 2;
+                text(quads, "]", text(quads, defaults, text(quads, "[", x, 90, White), 90, Green), 90, White);
             }
             // A long page (the main menu) closes its rows up to stay above the hint lines and the footer.
             var slots = rows.Length + rows.Skip(1).Count(static row => row.Gap);
@@ -270,7 +269,7 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                     y += spacing;
                 // EXIT rows are red (blinking white when selected); cyan rows are information or, as OTHERS, the language.
                 // ponytail: EXIT known by its label; a row flag if a page names its way out otherwise.
-                var exit = row.Label == "EXIT";
+                var exit = row.Label == ExitLabel;
                 var colour = index == selected && (Editing || red) ? (exit ? White : Red) : exit ? Red : row.Cyan ? Cyan : White;
                 // A line wider than the block (the sound test's note) is centred on its own.
                 if (values[index] is null && !row.Selectable && width(row.Label) > blockWidth)
@@ -319,11 +318,13 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
         return (shift, valueX + shift, right - left);
     }
 
-    private string footer(OverlayPage page) => !Home
-        ? Editing ? "UP/DOWN : CHANGE   ENTER : SET" : "UP/DOWN : CHOOSE   ENTER : ENTER"
-        : page.DrumTest ? "UP DOWN : CHOOSE   ENTER : ENTER   ESC : BACK"
-        : Editing ? "RIMS / LEFT RIGHT : CHANGE   DON / ENTER : SET   ESC : BACK"
-        : "RIMS / UP DOWN : CHOOSE   DON / ENTER : ENTER   ESC : BACK";
+    private static string ExitLabel => upper(Strings.T("service.exit"));
+
+    private string footer(OverlayPage page) => upper(Strings.T(!Home
+        ? Editing ? "service.legend.cabinet_editing" : "service.legend.cabinet"
+        : page.DrumTest ? "service.legend.drum_test"
+        : Editing ? "service.legend.home_editing"
+        : "service.legend.home"));
 
     public static string upper(string text) => text.ToUpperInvariant();
 

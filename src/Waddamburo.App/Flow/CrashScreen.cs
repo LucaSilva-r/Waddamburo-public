@@ -22,14 +22,13 @@ internal static class CrashScreen
         string? log, (string Text, RenderColor Colour)[]? footer = null)
     {
         using var menu = new OverlayMenu(application, fontPath);
-        var japanese = Strings.Language == "ja";
-        menu.Open(new OverlayPage(() => $"{code} {name} ERROR", static () => [], Centred: true, Legend: false,
+        menu.Open(new OverlayPage(() => Strings.T("service.crash.title", code, name), static () => [], Centred: true, Legend: false,
             Body: () =>
             [
-                (japanese ? "エラーが発生しています。" : "An error has occurred.", OverlayMenu.Red),
+                (Strings.T("service.crash.occurred"), OverlayMenu.Red),
                 (exception.Message, OverlayMenu.White),
-                (log is null ? "" : (japanese ? "ログ: " : "Log: ") + log, OverlayMenu.White),
-                (japanese ? "ウィンドウを閉じるか、Escapeで終了します。" : "Close the window or press Escape to quit.", OverlayMenu.White),
+                (log is null ? "" : Strings.T("service.crash.log", log), OverlayMenu.White),
+                (Strings.T("service.crash.quit"), OverlayMenu.White),
             ], Footer: () => footer ?? [(OverlayMenu.upper(Hosting.SelfUpdate.WindowTitle), OverlayMenu.Cyan)]), home: false);
         while (application.PumpAndPresent(menu.Frame(), out var escape) && !escape)
             Thread.Sleep(15);
@@ -46,7 +45,7 @@ internal static class CrashScreen
         {
             var fonts = Cli.BundledFonts.Extract(Path.Combine(Path.GetDirectoryName(ReleaseConsole.CrashFolder)!, "fonts"));
             using var application = new SdlApplication(Hosting.SelfUpdate.WindowTitle, 1280, 720);
-            Show(application, fonts.Service, "00-1", "STARTUP", exception, log);
+            Show(application, fonts.Service, "00-1", BootChecks.Shown("STARTUP"), exception, log);
             return true;
         }
         catch (Exception other) when (other is not OutOfMemoryException)

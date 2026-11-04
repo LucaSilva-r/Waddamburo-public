@@ -47,7 +47,7 @@ internal sealed class BootChecks : IDisposable
             (OverlayMenu.upper(release ?? "Taiko no Tatsujin"), OverlayMenu.White),
             (OverlayMenu.upper(Hosting.SelfUpdate.WindowTitle), OverlayMenu.Cyan),
         ];
-        _menu.Open(new OverlayPage(static () => "", () => [.. _checks.Select(check => new OverlayRow(check.Name, Value: () => check.Ok switch
+        _menu.Open(new OverlayPage(static () => "", () => [.. _checks.Select(check => new OverlayRow(Shown(check.Name), Value: () => check.Ok switch
             {
                 true => "{OK}",
                 false => check.Why is null ? "{NG}" : "{NG}  " + OverlayMenu.upper(check.Why),
@@ -133,6 +133,7 @@ internal sealed class BootChecks : IDisposable
         if (failed >= 0)
             _checks[failed].Ok = false;
         var name = failed >= 0 ? _checks[failed].Name : "SYSTEM";
+        name = Shown(name);
         Console.Error.WriteLine($"Boot failed at {name}: {exception}");
         if (!_interactive)
             return exception;
@@ -143,6 +144,25 @@ internal sealed class BootChecks : IDisposable
         closed.Data[FailedKey] = true;
         return closed;
     }
+
+    /// <summary>A part's name (English, as logged and as WADDAMBURO_BOOT_FAIL names it) in the game's language.</summary>
+    public static string Shown(string name) => OverlayMenu.upper(Strings.T(name switch
+    {
+        "NETWORK SERVICE" => "service.boot.network_service",
+        "SONG LIBRARY" => "service.boot.song_library",
+        "SONG CATALOG" => "service.boot.song_catalog",
+        "I/O" => "service.boot.io",
+        "DON-CHAN" => "service.boot.don_chan",
+        "AUDIO DEVICE" => "service.boot.audio_device",
+        "SOUND DATA" => "service.boot.sound_data",
+        "GRAPHICS" => "service.boot.graphics",
+        "GAMEPLAY DATA" => "service.boot.gameplay_data",
+        "MOVIES" => "service.boot.movies",
+        "SYSTEM SETUP" => "service.boot.system_setup",
+        "STARTUP" => "service.boot.startup",
+        "GAME" => "service.boot.game",
+        _ => "service.boot.system",
+    }));
 
     private void present()
     {

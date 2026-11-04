@@ -42,7 +42,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // Why the library at folder was left out at startup, null when it wasn't.
     private string? problemOf(string? folder) => folder is null ? null : LibraryProblems
         .Where(problem => string.Equals(Path.GetFullPath(problem.Folder), Path.GetFullPath(folder), StringComparison.Ordinal))
-        .Select(static problem => OverlayMenu.upper("NOT LOADED: " + problem.Why))
+        .Select(static problem => S("service.not_loaded", problem.Why))
         .FirstOrDefault();
 
     // A folder row: red, with the reason as its hint, when its library was left out at startup.
@@ -53,7 +53,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private Action<HomeMenuAction>? _command;
     private bool _canCalibrate;
     private static readonly string TimingSection = Strings.T("section.timing");
-    private static readonly string[] Devices = ["KEYBOARD", "CONTROLLER", "MIDI"];
+    private static readonly string[] Devices = [S("service.device.keyboard"), S("service.device.controller"), S("service.device.midi")];
 
     // The settings page's sections, by title (the language and volume ones go in OTHERS and SOUND TEST).
     private static readonly string LanguageSection = Strings.T("section.language"), VolumeSection = Strings.T("section.volume"),
@@ -154,7 +154,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // A page of this menu: its title and rows, the header where its values have defaults, the drum tests, and the main
     // page's Escape (home: the menu closes, as EXIT).
     private OverlayPage page(Page page, string section = "") => new(
-        () => page == Page.Section ? upper(section) : _home && page == Page.Main ? "SETTINGS" : title(page),
+        () => page == Page.Section ? upper(section) : _home && page == Page.Main ? S("service.settings") : title(page),
         () => rowsFor(page, section),
         Defaults: page is Page.Coin or Page.Game or Page.Sound or Page.Others or Page.Section,
         // I/O TEST tests the drum, so it doesn't move there; SOUND TEST is driven by it (each move a ka, each pick a don).
@@ -172,12 +172,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     // GAME MODE: a yes/no page; yes saves the settings in the other mode and restarts the game.
     private void confirmMode() => _menu.Push(new OverlayPage(
-        () => _home ? "SWITCH TO ARCADE MODE" : "SWITCH TO HOME MODE",
+        () => S(_home ? "service.switch_to_arcade" : "service.switch_to_home"),
         () =>
         [
-            new("THE GAME WILL RESTART. SWITCH NOW?", Cyan: true),
-            new("NO", Gap: true, Enter: _menu.Pop),
-            new("YES", Enter: () =>
+            new(S("service.switch.confirm"), Cyan: true),
+            new(S("service.no"), Gap: true, Enter: _menu.Pop),
+            new(S("service.yes"), Enter: () =>
             {
                 _menu.Close();
                 SwitchMode?.Invoke(_settings with { Home = !_home });
@@ -242,7 +242,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // the buttons beside the drum.
     private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton)] : [CoinButton, CoinButton + 1];
 
-    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : ["COIN", "SERVICE"];
+    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service")];
 
     // A pad's (0-3) or a button's (4 on, see buttons) inputs on the shown device, by name.
     // line: a drum pad's second line, its inputs after the first four.
@@ -254,7 +254,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             // Controllers and MIDI take any number: past the eighth, how many more.
             return upper(string.Join(" / ", names.Skip(4).Take(4))) + (names.Length > 8 ? $" +{names.Length - 8}" : "");
         // A line has room for about four; the buttons have no second line.
-        return names.Length == 0 ? "NOT SET"
+        return names.Length == 0 ? S("service.not_set")
             : upper(string.Join(" / ", names.Take(4))) + (pad >= 4 && names.Length > 4 ? $" +{names.Length - 4}" : "");
     }
 
@@ -274,100 +274,100 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     }
 
     private static string folderName(string? path) =>
-        path is null ? "NOT SET" : upper(Path.GetFileName(Path.TrimEndingDirectorySeparator(path)));
+        path is null ? S("service.not_set") : upper(Path.GetFileName(Path.TrimEndingDirectorySeparator(path)));
     private static int wrap(int value, int step, int min, int max) => value + step > max ? min : value + step < min ? max : value + step;
 
     private Row[] rowsFor(Page page, string section) => page switch
     {
         Page.Main =>
         [
-            .. _home ? (Row[])[] : [new("COIN OPTIONS", Enter: () => open(Page.Coin))],
-            new("GAME OPTIONS", Enter: () => open(Page.Game)),
-            new("NETWORK OPTIONS", Enter: () => open(Page.Network)),
-            new("I/O TEST", Enter: () => open(Page.Io)),
-            new("SOUND TEST", Enter: () => open(Page.Sound)),
+            .. _home ? (Row[])[] : [new(S("service.coin_options"), Enter: () => open(Page.Coin))],
+            new(S("service.game_options"), Enter: () => open(Page.Game)),
+            new(S("service.network_options"), Enter: () => open(Page.Network)),
+            new(S("service.io_test"), Enter: () => open(Page.Io)),
+            new(S("service.sound_test"), Enter: () => open(Page.Sound)),
             // The rest of Waddamburo's settings, a page per section of the home settings.
             .. HomeMenu.Sections.Where(static section => section.Title != LanguageSection && section.Title != VolumeSection
                     && section.Title != SongsSection && section.Title != GraphicsSection)
                 .Select(section => new Row(upper(section.Title), Enter: () => open(Page.Section, section.Title))),
-            new("DRUM CONTROLS", Enter: () => open(Page.Drums)),
-            new("SONG LIBRARIES", Enter: () => open(Page.Libraries)),
-            .. _home ? (Row[])[] : [new("BOOKKEEPING", Enter: () => open(Page.Bookkeeping))],
-            new("OTHERS", Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
-            new("EXIT", Gap: true, Enter: close),
+            new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
+            new(S("service.song_libraries"), Enter: () => open(Page.Libraries)),
+            .. _home ? (Row[])[] : [new(S("service.bookkeeping"), Enter: () => open(Page.Bookkeeping))],
+            new(S("service.others"), Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
+            new(S("service.exit"), Gap: true, Enter: close),
             .. _home ? (Row[])[] :
             [
-                new("LAST GAME STATUS", 440),
-                new("COIN USE", 460),
-                new("LEFT CREDIT", 460, () => $"{_credits}", 610),
-                new("USE CREDIT", 460, () => $"{_settings.CreditsOnePlayer}", 610),
+                new(S("service.last_game_status"), 440),
+                new(S("service.coin_use"), 460),
+                new(S("service.left_credit"), 460, () => $"{_credits}", 610),
+                new(S("service.use_credit"), 460, () => $"{_settings.CreditsOnePlayer}", 610),
             ],
         ],
         Page.Coin =>
         [
-            new("COIN VALUE", Value: () => $"1 COIN AS {{{_settings.CreditsPerCoin}}} CREDIT(S)",
+            new(S("service.coin_value"), Value: () => S("service.coin_value.value", _settings.CreditsPerCoin),
                 Step: step => set(s => s with { CreditsPerCoin = wrap(s.CreditsPerCoin, step, 1, 9) }),
                 IsDefault: () => _settings.CreditsPerCoin == Defaults.CreditsPerCoin),
-            new("1P GAME COST", Value: () => $"{{{_settings.CreditsOnePlayer}}} CREDIT(S)",
+            new(S("service.game_cost_one"), Value: () => S("service.credits.value", _settings.CreditsOnePlayer),
                 Step: step => set(s => wrap(s.CreditsOnePlayer, step, 1, 9) is var cost
                     ? s with { CreditsOnePlayer = cost, CreditsTwoPlayers = Math.Max(cost, s.CreditsTwoPlayers) } : s),
                 IsDefault: () => _settings.CreditsOnePlayer == Defaults.CreditsOnePlayer),
             // Two players never cost less than one (the settings file refuses it).
-            new("2P GAME COST", Value: () => $"{{{_settings.CreditsTwoPlayers}}} CREDIT(S)",
+            new(S("service.game_cost_two"), Value: () => S("service.credits.value", _settings.CreditsTwoPlayers),
                 Step: step => set(s => s with { CreditsTwoPlayers = wrap(s.CreditsTwoPlayers, step, s.CreditsOnePlayer, 9) }),
                 IsDefault: () => _settings.CreditsTwoPlayers == Defaults.CreditsTwoPlayers),
-            new("FREE PLAY", Value: () => _settings.FreePlay ? "{ON}" : "{OFF}",
+            new(S("service.free_play"), Value: () => $"{{{S(_settings.FreePlay ? "service.on" : "service.off")}}}",
                 Step: _ => set(s => s with { FreePlay = !s.FreePlay }), IsDefault: () => _settings.FreePlay == Defaults.FreePlay),
-            new("EXIT", Gap: true, Enter: _menu.Pop),
+            new(S("service.exit"), Gap: true, Enter: _menu.Pop),
         ],
         Page.Game =>
         [
             .. _home ? (Row[])[] :
             [
-                new("NUMBER OF STAGES", 400, () => $"{{{_settings.SongsPerSession}}} STAGE(S)", 800,
+                new(S("service.stages"), 400, () => S("service.stages.value", _settings.SongsPerSession), 800,
                     Step: step => set(s => s with { SongsPerSession = wrap(s.SongsPerSession, step, 1, 5) }),
                     IsDefault: () => _settings.SongsPerSession == Defaults.SongsPerSession),
             ],
             .. shared(SongsSection),
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Sound =>
         [
             .. shared(VolumeSection),
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
-            new(Strings.Language == "ja" ? "面とふちを叩くと、太鼓を叩いた時の音が鳴ります。" : "Hit the drum's face and rim to hear the drum.", 400),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+            new(S("service.sound_test.note"), 400),
         ],
         Page.Io =>
         [
             .. Enumerable.Range(0, 8).Select(pad => new Row($"{pad / 4 + 1}P {PadNames[pad % 4]}",
-                Value: () => (_down[pad] ? "{ON} " : "OFF ") + _hits[pad].ToString(CultureInfo.InvariantCulture))),
-            new("EXIT", Gap: true, Enter: _menu.Pop),
+                Value: () => (_down[pad] ? $"{{{S("service.on")}}} " : S("service.off") + " ") + _hits[pad].ToString(CultureInfo.InvariantCulture))),
+            new(S("service.exit"), Gap: true, Enter: _menu.Pop),
         ],
         Page.Bookkeeping =>
         [
-            new("POWER ON TIME", Value: () => time(book.PowerOnTicks), ValueX: 730),
-            new("TOTAL PLAY TIME", Value: () => time(book.PlayTicks), ValueX: 730),
-            new("AVE. PLAY TIME", Value: () => time(book.PlayCount == 0 ? 0 : book.PlayTicks / book.PlayCount), ValueX: 730),
-            new("PLAY ON RATIO", Value: () => string.Create(CultureInfo.InvariantCulture,
+            new(S("service.power_on_time"), Value: () => time(book.PowerOnTicks), ValueX: 730),
+            new(S("service.total_play_time"), Value: () => time(book.PlayTicks), ValueX: 730),
+            new(S("service.average_play_time"), Value: () => time(book.PlayCount == 0 ? 0 : book.PlayTicks / book.PlayCount), ValueX: 730),
+            new(S("service.play_on_ratio"), Value: () => string.Create(CultureInfo.InvariantCulture,
                 $"{(book.PowerOnTicks == 0 ? 0 : 100d * book.PlayTicks / book.PowerOnTicks):0.0}%"), ValueX: 730),
-            new("PLAY COUNT", Value: () => $"{book.PlayCount}", ValueX: 730),
-            new("COIN COUNT", Value: () => $"{book.CoinCount}", ValueX: 730),
-            new("FREE PLAY COUNT", Value: () => $"{book.FreePlayCount}", ValueX: 730),
-            new("POWER ON COUNT", Value: () => $"{book.PowerOnCount}", ValueX: 730, Cyan: true),
-            new("BOOKKEEPING INITIALIZE", Gap: true, Enter: book.Reset),
-            new("EXIT", Enter: _menu.Pop),
+            new(S("service.play_count"), Value: () => $"{book.PlayCount}", ValueX: 730),
+            new(S("service.coin_count"), Value: () => $"{book.CoinCount}", ValueX: 730),
+            new(S("service.free_play_count"), Value: () => $"{book.FreePlayCount}", ValueX: 730),
+            new(S("service.power_on_count"), Value: () => $"{book.PowerOnCount}", ValueX: 730, Cyan: true),
+            new(S("service.bookkeeping_initialize"), Gap: true, Enter: book.Reset),
+            new(S("service.exit"), Enter: _menu.Pop),
         ],
         Page.Others =>
         [
-            new("VERSION", 400, () => SelfUpdate.WindowTitle, 560, Cyan: true),
-            new("CLOCK", 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
+            new(S("service.version"), 400, () => SelfUpdate.WindowTitle, 560, Cyan: true),
+            new(S("service.clock"), 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
             .. shared(LanguageSection),
             .. SwitchMode is null ? (Row[])[] :
             [
-                new("GAME MODE", 400, () => _home ? "{HOME}" : "{ARCADE}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
-                    Hint: "HOME: A PC, FREE PLAY AND ENDLESS SONGS. ARCADE: THE CABINET, WITH COINS AND STAGES. CHANGING IT RESTARTS THE GAME."),
+                new(S("service.game_mode"), 400, () => $"{{{S(_home ? "service.game_mode.home" : "service.game_mode.arcade")}}}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
+                    Hint: S("service.game_mode.hint")),
             ],
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         // DISPLAY takes the graphics settings too (one page for the picture).
         Page.Section =>
@@ -380,80 +380,84 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             .. _home && section == DisplaySection
                 ? [new Row(upper(Strings.T("settings.bake")), 400, Gap: true, Enter: () => run(HomeMenuAction.BakeTextures),
                     Hint: Strings.T("settings.bake.hint"))] : (Row[])[],
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Network =>
         [
-            new("SERVER", 400, () => _settings.Server is { } server ? server.ToString().ToUpperInvariant() : "NOT SET", 640, Cyan: true),
+            new(S("service.server"), 400, () => _settings.Server is { } server ? server.ToString().ToUpperInvariant() : S("service.not_set"), 640, Cyan: true),
             .. _home ? (Row[])[] :
             [
-                new("CABINET ID", 400, () => Online.CabinetPairing.CabinetId.ToUpperInvariant(), 640, Cyan: true),
-                new("CABINET TOKEN", 400, () => _settings.CabinetToken is null ? "NOT SET" : "SET", 640, Cyan: true),
+                new(S("service.cabinet_id"), 400, () => Online.CabinetPairing.CabinetId.ToUpperInvariant(), 640, Cyan: true),
+                new(S("service.cabinet_token"), 400, () => S(_settings.CabinetToken is null ? "service.not_set" : "service.set"), 640, Cyan: true),
             ],
-            new("STATUS", 400, () => $"{{{linkText()}}}", 640, Gap: true, Colour: linkColour),
-            new("LAST CHECK", 400, () => Health?.LastCheck is { } at
-                ? string.Create(CultureInfo.InvariantCulture, $"{at:HH:mm:ss} ({(int)(DateTime.Now - at).TotalSeconds}S AGO)") : "-", 640),
-            new("RESPONSE TIME", 400, () => Health?.RoundTrip is { } trip
+            new(S("service.status"), 400, () => $"{{{linkText()}}}", 640, Gap: true, Colour: linkColour),
+            new(S("service.last_check"), 400, () => Health?.LastCheck is { } at
+                ? S("service.last_check.value", at.ToString("HH:mm:ss", CultureInfo.InvariantCulture), (int)(DateTime.Now - at).TotalSeconds) : "-", 640),
+            new(S("service.response_time"), 400, () => Health?.RoundTrip is { } trip
                 ? string.Create(CultureInfo.InvariantCulture, $"{(int)trip.TotalMilliseconds} MS") : "-", 640),
-            new("TEST CONNECTION", 400, Gap: true, Enter: () => Health?.CheckNow(),
-                Hint: _home ? "CHECKS THE SERVER NOW (OTHERWISE EVERY 15 SECONDS). THE SERVER IS SET IN CONFIG.CFG."
-                    : "CHECKS THE SERVER AND THE CABINET TOKEN NOW (OTHERWISE EVERY 15 SECONDS). THE SERVER AND TOKEN ARE SET IN CONFIG.CFG."),
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
+            new(S("service.test_connection"), 400, Gap: true, Enter: () => Health?.CheckNow(),
+                Hint: S(_home ? "service.test_connection.hint.home" : "service.test_connection.hint.arcade")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Drums =>
         [
-            new("PLAYER", 400, () => $"{{{_player + 1}P}}", 640, _ => _player = 1 - _player, () => true),
-            new("DEVICE", 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, 2), () => true),
+            new(S("service.player"), 400, () => $"{{{_player + 1}P}}", 640, _ => _player = 1 - _player, () => true),
+            new(S("service.device"), 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, 2), () => true),
             // A drum pad takes up to eight keys: four on its row, the rest on the line under it (kept even when empty,
             // so the page doesn't move as keys come and go).
             .. PadNames.Concat(buttonNames).SelectMany((name, pad) => (Row[])[new Row(name, 400,
                 () => _listening && _menu.Selection == pad + 2 ? (_tick / 18 % 2 == 0 ? Prompts[_device] : "") : padValue(pad), 640,
-                Enter: () => listen(0), Hint: "ENTER, THEN PRESS THE INPUT FOR THIS PAD (ESCAPE CANCELS). IT JOINS THE PAD'S OTHERS. BACKSPACE OR DELETE CLEARS IT."),
+                Enter: () => listen(0), Hint: S("service.pad.hint")),
                 .. pad < 4 ? [new Row("", 400, () => padValue(pad, line: 1), 640)] : (Row[])[]]),
-            new("SET UP ALL PADS", 400, Gap: true, Enter: () => { _menu.Selection = 2; listen(4); },
-                Hint: "ASKS FOR THE FOUR PADS IN TURN, REPLACING THEIR INPUTS ON THIS DEVICE."),
-            new("RESET TO DEFAULT", 400, Enter: () => set(s => s with { Controls = ControlBindings.Reset(s.Controls, _player, _device) }),
-                Hint: "THIS PLAYER'S PADS GET THEIR DEFAULT INPUTS ON THIS DEVICE BACK."),
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
+            new(S("service.set_up_all_pads"), 400, Gap: true, Enter: () => { _menu.Selection = 2; listen(4); },
+                Hint: S("service.set_up_all_pads.hint")),
+            new(S("service.reset_to_default"), 400, Enter: () => set(s => s with { Controls = ControlBindings.Reset(s.Controls, _player, _device) }),
+                Hint: S("service.reset_to_default.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Libraries =>
         [
-            new("CUSTOM TJA SONGS", 400, () => folderName(_settings.TjaFolder ?? _defaultTja), 640,
+            new(S("service.tja_songs"), 400, () => folderName(_settings.TjaFolder ?? _defaultTja), 640,
                 Enter: () => pick("tja", _settings.TjaFolder ?? _defaultTja),
-                Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? "ENTER OPENS THE FOLDER PICKER.", Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
-            new("OSU!LAZER SONGS", 400, () => folderName(_settings.OsuFolder), 640,
+                Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? S("service.folder.hint"), Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
+            new(S("service.osu_songs"), 400, () => folderName(_settings.OsuFolder), 640,
                 Enter: () => pick("osu", _settings.OsuFolder),
-                Hint: problemOf(_settings.OsuFolder) ?? "ENTER OPENS THE FOLDER PICKER.", Colour: folderColour(_settings.OsuFolder)),
-            new("OFFICIAL SONGS", 400, Gap: true),
-            .. ArcadeSettings.Folders(_settings.StockFolders).Select(folder => new Row("  RELEASE", 400, () => folderName(folder), 640,
+                Hint: problemOf(_settings.OsuFolder) ?? S("service.folder.hint"), Colour: folderColour(_settings.OsuFolder)),
+            new(S("service.official_songs"), 400, Gap: true),
+            .. ArcadeSettings.Folders(_settings.StockFolders).Select(folder => new Row(S("service.release"), 400, () => folderName(folder), 640,
                 Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),
-                Hint: problemOf(folder) ?? "ENTER REMOVES IT FROM THE LIBRARY.", Colour: folderColour(folder))),
-            .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row("  NIJIIRO", 400, () => folderName(folder), 640,
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row(S("service.nijiiro"), 400, () => folderName(folder), 640,
                 Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
-                Hint: problemOf(folder) ?? "ENTER REMOVES IT FROM THE LIBRARY.", Colour: folderColour(folder))),
-            new("ADD A RELEASE OR NIJIIRO", 400, Enter: () => pick("official", null),
-                Hint: _message ?? "ANOTHER RELEASE'S GAME DATA OR A NIJIIRO INSTALLATION, JOINED TO THE GAME'S OWN SONGS."),
-            new("REHASH LIBRARY", 400, Gap: true, Enter: () => _rehash?.Invoke(),
-                Hint: "WORKS THE LIBRARY'S CHART HASHES OUT AGAIN (IN THE BACKGROUND)."),
-            new("EXIT", 400, Gap: true, Enter: _menu.Pop),
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            new(S("service.add_official"), 400, Enter: () => pick("official", null),
+                Hint: _message ?? S("service.add_official.hint")),
+            new(S("service.rehash"), 400, Gap: true, Enter: () => _rehash?.Invoke(),
+                Hint: S("service.rehash.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         _ => [],
     };
 
     private static string upper(string text) => OverlayMenu.upper(text);
 
+    // The menu's own words (Languages/*.json, service.*), in upper case as the cabinet shows them.
+    private static string S(string key) => upper(Strings.T(key));
+
+    private static string S(string key, params object?[] values) => upper(Strings.T(key, values));
+
     // The link as the last check found it: green online, yellow for what the cabinet can fix (its token), red when the
     // server can't be reached.
-    private string linkText() => Health is not { } health ? "OFFLINE (NO SERVER SET)" : health.State switch
+    private string linkText() => Health is not { } health ? S("service.link.offline") : health.State switch
     {
-        Online.LinkState.Checking => "CHECKING...",
-        Online.LinkState.Online => _settings.Home ? "ONLINE" : "ONLINE (CABINET AUTHORIZED)",
-        Online.LinkState.NoInternet => "NO INTERNET (SERVER NAME NOT FOUND)",
-        Online.LinkState.Unreachable => "SERVER UNREACHABLE",
-        Online.LinkState.Timeout => "NO ANSWER (TIMED OUT)",
-        Online.LinkState.ServerError => string.Create(CultureInfo.InvariantCulture, $"SERVER ERROR ({health.StatusCode})"),
-        Online.LinkState.NoToken => "NO CABINET TOKEN",
-        _ => "UNAUTHORIZED (CABINET TOKEN REFUSED)",
+        Online.LinkState.Checking => S("service.link.checking"),
+        Online.LinkState.Online => S(_settings.Home ? "service.link.online" : "service.link.online_cabinet"),
+        Online.LinkState.NoInternet => S("service.link.no_internet"),
+        Online.LinkState.Unreachable => S("service.link.unreachable"),
+        Online.LinkState.Timeout => S("service.link.timeout"),
+        Online.LinkState.ServerError => S("service.link.server_error", health.StatusCode),
+        Online.LinkState.NoToken => S("service.link.no_token"),
+        _ => S("service.link.unauthorized"),
     };
 
     private RenderColor linkColour() => Health?.IconType switch { 0 => OverlayMenu.Green, 2 => OverlayMenu.Red, _ => OverlayMenu.Yellow };
@@ -467,8 +471,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             step => set(s => setting.Set(s, Math.Clamp(setting.Step(setting.Get(s), step), setting.Minimum, setting.Maximum))),
             () => setting.Get(_settings) == setting.Get(Defaults), Hint: setting.Hint));
 
-    private static readonly string[] PadNames = ["KA (LEFT)", "DON (LEFT)", "DON (RIGHT)", "KA (RIGHT)"];
-    private static readonly string[] Prompts = ["PRESS A KEY...", "PRESS A BUTTON...", "HIT THE PAD..."];
+    private static readonly string[] PadNames = [S("service.pad.ka_left"), S("service.pad.don_left"), S("service.pad.don_right"), S("service.pad.ka_right")];
+    private static readonly string[] Prompts = [S("service.prompt.key"), S("service.prompt.button"), S("service.prompt.pad")];
 
     // H:MM'SS, as the cabinet counts its hours.
     private static string time(long ticks)
@@ -479,16 +483,16 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     private static string title(Page page) => page switch
     {
-        Page.Main => "MENU",
-        Page.Coin => "COIN OPTIONS",
-        Page.Game => "GAME OPTIONS",
-        Page.Sound => "SOUND TEST",
-        Page.Io => "I/O TEST",
-        Page.Bookkeeping => "BOOKKEEPING",
-        Page.Others => "OTHERS",
-        Page.Network => "NETWORK OPTIONS",
-        Page.Drums => "DRUM CONTROLS",
-        Page.Libraries => "SONG LIBRARIES",
+        Page.Main => S("service.menu"),
+        Page.Coin => S("service.coin_options"),
+        Page.Game => S("service.game_options"),
+        Page.Sound => S("service.sound_test"),
+        Page.Io => S("service.io_test"),
+        Page.Bookkeeping => S("service.bookkeeping"),
+        Page.Others => S("service.others"),
+        Page.Network => S("service.network_options"),
+        Page.Drums => S("service.drum_controls"),
+        Page.Libraries => S("service.song_libraries"),
         _ => "",
     };
 
