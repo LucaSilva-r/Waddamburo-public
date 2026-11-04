@@ -112,13 +112,13 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     public bool Available => shell.Arcade.Home && server() is not null && shell.JoinedSides.Count == 1 && token() is not null;
 
     /// <summary>
-    /// The Online spine was decided after all (the movie took the hit): the lobby opens, and Song Select reloads under it,
-    /// ready on that spine for when it closes.
+    /// The Online spine was decided after all (the movie took the hit): the lobby opens, and Song Select reloads on that
+    /// spine once it goes (see listDanDojo; not under it, where the rainbow would cover the lobby).
     /// </summary>
     public void OpenLobby()
     {
         open();
-        shell.Reload.Start(static () => { });
+        _relayout = true;
         shell.Hosts.ReturnToOnline();
     }
 
@@ -414,22 +414,31 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active)
             return;
         showPartnerAs(partner);
-        // Someone came: shown at once on the side waiting for them. Someone left: Song Select lays itself out again.
+        // Someone came: shown at once on the side waiting for them. Someone left: Song Select lays itself out again
+        // (once the lobby is gone, see listDanDojo).
         if (partner is not null && shell.Hosts.SongSelect is { } songSelect)
             songSelect.ShowPartner(shell.Hosts.PartnerSide);
         else
-            shell.Reload.Start(static () => { });
+            _relayout = true;
     }
 
     // In a room Song Select has no dan dojo (a course is played alone): it lays itself out again on joining and leaving.
+    // Not under the lobby (its rainbow would cover the lobby, Don-chan and the name boards): once the lobby goes, as the
+    // host goes to choose a song. A reload for anything else (the guest's coming to the host's song) lays it out too.
     private bool _roomListed;
+    private bool _relayout;
 
     private void listDanDojo()
     {
         var inRoom = Session is not null;
-        if (inRoom == _roomListed || shell.Active.Id != FlowScenes.SongSelect || shell.Reload.Busy)
+        if (shell.Reload.Busy)
+        {
+            (_roomListed, _relayout) = (inRoom, false);
             return;
-        _roomListed = inRoom;
+        }
+        if (inRoom == _roomListed && !_relayout || _panel || shell.Active.Id != FlowScenes.SongSelect)
+            return;
+        (_roomListed, _relayout) = (inRoom, false);
         shell.Reload.Start(static () => { });
     }
 
