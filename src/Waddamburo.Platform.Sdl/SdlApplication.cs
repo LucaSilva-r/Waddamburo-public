@@ -550,6 +550,17 @@ public sealed unsafe class SdlApplication : IDisposable
     /// <summary>Ends the running loop after the current frame; callable from any thread.</summary>
     public void RequestQuit() => _quitRequested = true;
 
+    // A controller connected: it takes the first free number (one plugged back in takes its old one).
+    private void addPad(SDL_JoystickID which)
+    {
+        var free = Array.FindIndex(_pads, static pad => pad.Pad == IntPtr.Zero);
+        if (free >= 0 && padNumber(which) == 0 && SDL_OpenGamepad(which) is var pad && pad is not null)
+        {
+            _pads[free] = (which, (IntPtr)pad);
+            Console.WriteLine($"Controller pad{free + 1}: {SDL_GetGamepadName(pad)}");
+        }
+    }
+
     /// <summary>
     /// Outside <see cref="Run(Func{double, RenderFrame}, Action{SdlKeyboardSnapshot}, int?, int?, Action{RenderCapture}?, Action{SdlKeyboardSnapshot}?, Func{bool}?, Action?, Action{float, float}?, Func{bool}?, Action{float, float}?, Action?, Action{SdlFrameMetrics}?, Action?, Action{float}?)"/>
     /// (the boot screen while the game loads, or its error): the window's events are handled and <paramref name="frame"/>
@@ -569,6 +580,9 @@ public sealed unsafe class SdlApplication : IDisposable
                 open = false;
             else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_ESCAPE)
                 escape = true;
+            // SDL announces the controllers already connected at start as added: they arrive during the boot screen.
+            else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_ADDED)
+                addPad(currentEvent.gdevice.which);
         }
         if (_renderer!.TryAcquireSwapchain())
             _renderer.Present(frame);
@@ -766,16 +780,7 @@ public sealed unsafe class SdlApplication : IDisposable
                         press(input, currentEvent.key.timestamp);
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_ADDED)
-                {
-                    // The first free number: a controller plugged back in takes its old one.
-                    var free = Array.FindIndex(_pads, static pad => pad.Pad == IntPtr.Zero);
-                    if (free >= 0 && padNumber(currentEvent.gdevice.which) == 0
-                        && SDL_OpenGamepad(currentEvent.gdevice.which) is var pad && pad is not null)
-                    {
-                        _pads[free] = (currentEvent.gdevice.which, (IntPtr)pad);
-                        Console.WriteLine($"Controller pad{free + 1}: {SDL_GetGamepadName(pad)}");
-                    }
-                }
+                    addPad(currentEvent.gdevice.which);
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_REMOVED)
                 {
                     if (padNumber(currentEvent.gdevice.which) is var number and > 0)
