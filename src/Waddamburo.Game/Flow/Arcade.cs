@@ -144,7 +144,7 @@ public sealed record ArcadeSettings
         # fast_song_scroll: in song select the list keeps up with quick rim hits and the mouse wheel, and
         # Page Up/Down or three quick rim hits one way skip ten songs; false = the original, one board
         # at a time.
-        fast_song_scroll = false
+        fast_song_scroll = true
 
         """,
         """
@@ -303,7 +303,7 @@ public sealed record ArcadeSettings
     public int DrumDebounceMs { get; init; }
 
     /// <summary>Song select's list keeps up with quick rim hits and the wheel, and skips ten songs at a time.</summary>
-    public bool FastSongScroll { get; init; }
+    public bool FastSongScroll { get; init; } = true;
 
     /// <summary>Song select shows Oni at once instead of after repeated right-rim hits (the original).</summary>
     public bool ShowOni { get; init; } = true;

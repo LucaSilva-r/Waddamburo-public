@@ -24,6 +24,7 @@ internal sealed class BootChecks : IDisposable
         public string Name { get; } = name;
         public bool? Ok { get; set; } // null: under way
         public string? Why { get; set; } // NG's reason, after it
+        public int? Percent { get; set; } // how far it is, when it says
     }
 
     private readonly SdlApplication _application;
@@ -51,7 +52,7 @@ internal sealed class BootChecks : IDisposable
                 true => "{OK}",
                 false => check.Why is null ? "{NG}" : "{NG}  " + OverlayMenu.upper(check.Why),
                 // The cabinet's cursor: an underscore blinking where the result will be.
-                null => Environment.TickCount64 / 300 % 2 == 0 ? "{_}" : "",
+                null => (check.Percent is { } percent ? $"{percent}% " : "") + (Environment.TickCount64 / 300 % 2 == 0 ? "{_}" : ""),
             }, Colour: () => check.Ok == false ? OverlayMenu.Red : check.Ok == true ? OverlayMenu.Green : OverlayMenu.White))],
             Legend: false, Footer: () => _footer), home: false);
     }
@@ -66,6 +67,13 @@ internal sealed class BootChecks : IDisposable
         // Diagnostic: WADDAMBURO_BOOT_FAIL=<check> (SONG LIBRARY, MOVIES ...) fails that check, to see the error screen.
         if (Environment.GetEnvironmentVariable("WADDAMBURO_BOOT_FAIL") == name)
             throw new InvalidOperationException($"WADDAMBURO_BOOT_FAIL asked {name} to fail.");
+    }
+
+    /// <summary>How far the part under way is, 0-100 (any thread: the screen reads it on its next frame).</summary>
+    public void Progress(int percent)
+    {
+        if (_checks is [.., { Ok: null } last])
+            last.Percent = percent;
     }
 
     /// <summary>The part under way is OK.</summary>

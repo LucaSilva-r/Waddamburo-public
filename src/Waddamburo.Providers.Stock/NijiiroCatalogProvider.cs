@@ -131,6 +131,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
         for (var index = 0; index < music.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new CatalogScanProgress(Id, "inspect", index, music.Count));
             var entry = music[index];
             if (text(entry, "id") is not { } id || !SongId().IsMatch(id) || !seen.Add(id))
                 continue;

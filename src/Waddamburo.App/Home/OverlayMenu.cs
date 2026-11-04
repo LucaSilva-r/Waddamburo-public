@@ -50,7 +50,13 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
     // The cursor's cycle in ticks (measured on the cabinet: 36 frames at 60 Hz), red for the first half.
     private const int BlinkTicks = 36;
 
-    private readonly Dictionary<(int Scalar, uint Scale), (RenderTextureId? Texture, GlyphMasks Glyph)> _glyphs = [];
+    private readonly Dictionary<int, (RenderTextureId? Texture, GlyphMasks Glyph)> _glyphs = [];
+    // Window pixels per stage unit (the 1280x720 stage fitted into the window), across and down; glyphs are rasterized
+    // at that size and placed on whole pixels, so text stays sharp at any window size.
+    private float _scaleX = 1, _scale = 1;
+    // A page stays where it was first centred: values that grow (a percentage, an NG's reason) don't move it.
+    private OverlayPage? _placed;
+    private float _placedShift, _placedValueX;
     private readonly Stack<(OverlayPage Page, int Selection)> _pages = new();
     private RenderTextureId? _white;
     private int _tick, _movedAt;
@@ -149,8 +155,8 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
         if (Editing)
         {
             // The arrows first: outside a song the shell also presses a rim for each.
-            var step = key(SdlKeyboardKey.Right) || pulses.IsDown(SdlKeyboardKey.Up) ? 1
-                : key(SdlKeyboardKey.Left) || pulses.IsDown(SdlKeyboardKey.Down) ? -1
+            var step = key(SdlKeyboardKey.Right) || pulses.IsDown(SdlKeyboardKey.Up) || pulses.IsDown(SdlKeyboardKey.WheelUp) ? 1
+                : key(SdlKeyboardKey.Left) || pulses.IsDown(SdlKeyboardKey.Down) || pulses.IsDown(SdlKeyboardKey.WheelDown) ? -1
                 : rightRim ? 1 : leftRim ? -1 : 0;
             if (step != 0)
             {
@@ -192,7 +198,11 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
         var quads = new List<RenderQuad>();
         if (Page is not { } page)
             return quads;
-        var scale = Waddamburo.App.Presentation.OverlayPainter.Scale720(application);
+        var (pixelWidth, pixelHeight) = application.GetPixelSize();
+        var viewport = RenderViewport.AspectFit((uint)Math.Max(pixelWidth, 1), (uint)Math.Max(pixelHeight, 1), 1280d / 720d);
+        if (viewport.Height / 720f != _scale)
+            releaseGlyphs(); // the window was resized: rasterize again at the new size
+        (_scaleX, _scale) = (viewport.Width / 1280f, viewport.Height / 720f);
         if (Home && !application.BlursBackdrop)
         {
             _white ??= application.UploadRgba8(1, 1, [255, 255, 255, 255]);
@@ -213,29 +223,29 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                     ? message.Split('\n').SelectMany(line => wrapped(upper(line), 100)).Take(5).Select(static part => (Text: part, Colour: White)).ToList()
                     : [];
             var titleY = lines.Count > 2 ? 120 : 200f;
-            centred(quads, upper(page.Title()), titleY, White, scale);
+            centred(quads, upper(page.Title()), titleY, White);
             for (var line = 0; line < lines.Count; line++)
-                centred(quads, lines[line].Text, titleY + 50 + line * 28, lines[line].Colour, scale);
+                centred(quads, lines[line].Text, titleY + 50 + line * 28, lines[line].Colour);
             var top = lines.Count == 0 ? 290f : titleY + 50 + lines.Count * 28 + 40;
             const float Gap = 40;
             var visible = Math.Max(1, (int)((600 - top) / Gap) + 1);
             var first = Math.Clamp(selected - visible / 2, 0, Math.Max(0, rows.Length - visible));
             for (var index = first; index < Math.Min(rows.Length, first + visible); index++)
-                centred(quads, upper(rows[index].Label), top + (index - first) * Gap, index == selected && red ? Red : White, scale);
+                centred(quads, upper(rows[index].Label), top + (index - first) * Gap, index == selected && red ? Red : White);
             if (first > 0)
-                centred(quads, "▲", top - Gap * 0.6f, White, scale);
+                centred(quads, "▲", top - Gap * 0.6f, White);
             if (first + visible < rows.Length)
-                centred(quads, "▼", top + visible * Gap - Gap * 0.4f, White, scale);
+                centred(quads, "▼", top + visible * Gap - Gap * 0.4f, White);
         }
         else
         {
-            centred(quads, page.Title(), 60, White, scale);
+            centred(quads, page.Title(), 60, White);
             if (page.Defaults)
             {
                 var x = 640 - "[DEFAULT IN GREEN]".Length * Half / 2;
-                text(quads, "[", x, 90, White, scale);
-                text(quads, "DEFAULT IN GREEN", x + Half, 90, Green, scale);
-                text(quads, "]", x + Half * 17, 90, White, scale);
+                text(quads, "[", x, 90, White);
+                text(quads, "DEFAULT IN GREEN", x + Half, 90, Green);
+                text(quads, "]", x + Half * 17, 90, White);
             }
             // A long page (the main menu) closes its rows up to stay above the hint lines and the footer.
             var slots = rows.Length + rows.Skip(1).Count(static row => row.Gap);
@@ -243,6 +253,15 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             var spacing = Math.Min(RowSpacing, (bottom - FirstRow) / (float)Math.Max(1, slots - 1));
             var values = rows.Select(static row => row.Value?.Invoke()).ToArray();
             var (shift, valueX, blockWidth) = page.Fixed ? (0f, (float?)null, float.MaxValue) : block(rows, values);
+            if (!page.Fixed)
+            {
+                if (!ReferenceEquals(page, _placed))
+                    (_placed, _placedShift, _placedValueX) = (page, shift, float.MinValue);
+                // The value column only moves right, when a longer label arrives (a row added later), never the labels.
+                if (valueX is { } x)
+                    _placedValueX = Math.Max(_placedValueX, x - shift);
+                (shift, valueX) = (_placedShift, valueX is null ? null : _placedValueX + _placedShift);
+            }
             var y = FirstRow;
             for (var index = 0; index < rows.Length; index++)
             {
@@ -252,9 +271,9 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                 var colour = index == selected && (Editing || red) ? Red : row.Cyan ? Cyan : White;
                 // A line wider than the block (the sound test's note) is centred on its own.
                 if (values[index] is null && !row.Selectable && width(row.Label) > blockWidth)
-                    centred(quads, row.Label, y, colour, scale);
+                    centred(quads, row.Label, y, colour);
                 else
-                    text(quads, row.Label, row.X + shift, y, colour, scale);
+                    text(quads, row.Label, row.X + shift, y, colour);
                 if (values[index] is { } value)
                 {
                     var accent = row.Colour?.Invoke() ?? (row.Cyan ? Cyan : row.IsDefault is null ? Green : row.IsDefault() ? Green : Yellow);
@@ -263,7 +282,7 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                     var x = valueX ?? row.ValueX;
                     // A plain information value (a count) is white; a setting's, or a {braced} part, takes the colour.
                     foreach (var (part, coloured) in segments(value, whole: row.IsDefault is not null))
-                        x = text(quads, part, x, y, coloured ? accent : row.Cyan ? Cyan : White, scale);
+                        x = text(quads, part, x, y, coloured ? accent : row.Cyan ? Cyan : White);
                 }
                 y += spacing;
             }
@@ -272,14 +291,14 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             {
                 var lines = wrapped(hint, 100);
                 for (var line = 0; line < Math.Min(2, lines.Count); line++)
-                    centred(quads, lines[line], 590 + line * 26, White, scale);
+                    centred(quads, lines[line], 590 + line * 26, White);
             }
         }
         if (page.Footer?.Invoke() is { } footerLines)
             for (var line = 0; line < footerLines.Length; line++)
-                centred(quads, footerLines[line].Text, 690 - (footerLines.Length - 1 - line) * 30, footerLines[line].Colour, scale);
+                centred(quads, footerLines[line].Text, 690 - (footerLines.Length - 1 - line) * 30, footerLines[line].Colour);
         else if (page.Legend)
-            centred(quads, footer(page), 660, White, scale);
+            centred(quads, footer(page), 660, White);
         return quads;
     }
 
@@ -339,8 +358,8 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                 yield return (parts[index], index % 2 == 1);
     }
 
-    private void centred(List<RenderQuad> quads, string value, float baseline, RenderColor colour, uint scale) =>
-        text(quads, value, 640 - width(value) / 2, baseline, colour, scale);
+    private void centred(List<RenderQuad> quads, string value, float baseline, RenderColor colour) =>
+        text(quads, value, 640 - width(value) / 2, baseline, colour);
 
     private static float width(string value) => value.EnumerateRunes().Sum(static rune => wide(rune) ? Half * 2 : Half);
 
@@ -349,17 +368,18 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
 
     // A fixed-pitch line from its baseline, each glyph centred in its cell (the cabinet's font is monospaced); returns
     // where the line ends.
-    private float text(List<RenderQuad> quads, string value, float x, float baseline, RenderColor colour, uint scale)
+    private float text(List<RenderQuad> quads, string value, float x, float baseline, RenderColor colour)
     {
         foreach (var rune in value.EnumerateRunes())
         {
             var cell = wide(rune) ? Half * 2 : Half;
-            if (!Rune.IsWhiteSpace(rune) && glyph(rune.Value, scale) is ({ } texture, var masks))
+            if (!Rune.IsWhiteSpace(rune) && glyph(rune.Value) is ({ } texture, var masks))
             {
-                float s = scale;
-                var left = x + (cell - masks.Advance / s) / 2 + masks.Left / s;
+                // Whole window pixels: the glyph's texels land 1:1 on the screen's.
+                var left = MathF.Round((x + (cell - masks.Advance / _scale) / 2) * _scaleX) + masks.Left;
+                var top = MathF.Round(baseline * _scale) - masks.Top;
                 quads.Add(RenderQuad.FromRectangles(texture,
-                    new(left / 1280, (baseline - masks.Top / s) / 720, masks.Width / s / 1280, masks.Height / s / 720),
+                    new(left / _scaleX / 1280, top / _scale / 720, masks.Width / _scaleX / 1280, masks.Height / _scale / 720),
                     RenderRectangle.Full, colour, RenderColor.Transparent));
             }
             x += cell;
@@ -367,13 +387,13 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
         return x;
     }
 
-    // Each character rasterized once per scale: white with its coverage as alpha (straight, as the quad shader takes it),
+    // Each character rasterized once per window size: white with its coverage as alpha (straight, as the quad shader takes it),
     // tinted when drawn.
-    private (RenderTextureId? Texture, GlyphMasks Glyph) glyph(int scalar, uint scale)
+    private (RenderTextureId? Texture, GlyphMasks Glyph) glyph(int scalar)
     {
-        if (_glyphs.TryGetValue((scalar, scale), out var cached))
+        if (_glyphs.TryGetValue(scalar, out var cached))
             return cached;
-        var masks = NativeVerticalTextRasterizer.RenderGlyph(fontPath, scalar, FontSize * scale, 0);
+        var masks = NativeVerticalTextRasterizer.RenderGlyph(fontPath, scalar, FontSize * _scale, 0);
         RenderTextureId? texture = null;
         if (masks.Width > 0 && masks.Height > 0)
         {
@@ -382,15 +402,20 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                 (pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2], pixels[index * 4 + 3]) = (255, 255, 255, masks.Fill[index]);
             texture = application.UploadRgba8((uint)masks.Width, (uint)masks.Height, pixels);
         }
-        return _glyphs[(scalar, scale)] = (texture, masks);
+        return _glyphs[scalar] = (texture, masks);
     }
 
-    public void Dispose()
+    private void releaseGlyphs()
     {
         foreach (var (texture, _) in _glyphs.Values)
             if (texture is { } id)
                 application.ReleaseTexture(id);
         _glyphs.Clear();
+    }
+
+    public void Dispose()
+    {
+        releaseGlyphs();
         if (_white is { } white)
             application.ReleaseTexture(white);
     }

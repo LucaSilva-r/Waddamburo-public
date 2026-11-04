@@ -61,7 +61,7 @@ menu, a board in Song Select with fast scrolling on.
 
 ## Song Select fast scrolling
 
-`fast_song_scroll` (Settings: Fast Song Scrolling, off by default) changes how the list in Song
+`fast_song_scroll` (Settings: Fast Song Scrolling, on by default) changes how the list in Song
 Select takes input, without changing the movie (`SongSelectScroll`). The movie moves one board per
 rim hit with an eased eight-frame slide and only reads the next hit once it is over, about six
 boards a second; hits in between are lost. With the setting on:

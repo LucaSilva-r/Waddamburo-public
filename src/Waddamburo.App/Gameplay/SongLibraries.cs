@@ -17,11 +17,29 @@ internal sealed class SongLibraries : IDisposable
 {
     private readonly GlobalSongCatalog _catalog;
 
-    private SongLibraries(ISongCatalogProvider[] providers)
+    private SongLibraries(ISongCatalogProvider[] providers, Action<int>? percent)
     {
         Providers = providers;
         _catalog = new GlobalSongCatalog(providers);
-        Snapshot = _catalog.RefreshAsync().AsTask().GetAwaiter().GetResult();
+        Snapshot = _catalog.RefreshAsync(percent is null ? null : new ScanPercent(providers.Length, percent)).AsTask().GetAwaiter().GetResult();
+    }
+
+    // Every provider's share done, averaged, as 0-100, never going back: merged installs report under their own ids, so
+    // the count of shares grows mid-scan and the average can dip.
+    // ponytail: equal weight per provider, not per song (totals arrive late); weight by Total if it reads jumpy.
+    private sealed class ScanPercent(int providers, Action<int> percent) : IProgress<CatalogScanProgress>
+    {
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<CatalogProviderId, double> _done = new();
+        private int _shown = -1;
+
+        public void Report(CatalogScanProgress value)
+        {
+            _done[value.Provider] = value.Total is > 0 and var total ? Math.Clamp((double)value.Completed / total, 0, 1) : 0;
+            var now = (int)(_done.Values.Sum() * 100 / Math.Max(providers, _done.Count));
+            lock (_done) // the scans report from several threads
+                if (now > _shown)
+                    percent(_shown = now);
+        }
     }
 
     public ISongCatalogProvider[] Providers { get; }
@@ -35,7 +53,8 @@ internal sealed class SongLibraries : IDisposable
     public List<(string Folder, string Why)> Problems { get; } = [];
 
     /// <summary>Scans the libraries; throws when none lists a song. <paramref name="dataRoot"/>: the game's data folder.</summary>
-    public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder)
+    /// <paramref name="percent"/>: how far the scan is, 0-100, from the scanning threads.
+    public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null)
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
         List<(string, string)> problems = [];
@@ -54,7 +73,7 @@ internal sealed class SongLibraries : IDisposable
             // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
             .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
                 ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
-        ]);
+        ], percent);
         libraries.Problems.AddRange(problems);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)
