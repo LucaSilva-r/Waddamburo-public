@@ -143,6 +143,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The live show_oni setting (the Settings menu changes it while the game runs).</summary>
     public Func<bool>? ShowOni { get; init; }
 
+    /// <summary>The boot's music credit pages there are (the copyright NUT's).</summary>
+    public int CopyrightPages { get; init; }
+
     /// <summary>The song library normal Song Select lists (home mode switches between them).</summary>
     public SongSourceKind Library
     {
@@ -329,9 +332,18 @@ internal sealed class LayerHostFactory(
             "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
             "attract" => attractHost(),
-            "boot" => new LumenLayerHost(null),
+            "boot" => new LumenLayerHost(null, bootCredits),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
         };
+    }
+
+    // kidou shows a music credit page per _global.copyright_num, each a native fill named after its label.
+    private void bootCredits(LumenPlayer player)
+    {
+        if (CopyrightPages == 0 || !player.TryWriteScriptValue("_global.copyright_num", (double)CopyrightPages))
+            return;
+        for (var page = 1; page <= CopyrightPages; page++)
+            player.SetNativeFill($"copyright{page}", Presentation.CopyrightArt.Key(page));
     }
 
     private LumenLayerHost entryHost(EntrySceneHost entry) => new(
