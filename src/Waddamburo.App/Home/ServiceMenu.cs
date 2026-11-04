@@ -35,6 +35,18 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private string? _message;
     private Action<ArcadeSettings>? _apply;
     private Action? _rehash;
+
+    /// <summary>The libraries left out at startup and why (their rows show red, the reason as their hint).</summary>
+    public IReadOnlyList<(string Folder, string Why)> LibraryProblems { get; init; } = [];
+
+    // Why the library at folder was left out at startup, null when it wasn't.
+    private string? problemOf(string? folder) => folder is null ? null : LibraryProblems
+        .Where(problem => string.Equals(Path.GetFullPath(problem.Folder), Path.GetFullPath(folder), StringComparison.Ordinal))
+        .Select(static problem => OverlayMenu.upper("NOT LOADED: " + problem.Why))
+        .FirstOrDefault();
+
+    // A folder row: red, with the reason as its hint, when its library was left out at startup.
+    private Func<RenderColor>? folderColour(string? folder) => problemOf(folder) is null ? null : static () => OverlayMenu.Red;
     private string _defaultTja = "";
     // Home mode: the settings (no coins, credits, stages or bookkeeping).
     private bool _home;
@@ -354,16 +366,18 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Libraries =>
         [
             new("CUSTOM TJA SONGS", 400, () => folderName(_settings.TjaFolder ?? _defaultTja), 640,
-                Enter: () => pick("tja", _settings.TjaFolder ?? _defaultTja), Hint: "ENTER OPENS THE FOLDER PICKER."),
+                Enter: () => pick("tja", _settings.TjaFolder ?? _defaultTja),
+                Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? "ENTER OPENS THE FOLDER PICKER.", Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
             new("OSU!LAZER SONGS", 400, () => folderName(_settings.OsuFolder), 640,
-                Enter: () => pick("osu", _settings.OsuFolder), Hint: "ENTER OPENS THE FOLDER PICKER."),
+                Enter: () => pick("osu", _settings.OsuFolder),
+                Hint: problemOf(_settings.OsuFolder) ?? "ENTER OPENS THE FOLDER PICKER.", Colour: folderColour(_settings.OsuFolder)),
             new("OFFICIAL SONGS", 400, Gap: true),
             .. ArcadeSettings.Folders(_settings.StockFolders).Select(folder => new Row("  RELEASE", 400, () => folderName(folder), 640,
                 Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),
-                Hint: "ENTER REMOVES IT FROM THE LIBRARY.")),
+                Hint: problemOf(folder) ?? "ENTER REMOVES IT FROM THE LIBRARY.", Colour: folderColour(folder))),
             .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row("  NIJIIRO", 400, () => folderName(folder), 640,
                 Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
-                Hint: "ENTER REMOVES IT FROM THE LIBRARY.")),
+                Hint: problemOf(folder) ?? "ENTER REMOVES IT FROM THE LIBRARY.", Colour: folderColour(folder))),
             new("ADD A RELEASE OR NIJIIRO", 400, Enter: () => pick("official", null),
                 Hint: _message ?? "ANOTHER RELEASE'S GAME DATA OR A NIJIIRO INSTALLATION, JOINED TO THE GAME'S OWN SONGS."),
             new("REHASH LIBRARY", 400, Gap: true, Enter: () => _rehash?.Invoke(),

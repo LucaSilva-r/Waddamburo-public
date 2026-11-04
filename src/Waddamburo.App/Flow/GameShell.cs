@@ -392,7 +392,8 @@ internal sealed class GameShell : IDisposable
             _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot));
             // Not fatal: the libraries that load are listed (the settings say what's wrong with the others).
             if (_libraries.Problems is { Count: > 0 } problems)
-                _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out", problems);
+                _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out",
+                    problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
@@ -455,7 +456,7 @@ internal sealed class GameShell : IDisposable
             Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
                 ? Path.Combine(Path.GetDirectoryName(settingsPath)!, Bookkeeping.FileName) : null);
             // Arcade: the service menu (Escape); home: the Escape menu's settings overlay.
-            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book);
+            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book) { LibraryProblems = _libraries.Problems };
             if (!Arcade.Home)
             {
                 Book.PowerOnCount++;
