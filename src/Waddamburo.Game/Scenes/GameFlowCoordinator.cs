@@ -86,7 +86,7 @@ public sealed class GameFlowCoordinator : IAsyncDisposable
         }
     }
 
-    /// <summary>Loads a product-selected scene without manufacturing an authored Lumen request.</summary>
+    /// <summary>Loads a product-selected scene, superseding any queued authored Lumen request.</summary>
     public async ValueTask TransitionToAsync(SceneId target, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -94,6 +94,7 @@ public sealed class GameFlowCoordinator : IAsyncDisposable
         try
         {
             var definition = _catalog.GetDefinition(target);
+            Flow.CancelPendingTransition();
             Flow.LoadScene(target);
             await loadAndActivateAsync(definition, cancellationToken).ConfigureAwait(false);
         }

@@ -266,6 +266,70 @@ public sealed class GameFlowSessionTests
         Assert.Same(entry, coordinator.ActiveScene);
     }
 
+    [Theory]
+    [InlineData("entry")]
+    [InlineData("song-select")]
+    public async Task HostSelectedSceneReplacesPendingAuthoredRequest(string targetName)
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var previous = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
+        Assert.True(coordinator.Flow.TryRequestTransition(new LumenSceneRequest(1, 0, 0)));
+        var target = new SceneId(targetName);
+
+        await coordinator.TransitionToAsync(target);
+
+        Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
+        Assert.Equal(target, coordinator.Flow.CurrentScene);
+        Assert.Equal(target, coordinator.ActiveScene!.Id);
+        Assert.Null(coordinator.Flow.PendingTransition);
+        Assert.NotSame(previous, coordinator.ActiveScene);
+        Assert.Equal(1, previous.DisposeCount);
+        Assert.Equal([new SceneId("entry"), target], loader.LoadedIds);
+    }
+
+    [Fact]
+    public async Task UnknownHostSceneKeepsThePendingAuthoredRequest()
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var previous = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
+        var request = new LumenSceneRequest(1, 0, 0);
+        Assert.True(coordinator.Flow.TryRequestTransition(request));
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            await coordinator.TransitionToAsync(new SceneId("unknown")));
+
+        Assert.Equal(GameFlowState.TransitionPending, coordinator.Flow.State);
+        Assert.Equal(request, coordinator.Flow.PendingTransition);
+        Assert.Same(previous, coordinator.ActiveScene);
+        Assert.Equal(0, previous.DisposeCount);
+        Assert.Equal([new SceneId("entry")], loader.LoadedIds);
+    }
+
+    [Fact]
+    public async Task CancelledHostTransitionDoesNotReviveTheSupersededMovieRequest()
+    {
+        var loader = new SyntheticSceneLoader();
+        await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
+        await coordinator.StartAsync(new SceneId("entry"));
+        var previous = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
+        Assert.True(coordinator.Flow.TryRequestTransition(new LumenSceneRequest(1, 0, 0)));
+        loader.CancelNextLoad = true;
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await coordinator.TransitionToAsync(new SceneId("entry"), cancellation.Token));
+
+        Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
+        Assert.Null(coordinator.Flow.PendingTransition);
+        Assert.Same(previous, coordinator.ActiveScene);
+        Assert.Equal(0, previous.DisposeCount);
+    }
+
     [Fact]
     public async Task MissingRouteFailsExplicitlyWithoutReplacingTheCurrentScene()
     {
