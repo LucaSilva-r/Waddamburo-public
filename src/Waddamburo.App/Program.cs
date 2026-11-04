@@ -110,14 +110,33 @@ try
             throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
         startingUp = screenshotPath is null && frameLimit is null && tickLimit is null;
-        var layout = GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
+        // The update comes first, before anything that could fail (a release that can't start must still be replaced
+        // by the next): the settings are read for it if they can be, and read again below to report what's wrong.
+        GameDataLayout? early = null;
+        Waddamburo.Game.Flow.ArcadeSettings? earlyArcade = null;
+        try
+        {
+            early = GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
+            earlyArcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(
+                Path.Combine(early.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName));
+            Strings.Use(earlyArcade.Language);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+        }
+        if (startingUp && (earlyArcade?.AutoUpdate ?? true)
+            && SelfUpdate.UpdateNow(args, windowSize.Width, windowSize.Height, earlyArcade?.Fullscreen ?? false))
+        {
+            return 0;
+        }
+        var layout = early ?? GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
         ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
         Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
         // Cabinet settings (free play, credits, songs per session) beside the game data.
         var arcadePath = Path.Combine(layout.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
-        var arcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
+        var arcade = earlyArcade ?? Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         // The cache defaults to this PC's user cache (a game on a USB stick must not decode onto it).
         layout.MoveGameCacheTo(layout.Cache(arcade.CacheFolder));
         Console.WriteLine($"Cache: {layout.Cache(arcade.CacheFolder)}");
@@ -133,11 +152,6 @@ try
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
         if (arcade.Renderer is not null && Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER") is null)
             Environment.SetEnvironmentVariable("WADDAMBURO_RENDERER", arcade.Renderer);
-        if (arcade.AutoUpdate
-            && SelfUpdate.UpdateNow(args, layout.FontPath, windowSize.Width, windowSize.Height, arcade.Fullscreen))
-        {
-            return 0;
-        }
         Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
             : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "
                 + $"{arcade.SongsPerSession} songs per session).");

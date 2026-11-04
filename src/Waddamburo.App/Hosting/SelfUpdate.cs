@@ -2,9 +2,8 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Waddamburo.App.Presentation;
+using Waddamburo.App.Home;
 using Waddamburo.Platform.Sdl;
-using Waddamburo.Platform.Sdl.Rendering;
 
 namespace Waddamburo.App.Hosting;
 
@@ -77,7 +76,7 @@ internal static class SelfUpdate
     /// hands over to it. Returns true when this process must exit (the update is starting, or
     /// the window was closed); false boots normally (up to date, offline, or the download failed).
     /// </summary>
-    public static bool UpdateNow(string[] args, string fontPath, int width, int height, bool fullscreen)
+    public static bool UpdateNow(string[] args, int width, int height, bool fullscreen)
     {
         if (installedFile() is not { } installed || currentVersion() is not { } current)
             return false;
@@ -101,7 +100,22 @@ internal static class SelfUpdate
         Exception? failure = null;
         using var cancel = new CancellationTokenSource();
         using var application = new SdlApplication(WindowTitle, width, height, fullscreen: fullscreen);
-        using var pill = new PairingPill(application, fontPath, top: (720f - PairingPill.Height) / 2);
+        // The service menu's look, in the bundled font: this runs before the game folder is read.
+        var fonts = Cli.BundledFonts.Extract(Path.Combine(Path.GetDirectoryName(ReleaseConsole.CrashFolder)!, "fonts"));
+        using var menu = new OverlayMenu(application, fonts.Service);
+        var japanese = Strings.Language == "ja";
+        menu.Open(new OverlayPage(() => japanese ? "ソフトウェア更新" : "SOFTWARE UPDATE", static () => [], Centred: true, Legend: false,
+            Body: () =>
+            {
+                var done = Volatile.Read(ref percent);
+                var filled = done * 30 / 100;
+                return
+                [
+                    ((japanese ? "ダウンロード中: " : "Downloading ") + release.Tag, OverlayMenu.White),
+                    ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {done}%", OverlayMenu.Green),
+                    (japanese ? "完了すると自動で再起動します。" : "The game restarts by itself when it is done.", OverlayMenu.White),
+                ];
+            }, Footer: () => [(OverlayMenu.upper(WindowTitle), OverlayMenu.Cyan)]), home: false);
         var download = Task.Run(async () =>
         {
             try
@@ -118,11 +132,7 @@ internal static class SelfUpdate
                 application.RequestQuit();
             }
         });
-        application.Run(_ =>
-        {
-            pill.Show($"Updating to {release.Tag}", $"{Volatile.Read(ref percent)}%");
-            return new RenderFrame(RenderColor.Black, pill.Quads(), 1280d / 720d);
-        }, static () => { });
+        application.Run(_ => menu.Frame(), static () => { });
         if (!download.IsCompleted)
         {
             // The window was closed: quit.
