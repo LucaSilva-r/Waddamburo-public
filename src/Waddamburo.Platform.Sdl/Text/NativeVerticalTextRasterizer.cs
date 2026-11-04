@@ -35,8 +35,18 @@ public static unsafe partial class NativeVerticalTextRasterizer
     /// </summary>
     public static IReadOnlyList<string> FallbackFonts { get; set; } = [];
 
-    // The native chain: the font, then its fallbacks, newline-separated (text ABI 1.7).
-    private static string chain(string fontPath) => string.Join('\n', [Path.GetFullPath(fontPath), .. FallbackFonts]);
+    /// <summary>
+    /// A font's own first fallback, before <see cref="FallbackFonts"/>, by full path: one that matches its look (the
+    /// service font's accented Latin letters, which it lacks).
+    /// </summary>
+    public static ConcurrentDictionary<string, string> OwnFallback { get; } = new(StringComparer.Ordinal);
+
+    // The native chain: the font, its own fallback, then the shared ones, newline-separated (text ABI 1.7).
+    private static string chain(string fontPath)
+    {
+        var full = Path.GetFullPath(fontPath);
+        return string.Join('\n', [full, .. OwnFallback.TryGetValue(full, out var own) ? [own] : Array.Empty<string>(), .. FallbackFonts]);
+    }
 
     public static RgbaTextSurface RenderSongTitle(
         string fontPath,

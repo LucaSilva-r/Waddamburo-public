@@ -7,21 +7,24 @@ namespace Waddamburo.App.Cli;
 /// The fonts shipped inside the executable (SIL OFL 1.1, notices in THIRD_PARTY_NOTICES.md): Mochiy Pop
 /// P One, the title font when the user supplies none, and Noto Sans CJK JP Black cut down to the
 /// characters Mochiy Pop lacks (rare symbols, Chinese, Hangul), the fallback behind every font; and
-/// Kosugi Maru (Apache 2.0), the arcade service menu's plain font.
+/// Kosugi Maru (Apache 2.0), the arcade service menu's plain font, with M PLUS Rounded 1c (OFL) cut down to the
+/// accented Latin letters Kosugi Maru lacks (Ç, É, Ñ ...), drawn in its place before the bold fallbacks.
 /// They are written to a folder (FreeType reads files) and rewritten when the bundled ones change.
 /// </summary>
 internal static class BundledFonts
 {
     private const string Title = "MochiyPopPOne-Regular.ttf", Fallback = "NotoSansCJKjp-Black-fallback.otf",
-        Service = "KosugiMaru-Regular.ttf";
+        Service = "KosugiMaru-Regular.ttf", ServiceLatin = "MPLUSRounded1c-Regular-latin.ttf";
 
     /// <summary>Writes the fonts into <paramref name="directory"/> unless already there (removing others); returns their paths.</summary>
     public static (string Title, string Fallback, string Service) Extract(string directory)
     {
         Directory.CreateDirectory(directory);
-        foreach (var stale in Directory.EnumerateFiles(directory).Where(static path => Path.GetFileName(path) is not (Title or Fallback or Service)))
+        foreach (var stale in Directory.EnumerateFiles(directory).Where(static path => Path.GetFileName(path) is not (Title or Fallback or Service or ServiceLatin)))
             File.Delete(stale);
-        return (extract(directory, Title), extract(directory, Fallback), extract(directory, Service));
+        var service = extract(directory, Service);
+        Platform.Sdl.Text.NativeVerticalTextRasterizer.OwnFallback[Path.GetFullPath(service)] = Path.GetFullPath(extract(directory, ServiceLatin));
+        return (extract(directory, Title), extract(directory, Fallback), service);
     }
 
     private static string extract(string directory, string name)
