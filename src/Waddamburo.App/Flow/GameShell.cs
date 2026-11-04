@@ -457,7 +457,11 @@ internal sealed class GameShell : IDisposable
             Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
                 ? Path.Combine(Path.GetDirectoryName(settingsPath)!, Bookkeeping.FileName) : null);
             // Arcade: the service menu (Escape); home: the Escape menu's settings overlay.
-            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book) { LibraryProblems = _libraries.Problems };
+            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book)
+            {
+                LibraryProblems = _libraries.Problems,
+                SwitchMode = options.ArcadePath is { } modePath ? settings => switchMode(modePath, settings) : null,
+            };
             if (!Arcade.Home)
             {
                 Book.PowerOnCount++;
@@ -998,6 +1002,23 @@ internal sealed class GameShell : IDisposable
         Console.WriteLine($"Service menu: game reset at tick {Tick}.");
     }
 
+    // OTHERS' GAME MODE changed: everything the menu set is saved with the new mode, and the game starts again in it.
+    private void switchMode(string path, ArcadeSettings settings)
+    {
+        try
+        {
+            ArcadeSettings.SaveMenuSettings(path, settings, cabinet: !Arcade.Home, mode: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+            return;
+        }
+        Book.Save();
+        Console.WriteLine($"Game mode changed to {(settings.Home ? "home" : "arcade")}: restarting.");
+        RequestRestart();
+    }
+
     // The service menu's EXIT: its settings are saved and take effect, and the attract loop starts from the logo.
     // Those read only at start (languages, song folders, the audio device, the cache) restart the game.
     private void leaveService(ArcadeSettings settings)
@@ -1225,6 +1246,7 @@ internal sealed class GameShell : IDisposable
         Array.Clear(TaikoGuest.Profiles);
         Array.Clear(TaikoGuest.Options);
         Array.Clear(TaikoGuest.Tones);
+        Array.Clear(TaikoGuest.Mania);
         Sync.RefreshProfiles();
         for (var slot = 0; slot < 3; slot++)
             Don?.SetLook(slot, null);
@@ -1246,7 +1268,6 @@ internal sealed class GameShell : IDisposable
             _indicators.TwoPlayers = two;
         }
         if (Don is not null) Don.GameplaySide = first;
-        Array.Clear(TaikoGuest.Mania);
         Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, Hosts.Waiwai));
     }
 

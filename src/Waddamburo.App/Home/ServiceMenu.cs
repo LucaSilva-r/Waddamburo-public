@@ -70,6 +70,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     public bool IsOpen => _menu.IsOpen;
 
+    /// <summary>
+    /// OTHERS' GAME MODE, once confirmed: saves the settings with the other mode and restarts the game (null: the row is
+    /// hidden, the settings can't be saved).
+    /// </summary>
+    public Action<ArcadeSettings>? SwitchMode { get; init; }
+
     /// <summary>A pad or button is waiting for its input (every key is that input then, Backspace too).</summary>
     public bool Listening => IsOpen && _listening;
 
@@ -160,6 +166,20 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         _menu.Close();
         _exit?.Invoke(_settings);
     }
+
+    // GAME MODE: a yes/no page; yes saves the settings in the other mode and restarts the game.
+    private void confirmMode() => _menu.Push(new OverlayPage(
+        () => _home ? "SWITCH TO ARCADE MODE" : "SWITCH TO HOME MODE",
+        () =>
+        [
+            new("THE GAME WILL RESTART. SWITCH NOW?", Cyan: true),
+            new("NO", Gap: true, Enter: _menu.Pop),
+            new("YES", Enter: () =>
+            {
+                _menu.Close();
+                SwitchMode?.Invoke(_settings with { Home = !_home });
+            }),
+        ]));
 
     // Home: a row that starts something of the home menu's; the menu closes for it.
     private void run(HomeMenuAction action)
@@ -317,6 +337,11 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new("VERSION", 400, () => SelfUpdate.WindowTitle, 560, Cyan: true),
             new("CLOCK", 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
             .. shared(LanguageSection),
+            .. SwitchMode is null ? (Row[])[] :
+            [
+                new("GAME MODE", 400, () => _home ? "{HOME}" : "{ARCADE}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
+                    Hint: "HOME: A PC, FREE PLAY AND ENDLESS SONGS. ARCADE: THE CABINET, WITH COINS AND STAGES. CHANGING IT RESTARTS THE GAME."),
+            ],
             new("EXIT", 400, Gap: true, Enter: _menu.Pop),
         ],
         // DISPLAY takes the graphics settings too (one page for the picture).

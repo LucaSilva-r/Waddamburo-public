@@ -739,7 +739,9 @@ public sealed record ArcadeSettings
     /// every other line (and the user's comments) as it is.
     /// </summary>
     /// <remarks><paramref name="cabinet"/>: the arcade service menu's settings too (free play, coins, stages).</remarks>
-    public static void SaveMenuSettings(string path, ArcadeSettings settings, bool cabinet = false)
+    /// <remarks><paramref name="mode"/>: the mode is written too (a switch of mode; other saves leave it, as a save during
+    /// the switch's restart would put the running mode back).</remarks>
+    public static void SaveMenuSettings(string path, ArcadeSettings settings, bool cabinet = false, bool mode = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(settings);
@@ -802,6 +804,8 @@ public sealed record ArcadeSettings
             values["credits_2p"] = settings.CreditsTwoPlayers;
             values["songs_per_session"] = settings.SongsPerSession;
         }
+        if (mode)
+            values["mode"] = settings.Home ? "home" : "arcade";
         for (var pad = 0; pad < ControlKeys.Length; pad++)
             values[ControlKeys[pad]] = settings.Controls[pad];
         for (var button = 0; button < ButtonKeys.Length; button++)
