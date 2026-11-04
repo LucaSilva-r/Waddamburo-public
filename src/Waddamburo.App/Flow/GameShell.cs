@@ -289,9 +289,20 @@ internal sealed class GameShell : IDisposable
 
     public static int Run(GameOptions options)
     {
-        using var shell = new GameShell(options);
-        return shell.run();
+        try
+        {
+            using var shell = new GameShell(options);
+            return shell.run();
+        }
+        // The window closed while the game loaded, or after its error screen (BootChecks.Fail).
+        catch (BootClosedException closed)
+        {
+            return closed.Data.Contains(BootChecks.FailedKey) ? 1 : 0;
+        }
     }
+
+    // The startup's check screen, until the attract (or the scene asked for) shows.
+    private BootChecks? _boot;
 
     private GameShell(GameOptions options)
     {
@@ -307,20 +318,10 @@ internal sealed class GameShell : IDisposable
         var assetRoot = options.AssetRoot;
         // The cabinet's credit counter: lives until the process exits (coin mode only).
         Coins = Arcade.FreePlay ? null : new CoinBank(Arcade);
-        Sync = new ScoreSync(Arcade, options.ScoresPath, Accounts);
         // The game's own songs live beside the Lumen data (<data>/lumendata/packed).
         var dataRoot = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
-        _libraries = SongLibraries.Load(dataRoot, Arcade, options.TjaRoot);
-        var snapshot = _libraries.Snapshot;
-        Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
-        ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
-        SongCatalog = new SongSelectCatalogView(snapshot);
-        // Server crowns need every chart's hash before song select lists it.
-        if (Sync.Online)
-            ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
-        _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
-            ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
-
+        // The window first, and the check screen in it while everything else loads (it took ~8 s on a big library
+        // before anything showed, 4 s of them without a window).
         Application = new SdlApplication(
             Waddamburo.App.Hosting.SelfUpdate.WindowTitle,
             options.WindowWidth,
@@ -330,208 +331,237 @@ internal sealed class GameShell : IDisposable
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"Renderer: {Application.GpuDriver}");
-        ApplyControls(warn: true);
-        DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
-        Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
-        // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
-        if (Don is not null && Environment.GetEnvironmentVariable("WADDAMBURO_DON_COSTUME") is { } costumeSetting)
+        _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, Cli.GameDataLayout.ReleaseOf(dataRoot).Name);
+        try
         {
-            var ids = costumeSetting.Split(',').Select(int.Parse).ToArray();
-            Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
-        }
-        // Diagnostic: WADDAMBURO_TITLE=plate:text and/or WADDAMBURO_NAME=name give P1 a guest profile with them.
-        var diagnosticName = Environment.GetEnvironmentVariable("WADDAMBURO_NAME");
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_TITLE") is [var plate, ':', .. var titleText])
-            TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { Title = titleText, TitlePlate = plate - '0', AccountName = diagnosticName };
-        else if (diagnosticName is { Length: > 0 })
-            TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { AccountName = diagnosticName };
-        // Diagnostic: WADDAMBURO_DON_PUCHI=id puts that puchi chara beside P1 at start.
-        if (Don is not null && int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DON_PUCHI"), out var puchiSetting))
-            Don.SetAccessory(0, puchiSetting);
-        var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
-        _audioDevice = needsAudio ? openAudio() : null;
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
-            Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
-                + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
-                + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
-        Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{Active?.Id.ToString() ?? "starting"} at tick {Tick}" };
-        Previews = Audio is null
-            ? null
-            : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
-        Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
-        Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
-            squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
-        _pill = new PairingPill(Application, options.FontPath);
-        _textFields = new TextFieldTextures(Application, options.FontPath);
-        _nameTexts = new NameTextTextures(Application, options.FontPath);
-        _toneArt = new ToneArt(Application, dataRoot);
-        _performance = new PerformanceOverlay(Application, () => Audio)
-        {
-            Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
-                ? (link.State == Waddamburo.Game.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
-        };
-        _timingMarks = new TimingMarkOverlay(Application);
-        Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
-        Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
-            ? Path.Combine(Path.GetDirectoryName(settingsPath)!, Bookkeeping.FileName) : null);
-        // Arcade: the service menu (Escape); home: the Escape menu's settings overlay.
-        _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book);
-        if (!Arcade.Home)
-        {
-            Book.PowerOnCount++;
-            Book.Save();
-        }
-        _reviewBar = new ReviewOverlay(Painter);
-        if (Arcade.Home)
-            _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,
-                baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
-        Gameplay = new TaikoGameplayPresentation((lane, action) =>
-            Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
-            Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
-            () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
-        _costumeIcons = new CostumeIconTextures(Application, dataRoot);
-        _danArt = new DanChallengeArt(Application, dataRoot);
-        _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
-        Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
-            Path.Combine(dataRoot, "config", "S11100-1", "musicinfo.xml"));
-        EnsoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
+            _boot.Begin("NETWORK SERVICE");
+            Sync = new ScoreSync(Arcade, options.ScoresPath, Accounts);
+            _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot));
+            _boot.Begin("SONG CATALOG");
+            var snapshot = _libraries.Snapshot;
+            Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
+            ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
+            SongCatalog = new SongSelectCatalogView(snapshot);
+            // Server crowns need every chart's hash before song select lists it.
+            if (Sync.Online)
+                ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
+            _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
+                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
 
-        TaikoPlayResult? diagnosticResult = options.StartScene switch
-        {
-            StartScene.ResultFail => new TaikoPlayResult(TaikoCourse.Normal, 0, 0, 0, 100, 0, 0, 0, false),
-            StartScene.ResultClear => new TaikoPlayResult(TaikoCourse.Normal, 500_000, 90, 7, 3, 80, 0, 45, true),
-            _ => null,
-        };
-        // --start-scene=waiwai-result; WADDAMBURO_WAIWAI_RESULT=segments,duet%,rare hits (e.g. 30,70,10).
-        _diagnosticWaiwai = options.StartScene == StartScene.WaiwaiResult
-            ? Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RESULT")?.Split(',') is [var segments, var duet, .. var rest]
-                ? new(int.Parse(segments, CultureInfo.InvariantCulture), int.Parse(duet, CultureInfo.InvariantCulture), [.. string.Concat(rest).Select(static hit => hit == '1')])
-                : new(50, 90, [true])
-            : null;
-
-        var flow = new GameFlowSession();
-        Catalog = new SceneCatalog(
-            FlowScenes.Initial([
-                GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
-                // Placeholder: the audio calibration replaces it with a fresh lane each time.
-                GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
-                options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear ? FlowScenes.DaniResults
-                    : _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
-            ]),
-            [
-                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
-                // The entry gives up (a card declined, or its dialog timed out, with nobody joined and no
-                // credits: TerminateEntry -> SetNextScene(0)): back to the attract loop.
-                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(0, 0, 0), FlowScenes.Logo),
-            ]);
-        Hosts = new LayerHostFactory(
-            flow,
-            snapshot,
-            Titles,
-            Previews is null ? TracePreviewController.Instance : Previews,
-            Sounds is null ? TraceSoundController.Instance : Sounds.Frontend,
-            Sounds,
-            new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
-            Don,
-            PlayRequests,
-            () => SongInfo,
-            options.Countdown,
-            () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
-                : diagnosticResult is { } diagnostic ? [diagnostic] : [],
-            Arcade,
-            Coins)
-        {
-            WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            DanBests = () => TaikoGuest.Profiles[Hosts!.PlayerSide] is { } player && Sync.Scores is { } scores
-                ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
-            DanResult = options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
-                ? diagnosticDan(options.StartScene == StartScene.DaniResultClear) : null,
-            Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
-            SongsStarted = () => SongsPlayed,
-            ShowOni = () => Arcade.ShowOni,
-            Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
-            Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
-            // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
-            // the machine's, not a player's, so a cabinet's guests and card players get no folder (#6).
-            Favourites = !Arcade.Home ? null : new SongFavourites(options.ArcadePath is { } arcade
-                ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),
-            Crowns = side => Sync.Scores is not { } scores ? null
-                : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
-                : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
-            CardClaimed = (side, card) =>
+            _boot.Begin("I/O");
+            ApplyControls(warn: true);
+            _boot.Begin("DON-CHAN");
+            DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
+            Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
+            // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
+            if (Don is not null && Environment.GetEnvironmentVariable("WADDAMBURO_DON_COSTUME") is { } costumeSetting)
             {
-                TaikoGuest.Profiles[side] = card;
-                Sync.RefreshBests(card);
-            },
-            // A card given to the drum, or the account chosen for it in the home player setup.
-            Dan = _danCourses,
-            PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
-            OnlineAvailable = () => Room.Available,
-            InOnlineRoom = () => Room.Session is not null,
-            Received = ReceivedSongs.Find,
-            // Home boards show the account's public name (or Guest), drawn by the entry overlay.
-            PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
-        };
-        if (Arcade.Home && Options.Accounts is { } setupBook)
-            _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
-        // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
-        MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = (archive, content) => patch(archive, content, null) };
-        _presenter = new ScenePresenter(Application, MovieContent);
-        MovieContent.Reuse = _presenter.Reuse;
-        // Upscaling runs when the model files are installed (see UpscaleTool).
-        // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
-        var cacheRoot = options.ArcadePath is { } settings
-            ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
-        if (UpscaleTool.Find(cacheRoot is null ? null : Path.Combine(cacheRoot, "upscaled")) is { } upscale)
-        {
-            Upscale = upscale;
-            MovieContent.Loaded = upscale.RecordUsed;
-            // Cached upscales replace textures as movies decode (opt-in): the GPU only ever gets those.
-            MovieContent.Decoded = (archive, content) => patch(archive, content,
-                Arcade.UpscaleTextures && Application.ShowUpscaled ? (upscale, Application.SupportsBc7) : null);
-            SceneTextures.Upscaler = new TextureUpscaler(upscale, () => Arcade);
-            Console.WriteLine($"Texture upscaling {(Arcade.UpscaleTextures ? "on" : "off")}, "
-                + $"{Arcade.UpscaleThreads} background thread(s), cache {upscale.Cache}.");
-        }
-        ApplyDisplay();
-        _loader = new LumenGameSceneLoader(MovieContent, Hosts);
-        Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
-        Overlay = new IntermissionOverlay(Application, _loader);
-        // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
-        foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
-            Overlay.Preload(intermission);
+                var ids = costumeSetting.Split(',').Select(int.Parse).ToArray();
+                Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
+            }
+            // Diagnostic: WADDAMBURO_TITLE=plate:text and/or WADDAMBURO_NAME=name give P1 a guest profile with them.
+            var diagnosticName = Environment.GetEnvironmentVariable("WADDAMBURO_NAME");
+            if (Environment.GetEnvironmentVariable("WADDAMBURO_TITLE") is [var plate, ':', .. var titleText])
+                TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { Title = titleText, TitlePlate = plate - '0', AccountName = diagnosticName };
+            else if (diagnosticName is { Length: > 0 })
+                TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { AccountName = diagnosticName };
+            // Diagnostic: WADDAMBURO_DON_PUCHI=id puts that puchi chara beside P1 at start.
+            if (Don is not null && int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DON_PUCHI"), out var puchiSetting))
+                Don.SetAccessory(0, puchiSetting);
+            _boot.Begin("AUDIO DEVICE");
+            var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
+            _audioDevice = needsAudio ? openAudio() : null;
+            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
+                Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
+                    + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
+                    + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
+            Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{Active?.Id.ToString() ?? "starting"} at tick {Tick}" };
+            Previews = Audio is null
+                ? null
+                : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
+            _boot.Begin("SOUND DATA");
+            Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
+            _boot.Begin("GRAPHICS");
+            Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
+                squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
+            _pill = new PairingPill(Application, options.FontPath);
+            _textFields = new TextFieldTextures(Application, options.FontPath);
+            _nameTexts = new NameTextTextures(Application, options.FontPath);
+            _toneArt = new ToneArt(Application, dataRoot);
+            _performance = new PerformanceOverlay(Application, () => Audio)
+            {
+                Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
+                    ? (link.State == Waddamburo.Game.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
+            };
+            _timingMarks = new TimingMarkOverlay(Application);
+            Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
+            Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
+                ? Path.Combine(Path.GetDirectoryName(settingsPath)!, Bookkeeping.FileName) : null);
+            // Arcade: the service menu (Escape); home: the Escape menu's settings overlay.
+            _service = new ServiceMenu(Application, options.ServiceFontPath ?? options.FontPath, Book);
+            if (!Arcade.Home)
+            {
+                Book.PowerOnCount++;
+                Book.Save();
+            }
+            _reviewBar = new ReviewOverlay(Painter);
+            if (Arcade.Home)
+                _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,
+                    baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
+            _boot.Begin("GAMEPLAY DATA");
+            Gameplay = new TaikoGameplayPresentation((lane, action) =>
+                Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
+                Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
+                () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
+            _costumeIcons = new CostumeIconTextures(Application, dataRoot);
+            _danArt = new DanChallengeArt(Application, dataRoot);
+            _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
+            Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
+                Path.Combine(dataRoot, "config", "S11100-1", "musicinfo.xml"));
+            EnsoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
 
-        _gameplay = new GameplayFlow(this);
-        _attract = new AttractFlow(this, _gameplay, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
-            AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
-        var calibration = new CalibrationFlow(this);
-        _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
-        _search = new SongSearch(this, _libraries.Snapshot, Painter);
-        _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
-        Room = new RoomOverlay(this, Painter);
-        Match = new OnlineMatch(this);
-        _inputOverlays = [_search, _scores, Room];
-        Reload = new SongSelectReload(this);
-        var entry = new EntryFlow(this);
-        var ending = new CreditEndFlow(this, _gameplay);
-        var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
-        _scenes = new()
+            TaikoPlayResult? diagnosticResult = options.StartScene switch
+            {
+                StartScene.ResultFail => new TaikoPlayResult(TaikoCourse.Normal, 0, 0, 0, 100, 0, 0, 0, false),
+                StartScene.ResultClear => new TaikoPlayResult(TaikoCourse.Normal, 500_000, 90, 7, 3, 80, 0, 45, true),
+                _ => null,
+            };
+            // --start-scene=waiwai-result; WADDAMBURO_WAIWAI_RESULT=segments,duet%,rare hits (e.g. 30,70,10).
+            _diagnosticWaiwai = options.StartScene == StartScene.WaiwaiResult
+                ? Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RESULT")?.Split(',') is [var segments, var duet, .. var rest]
+                    ? new(int.Parse(segments, CultureInfo.InvariantCulture), int.Parse(duet, CultureInfo.InvariantCulture), [.. string.Concat(rest).Select(static hit => hit == '1')])
+                    : new(50, 90, [true])
+                : null;
+
+            _boot.Begin("MOVIES");
+            var flow = new GameFlowSession();
+            Catalog = new SceneCatalog(
+                FlowScenes.Initial([
+                    GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
+                    // Placeholder: the audio calibration replaces it with a fresh lane each time.
+                    GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
+                    options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear ? FlowScenes.DaniResults
+                        : _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
+                ]),
+                [
+                    new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
+                    // The entry gives up (a card declined, or its dialog timed out, with nobody joined and no
+                    // credits: TerminateEntry -> SetNextScene(0)): back to the attract loop.
+                    new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(0, 0, 0), FlowScenes.Logo),
+                ]);
+            Hosts = new LayerHostFactory(
+                flow,
+                snapshot,
+                Titles,
+                Previews is null ? TracePreviewController.Instance : Previews,
+                Sounds is null ? TraceSoundController.Instance : Sounds.Frontend,
+                Sounds,
+                new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
+                Don,
+                PlayRequests,
+                () => SongInfo,
+                options.Countdown,
+                () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
+                    : diagnosticResult is { } diagnostic ? [diagnostic] : [],
+                Arcade,
+                Coins)
+            {
+                WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
+                DanBests = () => TaikoGuest.Profiles[Hosts!.PlayerSide] is { } player && Sync.Scores is { } scores
+                    ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
+                DanResult = options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
+                    ? diagnosticDan(options.StartScene == StartScene.DaniResultClear) : null,
+                Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
+                SongsStarted = () => SongsPlayed,
+                ShowOni = () => Arcade.ShowOni,
+                Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
+                Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
+                // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
+                // the machine's, not a player's, so a cabinet's guests and card players get no folder (#6).
+                Favourites = !Arcade.Home ? null : new SongFavourites(options.ArcadePath is { } arcade
+                    ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),
+                Crowns = side => Sync.Scores is not { } scores ? null
+                    : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
+                    : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
+                CardClaimed = (side, card) =>
+                {
+                    TaikoGuest.Profiles[side] = card;
+                    Sync.RefreshBests(card);
+                },
+                // A card given to the drum, or the account chosen for it in the home player setup.
+                Dan = _danCourses,
+                PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
+                OnlineAvailable = () => Room.Available,
+                InOnlineRoom = () => Room.Session is not null,
+                Received = ReceivedSongs.Find,
+                // Home boards show the account's public name (or Guest), drawn by the entry overlay.
+                PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
+            };
+            if (Arcade.Home && Options.Accounts is { } setupBook)
+                _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
+            // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
+            MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = (archive, content) => patch(archive, content, null) };
+            _presenter = new ScenePresenter(Application, MovieContent);
+            MovieContent.Reuse = _presenter.Reuse;
+            // Upscaling runs when the model files are installed (see UpscaleTool).
+            // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
+            var cacheRoot = options.ArcadePath is { } settings
+                ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
+            if (UpscaleTool.Find(cacheRoot is null ? null : Path.Combine(cacheRoot, "upscaled")) is { } upscale)
+            {
+                Upscale = upscale;
+                MovieContent.Loaded = upscale.RecordUsed;
+                // Cached upscales replace textures as movies decode (opt-in): the GPU only ever gets those.
+                MovieContent.Decoded = (archive, content) => patch(archive, content,
+                    Arcade.UpscaleTextures && Application.ShowUpscaled ? (upscale, Application.SupportsBc7) : null);
+                SceneTextures.Upscaler = new TextureUpscaler(upscale, () => Arcade);
+                Console.WriteLine($"Texture upscaling {(Arcade.UpscaleTextures ? "on" : "off")}, "
+                    + $"{Arcade.UpscaleThreads} background thread(s), cache {upscale.Cache}.");
+            }
+            ApplyDisplay();
+            _loader = new LumenGameSceneLoader(MovieContent, Hosts);
+            Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
+            Overlay = new IntermissionOverlay(Application, _loader);
+            // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
+            foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
+                Overlay.Preload(intermission);
+
+            _gameplay = new GameplayFlow(this);
+            _attract = new AttractFlow(this, _gameplay, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
+                AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
+            var calibration = new CalibrationFlow(this);
+            _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
+            _search = new SongSearch(this, _libraries.Snapshot, Painter);
+            _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
+            Room = new RoomOverlay(this, Painter);
+            Match = new OnlineMatch(this);
+            _inputOverlays = [_search, _scores, Room];
+            Reload = new SongSelectReload(this);
+            var entry = new EntryFlow(this);
+            var ending = new CreditEndFlow(this, _gameplay);
+            var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
+            _scenes = new()
+            {
+                [FlowScenes.Boot] = _attract,
+                [FlowScenes.Logo] = _attract,
+                [FlowScenes.Title] = _attract,
+                [FlowScenes.Caution] = _attract,
+                [FlowScenes.Movie] = _attract,
+                [FlowScenes.Entry] = entry,
+                [FlowScenes.SongSelect] = songSelect,
+                [FlowScenes.Tutorial] = songSelect,
+                [FlowScenes.DaniSelect] = songSelect,
+                [FlowScenes.Gameplay] = _gameplay,
+                [FlowScenes.Calibration] = calibration,
+                [FlowScenes.Result] = ending,
+                [FlowScenes.Retry] = ending,
+                [FlowScenes.GameOver] = ending,
+            };
+        }
+        catch (Exception exception) when (exception is not BootClosedException)
         {
-            [FlowScenes.Boot] = _attract,
-            [FlowScenes.Logo] = _attract,
-            [FlowScenes.Title] = _attract,
-            [FlowScenes.Caution] = _attract,
-            [FlowScenes.Movie] = _attract,
-            [FlowScenes.Entry] = entry,
-            [FlowScenes.SongSelect] = songSelect,
-            [FlowScenes.Tutorial] = songSelect,
-            [FlowScenes.DaniSelect] = songSelect,
-            [FlowScenes.Gameplay] = _gameplay,
-            [FlowScenes.Calibration] = calibration,
-            [FlowScenes.Result] = ending,
-            [FlowScenes.Retry] = ending,
-            [FlowScenes.GameOver] = ending,
-        };
+            throw _boot.Fail(exception);
+        }
     }
 
     public string? FindJingle(string fileName)
@@ -580,7 +610,15 @@ internal sealed class GameShell : IDisposable
         };
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
-        Coordinator.StartAsync(initialScene).AsTask().GetAwaiter().GetResult();
+        _boot?.Begin("SYSTEM SETUP");
+        try
+        {
+            Coordinator.StartAsync(initialScene).AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception exception) when (_boot is not null)
+        {
+            throw _boot.Fail(exception);
+        }
         try
         {
             activate();
@@ -610,6 +648,10 @@ internal sealed class GameShell : IDisposable
                     _indicators.EntryJoined();
             };
             _indicatorTextures = SceneTextures.Upload(Application, _indicators.Scene);
+            // Everything is up: the check screen goes, the first scene takes the window.
+            _boot?.Done();
+            _boot?.Dispose();
+            _boot = null;
 
             var result = Application.Run(
                 createFrame,

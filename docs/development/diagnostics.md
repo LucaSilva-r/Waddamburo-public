@@ -186,6 +186,12 @@ credits. At home Space skips the startup screens (a cabinet waits for them). In 
 switch: the service menu (`Home/ServiceMenu.cs`) stops the game, clears its state and the credits, holds the
 settings, and EXIT starts the attract again; its BOOKKEEPING counts live in `waddamburo/bookkeeping.cfg`.
 
+The window opens first and shows the startup's check screen (`Flow/BootChecks.cs`, the service menu's look):
+one line per part as it loads (`_` blinking, then OK or NG), the song library scanned on a background thread.
+A part that throws stops the game on an error screen (its number and name, the message, the crash log's path)
+until the window is closed or Escape pressed; the exit code is then 1. `WADDAMBURO_BOOT_FAIL=<check>` (e.g.
+`MOVIES`, `SONG LIBRARY`) fails that check on purpose, to see the screen.
+
 F4 toggles inspect mode: a left click then prints every scene quad under the pointer, topmost
 first, with its movie, runtime texture index (or native surface) and clip chain (character ids and
 instance names up to `_level0`). Texture indices are the runtime ones, which can differ from an

@@ -159,7 +159,7 @@ try
             : $"Scores: kept on this PC; {accounts.Accounts.Count} account(s)"
                 + (accounts.Default is { } first ? $", {first.Name} joins by default" : "")
                 + (arcade.Server is null ? ", offline." : $", uploaded to {arcade.Server}."));
-        GameShell.Run(new GameOptions(
+        var exitCode = GameShell.Run(new GameOptions(
             layout.LumenRoot,
             layout.DonRoot,
             windowSize.Width,
@@ -184,7 +184,7 @@ try
         // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
         if (GameShell.RestartRequested)
             SelfUpdate.Relaunch(args);
-        return 0;
+        return exitCode; // 1 after the boot's error screen
     }
     // Diagnostic runs always show their output.
     ReleaseConsole.Show(true);

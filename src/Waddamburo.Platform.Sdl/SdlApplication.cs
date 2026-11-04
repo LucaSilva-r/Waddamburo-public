@@ -550,6 +550,31 @@ public sealed unsafe class SdlApplication : IDisposable
     /// <summary>Ends the running loop after the current frame; callable from any thread.</summary>
     public void RequestQuit() => _quitRequested = true;
 
+    /// <summary>
+    /// Outside <see cref="Run(Func{double, RenderFrame}, Action{SdlKeyboardSnapshot}, int?, int?, Action{RenderCapture}?, Action{SdlKeyboardSnapshot}?, Func{bool}?, Action?, Action{float, float}?, Func{bool}?, Action{float, float}?, Action?, Action{SdlFrameMetrics}?, Action?, Action{float}?)"/>
+    /// (the boot screen while the game loads, or its error): the window's events are handled and <paramref name="frame"/>
+    /// shown when the renderer is ready for it. False once the window was closed; <paramref name="escape"/>: Escape
+    /// was pressed.
+    /// </summary>
+    public bool PumpAndPresent(RenderFrame frame, out bool escape)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        escape = false;
+        var open = true;
+        SDL_Event currentEvent;
+        while (SDL_PollEvent(&currentEvent))
+        {
+            if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_QUIT or (uint)SDL_EventType.SDL_EVENT_WINDOW_CLOSE_REQUESTED)
+                open = false;
+            else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_ESCAPE)
+                escape = true;
+        }
+        if (_renderer!.TryAcquireSwapchain())
+            _renderer.Present(frame);
+        return open;
+    }
+
     public int Run(
         RenderFrame frame,
         int? frameLimit = null,

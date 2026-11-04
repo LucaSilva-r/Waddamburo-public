@@ -25,11 +25,14 @@ internal sealed record OverlayRow(string Label, float X = 480, Func<string>? Val
 /// <paramref name="Tag"/>: the owner's name for the page; <paramref name="Legend"/>: the controls line at the bottom (off
 /// where the screen has its own there, Song Select's name boards under the online lobby); <paramref name="Fixed"/>: the
 /// rows stay where they say (a menu's main list, at its left edge), else the page's block of labels and values is
-/// centred, the values a few cells after the longest label (as the cabinet lays out its option pages).
+/// centred, the values a few cells after the longest label (as the cabinet lays out its option pages);
+/// <paramref name="Body"/>: a centred page's message as coloured lines (the boot's error screen), in place of
+/// <paramref name="Message"/>; <paramref name="Footer"/>: coloured lines at the bottom, in place of the legend.
 /// </summary>
 internal sealed record OverlayPage(Func<string> Title, Func<OverlayRow[]> Rows, bool Defaults = false, bool Centred = false,
     bool DrumTest = false, Func<string?>? Message = null, Action? Back = null, object? Tag = null, bool Legend = true,
-    bool Fixed = false);
+    bool Fixed = false, Func<(string Text, RenderColor Colour)[]>? Body = null,
+    Func<(string Text, RenderColor Colour)[]>? Footer = null);
 
 /// <summary>
 /// The menus' one look and feel, after the arcade cabinet's service menu: plain text (Kosugi Maru) over black on a
@@ -204,12 +207,15 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
         {
             // The message's lines (each wrapped), the title above them, then a window of the choices around the
             // selection (a long list, the public rooms, scrolls with arrows at its ends).
-            var lines = page.Message?.Invoke() is { } message
-                ? message.Split('\n').SelectMany(line => wrapped(upper(line), 100)).Take(5).ToList() : [];
+            var lines = page.Body?.Invoke() is { } body
+                ? body.SelectMany(line => wrapped(upper(line.Text), 100).Select(part => (Text: part, line.Colour))).Take(8).ToList()
+                : page.Message?.Invoke() is { } message
+                    ? message.Split('\n').SelectMany(line => wrapped(upper(line), 100)).Take(5).Select(static part => (Text: part, Colour: White)).ToList()
+                    : [];
             var titleY = lines.Count > 2 ? 120 : 200f;
             centred(quads, upper(page.Title()), titleY, White, scale);
             for (var line = 0; line < lines.Count; line++)
-                centred(quads, lines[line], titleY + 50 + line * 28, White, scale);
+                centred(quads, lines[line].Text, titleY + 50 + line * 28, lines[line].Colour, scale);
             var top = lines.Count == 0 ? 290f : titleY + 50 + lines.Count * 28 + 40;
             const float Gap = 40;
             var visible = Math.Max(1, (int)((600 - top) / Gap) + 1);
@@ -269,7 +275,10 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                     centred(quads, lines[line], 590 + line * 26, White, scale);
             }
         }
-        if (page.Legend)
+        if (page.Footer?.Invoke() is { } footerLines)
+            for (var line = 0; line < footerLines.Length; line++)
+                centred(quads, footerLines[line].Text, 690 - (footerLines.Length - 1 - line) * 30, footerLines[line].Colour, scale);
+        else if (page.Legend)
             centred(quads, footer(page), 660, White, scale);
         return quads;
     }
