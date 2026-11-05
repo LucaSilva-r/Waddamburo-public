@@ -12,13 +12,13 @@ public sealed class ReviewClockTests
         var clock = new ReviewClock(s(-3), s(10));
         clock.Update(s(2));
         Assert.Equal(s(-1), clock.Position);
+        clock.Slower(); // 0.95
         clock.Slower(); // 0.9
-        clock.Slower(); // 0.8
         clock.Update(s(2));
-        Assert.Equal(s(0.6), clock.Position);
+        Assert.Equal(s(0.8), clock.Position);
         clock.TogglePause();
         clock.Update(s(5));
-        Assert.Equal(s(0.6), clock.Position);
+        Assert.Equal(s(0.8), clock.Position);
         clock.TogglePause();
         for (var i = 0; i < ReviewClock.Speeds.Length; i++)
             clock.Faster();
