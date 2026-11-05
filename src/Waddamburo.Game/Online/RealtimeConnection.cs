@@ -138,12 +138,9 @@ public sealed class RealtimeConnection(Uri url, bool insecure = false) : IAsyncD
             {
                 using var socket = new ClientWebSocket();
                 // server_insecure: a local server's self-signed certificate, as ScoreClient.CreateHttp accepts it.
-#pragma warning disable CA5359
-                if (insecure)
-                    socket.Options.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
-#pragma warning restore CA5359
+                using var invoker = ServerConnector.Invoker(insecure);
                 var query = $"protocol=7&client=waddamburo&version={typeof(RealtimeConnection).Assembly.GetName().Version}";
-                await socket.ConnectAsync(new UriBuilder(url) { Query = query }.Uri, cancellationToken).ConfigureAwait(false);
+                await socket.ConnectAsync(new UriBuilder(url) { Query = query }.Uri, invoker, cancellationToken).ConfigureAwait(false);
                 _socket = socket;
                 await readAsync(socket, () => backoff = ReconnectDelay, cancellationToken).ConfigureAwait(false);
                 closeCode = (int?)socket.CloseStatus;

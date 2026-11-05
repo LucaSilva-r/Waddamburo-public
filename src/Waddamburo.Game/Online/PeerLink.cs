@@ -442,6 +442,8 @@ public sealed class PeerLink : IAsyncDisposable
     private async Task relayAsync(Uri address)
     {
         using var relay = new ClientWebSocket();
+        // Kept for the socket's life: it carries the connection (each relay address tried in turn, see ServerConnector).
+        using var invoker = ServerConnector.Invoker(insecure: false);
         relay.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
         _relay = relay;
         try
@@ -449,7 +451,7 @@ public sealed class PeerLink : IAsyncDisposable
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token))
             {
                 timeout.CancelAfter(ConnectTimeout);
-                await relay.ConnectAsync(address, timeout.Token).ConfigureAwait(false);
+                await relay.ConnectAsync(address, invoker, timeout.Token).ConfigureAwait(false);
             }
             Volatile.Write(ref _relayOpen, true);
             var sending = Task.Run(async () =>

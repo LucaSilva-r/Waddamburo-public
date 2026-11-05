@@ -94,10 +94,8 @@ public sealed class ScoreClient(HttpClient http)
     public static HttpClient CreateHttp(Uri server, bool insecure, string? token = null)
     {
         ArgumentNullException.ThrowIfNull(server);
-        var handler = new HttpClientHandler();
-        if (insecure)
-            handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-        var http = new HttpClient(handler) { BaseAddress = server, Timeout = TimeSpan.FromSeconds(15) };
+        // Each server address in turn with its own short timeout (a dead IPv6 route otherwise hung every request).
+        var http = new HttpClient(Online.ServerConnector.Handler(insecure)) { BaseAddress = server, Timeout = TimeSpan.FromSeconds(15) };
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (token is not null)
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
