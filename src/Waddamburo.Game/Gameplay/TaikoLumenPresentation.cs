@@ -288,7 +288,25 @@ public sealed class TaikoLumenPresentation
         // Traced (session6/12/27): a press that judges a note turns the lane's don_s/katsu_s into the brighter
         // don_hit/katsu_hit in the same tick. ponytail: bads keep the plain flash (none traced); don_b/katsu_b unseen.
         if (result.Result is TaikoHitResult.Great or TaikoHitResult.Good)
-            _target.Player.TryGotoLabel("effect", result.HitObject.Kind == PlayableNoteKind.Ka ? "katsu_hit" : "don_hit");
+            lightHit(result);
+    }
+
+    private string? _hitLight;
+
+    private void lightHit(TaikoNoteJudgement result)
+    {
+        _hitLight = result.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa ? "katsu_hit" : "don_hit";
+        _target.Player.TryGotoLabel("effect", _hitLight);
+    }
+
+    /// <summary>
+    /// A big note's other hand (absorbed, no judgement): its press flash gives way to the hit light again, so a
+    /// two-hand hit stays lit as a hit.
+    /// </summary>
+    public void KeepHitLight()
+    {
+        if (_hitLight is { } label)
+            _target.Player.TryGotoLabel("effect", label);
     }
 
     private static void callback(LumenPlayer player, string name, LumenHostValue value)

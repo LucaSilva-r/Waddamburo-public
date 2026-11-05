@@ -776,7 +776,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 _playHitSound?.Invoke(_soundLane, hit);
                 Replay.Add(hit, eventTime);
                 _relay?.Record(hit, eventTime);
-                _session.SubmitInput(hit, eventTime);
+                // ponytail: live play only; a replay's second hand still shows its press flash.
+                if (_session.SubmitInput(hit, eventTime) == TaikoInputResult.SecondHand)
+                    _presentation.KeepHitLight();
             }
             _session.AdvanceTo(chartTime);
             _relay?.SetClock(chartTime);
