@@ -334,7 +334,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             if (badIndex < 0)
                 badIndex = index;
         }
-        if (goodIndex < 0 || activeLongNoteStart(action, time) is { } longStart
+        if (goodIndex < 0 || activeLongNoteStart(time) is { } longStart
             && _chart.HitObjects[goodIndex].StartTime >= longStart)
         {
             var longHit = hitLongNote(action, time);
@@ -377,19 +377,20 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             _results[noteIndex], _offsets[noteIndex], true));
     }
 
-    // The start of the roll, balloon or kusudama under way at this time that takes this input.
-    private TimeSpan? activeLongNoteStart(TaikoInputAction action, TimeSpan time)
+    // The start of the roll, balloon or kusudama under way at this time that takes this input. Waddamburo's rule
+    // (scoring v7): balloons and kusudama take ka too (the game takes don only), which keyboards find easier.
+    private TimeSpan? activeLongNoteStart(TimeSpan time)
     {
         if (_nextLongIndex >= _chart.LongNotes.Length) return null;
         var note = _chart.LongNotes[_nextLongIndex];
-        return time >= note.StartTime && time < note.EndTime && (!note.IsBalloon || isDon(action)) ? note.StartTime : null;
+        return time >= note.StartTime && time < note.EndTime ? note.StartTime : null;
     }
 
     private TaikoInputResult hitLongNote(TaikoInputAction action, TimeSpan time)
     {
         if (_nextLongIndex >= _chart.LongNotes.Length) return TaikoInputResult.Ignored;
         var note = _chart.LongNotes[_nextLongIndex];
-        if (time < note.StartTime || time >= note.EndTime || (note.IsBalloon && !isDon(action)))
+        if (time < note.StartTime || time >= note.EndTime)
             return TaikoInputResult.Ignored;
         // Rolls, balloons and kusudama count at most 60 hits a second of song time (Green's top speed),
         // at any training speed: 1/60 s frames from the note's start, the first hit in each frame

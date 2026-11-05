@@ -25,13 +25,13 @@ public sealed class TaikoLongNoteTests
     [Theory]
     [InlineData(PlayableLongNoteKind.Balloon)]
     [InlineData(PlayableLongNoteKind.Kusudama)]
-    public void BalloonsRequireDonHitsAndPopAtTheQuota(PlayableLongNoteKind kind)
+    public void BalloonsTakeDonAndKaHitsAndPopAtTheQuota(PlayableLongNoteKind kind)
     {
         var session = create(kind, 2);
         var changes = new List<TaikoLongNoteProgress>();
         session.LongNoteHit += changes.Add;
-        Assert.Equal(TaikoInputResult.Ignored, session.SubmitInput(TaikoInputAction.LeftKa, TimeSpan.FromSeconds(1)));
-        Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.1)));
+        // Waddamburo's rule (scoring v7): ka counts too.
+        Assert.Equal(TaikoInputResult.LongNoteHit, session.SubmitInput(TaikoInputAction.LeftKa, TimeSpan.FromSeconds(1.1)));
         Assert.Equal(TaikoInputResult.RollHitCapped, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.1)));
         Assert.Equal(TaikoInputResult.BalloonPopped, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.2)));
         Assert.Equal(TaikoInputResult.Ignored, session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.3)));

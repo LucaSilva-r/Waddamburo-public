@@ -100,7 +100,7 @@ public sealed record PlayRecord(
     /// The judgement and scoring rules a play was scored under. Bump when they change; older plays
     /// are rescored from their replays (leaderboards may then show only the current version).
     /// </summary>
-    public const int CurrentScoringVersion = 6; // 5: a big note hit is always a big hit; 6: the other hand's press right after is part of it
+    public const int CurrentScoringVersion = 7; // 5: a big note hit is always a big hit; 6: the other hand's press right after is part of it; 7: ka pops balloons and kusudama too
 
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 
