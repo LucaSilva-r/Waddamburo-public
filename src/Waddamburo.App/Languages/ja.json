@@ -54,6 +54,8 @@
   "settings.show_oni.hint": "曲選択: おにコースを最初から表示します。オフ: オリジナルどおり、右のふちを連打するとおにが現れます。",
   "settings.mouse_controls": "マウス操作",
   "settings.mouse_controls.hint": "メニューでマウスホイールがふちのように動き（曲、エントリー、難易度、設定。リプレイではシーク）、左クリックが面になります。オフ：マウスは何もしません。",
+  "settings.discord_presence": "Discordステータス",
+  "settings.discord_presence.hint": "このPCでDiscordが起動中、プレイ中の曲・難易度・オンライン対戦相手をDiscordのプロフィールに表示します。",
   "settings.gameplay_skin": "演奏画面スキン",
   "settings.gameplay_skin.auto": "自動",
   "settings.gameplay_skin.original": "オリジナル",

@@ -54,6 +54,8 @@
   "settings.show_oni.hint": "Song Select shows the Oni course at once. Off: the original, where Oni appears after hitting the right rim repeatedly.",
   "settings.mouse_controls": "Mouse Controls",
   "settings.mouse_controls.hint": "In the menus the mouse wheel moves as the drum's rims do (songs, player entry, difficulties, settings; replays seek) and a left click is a don. Off: the mouse does nothing there.",
+  "settings.discord_presence": "Discord Status",
+  "settings.discord_presence.hint": "Shows what you're playing on your Discord profile (the song, its course, who you play against online) while Discord runs on this PC.",
   "settings.gameplay_skin": "Gameplay skin",
   "settings.gameplay_skin.auto": "Automatic",
   "settings.gameplay_skin.original": "Original",

@@ -172,6 +172,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         Playing = false;
         PlayingChart = null;
+        Presence = null;
         if (!_demo)
             return;
         _demo = false;
@@ -193,6 +194,15 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>The play's chart hash; null for a dan course, whose songs change along the way.</summary>
     public string? PlayingChart { get; private set; }
 
+    /// <summary>For Discord: the play's song and course ("Senbonzakura · Oni ★10"), or its dan course; since when.</summary>
+    public (string What, DateTimeOffset Since)? Presence { get; private set; }
+
+    private static string courseName(TaikoCourse course) => course switch
+    {
+        TaikoCourse.Ura => "Ura Oni",
+        _ => course.ToString(),
+    };
+
     // The drum this game's own player stands at.
     private LocalPlayerSlot localSlot() => Shell.Players.JoinedSides.Count > 0 && Shell.Players.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
 
@@ -203,6 +213,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         Playing = !_demo && request.Review is null;
         PlayingChart = Playing && _course is null && Shell.Arcade.Home && _sourceCharts.Length > 0
             ? ChartHash.Compute(_sourceCharts[0], request.Players[0].Course) : null;
+        Presence = !Playing ? null
+            : _course is not null && Shell.Gameplay.Dan is { } dan ? ($"Dan Dojo · {dan.Name}", DateTimeOffset.UtcNow)
+            // Custom (TJA) songs stay with their communities: only the official ones and osu! beatmaps are named.
+            : _song is { } song ? ($"{(song.Descriptor.Key.Source == SongSourceKind.Tja ? "A custom song"
+                    : song.Descriptor.Title.English ?? song.Descriptor.Title.Primary)} · {courseName(request.Players[0].Course)}"
+                + (_sourceCharts.ElementAtOrDefault(0)?.Level is { } level ? $" ★{level}" : ""), DateTimeOffset.UtcNow)
+            : null;
         // Each player's options on their chart; the random ones from the play's seed (a replay's own).
         _seed = request.Seed ?? Random.Shared.Next();
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.

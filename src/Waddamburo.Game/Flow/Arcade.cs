@@ -27,7 +27,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 26;
+    public const int CurrentVersion = 27;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -271,6 +271,12 @@ public sealed record ArcadeSettings
         button_service = f3
 
         """,
+        """
+        # discord_presence (also in the Settings menu): show what you're playing on your Discord profile
+        # (the song, its course, who you play against online) while Discord runs on this PC. Home mode only.
+        discord_presence = true
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -341,6 +347,9 @@ public sealed record ArcadeSettings
 
     /// <summary>In the menus the mouse wheel is the rims (replays: it seeks) and a left click a don.</summary>
     public bool MouseControls { get; init; } = true;
+
+    /// <summary>Discord shows what the player is doing (home mode, while Discord runs).</summary>
+    public bool DiscordPresence { get; init; } = true;
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
     public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
@@ -734,6 +743,7 @@ public sealed record ArcadeSettings
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
+                "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
                 "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
                 {
@@ -828,6 +838,7 @@ public sealed record ArcadeSettings
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
+            ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,
             ["timing_indicator"] = settings.TimingIndicator switch
             {

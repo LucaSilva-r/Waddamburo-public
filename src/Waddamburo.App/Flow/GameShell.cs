@@ -838,15 +838,37 @@ internal sealed class GameShell : IDisposable
     private static readonly TimeSpan AfkAfter = TimeSpan.FromMinutes(5);
     private readonly System.Diagnostics.Stopwatch _sinceInput = System.Diagnostics.Stopwatch.StartNew();
 
+    // Discord's status: home mode only (a cabinet has no player's Discord), never in a headless run.
+    private DiscordPresence? _discord;
+
+    private void reportPresence()
+    {
+        if (!Arcade.Home || Headless)
+            return;
+        _discord ??= new DiscordPresence();
+        var partner = Room.Session?.Partner?.DisplayName;
+        var versus = partner is { Length: > 0 } ? $"Online vs {partner}" : Players.JoinedSides.Count > 1 ? "Two players" : null;
+        var activity = _gameplay.Presence is { } playing ? new PresenceActivity(playing.What, versus ?? "Solo", playing.Since)
+            : Active.Id == FlowScenes.SongSelect ? new PresenceActivity("Choosing a song", versus)
+            : Active.Id == FlowScenes.DaniSelect ? new PresenceActivity("Choosing a dan course")
+            : Active.Id == FlowScenes.Result ? new PresenceActivity("Looking at the results", versus)
+            : Room.Session is not null ? new PresenceActivity("In an online room", versus)
+            : new PresenceActivity("In the menus");
+        _discord.Set(activity, Arcade.DiscordPresence);
+    }
+
     private void reportStatus()
     {
+        reportPresence();
         if (!Arcade.Home)
             return;
         // A song counts as activity, so leaving one is never AFK. Key presses are noted per frame (ticks only see held keys).
         if (_gameplay.Playing)
             _sinceInput.Restart();
-        Sync.ReportStatus(_gameplay.Playing ? PlayerStatus.Playing(_gameplay.PlayingChart)
-            : _sinceInput.Elapsed >= AfkAfter ? PlayerStatus.Afk : PlayerStatus.Online);
+        // The room, once the other player is there: the website names them (the server checks both are in it).
+        var status = _gameplay.Playing ? PlayerStatus.Playing(_gameplay.PlayingChart)
+            : _sinceInput.Elapsed >= AfkAfter ? PlayerStatus.Afk : PlayerStatus.Online;
+        Sync.ReportStatus(Room.Session is { Partner: not null, Room: { } room } ? status with { Room = room.Code } : status);
     }
 
     // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
@@ -1242,5 +1264,6 @@ internal sealed class GameShell : IDisposable
         _libraries.Dispose();
         Room.Dispose();
         Sync.Dispose();
+        _discord?.Dispose();
     }
 }

@@ -67,7 +67,7 @@ public sealed class NoticeClient(HttpClient http)
     /// <summary>Tells the website what the token's player is doing.</summary>
     public async Task SetStatusAsync(PlayerStatus status, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PutAsJsonAsync("api/wdb/status", new StatusRequest(status.State, status.ChartSha256),
+        using var response = await http.PutAsJsonAsync("api/wdb/status", new StatusRequest(status.State, status.ChartSha256, status.Room),
             OnlineJson.Default.StatusRequest, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
@@ -90,7 +90,7 @@ public sealed class NoticeClient(HttpClient http)
 
     internal sealed record ReadRequest(IReadOnlyCollection<string> Ids);
 
-    internal sealed record StatusRequest(string State, string? ChartSha256);
+    internal sealed record StatusRequest(string State, string? ChartSha256, string? Room);
 
     internal sealed record ChannelAuthRequest(string SocketId, string ChannelName);
 
