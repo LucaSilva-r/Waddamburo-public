@@ -72,9 +72,15 @@ internal sealed class TrainingSession
                     case SdlKeyboardKey.WheelDown: this.jump(Clock.Position + TimeSpan.FromSeconds(1)); break;
                     case SdlKeyboardKey.Left when jump: this.jump(note(-1)); break;
                     case SdlKeyboardKey.Right when jump: this.jump(note(+1)); break;
-                    case SdlKeyboardKey.Up: Clock.Faster(); break;
-                    case SdlKeyboardKey.Down: Clock.Slower(); break;
+                    case SdlKeyboardKey.Up: speed(+1, press.Timestamp); break;
+                    case SdlKeyboardKey.Down: speed(-1, press.Timestamp); break;
                 }
+            // A held arrow keeps stepping the speed, as in the menus (#25).
+            if (_speedRepeat is { } held && keys.IsDown(held.Direction > 0 ? SdlKeyboardKey.Up : SdlKeyboardKey.Down))
+                for (var at = held.At; at <= keys.Timestamp; at += SpeedRepeatInterval)
+                    speed(held.Direction, at, repeat: true);
+            else
+                _speedRepeat = null;
             if (pressed(GameAction.Pause) || keys.Presses.Any(static press => press.Key == SdlKeyboardKey.Space))
                 Clock.TogglePause();
             // The loop's two keys together clear it.
@@ -108,6 +114,15 @@ internal sealed class TrainingSession
 
     /// <summary>The flow is paused (its menu is open): see <see cref="ReviewSession.Hold"/>.</summary>
     public void Hold() => _review.Hold();
+
+    private static readonly TimeSpan SpeedRepeatDelay = TimeSpan.FromMilliseconds(400), SpeedRepeatInterval = TimeSpan.FromMilliseconds(50);
+    private (int Direction, TimeSpan At)? _speedRepeat;
+
+    private void speed(int direction, TimeSpan at, bool repeat = false)
+    {
+        if (direction > 0) Clock.Faster(); else Clock.Slower();
+        _speedRepeat = (direction, at + (repeat ? SpeedRepeatInterval : SpeedRepeatDelay));
+    }
 
     private void jump(TimeSpan to)
     {
