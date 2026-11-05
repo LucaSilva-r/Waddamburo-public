@@ -31,9 +31,12 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
 
     public void Reset(DonPresentationLayout layout)
     {
-        // A right-drum player's Katsu-chan is never mirrored: he faces the centre as in entry
-        // (the mirrored camera only suits a second player standing beside a first).
-        _renderer.Reset(mirrorPlayerTwoCamera: layout != DonPresentationLayout.OpposedPlayers && GameplaySide != 1,
+        // Entry and Song Select (Standard): the movies never turn the right-hand Don-chan, so the mirrored camera faces
+        // them inward, a second player beside a first and a player alone on the right drum alike (the lone one faced
+        // outward when the right drum was excepted here). Other layouts keep that exception: results stand both players
+        // left of their panel (OpposedPlayers), and a lone right-drum player's other scenes were confirmed unmirrored.
+        _renderer.Reset(mirrorPlayerTwoCamera: layout == DonPresentationLayout.Standard
+                || layout != DonPresentationLayout.OpposedPlayers && GameplaySide != 1,
             layout: cameraLayout(layout));
     }
 

@@ -398,6 +398,9 @@ public sealed unsafe class SdlApplication : IDisposable
     /// <summary>Menus turn mouse wheel notches and left clicks (a don) into presses (false: the mouse is ignored there).</summary>
     public bool MouseControls { get; set; } = true;
 
+    /// <summary>The <see cref="SdlInputBindings.Pads"/> entry a menu click presses: the first player's left don, or a lone right-drum player's.</summary>
+    public int ClickPad { get; set; } = 1;
+
     /// <summary>The session's performance report, when one is being recorded: every frame goes to it.</summary>
     public PerformanceRecorder? Recorder { get; set; }
 
@@ -753,7 +756,7 @@ public sealed unsafe class SdlApplication : IDisposable
                     // In menus a left click is a don (player 1's left don key: decide everywhere menus are).
                     // Not the click that brings the window up: some systems send it before the focus, others just after.
                     if (_menuInput && MouseControls && !_capturing && !inspecting && windowFocused && currentEvent.button.timestamp > _focusedAt + FocusClickGraceNs)
-                        pendingPresses.Add(new SdlKeyPress(SdlInputBindings.Pads[1],
+                        pendingPresses.Add(new SdlKeyPress(SdlInputBindings.Pads[ClickPad],
                             TimeSpan.FromTicks(checked((long)(currentEvent.button.timestamp / 100)))));
                     if (pointerClicked is null)
                         continue;

@@ -251,11 +251,15 @@ internal sealed class GameShell : IDisposable
     private SdlKeyboardSnapshot menuKeys(SdlKeyboardSnapshot keys)
     {
         var drum = Hosts.PlayerSide == 1 && !Hosts.TwoPlayers && Active.Id != FlowScenes.Retry ? 4 : 0;
+        Application.ClickPad = drum + 1;
         IEnumerable<SdlKeyboardKey> drumToo(SdlKeyboardKey key) => key switch
         {
             SdlKeyboardKey.Left or SdlKeyboardKey.Up => [key, SdlInputBindings.Pads[drum]],
             SdlKeyboardKey.Right or SdlKeyboardKey.Down => [key, SdlInputBindings.Pads[drum + 3]],
             SdlKeyboardKey.Enter => [key, SdlInputBindings.Pads[drum + 1]],
+            // The wheel is the first player's rims (the input adapter); a lone right-drum player's too.
+            SdlKeyboardKey.WheelUp when drum != 0 => [key, SdlInputBindings.Pads[drum]],
+            SdlKeyboardKey.WheelDown when drum != 0 => [key, SdlInputBindings.Pads[drum + 3]],
             _ => [key],
         };
         return new SdlKeyboardSnapshot(keys.PressedKeys.SelectMany(drumToo),

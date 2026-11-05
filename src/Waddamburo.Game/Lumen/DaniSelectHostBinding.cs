@@ -60,6 +60,7 @@ public sealed class DaniSelectHostBinding(
     /// <summary>After the tick's movie advance, once the boards are where the tick leaves them.</summary>
     public void Poll()
     {
+        assignKeys();
         if (_boardsJumped)
             _player?.HoldStill();
         _boardsJumped = false;
@@ -69,7 +70,8 @@ public sealed class DaniSelectHostBinding(
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
         if (don is not null)
-            DonLumenBinding.Attach(player, don, DonPresentationLayout.OpposedPlayers);
+            // As Song Select: a player on the right drum has their Don-chan turned inward by the mirrored camera.
+            DonLumenBinding.Attach(player, don);
     }
 
     public void Install(LumenHostContext context)
@@ -131,6 +133,23 @@ public sealed class DaniSelectHostBinding(
         });
     }
 
+    // The key manager may not exist yet when the boards are assigned (IsInitWait polls from the first frame): retried each tick.
+    private bool _keysPending;
+
+    private void assignKeys()
+    {
+        if (!_keysPending || _player is null)
+            return;
+        foreach (var path in (string[])["keyMgr", "_global.CppConnection.key"])
+            if (_player.TryCallScriptMethod(path, "AssignPlayer", [LumenHostValue.FromNumber(side)])
+                && _player.TryCallScriptMethod(path, "ReleasePlayer", [LumenHostValue.FromNumber(0)]))
+            {
+                _keysPending = false;
+                Console.WriteLine($"dani_select keys assigned to player {side} via {path}.");
+                return;
+            }
+    }
+
     private void assign()
     {
         if (_boards is not null || _player is null || boards() is not { } ready)
@@ -145,6 +164,11 @@ public sealed class DaniSelectHostBinding(
         }))
             Console.Error.WriteLine("dani_select has no BoardContainer.ResetBoards to hold still.");
         invoke("SetPlayer", side, firstValid(ready) + 1, EveryRankOpen);
+        // The movie's key manager reads only the players it was given: its one AssignPlayer call runs in its init, before
+        // SetPlayer, with player 0. A right-drum player (keys or arrows) moved nothing: their side is assigned here, and
+        // the other released, so only the player's own drum drives the list.
+        _keysPending = side != 0;
+        assignKeys();
         foreach (var board in ready)
         {
             invoke("AssignDani", board.Id);
