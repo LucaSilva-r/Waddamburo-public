@@ -75,6 +75,10 @@ public sealed class PeerLink : IAsyncDisposable
     private (IPEndPoint Target, bool ViaRelay, bool Relayed)? _route;
     private long _connectStarted;
     private long _lastHeard;
+    // When the route in use last answered: silent longer than RouteStale, every address and the relay are probed
+    // again and the first to answer takes over (a dropped IPv6 path, a NAT mapping gone), before PeerTimeout gives up.
+    private long _routeHeard;
+    private static readonly TimeSpan RouteStale = TimeSpan.FromSeconds(2.5);
 
     private ClientWebSocket? _relay;
     private bool _relayOpen;
@@ -317,6 +321,8 @@ public sealed class PeerLink : IAsyncDisposable
         if (!data.Slice(1, TokenLength).SequenceEqual(_localToken) || _remoteToken is not { } token)
             return;
         Volatile.Write(ref _lastHeard, Stopwatch.GetTimestamp());
+        if (_route is { } current && current.ViaRelay == viaRelay && (viaRelay || current.Target.Equals(from)))
+            Volatile.Write(ref _routeHeard, Stopwatch.GetTimestamp());
         switch (data[0])
         {
             case Probe when data.Length == HeaderLength + 8:
@@ -339,19 +345,27 @@ public sealed class PeerLink : IAsyncDisposable
         }
     }
 
-    // An answered probe proves the route. One that needs no relay beats one that does; otherwise the first stays.
+    // An answered probe proves the route. One that needs no relay beats one that does; otherwise the first stays,
+    // unless it has gone silent: then whichever answers first takes over.
     private void choose(IPEndPoint target, bool viaRelay)
     {
         bool relayed;
         lock (_lock)
         {
             relayed = viaRelay;
-            if (_route is { Relayed: false } || _route is not null && relayed)
+            if (!routeStale() && (_route is { Relayed: false } || _route is not null && relayed))
+                return;
+            if (_route is { } old && old.ViaRelay == viaRelay && (viaRelay || old.Target.Equals(target)))
                 return;
             _route = (target, viaRelay, relayed);
+            Volatile.Write(ref _routeHeard, Stopwatch.GetTimestamp());
         }
+        // The player's own log; no addresses (logs get sent around).
+        Console.WriteLine($"Online: link {(relayed ? "relayed" : target.AddressFamily == AddressFamily.InterNetworkV6 ? "IPv6 direct" : "IPv4 direct")}.");
         setState(relayed ? PeerLinkState.Relayed : PeerLinkState.Direct);
     }
+
+    private bool routeStale() => _route is not null && Stopwatch.GetElapsedTime(Volatile.Read(ref _routeHeard)) > RouteStale;
 
     private async Task tickAsync()
     {
@@ -377,6 +391,12 @@ public sealed class PeerLink : IAsyncDisposable
                             _route = null;
                             setState(PeerLinkState.Disconnected);
                             return;
+                        }
+                        // The route in use went quiet: every address and the relay again, as while connecting.
+                        if (routeStale())
+                        {
+                            probeAll();
+                            break;
                         }
                         if (Stopwatch.GetElapsedTime(lastSlowProbe) >= KeepAliveInterval)
                         {

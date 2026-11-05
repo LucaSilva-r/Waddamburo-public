@@ -141,7 +141,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     /// <summary>Joins a room; false when that can't be done. <paramref name="listed"/>: found in the public list, so its host is a stranger.</summary>
     public async Task<bool> JoinAsync(string code, string? password = null, bool listed = false, CancellationToken cancellationToken = default)
     {
-        var result = await _rooms.JoinAsync(code, password, cancellationToken).ConfigureAwait(false);
+        var result = await retryAsync(() => _rooms.JoinAsync(code, password, cancellationToken), cancellationToken).ConfigureAwait(false);
         WrongPassword = result.WrongPassword;
         Room = result.Room;
         _strangers = listed;
@@ -215,16 +215,35 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
 
     private static void log(string message) => Console.WriteLine($"Online: {message}");
 
+    // A request that can be made again (reading, joining): a timeout or a dropped connection is tried twice more, a
+    // second and two apart, before it counts; a flaky connection otherwise lost the room on one slow answer.
+    private static async Task<T> retryAsync<T>(Func<Task<T>> request, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await request().ConfigureAwait(false);
+            }
+            catch (Exception exception) when (attempt < 3 && exception is HttpRequestException or TaskCanceledException
+                && !cancellationToken.IsCancellationRequested)
+            {
+                Console.Error.WriteLine($"Warning ONLINE: {exception.Message}; trying again.");
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
     private async Task connectAsync(CancellationToken cancellationToken)
     {
         var room = Room!;
         log($"in room {room.Code}{(room.IsQuick ? " (quick play)" : "")} as {(IsHost ? "host" : "guest")}.");
         Link.Received += received;
         _keepingAlive = Task.Run(() => keepAliveAsync(room.Code, _stop.Token), CancellationToken.None);
-        var (servers, relay) = await _rooms.IceServersAsync(room.Code, cancellationToken).ConfigureAwait(false);
+        var (servers, relay) = await retryAsync(() => _rooms.IceServersAsync(room.Code, cancellationToken), cancellationToken).ConfigureAwait(false);
         Link.Relay = relay?.Address;
         _candidates = await Link.GatherAsync(servers, cancellationToken).ConfigureAwait(false);
-        if (await _notices.RealtimeAsync(cancellationToken).ConfigureAwait(false) is not { } url)
+        if (await retryAsync(() => _notices.RealtimeAsync(cancellationToken), cancellationToken).ConfigureAwait(false) is not { } url)
             throw new InvalidOperationException("The server has no realtime connection.");
         var realtime = new RealtimeConnection(url, insecure)
         {
@@ -307,10 +326,12 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
                         return;
                     }
                 }
-                catch (HttpRequestException exception)
+                // The server being away (or a request timing out: TaskCanceledException, which the outer catch took for
+                // leaving, so one timeout stopped the keep-alives and the room ran out) doesn't end a game already connected.
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
+                    && !cancellationToken.IsCancellationRequested)
                 {
-                    // The server being away doesn't end a game already connected.
-                    Console.Error.WriteLine($"Warning ONLINE: {exception.Message}");
+                    Console.Error.WriteLine($"Warning ONLINE: room keep-alive failed ({exception.Message}); trying again.");
                 }
             }
         }
