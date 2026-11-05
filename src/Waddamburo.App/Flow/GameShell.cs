@@ -297,7 +297,7 @@ internal sealed class GameShell : IDisposable
                     + $"audio buffer {Arcade.AudioBufferFrames}{(Arcade.AudioExclusive ? " exclusive" : "")}",
                     // Upscaled textures are 9x the pixels (BC7 on the GPU when it has it, else RGBA): they change memory and load times most.
                     $"upscaled textures\t{(Upscale is not { } upscale ? "unavailable (no model)"
-                        : !Arcade.UpscaleTextures ? "off" : $"on, shown {Application.ShowUpscaled}, scale {upscale.Scale:0.#}x, "
+                        : !Arcade.UpscaleTextures ? "off" : $"on, shown {Application.ShowUpscaled}, scale {upscale.Scale.ToString("0.#", CultureInfo.InvariantCulture)}x, "
                             + $"{upscale.CachedCount} cached, {(Application.SupportsBc7 ? "BC7" : "RGBA")} on the GPU, {Arcade.UpscaleThreads} threads")}"]);
             PerformanceRecorder.Scene = Active?.Id.ToString() ?? "-";
         }

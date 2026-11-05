@@ -130,7 +130,7 @@ internal sealed class SceneSwitcher(
         if (profile || PerformanceRecorder.Current is not null)
         {
             using var process = Process.GetCurrentProcess();
-            var line = $"Profile switch {from} -> {Active.Id}: "
+            var line = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Profile switch {from} -> {Active.Id}: "
                 + $"exit {Stopwatch.GetElapsedTime(start, released).TotalMilliseconds:F0} ms, "
                 + $"load {Stopwatch.GetElapsedTime(released, loaded).TotalMilliseconds:F0} ms, "
                 + $"enter {Stopwatch.GetElapsedTime(loaded, collect).TotalMilliseconds:F0} ms, "
@@ -138,7 +138,7 @@ internal sealed class SceneSwitcher(
                 + $"allocated {(GC.GetTotalAllocatedBytes() - allocated) / 1048576d:F1} MiB, "
                 + $"GC {GC.CollectionCount(0) - gen0}/{GC.CollectionCount(1) - gen1}/{GC.CollectionCount(2) - gen2}, "
                 + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
-                + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB (peak {process.PeakWorkingSet64 / 1048576d:F1}).";
+                + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB (peak {process.PeakWorkingSet64 / 1048576d:F1}).");
             if (profile)
                 Console.Error.WriteLine(line);
             PerformanceRecorder.Current?.Event(line["Profile ".Length..]);

@@ -135,7 +135,7 @@ public sealed unsafe class SdlApplication : IDisposable
         var stats = Bgfx.bgfx.get_stats();
         var mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(_window));
         return [renderer, $"display\tbackbuffer {stats->width}x{stats->height}, display mode "
-            + (mode is null ? "?" : $"{mode->w}x{mode->h} @ {mode->refresh_rate:F1} Hz")];
+            + (mode is null ? "?" : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{mode->w}x{mode->h} @ {mode->refresh_rate:F1} Hz"))];
     }
 
     private (int Width, int Height) desktop()
@@ -271,14 +271,16 @@ public sealed unsafe class SdlApplication : IDisposable
             return "";
         var stats = Bgfx.bgfx.get_stats();
         double ms(long ticks, long frequency) => frequency == 0 ? 0 : ticks * 1000.0 / frequency;
-        return $"; bgfx {stats->numDraw} draws, gpu {ms(stats->gpuTimeEnd - stats->gpuTimeBegin, stats->gpuTimerFreq):F1} ms, "
+        // Reports are read by scripts: decimal points whatever the player's locale.
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"; bgfx {stats->numDraw} draws, gpu {ms(stats->gpuTimeEnd - stats->gpuTimeBegin, stats->gpuTimerFreq):F1} ms, "
             + $"submit {ms(stats->cpuTimeEnd - stats->cpuTimeBegin, stats->cpuTimerFreq):F1} ms, "
             + $"wait render {ms(stats->waitRender, stats->cpuTimerFreq):F1} ms; "
-            + $"{stats->width}x{stats->height}, textures {stats->textureMemoryUsed / 1048576}, targets {stats->rtMemoryUsed / 1048576} MiB; "
+            + $"{stats->width}x{stats->height}, textures {stats->textureMemoryUsed / 1048576}, targets {stats->rtMemoryUsed / 1048576} MiB; ")
             + string.Join(", ", Enumerable.Range(0, stats->numViews).Select(index =>
             {
                 var view = stats->viewStats[index];
-                return $"view {view.view} {ms(view.gpuTimeEnd - view.gpuTimeBegin, stats->gpuTimerFreq):F1} ms";
+                return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"view {view.view} {ms(view.gpuTimeEnd - view.gpuTimeBegin, stats->gpuTimerFreq):F1} ms");
             }));
     }
 
