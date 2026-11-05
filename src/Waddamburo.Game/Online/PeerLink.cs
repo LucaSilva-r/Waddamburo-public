@@ -78,7 +78,15 @@ public sealed class PeerLink : IAsyncDisposable
     // When the route in use last answered: silent longer than RouteStale, every address and the relay are probed
     // again and the first to answer takes over (a dropped IPv6 path, a NAT mapping gone), before PeerTimeout gives up.
     private long _routeHeard;
-    private static readonly TimeSpan RouteStale = TimeSpan.FromSeconds(2.5);
+    // A direct route is given less: one missed keep-alive and the relay takes over (see PrefersRelay).
+    private static readonly TimeSpan DirectStale = TimeSpan.FromSeconds(1.5), RelayStale = TimeSpan.FromSeconds(2.5);
+    private volatile bool _preferRelay;
+
+    /// <summary>
+    /// The direct route went quiet once, so the relay carries the rest of the session: a flaky direct link that keeps
+    /// dropping and coming back is worse than a steady relayed one. Without a relay it stays direct.
+    /// </summary>
+    public bool PrefersRelay => _preferRelay;
 
     private ClientWebSocket? _relay;
     private bool _relayOpen;
@@ -345,17 +353,18 @@ public sealed class PeerLink : IAsyncDisposable
         }
     }
 
-    // An answered probe proves the route. One that needs no relay beats one that does; otherwise the first stays,
-    // unless it has gone silent: then whichever answers first takes over.
+    // An answered probe proves the route. One that needs no relay beats one that does, until the link prefers the relay
+    // (PrefersRelay): then the relay beats direct ones. A route in use stays while it answers; a silent one gives way to
+    // whichever answers first.
     private void choose(IPEndPoint target, bool viaRelay)
     {
         bool relayed;
         lock (_lock)
         {
             relayed = viaRelay;
-            if (!routeStale() && (_route is { Relayed: false } || _route is not null && relayed))
-                return;
             if (_route is { } old && old.ViaRelay == viaRelay && (viaRelay || old.Target.Equals(target)))
+                return;
+            if (_route is { } current && !routeStale() && (relayed ? !_preferRelay || current.Relayed : _preferRelay || !current.Relayed))
                 return;
             _route = (target, viaRelay, relayed);
             Volatile.Write(ref _routeHeard, Stopwatch.GetTimestamp());
@@ -365,7 +374,8 @@ public sealed class PeerLink : IAsyncDisposable
         setState(relayed ? PeerLinkState.Relayed : PeerLinkState.Direct);
     }
 
-    private bool routeStale() => _route is not null && Stopwatch.GetElapsedTime(Volatile.Read(ref _routeHeard)) > RouteStale;
+    private bool routeStale() => _route is { } route
+        && Stopwatch.GetElapsedTime(Volatile.Read(ref _routeHeard)) > (route.Relayed ? RelayStale : DirectStale);
 
     private async Task tickAsync()
     {
@@ -392,17 +402,24 @@ public sealed class PeerLink : IAsyncDisposable
                             setState(PeerLinkState.Disconnected);
                             return;
                         }
-                        // The route in use went quiet: every address and the relay again, as while connecting.
+                        // The route in use went quiet: every address and the relay again, as while connecting. A direct
+                        // one going quiet hands the rest of the session to the relay, when there is one.
                         if (routeStale())
                         {
+                            if (_route is { Relayed: false } && !_preferRelay && Volatile.Read(ref _relayOpen))
+                            {
+                                _preferRelay = true;
+                                Console.WriteLine("Online: the direct link dropped; the relay carries the rest of the session.");
+                            }
                             probeAll();
                             break;
                         }
                         if (Stopwatch.GetElapsedTime(lastSlowProbe) >= KeepAliveInterval)
                         {
                             lastSlowProbe = Stopwatch.GetTimestamp();
-                            // While relayed, keep looking for a route without the relay: NATs can open late.
-                            if (State == PeerLinkState.Relayed)
+                            // While relayed, keep looking for a route without the relay (NATs can open late), unless the
+                            // direct one already proved unreliable.
+                            if (State == PeerLinkState.Relayed && !_preferRelay)
                                 probeAll();
                             else if (_route is { } route)
                                 sendProbe(route.Target, route.ViaRelay);
