@@ -350,10 +350,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyOpenFolder", openFolder);
             lumen.RegisterMethod("NotifyCloseFolder", _ =>
             {
+                var closed = _openFolder;
                 _openFolder = -1;
                 if (_favouritesChanged)
                     relistFavourites();
-                return clearFolderSurfaces();
+                return clearFolderSurfaces(closed);
             });
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             // SetOptionMode(player, open, board): traced (0, true, 0) as a player's option board opens and
@@ -1036,11 +1037,18 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return integer(call, 1) >= 0 ? notifyPreview(call) : LumenHostValue.Undefined;
     }
 
-    private LumenHostValue clearFolderSurfaces()
+    // Only the closed folder's titles: a folder stepped out of stays open beside it, and its boards slid back in
+    // blank when the other one closed.
+    private LumenHostValue clearFolderSurfaces(int folder)
     {
         clearSelectionSurfaces();
         for (var slot = 0; slot <= 12; slot++)
+        {
+            if (folder >= 0 && _boards[slot] is { } board && board.Category != folder)
+                continue;
             requirePlayer().RemoveNativeFill($"song_name{slot}");
+            _boards[slot] = null;
+        }
         _session.StopPreview();
         return LumenHostValue.Undefined;
     }
