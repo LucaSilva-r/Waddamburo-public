@@ -817,7 +817,8 @@ public sealed class LumenPlayer
                 case LmbFrameLabelCommand label
                     when label.StringIndex < (uint)strings.Length
                         && label.Frame < (uint)frameCount:
-                    labels[strings[checked((int)label.StringIndex)].Value] = checked((int)label.Frame);
+                    // A name used twice (dance_b_20: "dance" at 80 and 399, its loop jumping from 399) means the first, as in Flash.
+                    labels.TryAdd(strings[checked((int)label.StringIndex)].Value, checked((int)label.Frame));
                     break;
                 default:
                     if (ordinaryFrame is int frame)
