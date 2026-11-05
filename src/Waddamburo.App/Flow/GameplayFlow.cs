@@ -155,9 +155,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _demo = true;
         _demoTakeOver = takeOver;
         _directStart = true;
-        Shell.Show(FlowScenes.Gameplay);
+        Shell.Scenes.Show(FlowScenes.Gameplay);
         // A drum hit during the demo opens Entry: it loads in the background again (the demo's lane took the slot).
-        Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
+        Shell.Scenes.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         Console.WriteLine($"Demo play: {song.Descriptor.Key} ({course}).");
         return true;
     }
@@ -463,10 +463,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!Shell.PlayRequests.TryRequestPlay(request))
             throw new InvalidOperationException("The restarted play request could not be queued.");
         Shell.Coordinator.Flow.CancelPendingTransition();
-        Shell.CancelFade();
+        Shell.Scenes.CancelFade();
         ResetRainbow();
         _directStart = true;
-        Shell.Show(FlowScenes.Gameplay);
+        Shell.Scenes.Show(FlowScenes.Gameplay);
         return true;
     }
 
@@ -573,14 +573,14 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             // Exit (on the switch either makes) ends the demo. Once it's fading out, a hit waits for the logo: taking over
             // then left the fade's black over entry.
-            if (!Shell.FadePending && _demoTakeOver?.Invoke(input) == true || Shell.FinishFade())
+            if (!Shell.Scenes.FadePending && _demoTakeOver?.Invoke(input) == true || Shell.Scenes.FinishFade())
                 return;
             // Escape ends the demo like its timer (it abandoned the song into Song Select, #19).
             if (input.Escape || revealed && (chartTime() >= DemoLength || ChartOver))
             {
                 if (_music is { } demoMusic)
                     Shell.Audio?.Mixer.Stop(demoMusic.Handle, TimeSpan.FromSeconds(1));
-                Shell.FadeTo(FlowScenes.Logo);
+                Shell.Scenes.FadeTo(FlowScenes.Logo);
                 return;
             }
         }
@@ -791,7 +791,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _charts = [];
         _autoplay = null;
-        Shell.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
+        Shell.Scenes.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
     }
 

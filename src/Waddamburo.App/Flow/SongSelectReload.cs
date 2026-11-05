@@ -35,7 +35,7 @@ internal sealed class SongSelectReload(GameShell shell)
         // The movies decode and upload on worker threads while the rainbow covers (the reload's cost).
         _scene = FlowScenes.SongSelectScene(shell.SongSelectSides, shell.Hosts.Waiwai);
         if (next is null)
-            shell.Prefetch(_scene);
+            shell.Scenes.Prefetch(_scene);
         shell.Overlay.Show(cover ?? FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
         // The rainbow hurries here; another cover plays as authored.
         shell.Overlay.Speed = cover is null ? Speed : 1;
@@ -57,13 +57,13 @@ internal sealed class SongSelectReload(GameShell shell)
             return false;
         if (shell.Overlay.Player is { IsPlaying: true })
             return true;
-        if (_stage == Stage.Covering && _next is null && !shell.PrefetchReady && shell.Tick - _startTick < PrefetchLimitTicks)
+        if (_stage == Stage.Covering && _next is null && !shell.Scenes.PrefetchReady && shell.Tick - _startTick < PrefetchLimitTicks)
             return true;
         if (_stage == Stage.Covering && _next is { } next)
         {
             _change?.Invoke();
             _change = null;
-            shell.Show(next);
+            shell.Scenes.Show(next);
             shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
             _stage = Stage.Revealing;
             return true;
@@ -75,7 +75,7 @@ internal sealed class SongSelectReload(GameShell shell)
             _change?.Invoke();
             _change = null;
             shell.Catalog.Replace(_scene!);
-            shell.Show(FlowScenes.SongSelect);
+            shell.Scenes.Show(FlowScenes.SongSelect);
             shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
             _stage = Stage.Revealing;
             return true;

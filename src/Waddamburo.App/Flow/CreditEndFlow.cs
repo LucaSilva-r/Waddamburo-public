@@ -29,7 +29,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _resultStartTick = Shell.Tick;
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Lumen.TaikoCreditNext.NextSong)
-            Shell.Prefetch(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
+            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
         // dani_result's song boards: fills song_name1 to 3, and a challenge's name art.
         if (Shell.Hosts.DanResult is not null && Shell.Active.Player.Layers[0].Player is { } dani)
         {
@@ -95,14 +95,14 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         if (scene == FlowScenes.Result)
         {
             // The song's shutter stays over the results until their first frames are drawn.
-            if (Shell.Overlay.IsShown && !Shell.FadePending && Shell.Tick - _resultStartTick >= 2)
+            if (Shell.Overlay.IsShown && !Shell.Scenes.FadePending && Shell.Tick - _resultStartTick >= 2)
                 Shell.Overlay.Clear();
             if (Shell.Hosts.DanResult is not null)
                 Shell.Hosts.DaniResult?.Poll();
             // ponytail: a course's results take a song's delay until a trace times theirs.
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
                 Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
-            if (Shell.FinishFade()) return;
+            if (Shell.Scenes.FinishFade()) return;
             // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message; Waiwai's
             // reports AllFinish).
             if (input.Escape || (Shell.Hosts.WaiwaiResult is { } waiwai
@@ -114,10 +114,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 {
                     if (!Shell.Arcade.Home)
                         Shell.Catalog.Replace(FlowScenes.DaniGameOver);
-                    Shell.FadeTo(Shell.Arcade.Home ? FlowScenes.DaniSelect : FlowScenes.GameOver);
+                    Shell.Scenes.FadeTo(Shell.Arcade.Home ? FlowScenes.DaniSelect : FlowScenes.GameOver);
                 }
                 else
-                Shell.FadeTo(Shell.Hosts.CreditNext switch
+                Shell.Scenes.FadeTo(Shell.Hosts.CreditNext switch
                 {
                     TaikoCreditNext.Revival => FlowScenes.Retry,
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,
@@ -126,9 +126,9 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         }
         else if (scene == FlowScenes.Retry)
         {
-            if (Shell.FinishFade()) return;
+            if (Shell.Scenes.FinishFade()) return;
             if (RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers.Single().Player))
-                Shell.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
+                Shell.Scenes.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
         }
         else if (Shell.Hosts.GameOver?.Ended == true)
         {
@@ -138,7 +138,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 return;
             // Traced: the credit's end returns to the attract loop at logo_namco.
             Shell.SongsPlayed = 0;
-            Shell.Show(FlowScenes.Logo);
+            Shell.Scenes.Show(FlowScenes.Logo);
         }
     }
 }

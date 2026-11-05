@@ -135,7 +135,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (Shell.Hosts.SongSelect?.TutorialRequested == true)
         {
             Shell.Hosts.TutorialSeen = true;
-            Shell.Show(FlowScenes.Tutorial);
+            Shell.Scenes.Show(FlowScenes.Tutorial);
             return;
         }
         if (Shell.Hosts.SongSelect?.DanRequested == true)
@@ -210,7 +210,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (composed.IsCompletedSuccessfully)
         {
             _prefetch = composed.Result;
-            Shell.Prefetch(_prefetch.Scene);
+            Shell.Scenes.Prefetch(_prefetch.Scene);
             Console.WriteLine($"Prefetching gameplay for '{_prefetch.Song}' at tick {Shell.Tick}.");
         }
     }
@@ -223,7 +223,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         gameplay.ResetRainbow();
         _coveredAt = null;
         _prefetch = null;
-        Shell.Show(FlowScenes.SongSelect);
+        Shell.Scenes.Show(FlowScenes.SongSelect);
     }
 
     private bool _musicUnderCover;
@@ -297,7 +297,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             request = together;
         }
         // Held on the song title (shown) until the song's scene is decoded and uploaded (then its switch is quick).
-        if (_coveredAt is { } coveredAt && ((titleReady && _prefetch is not null && _composing is null && Shell.PrefetchReady)
+        if (_coveredAt is { } coveredAt && ((titleReady && _prefetch is not null && _composing is null && Shell.Scenes.PrefetchReady)
                 || Shell.Tick - coveredAt >= CoverHoldLimitTicks))
         {
             if (Shell.Tick - coveredAt >= CoverHoldLimitTicks)
@@ -337,7 +337,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             return true;
         _coveringForCalibration = false;
         Shell.Catalog.Replace(calibration.Scene());
-        Shell.Show(FlowScenes.Calibration);
+        Shell.Scenes.Show(FlowScenes.Calibration);
         Shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
         return true;
     }
@@ -347,7 +347,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // A launch straight into Song Select joined nobody: keep the player's own board.
         Shell.Catalog.Replace(FlowScenes.SongSelectScene(
             Shell.JoinedSides.Count > 0 ? [.. Shell.JoinedSides] : [Shell.Hosts.PlayerSide], Shell.Hosts.Waiwai));
-        Shell.Show(FlowScenes.SongSelect);
+        Shell.Scenes.Show(FlowScenes.SongSelect);
     }
 
     private DanCourseStatus? _course;
@@ -388,7 +388,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.PlayRequests.CancelPending();
             Shell.Overlay.Clear();
             gameplay.ResetRainbow();
-            Shell.Show(FlowScenes.SongSelect);
+            Shell.Scenes.Show(FlowScenes.SongSelect);
             return;
         }
         // A course: all its songs as one chart.
@@ -454,6 +454,6 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         gameplay.Prepare(charts, song, side, waiwai);
         if (timeline is not null)
             gameplay.PrepareCourse(timeline, courseSongs, courseStatus!);
-        Shell.Show(FlowScenes.Gameplay);
+        Shell.Scenes.Show(FlowScenes.Gameplay);
     }
 }

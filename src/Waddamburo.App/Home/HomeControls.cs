@@ -380,7 +380,7 @@ internal sealed class HomeControls : IDisposable
         if (home && active == FlowScenes.Gameplay && _gameplay.Demo)
         {
             // Leaving the window doesn't stop a demo; while it fades out, Escape waits for the logo.
-            if (!escape || _shell.FadePending)
+            if (!escape || _shell.Scenes.FadePending)
                 return escape;
             _pauseInterpolation = _lastInterpolation;
             _menu.Open(gameplay: false, attract: true);

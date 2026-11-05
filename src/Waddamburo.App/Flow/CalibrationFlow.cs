@@ -77,7 +77,7 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
     }
 
     /// <summary>Back to Song Select (the result was saved or discarded, or the player left).</summary>
-    public void Leave() => Shell.Show(FlowScenes.SongSelect);
+    public void Leave() => Shell.Scenes.Show(FlowScenes.SongSelect);
 
     // The clock songs use: the click track's position, less the lead-in.
     private TimeSpan chartTime() => _timeline!.ChartTime(_transport is { } transport && Shell.Audio is { } audio

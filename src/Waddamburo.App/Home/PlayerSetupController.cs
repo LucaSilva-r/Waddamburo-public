@@ -123,7 +123,7 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Hosts.EntrySetup = true;
         shell.Hosts.EntryTrigger = 2;
         shell.ResetIndicatorScene();
-        shell.Show(FlowScenes.Entry);
+        shell.Scenes.Show(FlowScenes.Entry);
     }
 
     // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
@@ -260,7 +260,7 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Hosts.EntryTrigger = playing[0] && playing[1] ? 2 : playing[1] ? 1 : 0;
         Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
         string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
-        shell.Show(FlowScenes.Entry);
+        shell.Scenes.Show(FlowScenes.Entry);
     }
 
     // The setup's players join the entry already on screen (its music and Don motions carry on).

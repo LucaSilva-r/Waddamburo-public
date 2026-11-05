@@ -37,18 +37,18 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
             // screen change takes the loading slot back (it loads Entry), so the request repeats until ready.
             case Step.Attract when _inStep.Elapsed >= AttractTime && shell.Active.Id != FlowScenes.Gameplay:
                 begin(Step.LoadingSongSelect);
-                shell.Prefetch(FlowScenes.SongSelectScene([0]));
+                shell.Scenes.Prefetch(FlowScenes.SongSelectScene([0]));
                 break;
             case Step.LoadingSongSelect when shell.Active.Id == FlowScenes.Gameplay:
                 break;
-            case Step.LoadingSongSelect when shell.Prefetched != FlowScenes.SongSelect && _inStep.Elapsed <= GiveUp:
-                shell.Prefetch(FlowScenes.SongSelectScene([0]));
+            case Step.LoadingSongSelect when shell.Scenes.Prefetched != FlowScenes.SongSelect && _inStep.Elapsed <= GiveUp:
+                shell.Scenes.Prefetch(FlowScenes.SongSelectScene([0]));
                 break;
-            case Step.LoadingSongSelect when shell.PrefetchReady || _inStep.Elapsed > GiveUp:
+            case Step.LoadingSongSelect when shell.Scenes.PrefetchReady || _inStep.Elapsed > GiveUp:
                 begin(Step.SongSelect);
                 shell.ResetPlayers();
                 shell.JoinPlayer(0);
-                shell.Show(FlowScenes.SongSelect);
+                shell.Scenes.Show(FlowScenes.SongSelect);
                 break;
             case Step.SongSelect:
                 var since = _inStep.Elapsed - Settle;
@@ -63,7 +63,7 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                     // As Song Select does for a picked song: its lane loads in the background first.
                     begin(Step.LoadingSong);
                     song.TwoPlayers = false;
-                    shell.Prefetch(song.Scene());
+                    shell.Scenes.Prefetch(song.Scene());
                 }
                 else if (since >= _nextScroll)
                 {
@@ -71,10 +71,10 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                     _nextScroll += ScrollStep;
                 }
                 break;
-            case Step.LoadingSong when shell.Prefetched != FlowScenes.Benchmark && _inStep.Elapsed <= GiveUp:
-                shell.Prefetch(song.Scene());
+            case Step.LoadingSong when shell.Scenes.Prefetched != FlowScenes.Benchmark && _inStep.Elapsed <= GiveUp:
+                shell.Scenes.Prefetch(song.Scene());
                 break;
-            case Step.LoadingSong when shell.PrefetchReady || _inStep.Elapsed > GiveUp:
+            case Step.LoadingSong when shell.Scenes.PrefetchReady || _inStep.Elapsed > GiveUp:
                 startSong();
                 break;
             case Step.Song when song.Done:
@@ -83,12 +83,12 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                 song.TwoPlayers = true;
                 song.Limit = TwoPlayerTime;
                 shell.Catalog.Replace(song.Scene());
-                shell.Show(FlowScenes.Benchmark);
+                shell.Scenes.Show(FlowScenes.Benchmark);
                 break;
             case Step.TwoPlayerSong when song.Done:
                 begin(Step.Results);
                 shell.Catalog.Replace(FlowScenes.Results);
-                shell.Show(FlowScenes.Result);
+                shell.Scenes.Show(FlowScenes.Result);
                 break;
             case Step.Results when _inStep.Elapsed >= ResultsTime:
                 begin(Step.Done);
@@ -105,7 +105,7 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
         begin(Step.Song);
         song.TwoPlayers = false;
         shell.Catalog.Replace(song.Scene());
-        shell.Show(FlowScenes.Benchmark);
+        shell.Scenes.Show(FlowScenes.Benchmark);
     }
 
     private void begin(Step step)

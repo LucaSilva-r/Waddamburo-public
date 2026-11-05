@@ -122,20 +122,14 @@ internal sealed class GameShell : IDisposable
     /// <summary>The active scene's textures and the frame held across a scene switch.</summary>
     private readonly ScenePresenter _presenter;
 
-    /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
-    public void Prefetch(SceneDefinition scene) => _presenter.Prefetch(scene);
+    /// <summary>The scene on screen and the switches between scenes (show, fade, prefetch).</summary>
+    public SceneSwitcher Scenes { get; }
 
     /// <summary>The texture upscaler and its cache (null: unavailable on this machine).</summary>
     public UpscaleTool? Upscale { get; private set; }
 
     /// <summary>A texture bake started from the Settings menu (running or finished).</summary>
     public TextureBake? Bake { get; set; }
-
-    /// <summary>The scene being prefetched, until one takes it.</summary>
-    public SceneId? Prefetched => _presenter.Prefetched;
-
-    /// <summary>The prefetched scene is decoded and uploaded (its switch will not stall).</summary>
-    public bool PrefetchReady => _presenter.PrefetchReady;
 
     public EnsoLayout EnsoLayout { get; }
     public PlayRequestState PlayRequests { get; } = new();
@@ -148,7 +142,7 @@ internal sealed class GameShell : IDisposable
     public bool Headless => Options.ScreenshotPath is not null;
 
     public int Tick { get; private set; }
-    public LumenGameSceneInstance Active { get; private set; } = null!;
+    public LumenGameSceneInstance Active => Scenes.Active;
 
     /// <summary>The song being played and its stage (1-8) in the credit.</summary>
     public TaikoSongInfo SongInfo { get; set; } = new(0, 1);
@@ -206,8 +200,6 @@ internal sealed class GameShell : IDisposable
     private SystemIndicators? _indicators;
     private RenderTextureId[] _indicatorTextures = [];
     private SceneId? _indicatorScene;
-    private SceneId? _fadeTarget;
-    private int _fadeStartTick;
     private static readonly HashSet<SceneId> _attractScenes =
         [FlowScenes.Logo, FlowScenes.Title, FlowScenes.Caution, FlowScenes.Movie];
     private readonly InputLatches _input = new();
@@ -633,6 +625,7 @@ internal sealed class GameShell : IDisposable
                     && Application.Supports(TextureBlockFormat.Bc1) && Application.Supports(TextureBlockFormat.Bc3),
             };
             _presenter = new ScenePresenter(Application, MovieContent);
+            Scenes = new SceneSwitcher(this, _presenter, flowOf, () => _home?.Covering == true, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
             // Upscaling runs when the model files are installed (see UpscaleTool).
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
@@ -761,7 +754,7 @@ internal sealed class GameShell : IDisposable
         }
         try
         {
-            activate();
+            Scenes.Activate();
             Console.WriteLine($"Showing {Active.Id} at launch.");
             _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
@@ -807,7 +800,7 @@ internal sealed class GameShell : IDisposable
                         _sinceInput.Restart();
                     // The notice sidebar (live presses only reach this callback; not over a lane, nor while the
                     // search field takes the letters).
-                    if (_notices is not null && !onLane && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
+                    if (_notices is not null && !Scenes.OnLane && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
                         _notices.Toggle();
                     if (Arcade.Home || _service?.IsOpen != true)
                         flowOf(Active.Id).UpdateFrame(keyboard);
@@ -897,7 +890,7 @@ internal sealed class GameShell : IDisposable
                 Console.WriteLine($"[input] {press.Key}@{Tick}");
         var scene = flowOf(Active.Id);
         // A reviewed play takes the mouse wheel (seeking) like a menu does.
-        Application.MenuInput = !onLane || _home.MenuOpen || _gameplay.Reviewing && !_gameplay.Attempting;
+        Application.MenuInput = !Scenes.OnLane || _home.MenuOpen || _gameplay.Reviewing && !_gameplay.Attempting;
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         // Home: Backspace is Escape too (a Tatacon's B button), except while it edits text or is being bound.
@@ -921,7 +914,7 @@ internal sealed class GameShell : IDisposable
             }
             return;
         }
-        if (!onLane)
+        if (!Scenes.OnLane)
             keys = menuKeys(keys);
         // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
         if (_playerSetup is not null && _playerSetup.Tick(ref keys))
@@ -947,18 +940,11 @@ internal sealed class GameShell : IDisposable
             _home.FadeThen(() =>
             {
                 if (Coordinator.Flow.State == GameFlowState.TransitionPending)
-                    applyPendingTransition();
+                    Scenes.ApplyPending();
             });
             return;
         }
-        applyPendingTransition();
-    }
-
-    private void applyPendingTransition()
-    {
-        ReportDiagnostics();
-        switchScene(() => Coordinator.ApplyPendingTransitionAsync().AsTask().GetAwaiter().GetResult());
-        Console.WriteLine($"Activated scene '{Active.Id}' at tick {Tick}.");
+        Scenes.ApplyPending();
     }
 
     // An open overlay takes the tick's input; with none open, each may open on its own key (Tab, R).
@@ -967,16 +953,13 @@ internal sealed class GameShell : IDisposable
             ? open.Tick(keys, escape) || true
             : _inputOverlays.Any(overlay => overlay.Tick(keys, escape));
 
-    // A gameplay lane is on screen: a song or the audio calibration (drums drive it, not the movies' controls).
-    private bool onLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration || Active.Id == FlowScenes.Benchmark;
-
     // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
     // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
     private bool backToAttract(bool f1)
     {
         var toAttract = f1 || _returnToAttract;
         _returnToAttract = false;
-        if (!toAttract || onLane || Active.Id == FlowScenes.Boot)
+        if (!toAttract || Scenes.OnLane || Active.Id == FlowScenes.Boot)
             return false;
         // Fade out first; the switch below then runs under the black (Covering).
         if (!_home.Covering)
@@ -990,7 +973,7 @@ internal sealed class GameShell : IDisposable
         Don?.SetDialogDon(false);
         ResetPlayers();
         SongsPlayed = 0; // a new credit starts at the first song
-        Show(FlowScenes.Logo);
+        Scenes.Show(FlowScenes.Logo);
         return true;
     }
 
@@ -998,7 +981,7 @@ internal sealed class GameShell : IDisposable
     private void advance(FlowScene scene, SdlKeyboardSnapshot keys)
     {
         scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
-            onLane ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
+            Scenes.OnLane ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
         Overlay.Advance();
         // Diagnostic: WADDAMBURO_DUMP_TREE=<tick> prints the active scene's display lists.
         if (_dumpTreeTick == Tick)
@@ -1061,7 +1044,7 @@ internal sealed class GameShell : IDisposable
     {
         Audio?.Mixer.StopAll();
         Sounds?.StopAll();
-        CancelFade();
+        Scenes.CancelFade();
         _home.Reset();
         _search.Close();
         ClosePlayerSetup();
@@ -1078,7 +1061,7 @@ internal sealed class GameShell : IDisposable
         _returnToAttract = false;
         Coins?.Clear();
         _queuedCoinSounds.Clear();
-        Show(FlowScenes.Logo);
+        Scenes.Show(FlowScenes.Logo);
         Audio?.Mixer.StopAll(); // anything the switch started
         Console.WriteLine($"Service menu: game reset at tick {Tick}.");
     }
@@ -1133,7 +1116,7 @@ internal sealed class GameShell : IDisposable
             indicators.Coins = Coins;
             indicators.CoinsChanged();
         }
-        Show(FlowScenes.Logo);
+        Scenes.Show(FlowScenes.Logo);
         Console.WriteLine("Service menu left: back to the attract.");
     }
 
@@ -1168,122 +1151,6 @@ internal sealed class GameShell : IDisposable
         }
         if (_queuedCoinSounds.Count > 0 && Sounds?.Bank.IsCoinPlaying != true)
             Sounds?.Bank.PlayCoin(_queuedCoinSounds.Dequeue());
-    }
-
-    /// <summary>Leaves the active scene and shows <paramref name="scene"/> (loaded fresh from the catalog).</summary>
-    public void Show(SceneId scene)
-    {
-        switchScene(() => Coordinator.TransitionToAsync(scene).AsTask().GetAwaiter().GetResult());
-        Console.WriteLine($"Showing {scene} at tick {Tick}.");
-    }
-
-    private long _liveAfterCollect;
-
-    private void switchScene(Action transition)
-    {
-        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
-        var from = Active.Id;
-        var start = Stopwatch.GetTimestamp();
-        var allocated = GC.GetTotalAllocatedBytes();
-        int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
-        _presenter.Hold(Tick, black: Overlay.IsShown || Active.Id == FlowScenes.Movie, blackLoadingFrame);
-        flowOf(Active.Id).Exit(Active.Id);
-        _presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay ? Active : null);
-        var released = Stopwatch.GetTimestamp();
-        _presenter.Switching = true;
-        try
-        {
-            transition();
-        }
-        finally
-        {
-            _presenter.Switching = false;
-        }
-        var loaded = Stopwatch.GetTimestamp();
-        activate();
-        // The old scene's archives and decoded pixels are large-object garbage the GC neither compacts
-        // nor returns on its own, so the heap only grew across songs. The loading frame is still up.
-        // Only when there is much to give back: a collection costs 50-90 ms and most switches now free little.
-        // Into a lane (songs, replays, training, calibration) only under a restart's black: the rainbow
-        // keeps moving over a normal start, so the next switch out collects instead. On a lane the GC also
-        // avoids blocking full collections of its own.
-        // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
-        var collect = Stopwatch.GetTimestamp();
-        System.Runtime.GCSettings.LatencyMode = onLane
-            ? System.Runtime.GCLatencyMode.SustainedLowLatency
-            : System.Runtime.GCLatencyMode.Interactive;
-        if ((!onLane || _home.Covering) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
-        {
-            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-            // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
-            Audio?.FillAhead(TimeSpan.FromMilliseconds(150));
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-            _liveAfterCollect = GC.GetTotalMemory(false);
-        }
-        // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees
-        // Song Select's leftovers (the gameplay prefetch's decoded pixels, ~500 MiB) early in the song.
-        else if (onLane)
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
-        Application.DiscardElapsed();
-        if (profile || PerformanceRecorder.Current is not null)
-        {
-            using var process = Process.GetCurrentProcess();
-            var line = ($"Profile switch {from} -> {Active.Id}: "
-                + $"exit {Stopwatch.GetElapsedTime(start, released).TotalMilliseconds:F0} ms, "
-                + $"load {Stopwatch.GetElapsedTime(released, loaded).TotalMilliseconds:F0} ms, "
-                + $"enter {Stopwatch.GetElapsedTime(loaded, collect).TotalMilliseconds:F0} ms, "
-                + $"collect {Stopwatch.GetElapsedTime(collect).TotalMilliseconds:F0} ms, "
-                + $"allocated {(GC.GetTotalAllocatedBytes() - allocated) / 1048576d:F1} MiB, "
-                + $"GC {GC.CollectionCount(0) - gen0}/{GC.CollectionCount(1) - gen1}/{GC.CollectionCount(2) - gen2}, "
-                + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
-                + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB (peak {process.PeakWorkingSet64 / 1048576d:F1}).");
-            if (profile)
-                Console.Error.WriteLine(line);
-            PerformanceRecorder.Current?.Event(line["Profile ".Length..]);
-        }
-    }
-
-    private void activate()
-    {
-        Active = Coordinator.ActiveScene as LumenGameSceneInstance
-            ?? throw new InvalidOperationException("The active scene is not a Lumen scene instance.");
-        PerformanceRecorder.Scene = Active.Id.ToString();
-        _presenter.Activate(Active);
-        flowOf(Active.Id).Enter(Active.Id);
-    }
-
-    /// <summary>Fades to black (the intermission fade's "in", 1 s), then shows <paramref name="scene"/>.</summary>
-    public void FadeTo(SceneId scene)
-    {
-        if (_fadeTarget is not null) return;
-        // Results -> revival opens on the revival's own shutter.
-        if (scene == FlowScenes.Retry)
-        {
-            Show(scene);
-            return;
-        }
-        Overlay.Show(FlowScenes.Fade).GotoLabel("in", play: true);
-        _fadeTarget = scene;
-        _fadeStartTick = Tick;
-    }
-
-    /// <summary>True while a fade is under way; shows its scene once the screen is black.</summary>
-    public bool FinishFade()
-    {
-        if (_fadeTarget is not { } target) return false;
-        if (Tick - _fadeStartTick < 60) return true;
-        _fadeTarget = null;
-        Show(target);
-        Overlay.Clear();
-        return true;
-    }
-
-    public bool FadePending => _fadeTarget is not null;
-
-    public void CancelFade()
-    {
-        _fadeTarget = null;
-        Overlay.Clear();
     }
 
     // The joined drums (0 left, 1 right): panels, Song Select's name boards and the gameplay Don slots
@@ -1520,7 +1387,7 @@ internal sealed class GameShell : IDisposable
         _presenter.UploadAhead();
         if (SceneTextures.Upscaler is { } upscaler)
         {
-            upscaler.Paused = onLane || Bake?.Running == true;
+            upscaler.Paused = Scenes.OnLane || Bake?.Running == true;
             upscaler.Apply(Application);
         }
         if (DonRenderer is not null)
@@ -1559,7 +1426,7 @@ internal sealed class GameShell : IDisposable
         quads.AddRange(pill());
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
-            quads.AddRange(_notices.Quads(onLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
+            quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
         quads.AddRange(_performance.Quads());
         var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio)
         {

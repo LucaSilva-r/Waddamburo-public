@@ -44,10 +44,10 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         if (scene == FlowScenes.Caution && (!_demoTurn || movies.Length == 0) && pickDemo() is { } demo)
         {
             _nextDemo = demo;
-            Shell.Prefetch(demo.Scene);
+            Shell.Scenes.Prefetch(demo.Scene);
         }
-        else if (Shell.Prefetched != FlowScenes.Entry)
-            Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
+        else if (Shell.Scenes.Prefetched != FlowScenes.Entry)
+            Shell.Scenes.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         if (scene == FlowScenes.Movie)
             startMovie(_openingAsTitle ? opening : null);
     }
@@ -69,7 +69,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             if (Shell.Arcade.Home && (input.Skip || input.DrumSide is not null
                 || input.Keys.Presses.Any(static press => press.Key is < SdlKeyboardKey.F1 or > SdlKeyboardKey.F8))
                 || AttractHostBinding.IsBootEnd(Shell.Active.Player.Layers.Single().Player))
-                Shell.Show(FlowScenes.Logo);
+                Shell.Scenes.Show(FlowScenes.Logo);
             return;
         }
         Movie?.Advance();
@@ -81,7 +81,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             {
                 var next = _openingAsTitle ? FlowScenes.Caution : FlowScenes.Logo;
                 _openingAsTitle = false;
-                Shell.Show(next);
+                Shell.Scenes.Show(next);
             }
         }
         else if (Shell.Hosts.Attract?.Finished == true)
@@ -91,13 +91,13 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             if (current == FlowScenes.Logo && opening is not null)
             {
                 _openingAsTitle = true;
-                Shell.Show(FlowScenes.Movie);
+                Shell.Scenes.Show(FlowScenes.Movie);
                 return;
             }
             // Traced: keikoku is followed by one attract CM, then logo_namco again.
             if (current == FlowScenes.Caution && (_demoTurn = !_demoTurn || movies.Length == 0) && startDemo())
                 return;
-            Shell.Show(current == FlowScenes.Logo ? FlowScenes.Title
+            Shell.Scenes.Show(current == FlowScenes.Logo ? FlowScenes.Title
                 : current == FlowScenes.Title ? FlowScenes.Caution
                 : movies.Length != 0 ? FlowScenes.Movie : FlowScenes.Logo);
         }
@@ -164,7 +164,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             Shell.Hosts.EntryTrigger = 3;
             Shell.ResetPlayers();
             Shell.Hosts.EntryCardRejected = true;
-            Shell.Show(FlowScenes.Entry);
+            Shell.Scenes.Show(FlowScenes.Entry);
         }
         else if (Shell.TakeCard() is { } card)
         {
@@ -172,7 +172,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             Shell.Hosts.EntryTrigger = 4;
             Shell.ResetPlayers();
             Shell.Hosts.EntryCard = card;
-            Shell.Show(FlowScenes.Entry);
+            Shell.Scenes.Show(FlowScenes.Entry);
         }
         // Home: the drum opens the player setup, which starts the entry itself.
         else if (input.DrumSide is { } setupSide && Shell.OpenPlayerSetup(setupSide))
@@ -190,7 +190,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             Shell.ResetPlayers();
             if (!coinStart)
                 Shell.JoinPlayer(input.DrumSide ?? 0);
-            Shell.Show(FlowScenes.Entry);
+            Shell.Scenes.Show(FlowScenes.Entry);
         }
         else
             return false;
