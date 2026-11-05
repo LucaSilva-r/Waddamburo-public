@@ -105,6 +105,7 @@ public sealed unsafe class SdlApplication : IDisposable
         BgfxSupport.SetVsync(display.Vsync);
         _frameInterval = display.FpsCap > 0 ? Stopwatch.Frequency / display.FpsCap : 0;
         _renderer!.Letterbox = (display.LetterboxSize, display.LetterboxX, display.LetterboxY);
+        _renderer.RenderHeight = display.RenderHeight;
         if (_display is { } previous && previous.Fullscreen == display.Fullscreen && previous.Exclusive == display.Exclusive
             && previous.Width == display.Width && previous.Height == display.Height && previous.RefreshRate == display.RefreshRate)
         {
@@ -1131,9 +1132,12 @@ public sealed unsafe class SdlApplication : IDisposable
     }
 }
 
-/// <summary>The display settings <see cref="SdlApplication.ApplyDisplay"/> takes. Width/Height 0: the desktop's; RefreshRate 0: the highest; FpsCap 0: none.</summary>
+/// <summary>
+/// The display settings <see cref="SdlApplication.ApplyDisplay"/> takes. Width/Height 0: the desktop's; RefreshRate 0: the
+/// highest; FpsCap 0: none; RenderHeight: the stage drawn at this many lines and scaled up (0: the window's own).
+/// </summary>
 public readonly record struct DisplaySettings(bool Vsync, bool Fullscreen, bool Exclusive, int Width, int Height, int RefreshRate,
-    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0);
+    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0, int RenderHeight = 0);
 
 public readonly record struct SdlRunResult(
     int RenderedFrames,

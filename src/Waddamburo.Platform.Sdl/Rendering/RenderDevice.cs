@@ -13,6 +13,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     // Prepasses (the Don targets) own views 0..ClearView-1 and run first; bgfx executes views in id order.
     internal const ushort ClearView = 16;
     private const ushort MainView = 17;
+    private const ushort PresentView = 18; // the stage drawn at RenderHeight, scaled into the window
 
     private readonly SDL_Window* _window;
     private readonly Dictionary<uint, bgfx.TextureHandle> _textures = [];
@@ -270,25 +271,48 @@ internal sealed unsafe class RenderDevice : IDisposable
         foreach (var quad in frame.Quads)
             if (_borrowedTextures.Contains(quad.Texture.Value))
                 _drawnBorrowed.Add(quad.Texture.Value);
-        foreach (var prepass in _prepasses)
-            prepass.Record(width, height);
-
         // The whole window (letterbox bars included) takes the clear colour; the stage draws inside.
         bgfx.set_view_rect(ClearView, 0, 0, (ushort)width, (ushort)height, 0, 1);
         bgfx.set_view_clear(ClearView, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Stencil),
             BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
         bgfx.touch(ClearView);
         var viewport = letterbox(frame.ResolveViewport(width, height), width, height);
-        bgfx.set_view_rect(MainView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
-        bgfx.set_view_scissor(MainView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
+        // Below the window's own resolution (RenderHeight), the stage draws into a target of that size, scaled up at
+        // the end (needs the blur program, which also copies); the Don prepasses then draw at that size too.
+        var scaled = RenderHeight > 0 && viewport.Height > RenderHeight && _blurProgram is not null;
+        var stage = scaled ? stageTarget(viewport) : viewport;
+        var ratio = (double)stage.Height / viewport.Height;
+        foreach (var prepass in _prepasses)
+            prepass.Record((uint)Math.Max(1, Math.Round(width * ratio)), (uint)Math.Max(1, Math.Round(height * ratio)));
+        if (scaled)
+        {
+            bgfx.set_view_frame_buffer(MainView, _stage!.Buffer);
+            bgfx.set_view_clear(MainView, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Stencil),
+                BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
+        }
+        else
+        {
+            bgfx.set_view_frame_buffer(MainView, BgfxSupport.BackBuffer);
+            bgfx.set_view_clear(MainView, (ushort)bgfx.ClearFlags.None, 0, 1, 0);
+        }
+        bgfx.set_view_rect(MainView, (short)stage.X, (short)stage.Y, (ushort)stage.Width, (ushort)stage.Height, 0, 1);
+        bgfx.set_view_scissor(MainView, (ushort)stage.X, (ushort)stage.Y, (ushort)stage.Width, (ushort)stage.Height);
+        bgfx.touch(MainView);
         var quads = frame.Quads.AsSpan();
         if (frame.BlurredQuads > 0 && _blurProgram is { } blur)
         {
             var backdrop = Math.Min(frame.BlurredQuads, quads.Length);
-            frosted(quads[..backdrop], blur, viewport, frame.BackdropBrightness);
+            frosted(quads[..backdrop], blur, stage, frame.BackdropBrightness);
             quads = quads[backdrop..];
         }
         submitQuads(MainView, quads);
+        if (scaled)
+        {
+            bgfx.set_view_rect(PresentView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
+            bgfx.set_view_scissor(PresentView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
+            bgfx.set_view_mode(PresentView, bgfx.ViewMode.Sequential);
+            fullscreen(PresentView, _stage!.Color, _blurProgram!.Value, 0, 0, 1, blend: false);
+        }
 
         if (!capture)
         {
@@ -302,6 +326,51 @@ internal sealed unsafe class RenderDevice : IDisposable
             BgfxSupport.Frame();
         return BgfxSupport.Callbacks.Capture
             ?? throw new InvalidOperationException("bgfx did not deliver the screenshot.");
+    }
+
+    /// <summary>
+    /// The stage's resolution in lines when lower than the window's (0: the window's own): the stage is drawn at it and
+    /// scaled up once (the basic quality, for weak GPUs; the stage is authored at 720).
+    /// </summary>
+    public int RenderHeight { get; set; }
+
+    private StageTarget? _stage;
+
+    // The target the stage draws into below the window's resolution: the viewport's shape at RenderHeight lines.
+    private RenderViewport stageTarget(RenderViewport viewport)
+    {
+        var size = ((ushort)Math.Max(1, Math.Round(viewport.Width * (double)RenderHeight / viewport.Height)), (ushort)RenderHeight);
+        if (_stage is not { } stage || stage.Size != size)
+        {
+            _stage?.Dispose();
+            _stage = StageTarget.Create(size);
+        }
+        return new RenderViewport(0, 0, size.Item1, size.Item2);
+    }
+
+    // Colour (sampled by the scaling pass) and a depth-stencil for the stage's masks.
+    private sealed class StageTarget : IDisposable
+    {
+        public (ushort Width, ushort Height) Size { get; private init; }
+        public bgfx.FrameBufferHandle Buffer;
+        public bgfx.TextureHandle Color;
+
+        public static StageTarget Create((ushort Width, ushort Height) size)
+        {
+            var (width, height) = size;
+            var target = new StageTarget { Size = size };
+            target.Color = bgfx.create_texture_2d(width, height, false, 1, bgfx.TextureFormat.RGBA8,
+                (ulong)bgfx.TextureFlags.Rt | (ulong)(bgfx.SamplerFlags.UClamp | bgfx.SamplerFlags.VClamp), null, 0);
+            var attachments = stackalloc bgfx.TextureHandle[2];
+            attachments[0] = target.Color;
+            var stencil = (bgfx.get_caps()->formats[(int)bgfx.TextureFormat.D24S8] & (uint)bgfx.CapsFormatFlags.TextureFramebuffer) != 0;
+            if (stencil)
+                attachments[1] = bgfx.create_texture_2d(width, height, false, 1, bgfx.TextureFormat.D24S8, (ulong)bgfx.TextureFlags.RtWriteOnly, null, 0);
+            target.Buffer = bgfx.create_frame_buffer_from_handles((byte)(stencil ? 2 : 1), attachments, true);
+            return target;
+        }
+
+        public void Dispose() => bgfx.destroy_frame_buffer(Buffer);
     }
 
     /// <summary>osu!-style letterbox: the stage at this fraction of its size, placed in the free space (0-1, 0.5 = centred).</summary>
@@ -577,6 +646,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.destroy_program(blurProgram);
         bgfx.destroy_uniform(_blurUniform);
         _backdrop?.Dispose();
+        _stage?.Dispose();
         bgfx.destroy_uniform(_textureSampler);
         _disposed = true;
     }

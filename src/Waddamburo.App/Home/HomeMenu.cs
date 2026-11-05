@@ -195,7 +195,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (s, v) => s with { LetterboxY = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
             Hint: T("settings.letterbox_y.hint"))),
         new(T("section.graphics")),
-        new(Setting: toggle("settings.upscaled_textures", static s => s.UpscaleTextures, static (s, v) => s with { UpscaleTextures = v })),
+        new(Setting: new(T("settings.upscale"), static s => (int)s.Upscale, static (s, v) => s with { Upscale = (UpscaleLevel)v },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => T(value switch { 0 => "value.off", 1 => "settings.upscale.text", _ => "settings.upscale.full" }), 2,
+            Hint: T("settings.upscale.hint"))),
         new(Setting: new(T("settings.background_upscaling"), static s => s.UpscaleThreads, static (s, v) => s with { UpscaleThreads = v },
             static (value, step) => value + Math.Sign(step), 0,
             static value => value == 0 ? T("value.off") : value == 1 ? T("settings.background_upscaling.one")

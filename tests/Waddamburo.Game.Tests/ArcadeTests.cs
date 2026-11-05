@@ -87,6 +87,31 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void UpscalingHasThreeLevelsAndReadsTheOldOnOffKey()
+    {
+        Assert.Equal(UpscaleLevel.Text, ArcadeSettings.Parse("").Upscale);
+        Assert.Equal((UpscaleLevel.Off, 720), (ArcadeSettings.Parse("upscale = off").Upscale, ArcadeSettings.Parse("upscale = off").RenderHeight));
+        Assert.True(ArcadeSettings.Parse("upscale = full").UpscaleTextures);
+        Assert.Equal(UpscaleLevel.Full, ArcadeSettings.Parse("upscale_textures = true").Upscale);
+        Assert.Equal(UpscaleLevel.Text, ArcadeSettings.Parse("upscale_textures = false").Upscale);
+        var path = Path.GetTempFileName();
+        try
+        {
+            // The old line is rewritten in place: no second key left to disagree with the new one.
+            File.WriteAllText(path, "upscale_textures = true\n");
+            ArcadeSettings.SaveMenuSettings(path, new ArcadeSettings { Upscale = UpscaleLevel.Off });
+            var text = File.ReadAllText(path);
+            Assert.StartsWith("upscale = off\n", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("upscale_textures", text, StringComparison.Ordinal);
+            Assert.Equal(UpscaleLevel.Off, ArcadeSettings.Parse(text).Upscale);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void TheServiceMenuSavesTheCabinetSettings()
     {
         var path = Path.GetTempFileName();

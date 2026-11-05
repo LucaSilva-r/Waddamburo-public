@@ -11,6 +11,17 @@ public enum TimingIndicator { Off, GoodBad, Always }
 /// <c>config_version</c>; an older file gets each later version's settings appended (with their
 /// comments and defaults) the next time it is loaded, keeping the user's edits.
 /// </summary>
+/// <summary>Picture quality (config.cfg upscale; the Settings menu's Upscaling).</summary>
+public enum UpscaleLevel
+{
+    /// <summary>The basic version of everything: the game drawn at 720p and scaled to the screen.</summary>
+    Off,
+    /// <summary>Drawn at the screen's resolution: Don-chan and text sharp, the game's textures as they are.</summary>
+    Text,
+    /// <summary>That, and the game's textures upscaled 3x.</summary>
+    Full,
+}
+
 public sealed record ArcadeSettings
 {
     public const string FileName = "config.cfg";
@@ -91,10 +102,12 @@ public sealed record ArcadeSettings
 
         """,
         """
-        # Texture upscaling (also in the Settings menu). upscale_textures: show the game's textures upscaled
-        # 3x (made on this PC, kept in waddamburo/cache/upscaled). upscale_threads: CPU threads upscaling
-        # textures not yet in the cache while the game runs (paused during songs); 0 = off.
-        upscale_textures = false
+        # Picture quality (also in the Settings menu). upscale: off = the basic version of everything, the game
+        # drawn at 720p and scaled to the screen (lightest, for weak PCs); text = drawn at the screen's
+        # resolution (Don-chan and text sharp); full = that and the game's textures upscaled 3x (made on this
+        # PC, kept in waddamburo/cache/upscaled). upscale_threads: CPU threads upscaling textures not yet in the
+        # cache while the game runs (paused during songs); 0 = off.
+        upscale = text
         upscale_threads = 0
 
         """,
@@ -437,8 +450,14 @@ public sealed record ArcadeSettings
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
 
-    /// <summary>Show textures upscaled from the cache (opt-in).</summary>
-    public bool UpscaleTextures { get; init; }
+    /// <summary>Picture quality: the game drawn at 720p, at the screen's resolution, or that with upscaled textures.</summary>
+    public UpscaleLevel Upscale { get; init; } = UpscaleLevel.Text;
+
+    /// <summary>Textures shown upscaled from the cache (<see cref="UpscaleLevel.Full"/>).</summary>
+    public bool UpscaleTextures => Upscale == UpscaleLevel.Full;
+
+    /// <summary>The stage's drawn resolution in lines (0: the screen's own): 720 at <see cref="UpscaleLevel.Off"/>.</summary>
+    public int RenderHeight => Upscale == UpscaleLevel.Off ? 720 : 0;
 
     /// <summary>CPU threads upscaling missing textures in the background; 0 = off.</summary>
     public int UpscaleThreads { get; init; }
@@ -669,7 +688,15 @@ public sealed record ArcadeSettings
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
                 "audio_exclusive" => settings with { AudioExclusive = boolean(value, index) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
-                "upscale_textures" => settings with { UpscaleTextures = boolean(value, index) },
+                "upscale" => settings with { Upscale = value.ToLowerInvariant() switch
+                {
+                    "off" => UpscaleLevel.Off,
+                    "text" => UpscaleLevel.Text,
+                    "full" => UpscaleLevel.Full,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: upscale is off, text or full, not '{value}'."),
+                } },
+                // Before upscale: on or off (off kept the game drawn at the screen's resolution). The next save renames it.
+                "upscale_textures" => settings with { Upscale = boolean(value, index) ? UpscaleLevel.Full : UpscaleLevel.Text },
                 "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
@@ -773,7 +800,7 @@ public sealed record ArcadeSettings
             ["audio_buffer_frames"] = settings.AudioBufferFrames,
             ["audio_exclusive"] = settings.AudioExclusive ? "true" : "false",
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
-            ["upscale_textures"] = settings.UpscaleTextures ? "true" : "false",
+            ["upscale"] = settings.Upscale.ToString().ToLowerInvariant(),
             ["upscale_threads"] = settings.UpscaleThreads,
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
@@ -829,7 +856,8 @@ public sealed record ArcadeSettings
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)
             foreach (var (key, value) in values)
-                if (isKey(lines[index], key))
+                // upscale_textures (on/off) became upscale: its line is rewritten in place.
+                if (isKey(lines[index], key) || key == "upscale" && isKey(lines[index], "upscale_textures"))
                 {
                     lines[index] = string.Create(CultureInfo.InvariantCulture, $"{key} = {value}");
                     values.Remove(key);
