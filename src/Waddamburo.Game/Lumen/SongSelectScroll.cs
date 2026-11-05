@@ -15,8 +15,8 @@ namespace Waddamburo.Game.Lumen;
 /// </list>
 /// (No skipping on quick rim hits, as the later games do: a roll, or a held key's repeat, scrolls fast instead.)
 /// Nothing in the movie is written to: it sees the same hits and plays the same frames, sooner. A single
-/// hit on a list at rest is left to the movie as it is. Queued steps and skips inside a folder stop at
-/// its last song rather than run out of it.
+/// hit on a list at rest is left to the movie as it is. Page skips inside a folder stop at its last
+/// song rather than run out of it; queued steps leave it as held keys do.
 /// </summary>
 /// <param name="movie">The song select movie.</param>
 /// <param name="openFolder">The open folder's genre index, or -1 when none is open.</param>
@@ -126,6 +126,10 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
         _sinceHit++;
         if (rim + wheel != 0)
         {
+            // A new run starts its wait afresh (one dropped for waiting too long left the count up, and every
+            // later notch was dropped at once until a key's slide reset it).
+            if (_pending == 0)
+                _waited = 0;
             _pending += rim + wheel;
             _sinceHit = 0;
         }
@@ -146,9 +150,11 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
         // is offered every tick until the movie takes it, but not for ever.
         if (Trace)
             Console.WriteLine($"[scroll] step {_pending} waiting {_waited} tick(s): list frame {list.Frame}{(list.Playing ? " playing" : "")}, slide {slide}");
-        if (++_waited > PatienceTicks || atFolderEdge(Math.Sign(_pending)))
+        // The folder's edge doesn't stop the steps (players found it stuck there): the step past it closes the folder, as
+        // a held key's does, and the rest of the queue goes (After).
+        if (++_waited > PatienceTicks)
         {
-            _pending = 0;
+            _pending = _waited = 0;
             return input;
         }
         _handed = Math.Sign(_pending);
