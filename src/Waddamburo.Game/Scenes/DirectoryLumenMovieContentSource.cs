@@ -26,6 +26,9 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
 
     public ILumenMovieContentScope CreateSceneScope() => new SceneScope(this);
 
+    /// <summary>BC1/BC3 textures stay compressed (the renderer draws them): see <see cref="LumenMovieContent.Load"/>.</summary>
+    public bool KeepCompressed { get; set; }
+
     /// <summary>Called with every movie a scene loads (archive, movie); any thread.</summary>
     public Action<string, string>? Loaded { get; set; }
 
@@ -53,7 +56,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var opened = Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archive.Key)), _limits));
             foreach (var movie in archive)
                 fresh[movie] = opened.ContinueWith(
-                    task => decoded(archive.Key, LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits)),
+                    task => decoded(archive.Key, LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movie.MovieId), _limits, KeepCompressed)),
                     CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         }
         _prefetched = fresh;
@@ -123,10 +126,10 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                 _archives.Add(archivePath, archive);
             }
             var read = profile ? Stopwatch.GetTimestamp() : 0;
-            var content = owner.decoded(archiveId, LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits));
+            var content = owner.decoded(archiveId, LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits, owner.KeepCompressed));
             if (profile)
             {
-                var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length);
+                var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Blocks.Length);
                 Console.Error.WriteLine($"Profile movie {movieId}: archive {length / 1048576d:F1} MiB{(reused ? " reused" : "")}, "
                     + $"read {Stopwatch.GetElapsedTime(start, read).TotalMilliseconds:F0} ms, "
                     + $"parse/decode {Stopwatch.GetElapsedTime(read).TotalMilliseconds:F0} ms, "

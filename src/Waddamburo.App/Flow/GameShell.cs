@@ -313,8 +313,9 @@ internal sealed class GameShell : IDisposable
                 Path.Combine(ReleaseConsole.CrashFolder, $"{(Options.Benchmark != BenchmarkMode.Off ? "benchmark" : "performance")}-{DateTime.Now:yyyyMMdd-HHmmss}.txt"),
                 Options.Benchmark != BenchmarkMode.Off ? "benchmark (attract 3 min, song select scroll, stress song)" : "session",
                 [$"version\t{version}", .. Application.DescribeRendering(),
-                    $"settings\tvsync {Arcade.Vsync}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
+                    $"settings\t{(Options.Benchmark != BenchmarkMode.Off ? "uncapped (benchmark), " : "")}vsync {Arcade.Vsync}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
+                    + $"textures {(MovieContent.KeepCompressed ? "BC1/BC3 kept" : "decoded to RGBA")}, "
                     + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
                     + $"audio buffer {Arcade.AudioBufferFrames}{(Arcade.AudioExclusive ? " exclusive" : "")}",
                     // Upscaled textures are 9x the pixels (BC7 on the GPU when it has it, else RGBA): they change memory and load times most.
@@ -336,9 +337,12 @@ internal sealed class GameShell : IDisposable
             return;
         // Exclusive fullscreen on Windows only: Linux compositors only emulate it.
         var exclusive = Arcade.ExclusiveFullscreen && OperatingSystem.IsWindows();
-        var display = new DisplaySettings(Arcade.Vsync, Arcade.Fullscreen, exclusive, Arcade.FullscreenWidth,
+        // A benchmark runs uncapped (no vsync, no fps cap; the settings stay as they are): frame rates then
+        // compare across machines and changes instead of all reading the refresh rate.
+        var uncapped = Options.Benchmark != BenchmarkMode.Off;
+        var display = new DisplaySettings(Arcade.Vsync && !uncapped, Arcade.Fullscreen, exclusive, Arcade.FullscreenWidth,
             Arcade.FullscreenHeight, Arcade.RefreshRate, Arcade.LetterboxSize / 100f, Arcade.LetterboxX / 100f, Arcade.LetterboxY / 100f,
-            exclusive && Arcade.Fullscreen ? 0 : Arcade.FpsCap);
+            exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap);
         Application.ApplyDisplay(display);
         // The stage is 720 lines: 1080p loads textures at 1.5x, 1440p at 2x, 4K at the model's 3x.
         if (Upscale is not null)
@@ -619,7 +623,15 @@ internal sealed class GameShell : IDisposable
             if (Arcade.Home && Options.Accounts is { } setupBook)
                 _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
             // Lumen patches edit the user's movies in memory as they decode (their files stay untouched).
-            MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot)) { Decoded = (archive, content) => patch(archive, content, null) };
+            Waddamburo.Game.LumenTextureContent.Bc7Decoder = static (blocks, width, height) => Bc7.Decode(blocks.Span, width, height);
+            MovieContent = new DirectoryLumenMovieContentSource(Path.GetFullPath(assetRoot))
+            {
+                Decoded = (archive, content) => patch(archive, content, null),
+                // The game's BC1/BC3 textures go to the GPU as they are: a quarter of the memory, no decoding.
+                // WADDAMBURO_DECODE_TEXTURES=1 decodes them all to RGBA as before (comparisons).
+                KeepCompressed = Environment.GetEnvironmentVariable("WADDAMBURO_DECODE_TEXTURES") != "1"
+                    && Application.Supports(TextureBlockFormat.Bc1) && Application.Supports(TextureBlockFormat.Bc3),
+            };
             _presenter = new ScenePresenter(Application, MovieContent);
             MovieContent.Reuse = _presenter.Reuse;
             // Upscaling runs when the model files are installed (see UpscaleTool).
@@ -629,6 +641,7 @@ internal sealed class GameShell : IDisposable
             if (UpscaleTool.Find(cacheRoot is null ? null : Path.Combine(cacheRoot, "upscaled")) is { } upscale)
             {
                 Upscale = upscale;
+                upscale.LumenRoot = Path.GetFullPath(assetRoot);
                 MovieContent.Loaded = upscale.RecordUsed;
                 // Cached upscales replace textures as movies decode (opt-in): the GPU only ever gets those.
                 MovieContent.Decoded = (archive, content) => patch(archive, content,
@@ -1432,6 +1445,7 @@ internal sealed class GameShell : IDisposable
         // Pixel art: whole pixels, never the upscaler's guesses (cached ones included).
         if (PixelArt.IsArchive(archive))
         {
+            content.DecodeAll();
             content.ReplaceTextures((texture, _) =>
             {
                 if (System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsArray(texture.Rgba8) is not { Length: > 0 } pixels)
@@ -1443,7 +1457,8 @@ internal sealed class GameShell : IDisposable
             return;
         }
         var patching = Waddamburo.Game.Patching.SongSelectGenrePatch.AppliesTo(content);
-        upscale?.Tool.ApplyCached(content, upscale.Value.Bc7 && !patching);
+        // The genre patch decodes only the textures it recolours (song_select decoded whole was 343 MiB, 337 ms).
+        upscale?.Tool.ApplyCached(archive, content, upscale.Value.Bc7);
         if (!patching)
             return;
         var own = content.Textures.Length;

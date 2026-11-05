@@ -61,20 +61,38 @@ namespace Waddamburo.Platform.Sdl.Rendering
         public static string TextureUsage => $"{bgfx.get_stats()->numTextures}/{bgfx.get_caps()->limits.maxTextures}";
 
         /// <summary>A BC7 texture from its blocks (sizes multiples of 4, one byte per pixel).</summary>
-        public static bgfx.TextureHandle CreateBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
+        public static bgfx.TextureHandle CreateBc7(uint width, uint height, ReadOnlySpan<byte> blocks) =>
+            CreateBlocks(TextureBlockFormat.Bc7, width, height, blocks);
+
+        /// <summary>A block-compressed texture from its blocks (sizes multiples of 4).</summary>
+        public static bgfx.TextureHandle CreateBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks)
         {
             if (width > ushort.MaxValue || height > ushort.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(width), "Texture is too large.");
-            var texture = bgfx.create_texture_2d((ushort)width, (ushort)height, false, 1, bgfx.TextureFormat.BC7, 0, Copy(blocks), 0);
+            var texture = bgfx.create_texture_2d((ushort)width, (ushort)height, false, 1, bgfxFormat(format), 0, Copy(blocks), 0);
             if (!texture.Valid)
-                throw new InvalidOperationException($"bgfx could not create a {width}x{height} BC7 texture ({TextureUsage} textures live).");
+                throw new InvalidOperationException($"bgfx could not create a {width}x{height} {format} texture ({TextureUsage} textures live).");
             return texture;
         }
 
         /// <summary>Whether this backend draws BC7 textures (natively, or decoded by bgfx).</summary>
-        public static bool SupportsBc7() =>
-            (bgfx.get_caps()->formats[(int)bgfx.TextureFormat.BC7]
-                & (uint)(bgfx.CapsFormatFlags.Texture2d | bgfx.CapsFormatFlags.Texture2dEmulated)) != 0;
+        public static bool SupportsBc7() => Supports(TextureBlockFormat.Bc7);
+
+        /// <summary>
+        /// Whether this backend draws the format natively (an emulated one is decoded by bgfx on the CPU, which
+        /// for BC1/BC3 gains nothing over decoding them ourselves; BC7 counts it, as before).
+        /// </summary>
+        public static bool Supports(TextureBlockFormat format) =>
+            (bgfx.get_caps()->formats[(int)bgfxFormat(format)] & (uint)(format == TextureBlockFormat.Bc7
+                ? bgfx.CapsFormatFlags.Texture2d | bgfx.CapsFormatFlags.Texture2dEmulated
+                : bgfx.CapsFormatFlags.Texture2d)) != 0;
+
+        private static bgfx.TextureFormat bgfxFormat(TextureBlockFormat format) => format switch
+        {
+            TextureBlockFormat.Bc1 => bgfx.TextureFormat.BC1,
+            TextureBlockFormat.Bc3 => bgfx.TextureFormat.BC3,
+            _ => bgfx.TextureFormat.BC7,
+        };
 
         /// <summary>First depth format this backend renders to (AMD Vulkan has no D24, GLES may lack D32F).</summary>
         public static bgfx.TextureFormat DepthFormat()

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Waddamburo.Game;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
@@ -105,17 +104,29 @@ internal static class SceneTextures
         content.ReleaseDecodedTexturePixels();
     }
 
-    /// <summary>One texture: BC7 blocks as they are, RGBA queued for upscaling.</summary>
+    /// <summary>
+    /// One texture: BC7 (an upscale) and the game's own BC1/BC3 blocks as they are, RGBA otherwise; the
+    /// originals are queued for upscaling.
+    /// </summary>
     public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture)
     {
         var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
         if (!texture.Bc7.IsEmpty)
             return application.UploadBc7(width, height, texture.Bc7.Span);
-        var rgba = ImmutableCollectionsMarshal.AsArray(texture.Rgba8)
-            ?? throw new InvalidDataException("Texture pixels are unavailable.");
+        var format = texture.BlockFormat == LumenBlockFormat.Bc1 ? TextureBlockFormat.Bc1 : TextureBlockFormat.Bc3;
+        if (!texture.Blocks.IsEmpty && application.Supports(format))
+        {
+            var blocks = texture.Blocks;
+            var compressed = application.UploadBlocks(format, width, height, blocks.Span);
+            // The blocks are the texture's own copy: decoded only if the upscaler gets to it.
+            Upscaler?.Enqueue(compressed, width, height, texture.Pixels, texture.UpscaleKey);
+            return compressed;
+        }
+        var rgba = texture.Pixels();
         var id = application.UploadRgba8(width, height, rgba);
         // The upscaler keeps the pixel arrays the content is about to drop.
-        Upscaler?.Enqueue(id, width, height, rgba);
+        if (Upscaler is { } upscaler && !upscaler.IsUpscaled(rgba))
+            upscaler.Enqueue(id, width, height, () => rgba, texture.UpscaleKey);
         return id;
     }
 
@@ -124,7 +135,7 @@ internal static class SceneTextures
     {
         var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
         var start = profile ? Stopwatch.GetTimestamp() : 0;
-        var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length);
+        var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length + texture.Blocks.Length);
         var uploaded = scene.Layers.SelectMany(layer => uploadedAhead?.Invoke(layer.Content) ?? Upload(application, layer.Content))
             .ToArray();
         if (profile)

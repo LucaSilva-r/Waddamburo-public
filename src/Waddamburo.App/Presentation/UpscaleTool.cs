@@ -39,6 +39,7 @@ internal sealed class UpscaleTool : IDisposable
     {
         _model = model;
         Cache = cache;
+        loadIndex();
         Directory.CreateDirectory(cache);
         if (File.Exists(UsedListPath))
             _used.UnionWith(File.ReadAllLines(UsedListPath));
@@ -107,6 +108,60 @@ internal sealed class UpscaleTool : IDisposable
             Console.WriteLine($"Moved the upscaled-texture cache from {userCache} to {cache}.");
         }
         return new UpscaleTool(model, cache);
+    }
+
+    // Where each texture's cache name is known (archive, movie, texture index), so a load needs neither
+    // decoded pixels nor a hash: index.tsv, one line per texture with its archive's size and time.
+    // An archive that changed (an update, another release, a mod) has its lines ignored and learned again.
+    private const string IndexName = "index.tsv";
+    private readonly Dictionary<(string Archive, string Movie, int Texture), (long Size, long Time, string Key)> _index = new();
+    private readonly Dictionary<string, (long Size, long Time)?> _archiveStamps = new(StringComparer.Ordinal);
+
+    /// <summary>The lumendata/packed folder the archive ids in <see cref="ApplyCached"/> are relative to.</summary>
+    public string? LumenRoot { get; set; }
+
+    private void loadIndex()
+    {
+        var path = Path.Combine(Cache, IndexName);
+        if (!File.Exists(path))
+            return;
+        foreach (var line in File.ReadLines(path))
+            if (line.Split('\t') is [var archive, var size, var time, var movie, var texture, var key]
+                && long.TryParse(size, out var bytes) && long.TryParse(time, out var ticks) && int.TryParse(texture, out var index))
+                _index[(archive, movie, index)] = (bytes, ticks, key); // later lines win
+    }
+
+    // An archive's size and write time, read once a session (null: missing).
+    private (long Size, long Time)? stamp(string archive)
+    {
+        lock (_archiveStamps)
+        {
+            if (_archiveStamps.TryGetValue(archive, out var known))
+                return known;
+            var file = LumenRoot is null ? null : new FileInfo(Path.Combine(LumenRoot, archive));
+            return _archiveStamps[archive] = file is { Exists: true } ? (file.Length, file.LastWriteTimeUtc.Ticks) : null;
+        }
+    }
+
+    private string? knownKey(string archive, string movie, int texture)
+    {
+        if (stamp(archive) is not { } current)
+            return null;
+        lock (_index)
+            return _index.TryGetValue((archive, movie, texture), out var entry) && (entry.Size, entry.Time) == current ? entry.Key : null;
+    }
+
+    private void remember(string archive, string movie, IReadOnlyList<(int Texture, string Key)> keys)
+    {
+        if (keys.Count == 0 || stamp(archive) is not { } current)
+            return;
+        lock (_index)
+        {
+            foreach (var (texture, key) in keys)
+                _index[(archive, movie, texture)] = (current.Size, current.Time, key);
+            File.AppendAllLines(Path.Combine(Cache, IndexName),
+                keys.Select(entry => $"{archive}\t{current.Size}\t{current.Time}\t{movie}\t{entry.Texture}\t{entry.Key}"));
+        }
     }
 
     /// <summary>Notes a movie the game loaded (any thread).</summary>
@@ -204,34 +259,51 @@ internal sealed class UpscaleTool : IDisposable
     /// <summary>
     /// Swaps a freshly decoded movie's textures for their cached upscales before upload (on the
     /// decoding thread), so the game shows them at once: BC7 slices of the mapped cache, or decoded
-    /// to RGBA when the renderer has no BC7.
+    /// to RGBA when the renderer has no BC7. Each texture's cache name comes from the index; only a
+    /// texture not seen before is decoded and hashed (once), and every texture leaves with its name.
     /// </summary>
-    public void ApplyCached(LumenMovieContent content, bool bc7)
+    public void ApplyCached(string archive, LumenMovieContent content, bool bc7)
     {
         var textures = content.Textures;
-        var upscaled = new LumenTextureContent?[textures.Length];
+        var replaced = new LumenTextureContent?[textures.Length];
+        var learned = new System.Collections.Concurrent.ConcurrentBag<(int, string)>();
         Parallel.For(0, textures.Length, new ParallelOptions { MaxDegreeOfParallelism = 4 }, index =>
         {
             var texture = textures[index];
-            var rgba = ImmutableCollectionsMarshal.AsArray(texture.Rgba8);
-            if (rgba is not { Length: > 0 } || texture.Width * texture.Height < 256
-                || Load(Key(new UpscaleSource((uint)texture.Width, (uint)texture.Height, rgba))) is not { } cached)
+            if (texture.Width * texture.Height < 256 || texture.Rgba8.IsDefaultOrEmpty && texture.Blocks.IsEmpty)
                 return;
+            var key = knownKey(archive, content.Name, texture.Index);
+            if (key is null)
+            {
+                key = Key(new UpscaleSource((uint)texture.Width, (uint)texture.Height, texture.Pixels()));
+                learned.Add((texture.Index, key));
+            }
+            if (Load(key) is not { } cached)
+            {
+                replaced[index] = texture with { UpscaleKey = key };
+                return;
+            }
             if (bc7)
             {
-                upscaled[index] = texture with { Width = (int)cached.Width, Height = (int)cached.Height, Rgba8 = [], Bc7 = cached.Bc7 };
+                replaced[index] = texture with
+                {
+                    Width = (int)cached.Width, Height = (int)cached.Height, Rgba8 = [], Blocks = default, Bc7 = cached.Bc7, UpscaleKey = key,
+                };
                 return;
             }
             var pixels = Bc7.Decode(cached.Bc7.Span, (int)cached.Width, (int)cached.Height);
             _upscaled.AddOrUpdate(pixels, this);
-            upscaled[index] = texture with
+            replaced[index] = texture with
             {
                 Width = (int)cached.Width,
                 Height = (int)cached.Height,
                 Rgba8 = ImmutableCollectionsMarshal.AsImmutableArray(pixels),
+                Blocks = default,
+                UpscaleKey = key,
             };
         });
-        content.ReplaceTextures((texture, index) => upscaled[index] ?? texture);
+        remember(archive, content.Name, [.. learned]);
+        content.ReplaceTextures((texture, index) => replaced[index] ?? texture);
     }
 
     public void Dispose()

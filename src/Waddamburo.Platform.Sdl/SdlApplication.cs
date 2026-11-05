@@ -223,6 +223,16 @@ public sealed unsafe class SdlApplication : IDisposable
         return _renderer!.UploadBc7(width, height, blocks);
     }
 
+    /// <summary>Whether the GPU draws this block format natively (false before the renderer starts).</summary>
+    public bool Supports(TextureBlockFormat format) => _renderer?.Supports(format) ?? false;
+
+    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _renderer!.UploadBlocks(format, width, height, blocks);
+    }
+
     public bool TryReplaceBc7(RenderTextureId texture, uint width, uint height, ReadOnlySpan<byte> blocks)
     {
         ensureOwnerThread();

@@ -153,6 +153,25 @@ internal sealed unsafe class RenderDevice : IDisposable
         return id;
     }
 
+    /// <summary>The block formats drawn natively (BC1, BC3 and BC7 on every desktop GPU).</summary>
+    public bool Supports(TextureBlockFormat format)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return BgfxSupport.Supports(format);
+    }
+
+    /// <summary>A BC1 (8 bytes per 4x4 block) or BC3/BC7 (16) texture, sizes multiples of 4.</summary>
+    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (width == 0 || height == 0 || width % 4 != 0 || height % 4 != 0
+            || (ulong)blocks.Length != (ulong)width / 4 * (height / 4) * (format == TextureBlockFormat.Bc1 ? 8u : 16u))
+            throw new ArgumentException($"{format} textures need sizes that are multiples of 4 and whole blocks.", nameof(blocks));
+        var id = new RenderTextureId(_nextTextureId++);
+        _textures.Add(id.Value, BgfxSupport.CreateBlocks(format, width, height, blocks));
+        return id;
+    }
+
     private static void checkBc7(uint width, uint height, ReadOnlySpan<byte> blocks)
     {
         if (width == 0 || height == 0 || width % 4 != 0 || height % 4 != 0 || (ulong)blocks.Length != (ulong)width * height)

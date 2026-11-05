@@ -125,3 +125,23 @@ frames in 128-frame blocks. At 48 kHz, a 256-frame hardware period plus a
 input-to-speaker latency: backend scheduling, device buffering and the input
 path add time. Test audible latency and dropouts on the intended cabinet or
 audio interface before making a release claim.
+
+## Texture memory and loading
+
+The game's NTP3 textures are mostly BC3 (79% of all pixels), the rest BC1 or ARGB. BC1/BC3 textures whose
+sizes are multiples of 4 go to the GPU as their own blocks (`LumenMovieContent.Load(keepCompressed: true)`,
+when the GPU draws both natively): a quarter of RGBA's memory, which on an integrated GPU is system RAM,
+and no decoding at load. Code that needs pixels decodes the one texture it reads
+(`LumenTextureContent.Pixels()`): the genre-colour patch the textures it recolours, pixel-art movies all of
+theirs, the background upscaler what it upscales. `WADDAMBURO_DECODE_TEXTURES=1` decodes everything to RGBA
+as before, for comparisons.
+
+The upscaled-texture cache is named by a hash of each texture's decoded pixels. `index.tsv`, next to
+`textures.tar`, remembers each texture's name by archive, movie and texture index, with the archive's size
+and modification time: a texture is decoded and hashed the first time it is loaded, and found by lookup
+after that. An archive whose size or time changed has its lines ignored and learned again.
+
+Measured with the benchmark on one machine (Ryzen 7 5800X, RTX, upscaling on, 6,576 cached): entering the
+stress song went from 5,468 ms and 2,330 MiB allocated to 50 ms and 101 MiB (the lookups replaced decoding
+and hashing every texture); Song Select's movie from 343 MiB of decoded pixels to 17 MiB; the run's managed
+peak from 1,024 to 417 MiB and its RSS peak from 2,384 to 1,581 MiB.

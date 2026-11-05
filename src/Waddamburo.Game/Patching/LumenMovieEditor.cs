@@ -52,17 +52,16 @@ public sealed class LumenMovieEditor
     /// <summary>A copy of texture <paramref name="source"/> multiplied by <paramref name="tint"/>; its index.</summary>
     public uint TintTexture(uint source, (byte R, byte G, byte B) tint)
     {
+        // Only the textures edited are decoded (from their blocks or upscale); the rest of the movie stays compressed.
         var texture = _textures[checked((int)source)];
-        if (texture.Rgba8.IsDefaultOrEmpty)
-            throw new InvalidOperationException($"Texture {source} has no decoded pixels to tint.");
-        var pixels = texture.Rgba8.ToArray();
+        var pixels = texture.Pixels().ToArray();
         for (var index = 0; index < pixels.Length; index += 4)
         {
             pixels[index] = (byte)(pixels[index] * tint.R / 255);
             pixels[index + 1] = (byte)(pixels[index + 1] * tint.G / 255);
             pixels[index + 2] = (byte)(pixels[index + 2] * tint.B / 255);
         }
-        _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. pixels], Bc7 = default });
+        _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. pixels], Bc7 = default, Blocks = default });
         return (uint)(_textures.Count - 1);
     }
 
@@ -81,12 +80,10 @@ public sealed class LumenMovieEditor
         if (_split.TryGetValue(source, out var known))
             return known;
         var texture = _textures[checked((int)source)];
-        if (texture.Rgba8.IsDefaultOrEmpty || _textures[checked((int)reference)].Rgba8.IsDefaultOrEmpty)
-            throw new InvalidOperationException($"Texture {source} or {reference} has no decoded pixels to split.");
-        var pixels = texture.Rgba8.AsSpan();
+        var pixels = texture.Pixels().AsSpan();
         var (baseSaturation, baseValue) = (0f, 1f);
         var best = 0f;
-        var referencePixels = _textures[checked((int)reference)].Rgba8.AsSpan();
+        var referencePixels = _textures[checked((int)reference)].Pixels().AsSpan();
         for (var index = 0; index < referencePixels.Length; index += 4)
         {
             if (referencePixels[index + 3] < 250)
@@ -109,8 +106,8 @@ public sealed class LumenMovieEditor
             light[index] = light[index + 1] = light[index + 2] = l;
             body[index + 3] = light[index + 3] = pixels[index + 3];
         }
-        _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. body], Bc7 = default });
-        _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. light], Bc7 = default });
+        _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. body], Bc7 = default, Blocks = default });
+        _textures.Add(texture with { Index = _textures.Count, Rgba8 = [.. light], Bc7 = default, Blocks = default });
         return _split[source] = ((uint)(_textures.Count - 2), (uint)(_textures.Count - 1));
     }
 

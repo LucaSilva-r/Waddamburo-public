@@ -12,12 +12,18 @@ namespace Waddamburo.App.Presentation;
 /// </summary>
 internal sealed class TextureUpscaler : IDisposable
 {
-    private readonly record struct Job(RenderTextureId Texture, UpscaleSource Source);
+    // The pixels are decoded when the job runs (a texture kept compressed); the key, when the index knew it.
+    private sealed record Job(RenderTextureId Texture, uint Width, uint Height, Func<byte[]> Pixels, string? Key)
+    {
+        private UpscaleSource? _source;
+        public UpscaleSource Source => _source ??= new UpscaleSource(Width, Height, Pixels());
+        public string CacheKey => Key ?? UpscaleTool.Key(Source);
+    }
     private readonly record struct Result(RenderTextureId Texture, UpscaledTexture Upscaled);
 
     // Newest first: the scene on screen before the ones left behind (those still fill the cache).
-    // ponytail: queued jobs keep their pixels alive (a few hundred MB after many scenes); re-decode
-    // from the archive if memory matters.
+    // ponytail: queued jobs keep their pixels (or a compressed texture's blocks, a quarter of that) alive;
+    // re-read from the archive if memory matters.
     private readonly ConcurrentStack<Job> _jobs = new();
     private readonly ConcurrentStack<Job> _misses = new();
     private readonly ConcurrentQueue<Result> _done = new();
@@ -56,13 +62,19 @@ internal sealed class TextureUpscaler : IDisposable
         }
     }
 
-    /// <summary>Queues a freshly uploaded texture; <paramref name="rgba"/> must not change afterwards.</summary>
-    public void Enqueue(RenderTextureId texture, uint width, uint height, byte[] rgba)
+    /// <summary>Whether these pixels are an upscaled copy (they are never queued).</summary>
+    public bool IsUpscaled(byte[] rgba) => _tool.IsUpscaled(rgba);
+
+    /// <summary>
+    /// Queues a freshly uploaded original texture; <paramref name="pixels"/> gives pixels that must not change
+    /// afterwards (decoded on the loader thread), <paramref name="key"/> its cache name when known.
+    /// </summary>
+    public void Enqueue(RenderTextureId texture, uint width, uint height, Func<byte[]> pixels, string? key)
     {
-        // Tiny textures (dots, flat fills) gain nothing; upscaled ones arrived that way from the cache.
-        if (!_settings().UpscaleTextures || width * height < 256 || _tool.IsUpscaled(rgba))
+        // Tiny textures (dots, flat fills) gain nothing.
+        if (!_settings().UpscaleTextures || width * height < 256)
             return;
-        _jobs.Push(new Job(texture, new UpscaleSource(width, height, rgba)));
+        _jobs.Push(new Job(texture, width, height, pixels, key));
         _jobWake.Release();
     }
 
@@ -93,7 +105,7 @@ internal sealed class TextureUpscaler : IDisposable
             while (!_stop.IsCancellationRequested && _jobs.TryPop(out var job))
                 guard(() =>
                 {
-                    if (_tool.Load(UpscaleTool.Key(job.Source)) is { } upscaled)
+                    if (_tool.Load(job.CacheKey) is { } upscaled)
                         _done.Enqueue(new Result(job.Texture, upscaled));
                     else
                     {
@@ -110,7 +122,7 @@ internal sealed class TextureUpscaler : IDisposable
             while (!_paused && threads() > 0 && !_stop.IsCancellationRequested && _misses.TryPop(out var job))
                 guard(() =>
                 {
-                    var key = UpscaleTool.Key(job.Source);
+                    var key = job.CacheKey;
                     if (!_tool.IsCached(key))
                         _tool.Upscale(job.Source, Math.Max(1, threads()), () => _paused && !_stop.IsCancellationRequested);
                     if (_tool.Load(key) is { } upscaled)

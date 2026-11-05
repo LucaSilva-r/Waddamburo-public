@@ -33,7 +33,12 @@ public sealed class LumenMovieContent
 
     public ImmutableArray<ParseDiagnostic> Diagnostics { get; }
 
-    public static LumenMovieContent Load(DdpMovieView movie, ParserLimits? limits = null)
+    /// <param name="movie">The movie in its archive.</param>
+    /// <param name="limits">Parser limits (the defaults when null).</param>
+    /// <param name="keepCompressed">BC1/BC3 textures (sizes multiples of 4) stay as their blocks for the GPU,
+    /// copied out of the archive (<see cref="LumenTextureContent.Blocks"/>): no decode, a quarter of the memory.
+    /// <see cref="LumenTextureContent.Pixels"/> decodes one when pixels are needed.</param>
+    public static LumenMovieContent Load(DdpMovieView movie, ParserLimits? limits = null, bool keepCompressed = false)
     {
         ArgumentNullException.ThrowIfNull(movie);
         var parserLimits = limits ?? ParserLimits.Default;
@@ -48,6 +53,19 @@ public sealed class LumenMovieContent
                     view.Entry.Offset);
             }
             var texture = pack.Textures[0];
+            var index = view.Entry.Index - movie.Entry.TextureBegin;
+            if (keepCompressed && texture.Format is NutPixelFormat.Bc1 or NutPixelFormat.Bc3
+                && texture.Width % 4 == 0 && texture.Height % 4 == 0)
+            {
+                var format = texture.Format == NutPixelFormat.Bc1 ? LumenBlockFormat.Bc1 : LumenBlockFormat.Bc3;
+                var length = texture.Width / 4 * (texture.Height / 4) * (format == LumenBlockFormat.Bc1 ? 8 : 16);
+                if (texture.Data.Length >= length)
+                {
+                    textures.Add(new LumenTextureContent(index, texture.Width, texture.Height, [])
+                        { Blocks = texture.Data[..length].ToArray(), BlockFormat = format });
+                    continue;
+                }
+            }
             textures.Add(new LumenTextureContent(
                 view.Entry.Index - movie.Entry.TextureBegin,
                 texture.Width,
@@ -101,8 +119,16 @@ public sealed class LumenMovieContent
 
     /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>
     public void ReleaseDecodedTexturePixels() =>
-        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [], Bc7 = default })];
+        Textures = [.. Textures.Select(static texture => texture with { Rgba8 = [], Bc7 = default, Blocks = default })];
+
+    /// <summary>Every texture as RGBA pixels (a patch that edits pixels needs them all).</summary>
+    public void DecodeAll() =>
+        Textures = [.. Textures.Select(static texture => texture.Blocks.IsEmpty ? texture
+            : texture with { Rgba8 = ImmutableCollectionsMarshal.AsImmutableArray(texture.Pixels()), Blocks = default })];
 }
+
+/// <summary>The GPU block formats a game texture can stay in (NTP3's own).</summary>
+public enum LumenBlockFormat { Bc1, Bc3 }
 
 public sealed record LumenTextureContent(
     int Index,
@@ -115,4 +141,33 @@ public sealed record LumenTextureContent(
     /// the cache); empty when the texture is RGBA.
     /// </summary>
     public ReadOnlyMemory<byte> Bc7 { get; init; }
+
+    /// <summary>The texture's own BC1/BC3 blocks, kept in place of <see cref="Rgba8"/>; empty otherwise.</summary>
+    public ReadOnlyMemory<byte> Blocks { get; init; }
+
+    /// <summary>The format of <see cref="Blocks"/>.</summary>
+    public LumenBlockFormat BlockFormat { get; init; }
+
+    /// <summary>The upscale cache's name for this texture, when already known (it travels to the upload).</summary>
+    public string? UpscaleKey { get; init; }
+
+    /// <summary>Decodes BC7 blocks to RGBA (the renderer's native library; set by the game).</summary>
+    public static Func<ReadOnlyMemory<byte>, int, int, byte[]>? Bc7Decoder { get; set; }
+
+    /// <summary>
+    /// The texture's RGBA pixels: <see cref="Rgba8"/> itself, or decoded (a new array) from <see cref="Blocks"/> or
+    /// from <see cref="Bc7"/> (an upscale, at its own size).
+    /// </summary>
+    public byte[] Pixels()
+    {
+        if (!Rgba8.IsDefaultOrEmpty)
+            return ImmutableCollectionsMarshal.AsArray(Rgba8)!;
+        if (!Bc7.IsEmpty && Bc7Decoder is { } decode)
+            return decode(Bc7, Width, Height);
+        if (Blocks.IsEmpty)
+            throw new InvalidOperationException($"Texture {Index} has no pixels to decode.");
+        return BlockFormat == LumenBlockFormat.Bc1
+            ? BlockCompressionDecoder.DecodeBc1(Blocks.Span, Width, Height)
+            : BlockCompressionDecoder.DecodeBc3(Blocks.Span, Width, Height);
+    }
 }
