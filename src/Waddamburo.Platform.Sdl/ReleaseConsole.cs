@@ -22,6 +22,34 @@ public static partial class ReleaseConsole
     public static string CrashFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Waddamburo", "logs");
 
+    /// <summary>
+    /// From now on every line logged also goes, timestamped, to <see cref="CrashFolder"/>/latest.log (the lines so far
+    /// first); the last session's becomes previous.log. For players to send when something went wrong without a crash.
+    /// Another game already writing there (two on one PC) keeps the file: this one then logs nowhere.
+    /// </summary>
+    public static void LogToFile()
+    {
+        try
+        {
+            Directory.CreateDirectory(CrashFolder);
+            var latest = Path.Combine(CrashFolder, "latest.log");
+            if (File.Exists(latest))
+                File.Move(latest, Path.Combine(CrashFolder, "previous.log"), overwrite: true);
+            var file = new StreamWriter(new FileStream(latest, FileMode.Create, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+            file.WriteLine($"Waddamburo {Version ?? "unknown"} started at {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}, "
+                + $"{RuntimeInformation.OSDescription} {RuntimeInformation.OSArchitecture}, .NET {Environment.Version}");
+            Tee.LogTo(file);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"No log file: {exception.Message}");
+        }
+    }
+
+    private static string? Version => System.Reflection.Assembly.GetEntryAssembly()?
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+
     public static void Begin()
     {
         Console.SetOut(_out);
@@ -101,9 +129,7 @@ public static partial class ReleaseConsole
         {
             Directory.CreateDirectory(CrashFolder);
             var path = Path.Combine(CrashFolder, $"crash-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
-            var version = System.Reflection.Assembly.GetEntryAssembly()?
-                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+            var version = Version;
             File.WriteAllText(path,
                 $"Waddamburo {version ?? "unknown"} crashed at {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}\n"
                 + $"{RuntimeInformation.OSDescription} {RuntimeInformation.OSArchitecture}, .NET {Environment.Version}\n\n"
@@ -122,6 +148,7 @@ public static partial class ReleaseConsole
     {
         private static readonly Queue<string> Lines = new();
         private static readonly System.Text.StringBuilder Line = new();
+        private static StreamWriter? _file;
         public TextWriter Inner { get; set; } = inner;
         public override System.Text.Encoding Encoding => Inner.Encoding;
 
@@ -129,6 +156,16 @@ public static partial class ReleaseConsole
         {
             lock (Lines)
                 return string.Join("\n", Lines) + (Line.Length > 0 ? "\n" + Line : "");
+        }
+
+        public static void LogTo(StreamWriter file)
+        {
+            lock (Lines)
+            {
+                foreach (var line in Lines)
+                    file.WriteLine(line);
+                _file = file;
+            }
         }
 
         public override void Write(char value)
@@ -165,6 +202,14 @@ public static partial class ReleaseConsole
                     return;
                 }
                 Lines.Enqueue(Line.ToString());
+                try
+                {
+                    _file?.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] {Line}");
+                }
+                catch (IOException)
+                {
+                    _file = null; // ponytail: a full disk stops the log file, not the game
+                }
                 Line.Clear();
                 if (Lines.Count > RecentLines)
                     Lines.Dequeue();

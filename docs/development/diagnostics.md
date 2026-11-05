@@ -195,6 +195,11 @@ takes the window when the game crashes while it runs (code 99-1; `WADDAMBURO_CRA
 and opens a window of its own for an error before the game's (00-1: the game folder, its settings), drawn with the
 bundled font from the user's app data. Scripted runs (a screenshot, a tick or frame limit) fail as before instead.
 
+Every session also writes its whole log, timestamped, to `waddamburo/logs/latest.log` (the one before is kept as
+`previous.log`): what to ask a player for when something went wrong without a crash, such as an online match that
+dropped (the online lines name the route, direct or relayed, never an address). A second game on the same folder
+leaves the file to the first.
+
 F4 toggles inspect mode: a left click then prints every scene quad under the pointer, topmost
 first, with its movie, runtime texture index (or native surface) and clip chain (character ids and
 instance names up to `_level0`). Texture indices are the runtime ones, which can differ from an

@@ -134,6 +134,7 @@ try
         }
         var layout = early ?? GameDataLayout.Resolve(gameDataRoot ?? GameDataLayout.DefaultRoot(), fontPath);
         ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
+        ReleaseConsole.LogToFile();
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
         Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
