@@ -367,6 +367,11 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 new(S("service.game_mode"), 400, () => $"{{{S(_home ? "service.game_mode.home" : "service.game_mode.arcade")}}}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
                     Hint: S("service.game_mode.hint")),
             ],
+            .. Hosting.DesktopEntry.AppImage is null ? (Row[])[] :
+            [
+                new(S("service.desktop_entry"), 400, () => $"{{{S(Hosting.DesktopEntry.Installed ? "service.desktop_entry.added" : "service.desktop_entry.not_added")}}}", 560,
+                    Enter: () => Hosting.DesktopEntry.Install(), Colour: static () => OverlayMenu.Green, Hint: S("service.desktop_entry.hint")),
+            ],
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         // DISPLAY takes the graphics settings too (one page for the picture).

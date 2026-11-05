@@ -47,6 +47,8 @@ public sealed unsafe class SdlApplication : IDisposable
 
         try
         {
+            // Linux: the app id is the Wayland app_id / X11 class, which desktops match to waddamburo.desktop.
+            SDL_SetAppMetadata("Waddamburo", null, "waddamburo");
             if (!SDL_Init(SDL_InitFlags.SDL_INIT_VIDEO))
                 throw sdlFailure("initialize SDL video");
             _sdlInitialized = true;
@@ -68,6 +70,7 @@ public sealed unsafe class SdlApplication : IDisposable
                 windowFlags);
             if (_window is null)
                 throw sdlFailure("create the window");
+            setIcon(_window);
             // The game is played with drums and keys: no pointer over the window (F4 inspect shows it).
             if (showCursor) SDL_ShowCursor(); else SDL_HideCursor();
 
@@ -83,6 +86,25 @@ public sealed unsafe class SdlApplication : IDisposable
         {
             disposeNativeResources();
             throw;
+        }
+    }
+
+    // Windows takes the icon from the .exe; Linux windows have none of their own (desktops showed a letter).
+    private static void setIcon(SDL_Window* window)
+    {
+        using var resource = typeof(SdlApplication).Assembly.GetManifestResourceStream("Waddamburo.Icon.png");
+        if (resource is null)
+            return;
+        var png = new byte[resource.Length];
+        resource.ReadExactly(png);
+        fixed (byte* bytes = png)
+        {
+            var stream = SDL_IOFromConstMem((nint)bytes, (nuint)png.Length);
+            var icon = stream == null ? null : SDL_LoadPNG_IO(stream, true);
+            if (icon == null)
+                return;
+            SDL_SetWindowIcon(window, icon);
+            SDL_DestroySurface(icon);
         }
     }
 

@@ -14,6 +14,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Shaders/Compiled/*.*"
                       LogicalName="Waddamburo.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../eng/packaging/waddamburo.png" LogicalName="Waddamburo.Icon.png" />
   </ItemGroup>
 
   <!-- Developer builds: the bgfx renderer from the native debug build (native/bgfx) runs next to
