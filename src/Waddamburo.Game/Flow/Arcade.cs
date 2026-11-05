@@ -152,6 +152,9 @@ public sealed record ArcadeSettings
         # milliseconds after its last one, which caps rolls: each pad hits at most 1000 / this times a
         # second, a two-hand roll twice that (the Settings menu shows it). 0 = off.
         drum_debounce_ms = 0
+        # retry_hold_ms: how long the retry key (Q) is held before the song restarts, the screen fading to
+        # black meanwhile. 0 = at once. Home mode only.
+        retry_hold_ms = 500
 
         """,
         """
@@ -301,6 +304,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Milliseconds a drum pad ignores hits for after one (a drum that sends double hits); 0 = off.</summary>
     public int DrumDebounceMs { get; init; }
+
+    /// <summary>Milliseconds the retry key is held before a restart (0 to 1000; #26).</summary>
+    public int RetryHoldMs { get; init; } = 500;
 
     /// <summary>Song select's list keeps up with quick rim hits and the wheel, and skips ten songs at a time.</summary>
     public bool FastSongScroll { get; init; } = true;
@@ -690,6 +696,7 @@ public sealed record ArcadeSettings
                     _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
                 } },
                 "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
+                "retry_hold_ms" => settings with { RetryHoldMs = integer(value, index, 0, 1000) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
@@ -782,6 +789,7 @@ public sealed record ArcadeSettings
             ["letterbox_x"] = settings.LetterboxX,
             ["letterbox_y"] = settings.LetterboxY,
             ["drum_debounce_ms"] = settings.DrumDebounceMs,
+            ["retry_hold_ms"] = settings.RetryHoldMs,
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",

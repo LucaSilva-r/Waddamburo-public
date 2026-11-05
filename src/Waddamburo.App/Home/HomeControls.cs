@@ -53,7 +53,7 @@ internal sealed class HomeControls : IDisposable
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.Skins = shell.Skins.Names;
         _assetRoot = assetRoot;
-        _restart = new QuickRestart(gameplay.Restart);
+        _restart = new QuickRestart(gameplay.Restart, () => TimeSpan.FromMilliseconds(shell.Arcade.RetryHoldMs));
         _overlay = new HomePauseOverlay(shell.Painter);
     }
 

@@ -4,12 +4,12 @@ using Waddamburo.Platform.Sdl;
 namespace Waddamburo.App.Home;
 
 /// <summary>
-/// Home's quick restart of the song: holding Q fades to black over half a second and restarts once
+/// Home's quick restart of the song: holding Q fades to black over the retry hold time (half a second by default) and restarts once
 /// black (releasing early fades back); the pause menu's Restart does the same without the hold, in a
 /// quarter second. The rainbow then covers the new start and the black fades away over a quarter second. The menu's
 /// Song Select and Title fade the same way, in any scene.
 /// </summary>
-internal sealed class QuickRestart(Func<bool> restart)
+internal sealed class QuickRestart(Func<bool> restart, Func<TimeSpan> holdTime)
 {
     private long _qPressedAt;
     private float _qStartAlpha;
@@ -156,8 +156,8 @@ internal sealed class QuickRestart(Func<bool> restart)
         return true;
     }
 
-    private float qHoldAlpha(long now) => Math.Clamp(_qStartAlpha
-        + (float)(Stopwatch.GetElapsedTime(_qPressedAt, now).TotalSeconds * 2), 0, 1);
+    private float qHoldAlpha(long now) => holdTime() is var hold && hold <= TimeSpan.Zero ? 1 : Math.Clamp(_qStartAlpha
+        + (float)(Stopwatch.GetElapsedTime(_qPressedAt, now) / hold), 0, 1);
 
     private float cancelAlpha(long now) => _restartCancelAt == 0 ? 0 : Math.Clamp(_restartCancelAlpha
         - (float)(Stopwatch.GetElapsedTime(_restartCancelAt, now).TotalSeconds * 2), 0, 1);
