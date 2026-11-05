@@ -41,6 +41,11 @@ internal static class GameMovieContent
             upscale.LumenRoot = lumenRoot;
             source.Loaded = upscale.RecordUsed;
             SceneTextures.Upscaler = new TextureUpscaler(upscale, settings);
+            FolderArtPainter.Upscaled = (width, height, rgba) =>
+                settings().UpscaleTextures && application.ShowUpscaled
+                && upscale.Load(UpscaleTool.Key(new UpscaleSource(width, height, rgba))) is { } cached
+                    ? (cached.Width, cached.Height, Bc7.Decode(cached.Bc7.Span, (int)cached.Width, (int)cached.Height))
+                    : null;
             Console.WriteLine($"Texture upscaling {(settings().UpscaleTextures ? "on" : "off")}, "
                 + $"{settings().UpscaleThreads} background thread(s), cache {upscale.Cache}.");
         }

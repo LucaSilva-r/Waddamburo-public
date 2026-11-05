@@ -24,6 +24,13 @@ internal static class FolderArtPainter
     /// <summary>The open folder's emblem (any size: drawn into the 192x360 mascot slot).</summary>
     public static RgbaTextSurface Box(FolderArt art) => image(art.Style is FolderArtStyle.Nijiiro or FolderArtStyle.Online ? FolderArtStyle.Original : art.Style, "box");
 
+    /// <summary>
+    /// A game texture's cached upscale as RGBA (width, height, pixels), or null (none cached, or upscaling off): the
+    /// pictures read from the game's own movies are shown upscaled like the rest. Set by the game when it can upscale.
+    /// </summary>
+    // ponytail: static, set once with the upscaler (as SceneTextures.Upscaler).
+    public static Func<uint, uint, byte[], (uint Width, uint Height, byte[] Rgba)?>? Upscaled { get; set; }
+
     /// <summary>Waiwai's Normal-mode mascot (its mode-switch folder's 192x360 picture), read from the user's game data; null without it.</summary>
     public static RgbaTextSurface? NormalModeBox(string assetRoot) => modeSwitchBox(assetRoot, "waiwai_song_select");
 
@@ -53,7 +60,12 @@ internal static class FolderArtPainter
                     .SelectMany(shape => shape.Geometry).Select(geometry => (int)geometry.TextureIndex);
                 foreach (var index in textures)
                     if (index < content.Textures.Length && content.Textures[index] is { Width: 192, Height: 360 } texture)
-                        return new RgbaTextSurface((uint)texture.Width, (uint)texture.Height, [.. texture.Rgba8]);
+                    {
+                        var pixels = texture.Pixels();
+                        return Upscaled?.Invoke((uint)texture.Width, (uint)texture.Height, pixels) is var (width, height, rgba)
+                            ? new RgbaTextSurface(width, height, rgba)
+                            : new RgbaTextSurface((uint)texture.Width, (uint)texture.Height, [.. pixels]);
+                    }
             }
         }
         return null;
