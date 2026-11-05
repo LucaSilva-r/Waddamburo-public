@@ -12,7 +12,10 @@ character and so on. The game picks one per stock song. Custom charts get one in
    be listed with commas; the first one that matches wins. A name matches the archive with or
    without its `enso_` prefix, ignoring case and punctuation: `IMAS`, `imas`, `Imas` and
    `enso_imas` are the same, and `IMAS_SIDEM` is `enso_imasSideM`.
-2. The skin of the stock song with the same title.
+2. The skin of the stock song with the same title. A stock song takes its skin from Green's own
+   `musicinfo.xml`, else from the newest older revision that lists it (the install's `config/*` lists,
+   then the home mode's other stock folders): the 171 songs Green no longer lists keep their earlier
+   skin, e.g. both Funassyi songs.
 3. Vocaloid folders take `miku`.
 4. Otherwise, and for `original` or any name that matches nothing usable, the regular gameplay
    (the random mix of the original parts).

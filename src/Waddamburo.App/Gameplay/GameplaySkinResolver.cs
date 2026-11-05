@@ -35,8 +35,8 @@ internal sealed class GameplaySkinResolver
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GameplaySceneComposition.ThemedSkin?> _skins = new(StringComparer.Ordinal);
 
     /// <param name="lumenRoot">The lumendata/packed directory.</param>
-    /// <param name="musicInfoPath">Green's config musicinfo.xml, when present.</param>
-    public GameplaySkinResolver(string lumenRoot, string? musicInfoPath)
+    /// <param name="musicInfos">The musicinfo.xml files, most trusted first: a song takes the first one that lists it.</param>
+    public GameplaySkinResolver(string lumenRoot, IEnumerable<string> musicInfos)
     {
         _lumenRoot = lumenRoot;
         if (Directory.Exists(lumenRoot))
@@ -47,8 +47,7 @@ internal sealed class GameplaySkinResolver
             .Order(StringComparer.OrdinalIgnoreCase)];
         foreach (var parts in ArchiveNames.Keys)
             _partsByPreset[normalize(parts)] = parts;
-        if (musicInfoPath is null || !File.Exists(musicInfoPath)) return;
-        foreach (var song in XDocument.Load(musicInfoPath).Descendants("Data"))
+        foreach (var song in musicInfos.Where(File.Exists).SelectMany(static path => XDocument.Load(path).Descendants("Data")))
             if ((string?)song.Element("partsset") is { } parts)
             {
                 if ((string?)song.Element("musicname") is { } name)
@@ -57,6 +56,19 @@ internal sealed class GameplaySkinResolver
                     _partsById.TryAdd(id, parts);
             }
     }
+
+    /// <summary>
+    /// Every revision's musicinfo.xml in <paramref name="dataRoots"/> (the running game's first): each root's
+    /// S11100-1 (Green) first, then its older lists newest first (S10100, ST9100 .. ST5100). Songs that rotated
+    /// out of Green (171, e.g. fu7bug → funassyi) keep the skin an earlier release gave them.
+    /// </summary>
+    public static IEnumerable<string> MusicInfos(IEnumerable<string> dataRoots) =>
+        dataRoots.SelectMany(static root => Directory.Exists(Path.Combine(root, "config"))
+            ? Directory.EnumerateDirectories(Path.Combine(root, "config"))
+                .OrderByDescending(static directory => int.TryParse(new string([.. Path.GetFileName(directory).SkipWhile(static c => !char.IsDigit(c)).TakeWhile(char.IsDigit)]), out var number) ? number : -1)
+                .ThenBy(static directory => directory, StringComparer.Ordinal)
+                .Select(static directory => Path.Combine(directory, "musicinfo.xml"))
+            : []);
 
     /// <summary>The skins the player can choose for every song (the user's enso_ archives that are themes), by name.</summary>
     /// <remarks>ponytail: names only, not checked to load (enso_mh3G is listed, and plays as the regular gameplay).</remarks>

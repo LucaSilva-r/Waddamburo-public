@@ -481,8 +481,9 @@ internal sealed class GameShell : IDisposable
             _danArt = new DanChallengeArt(Application, dataRoot);
             _copyright = new CopyrightArt(Application, dataRoot);
             _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
-            Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot),
-                Path.Combine(dataRoot, "config", "S11100-1", "musicinfo.xml"));
+            // Other releases' installs (home's stock folders) name skins for the songs Green lacks.
+            Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot), GameplaySkinResolver.MusicInfos(
+                [dataRoot, .. Arcade.Home ? ArcadeSettings.Folders(Arcade.StockFolders).Select(Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot).OfType<string>() : []]));
             EnsoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
 
             TaikoPlayResult? diagnosticResult = options.StartScene switch
