@@ -25,7 +25,7 @@ internal sealed class ReviewOverlay(OverlayPainter painter)
             painter.Rect(0, Top, OverlayPainter.StageWidth, Height, new RenderColor(0, 0, 0, 0.6f)),
             painter.Rect(0, Top, OverlayPainter.StageWidth, 4, new RenderColor(1, 1, 1, 0.2f)),
             painter.Rect(0, Top, OverlayPainter.StageWidth * Math.Clamp(done, 0, 1), 4, new RenderColor(1, 0.75f, 0.2f, 1)),
-            painter.Text($"{review.Speed:0.##}x", Margin + 200, centre, 70, 26, anchor: 0),
+            painter.Text($"{review.Speed:0.00}x", Margin + 200, centre, 70, 26, anchor: 0),
         };
         // A new text every second, drawn on a worker (the painter keeps the last one up meanwhile).
         quads.Add(painter.Text($"{clock(review.Position)} / {clock(review.End)}", Margin, centre, 190, 26, anchor: 0, slot: this));
