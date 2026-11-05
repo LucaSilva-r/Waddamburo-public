@@ -27,7 +27,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     public override void Enter(SceneId scene)
     {
-        Shell.StopWatching();
+        Shell.Players.StopWatching();
         if (scene == FlowScenes.SongSelect)
             Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
         else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
@@ -114,15 +114,15 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // free play): back to the entry, which joins them (traced session28: SE_SELECT 0 as Song Select
         // stops, then the entry with the first player in, SetPrevious(SCENE_SONGSELECT, that drum)), under
         // the plain rainbow a folder change uses (seen on the cabinet).
-        if (!Shell.Arcade.Home && Shell.JoinedSides.Count == 1 && input.DrumSide is { } joining
-            && !Shell.JoinedSides.Contains(joining) && Shell.PlayRequests.Pending is null
+        if (!Shell.Arcade.Home && Shell.Players.JoinedSides.Count == 1 && input.DrumSide is { } joining
+            && !Shell.Players.JoinedSides.Contains(joining) && Shell.PlayRequests.Pending is null
             && (Shell.Coins is null || Shell.Coins.Missing(1) == 0))
         {
             // As on the cabinet, also from the difficulty selector; Song Select comes back on that song.
             Shell.Hosts.SongSelect?.RememberCurrentSong();
             Shell.Sounds?.StopAll();
             Shell.Sounds?.Bank.Play("SE_SELECT", 0);
-            var first = Shell.JoinedSides.Min;
+            var first = Shell.Players.JoinedSides.Min;
             Shell.Reload.Start(() =>
             {
                 Shell.Hosts.EntryTrigger = joining; // SCENE_TRIGGER_DON_1P / _2P
@@ -346,7 +346,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         // A launch straight into Song Select joined nobody: keep the player's own board.
         Shell.Catalog.Replace(FlowScenes.SongSelectScene(
-            Shell.JoinedSides.Count > 0 ? [.. Shell.JoinedSides] : [Shell.Hosts.PlayerSide], Shell.Hosts.Waiwai));
+            Shell.Players.JoinedSides.Count > 0 ? [.. Shell.Players.JoinedSides] : [Shell.Hosts.PlayerSide], Shell.Hosts.Waiwai));
         Shell.Scenes.Show(FlowScenes.SongSelect);
     }
 
@@ -443,7 +443,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         // The credit's song number (reset when a credit ends); a home session's endless credit stays on 1
         // (the counters only have art for songs 1-4).
-        var stage = Shell.Arcade.Home ? 1 : ++Shell.SongsPlayed;
+        var stage = Shell.Arcade.Home ? 1 : ++Shell.Players.SongsPlayed;
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), stage,
             Final: !Shell.Arcade.Home && stage >= Shell.Arcade.SongsPerSession);
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");

@@ -142,7 +142,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             return false;
         // The demo's player is the default Don (red plate, no name), not the last credit's card or account; the
         // next credit resets the players anyway.
-        Shell.ResetPlayers();
+        Shell.Players.Reset();
         if (Shell.Sounds?.Gameplay is { } sounds)
         {
             sounds.Waiwai = false;
@@ -191,7 +191,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public string? PlayingChart { get; private set; }
 
     // The drum this game's own player stands at.
-    private LocalPlayerSlot localSlot() => Shell.JoinedSides.Count > 0 && Shell.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
+    private LocalPlayerSlot localSlot() => Shell.Players.JoinedSides.Count > 0 && Shell.Players.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
 
     public override void Enter(SceneId scene)
     {
@@ -251,7 +251,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A course saves apart, whole (saveCourse).
         _voided = request.Review is not null || _demo || _course is not null;
         if (_review is not null && request.Review?.Player is { } watched)
-            Shell.WatchAs(_side, watched);
+            Shell.Players.WatchAs(_side, watched);
         _autoplay = (Shell.Options.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
@@ -299,7 +299,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             return;
         var at = replay.Clock.Position;
         replay.Dispose();
-        Shell.StopWatching();
+        Shell.Players.StopWatching();
         _voided = true;
         _review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
         Shell.Gameplay.EndBanner = false;
@@ -361,7 +361,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     private (Guid Play, ScoreClient Client)? reportTarget() =>
         Reviewing && _lastRequest?.Review is { PlayId: { } play, Player: { } watched } && !_reported.Contains(play)
-        && Shell.Watcher is { Token: { } token } watcher && watcher.Baid != watched.Baid && Shell.Sync.ClientFor(token) is { } client
+        && Shell.Players.Watcher is { Token: { } token } watcher && watcher.Baid != watched.Baid && Shell.Sync.ClientFor(token) is { } client
             ? (play, client) : null;
 
     /// <summary>Reports the watched play for <paramref name="reason"/> (a server reason) in the background; a notice shows the server's answer.</summary>
@@ -441,7 +441,7 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (_lastRequest is not { } last || _charts.Length == 0) return false;
         var request = last with { Review = null, Seed = null };
-        Shell.StopWatching();
+        Shell.Players.StopWatching();
         if (_paused) SetPaused(false);
         if (_music is { } music)
             Shell.Audio?.Mixer.Stop(music.Handle);
@@ -684,10 +684,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (input.Escape && !Shell.Arcade.Home || _shutterStartTick >= 0 && Shell.Tick - _shutterStartTick >= 70)
         {
             // An abandoned song gives its stage back: Song Select counts it again when the next one starts (#21).
-            if (input.Escape && !Shell.Arcade.Home && Shell.SongsPlayed > 0)
+            if (input.Escape && !Shell.Arcade.Home && Shell.Players.SongsPlayed > 0)
             {
                 var tutorialSeen = Shell.Hosts.TutorialSeen; // back at 0 would offer the tutorial again
-                Shell.SongsPlayed--;
+                Shell.Players.SongsPlayed--;
                 Shell.Hosts.TutorialSeen = tutorialSeen;
             }
             end(finished: !input.Escape || Shell.Arcade.Home);

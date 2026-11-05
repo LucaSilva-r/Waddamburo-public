@@ -109,7 +109,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     public bool Typing => _prompt != Prompt.None;
 
     /// <summary>Whether this player can play online: alone at home, with an account, and a server to meet on.</summary>
-    public bool Available => shell.Arcade.Home && server() is not null && shell.JoinedSides.Count == 1 && token() is not null;
+    public bool Available => shell.Arcade.Home && server() is not null && shell.Players.JoinedSides.Count == 1 && token() is not null;
 
     /// <summary>
     /// The Online spine was decided after all (the movie took the hit): the lobby opens, and Song Select reloads on that
@@ -456,7 +456,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private void showPartnerAs(ScoreProfile? partner)
     {
         _shownPartner = partner;
-        var side = shell.JoinedSides.Count == 0 ? 1 : 1 - shell.JoinedSides.Min;
+        var side = shell.Players.JoinedSides.Count == 0 ? 1 : 1 - shell.Players.JoinedSides.Min;
         TaikoGuest.Profiles[side] = partner;
         shell.Don?.SetLook(side, partner?.Look);
         // The side the player didn't join on (a host on the right drum has their partner on the left). Set before the
@@ -610,7 +610,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private bool insecureServer() => serverOverride is null && shell.Arcade.ServerInsecure;
 
     private string? token() => Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_TOKEN") is { Length: > 0 } other ? other
-        : shell.JoinedSides.Count == 1 ? TaikoGuest.Profiles[shell.JoinedSides.Min]?.Token : null;
+        : shell.Players.JoinedSides.Count == 1 ? TaikoGuest.Profiles[shell.Players.JoinedSides.Min]?.Token : null;
 
     private static async Task leaveAsync(OnlineSession session, Task<bool>? start)
     {

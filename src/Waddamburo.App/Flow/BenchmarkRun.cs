@@ -46,8 +46,8 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                 break;
             case Step.LoadingSongSelect when shell.Scenes.PrefetchReady || _inStep.Elapsed > GiveUp:
                 begin(Step.SongSelect);
-                shell.ResetPlayers();
-                shell.JoinPlayer(0);
+                shell.Players.Reset();
+                shell.Players.Join(0);
                 shell.Scenes.Show(FlowScenes.SongSelect);
                 break;
             case Step.SongSelect:
@@ -79,7 +79,7 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                 break;
             case Step.Song when song.Done:
                 begin(Step.TwoPlayerSong);
-                shell.JoinPlayer(1);
+                shell.Players.Join(1);
                 song.TwoPlayers = true;
                 song.Limit = TwoPlayerTime;
                 shell.Catalog.Replace(song.Scene());

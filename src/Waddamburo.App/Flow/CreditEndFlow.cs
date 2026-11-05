@@ -29,7 +29,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _resultStartTick = Shell.Tick;
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Lumen.TaikoCreditNext.NextSong)
-            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.JoinedSides], Shell.Hosts.Waiwai));
+            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Hosts.Waiwai));
         // dani_result's song boards: fills song_name1 to 3, and a challenge's name art.
         if (Shell.Hosts.DanResult is not null && Shell.Active.Player.Layers[0].Player is { } dani)
         {
@@ -137,7 +137,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (Shell.Tick - _gameOverEndTick < GameOverHoldTicks)
                 return;
             // Traced: the credit's end returns to the attract loop at logo_namco.
-            Shell.SongsPlayed = 0;
+            Shell.Players.SongsPlayed = 0;
             Shell.Scenes.Show(FlowScenes.Logo);
         }
     }

@@ -45,7 +45,7 @@ internal sealed class PlayerSetupController : IDisposable
         if (!_flow.IsOpen && shell.Active.Id == FlowScenes.Entry && keys.IsDown(SdlKeyboardKey.Tab))
         {
             ScoreProfile?[] profiles = [.. TaikoGuest.Profiles];
-            int[] joined = [.. shell.JoinedSides];
+            int[] joined = [.. shell.Players.JoinedSides];
             shell.FadeThen(() =>
             {
                 if (_flow.IsOpen || shell.Active.Id != FlowScenes.Entry)
@@ -115,8 +115,8 @@ internal sealed class PlayerSetupController : IDisposable
     private void beginSetup()
     {
         _setupShownTicks = 0;
-        shell.ResetPlayers();
-        shell.SongsPlayed = 0;
+        shell.Players.Reset();
+        shell.Players.SongsPlayed = 0;
         Array.Clear(_shownChoice);
         Array.Fill(_swapAt, -1);
         Array.Fill(_revealAt, -1);
@@ -207,7 +207,7 @@ internal sealed class PlayerSetupController : IDisposable
         bool[] standVisible = [shell.Tick >= _revealAt[0], shell.Tick >= _revealAt[1]];
         string?[] tags = live is not null
             ? [.. live.Select(static column => column.Choice.Label)]
-            : [.. Enumerable.Range(0, 2).Select(side => shell.JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : null)];
+            : [.. Enumerable.Range(0, 2).Select(side => shell.Players.JoinedSides.Contains(side) ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : null)];
         bool[] ranked = [.. Enumerable.Range(0, 2).Select(side =>
             (columns is not null ? columns[side].Choice.Profile?.DisplayDanRank : TaikoGuest.DanRank(side)) > 0)];
         var quads = overlay.Quads(columns, tags, ranked, standVisible);
@@ -245,8 +245,8 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Sounds?.Attract.PlayExit();
         shell.Hosts.EntrySetup = false;
         shell.ResetIndicatorScene(); // the entry reloads under the same id: its indicators start over
-        shell.ResetPlayers();
-        shell.SongsPlayed = 0;
+        shell.Players.Reset();
+        shell.Players.SongsPlayed = 0;
         for (var side = 0; side < 2; side++)
         {
             if (!playing[side])
@@ -255,7 +255,7 @@ internal sealed class PlayerSetupController : IDisposable
             if (profiles[side] is { } profile)
                 shell.Sync.RefreshBests(profile); // a visitor's first, a stored account's again
             shell.Don?.SetLook(side, profiles[side]?.Look);
-            shell.JoinPlayer(side);
+            shell.Players.Join(side);
         }
         shell.Hosts.EntryTrigger = playing[0] && playing[1] ? 2 : playing[1] ? 1 : 0;
         Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");

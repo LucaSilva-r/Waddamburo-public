@@ -212,7 +212,7 @@ internal sealed class OnlineMatch(GameShell shell)
         shell.PlayRequests.TryRequestPlay(play);
         InSong = true;
         PartnerResult = null;
-        shell.PlayOnlineAsTwoPlayers(true);
+        shell.Players.PlayOnlineAsTwoPlayers(true);
         return play;
     }
 
@@ -446,7 +446,7 @@ internal sealed class OnlineMatch(GameShell shell)
         var song = shell.FindSong(request.Song);
         if (song?.Descriptor.Charts.FirstOrDefault(chart => chart.Course == theirs.Course) is not { } chart)
             return null;
-        var localSlot = shell.JoinedSides.Count > 0 && shell.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
+        var localSlot = shell.Players.JoinedSides.Count > 0 && shell.Players.JoinedSides.Min == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         var partnerSlot = localSlot == LocalPlayerSlot.PlayerOne ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         var local = new PlayerChartRequest(localSlot, mine.Chart, mine.ChartAsset, mine.Course) { Options = mine.Options };
         var partner = new PlayerChartRequest(partnerSlot, chart.Key, chart.ChartAsset, theirs.Course)
