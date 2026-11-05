@@ -22,7 +22,7 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
     // Song Select settles (its list, previews) before the scrolling starts; it is given up on after this long.
     private static readonly TimeSpan Settle = TimeSpan.FromSeconds(4), GiveUp = TimeSpan.FromSeconds(60);
 
-    private enum Step { Attract, SongSelect, Song, TwoPlayerSong, Results, Done }
+    private enum Step { Attract, LoadingSongSelect, SongSelect, LoadingSong, Song, TwoPlayerSong, Results, Done }
 
     private Step _step = Step.Attract;
     private readonly Stopwatch _inStep = Stopwatch.StartNew();
@@ -33,7 +33,18 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
     {
         switch (_step)
         {
+            // As Entry does in play: Song Select loads in the background, then the switch is quick. An attract
+            // screen change takes the loading slot back (it loads Entry), so the request repeats until ready.
             case Step.Attract when _inStep.Elapsed >= AttractTime && shell.Active.Id != FlowScenes.Gameplay:
+                begin(Step.LoadingSongSelect);
+                shell.Prefetch(FlowScenes.SongSelectScene([0]));
+                break;
+            case Step.LoadingSongSelect when shell.Active.Id == FlowScenes.Gameplay:
+                break;
+            case Step.LoadingSongSelect when shell.Prefetched != FlowScenes.SongSelect && _inStep.Elapsed <= GiveUp:
+                shell.Prefetch(FlowScenes.SongSelectScene([0]));
+                break;
+            case Step.LoadingSongSelect when shell.PrefetchReady || _inStep.Elapsed > GiveUp:
                 begin(Step.SongSelect);
                 shell.ResetPlayers();
                 shell.JoinPlayer(0);
@@ -48,12 +59,23 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                     break;
                 }
                 if (since >= ScrollRight + ScrollLeft)
-                    startSong();
+                {
+                    // As Song Select does for a picked song: its lane loads in the background first.
+                    begin(Step.LoadingSong);
+                    song.TwoPlayers = false;
+                    shell.Prefetch(song.Scene());
+                }
                 else if (since >= _nextScroll)
                 {
                     shell.Application.InjectPress(since < ScrollRight ? SdlKeyboardKey.Right : SdlKeyboardKey.Left);
                     _nextScroll += ScrollStep;
                 }
+                break;
+            case Step.LoadingSong when shell.Prefetched != FlowScenes.Benchmark && _inStep.Elapsed <= GiveUp:
+                shell.Prefetch(song.Scene());
+                break;
+            case Step.LoadingSong when shell.PrefetchReady || _inStep.Elapsed > GiveUp:
+                startSong();
                 break;
             case Step.Song when song.Done:
                 begin(Step.TwoPlayerSong);

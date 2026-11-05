@@ -36,7 +36,8 @@ public sealed class LumenMovieContent
     /// <param name="movie">The movie in its archive.</param>
     /// <param name="limits">Parser limits (the defaults when null).</param>
     /// <param name="keepCompressed">BC1/BC3 textures (sizes multiples of 4) stay as their blocks for the GPU,
-    /// copied out of the archive (<see cref="LumenTextureContent.Blocks"/>): no decode, a quarter of the memory.
+    /// slices of the archive's buffer (<see cref="LumenTextureContent.Blocks"/>, alive until uploaded): no decode,
+    /// no copy, a quarter of the memory.
     /// <see cref="LumenTextureContent.Pixels"/> decodes one when pixels are needed.</param>
     public static LumenMovieContent Load(DdpMovieView movie, ParserLimits? limits = null, bool keepCompressed = false)
     {
@@ -62,7 +63,7 @@ public sealed class LumenMovieContent
                 if (texture.Data.Length >= length)
                 {
                     textures.Add(new LumenTextureContent(index, texture.Width, texture.Height, [])
-                        { Blocks = texture.Data[..length].ToArray(), BlockFormat = format });
+                        { Blocks = texture.Data[..length], BlockFormat = format });
                     continue;
                 }
             }
@@ -142,7 +143,10 @@ public sealed record LumenTextureContent(
     /// </summary>
     public ReadOnlyMemory<byte> Bc7 { get; init; }
 
-    /// <summary>The texture's own BC1/BC3 blocks, kept in place of <see cref="Rgba8"/>; empty otherwise.</summary>
+    /// <summary>
+    /// The texture's own BC1/BC3 blocks, kept in place of <see cref="Rgba8"/> (a slice of its archive's buffer: hold
+    /// a copy, not this, past the upload); empty otherwise.
+    /// </summary>
     public ReadOnlyMemory<byte> Blocks { get; init; }
 
     /// <summary>The format of <see cref="Blocks"/>.</summary>

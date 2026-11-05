@@ -14,7 +14,9 @@ crash or a killed run keeps what came before:
   (`src/Waddamburo.App/Benchmark/stress.tja`, about 1,600 notes: streams, big notes, rolls, balloons,
   Go-Go, scroll 0.5 to 4, BPM 240, branches) on autoplay over a click track, so it needs no song
   library or music file; then its first 75 s again for two players (two Don-chans), then the two players'
-  results for 15 s. The report names the songs `benchmark-1p` and `benchmark-2p`. `--benchmark` quits when
+  results for 15 s. Song Select and the first song load in the background before their switch, as Entry and
+  Song Select do in play; the 1P to 2P switch loads cold (a cold-load measurement). The report names the songs
+  `benchmark-1p` and `benchmark-2p`. `--benchmark` quits when
   done; from the settings the game starts again as usual. `benchmark-<time>.txt`.
   `WADDAMBURO_BENCHMARK_ATTRACT=<seconds>` shortens the attract step when testing the route.
 

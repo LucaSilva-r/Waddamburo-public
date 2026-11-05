@@ -62,6 +62,9 @@ internal sealed class TextureUpscaler : IDisposable
         }
     }
 
+    /// <summary>Whether a texture this size would be queued (upscaling on; tiny ones, dots and fills, gain nothing).</summary>
+    public bool Wants(uint width, uint height) => _settings().UpscaleTextures && width * height >= 256;
+
     /// <summary>Whether these pixels are an upscaled copy (they are never queued).</summary>
     public bool IsUpscaled(byte[] rgba) => _tool.IsUpscaled(rgba);
 
@@ -71,8 +74,7 @@ internal sealed class TextureUpscaler : IDisposable
     /// </summary>
     public void Enqueue(RenderTextureId texture, uint width, uint height, Func<byte[]> pixels, string? key)
     {
-        // Tiny textures (dots, flat fills) gain nothing.
-        if (!_settings().UpscaleTextures || width * height < 256)
+        if (!Wants(width, height))
             return;
         _jobs.Push(new Job(texture, width, height, pixels, key));
         _jobWake.Release();

@@ -126,13 +126,16 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
                 _archives.Add(archivePath, archive);
             }
             var read = profile ? Stopwatch.GetTimestamp() : 0;
-            var content = owner.decoded(archiveId, LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits, owner.KeepCompressed));
+            var parsed = LumenMovieContent.Load(archive!.OpenMovie(movieId), owner._limits, owner.KeepCompressed);
+            var parsedAt = profile ? Stopwatch.GetTimestamp() : 0;
+            var content = owner.decoded(archiveId, parsed);
             if (profile)
             {
                 var rgbaBytes = content.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Blocks.Length);
                 Console.Error.WriteLine($"Profile movie {movieId}: archive {length / 1048576d:F1} MiB{(reused ? " reused" : "")}, "
                     + $"read {Stopwatch.GetElapsedTime(start, read).TotalMilliseconds:F0} ms, "
-                    + $"parse/decode {Stopwatch.GetElapsedTime(read).TotalMilliseconds:F0} ms, "
+                    + $"parse {Stopwatch.GetElapsedTime(read, parsedAt).TotalMilliseconds:F0} ms, "
+                    + $"patch/upscales {Stopwatch.GetElapsedTime(parsedAt).TotalMilliseconds:F0} ms, "
                     + $"RGBA {rgbaBytes / 1048576d:F1} MiB.");
             }
             return content;

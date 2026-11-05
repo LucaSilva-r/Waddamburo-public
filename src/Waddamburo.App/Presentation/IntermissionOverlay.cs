@@ -116,10 +116,14 @@ internal static class SceneTextures
         var format = texture.BlockFormat == LumenBlockFormat.Bc1 ? TextureBlockFormat.Bc1 : TextureBlockFormat.Bc3;
         if (!texture.Blocks.IsEmpty && application.Supports(format))
         {
-            var blocks = texture.Blocks;
-            var compressed = application.UploadBlocks(format, width, height, blocks.Span);
-            // The blocks are the texture's own copy: decoded only if the upscaler gets to it.
-            Upscaler?.Enqueue(compressed, width, height, texture.Pixels, texture.UpscaleKey);
+            var compressed = application.UploadBlocks(format, width, height, texture.Blocks.Span);
+            // A queued texture keeps its own copy of the blocks (a slice would keep its whole archive alive),
+            // decoded only if the upscaler gets to it.
+            if (Upscaler is { } queue && queue.Wants(width, height))
+            {
+                var own = texture with { Blocks = texture.Blocks.ToArray() };
+                queue.Enqueue(compressed, width, height, own.Pixels, texture.UpscaleKey);
+            }
             return compressed;
         }
         var rgba = texture.Pixels();

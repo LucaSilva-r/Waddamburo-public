@@ -1458,11 +1458,16 @@ internal sealed class GameShell : IDisposable
         }
         var patching = Waddamburo.Game.Patching.SongSelectGenrePatch.AppliesTo(content);
         // The genre patch decodes only the textures it recolours (song_select decoded whole was 343 MiB, 337 ms).
+        var started = Stopwatch.GetTimestamp();
         upscale?.Tool.ApplyCached(archive, content, upscale.Value.Bc7);
+        var cached = Stopwatch.GetElapsedTime(started);
         if (!patching)
             return;
         var own = content.Textures.Length;
         Waddamburo.Game.Patching.SongSelectGenrePatch.Apply(content);
+        if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+            Console.Error.WriteLine($"Profile patch {content.Name}: upscales {cached.TotalMilliseconds:F0} ms, "
+                + $"genre patch {(Stopwatch.GetElapsedTime(started) - cached).TotalMilliseconds:F0} ms.");
         for (var index = own; index < content.Textures.Length; index++)
             if (System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsArray(content.Textures[index].Rgba8) is { } pixels)
                 upscale?.Tool.MarkUpscaled(pixels);
