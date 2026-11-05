@@ -560,9 +560,10 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         if (_session is not { } session || _start is not { IsCompleted: true } start)
             return;
-        if (start.IsFaulted)
-            Console.Error.WriteLine($"Warning ONLINE: {start.Exception?.GetBaseException().Message}");
-        var problem = start.IsFaulted ? T("online.no_server")
+        // A timed-out request cancels the task rather than faulting it: Result would throw.
+        if (!start.IsCompletedSuccessfully)
+            Console.Error.WriteLine($"Warning ONLINE: {start.Exception?.GetBaseException().Message ?? "request timed out"}");
+        var problem = !start.IsCompletedSuccessfully ? T("online.no_server")
             : !start.Result ? session.WrongPassword ? T("online.wrong_password") : T("online.no_room")
             : session.RoomGone ? T("online.room_gone")
             : null;
@@ -583,7 +584,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private string? banner()
     {
-        if (_session is not { Room: not null } session || _start is { IsCompleted: true, Result: false })
+        if (_session is not { Room: not null } session || _start is { IsCompleted: true } done && !(done.IsCompletedSuccessfully && done.Result))
             return null;
         if (session.Link.State is PeerLinkState.Direct or PeerLinkState.Relayed && shell.Match.Status is { } status)
             return status;
