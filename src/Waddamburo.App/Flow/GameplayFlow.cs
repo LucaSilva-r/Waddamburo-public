@@ -210,6 +210,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (Shell.Match.InSong && request.Players.ToList().FindIndex(player => player.Player != localSlot()) is var remote and >= 0
             && remote < _charts.Length)
             _charts[remote] = TaikoPlayOptions.KusudamaAsBalloons(_charts[remote]);
+        // Two players on different courses have different kusudama (or one only): a shared one would cover the other
+        // player's lane, so each plays a balloon of its own instead.
+        else if (_charts.Length == 2 && request.Players.Length == 2 && request.Players[0].Course != request.Players[1].Course)
+            _charts = [.. _charts.Select(TaikoPlayOptions.KusudamaAsBalloons)];
         Shell.Gameplay.Options = [.. players.Select(static player => player.Options)];
         _paused = false;
         _pausedTicks = 0;
