@@ -41,13 +41,23 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         // froze the attract ~0.6 s).
         // The caution screen before a demo turn: the demo is picked now and its lane loads in the background
         // instead (starting it cold froze the attract for a moment); the demo prefetches Entry again once up.
-        if (scene == FlowScenes.Caution && (!_demoTurn || movies.Length == 0) && pickDemo() is { } demo)
+        // Its skin is checked and its scene composed on a worker (a skin's first check read the whole archive:
+        // 540 ms on a Celeron), and prefetched once ready (Tick).
+        var demoTurn = !_demoTurn || movies.Length == 0;
+        if (scene == FlowScenes.Caution && demoTurn && pickDemo() is { } demo)
         {
             _nextDemo = demo;
-            Shell.Scenes.Prefetch(demo.Scene);
+            _demoPrefetched = false;
         }
-        else if (Shell.Scenes.Prefetched != FlowScenes.Entry)
-            Shell.Scenes.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
+        else
+        {
+            // A CM turn: the CM opens on a worker meanwhile (opening it at its start froze ~0.9 s on a Celeron);
+            // it needs no scene prefetch, so Entry keeps that.
+            if (scene == FlowScenes.Caution && !demoTurn)
+                prepareMovie();
+            if (Shell.Scenes.Prefetched != FlowScenes.Entry)
+                Shell.Scenes.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
+        }
         if (scene == FlowScenes.Movie)
             startMovie(_openingAsTitle ? opening : null);
     }
@@ -62,6 +72,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
 
     public override void Tick(FlowInput input)
     {
+        prefetchDemo();
         if (Shell.Active.Id == FlowScenes.Boot)
         {
             // Home: any key, drum hit or controller button skips the boot screens (the copyright notice); the
@@ -105,7 +116,17 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
 
     // A random stock (Green) song with a Normal chart (#19: the cabinet's demo plays Normal), from the game's own demo list (musicinfo demoplay,
     // 114 songs in Green) when it has one; no TJA, osu! or Nijiiro picks.
-    private (string Category, SongSelectSong Song, SceneDefinition Scene)? _nextDemo;
+    private (string Category, SongSelectSong Song, Task<SceneDefinition> Scene)? _nextDemo;
+    private bool _demoPrefetched;
+
+    // The picked demo's lane starts loading in the background once its scene is composed.
+    private void prefetchDemo()
+    {
+        if (_demoPrefetched || _nextDemo is not { Scene: { IsCompletedSuccessfully: true } scene })
+            return;
+        _demoPrefetched = true;
+        Shell.Scenes.Prefetch(scene.Result);
+    }
 
     private bool startDemo()
     {
@@ -116,13 +137,14 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             _nextDemo = null;
             if (demo is not { } picked)
                 return false;
-            if (gameplay.StartDemo(picked.Song, picked.Category, TryStart, picked.Scene))
+            // Composed long before, unless the demo came early: then it waits for it here.
+            if (gameplay.StartDemo(picked.Song, picked.Category, TryStart, picked.Scene.GetAwaiter().GetResult()))
                 return true;
         }
         return false;
     }
 
-    private (string Category, SongSelectSong Song, SceneDefinition Scene)? pickDemo()
+    private (string Category, SongSelectSong Song, Task<SceneDefinition> Scene)? pickDemo()
     {
         var songs = Shell.SongCatalog.Categories
             .SelectMany(category => category.Songs.Select(song => (category.Name, Song: song)))
@@ -139,7 +161,9 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         if (songs.Length == 0)
             return null;
         var (category, song) = songs[Shell.Random.Next(songs.Length)];
-        return (category, song, gameplay.DemoScene(song, category));
+        // The scene's own randomness is drawn here, so a benchmark's seeded runs still pick alike.
+        var seed = Shell.Random.Next();
+        return (category, song, Task.Run(() => gameplay.DemoScene(song, category, new Random(seed))));
     }
 
     /// <summary>
@@ -199,22 +223,61 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         return true;
     }
 
-    private void startMovie(string? path)
+    // The CM opened ahead (at the caution screen) and its path, or null.
+    private (string Path, Task<AttractMovie.Prepared> Movie)? _preparedMovie;
+
+    // The next CM in the shuffled queue (refilled, never the same twice in a row across refills).
+    private string nextMoviePath()
     {
-        if (path is null && _queue.Count == 0)
+        if (_queue.Count == 0)
         {
             var order = movies.ToArray();
             Shell.Random.Shuffle(order);
-            // No CM twice in a row across refills.
             if (order.Length > 1 && order[0] == _last)
                 (order[0], order[^1]) = (order[^1], order[0]);
             foreach (var movie in order)
                 _queue.Enqueue(movie);
         }
-        path ??= _last = _queue.Dequeue();
+        return _last = _queue.Dequeue();
+    }
+
+    private void prepareMovie()
+    {
+        dropPreparedMovie();
+        var path = nextMoviePath();
+        _preparedMovie = (path, AttractMovie.Prepare(path, Shell.Audio?.Mixer.Format));
+    }
+
+    // A CM opened ahead that will not play (a credit started, or another took its turn).
+    private void dropPreparedMovie()
+    {
+        if (_preparedMovie is not { } prepared)
+            return;
+        _preparedMovie = null;
+        prepared.Movie.ContinueWith(static task =>
+        {
+            if (task.IsCompletedSuccessfully)
+                task.Result.Dispose();
+        }, TaskScheduler.Default);
+    }
+
+    private void startMovie(string? path)
+    {
+        // The CM opened at the caution screen; the opening movie, or a CM not opened ahead, opens now (waiting for it).
+        Task<AttractMovie.Prepared> opening;
+        if (path is null && _preparedMovie is { } prepared)
+        {
+            (path, opening) = prepared;
+            _preparedMovie = null;
+        }
+        else
+        {
+            path ??= nextMoviePath();
+            opening = AttractMovie.Prepare(path, Shell.Audio?.Mixer.Format);
+        }
         try
         {
-            Movie = new AttractMovie(Shell.Application, Shell.Audio, path);
+            Movie = new AttractMovie(Shell.Application, Shell.Audio, opening.GetAwaiter().GetResult());
             Shell.Active.Player.Layers.Single().Player.SetNativeFill(MovieFill, AttractMovie.Surface);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
@@ -224,5 +287,9 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         }
     }
 
-    public void Dispose() => Movie?.Dispose();
+    public void Dispose()
+    {
+        Movie?.Dispose();
+        dropPreparedMovie();
+    }
 }

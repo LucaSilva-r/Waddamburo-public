@@ -33,29 +33,73 @@ internal sealed partial class AttractMovie : IDisposable
     private (byte[] Pixels, TimeSpan Time)? _next;
     private volatile bool _decoded;
 
-    public AttractMovie(SdlApplication application, AudioEngine? audio, string path)
+    /// <summary>
+    /// A CM opened and ready to start: its video decoder and its audio track, buffered. The slow part (the
+    /// decoder, pulling the track out of the .pam, buffering it: ~0.9 s on a Celeron) runs on a worker
+    /// (<see cref="Prepare"/>); <see cref="AttractMovie(SdlApplication, AudioEngine?, Prepared)"/> then starts it at once.
+    /// </summary>
+    public sealed class Prepared(string path, NativeVideoDecoder decoder, BufferedAudioSource? audio, TimeSpan lead) : IDisposable
+    {
+        public string Path { get; } = path;
+        internal NativeVideoDecoder Decoder { get; } = decoder;
+        internal BufferedAudioSource? Audio { get; private set; } = audio;
+        internal TimeSpan Lead { get; } = lead;
+        // The audio passes to the playing movie (its transport disposes it); this no longer does.
+        internal BufferedAudioSource? TakeAudio()
+        {
+            var taken = Audio;
+            Audio = null;
+            return taken;
+        }
+
+        /// <summary>A prepared CM that will not play (the credit started first).</summary>
+        public void Dispose()
+        {
+            Audio?.Dispose();
+            Decoder.Dispose();
+        }
+    }
+
+    /// <summary>Opens a CM on a worker: <paramref name="format"/> is the mixer's (null: no audio).</summary>
+    public static Task<Prepared> Prepare(string path, SdlAudioFormat? format) => Task.Run(() =>
+    {
+        var decoder = new NativeVideoDecoder(path);
+        try
+        {
+            if (format is not { } mixer)
+                return new Prepared(path, decoder, null, TimeSpan.Zero);
+            PamfAudio? track;
+            using (var file = File.OpenRead(path))
+                track = PamfAudio.Extract(file);
+            if (track is null)
+                return new Prepared(path, decoder, null, TimeSpan.Zero);
+            var source = new BufferedAudioSource(new MemoryStream(track.Riff), mixer);
+            source.Ready.GetAwaiter().GetResult();
+            return new Prepared(path, decoder, source, track.Lead);
+        }
+        catch
+        {
+            decoder.Dispose();
+            throw;
+        }
+    });
+
+    /// <summary>Starts a prepared CM (main thread): its texture, its decoding thread, its audio.</summary>
+    public AttractMovie(SdlApplication application, AudioEngine? audio, Prepared movie)
     {
         _application = application;
         _audio = audio;
-        _decoder = new NativeVideoDecoder(path);
+        _decoder = movie.Decoder;
         _duration = _decoder.Duration ?? TimeSpan.Zero;
         Texture = application.UploadRgba8(_decoder.Width, _decoder.Height, new byte[_decoder.Width * _decoder.Height * 4]);
         _worker = new Thread(decode) { IsBackground = true, Name = "Attract movie decoder" };
         _worker.Start();
-        if (audio is not null)
+        if (audio is not null && movie.TakeAudio() is { } source)
         {
-            PamfAudio? track;
-            using (var file = File.OpenRead(path))
-                track = PamfAudio.Extract(file);
-            if (track is not null)
-            {
-                _lead = track.Lead;
-                var source = new BufferedAudioSource(new MemoryStream(track.Riff), audio.Mixer.Format);
-                source.Ready.GetAwaiter().GetResult();
-                _transport = audio.PlayTransport(new ScheduledAudioSource(source, TimeSpan.Zero, _duration + _lead));
-            }
+            _lead = movie.Lead;
+            _transport = audio.PlayTransport(new ScheduledAudioSource(source, TimeSpan.Zero, _duration + _lead));
         }
-        Console.WriteLine($"Attract movie {Path.GetFileName(path)}: {_decoder.Width}x{_decoder.Height}, {_duration.TotalSeconds:0.##} s.");
+        Console.WriteLine($"Attract movie {System.IO.Path.GetFileName(movie.Path)}: {_decoder.Width}x{_decoder.Height}, {_duration.TotalSeconds:0.##} s.");
     }
 
     public RenderTextureId Texture { get; }

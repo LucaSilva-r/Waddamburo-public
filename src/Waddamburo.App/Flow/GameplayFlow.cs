@@ -114,9 +114,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private Func<FlowInput, bool>? _demoTakeOver;
     private static readonly TimeSpan DemoLength = TimeSpan.FromSeconds(30);
 
-    /// <summary>A demo play's lane for <paramref name="song"/> (its skin, the parts picked now): prefetched ahead, then shown.</summary>
-    public SceneDefinition DemoScene(SongSelectSong song, string category) =>
-        GameplaySceneComposition.Create(FlowScenes.Gameplay, Shell.Random, Shell.EnsoLayout,
+    /// <summary>
+    /// A demo play's lane for <paramref name="song"/> (its skin, the parts picked by <paramref name="random"/>): prefetched
+    /// ahead, then shown. Safe on a worker thread.
+    /// </summary>
+    public SceneDefinition DemoScene(SongSelectSong song, string category, Random random) =>
+        GameplaySceneComposition.Create(FlowScenes.Gameplay, random, Shell.EnsoLayout,
             Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin), 0, twoPlayers: false);
 
     /// <summary>Starts a demo play of <paramref name="song"/> (its Normal chart) on <paramref name="scene"/>; false when it cannot load.</summary>
