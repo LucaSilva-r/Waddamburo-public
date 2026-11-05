@@ -6,6 +6,10 @@ name: Release
 on:
   push:
     tags: ['v*']
+    # A tag's run only reads caches saved on master (or the tag itself): master keeps the native libraries' cache
+    # (below) up to date whenever they change.
+    branches: [master]
+    paths: ['native/**', '.github/workflows/release.yml']
   workflow_dispatch:
 
 permissions:
