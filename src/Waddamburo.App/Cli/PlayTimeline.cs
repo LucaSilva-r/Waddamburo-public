@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Waddamburo.Catalog;
 using Waddamburo.App.Gameplay;
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.App.Cli;
@@ -26,11 +27,11 @@ internal static class PlayTimeline
     /// <param name="charts">The batch's stored charts.</param>
     /// <param name="play">The play.</param>
     /// <param name="writer">Where the timeline goes.</param>
-    /// <param name="courseWindows">A song of a dan course: the course's windows, and its normal route, as a course plays it.</param>
+    /// <param name="courseWindows">A song of a dan course: the course's windows, and its master route, as a course plays it.</param>
     public static void Write(Rescore.ChartCache charts, Rescore.StoredPlay play, Utf8JsonWriter writer, TaikoJudgementWindows? courseWindows = null)
     {
         var stored = Rescore.Chart(charts, play.Notes, play.Source);
-        var chart = courseWindows is null ? TaikoPlayOptions.FromBits(play.Options).Apply(stored.Chart, play.Seed ?? 0) : stored.Chart.OnRoute(ChartBranch.Normal);
+        var chart = courseWindows is null ? TaikoPlayOptions.FromBits(play.Options).Apply(stored.Chart, play.Seed ?? 0) : stored.Chart.OnRoute(DanCourseTimeline.Route);
         var windows = courseWindows ?? TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course);
         var replay = TaikoReplay.Decode(play.Replay);
         // As PlayRescore and ReviewTimeline play it: one solo lane, inputs in time order, then past the chart's end.
