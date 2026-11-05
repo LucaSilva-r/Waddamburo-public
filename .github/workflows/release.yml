@@ -29,9 +29,22 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      # The native libraries (ffmpeg, vgmstream, freetype, bgfx) take most of the build: their downloaded sources
+      # and build tree are kept until anything under native/ changes.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            out/source
+            out/build/native
+          key: native-${{ matrix.target }}-${{ matrix.runner }}-${{ hashFiles('native/**') }}
 
       - name: Install the Windows cross compiler
         if: matrix.target == 'windows'
+        # A stuck Ubuntu mirror once held a release for minutes: fail, and run the job again.
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mingw-w64 ninja-build
 
       - name: Install bgfx's Linux build headers
