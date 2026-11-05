@@ -34,6 +34,11 @@
     <EmbeddedResource Include="Resources/fonts/*.gz" LogicalName="Waddamburo.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The benchmark's stress chart (BenchmarkFlow.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Benchmark/stress.tja" LogicalName="Waddamburo.Benchmark.stress.tja" />
+  </ItemGroup>
+
   <!-- UI text per language (Strings.cs). -->
   <ItemGroup>
     <EmbeddedResource Include="Languages/*.json" LogicalName="Waddamburo.Languages.%(Filename)%(Extension)" />

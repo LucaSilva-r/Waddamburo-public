@@ -18,6 +18,8 @@ internal static class FlowScenes
     public static readonly SceneId Gameplay = new("gameplay");
     /// <summary>The audio calibration's own gameplay lane.</summary>
     public static readonly SceneId Calibration = new("calibration");
+    /// <summary>The benchmark's stress song, on a lane of its own.</summary>
+    public static readonly SceneId Benchmark = new("benchmark");
     public static readonly SceneId Result = new("result");
     public static readonly SceneId Retry = new("retry");
     public static readonly SceneId GameOver = new("gameover");

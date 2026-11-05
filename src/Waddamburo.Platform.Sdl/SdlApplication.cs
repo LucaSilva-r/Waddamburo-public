@@ -388,6 +388,11 @@ public sealed unsafe class SdlApplication : IDisposable
     /// <summary>The session's performance report, when one is being recorded: every frame goes to it.</summary>
     public PerformanceRecorder? Recorder { get; set; }
 
+    private readonly System.Collections.Concurrent.ConcurrentQueue<SdlKeyboardKey> _injected = new();
+
+    /// <summary>A key press as if typed (the benchmark's scripted scrolling); delivered with the next frame's input.</summary>
+    public void InjectPress(SdlKeyboardKey key) => _injected.Enqueue(key);
+
     public bool MenuInput
     {
         get => _menuInput;
@@ -690,6 +695,8 @@ public sealed unsafe class SdlApplication : IDisposable
         _quitRequested = false;
         while (running && !_quitRequested && (frameLimit is null || renderedFrames < frameLimit))
         {
+            while (_injected.TryDequeue(out var injected))
+                pendingPresses.Add(new SdlKeyPress(injected, TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)))));
             var performanceActive = performanceVisible?.Invoke() == true;
             var inputStart = performanceActive ? Stopwatch.GetTimestamp() : 0;
             SDL_Event currentEvent;

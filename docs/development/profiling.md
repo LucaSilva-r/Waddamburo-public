@@ -1,5 +1,33 @@
 # Profiling the app
 
+## Performance reports from players
+
+Two ways to get a report a player can send with a performance problem. Both write one plain-text file
+to the game's `logs` folder (next to the crash logs), rewritten every 30 s and once more at the end, so a
+crash or a killed run keeps what came before:
+
+- **Record Performance** (Settings, or `record_performance = true` in `config.cfg`, or `--benchmark-record`):
+  records normal play until turned off or the game closes; `performance-<time>.txt`.
+- **Run Benchmark** (Settings > Display, or `--benchmark`): a fixed route that compares across machines:
+  the attract loop for 3 minutes (its demo songs and scene parts seeded, so every run picks the same),
+  Song Select scrolled by script (20 s right, 10 s left), then the built-in stress song
+  (`src/Waddamburo.App/Benchmark/stress.tja`, about 1,600 notes: streams, big notes, rolls, balloons,
+  Go-Go, scroll 0.5 to 4, BPM 240, branches) on autoplay over a click track, so it needs no song
+  library or music file; then its first 75 s again for two players (two Don-chans), then the two players'
+  results for 15 s. The report names the songs `benchmark-1p` and `benchmark-2p`. `--benchmark` quits when
+  done; from the settings the game starts again as usual. `benchmark-<time>.txt`.
+  `WADDAMBURO_BENCHMARK_ATTRACT=<seconds>` shortens the attract step when testing the route.
+
+The file, top to bottom: the machine (OS, CPU, RAM, every GPU the system lists and the one bgfx renders
+with, the display mode, the settings that matter); a summary per scene (fps, 1% low, worst frame, frames
+of 25 ms or more); memory (RSS and managed first/last/peak, the lowest RSS of every 5 minutes and its
+trend in MiB/hour after the first window: a steady climb is a leak); every frame of 25 ms or more with
+its update/render split, GC collections and pause, and the bgfx stats; events (scene switches with
+their load and collection times, focus changes, benchmark steps); then one tab-separated line per
+second: fps, 1% low, p50/p99/max frame time, longest update and render, ticks, process and system CPU
+(share of all cores), process RSS and managed heap, system RAM used/total, GC collections and pause.
+
+
 Build the app in Release mode, then launch a real session with a user-owned data
 directory. Let a person navigate Song Select and play a song; long scripted
 `--press` sequences do not represent normal use.

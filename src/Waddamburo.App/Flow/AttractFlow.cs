@@ -1,3 +1,5 @@
+using Waddamburo.Game.Scenes;
+using Waddamburo.Game.SongSelect;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
@@ -37,7 +39,14 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
     {
         // A drum hit leads to Entry: it loads in the background once per loop (loading it on the hit
         // froze the attract ~0.6 s).
-        if (Shell.Prefetched != FlowScenes.Entry)
+        // The caution screen before a demo turn: the demo is picked now and its lane loads in the background
+        // instead (starting it cold froze the attract for a moment); the demo prefetches Entry again once up.
+        if (scene == FlowScenes.Caution && (!_demoTurn || movies.Length == 0) && pickDemo() is { } demo)
+        {
+            _nextDemo = demo;
+            Shell.Prefetch(demo.Scene);
+        }
+        else if (Shell.Prefetched != FlowScenes.Entry)
             Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         if (scene == FlowScenes.Movie)
             startMovie(_openingAsTitle ? opening : null);
@@ -96,7 +105,24 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
 
     // A random stock (Green) song with a Normal chart (#19: the cabinet's demo plays Normal), from the game's own demo list (musicinfo demoplay,
     // 114 songs in Green) when it has one; no TJA, osu! or Nijiiro picks.
+    private (string Category, SongSelectSong Song, SceneDefinition Scene)? _nextDemo;
+
     private bool startDemo()
+    {
+        // Picked (and prefetched) as the caution screen began; picked now if that did not happen.
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var demo = _nextDemo ?? pickDemo();
+            _nextDemo = null;
+            if (demo is not { } picked)
+                return false;
+            if (gameplay.StartDemo(picked.Song, picked.Category, TryStart, picked.Scene))
+                return true;
+        }
+        return false;
+    }
+
+    private (string Category, SongSelectSong Song, SceneDefinition Scene)? pickDemo()
     {
         var songs = Shell.SongCatalog.Categories
             .SelectMany(category => category.Songs.Select(song => (category.Name, Song: song)))
@@ -108,16 +134,12 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         if (songs.Where(static entry => entry.Song.Descriptor.DemoPlay).ToArray() is { Length: > 0 } listed)
             songs = listed;
         var themed = songs.Where(entry => Shell.Skins.HasTheme(entry.Song.Descriptor, entry.Name)).ToArray();
-        Console.WriteLine($"Demo picks: {themed.Length} themed of {songs.Length} songs.");
-        if (themed.Length != 0 && Random.Shared.Next(4) != 0)
+        if (themed.Length != 0 && Shell.Random.Next(4) != 0)
             songs = themed;
-        for (var attempt = 0; attempt < 3 && songs.Length != 0; attempt++)
-        {
-            var (category, song) = songs[Random.Shared.Next(songs.Length)];
-            if (gameplay.StartDemo(song, category, TryStart))
-                return true;
-        }
-        return false;
+        if (songs.Length == 0)
+            return null;
+        var (category, song) = songs[Shell.Random.Next(songs.Length)];
+        return (category, song, gameplay.DemoScene(song, category));
     }
 
     /// <summary>
@@ -182,7 +204,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         if (path is null && _queue.Count == 0)
         {
             var order = movies.ToArray();
-            Random.Shared.Shuffle(order);
+            Shell.Random.Shuffle(order);
             // No CM twice in a row across refills.
             if (order.Length > 1 && order[0] == _last)
                 (order[0], order[^1]) = (order[^1], order[0]);

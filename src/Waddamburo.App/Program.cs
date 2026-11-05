@@ -50,6 +50,8 @@ try
     var exportCharts = parseOption(args, "--export-charts=");
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
     var recordPerformance = args.Contains("--benchmark-record", StringComparer.Ordinal);
+    var benchmark = args.Contains("--benchmark", StringComparer.Ordinal) ? BenchmarkMode.Quit
+        : args.Contains("--benchmark=restart", StringComparer.Ordinal) ? BenchmarkMode.Restart : BenchmarkMode.Off;
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var previewPath = parseOption(args, "--preview=");
@@ -202,10 +204,11 @@ try
             autoplay,
             arcade.Fullscreen,
             layout.ServiceFontPath,
-            recordPerformance));
+            recordPerformance,
+            benchmark));
         // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
         if (GameShell.RestartRequested)
-            SelfUpdate.Relaunch(args);
+            SelfUpdate.Relaunch([.. args.Where(static argument => !argument.StartsWith("--benchmark", StringComparison.Ordinal)), .. GameShell.RestartArguments]);
         return exitCode; // 1 after the boot's error screen
     }
     // Diagnostic runs always show their output.

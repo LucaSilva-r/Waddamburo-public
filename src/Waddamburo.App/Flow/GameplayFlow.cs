@@ -114,8 +114,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     private Func<FlowInput, bool>? _demoTakeOver;
     private static readonly TimeSpan DemoLength = TimeSpan.FromSeconds(30);
 
-    /// <summary>Starts a demo play of <paramref name="song"/> (its Normal chart); false when it cannot load.</summary>
-    public bool StartDemo(SongSelectSong song, string category, Func<FlowInput, bool> takeOver)
+    /// <summary>A demo play's lane for <paramref name="song"/> (its skin, the parts picked now): prefetched ahead, then shown.</summary>
+    public SceneDefinition DemoScene(SongSelectSong song, string category) =>
+        GameplaySceneComposition.Create(FlowScenes.Gameplay, Shell.Random, Shell.EnsoLayout,
+            Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin), 0, twoPlayers: false);
+
+    /// <summary>Starts a demo play of <paramref name="song"/> (its Normal chart) on <paramref name="scene"/>; false when it cannot load.</summary>
+    public bool StartDemo(SongSelectSong song, string category, Func<FlowInput, bool> takeOver, SceneDefinition scene)
     {
         var chart = song.Descriptor.Charts.FirstOrDefault(static chart => chart.Course is TaikoCourse.Normal);
         if (chart?.Course is not { } course)
@@ -145,13 +150,14 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
             sounds.PrepareDrums(false);
         }
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), 1, Final: false);
-        Shell.Catalog.Replace(GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout,
-            Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin), 0, twoPlayers: false));
+        Shell.Catalog.Replace(scene);
         Prepare([loaded], song, 0, null);
         _demo = true;
         _demoTakeOver = takeOver;
         _directStart = true;
         Shell.Show(FlowScenes.Gameplay);
+        // A drum hit during the demo opens Entry: it loads in the background again (the demo's lane took the slot).
+        Shell.Prefetch(Shell.Catalog.GetDefinition(FlowScenes.Entry));
         Console.WriteLine($"Demo play: {song.Descriptor.Key} ({course}).");
         return true;
     }

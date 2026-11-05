@@ -379,7 +379,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                     Hint: Strings.T("settings.calibrate.hint"))] : (Row[])[],
             .. _home && section == DisplaySection
                 ? [new Row(upper(Strings.T("settings.bake")), 400, Gap: true, Enter: () => run(HomeMenuAction.BakeTextures),
-                    Hint: Strings.T("settings.bake.hint"))] : (Row[])[],
+                    Hint: Strings.T("settings.bake.hint")),
+                    new Row(upper(Strings.T("settings.benchmark")), 400, Enter: () => run(HomeMenuAction.RunBenchmark),
+                    Hint: Strings.T("settings.benchmark.hint"))] : (Row[])[],
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Network =>

@@ -137,6 +137,8 @@
   "settings.long_titles.hint": "Song titles too long for their column: shrink the text, or squash it at full width like the arcade.",
   "settings.bake": "Bake All Textures",
   "settings.bake.hint": "Upscale every texture the game uses now, with most of the CPU. Stop at any time; finished ones are kept.",
+  "settings.benchmark": "Run Benchmark",
+  "settings.benchmark.hint": "Restarts the game into a 5-minute benchmark (attract, song select, a stress song), then starts it again as usual. The report goes to the logs folder: send it with a performance problem.",
 
   "buttons.back": "Back",
   "buttons.back.hint": "The menu (Escape too), back.",

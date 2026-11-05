@@ -50,7 +50,11 @@ internal sealed record GameOptions(
     bool Autoplay = false,
     bool Fullscreen = false,
     string? ServiceFontPath = null,
-    bool RecordPerformance = false);
+    bool RecordPerformance = false,
+    BenchmarkMode Benchmark = BenchmarkMode.Off);
+
+/// <summary>--benchmark: off, run and quit, or run and start the game again (Settings > Run Benchmark).</summary>
+internal enum BenchmarkMode { Off, Quit, Restart }
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -226,6 +230,21 @@ internal sealed class GameShell : IDisposable
     /// <summary>The game closed to start again (the caller relaunches it once everything is released).</summary>
     public static bool RestartRequested { get; private set; }
 
+    /// <summary>The arguments the relaunch adds (--benchmark=restart from the settings), or none.</summary>
+    public static string[] RestartArguments { get; private set; } = [];
+
+    /// <summary>The randomness of what should repeat in a benchmark (demo songs, scene parts); shared otherwise.</summary>
+    public Random Random { get; private set; } = Random.Shared;
+
+    private readonly BenchmarkRun? _benchmark;
+
+    /// <summary>Settings > Run Benchmark: the game starts again into the benchmark, then again as usual.</summary>
+    public void RequestBenchmark()
+    {
+        RestartArguments = ["--benchmark=restart"];
+        RequestRestart();
+    }
+
     /// <summary>Closes the game to start it again (see <see cref="RestartRequested"/>).</summary>
     public void RequestRestart()
     {
@@ -286,12 +305,13 @@ internal sealed class GameShell : IDisposable
     /// </summary>
     public void ApplyRecording()
     {
-        var wanted = (Options.RecordPerformance || Arcade.RecordPerformance) && !Headless;
+        var wanted = (Options.RecordPerformance || Options.Benchmark != BenchmarkMode.Off || Arcade.RecordPerformance) && !Headless;
         if (wanted && Application.Recorder is null)
         {
             var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(GameShell).Assembly)?.InformationalVersion ?? "?";
             Application.Recorder = new PerformanceRecorder(
-                Path.Combine(ReleaseConsole.CrashFolder, $"performance-{DateTime.Now:yyyyMMdd-HHmmss}.txt"), "session",
+                Path.Combine(ReleaseConsole.CrashFolder, $"{(Options.Benchmark != BenchmarkMode.Off ? "benchmark" : "performance")}-{DateTime.Now:yyyyMMdd-HHmmss}.txt"),
+                Options.Benchmark != BenchmarkMode.Off ? "benchmark (attract 3 min, song select scroll, stress song)" : "session",
                 [$"version\t{version}", .. Application.DescribeRendering(),
                     $"settings\tvsync {Arcade.Vsync}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
@@ -536,6 +556,8 @@ internal sealed class GameShell : IDisposable
                     GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
                     // Placeholder: the audio calibration replaces it with a fresh lane each time.
                     GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
+                    // Placeholder too: the benchmark puts its lane here.
+                    GameplaySceneComposition.Create(FlowScenes.Benchmark, Random.Shared, EnsoLayout),
                     options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear ? FlowScenes.DaniResults
                         : _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
                 ]),
@@ -627,6 +649,13 @@ internal sealed class GameShell : IDisposable
             _attract = new AttractFlow(this, _gameplay, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
                 AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
             var calibration = new CalibrationFlow(this);
+            var benchmarkSong = new BenchmarkFlow(this);
+            if (options.Benchmark != BenchmarkMode.Off)
+            {
+                // The same demo songs and scene parts every run.
+                Random = new Random(20261105);
+                _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart);
+            }
             _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
             _search = new SongSearch(this, _libraries.Snapshot, Painter);
             _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
@@ -650,6 +679,7 @@ internal sealed class GameShell : IDisposable
                 [FlowScenes.DaniSelect] = songSelect,
                 [FlowScenes.Gameplay] = _gameplay,
                 [FlowScenes.Calibration] = calibration,
+                [FlowScenes.Benchmark] = benchmarkSong,
                 [FlowScenes.Result] = ending,
                 [FlowScenes.Retry] = ending,
                 [FlowScenes.GameOver] = ending,
@@ -833,6 +863,7 @@ internal sealed class GameShell : IDisposable
         if (_crashAt == Tick)
             throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
+        _benchmark?.Tick();
         Book.PowerOnTicks++;
         if (_gameplay.Playing)
             Book.PlayTicks++;
@@ -924,7 +955,7 @@ internal sealed class GameShell : IDisposable
             : _inputOverlays.Any(overlay => overlay.Tick(keys, escape));
 
     // A gameplay lane is on screen: a song or the audio calibration (drums drive it, not the movies' controls).
-    private bool onLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration;
+    private bool onLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration || Active.Id == FlowScenes.Benchmark;
 
     // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
     // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).

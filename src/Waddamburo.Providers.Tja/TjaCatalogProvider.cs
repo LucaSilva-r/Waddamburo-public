@@ -189,6 +189,10 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         return ValueTask.FromResult(stream);
     }
 
+    /// <summary>A single-player TJA held in memory (the benchmark's own chart): <paramref name="course"/>'s first chart.</summary>
+    public static PlayableChart ReadChart(ReadOnlySpan<byte> bytes, ChartKey key, TaikoCourse course) =>
+        TjaPlayableChartReader.Read(bytes, key, new TjaChartLocator("", "", course, "", 1), int.MaxValue, int.MaxValue);
+
     public async ValueTask<PlayableChart> LoadChartAsync(
         ChartKey chart,
         CatalogAssetKey asset,

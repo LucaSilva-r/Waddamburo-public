@@ -162,6 +162,10 @@ internal sealed class HomeControls : IDisposable
                     _audio.MuteAttract(false);
                     _calibration.Requested = true;
                     break;
+                case HomeMenuAction.RunBenchmark:
+                    save();
+                    _shell.RequestBenchmark();
+                    break;
                 case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                     _menu.ShowBake(_shell.Bake is { Running: true } running ? running
                         : _shell.Bake = TextureBake.Start(upscale, _assetRoot));

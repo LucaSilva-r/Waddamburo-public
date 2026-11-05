@@ -30,6 +30,8 @@ internal enum HomeMenuAction
     EndCalibration,
     /// <summary>Open the settings overlay (the service menu's home pages) over the pause choices.</summary>
     Settings,
+    /// <summary>Start the game again into the benchmark (it starts again as usual after).</summary>
+    RunBenchmark,
 }
 
 /// <summary>
