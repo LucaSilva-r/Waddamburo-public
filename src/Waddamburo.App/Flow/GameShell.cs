@@ -321,6 +321,9 @@ internal sealed class GameShell : IDisposable
             Arcade.FullscreenHeight, Arcade.RefreshRate, Arcade.LetterboxSize / 100f, Arcade.LetterboxX / 100f, Arcade.LetterboxY / 100f,
             exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap);
         Application.ApplyDisplay(display);
+        // Without upscaled textures the game draws the basic version of everything (Don-chan unsupersampled).
+        if (DonRenderer is not null)
+            DonRenderer.Supersample = Arcade.UpscaleTextures;
         // The stage is 720 lines: 1080p loads textures at 1.5x, 1440p at 2x, 4K at the model's 3x.
         if (Upscale is not null)
             Upscale.Scale = Math.Clamp(Math.Ceiling(Application.StageHeight(display) / 720d * 2) / 2, 1, 3);

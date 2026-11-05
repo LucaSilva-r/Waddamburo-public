@@ -256,6 +256,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             _accessoryTicks[index] += frames;
     }
 
+    /// <summary>
+    /// Don-chan is drawn at up to twice the stage scale and anti-aliased by the downscale (the game's quality
+    /// setting: upscaled textures on); off, at the window's own scale. The kusudama and balloon camera's big
+    /// target at 2x took an integrated GPU from 16 to 25 ms a frame (40 fps on a Celeron).
+    /// </summary>
+    public bool Supersample { get; set; } = true;
+
     void IGpuRenderPrepass.Record(uint width, uint height)
     {
         // Render at twice the window's stage scale and let the composite's downscale anti-alias, up to
@@ -265,7 +272,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         // his edges (visible at 4K).
         // ponytail: 2x stage cap with a native floor; a setting if 4K on integrated graphics is too slow.
         var scale = Math.Min(width / 1280f, height / 720f);
-        var supersample = Math.Max(scale, Math.Min(scale * 2, 2));
+        var supersample = Supersample ? Math.Max(scale, Math.Min(scale * 2, 2)) : scale;
         uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * supersample / 8) * 8, 64, 4096);
         for (var index = 0; index < _players.Length; index++)
         {
