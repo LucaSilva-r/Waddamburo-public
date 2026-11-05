@@ -144,6 +144,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, step) => value + 50 * Math.Sign(step), 0,
             static value => value == 0 ? T("settings.retry_hold.instant") : T("settings.retry_hold.value", value), 1000,
             Hint: T("settings.retry_hold.hint"))),
+        new(Setting: toggle("settings.record_performance", static s => s.RecordPerformance, static (s, v) => s with { RecordPerformance = v })),
         new(T("section.controls")),
         new(T("section.sound")),
         new(Setting: toggle("settings.stereo_panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v })),

@@ -86,6 +86,8 @@
   "settings.retry_hold.value": "{0} ms",
   "settings.retry_hold.instant": "Instant",
   "settings.retry_hold.hint": "How long the retry key (Q) is held before the song restarts.",
+  "settings.record_performance": "Record Performance",
+  "settings.record_performance.hint": "Writes a performance report (frame times, CPU and memory use) to the logs folder until turned off or the game closes. Send it with a performance problem.",
   "settings.stereo_panning": "Stereo Panning",
   "settings.stereo_panning.hint": "With two players, each side's sounds come from its own speaker.",
   "settings.mute_in_background": "Mute in Background",

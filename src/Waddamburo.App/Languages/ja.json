@@ -86,6 +86,8 @@
   "settings.retry_hold.value": "{0} ms",
   "settings.retry_hold.instant": "即時",
   "settings.retry_hold.hint": "リトライキー (Q) を押し続けてから曲がやり直しになるまでの時間です。",
+  "settings.record_performance": "パフォーマンス記録",
+  "settings.record_performance.hint": "オフにするかゲームを閉じるまで、パフォーマンスの記録（フレーム時間、CPU とメモリの使用量）を logs フォルダに書き出します。動作が重いときの報告に添えてください。",
   "settings.stereo_panning": "ステレオ定位",
   "settings.stereo_panning.hint": "2人プレイで、それぞれの音をそれぞれの側のスピーカーから鳴らします。",
   "settings.mute_in_background": "バックグラウンドで消音",

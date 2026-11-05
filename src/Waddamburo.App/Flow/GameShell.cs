@@ -49,7 +49,8 @@ internal sealed record GameOptions(
     string? ScoresPath = null,
     bool Autoplay = false,
     bool Fullscreen = false,
-    string? ServiceFontPath = null);
+    string? ServiceFontPath = null,
+    bool RecordPerformance = false);
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -280,6 +281,35 @@ internal sealed class GameShell : IDisposable
     }
 
     /// <summary>Applies the display settings (vsync, fullscreen, letterbox) and sizes the upscaled textures for them.</summary>
+    /// <summary>
+    /// Starts or ends the performance report as the setting (or --benchmark-record) asks; ending it writes the file.
+    /// </summary>
+    public void ApplyRecording()
+    {
+        var wanted = (Options.RecordPerformance || Arcade.RecordPerformance) && !Headless;
+        if (wanted && Application.Recorder is null)
+        {
+            var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(GameShell).Assembly)?.InformationalVersion ?? "?";
+            Application.Recorder = new PerformanceRecorder(
+                Path.Combine(ReleaseConsole.CrashFolder, $"performance-{DateTime.Now:yyyyMMdd-HHmmss}.txt"), "session",
+                [$"version\t{version}", .. Application.DescribeRendering(),
+                    $"settings\tvsync {Arcade.Vsync}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
+                    + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
+                    + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
+                    + $"audio buffer {Arcade.AudioBufferFrames}{(Arcade.AudioExclusive ? " exclusive" : "")}",
+                    // Upscaled textures are 9x the pixels (BC7 on the GPU when it has it, else RGBA): they change memory and load times most.
+                    $"upscaled textures\t{(Upscale is not { } upscale ? "unavailable (no model)"
+                        : !Arcade.UpscaleTextures ? "off" : $"on, shown {Application.ShowUpscaled}, scale {upscale.Scale:0.#}x, "
+                            + $"{upscale.CachedCount} cached, {(Application.SupportsBc7 ? "BC7" : "RGBA")} on the GPU, {Arcade.UpscaleThreads} threads")}"]);
+            PerformanceRecorder.Scene = Active?.Id.ToString() ?? "-";
+        }
+        else if (!wanted && Application.Recorder is { } recorder)
+        {
+            Application.Recorder = null;
+            recorder.Dispose();
+        }
+    }
+
     public void ApplyDisplay()
     {
         if (Headless)
@@ -720,6 +750,7 @@ internal sealed class GameShell : IDisposable
             _boot?.Dispose();
             _boot = null;
 
+            ApplyRecording();
             var result = Application.Run(
                 createFrame,
                 tick,
@@ -764,6 +795,8 @@ internal sealed class GameShell : IDisposable
         }
         finally
         {
+            Application.Recorder?.Dispose();
+            Application.Recorder = null;
             _attract.Dispose();
             Overlay.Dispose();
             _presenter.Dispose();
@@ -1148,10 +1181,10 @@ internal sealed class GameShell : IDisposable
         else if (onLane)
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
         Application.DiscardElapsed();
-        if (profile)
+        if (profile || PerformanceRecorder.Current is not null)
         {
             using var process = Process.GetCurrentProcess();
-            Console.Error.WriteLine($"Profile switch {from} -> {Active.Id}: "
+            var line = ($"Profile switch {from} -> {Active.Id}: "
                 + $"exit {Stopwatch.GetElapsedTime(start, released).TotalMilliseconds:F0} ms, "
                 + $"load {Stopwatch.GetElapsedTime(released, loaded).TotalMilliseconds:F0} ms, "
                 + $"enter {Stopwatch.GetElapsedTime(loaded, collect).TotalMilliseconds:F0} ms, "
@@ -1160,6 +1193,9 @@ internal sealed class GameShell : IDisposable
                 + $"GC {GC.CollectionCount(0) - gen0}/{GC.CollectionCount(1) - gen1}/{GC.CollectionCount(2) - gen2}, "
                 + $"managed {GC.GetTotalMemory(false) / 1048576d:F1} MiB, "
                 + $"RSS {process.WorkingSet64 / 1048576d:F1} MiB (peak {process.PeakWorkingSet64 / 1048576d:F1}).");
+            if (profile)
+                Console.Error.WriteLine(line);
+            PerformanceRecorder.Current?.Event(line["Profile ".Length..]);
         }
     }
 
@@ -1167,6 +1203,7 @@ internal sealed class GameShell : IDisposable
     {
         Active = Coordinator.ActiveScene as LumenGameSceneInstance
             ?? throw new InvalidOperationException("The active scene is not a Lumen scene instance.");
+        PerformanceRecorder.Scene = Active.Id.ToString();
         _presenter.Activate(Active);
         flowOf(Active.Id).Enter(Active.Id);
     }

@@ -124,6 +124,20 @@ public sealed unsafe class SdlApplication : IDisposable
         SDL_SetWindowFullscreen(_window, display.Fullscreen);
     }
 
+    /// <summary>What the game renders with and on, for a performance report.</summary>
+    public IReadOnlyList<string> DescribeRendering()
+    {
+        if (_renderer is null)
+            return [];
+        var caps = Bgfx.bgfx.get_caps();
+        var renderer = $"renderer\t{BgfxSupport.RendererName}, GPU {SystemInfo.Vendor(caps->vendorId.ToString(System.Globalization.CultureInfo.InvariantCulture))} "
+            + $"{caps->vendorId:x4}:{caps->deviceId:x4}";
+        var stats = Bgfx.bgfx.get_stats();
+        var mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(_window));
+        return [renderer, $"display\tbackbuffer {stats->width}x{stats->height}, display mode "
+            + (mode is null ? "?" : $"{mode->w}x{mode->h} @ {mode->refresh_rate:F1} Hz")];
+    }
+
     private (int Width, int Height) desktop()
     {
         var mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(_window));
@@ -370,6 +384,9 @@ public sealed unsafe class SdlApplication : IDisposable
 
     /// <summary>Menus turn mouse wheel notches and left clicks (a don) into presses (false: the mouse is ignored there).</summary>
     public bool MouseControls { get; set; } = true;
+
+    /// <summary>The session's performance report, when one is being recorded: every frame goes to it.</summary>
+    public PerformanceRecorder? Recorder { get; set; }
 
     public bool MenuInput
     {
@@ -689,6 +706,7 @@ public sealed unsafe class SdlApplication : IDisposable
                     _pressedKeys.Clear();
                     windowFocused = false;
                     Focused = false;
+                    Recorder?.Event("window lost focus");
                     if (pointerReleased is not null)
                     {
                         SDL_CaptureMouse(false);
@@ -698,6 +716,7 @@ public sealed unsafe class SdlApplication : IDisposable
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED)
                 {
                     windowFocused = Focused = true;
+                    Recorder?.Event("window focused");
                     _focusedAt = currentEvent.window.timestamp;
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION && pointerMoved is not null)
@@ -905,6 +924,7 @@ public sealed unsafe class SdlApplication : IDisposable
             var profileEligibleAtEnd = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             if (performanceActive)
                 performanceSample?.Invoke(new SdlFrameMetrics(elapsed, inputTime, updateTime, renderTime, update.ExecutedTicks));
+            Recorder?.Record(elapsed, updateTime, renderTime, update.ExecutedTicks, gpuStats);
             if (frameProfile is not null)
             {
                 if (previousProfileEligible && profileEligibleAtStart && profileEligibleAtEnd)

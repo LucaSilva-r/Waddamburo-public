@@ -49,6 +49,7 @@ try
     var logout = args.Contains("--logout", StringComparer.Ordinal);
     var exportCharts = parseOption(args, "--export-charts=");
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
+    var recordPerformance = args.Contains("--benchmark-record", StringComparer.Ordinal);
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var previewPath = parseOption(args, "--preview=");
@@ -200,7 +201,8 @@ try
             Path.Combine(layout.Home, Waddamburo.Game.Scores.ScoreStore.FileName),
             autoplay,
             arcade.Fullscreen,
-            layout.ServiceFontPath));
+            layout.ServiceFontPath,
+            recordPerformance));
         // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
         if (GameShell.RestartRequested)
             SelfUpdate.Relaunch(args);

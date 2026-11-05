@@ -49,6 +49,7 @@ internal sealed class HomeControls : IDisposable
             _audio.Apply(settings);
             shell.ApplyDisplay();
             shell.ApplyControls();
+            shell.ApplyRecording();
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.Skins = shell.Skins.Names;
