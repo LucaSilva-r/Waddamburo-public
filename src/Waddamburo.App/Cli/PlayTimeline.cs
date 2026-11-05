@@ -31,7 +31,7 @@ internal static class PlayTimeline
     public static void Write(Rescore.ChartCache charts, Rescore.StoredPlay play, Utf8JsonWriter writer, TaikoJudgementWindows? courseWindows = null)
     {
         var stored = Rescore.Chart(charts, play.Notes, play.Source);
-        var chart = courseWindows is null ? TaikoPlayOptions.FromBits(play.Options).Apply(stored.Chart, play.Seed ?? 0) : stored.Chart.OnRoute(DanCourseTimeline.Route);
+        var chart = courseWindows is null ? TaikoPlayOptions.FromBits(play.Options).Apply(stored.Chart, play.Seed ?? 0) : DanCourseTimeline.Played(stored.Chart);
         var windows = courseWindows ?? TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course);
         var replay = TaikoReplay.Decode(play.Replay);
         // As PlayRescore and ReviewTimeline play it: one solo lane, inputs in time order, then past the chart's end.

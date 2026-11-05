@@ -29,8 +29,14 @@ public sealed class DanCourseTimeline
     public IReadOnlyList<(PlayableChart Chart, TaikoCourse Course)> Authored { get; private init; } = [];
 
     /// <summary>A dan course plays a branched song on its master route, with no checks (official course note counts:
-    /// rot42 999 = master, normal 981; uhear2 1134 = master only). A chart without checks is played as it is.</summary>
-    public const ChartBranch Route = ChartBranch.Master;
+    /// rot42 999 = master, normal 981; uhear2 1134 = master only). A chart without checks is played as it is, and so
+    /// is one whose master route has no notes (Nijiiro 2021's medl22: a check, notes on the normal route only, 940 official).</summary>
+    public static PlayableChart Played(PlayableChart authored)
+    {
+        ArgumentNullException.ThrowIfNull(authored);
+        var master = authored.OnRoute(ChartBranch.Master);
+        return master.HitObjects.Length == 0 && master.LongNotes.Length == 0 ? authored.OnRoute(ChartBranch.Normal) : master;
+    }
 
     public static DanCourseTimeline Merge(IReadOnlyList<(PlayableChart Chart, TaikoCourse Course)> charts)
     {
@@ -40,7 +46,7 @@ public sealed class DanCourseTimeline
         var at = TimeSpan.Zero;
         foreach (var (authored, course) in charts)
         {
-            var chart = authored.OnRoute(Route);
+            var chart = Played(authored);
             var leadIn = new GameplayTimeline(chart.AuthoredOffset, CardLeadIn).LeadIn;
             songs.Add(new DanTimelineSong(at, at + leadIn, at + leadIn + chart.Duration, chart, course));
             at += leadIn + chart.Duration;

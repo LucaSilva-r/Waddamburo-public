@@ -52,6 +52,23 @@ public sealed class DanCourseTimelineTests
         Assert.Equal(PlayableNoteKind.Ka, Assert.Single(course.Chart.HitObjects).Kind);
     }
 
+    [Fact]
+    public void ABranchedSongWithAnEmptyMasterRoutePlaysItsNormalRoute()
+    {
+        var plain = chart("a", 10);
+        var branched = new PlayableChart(plain.Key, TimeSpan.Zero, plain.Duration,
+            [new PlayableHitObject(TimeSpan.FromSeconds(2), PlayableNoteKind.Don) { Branch = ChartBranch.Normal }],
+            plain.TimingPoints, plain.ScrollPoints, plain.EffectPoints, plain.BarLines)
+        {
+            Branching = new ChartBranching([new ChartBranchCheck(TimeSpan.Zero, TimeSpan.FromSeconds(1),
+                new(0, 0), new(0, 0), new(0, 0))], ChartBranchPoints.Default),
+        };
+
+        var course = DanCourseTimeline.Merge([(branched, TaikoCourse.Oni)]);
+
+        Assert.Equal(PlayableNoteKind.Don, Assert.Single(course.Chart.HitObjects).Kind);
+    }
+
     private static DanCourseTimeline merged() => DanCourseTimeline.Merge(
         [(chart("a", 10), TaikoCourse.Hard), (chart("b", 20), TaikoCourse.Hard), (chart("c", 30), TaikoCourse.Oni)]);
 
