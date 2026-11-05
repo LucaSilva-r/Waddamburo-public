@@ -285,6 +285,10 @@ public sealed class TaikoLumenPresentation
             || !_feedback.TryGotoLabel("", "hit_" + label
                 + (result.HitObject.IsStrong && result.Result != TaikoHitResult.Miss ? "_big" : "")))
             throw new InvalidDataException("Gameplay movie is missing a judgement state.");
+        // Traced (session6/12/27): a press that judges a note turns the lane's don_s/katsu_s into the brighter
+        // don_hit/katsu_hit in the same tick. ponytail: bads keep the plain flash (none traced); don_b/katsu_b unseen.
+        if (result.Result is TaikoHitResult.Great or TaikoHitResult.Good)
+            _target.Player.TryGotoLabel("effect", result.HitObject.Kind == PlayableNoteKind.Ka ? "katsu_hit" : "don_hit");
     }
 
     private static void callback(LumenPlayer player, string name, LumenHostValue value)
