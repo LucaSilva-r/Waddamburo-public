@@ -262,18 +262,60 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             return new RgbaTextSurface(width, height, rgba);
         }
         if (request.Kind == TitleTextureKind.Description)
-            return FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)rasterScale, squash);
+            return supersampled(rasterScale, scale => FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)scale, squash));
         if (request.Art is { } art)
             return request.Part == FolderArtPart.Box
                 ? (art.Style is FolderArtStyle.Original or FolderArtStyle.Nijiiro ? _normalModeBox.Value
                     : art.Style == FolderArtStyle.Online ? _twoPlayerModeBox.Value : null) ?? FolderArtPainter.Box(art)
                 : FolderArtPainter.Pattern(art);
         if (request.Kind != TitleTextureKind.Banner)
-            return NativeVerticalTextRasterizer.RenderSongTitle(
-                _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, rasterScale, squash);
-        var canvas = new VectorCanvas(BannerWidth, BannerHeight, (int)rasterScale, _fontPath);
-        canvas.Text(request.Text, BannerWidth / 2f, BannerHeight / 2f, BannerWidth - 16, BannerHeight - 8);
-        return new RgbaTextSurface((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
+            return supersampled(rasterScale, scale => NativeVerticalTextRasterizer.RenderSongTitle(
+                _fontPath, request.Text, request.Subtitle, profile, request.OutlineRgb, scale, squash));
+        return supersampled(rasterScale, scale =>
+        {
+            var canvas = new VectorCanvas(BannerWidth, BannerHeight, (int)scale, _fontPath);
+            canvas.Text(request.Text, BannerWidth / 2f, BannerHeight / 2f, BannerWidth - 16, BannerHeight - 8);
+            return new RgbaTextSurface((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
+        });
+    }
+
+    // Titles are drawn at twice their scale and averaged down 2x2: the black outline's edge (a distance from a
+    // thresholded glyph, so it followed the pixel grid in steps) comes out as smooth as the game's own text.
+    // The native rasterizer stops at 4x; past that a title is drawn at its own scale.
+    private static RgbaTextSurface supersampled(uint scale, Func<uint, RgbaTextSurface> render)
+    {
+        if (scale * 2 > 4)
+            return render(scale);
+        var large = render(scale * 2);
+        var (width, height) = (large.Width / 2, large.Height / 2);
+        var pixels = new byte[width * height * 4];
+        var source = large.Pixels;
+        var stride = (int)large.Width * 4;
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                // Premultiplied average: transparent pixels add no colour.
+                float alpha = 0, red = 0, green = 0, blue = 0;
+                for (var dy = 0; dy < 2; dy++)
+                    for (var dx = 0; dx < 2; dx++)
+                    {
+                        var index = (y * 2 + dy) * stride + (x * 2 + dx) * 4;
+                        var a = source[index + 3];
+                        alpha += a;
+                        red += source[index] * a;
+                        green += source[index + 1] * a;
+                        blue += source[index + 2] * a;
+                    }
+                var output = (y * (int)width + x) * 4;
+                if (alpha > 0)
+                {
+                    pixels[output] = (byte)Math.Round(red / alpha);
+                    pixels[output + 1] = (byte)Math.Round(green / alpha);
+                    pixels[output + 2] = (byte)Math.Round(blue / alpha);
+                }
+                pixels[output + 3] = (byte)Math.Round(alpha / 4);
+            }
+        return new RgbaTextSurface(width, height, pixels);
     }
 
     private void touch(RasterKey key, LinkedListNode<RasterKey> node)
