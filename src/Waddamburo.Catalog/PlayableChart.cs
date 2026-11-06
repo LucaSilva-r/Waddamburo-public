@@ -182,11 +182,23 @@ public readonly record struct ChartScrollPoint
         Multiplier = multiplier;
     }
 
-    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier);
+    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier) { Imaginary = Imaginary };
 
     public TimeSpan Time { get; }
     public double Multiplier { get; }
+
+    /// <summary>
+    /// TJA complex scroll (<c>#SCROLL 1+2i</c>): the vertical speed, as <see cref="Multiplier"/> is the horizontal one
+    /// (positive: the note starts below the target). Drawing only, so it stays out of <see cref="ChartHash"/>.
+    /// </summary>
+    public double Imaginary { get; init; }
 }
+
+/// <summary>
+/// TJA <c>#JPOSSCROLL</c>: from <see cref="Time"/> the hit target slides by (<see cref="X"/>, <see cref="Y"/>) stage
+/// pixels over <see cref="Duration"/>, already cut short where the next move starts. Drawing only.
+/// </summary>
+public readonly record struct ChartJudgeMove(TimeSpan Time, TimeSpan Duration, double X, double Y);
 
 public readonly record struct ChartEffectPoint
 {
@@ -289,6 +301,23 @@ public sealed record PlayableChart
     /// </summary>
     public ImmutableArray<ChartRouteControls> RouteControls { get; init; } = [];
 
+    /// <summary>The hit target's moves (TJA #JPOSSCROLL), in time order; drawing only, so not in <see cref="ChartHash"/>.</summary>
+    public ImmutableArray<ChartJudgeMove> JudgeMoves { get; init; } = [];
+
+    /// <summary>How far the hit target has moved from its place at <paramref name="time"/>.</summary>
+    // ponytail: walks every move per call; charts have a handful. Binary search if one has thousands.
+    public (double X, double Y) JudgeOffsetAt(TimeSpan time)
+    {
+        var (x, y) = (0d, 0d);
+        foreach (var move in JudgeMoves)
+        {
+            if (time <= move.Time) break;
+            var done = move.Duration <= TimeSpan.Zero ? 1 : Math.Min(1, (time - move.Time) / move.Duration);
+            (x, y) = (x + move.X * done, y + move.Y * done);
+        }
+        return (x, y);
+    }
+
     /// <summary>The tempo at <paramref name="time"/>: every note asks on every frame, so this does not walk the list.</summary>
     public double BeatsPerMinuteAt(TimeSpan time, ChartBranch? route = null)
     {
@@ -306,7 +335,10 @@ public sealed record PlayableChart
     }
 
     /// <summary>The scroll multiplier at <paramref name="time"/>, 1 before the first point.</summary>
-    public double ScrollAt(TimeSpan time, ChartBranch? route = null)
+    public double ScrollAt(TimeSpan time, ChartBranch? route = null) => ScrollPointAt(time, route).Multiplier;
+
+    /// <summary>The scroll point in effect at <paramref name="time"/> (horizontal and vertical speed), 1 before the first.</summary>
+    public ChartScrollPoint ScrollPointAt(TimeSpan time, ChartBranch? route = null)
     {
         var points = route is { } own && !RouteControls.IsEmpty ? RouteControls[(int)own].Scroll : ScrollPoints;
         var (low, high) = (0, points.Length);
@@ -318,7 +350,7 @@ public sealed record PlayableChart
             else
                 high = middle;
         }
-        return low == 0 ? 1 : points[low - 1].Multiplier;
+        return low == 0 ? new ChartScrollPoint(TimeSpan.Zero, 1) : points[low - 1];
     }
 
     /// <summary>The Go-Go points of <paramref name="route"/>; null, or a route without its own, the main route's.</summary>
@@ -378,6 +410,7 @@ public sealed record PlayableChart
             ScoreInit = ScoreInit,
             ScoreDiff = ScoreDiff,
             ShinuchiBase = ShinuchiBase,
+            JudgeMoves = JudgeMoves,
         };
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(

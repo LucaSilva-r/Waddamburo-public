@@ -472,6 +472,20 @@ public sealed class LumenPlayer
     }
 
     /// <summary>
+    /// Moves a named clip by (dx, dy) in its parent's space, as a script write to _x/_y would: its timeline no
+    /// longer places it (a tween on it stops). The move blends like any other between ticks.
+    /// </summary>
+    public bool TryMoveInstance(string instancePath, float dx, float dy)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        if (findInstance(instancePath) is not { } instance)
+            return false;
+        instance.ScriptTransformed = true;
+        instance.Transform = instance.Transform with { X = instance.Transform.X + dx, Y = instance.Transform.Y + dy };
+        return true;
+    }
+
+    /// <summary>
     /// Reads a script variable or named clip by dotted path from the root (e.g. "main.isAllEnd"), as the game
     /// polls movie state. Null when any step is missing.
     /// </summary>

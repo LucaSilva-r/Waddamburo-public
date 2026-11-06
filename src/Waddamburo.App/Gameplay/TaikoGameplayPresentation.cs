@@ -519,7 +519,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
                 if (cleared && !missed) _character?.React("don_full_combo");
             };
-            (float X, float Y) hitPoint = default; // the lane's target, once its presentation exists below
+            (float X, float Y) hitPoint = default; // the lane's target (moved by #JPOSSCROLL), once its presentation exists below
             var hitRadius = 0f;
             counted.Judged += judgement =>
             {
@@ -527,7 +527,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 // unhit has no hit to time.
                 if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is { } result)
                 {
-                    var (x, y) = hitPoint;
+                    var (x, y) = _presentation?.HitPoint ?? hitPoint;
                     LastTiming = new TimingMark(offset < TimeSpan.Zero, result == TaikoHitResult.Great, x, y, hitRadius,
                         System.Diagnostics.Stopwatch.GetTimestamp());
                 }

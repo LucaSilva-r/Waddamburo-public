@@ -167,7 +167,7 @@ public sealed class TaikoLongNotePresentation
 
     /// <summary>Visible long notes with their start times (for chart-order drawing); <paramref name="bodies"/> false: their text only (ドロン).</summary>
     public IEnumerable<(TimeSpan Start, LumenSceneLayer Layer)> NoteLayers(TimeSpan time,
-        Func<TimeSpan, TimeSpan, ChartBranch?, float> position, float hitX, float hitY, bool bodies = true)
+        Func<TimeSpan, TimeSpan, ChartBranch?, (float X, float Y)> position, (float X, float Y) target, bool bodies = true)
     {
         var retained = new HashSet<int>();
         for (var index = _chart.LongNotes.Length - 1; index >= 0; index--)
@@ -181,9 +181,12 @@ public sealed class TaikoLongNotePresentation
             if (note.IsBalloon && !unplayed && (time >= note.EndTime || _session.GetLongNoteProgress(index).IsPopped)) continue;
             var held = IsHeld(index, time);
             if (note.IsBalloon && time >= note.StartTime && !held && !unplayed) continue;
-            var head = held ? hitX : position(unplayed ? note.EndTime : note.StartTime, note.StartTime, note.Branch);
+            var head = held ? target : position(unplayed ? note.EndTime : note.StartTime, note.StartTime, note.Branch);
             var tail = note.IsBalloon ? head : position(note.EndTime, note.StartTime, note.Branch);
-            if (Math.Max(head, tail) < -100 || Math.Min(head, tail) > 1380) continue;
+            if (Math.Max(head.X, tail.X) < -100 || Math.Min(head.X, tail.X) > 1380
+                || Math.Max(head.Y, tail.Y) < -100 || Math.Min(head.Y, tail.Y) > 820) continue;
+            var (dx, dy) = (tail.X - head.X, tail.Y - head.Y);
+            var length = MathF.Sqrt(dx * dx + dy * dy);
             retained.Add(index);
             if (!_visible.TryGetValue(index, out var layer))
             {
@@ -192,10 +195,13 @@ public sealed class TaikoLongNotePresentation
                     throw new InvalidDataException("Long-note movie has no initial note state.");
                 _visible.Add(index, layer);
             }
-            var transform = LumenMatrix.Identity with { X = head, Y = hitY, M11 = tail < head ? -1 : 1 };
+            // Along the roll, head to tail: mirrored when it runs left, turned when it slants (TJA complex scroll).
+            var transform = dy == 0 || length == 0
+                ? LumenMatrix.Identity with { X = head.X, Y = head.Y, M11 = dx < 0 ? -1 : 1 }
+                : new LumenMatrix(dx / length, dy / length, -dy / length, dx / length, head.X, head.Y);
             if (!note.IsBalloon)
             {
-                invoke(layer.Player, "SetWidth", Math.Abs(tail - head));
+                invoke(layer.Player, "SetWidth", length);
                 // Drawn as set, never blended from the last tick: the width follows the roll's place, which
                 // is exact every frame (a stale blend stretched the tail, worst when scrubbing a review back).
                 layer.Player.HoldStill();
@@ -206,9 +212,9 @@ public sealed class TaikoLongNotePresentation
             if (note.IsBalloon || _createText is null) continue;
             if (!_texts.TryGetValue(index, out var text))
                 _texts.Add(index, text = _createText(note.Kind));
-            invoke(text.Player, "SetWidth", Math.Abs(tail - head));
+            invoke(text.Player, "SetWidth", length);
             text.Player.HoldStill();
-            yield return (note.StartTime, text with { Transform = transform with { Y = hitY + TaikoNoteText.Offset } });
+            yield return (note.StartTime, text with { Transform = transform with { Y = head.Y + TaikoNoteText.Offset } });
         }
         foreach (var index in _visible.Keys.Where(index => !retained.Contains(index)).ToArray())
         {
@@ -230,6 +236,9 @@ public sealed class TaikoLongNotePresentation
         return note.Kind == PlayableLongNoteKind.Balloon && time >= note.StartTime && time < note.EndTime
             && _session.GetLongNoteProgress(index).Hits == 0;
     }
+
+    /// <summary>The overlays drawn at the hit target (balloon, roll counter), which follow its #JPOSSCROLL moves; not the kusudama.</summary>
+    public IEnumerable<LumenPlayer> TargetOverlays => [_counter.Player, _balloon.Player];
 
     public IEnumerable<LumenPlayer> Players => _visible.Values.Select(layer => layer.Player)
         .Append(_counter.Player).Append(_balloon.Player)

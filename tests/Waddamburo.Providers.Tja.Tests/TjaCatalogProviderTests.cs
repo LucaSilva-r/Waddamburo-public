@@ -420,6 +420,21 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task GimmickScrollAndJudgeMovesLoad()
+    {
+        // 120 BPM: a measure is 2 s. Complex scroll in every spelling; the first #JPOSSCROLL (4 s, direction 0:
+        // the way notes travel) is cut short by the next one a measure later, halfway.
+        var chart = await loadSynthetic(
+            "#SCROLL -1\n1,\n#SCROLL 1+1i\n#JPOSSCROLL 4 100 0\n1,\n#SCROLL -i\n#JPOSSCROLL 0.5 0-100i 1\n1,\n#SCROLL 2.5e-1-4i\n1,");
+        Assert.Equal([(-1d, 0d), (1d, 1d), (0d, -1d), (0.25d, -4d)],
+            chart.ScrollPoints.Select(point => (point.Multiplier, point.Imaginary)));
+        Assert.Equal([new ChartJudgeMove(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2), -50, 0),
+            new ChartJudgeMove(TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(0.5), 0, -100)], chart.JudgeMoves.AsEnumerable());
+        Assert.Equal((-25d, 0d), chart.JudgeOffsetAt(TimeSpan.FromSeconds(3)));
+        Assert.Equal((-50d, -100d), chart.JudgeOffsetAt(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
     public async Task NegativeDelayOffsetsOneNoteAndKeepsEventsOrdered()
     {
         // Editors' per-note "time offset": #DELAY x before the note, #DELAY -x after it.

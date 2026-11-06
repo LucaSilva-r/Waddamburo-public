@@ -106,15 +106,16 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
             : chart.LongNotes;
         var speed = ScrollSpeed;
         var played = new PlayableChart(chart.Key, chart.AuthoredOffset, chart.Duration, notes, chart.TimingPoints,
-            chart.ScrollPoints.Select(point => new ChartScrollPoint(point.Time, point.Multiplier * speed)),
+            chart.ScrollPoints.Select(point => new ChartScrollPoint(point.Time, point.Multiplier * speed) { Imaginary = point.Imaginary * speed }),
             chart.EffectPoints, chart.BarLines, longNotes)
         {
             Level = chart.Level,
             ScoreInit = chart.ScoreInit,
             ScoreDiff = chart.ScoreDiff,
             Branching = chart.Branching,
+            JudgeMoves = chart.JudgeMoves,
             RouteControls = [.. chart.RouteControls.Select(route => route with
-                { Scroll = [.. route.Scroll.Select(point => new ChartScrollPoint(point.Time, point.Multiplier * speed))] })],
+                { Scroll = [.. route.Scroll.Select(point => new ChartScrollPoint(point.Time, point.Multiplier * speed) { Imaginary = point.Imaginary * speed })] })],
         };
         // 真打 on a branched chart: the master route's all-Great comes to about a million.
         return Shinuchi ? played with { ShinuchiBase = ShinuchiBase(played.OnRoute(ChartBranch.Master)) } : played;

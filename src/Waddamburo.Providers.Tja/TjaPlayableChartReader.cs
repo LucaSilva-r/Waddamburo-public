@@ -38,7 +38,8 @@ internal static class TjaPlayableChartReader
         var numerator = 4;
         var denominator = 4;
         var bpm = 0m;
-        var scroll = 1d;
+        (double Re, double Im) scroll = (1d, 0d);
+        var judgeMoves = new List<(decimal At, double Seconds, double X, double Y)>();
         var isGoGo = false;
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
@@ -94,7 +95,7 @@ internal static class TjaPlayableChartReader
                     {
                         bpm = positiveNumber(bpmText, "BPM");
                         timingPoints.Add(new ChartTimingPoint(TimeSpan.Zero, (double)bpm, numerator, denominator));
-                        scrollPoints.Add(new ChartScrollPoint(TimeSpan.Zero, scroll));
+                        scrollPoints.Add(scrollPoint(TimeSpan.Zero, scroll));
                         effectPoints.Add(new ChartEffectPoint(TimeSpan.Zero, isGoGo));
                         active = true;
                     }
@@ -145,7 +146,7 @@ internal static class TjaPlayableChartReader
                     throw new InvalidDataException("The selected TJA chart ends with an unterminated measure.");
                 foreach (var command in commands)
                     applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects);
+                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves);
                 commands.Clear();
                 closeBranch();
                 closeLong(chartTime(cursorSeconds));
@@ -166,9 +167,10 @@ internal static class TjaPlayableChartReader
                     ScoreInit = scoreInit,
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
+                    JudgeMoves = resolveJudgeMoves(judgeMoves),
                     RouteControls = routeBlocks.Count == 0 ? [] : [.. ((string[])["#N", "#E", "#M"]).Select(name => new ChartRouteControls(
                         routeStream(timingPoints, routeBlocks, name, static own => own.Timing, static point => point.Time, static (point, at) => new ChartTimingPoint(at, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
-                        routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => new ChartScrollPoint(at, point.Multiplier)))
+                        routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => point.At(at)))
                     {
                         Effects = ownEffects(effectPoints, routeStream(effectPoints, routeBlocks, name, static own => own.Effects, static point => point.Time, static (point, at) => point.At(at))),
                         Bars = ownBars(barLines, routeBlocks, name),
@@ -231,7 +233,7 @@ internal static class TjaPlayableChartReader
                     timing = ImmutableArray.CreateBuilder<ChartTimingPoint>();
                     timing.Add(new ChartTimingPoint(seed, (double)atBranch.Bpm, atBranch.Numerator, atBranch.Denominator));
                     scrolls = ImmutableArray.CreateBuilder<ChartScrollPoint>();
-                    scrolls.Add(new ChartScrollPoint(seed, atBranch.Scroll));
+                    scrolls.Add(scrollPoint(seed, atBranch.Scroll));
                     effects = ImmutableArray.CreateBuilder<ChartEffectPoint>();
                     effects.Add(new ChartEffectPoint(seed, atBranch.GoGo));
                     bars = ImmutableArray.CreateBuilder<ChartBarLine>();
@@ -276,7 +278,7 @@ internal static class TjaPlayableChartReader
                     {
                         applyCommand(commands[commandIndex++].Line, ref numerator, ref denominator,
                             ref bpm, ref scroll, ref isGoGo, ref isBarlineVisible, ref cursorSeconds,
-                            timing, scrolls, effects);
+                            timing, scrolls, effects, judgeMoves);
                     }
                     if (index == count) break;
                     if (index == 0) bars.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
@@ -340,7 +342,7 @@ internal static class TjaPlayableChartReader
             // Commands after a route's last measure are that route's, not the next one's.
             foreach (var command in commands)
                 applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects);
+                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves);
             commands.Clear();
             if (!onMain())
             {
@@ -393,7 +395,7 @@ internal static class TjaPlayableChartReader
             : "The selected TJA chart section no longer exists.");
     }
 
-    private readonly record struct TjaState(int Numerator, int Denominator, decimal Bpm, double Scroll, bool GoGo,
+    private readonly record struct TjaState(int Numerator, int Denominator, decimal Bpm, (double Re, double Im) Scroll, bool GoGo,
         bool Barline, decimal Cursor, (TimeSpan Start, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)? Pending);
 
     // The routes other than the main one, as written between Start and End.
@@ -535,13 +537,14 @@ internal static class TjaPlayableChartReader
         ref int numerator,
         ref int denominator,
         ref decimal bpm,
-        ref double scroll,
+        ref (double Re, double Im) scroll,
         ref bool isGoGo,
         ref bool isBarlineVisible,
         ref decimal cursorSeconds,
         ImmutableArray<ChartTimingPoint>.Builder timingPoints,
         ImmutableArray<ChartScrollPoint>.Builder scrollPoints,
-        ImmutableArray<ChartEffectPoint>.Builder effectPoints)
+        ImmutableArray<ChartEffectPoint>.Builder effectPoints,
+        List<(decimal At, double Seconds, double X, double Y)> judgeMoves)
     {
         var separator = line.IndexOfAny([' ', '\t']);
         var name = (separator < 0 ? line : line[..separator]).ToUpperInvariant();
@@ -565,9 +568,23 @@ internal static class TjaPlayableChartReader
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
-                scroll = finiteDouble(argument, "#SCROLL");
-                appendOrReplace(scrollPoints, new ChartScrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
+                scroll = complex(argument, "#SCROLL");
+                appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
+            case "#JPOSSCROLL":
+            {
+                // #JPOSSCROLL <seconds> <pixels, maybe x+yi> [direction]: direction 0 moves the way the notes
+                // travel (left for +x), 1 as written (OpenTaiko). ponytail: one list for every 譜面分岐 route.
+                var fields = argument.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+                if (fields.Length < 2)
+                    throw new InvalidDataException("TJA #JPOSSCROLL requires a duration and a distance.");
+                var seconds = Math.Max(0, finiteDouble(fields[0], "#JPOSSCROLL"));
+                var (x, y) = complex(fields[1], "#JPOSSCROLL");
+                if (fields.Length < 3 || fields[2] == "0")
+                    (x, y) = (0 - x, 0 - y); // 0 - x: no -0 for a move that does not go that way
+                judgeMoves.Add((cursorSeconds, seconds, x, y));
+                break;
+            }
             case "#DELAY":
                 // Negative delays are legal: editors offset one note with #DELAY x … #DELAY -x.
                 cursorSeconds = checked(cursorSeconds + finiteDecimal(argument, "#DELAY"));
@@ -595,6 +612,41 @@ internal static class TjaPlayableChartReader
             default:
                 throw new NotSupportedException($"TJA command '{name}' is not supported by the gameplay loader.");
         }
+    }
+
+    private static ChartScrollPoint scrollPoint(TimeSpan time, (double Re, double Im) scroll) =>
+        new(time, scroll.Re) { Imaginary = scroll.Im };
+
+    // Moves in time order, each cut short where the next starts so the target ends where OpenTaiko's does.
+    private static ImmutableArray<ChartJudgeMove> resolveJudgeMoves(List<(decimal At, double Seconds, double X, double Y)> moves)
+    {
+        var ordered = moves.OrderBy(static move => move.At).ToArray();
+        var result = ImmutableArray.CreateBuilder<ChartJudgeMove>(ordered.Length);
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            var (at, seconds, x, y) = ordered[index];
+            var room = index + 1 < ordered.Length ? (double)(ordered[index + 1].At - at) : double.MaxValue;
+            var done = seconds <= room ? 1 : room / seconds;
+            result.Add(new ChartJudgeMove(chartTime(at), TimeSpan.FromSeconds(Math.Min(seconds, room)), x * done, y * done));
+        }
+        return result.MoveToImmutable();
+    }
+
+    /// <summary>A TJA real or complex number: <c>2</c>, <c>-1.5</c>, <c>3i</c>, <c>1+2i</c>, <c>0-100i</c>, <c>-i</c>.</summary>
+    internal static (double Re, double Im) complex(string value, string field)
+    {
+        var text = value.Replace(" ", "");
+        if (!text.EndsWith('i'))
+            return (finiteDouble(text, field), 0);
+        text = text[..^1];
+        // The imaginary part starts at the last sign that is not the first character or an exponent's.
+        var split = Math.Max(text.Length - 1, 0);
+        while (split > 0 && !(text[split] is '+' or '-' && text[split - 1] is not ('e' or 'E')))
+            split--;
+        var (re, im) = (text[..split], text[split..]);
+        if (im is "" or "+" or "-")
+            im += "1";
+        return (re.Length == 0 ? 0 : finiteDouble(re, field), finiteDouble(im, field));
     }
 
     // Control points stay in file order: one a negative #DELAY moves before the previous point takes
