@@ -18,6 +18,8 @@ internal enum HomeMenuAction
     Report,
     SongSelect,
     Title,
+    /// <summary>Close the game (home menus outside a song, the attract's demo play included).</summary>
+    Quit,
     /// <summary>Leave the online room, back to the usual Song Select.</summary>
     LeaveRoom,
     /// <summary>Start upscaling every texture the game uses (the bake page shows it).</summary>
@@ -265,7 +267,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report" : "menu.title.paused");
+        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report"
+        : _quitPrompt ? "menu.title.quit" : "menu.title.paused");
 
     /// <summary>The texture bake shown instead of the choices (running or finished).</summary>
     public Presentation.TextureBake? Bake
@@ -305,6 +308,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private bool _reportPrompt;
     private static readonly string[] ReportChoices = ["report.autoplay", "report.macro", "report.cheating", "menu.back"];
 
+    // Quit Game asks first: Yes closes the game, No (the one selected) goes back.
+    private bool _quitPrompt;
+
     // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
     private readonly ArcadeSettings _atStart = get();
@@ -335,9 +341,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="reviewing"/>: a replay or practice is on: restarting plays the song for real.
     /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
     /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
+    /// <paramref name="quit"/>: home, outside a song (the demo play counts as the attract): the game can be closed.
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false, bool inRoom = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -356,9 +363,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices[..^1], "online.leave", _choices[^1]];
         else if (inRoom)
             _choices = ["menu.resume", "menu.settings", "online.leave"];
+        if (quit && !gameplay)
+            _choices = [.. _choices, "menu.quit_game"];
         IsOpen = true;
         Selection = 0;
-        _restartPrompt = _reportPrompt = false;
+        _restartPrompt = _reportPrompt = _quitPrompt = false;
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
 
@@ -409,6 +418,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             }
             return Back();
         }
+        if (_quitPrompt)
+            return Selection == 0 ? close(HomeMenuAction.Quit) : Back();
         switch (_choices[Selection])
         {
             case "menu.settings":
@@ -423,6 +434,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 return HomeMenuAction.None;
             case "menu.song_select": return close(HomeMenuAction.SongSelect);
             case "menu.return_to_title": return close(HomeMenuAction.Title);
+            case "menu.quit_game":
+                _quitPrompt = true;
+                _pauseChoices = _choices;
+                _choices = ["menu.yes", "menu.no"];
+                Selection = 1;
+                return HomeMenuAction.None;
             case "online.leave": return close(HomeMenuAction.LeaveRoom);
             default: return close(HomeMenuAction.Resume);
         }
@@ -444,6 +461,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _reportPrompt = false;
             _choices = _pauseChoices;
             Selection = Array.IndexOf(_choices, "menu.report_player");
+            return HomeMenuAction.None;
+        }
+        if (_quitPrompt)
+        {
+            _quitPrompt = false;
+            _choices = _pauseChoices;
+            Selection = Array.IndexOf(_choices, "menu.quit_game");
             return HomeMenuAction.None;
         }
         return _noResume ? HomeMenuAction.None : close(HomeMenuAction.Resume);

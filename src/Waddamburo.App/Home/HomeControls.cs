@@ -383,7 +383,7 @@ internal sealed class HomeControls : IDisposable
             if (!escape || _shell.Scenes.FadePending)
                 return escape;
             _pauseInterpolation = _lastInterpolation;
-            _menu.Open(gameplay: false, attract: true);
+            _menu.Open(gameplay: false, attract: true, quit: true);
             _audio.MuteAttract(true);
             return true;
         }
@@ -412,7 +412,7 @@ internal sealed class HomeControls : IDisposable
             return true;
         _pauseInterpolation = _lastInterpolation;
         _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect,
-            inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null);
+            inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null, quit: home);
         // The attract goes on muted under the menu; the entry's and Song Select's music hold.
         if (AttractScenes.Contains(active))
             _audio.MuteAttract(true);
@@ -497,6 +497,9 @@ internal sealed class HomeControls : IDisposable
                 break;
             case HomeMenuAction.EndCalibration:
                 _calibration.Leave();
+                break;
+            case HomeMenuAction.Quit:
+                _shell.Application.RequestQuit();
                 break;
             case HomeMenuAction.RestartGame:
                 save();
