@@ -86,6 +86,9 @@ public sealed class ScoreClient(HttpClient http)
     /// <summary>The API's JSON options (snake_case), backed by the generated <see cref="ScoreJson"/>.</summary>
     public static JsonSerializerOptions Json => ScoreJson.Default.Options;
 
+    /// <summary>A profile as the server pushes it (api/wdb/me's shape) over the realtime channel.</summary>
+    public static ScoreProfile? ParseProfile(JsonElement data) => data.Deserialize(ScoreJson.Default.ScoreProfile);
+
     private int _syncing;
 
     /// <summary>The client's HTTP connection (its token), for other endpoints such as home pairing.</summary>

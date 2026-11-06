@@ -336,7 +336,7 @@ internal sealed class ScoreSync : IDisposable
         ScoreProfile? current;
         try
         {
-            current = System.Text.Json.JsonSerializer.Deserialize<ScoreProfile>(data, ScoreClient.Json);
+            current = ScoreClient.ParseProfile(data);
         }
         catch (System.Text.Json.JsonException exception)
         {
