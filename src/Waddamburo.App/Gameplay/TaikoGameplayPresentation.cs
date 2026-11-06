@@ -6,6 +6,7 @@ using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Online;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Game.Patching;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
@@ -252,7 +253,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     {
         private static readonly string[] NoteMovieNames = ["onp_don", "onp_katsu", "onp_don_dai",
             "onp_katsu_dai", "onp_tetunagidon_1p", "onp_tetunagikatsu_1p", "onp_synchro_don_1p", "onp_synchro_katsu_1p",
-            "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p", "onp_rare_0_w_00"];
+            "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p", "onp_rare_0_w_00", "onp_kadon"];
         private static readonly string[] NoteTextLabels = ["don", "do", "ko", "katsu", "ka", "don_dai", "katsu_dai",
             "geki_renda", "imo"];
         private readonly TaikoJudgementSession _session;
@@ -340,6 +341,19 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Skin parts are addressed by role ("bg_nomal"), whatever variant the composition picked.
             var layers = sceneLayers.ToDictionary(entry => role(entry.Definition), entry => entry.Layer);
             LumenMovieContent content(string name) => sceneLayers.Single(entry => role(entry.Definition) == name).Content;
+            // OpenTaiko's Kadon (TJA G) has no art in the game's files: the big ka drawn from its purple copies
+            // (KadonNotePatch), a player of its own so its faces and bounce follow the notes'.
+            if (chart.HitObjects.Any(static note => note.IsKadon) && content("onp_katsu_dai") is { } katsu
+                && KadonNotePatch.AppliesTo(katsu) && KadonNotePatch.CopiesAt(katsu) is var copies and > 0)
+            {
+                var big = layers["onp_katsu_dai"];
+                layers["onp_kadon"] = big with
+                {
+                    Player = katsu.CreatePlayer(),
+                    TextureOffset = big.TextureOffset + (uint)copies,
+                    TextureCount = (uint)copies,
+                };
+            }
             LumenPlayer? skin(string role) => layers.TryGetValue(role, out var layer) ? layer.Player : null;
             var board = layers["lane_obi"].Player;
             // Waiwai has its own flights, combo bonus, roll art and backdrop in place of the normal ones.
@@ -635,6 +649,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     }
                     : null,
                 layers.GetValueOrDefault("onp_rare_0_w_00"),
+                layers.GetValueOrDefault("onp_kadon"),
                 // One onp_moji player per text label (a traced clone per note, parked on its label).
                 NoteTextLabels.ToDictionary(label => label, label =>
                     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.Immutable;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Rendering;
@@ -471,17 +472,33 @@ public sealed class LumenPlayer
         return true;
     }
 
+    // Clips the host has offset (SetInstanceOffset): where their own transform had them.
+    private readonly Dictionary<DisplayInstance, LumenMatrix> _offsetFrom = [];
+
     /// <summary>
-    /// Moves a named clip by (dx, dy) in its parent's space, as a script write to _x/_y would: its timeline no
-    /// longer places it (a tween on it stops). The move blends like any other between ticks.
+    /// Places a named clip (x, y) from where it was before the host first offset it, in its parent's space; its
+    /// timeline no longer places it (a tween on it stops) until the offset goes back to (0, 0). Absolute, so a
+    /// host building its scene again on this movie starts from the clip's own place.
     /// </summary>
-    public bool TryMoveInstance(string instancePath, float dx, float dy)
+    public bool SetInstanceOffset(string instancePath, float x, float y)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
         if (findInstance(instancePath) is not { } instance)
             return false;
+        if (x == 0 && y == 0)
+        {
+            if (_offsetFrom.Remove(instance, out var original))
+            {
+                instance.Transform = original;
+                // ponytail: assumes no script had moved the clip before the host did.
+                instance.ScriptTransformed = false;
+            }
+            return true;
+        }
+        if (!_offsetFrom.TryGetValue(instance, out var unmoved))
+            _offsetFrom[instance] = unmoved = instance.Transform;
         instance.ScriptTransformed = true;
-        instance.Transform = instance.Transform with { X = instance.Transform.X + dx, Y = instance.Transform.Y + dy };
+        instance.Transform = unmoved with { X = unmoved.X + x, Y = unmoved.Y + y };
         return true;
     }
 
@@ -659,7 +676,9 @@ public sealed class LumenPlayer
         var instance = _root;
         foreach (var name in names)
         {
-            instance = instance.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == name);
+            // "#<id>" names an unnamed child by its character id.
+            instance = instance.Children.Values.FirstOrDefault(child => !child.Removed
+                && (child.Name == name || name[0] == '#' && child.Name.Length == 0 && name.AsSpan(1).SequenceEqual(child.CharacterId.ToString(CultureInfo.InvariantCulture))));
             if (instance is null)
                 return names.Length == 0 ? null : findBySuffix(_root, names);
         }
@@ -1661,6 +1680,8 @@ public sealed class LumenPlayer
         }
         catch (Exception exception)
         {
+            // Printed at once too: the movie carries on, so a failed handoff otherwise looks like a hang.
+            Console.Error.WriteLine($"Host call '{function.Name}' failed: {exception.GetType().Name}: {exception.Message}");
             reportOnce(
                 "LUM_HOST_CALL_FAILED",
                 instance.CharacterId,

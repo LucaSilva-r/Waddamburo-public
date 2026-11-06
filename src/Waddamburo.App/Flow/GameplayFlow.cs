@@ -998,7 +998,17 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         var asset = playing is null ? request.AudioAsset : _courseSongs[_courseSong].Descriptor.AudioAsset;
         if (Shell.Audio is not { } audio || asset is not { } audioAsset)
             return null;
-        var inputStream = Shell.Assets.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
+        Stream inputStream;
+        try
+        {
+            inputStream = Shell.Assets.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
+        }
+        catch (IOException exception)
+        {
+            // A chart whose WAVE file is missing plays silent rather than leaving the load waiting forever.
+            Console.Error.WriteLine($"Song audio unavailable, playing silent: {exception.Message}");
+            return null;
+        }
         BufferedAudioSource? source = null;
         try
         {

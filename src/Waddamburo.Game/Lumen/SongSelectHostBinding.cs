@@ -55,14 +55,15 @@ public readonly record struct SongSelectCoursePresentation(
     // keep the game's board, zero bits): every slot the song lacks is marked invalid, hidden
     // Easy/Normal/Hard always. The nonzero bits put the board in the movie's restricted mode
     // (MusicInfo.HasInvalidCourse): Oni shows at once (CheckMania, no right-ka presses) and missing
-    // courses are greyed and cannot be picked. A song with Ura in that mode would show Ura in Oni's
-    // place, so a song with Ura keeps the game's board even when it misses a course.
-    // ponytail: such a song's missing courses stay pickable and fail to load back to Song Select.
+    // courses are greyed and cannot be picked. In that mode Ura shows in Oni's place: right for a song with Ura
+    // but no Oni (an Edit-only TJA), so only a song with both keeps the game's board when it misses a course.
+    // ponytail: such a song's missing courses stay pickable; SongSelectSession plays its nearest course.
     private static AuthoredSongCourseBits restrictions(SongSelectSong song)
     {
         var complete = song.HasCourse(TaikoCourse.Easy) && song.HasCourse(TaikoCourse.Normal)
             && song.HasCourse(TaikoCourse.Hard) && song.HasCourse(TaikoCourse.Oni);
-        if (song.Descriptor.Key.Source != SongSourceKind.OsuLazer && (complete || song.HasCourse(TaikoCourse.Ura)))
+        if (song.Descriptor.Key.Source != SongSourceKind.OsuLazer
+            && (complete || song.HasCourse(TaikoCourse.Oni) && song.HasCourse(TaikoCourse.Ura)))
             return AuthoredSongCourseBits.None;
         var available = AuthoredSongCourseBits.None;
         foreach (var (course, bit) in new[]

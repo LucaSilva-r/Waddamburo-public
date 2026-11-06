@@ -249,6 +249,30 @@ public sealed class TaikoJudgementSessionTests
     }
 
     [Fact]
+    public void AKadonNeedsBothColoursWithinItsWindowAndIsTimedByTheFirst()
+    {
+        // OpenTaiko's Kadon (TJA G): either colour first, the other within KadonWindow; one colour alone judges nothing.
+        var session = createSession(
+            new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon) { IsKadon = true },
+            new PlayableHitObject(TimeSpan.FromSeconds(1.5), PlayableNoteKind.Ka));
+
+        Assert.Equal(TaikoInputResult.Ignored, session.SubmitInput(TaikoInputAction.LeftKa, TimeSpan.FromSeconds(0.98)));
+        Assert.Equal(TaikoInputResult.Ignored, session.SubmitInput(TaikoInputAction.RightKa, TimeSpan.FromSeconds(0.99)));
+        Assert.Null(session.CreateSnapshot()[0].Result);
+        Assert.Equal(TaikoInputResult.Judged, session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.02)));
+        var kadon = session.CreateSnapshot()[0];
+        Assert.Equal(TaikoHitResult.Great, kadon.Result);
+        Assert.True(kadon.StrongHitCompleted);
+        Assert.Null(session.CreateSnapshot()[1].Result);
+
+        // Too late a second colour: still waiting, not judged.
+        var late = createSession(new PlayableHitObject(TimeSpan.FromSeconds(1), PlayableNoteKind.BigDon) { IsKadon = true });
+        late.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        Assert.Equal(TaikoInputResult.Ignored, late.SubmitInput(TaikoInputAction.LeftKa, TimeSpan.FromSeconds(1.06)));
+        Assert.Null(late.CreateSnapshot()[0].Result);
+    }
+
+    [Fact]
     public void ABigNoteIsBigOnOneHitAndTheOtherHandRightAfterIsPartOfIt()
     {
         // Waddamburo's rule: a big note is judged like any note and always scores big; the other hand's press within

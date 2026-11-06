@@ -38,7 +38,7 @@ internal static class TjaPlayableChartReader
         var numerator = 4;
         var denominator = 4;
         var bpm = 0m;
-        (double Re, double Im) scroll = (1d, 0d);
+        var scroll = new TjaScroll(1, 0, 0, null, null, null);
         var judgeMoves = new List<(decimal At, double Seconds, double X, double Y)>();
         var isGoGo = false;
         var isBarlineVisible = true;
@@ -284,7 +284,8 @@ internal static class TjaPlayableChartReader
                     if (index == 0) bars.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
                     var symbol = measureData.Length == 0 ? '0' : char.ToUpperInvariant(measureData[index]);
                     var time = chartTime(cursorSeconds);
-                    if (symbol is '5' or '6' or '7' or '9')
+                    // D: OpenTaiko's fuse roll, played as a balloon. ponytail: no damage when it is not popped.
+                    if (symbol is '5' or '6' or '7' or '9' or 'D')
                     {
                         var closesKusudama = symbol == '9' && pendingLong?.Kind == PlayableLongNoteKind.Kusudama;
                         closeLong(time);
@@ -292,13 +293,13 @@ internal static class TjaPlayableChartReader
                         {
                             '5' => PlayableLongNoteKind.Roll,
                             '6' => PlayableLongNoteKind.BigRoll,
-                            '7' => PlayableLongNoteKind.Balloon,
+                            '7' or 'D' => PlayableLongNoteKind.Balloon,
                             _ => PlayableLongNoteKind.Kusudama,
                         };
                         if (!closesKusudama)
                         {
                             var hits = 0;
-                            if (symbol is '7' or '9')
+                            if (symbol is '7' or '9' or 'D')
                             {
                                 // BALLOON is ordered by file appearance, every route's balloons included.
                                 var values = branch && branchBalloons.Count != 0
@@ -313,17 +314,21 @@ internal static class TjaPlayableChartReader
                     {
                         var kind = symbol switch
                         {
-                            '0' => (PlayableNoteKind?)null,
+                            // F ADLIB and C mine: left out (an ADLIB's bonus combo and a mine's penalty are not played).
+                            // ponytail: playing them changes the chart's hash, so scores on these charts split then.
+                            '0' or 'F' or 'C' => (PlayableNoteKind?)null,
                             '1' => PlayableNoteKind.Don,
                             '2' => PlayableNoteKind.Ka,
-                            '3' or 'A' => PlayableNoteKind.BigDon,
+                            '3' or 'A' or 'G' => PlayableNoteKind.BigDon,
                             '4' or 'B' => PlayableNoteKind.BigKa,
                             _ => throw new NotSupportedException($"TJA note '{symbol}' is not supported (gimmick or invalid note)."),
                         };
                         if (kind is { } value)
                         {
                             checkNoteLimit();
-                            hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B') { Branch = tag() });
+                            var forcedText = value is PlayableNoteKind.Don or PlayableNoteKind.Ka ? scroll.NoteText : null;
+                            scroll = scroll with { NoteText = null };
+                            hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B') { Branch = tag(), Text = forcedText, IsKadon = symbol == 'G' });
                         }
                     }
                     maxSeconds = Math.Max(maxSeconds, cursorSeconds);
@@ -395,7 +400,7 @@ internal static class TjaPlayableChartReader
             : "The selected TJA chart section no longer exists.");
     }
 
-    private readonly record struct TjaState(int Numerator, int Denominator, decimal Bpm, (double Re, double Im) Scroll, bool GoGo,
+    private readonly record struct TjaState(int Numerator, int Denominator, decimal Bpm, TjaScroll Scroll, bool GoGo,
         bool Barline, decimal Cursor, (TimeSpan Start, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)? Pending);
 
     // The routes other than the main one, as written between Start and End.
@@ -537,7 +542,7 @@ internal static class TjaPlayableChartReader
         ref int numerator,
         ref int denominator,
         ref decimal bpm,
-        ref (double Re, double Im) scroll,
+        ref TjaScroll scroll,
         ref bool isGoGo,
         ref bool isBarlineVisible,
         ref decimal cursorSeconds,
@@ -568,7 +573,8 @@ internal static class TjaPlayableChartReader
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
-                scroll = complex(argument, "#SCROLL");
+                var (re, im) = complex(argument, "#SCROLL");
+                scroll = scroll with { Re = re, Im = im };
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
             case "#JPOSSCROLL":
@@ -604,18 +610,64 @@ internal static class TjaPlayableChartReader
             case "#BARLINEOFF":
                 isBarlineVisible = false;
                 break;
-            case "#SECTION":
-            case "#SENOTECHANGE":
-            case "#LYRIC":
-                // Points reset at every check anyway (branching); lyric/sound-decoration commands do not alter timing.
+            case "#DIRECTION":
+                // 0 from the right (default), 1 above, 2 below, 3 upper right, 4 lower right, 5 left, 6 upper left, 7 lower left.
+                scroll = scroll with { Direction = int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var direction)
+                    && direction is >= 0 and <= 7 ? direction : 0 };
+                appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
+            case "#SUDDEN":
+            {
+                // #SUDDEN <show> <wait>: notes appear show seconds early and stand still until wait seconds are left;
+                // 0 turns either off (OpenTaiko: under a millisecond counts as 0).
+                var fields = argument.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+                if (fields.Length < 2)
+                    throw new InvalidDataException("TJA #SUDDEN requires an appear and a wait time.");
+                TimeSpan? seconds(string value) => finiteDouble(value, "#SUDDEN") is var time && Math.Abs(time) >= 0.001
+                    ? TimeSpan.FromSeconds(time) : null;
+                scroll = scroll with { Show = seconds(fields[0]), Wait = seconds(fields[1]) };
+                appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
+                break;
+            }
+            case "#SENOTECHANGE":
+                // The label under the next don or ka (1 ドン 2 ド 3 コ 4 カッ 5 カ 6 ドン(大) 7 カッ(大); the roll ones unused).
+                scroll = scroll with { NoteText = int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text switch
+                {
+                    1 => "don", 2 => "do", 3 => "ko", 4 => "katsu", 5 => "ka", 6 => "don_dai", 7 => "katsu_dai", _ => null,
+                } : null };
+                break;
+            case "#GAMETYPE" when !argument.Equals("Taiko", StringComparison.OrdinalIgnoreCase):
+                throw new NotSupportedException($"TJA #GAMETYPE {argument} (OpenTaiko) is not a taiko chart.");
+            case "#NEXTSONG":
+                throw new NotSupportedException("TJA #NEXTSONG (a dan course in one file) is not supported.");
             default:
-                throw new NotSupportedException($"TJA command '{name}' is not supported by the gameplay loader.");
+                // #SECTION, #LYRIC and anything else (OpenTaiko's camera and object commands, #BMSCROLL/#HBSCROLL/#NMSCROLL
+                // scroll modes, #SPLITLANE, #BGAON, typos): the chart plays as written without the effect.
+                // ponytail: silently; a diagnostics list if users ask why an effect is missing.
+                break;
         }
     }
 
-    private static ChartScrollPoint scrollPoint(TimeSpan time, (double Re, double Im) scroll) =>
-        new(time, scroll.Re) { Imaginary = scroll.Im };
+    // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN, and #SENOTECHANGE's label for the next note.
+    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, string? NoteText);
+
+    // #DIRECTION turns the real speed (OpenTaiko's table: diagonals keep the full speed on both axes); a complex
+    // #SCROLL keeps its own vertical part (TJAP3).
+    private static ChartScrollPoint scrollPoint(TimeSpan time, TjaScroll scroll)
+    {
+        var (re, im) = scroll.Direction switch
+        {
+            1 => (0, -scroll.Re),
+            2 => (0, scroll.Re),
+            3 => (scroll.Re, -scroll.Re),
+            4 => (scroll.Re, scroll.Re),
+            5 => (-scroll.Re, 0),
+            6 => (-scroll.Re, -scroll.Re),
+            7 => (-scroll.Re, scroll.Re),
+            _ => (scroll.Re, 0d),
+        };
+        return new(time, re) { Imaginary = scroll.Im != 0 ? scroll.Im : im, Show = scroll.Show, Wait = scroll.Wait };
+    }
 
     // Moves in time order, each cut short where the next starts so the target ends where OpenTaiko's does.
     private static ImmutableArray<ChartJudgeMove> resolveJudgeMoves(List<(decimal At, double Seconds, double X, double Y)> moves)

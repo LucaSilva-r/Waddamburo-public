@@ -16,7 +16,17 @@ public static class TaikoNoteText
 
     public static string Balloon(PlayableLongNoteKind kind) => kind == PlayableLongNoteKind.Kusudama ? "imo" : "geki_renda";
 
+    /// <summary>Each note's label: the chart's own (TJA #SENOTECHANGE) where it forces one, else worked out.</summary>
     public static string[] Labels(PlayableChart chart)
+    {
+        var labels = workedOut(chart);
+        for (var index = 0; index < labels.Length; index++)
+            if (chart.HitObjects[index].Text is { } text)
+                labels[index] = text;
+        return labels;
+    }
+
+    private static string[] workedOut(PlayableChart chart)
     {
         var notes = chart.HitObjects;
         // ponytail: "any run note" means the chart authored its syllables (fumen); a fumen without

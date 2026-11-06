@@ -145,7 +145,8 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
         return (int)Math.Max(10, (budget + units * 10 - 1) / (units * 10) * 10);
     }
 
-    private static PlayableHitObject swapped(PlayableHitObject note) =>
+    // A Kadon is both colours already.
+    private static PlayableHitObject swapped(PlayableHitObject note) => note.IsKadon ? note :
         new(note.StartTime, note.Kind switch
         {
             PlayableNoteKind.Don => PlayableNoteKind.Ka,

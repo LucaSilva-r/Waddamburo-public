@@ -435,6 +435,29 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task DirectionSuddenAndNoteTextShapeTheScrollAndLabels()
+    {
+        var chart = await loadSynthetic("#SCROLL 2\n#DIRECTION 3\n1,\n#SUDDEN 1.5 0.5\n#SENOTECHANGE 3\n12,\n#DIRECTION 5\n#SCROLL 1+2i\n1,");
+        Assert.Equal([(2d, -2d), (2d, -2d), (-1d, 2d)], chart.ScrollPoints.Select(point => (point.Multiplier, point.Imaginary)));
+        Assert.Equal(TimeSpan.FromSeconds(1.5), chart.ScrollPoints[1].Show);
+        Assert.Equal(TimeSpan.FromSeconds(0.5), chart.ScrollPoints[1].Wait);
+        Assert.Null(chart.ScrollPoints[0].Show);
+        Assert.Equal([null, "ko", null, null], chart.HitObjects.Select(note => note.Text));
+    }
+
+    [Fact]
+    public async Task OpenTaikoExtrasLoadWithoutTheirEffects()
+    {
+        // Camera/object commands, scroll modes and typos are skipped; ADLIB (F) and mines (C) are left out; a Kadon (G) is a big
+        // note; a fuse roll (D) is a balloon.
+        var chart = await loadSynthetic("#HBSCROLL\n#CAMZOOMSTART 1,2,linear\n#ADDOBJECT a,0,0,a.png\n#BARLIENOFF\n1FCG,\nD008,", "BALLOON:5\n");
+        Assert.Equal([(PlayableNoteKind.Don, false), (PlayableNoteKind.BigDon, true)], chart.HitObjects.Select(note => (note.Kind, note.IsKadon)));
+        var balloon = Assert.Single(chart.LongNotes);
+        Assert.Equal((PlayableLongNoteKind.Balloon, 5), (balloon.Kind, balloon.RequiredHits));
+        await Assert.ThrowsAsync<NotSupportedException>(() => loadSynthetic("#GAMETYPE Konga\n1,"));
+    }
+
+    [Fact]
     public async Task NegativeDelayOffsetsOneNoteAndKeepsEventsOrdered()
     {
         // Editors' per-note "time offset": #DELAY x before the note, #DELAY -x after it.
@@ -618,8 +641,8 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Theory]
-    [InlineData("#UNKNOWN\n1,", typeof(NotSupportedException))]
-    [InlineData("C,", typeof(NotSupportedException))]
+    [InlineData("#NEXTSONG a,b,c,d.ogg,1,2\n1,", typeof(NotSupportedException))]
+    [InlineData("H,", typeof(NotSupportedException))] // OpenTaiko Konga notes
     [InlineData("1", typeof(InvalidDataException))]
     [InlineData("#BPMCHANGE 0\n1,", typeof(InvalidDataException))]
     [InlineData("#MEASURE 0/4\n1,", typeof(InvalidDataException))]

@@ -25,6 +25,8 @@ public readonly record struct PlayableHitObject
     /// <summary>The same note at another time.</summary>
     public PlayableHitObject At(TimeSpan startTime) => new(startTime, Kind, IsHand)
     {
+        Text = Text,
+        IsKadon = IsKadon,
         IsSynchro = IsSynchro,
         InRun = InRun,
         IsKo = IsKo,
@@ -52,6 +54,15 @@ public readonly record struct PlayableHitObject
 
     /// <summary>A run don sung ko (fumen type 3). Presentation only: not part of the chart hash.</summary>
     public bool IsKo { get; init; }
+
+    /// <summary>
+    /// OpenTaiko's Kadon (TJA G): a big note hit with don or ka, drawn purple. Played as a big note whose other hand
+    /// may be either colour.
+    /// </summary>
+    public bool IsKadon { get; init; }
+
+    /// <summary>The onp_moji label the chart forces under this note (TJA #SENOTECHANGE); null: worked out. Presentation only.</summary>
+    public string? Text { get; init; }
 
     /// <summary>A Waiwai rare (heart) note: played as its note, drawn with the collabo's rare art.</summary>
     public bool IsRare { get; init; }
@@ -182,7 +193,7 @@ public readonly record struct ChartScrollPoint
         Multiplier = multiplier;
     }
 
-    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier) { Imaginary = Imaginary };
+    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier) { Imaginary = Imaginary, Show = Show, Wait = Wait };
 
     public TimeSpan Time { get; }
     public double Multiplier { get; }
@@ -192,6 +203,12 @@ public readonly record struct ChartScrollPoint
     /// (positive: the note starts below the target). Drawing only, so it stays out of <see cref="ChartHash"/>.
     /// </summary>
     public double Imaginary { get; init; }
+
+    /// <summary>TJA #SUDDEN: a note under this point shows only this long before its time; null: always. Drawing only.</summary>
+    public TimeSpan? Show { get; init; }
+
+    /// <summary>TJA #SUDDEN: a note under this point stays where it would be this long before its time, then moves; null: always moves.</summary>
+    public TimeSpan? Wait { get; init; }
 }
 
 /// <summary>

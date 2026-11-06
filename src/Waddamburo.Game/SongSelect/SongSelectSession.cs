@@ -173,7 +173,12 @@ public sealed class SongSelectSession
         if ((uint)courseIndex >= 5)
             throw new ArgumentOutOfRangeException(nameof(courseIndex));
         var course = (TaikoCourse)courseIndex;
+        // A song without the movie's always-shown courses (an Edit-only TJA still lists easy..hard): its nearest
+        // course, the harder one on a tie, rather than a handoff that fails and leaves Song Select waiting.
         return song.Descriptor.Charts.FirstOrDefault(chart => chart.Course == course)
+            ?? song.Descriptor.Charts.Where(static chart => chart.Course is not null)
+                .OrderBy(chart => Math.Abs((int)chart.Course!.Value - courseIndex)).ThenByDescending(static chart => chart.Course)
+                .FirstOrDefault()
             ?? throw new InvalidOperationException($"Song '{song.Descriptor.Key}' does not provide {course}.");
     }
 

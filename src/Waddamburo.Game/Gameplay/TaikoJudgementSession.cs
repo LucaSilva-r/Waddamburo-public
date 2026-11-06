@@ -136,13 +136,20 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     private int _nextNoteIndex;
     private TimeSpan? _lastJudgedInputTime;
     // The last big note hit (its hand and time): the other hand's press within SecondHandWindow belongs to it.
-    private (TaikoInputAction Action, TimeSpan Time)? _bigHit;
+    private (TaikoInputAction Action, TimeSpan Time, bool Kadon)? _bigHit;
 
     /// <summary>
     /// How soon after a big note's hit the other hand's press (same colour) is taken as part of it rather than a hit
     /// on the next note: two hands on a big note, or a keyboard's two keys, are one hit.
     /// </summary>
     public static readonly TimeSpan SecondHandWindow = TimeSpan.FromMilliseconds(30);
+
+    /// <summary>
+    /// A Kadon needs both colours (OpenTaiko): the first press holds it, the other colour within this judges it at the
+    /// first press's time; otherwise the hold lapses (OpenTaiko's default big-note wait).
+    /// </summary>
+    public static readonly TimeSpan KadonWindow = TimeSpan.FromMilliseconds(50);
+    private (int Index, TaikoInputAction Action, TimeSpan Time)? _kadonPress;
     private readonly bool _partnerHandNotes;
     // 譜面分岐: the route picked at each check passed (from its Start), the next check, the points since the last.
     private readonly List<(TimeSpan Start, ChartBranch Route)> _routes = [];
@@ -304,7 +311,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     public TaikoInputResult SubmitInput(TaikoInputAction action, TimeSpan time)
     {
         AdvanceTo(time);
-        if (_bigHit is { } big && time - big.Time <= SecondHandWindow && action != big.Action && isDon(action) == isDon(big.Action))
+        if (_bigHit is { } big && time - big.Time <= SecondHandWindow && action != big.Action && (big.Kadon || isDon(action) == isDon(big.Action)))
         {
             _bigHit = null;
             return TaikoInputResult.SecondHand;
@@ -324,7 +331,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             var candidateOffset = time - _chart.HitObjects[index].StartTime;
             if (candidateOffset < -_windows.Miss)
                 break;
-            if (_results[index] is not null || !matches(action, _chart.HitObjects[index].Kind) || !onRoute(index))
+            if (_results[index] is not null || !matches(action, _chart.HitObjects[index]) || !onRoute(index))
                 continue;
             if (candidateOffset.Duration() <= _windows.Good)
             {
@@ -348,6 +355,19 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         var hitObject = _chart.HitObjects[judgedIndex];
         var offset = time - hitObject.StartTime;
         var result = _windows.ResultFor(offset)!;
+        // A Kadon in the Good window waits for the other colour (a Bad is judged at once, as in OpenTaiko).
+        if (hitObject.IsKadon && result != TaikoHitResult.Miss)
+        {
+            if (_kadonPress is not { } first || first.Index != judgedIndex || isDon(first.Action) == isDon(action)
+                || time - first.Time >= KadonWindow)
+            {
+                _kadonPress = (judgedIndex, action, time);
+                return TaikoInputResult.Ignored;
+            }
+            _kadonPress = null;
+            offset = first.Time - hitObject.StartTime;
+            result = _windows.ResultFor(offset)!;
+        }
         _lastJudgedInputTime = time;
         judge(judgedIndex, result.Value, offset);
         skipJudged();
@@ -362,7 +382,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             // hands; most drums can report neither). The other hand's press right after is part of it (SecondHand).
         {
             CompleteStrongHit(judgedIndex);
-            _bigHit = (action, time);
+            _bigHit = (action, time, hitObject.IsKadon);
         }
         return TaikoInputResult.Judged;
     }
@@ -454,8 +474,9 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
             throw new ArgumentOutOfRangeException(nameof(time), "Gameplay time cannot move backwards.");
     }
 
-    private static bool matches(TaikoInputAction action, PlayableNoteKind kind) =>
-        isDon(action) == (kind is PlayableNoteKind.Don or PlayableNoteKind.BigDon);
+    // A Kadon takes either colour (both, one after the other: KadonWindow).
+    private static bool matches(TaikoInputAction action, PlayableHitObject note) =>
+        note.IsKadon || isDon(action) == (note.Kind is PlayableNoteKind.Don or PlayableNoteKind.BigDon);
 
     private static bool isDon(TaikoInputAction action) =>
         action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon;

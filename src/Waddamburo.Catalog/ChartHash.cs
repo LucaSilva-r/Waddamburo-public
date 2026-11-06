@@ -33,7 +33,7 @@ public static class ChartHash
         {
             writer.Write(micros(note.StartTime));
             writer.Write((byte)note.Kind);
-            writer.Write((byte)((note.IsHand ? 1 : 0) | (note.IsSynchro ? 2 : 0) | (note.InRun ? 4 : 0) | (note.IsRare ? 8 : 0)));
+            writer.Write((byte)((note.IsHand ? 1 : 0) | (note.IsSynchro ? 2 : 0) | (note.InRun ? 4 : 0) | (note.IsRare ? 8 : 0) | (note.IsKadon ? 16 : 0)));
         }
         writer.Write(chart.LongNotes.Length);
         foreach (var note in chart.LongNotes)
@@ -145,6 +145,7 @@ public static class ChartHash
                 IsSynchro = (flags & 2) != 0,
                 InRun = (flags & 4) != 0,
                 IsRare = (flags & 8) != 0,
+                IsKadon = (flags & 16) != 0,
             };
         }
         var longNotes = new PlayableLongNote[count(reader)];

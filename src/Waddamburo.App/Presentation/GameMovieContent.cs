@@ -68,6 +68,14 @@ internal static class GameMovieContent
             });
             return;
         }
+        if (KadonNotePatch.AppliesTo(content))
+        {
+            // After the upscales: the purple copies are made from what the GPU would show (upscaled when on).
+            upscale?.Tool.ApplyCached(archive, content, upscale.Value.Bc7);
+            foreach (var pixels in KadonNotePatch.Apply(content))
+                upscale?.Tool.MarkUpscaled(pixels);
+            return;
+        }
         var patching = SongSelectGenrePatch.AppliesTo(content);
         // The genre patch decodes only the textures it recolours (song_select decoded whole was 343 MiB, 337 ms).
         var started = Stopwatch.GetTimestamp();

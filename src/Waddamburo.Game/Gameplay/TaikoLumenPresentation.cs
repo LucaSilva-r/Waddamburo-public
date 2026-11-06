@@ -17,6 +17,7 @@ public sealed class TaikoLumenPresentation
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _handNotes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _synchroNotes;
     private readonly LumenSceneLayer? _rareNote;
+    private readonly LumenSceneLayer? _kadonNote;
     private readonly IReadOnlyDictionary<string, LumenSceneLayer>? _noteTexts; // by onp_moji label
     private readonly string[] _noteLabels;
     private readonly LumenSceneLayer _bar;
@@ -43,6 +44,7 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
         LumenSceneLayer? rareNote = null,
+        LumenSceneLayer? kadonNote = null,
         IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null,
         LumenSceneLayer? branchBar = null,
         LumenPlayer? branchBubble = null)
@@ -53,6 +55,7 @@ public sealed class TaikoLumenPresentation
         _noteTexts = noteTexts;
         _noteLabels = TaikoNoteText.Labels(chart);
         _rareNote = rareNote;
+        _kadonNote = kadonNote;
         _handNotes = handNotes;
         _synchroNotes = synchroNotes;
         _chart = chart;
@@ -72,6 +75,9 @@ public sealed class TaikoLumenPresentation
             callback(_target.Player, "SetGogo", LumenHostValue.FromBoolean(active));
             GoGoChanged?.Invoke(active);
         });
+        // Lanes built again on the same movie (practice retries, replay jumps): the target back in its place first.
+        foreach (var clip in TargetClips)
+            target.Player.SetInstanceOffset(clip, 0, 0);
         if (!target.Player.TryGetInstanceBounds("target", out var bounds))
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
@@ -113,20 +119,29 @@ public sealed class TaikoLumenPresentation
     // The target's #JPOSSCROLL offset last applied to its clips.
     private (float X, float Y) _moved;
 
-    // Moves lane_hit's target and hit ring (not the lane or its flash) and the judgement text with the
+    // Moves lane_hit's target, hit ring and Go-Go fire (not the lane or its flash) and the judgement text with the
     // chart's #JPOSSCROLL, as OpenTaiko moves its judge frame.
     private void moveTarget(TimeSpan time)
     {
         if (_chart.JudgeMoves.IsEmpty) return;
         var (x, y) = _chart.JudgeOffsetAt(time);
-        var (dx, dy) = ((float)x - _moved.X, (float)y - _moved.Y);
-        if (dx == 0 && dy == 0) return;
+        // Every tick, not only on a change: a clip the timeline places again (the fire at each Go-Go) comes back unmoved.
         _moved = ((float)x, (float)y);
-        // ponytail: stage pixels to the movie's by the layer's scale alone; the clips' own parents assumed unscaled.
-        var (sx, sy) = (dx / _target.Transform.M11, dy / _target.Transform.M22);
-        _target.Player.TryMoveInstance("target", sx, sy);
-        _target.Player.TryMoveInstance("hit_effect", sx, sy);
+        offsetTarget(_moved.X, _moved.Y);
     }
+
+    private void offsetTarget(float x, float y)
+    {
+        // ponytail: stage pixels to the movie's by the layer's scale alone; the clips' own parents assumed unscaled.
+        var (sx, sy) = (x / _target.Transform.M11, y / _target.Transform.M22);
+        foreach (var clip in TargetClips)
+            _target.Player.SetInstanceOffset(clip, sx, sy);
+    }
+
+    // lane_hit's children at the target: its ring, the hit ring and the Go-Go fire, which shares the gogo clip with
+    // the lane's Go-Go glow (a shape, character 19) and stays with the lane, as do the branch colour and flash.
+    // ponytail: the fire is Green's character 37; check other releases' lane_hit if their fire stays behind.
+    private static readonly string[] TargetClips = ["target", "hit_effect", "gogo/#37"];
 
     /// <summary>Half the hit target's height on the stage.</summary>
     public float HitRadius => _hitRadius;
@@ -205,15 +220,16 @@ public sealed class TaikoLumenPresentation
             var note = _chart.HitObjects[index];
             if (!PlayableChart.IsOn(note.Branch, _judgement.BranchAt(note.StartTime))) continue;
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
-            var template = note.IsRare && _rareNote is { } rare ? rare
+            var template = note.IsKadon && _kadonNote is { } kadon ? kadon
+                : note.IsRare && _rareNote is { } rare ? rare
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
-            addAt(hitNotes, template, note.StartTime, time, note.Branch);
+            addAt(hitNotes, template, note.StartTime, time, note.Branch, sudden: true);
             if (hitNotes.Count != 0 && !Doron) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
-                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset);
+                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset, sudden: true);
         }
         // Balloons and kusudamas carry their text until their overlay takes over (a balloon waiting on the
         // target keeps it there).
@@ -242,10 +258,13 @@ public sealed class TaikoLumenPresentation
     }
 
     // rotate: a bar line stands across the way it travels (TJA complex scroll); notes stay upright (OpenTaiko).
+    // sudden: a note (or its text) that #SUDDEN hides until shortly before its time and holds still until then.
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
-        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool rotate = false)
+        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool rotate = false, bool sudden = false)
     {
-        var (x, y) = point(noteTime, time, noteTime, route);
+        if (sudden && _chart.ScrollPointAt(noteTime, route).Show is { } show && noteTime - time > show)
+            return;
+        var (x, y) = point(noteTime, time, noteTime, route, sudden);
         y += yOffset;
         if (x < -100 || x > 1380 || y < -100 || y > 820)
             return;
@@ -268,11 +287,15 @@ public sealed class TaikoLumenPresentation
     }
 
     // Where a note of noteTime is at time: its own scroll's way (TJA complex scroll: x+yi), from the target.
-    private (float X, float Y) point(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, ChartBranch? route)
+    // sudden: a hit note waits where #SUDDEN's wait time puts it (OpenTaiko: hit notes only, not rolls or bar lines).
+    private (float X, float Y) point(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, ChartBranch? route, bool sudden = false)
     {
         var (ox, oy) = origin(time);
         var scroll = _chart.ScrollPointAt(controlTime, route);
-        var distance = (noteTime - time).TotalSeconds * ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), 1);
+        var ahead = noteTime - time;
+        if (sudden && scroll.Wait is { } wait && ahead > wait)
+            ahead = wait;
+        var distance = ahead.TotalSeconds * ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), 1);
         return ((float)Math.Clamp(ox + distance * scroll.Multiplier, -100_000, 100_000),
             (float)Math.Clamp(oy + distance * scroll.Imaginary, -100_000, 100_000));
     }
@@ -300,6 +323,10 @@ public sealed class TaikoLumenPresentation
         // Gimmicks (backwards or slanted scroll, a moving target): the note may come from any side, so it is
         // listed for as long as it is within a screen's diagonal of the target.
         var scroll = _chart.ScrollPointAt(noteTime, route);
+        // #SUDDEN: shown from its appear time (a note held still may wait on screen from the start).
+        if (scroll.Show is not null || scroll.Wait is not null)
+            return (scroll.Show is { } show ? noteTime - show : TimeSpan.MinValue, noteTime + TimeSpan.FromSeconds(1500 / Math.Max(1,
+                ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary)))));
         if (scroll.Multiplier > 0 && scroll.Imaginary == 0 && _chart.JudgeMoves.IsEmpty)
             return VisibleWindow(noteTime, pixelsPerSecond(noteTime, route), _hitX);
         var speed = ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary));

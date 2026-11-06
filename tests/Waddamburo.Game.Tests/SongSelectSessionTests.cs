@@ -305,7 +305,7 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
-    public async Task UnrestrictedSongCanLaunchBothOniAndUraButNotMissingCourses()
+    public async Task UnrestrictedSongCanLaunchBothOniAndUraAndAMissingCourseFallsBackToTheNearest()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider(includeUra: true)]);
         var snapshot = await catalog.RefreshAsync();
@@ -326,8 +326,9 @@ public sealed class SongSelectSessionTests
             pending.ClearActive();
         }
         Assert.Equal(0, presentation.HardStars);
-        Assert.Throws<InvalidOperationException>(() => session.Select(0, 0, (int)TaikoCourse.Hard, -1));
-        Assert.Null(pending.Pending);
+        // The movie still offers Hard: its nearest course plays, rather than a failed handoff leaving Song Select waiting.
+        session.Select(0, 0, (int)TaikoCourse.Hard, -1);
+        Assert.Equal(TaikoCourse.Oni, Assert.Single(pending.ActivatePending().Players).Course);
     }
 
     [Fact]

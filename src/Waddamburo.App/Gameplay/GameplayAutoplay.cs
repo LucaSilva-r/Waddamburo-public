@@ -61,7 +61,8 @@ internal sealed class GameplayAutoplay
                 _ => TaikoInputAction.RightDon,
             }, note.StartTime));
             if (note.IsStrong)
-                inputs.Add(new(ka ? TaikoInputAction.RightKa : TaikoInputAction.RightDon, note.StartTime));
+                // A Kadon needs the other colour.
+                inputs.Add(new(ka || note.IsKadon ? TaikoInputAction.RightKa : TaikoInputAction.RightDon, note.StartTime));
         }
         foreach (var longNote in chart.LongNotes)
         {
