@@ -395,7 +395,8 @@ internal sealed class LayerHostFactory(
             danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,
             danSeries: arcade.Home ? Dan?.Series : null,
-            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received);
+            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received,
+            courseStar: OnlineSong is null && Search is null);
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;

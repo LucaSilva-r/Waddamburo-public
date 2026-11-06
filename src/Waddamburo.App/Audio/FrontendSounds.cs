@@ -73,6 +73,7 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             "Vocaloid" => 7,
             "How to Play" => 12, // the tutorial folder (traced session22)
             "Dan Dojo" => 11, // traced session30
+            "Difficulty" => 59, // the by-difficulty folder (traced session36)
             // The mode-switch folder (traced 65 in normal Song Select, 66 in Waiwai's).
             "To Waiwai" => 65,
             "To Normal" => 66,
@@ -123,6 +124,7 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             0 => 0, // Don
             1 => 3, // Ka
             2 => 6, // Close-folder substitution
+            12 => 12, // SE_ERROR: a board that can't be decided (traced session37)
             _ => null,
         };
         if (cue is { } value)

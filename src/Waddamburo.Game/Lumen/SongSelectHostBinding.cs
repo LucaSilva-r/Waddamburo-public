@@ -281,7 +281,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     {
         if ((CourseSelectSong is not null ? _courseSelect : _centre) is { } at
             && _session.Catalog.TryGetSong(at.Category, at.Song, out var song))
-            Picked = (_session.Catalog.Categories[at.Category].Key, song.Descriptor.Key);
+            Picked = (_session.Catalog.HomeOf(at.Category, song.Descriptor.Key), song.Descriptor.Key);
     }
 
     public void Attach(LumenPlayer player)
@@ -357,6 +357,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 return clearFolderSurfaces(closed);
             });
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
+            // NotifySetCourseStar(board, course, star): the by-difficulty panel's choice (board -1 = back, 0-3 a
+            // course, 4 おすすめ, 5 りれき). Traced: the game calls nothing back; the movie sizes the folder from
+            // SetCourseStarMusicNum and asks GetMusicInfo_Basic(folder, n) for its songs.
+            lumen.RegisterMethod("NotifySetCourseStar", call =>
+            {
+                if (integer(call, 0) >= 0)
+                    _session.Catalog.SelectCourseStar(integer(call, 1), integer(call, 2));
+                return LumenHostValue.Undefined;
+            });
             // SetOptionMode(player, open, board): traced (0, true, 0) as a player's option board opens and
             // (0, false, 0) as it closes; the game fades that player's name board out under it meanwhile.
             lumen.RegisterMethod("SetOptionMode", call =>
@@ -509,6 +518,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber(featureSlot));
         }
         nameFeatureFolders(StartCategory);
+        // The by-difficulty panel's counts per course (0 easy..3 oni) and ★ 1-10 (traced 40 calls after AssignMusic).
+        if (_session.Catalog.CourseStarCategory >= 0)
+            publishCourseStars();
         // A song board takes its colours from GetGenreLabel(its folder) in MusicBoard.ResetMusicInfo(genre,
         // music): the search folder's boards show their song's library instead (see SongSelectCatalogView.SourceLabel).
         if (!requirePlayer().TryWrapScriptMethod("_global.MusicBoard.prototype", "ResetMusicInfo", (call, original) =>
@@ -694,6 +706,57 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     // SetClearBits(player, silver, gold): one bit per authored course slot (ura = hidden oni, 7);
     // the movie shows a gold crown for a full combo, silver for a clear.
+    // The by-difficulty panel: songs per course and ★; per joined player its crowns there (SetCourseStarSilverNum
+    // clears, GoldNum full combos; traced silver >= gold), the 前回 board (the drum's last course and ★) and
+    // おすすめ. Boards whose ★ is 0 or has no songs stay invalid (CourseStarResource.IsValidBoard).
+    private void publishCourseStars()
+    {
+        var catalog = _session.Catalog;
+        for (var course = 0; course < 4; course++)
+            for (var stars = 1; stars <= 10; stars++)
+                tryInvoke("SetCourseStarMusicNum", LumenHostValue.FromNumber(course), LumenHostValue.FromNumber(stars),
+                    LumenHostValue.FromNumber(catalog.CourseStarCount(course, stars)));
+        foreach (var player in _sides)
+        {
+            var crowns = _crowns[player];
+            for (var course = 0; course < 4; course++)
+                for (var stars = 1; stars <= 10; stars++)
+                {
+                    int silver = 0, gold = 0;
+                    if (crowns is not null)
+                        foreach (var song in catalog.CourseStarSongs(course, stars))
+                            if (crown(song, course, crowns) is { } won and not TaikoCrown.None)
+                                (silver, gold) = (silver + 1, gold + (won == TaikoCrown.FullCombo ? 1 : 0));
+                    tryInvoke("SetCourseStarSilverNum", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(course),
+                        LumenHostValue.FromNumber(stars), LumenHostValue.FromNumber(silver));
+                    tryInvoke("SetCourseStarGoldNum", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(course),
+                        LumenHostValue.FromNumber(stars), LumenHostValue.FromNumber(gold));
+                }
+            if (TaikoGuest.LastCourseStar[player] is not { } last)
+                continue;
+            tryInvoke("SetCourseStarHistory", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(last.Course),
+                LumenHostValue.FromNumber(last.Star));
+            var recommended = recommend(last.Course, last.Star, crowns);
+            tryInvoke("SetCourseStarRecommend", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(last.Course),
+                LumenHostValue.FromNumber(recommended));
+        }
+    }
+
+    // おすすめ: on the last course, the lowest ★ from the last one up that still has a song without a clear; else the
+    // last ★. ponytail: the game's own rule is untraced (it recommended easy ★3 to a carded player).
+    private int recommend(int course, int last, IReadOnlyDictionary<string, TaikoCrown>? crowns)
+    {
+        for (var stars = last; stars <= 10; stars++)
+            if (_session.Catalog.CourseStarSongs(course, stars)
+                .Any(song => crowns is null || crown(song, course, crowns) is null or TaikoCrown.None))
+                return stars;
+        return last;
+    }
+
+    private static TaikoCrown? crown(SongSelectSong song, int course, IReadOnlyDictionary<string, TaikoCrown> crowns) =>
+        song.Descriptor.Charts.FirstOrDefault(chart => chart.Course == (TaikoCourse)course) is { } chart
+        && crowns.TryGetValue(chart.Key.ToString(), out var won) ? won : null;
+
     private void publishCrowns(SongSelectSong song)
     {
         foreach (var player in _sides)
@@ -1073,7 +1136,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 TaikoGuest.Tones[player] = Math.Clamp((int)tone.ToDouble(System.Globalization.CultureInfo.InvariantCulture), 0, TaikoGuest.ToneCount - 1);
         var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
             TaikoGuest.Options);
-        Picked = (_session.Catalog.Categories[request.Category].Key, selection.Song);
+        Picked = (_session.Catalog.HomeOf(request.Category, selection.Song), selection.Song);
+        // The by-difficulty panel's 前回 board: each drum's course and ★ (Ura is not on the panel).
+        if (_session.Catalog.TryGetSong(request.Category, request.Song, out var played))
+            foreach (var player in _sides)
+                if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } authored and >= 0 and < 4
+                    && SongSelectCatalogView.CourseStar(played, authored) is { } stars)
+                    TaikoGuest.LastCourseStar[player] = (authored, stars);
         return LumenHostValue.Undefined;
     }
 

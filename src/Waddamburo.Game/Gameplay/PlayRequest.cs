@@ -46,6 +46,12 @@ public static class TaikoGuest
     /// <summary>Each drum unlocked Oni (right-rim hits on the course board): it stays shown for the rest of the credit.</summary>
     public static bool[] Mania { get; } = new bool[2];
 
+    /// <summary>
+    /// Each drum's last course (0 easy..3 oni) and ★: the by-difficulty panel's 前回あそんだむずかしさ board.
+    /// ponytail: kept for the app's run only (the game keeps it on the card).
+    /// </summary>
+    public static (int Course, int Star)?[] LastCourseStar { get; } = new (int, int)?[2];
+
     /// <summary>Green's drum sounds: 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン.</summary>
     public const int ToneCount = 6;
 }

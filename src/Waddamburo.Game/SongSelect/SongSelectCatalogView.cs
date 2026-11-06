@@ -23,6 +23,8 @@ public enum SongCategoryPresentation
     HideSongCount = 1 << 1,
     /// <summary>GenreResource.FLAG_FOLDER_END: a folder without songs that decides at once (the mode switch).</summary>
     FolderEnd = 1 << 2,
+    /// <summary>GenreResource.FLAG_COURSESTAR_SELECT: deciding the folder opens the course and ★ panel first.</summary>
+    CourseStar = 1 << 5,
 }
 
 /// <summary>Which authored song select the view feeds.</summary>
@@ -105,6 +107,12 @@ public sealed class SongSelectCatalogView
     /// <summary>The favourites folder's art (GenreResource.FAVORITE).</summary>
     public const string FavouritesLabel = "お気に入り";
 
+    /// <summary>The by-difficulty folder (GenreResource.COURSE_STAR, id 18).</summary>
+    public const string CourseStarLabel = "むずかしさから曲をえらぶ";
+
+    /// <summary>The by-difficulty folder's key.</summary>
+    public static readonly CategoryKey CourseStarKey = new(SongSourceKind.Stock, "course-star");
+
     /// <summary>
     /// <paramref name="library"/> lists only that source's categories (null: every source);
     /// <paramref name="links"/> appends a folder per other library that switches Song Select to it.
@@ -125,7 +133,7 @@ public sealed class SongSelectCatalogView
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
         IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null,
-        Func<SongKey, SongDescriptor?>? received = null)
+        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -160,7 +168,7 @@ public sealed class SongSelectCatalogView
                     $"Results for\n{search.Query}\n{searchLines(snapshot, search)}"),
             },
         };
-        var categories = searchFolder.Concat(tutorialFolder).Concat(favouriteFolder).Concat(listed
+        var genres = listed
             .Select(category =>
             {
                 // A declared genre (box.def #GENRE) picks the game's own art first, then the folder's name.
@@ -183,7 +191,24 @@ public sealed class SongSelectCatalogView
                         ? string.Join('\n', descriptor.Description) : null,
                 };
             })
-            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty))
+            .Where(category => mode == SongSelectMode.Normal || !category.Songs.IsEmpty)
+            .ToArray();
+        // Every listed song once, for the by-difficulty folder (traced: assigned empty, flags 35, after the tutorial).
+        // ponytail: normal Song Select only; Waiwai's movie has the folder too, untraced there.
+        _courseStarPool = courseStar && mode == SongSelectMode.Normal
+            ? [.. genres.SelectMany(static category => category.Songs).DistinctBy(static song => song.Descriptor.Key)]
+            : [];
+        // Its boards keep the title outline of the folder each song comes from (user-observed on the game).
+        foreach (var genre in genres)
+            foreach (var song in genre.Songs)
+                _homeStyles.TryAdd(song.Descriptor.Key, genre.BoardStyle);
+        var courseStarFolder = _courseStarPool.IsEmpty ? [] : new[]
+        {
+            new SongSelectCategory(CourseStarKey, "Difficulty", CourseStarLabel,
+                SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount | SongCategoryPresentation.CourseStar,
+                boardStyle(""), []),
+        };
+        var categories = searchFolder.Concat(tutorialFolder).Concat(courseStarFolder).Concat(favouriteFolder).Concat(genres)
             .Concat(danDojo && mode == SongSelectMode.Normal && library is null or SongSourceKind.Stock ? new[]
             {
                 // At home a folder of series, one spine each; a cabinet's one series opens straight away.
@@ -270,7 +295,8 @@ public sealed class SongSelectCatalogView
 
     /// <summary>The title outline a song's board gets: its folder's, or in the search folder its library's.</summary>
     public SongBoardTextureStyle BoardStyle(int category, SongSelectSong song) =>
-        Categories[category].Key == SearchKey ? boardStyle(song.Descriptor.Key.Source switch
+        Categories[category].Key == CourseStarKey && _homeStyles.TryGetValue(song.Descriptor.Key, out var home) ? home
+        : Categories[category].Key == SearchKey ? boardStyle(song.Descriptor.Key.Source switch
         {
             SongSourceKind.Tja => "Variety",
             SongSourceKind.OsuLazer => "Kids",
@@ -283,6 +309,40 @@ public sealed class SongSelectCatalogView
             SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control);
 
     private readonly SongCatalogSnapshot _snapshot;
+    private readonly ImmutableArray<SongSelectSong> _courseStarPool;
+    private readonly Dictionary<SongKey, SongBoardTextureStyle> _homeStyles = [];
+
+    /// <summary>Index of the by-difficulty folder, or -1.</summary>
+    public int CourseStarCategory => Categories.ToList().FindIndex(static category => category.Key == CourseStarKey);
+
+    // A course's ★ as the panel counts it (1-10). ponytail: Oni only on the おに board; Ura charts are left out.
+    private static int? star(SongSelectSong song, int course) =>
+        (uint)course < 4 && song.Level((TaikoCourse)course) is { } level ? Math.Clamp(level, 1, 10) : null;
+
+    /// <summary>How many listed songs have <paramref name="course"/> (0 easy..3 oni) at <paramref name="stars"/>.</summary>
+    public int CourseStarCount(int course, int stars) => _courseStarPool.Count(song => star(song, course) == stars);
+
+    /// <summary>The listed songs whose <paramref name="course"/> is at <paramref name="stars"/>.</summary>
+    public IEnumerable<SongSelectSong> CourseStarSongs(int course, int stars) => _courseStarPool.Where(song => star(song, course) == stars);
+
+    /// <summary>A song's ★ on a course (0 easy..3 oni) as the panel counts it; null without that course.</summary>
+    public static int? CourseStar(SongSelectSong song, int course) => star(song, course);
+
+    /// <summary>Fills the by-difficulty folder with the songs of that course and ★ (library order).</summary>
+    public void SelectCourseStar(int course, int stars)
+    {
+        if (CourseStarCategory is var index and >= 0)
+            Categories = Categories.SetItem(index, Categories[index] with
+            {
+                Songs = [.. _courseStarPool.Where(song => star(song, course) == stars)],
+            });
+    }
+
+    /// <summary>The folder a song is remembered in: its own genre's when picked in the by-difficulty folder.</summary>
+    public CategoryKey HomeOf(int category, SongKey song) =>
+        Categories[category].Key == CourseStarKey
+        && Categories.FirstOrDefault(entry => entry.Key != CourseStarKey && entry.Songs.Any(item => item.Descriptor.Key == song)) is { } home
+            ? home.Key : Categories[category].Key;
     private readonly SongSourceKind? _library;
 
     /// <summary>Index of the favourites folder, or -1.</summary>

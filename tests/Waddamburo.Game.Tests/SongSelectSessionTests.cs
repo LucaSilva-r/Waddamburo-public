@@ -147,6 +147,28 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
+    public async Task CourseStarFolderListsSongsOfTheChosenCourseAndStar()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var view = new SongSelectCatalogView(await catalog.RefreshAsync(), courseStar: true);
+
+        var folder = view.CourseStarCategory;
+        Assert.Equal(0, folder);
+        Assert.Equal(SongSelectCatalogView.CourseStarLabel, view.Categories[folder].AuthoredLabel);
+        Assert.Equal(35, (int)view.Categories[folder].Presentation); // traced AssignMusic_GenreID(18, 0, 35, -1)
+        Assert.Empty(view.Categories[folder].Songs);
+        Assert.Equal(1, view.CourseStarCount((int)TaikoCourse.Oni, 8));
+        Assert.Equal(0, view.CourseStarCount((int)TaikoCourse.Oni, 7));
+
+        view.SelectCourseStar((int)TaikoCourse.Oni, 8);
+        var song = Assert.Single(view.Categories[folder].Songs);
+        Assert.Equal(view.Categories[1].Key, view.HomeOf(folder, song.Descriptor.Key));
+        Assert.Equal(view.Categories[1].BoardStyle, view.BoardStyle(folder, song)); // the genre's title outline
+        view.SelectCourseStar((int)TaikoCourse.Easy, 3);
+        Assert.Empty(view.Categories[folder].Songs);
+    }
+
+    [Fact]
     public async Task RightDrumPlayerAloneSelectsAsPlayerTwo()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
