@@ -401,8 +401,7 @@ internal sealed class GameShell : IDisposable
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"Renderer: {Application.GpuDriver}");
-        _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, Cli.GameDataLayout.ReleaseOf(dataRoot).Name,
-            interactive: Interactive);
+        _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, interactive: Interactive);
         try
         {
             _boot.Begin("NETWORK SERVICE");

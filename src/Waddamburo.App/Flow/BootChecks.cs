@@ -36,17 +36,14 @@ internal sealed class BootChecks : IDisposable
     // Nobody at the window (a scripted run): a failure is thrown on, not waited on.
     private readonly bool _interactive;
 
-    public BootChecks(SdlApplication application, string fontPath, string? release, bool interactive = true)
+    public BootChecks(SdlApplication application, string fontPath, bool interactive = true)
     {
         _interactive = interactive;
         _application = application;
         _fontPath = fontPath;
         _menu = new OverlayMenu(application, fontPath);
-        _footer =
-        [
-            (OverlayMenu.upper(release ?? "Taiko no Tatsujin"), OverlayMenu.White),
-            (OverlayMenu.upper(Hosting.SelfUpdate.WindowTitle), OverlayMenu.Cyan),
-        ];
+        // Waddamburo's own name and version only: the boot screen names no game or release.
+        _footer = [(OverlayMenu.upper(Hosting.SelfUpdate.WindowTitle), OverlayMenu.Cyan)];
         _menu.Open(new OverlayPage(static () => "", () => [.. _checks.Select(check => new OverlayRow(Shown(check.Name), Value: () => check.Ok switch
             {
                 true => "{OK}",
