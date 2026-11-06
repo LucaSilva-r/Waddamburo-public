@@ -49,7 +49,10 @@ public sealed class DanCourseTimelineTests
 
         var course = DanCourseTimeline.Merge([(branched, TaikoCourse.Oni)]);
 
-        Assert.Equal(PlayableNoteKind.Ka, Assert.Single(course.Chart.HitObjects).Kind);
+        var note = Assert.Single(course.Chart.HitObjects);
+        Assert.Equal(PlayableNoteKind.Ka, note.Kind);
+        // The merged chart has no branching, so its session plays the normal route: a tagged note would never show.
+        Assert.Null(note.Branch);
     }
 
     [Fact]

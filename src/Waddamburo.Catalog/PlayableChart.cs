@@ -363,10 +363,16 @@ public sealed record PlayableChart
     /// <summary>
     /// The chart as one route, without branching: what per-chart figures (soul gauge note count, score
     /// rates, 真打 base) are worked out from. A chart without branching is returned as it is.
+    /// Its notes lose their route tag: with no branching, a session plays the normal route, so a tagged master
+    /// note would be neither drawn nor judged (dan courses on 2026-11-06: no notes at all on branched songs).
     /// </summary>
     public PlayableChart OnRoute(ChartBranch route) => Branching is null ? this
-        : new PlayableChart(Key, AuthoredOffset, Duration, HitObjects.Where(note => IsOn(note.Branch, route)),
-            TimingPoints, ScrollPoints, EffectPointsOn(route), BarLinesOn(route), LongNotes.Where(note => IsOn(note.Branch, route)))
+        : new PlayableChart(Key, AuthoredOffset, Duration,
+            HitObjects.Where(note => IsOn(note.Branch, route)).Select(static note => note with { Branch = null }),
+            RouteControls.IsEmpty ? TimingPoints : RouteControls[(int)route].Timing,
+            RouteControls.IsEmpty ? ScrollPoints : RouteControls[(int)route].Scroll,
+            EffectPointsOn(route), BarLinesOn(route),
+            LongNotes.Where(note => IsOn(note.Branch, route)).Select(static note => note with { Branch = null }))
         {
             Level = Level,
             ScoreInit = ScoreInit,
