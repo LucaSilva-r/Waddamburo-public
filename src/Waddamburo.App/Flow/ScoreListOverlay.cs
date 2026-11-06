@@ -17,7 +17,8 @@ namespace Waddamburo.App.Flow;
 /// plays; picking one watches its replay (a review: never saved). Left/right pick the difficulty, up/down
 /// the play; the other keys are GameActions' (Scores opens and closes it, Leaderboard switches
 /// leaderboard/own plays, ShinuchiBoard the normal/真打 leaderboard, Confirm watches; Escape closes).
-/// Practice starts from a play's pause menu instead, with its own options.
+/// Practice starts from a play's pause menu instead, with its own options. The own plays also list the
+/// failed plays kept on this PC only (in their own colour, replayed from the local store), offline too.
 /// </summary>
 internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, OptionIcons optionIcons) : IInputOverlay
 {
@@ -35,6 +36,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
     private ScoreClient? _client;
     // Per chart and list (leaderboard / own): the request under way or done.
     private readonly Dictionary<(int Chart, bool Mine, bool Shinuchi), Task<List<ScoreRow>>> _lists = [];
+    private readonly Dictionary<Guid, TaikoReplay> _localReplays = []; // the local-only plays' replays, by play
     private Task<ReplayDownload>? _watching;
     private string? _error;
 
@@ -75,10 +77,16 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             _selection = Math.Max(0, _selection - 1);
         if (keys.IsDown(SdlKeyboardKey.Down))
             _selection = Math.Min(Math.Max(0, rows.Count - 1), _selection + 1);
-        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && _client is { } client)
+        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count)
         {
-            var playId = rows[_selection].PlayId;
-            _watching = Task.Run(() => client.ReplayAsync(playId));
+            var play = rows[_selection];
+            TaikoReplay? local;
+            lock (_localReplays)
+                _localReplays.TryGetValue(play.PlayId, out local);
+            if (play.LocalOnly && local is not null)
+                _watching = Task.FromResult(new ReplayDownload(play with { Name = _profile?.DisplayName ?? "" }, "", local, _profile));
+            else if (_client is { } client)
+                _watching = Task.Run(() => client.ReplayAsync(play.PlayId));
         }
         return true;
     }
@@ -101,6 +109,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         var played = Array.FindLastIndex(_charts, chart => crowns.ContainsKey(chart.Key.ToString()));
         _chart = played >= 0 ? played : Math.Max(0, Array.FindIndex(_charts, static chart => chart.Course == TaikoCourse.Oni));
         _lists.Clear();
+        _localReplays.Clear();
         (_mine, _shinuchi, _selection, _watching, _error) = (false, false, 0, null, null);
         IsOpen = true;
         return true;
@@ -111,7 +120,9 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
 
     private Task<List<ScoreRow>>? list()
     {
-        if (_client is not { } client)
+        var client = _client;
+        // Offline, only the own plays kept on this PC.
+        if (client is null && (!_mine || _profile is null || shell.Sync.Scores is null))
             return null;
         var key = (_chart, _mine, _mine ? false : _shinuchi);
         if (!_lists.TryGetValue(key, out var task))
@@ -124,8 +135,15 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 // The server knows charts by their notes' hash.
                 var sha = await shell.ChartHashes.HashAsync(chart).ConfigureAwait(false)
                     ?? throw new InvalidOperationException("The chart has no course.");
-                return mine ? await client.MyScoresAsync(sha).ConfigureAwait(false)
-                    : (await client.LeaderboardAsync(sha, shinuchi: shinuchi).ConfigureAwait(false)).Scores;
+                if (!mine)
+                    return (await client!.LeaderboardAsync(sha, shinuchi: shinuchi).ConfigureAwait(false)).Scores;
+                var local = _profile is { } profile && shell.Sync.Scores is { } scores ? scores.LocalOnlyPlays(profile.Baid, sha) : [];
+                lock (_localReplays)
+                    foreach (var (row, replay) in local)
+                        _localReplays[row.PlayId] = replay;
+                var online = client is null ? [] : await client.MyScoresAsync(sha).ConfigureAwait(false);
+                return [.. online.Concat(local.Select(static entry => entry.Row))
+                    .OrderByDescending(static play => play.PlayedAt ?? DateTimeOffset.MinValue)];
             });
         }
         return task;
@@ -149,7 +167,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             Seed = replay.Play.Seed,
             Review = new ReviewRequest(replay.Replay.Inputs, TimeSpan.FromMilliseconds(replay.Play.InputOffsetMs ?? 0), replay.Player)
             {
-                PlayId = replay.Play.PlayId,
+                PlayId = replay.Play.LocalOnly ? null : replay.Play.PlayId, // not on the server: nothing to report
             },
         };
         if (!shell.PlayRequests.TryRequestPlay(request))
@@ -190,7 +208,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         quads.Add(painter.Text(T("score_list.switch", GameActions.Name(GameAction.Leaderboard), GameActions.Name(GameAction.ShinuchiBoard)), Left + Width - 30, Top + 122, 420, 22, anchor: 1, tint: (170, 175, 190)));
 
         var listTop = Top + 150;
-        string? message = _client is null ? T("score_list.offline")
+        string? message = list() is null ? T("score_list.offline")
             : _watching is not null ? T("score_list.loading_replay")
             : _error ?? (list() switch
             {
@@ -217,18 +235,23 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         return quads;
     }
 
+    // A failed play kept on this PC only: its text in violet, "offline only" in the crown's place.
+    private static readonly (byte R, byte G, byte B) LocalTint = (190, 150, 255);
+
     private IEnumerable<RenderQuad> row(ScoreRow play, float centreY)
     {
-        var crown = play.Crown switch { 3 => T("score_list.crown.all_great"), 2 => T("score_list.crown.full_combo"), 1 => T("score_list.crown.clear"), _ => "" };
+        var crown = play.LocalOnly ? T("score_list.local_only")
+            : play.Crown switch { 3 => T("score_list.crown.all_great"), 2 => T("score_list.crown.full_combo"), 1 => T("score_list.crown.clear"), _ => "" };
+        (byte, byte, byte)? text = play.LocalOnly ? LocalTint : null;
         var when = play.PlayedAt?.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) ?? "";
         yield return painter.Text(play.Rank is { } rank ? $"#{rank}" : "", Left + 40, centreY, 70, 26, anchor: 0, tint: (170, 175, 190));
-        yield return painter.Text(_mine ? when : play.Name, Left + 115, centreY, 300, 26, anchor: 0);
+        yield return painter.Text(_mine ? when : play.Name, Left + 115, centreY, 300, 26, anchor: 0, tint: text);
         // The play's options as the lane's icons, right-aligned before the score.
         var x = Left + 414f;
         foreach (var icon in optionIcons.Of(TaikoPlayOptions.FromBits(play.Options)).Reverse())
             yield return OverlayPainter.Quad(icon, x -= 36, centreY - 17, 34, 34);
-        yield return painter.Text(play.Score.ToString("N0", CultureInfo.InvariantCulture), Left + 560, centreY, 140, 26, anchor: 1);
-        yield return painter.Text(crown, Left + 580, centreY, 130, 22, anchor: 0, tint: play.Crown >= 2 ? ((byte)255, (byte)205, (byte)80) : ((byte)150, (byte)200, (byte)255));
-        yield return painter.Text($"{play.Great} / {play.Good} / {play.Miss}", Left + Width - 40, centreY, 200, 24, anchor: 1, tint: (200, 205, 215));
+        yield return painter.Text(play.Score.ToString("N0", CultureInfo.InvariantCulture), Left + 560, centreY, 140, 26, anchor: 1, tint: text);
+        yield return painter.Text(crown, Left + 580, centreY, 130, 22, anchor: 0, tint: text ?? (play.Crown >= 2 ? ((byte)255, (byte)205, (byte)80) : ((byte)150, (byte)200, (byte)255)));
+        yield return painter.Text($"{play.Great} / {play.Good} / {play.Miss}", Left + Width - 40, centreY, 200, 24, anchor: 1, tint: text ?? (200, 205, 215));
     }
 }

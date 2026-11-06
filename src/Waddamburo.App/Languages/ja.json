@@ -226,6 +226,7 @@
 
   "score_list.leaderboard": "ランキング",
   "score_list.mine": "自分のプレイ",
+  "score_list.local_only": "失敗・この端末のみ",
   "score_list.switch": "{0}：ランキング／自分のプレイ · {1}：真打",
   "score_list.leaderboard_shinuchi": "ランキング · 真打",
   "score_list.keys": "←/→ 難易度 · ↑/↓ 選ぶ · {0} リプレイを見る · {1}/Esc 閉じる",

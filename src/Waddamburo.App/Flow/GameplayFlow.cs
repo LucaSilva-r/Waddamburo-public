@@ -905,12 +905,12 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
                 var shinuchi = player.Options.Shinuchi;
                 if (lane < Shell.Bests.Length)
                     Shell.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id, shinuchi) ?? Shell.Gameplay.Results[lane].Score;
-                // Failed plays aren't kept, here or on the server; the results still show them.
-                if (!Shell.Gameplay.Results[lane].Cleared)
-                    continue;
+                // Failed plays are kept on this PC only (never uploaded, see ScoreStore.PendingPlays): the results'
+                // best then shows a hard song's progress; they get no crown or rank-in.
+                var cleared = Shell.Gameplay.Results[lane].Cleared;
                 // Online players only (the guest's baid is never uploaded), from the board song select fetched.
                 // ponytail: 真打 plays get no rank-in on the results (song select fetched the normal board only).
-                if (lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi
+                if (cleared && lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi
                     && Shell.Hosts.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
                 {
                     var top = boards[(int)player.Course] ?? []; // fetched, nobody on it yet

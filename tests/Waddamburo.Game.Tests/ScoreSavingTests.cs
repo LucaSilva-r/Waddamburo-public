@@ -275,7 +275,15 @@ public sealed class ScoreSavingTests
             {
                 store.Save(play(cleared: true), upload);
                 store.Save(play(cleared: false), upload);
-                Assert.Equal(2, store.PendingPlays(42, 50).Count);
+                // A failed play stays on this PC: never pending upload, yet the results' best counts it.
+                Assert.True(Assert.Single(store.PendingPlays(42, 50)).Cleared);
+                var failed = play(cleared: false) with { Result = new TaikoPlayResult(TaikoCourse.Oni, 2000, 3, 0, 0, 3, 0, 50, false) };
+                store.Save(failed, upload);
+                Assert.Equal(2000, store.PreviousBest(42, "sha", Guid.NewGuid()));
+                var local = store.LocalOnlyPlays(42, "sha");
+                Assert.Equal(2, local.Count); // the failed ones, newest first, with their replays
+                Assert.Equal(2000, local[0].Row.Score);
+                Assert.All(local, static play => Assert.True(play.Row.LocalOnly));
             }
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}"))

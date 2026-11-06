@@ -226,6 +226,7 @@
 
   "score_list.leaderboard": "Leaderboard",
   "score_list.mine": "Your plays",
+  "score_list.local_only": "Failed · offline only",
   "score_list.switch": "{0}: leaderboard / your plays · {1}: shin-uchi",
   "score_list.leaderboard_shinuchi": "Leaderboard · Shin-uchi",
   "score_list.keys": "←/→ difficulty · ↑/↓ choose · {0} watch the replay · {1}/Esc close",

@@ -64,6 +64,10 @@ public record ScoreRow
     /// <summary>The play options (<see cref="TaikoPlayOptions.Bits"/>) and the random options' seed.</summary>
     public int Options { get; init; }
     public int? Seed { get; init; }
+
+    /// <summary>A failed play kept on this PC only (never uploaded); its replay is in the local store.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool LocalOnly { get; init; }
 }
 
 /// <summary>A downloaded replay: the play, its chart's hash, its inputs and who played it (name boards, Don's look).</summary>

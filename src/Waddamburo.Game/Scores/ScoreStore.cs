@@ -299,7 +299,7 @@ public sealed class ScoreStore : IDisposable
 
     /// <summary>
     /// Plays not yet on the server, oldest first: one player's, or everyone's (null: a cabinet). Local
-    /// guest plays (baid 0) never leave the PC.
+    /// guest plays (baid 0) and failed plays never leave the PC.
     /// </summary>
     public List<UploadPlay> PendingPlays(long? baid, int limit)
     {
@@ -310,7 +310,7 @@ public sealed class ScoreStore : IDisposable
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
                     cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms,
                     options, seed
-                FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND uploaded_at IS NULL
+                FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND cleared = 1 AND uploaded_at IS NULL
                 ORDER BY played_at LIMIT $limit
                 """;
             command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
@@ -330,6 +330,48 @@ public sealed class ScoreStore : IDisposable
                     Options = reader.GetInt32(19),
                     Seed = reader.IsDBNull(20) ? null : reader.GetInt32(20),
                 });
+            return plays;
+        }
+    }
+
+    /// <summary>
+    /// A player's failed plays on a chart, newest first: kept on this PC only (see <see cref="PendingPlays"/>),
+    /// with their replays, for the score list's own plays.
+    /// </summary>
+    public List<(ScoreRow Row, TaikoReplay Replay)> LocalOnlyPlays(long baid, string sha256)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, course, score, great, good, miss, max_combo, rolls, gauge, played_at, replay,
+                    audio_offset_ms, input_offset_ms, options, seed
+                FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND cleared = 0 ORDER BY played_at DESC
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$sha", sha256);
+            using var reader = command.ExecuteReader();
+            var plays = new List<(ScoreRow, TaikoReplay)>();
+            while (reader.Read())
+                plays.Add((new ScoreRow
+                {
+                    PlayId = Guid.Parse(reader.GetString(0)),
+                    Baid = baid,
+                    Course = reader.GetInt32(1),
+                    Score = reader.GetInt64(2),
+                    Great = reader.GetInt32(3),
+                    Good = reader.GetInt32(4),
+                    Miss = reader.GetInt32(5),
+                    MaxCombo = reader.GetInt32(6),
+                    Rolls = reader.GetInt32(7),
+                    Gauge = reader.GetInt32(8),
+                    PlayedAt = DateTimeOffset.Parse(reader.GetString(9), CultureInfo.InvariantCulture),
+                    AudioOffsetMs = reader.IsDBNull(11) ? null : reader.GetInt32(11),
+                    InputOffsetMs = reader.IsDBNull(12) ? null : reader.GetInt32(12),
+                    Options = reader.GetInt32(13),
+                    Seed = reader.IsDBNull(14) ? null : reader.GetInt32(14),
+                    LocalOnly = true,
+                }, TaikoReplay.Decode((byte[])reader[10])));
             return plays;
         }
     }
