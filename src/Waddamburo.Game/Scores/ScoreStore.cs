@@ -12,6 +12,9 @@ public enum TaikoCrown { None, Clear, FullCombo }
 /// <summary>A player's best on one chart, as the server keeps it (crown 0 none, 1 clear, 2 full combo).</summary>
 public sealed record RemoteBest(string Sha256, long Score, int Crown);
 
+/// <summary>One of a player's last plays on the server (any machine): its chart, course and time.</summary>
+public sealed record RemotePlay(string Sha256, int Course, DateTimeOffset PlayedAt);
+
 /// <summary>A play as the server takes it (snake_case JSON); the replay is base64.</summary>
 public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string Mode, int Course, long Score,
     int Great, int Good, int Miss, int MaxCombo, int Rolls, int Gauge, bool Cleared, int ScoringVersion,
@@ -262,6 +265,11 @@ public sealed class ScoreStore : IDisposable
         // a reader change moves charts' hashes.
         """
         DELETE FROM chart_hashes;
+        """,
+        // The player's last plays on the server (any machine), for the play history.
+        """
+        CREATE TABLE IF NOT EXISTS remote_plays (baid INTEGER NOT NULL, sha256 TEXT NOT NULL, played_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS remote_plays_player ON remote_plays (baid);
         """,
     ];
 
@@ -628,12 +636,64 @@ public sealed class ScoreStore : IDisposable
     }
 
     /// <summary>Replaces a player's server bests with a fresh download.</summary>
-    public void ReplaceRemoteBests(long baid, IEnumerable<RemoteBest> bests)
+    private void replaceRemotePlays(long baid, IEnumerable<RemotePlay> recent, SqliteTransaction transaction)
+    {
+        using (var clear = _connection.CreateCommand())
+        {
+            clear.Transaction = transaction;
+            clear.CommandText = "DELETE FROM remote_plays WHERE baid = $baid";
+            clear.Parameters.AddWithValue("$baid", baid);
+            clear.ExecuteNonQuery();
+        }
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO remote_plays (baid, sha256, played_at) VALUES ($baid, $sha, $at)";
+        command.Parameters.AddWithValue("$baid", baid);
+        var sha = command.Parameters.Add("$sha", SqliteType.Text);
+        var at = command.Parameters.Add("$at", SqliteType.Text);
+        foreach (var play in recent)
+        {
+            sha.Value = play.Sha256;
+            at.Value = play.PlayedAt.ToString("O", CultureInfo.InvariantCulture);
+            command.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
+    /// A player's play history, newest first, as chart keys: this PC's plays (failed ones too) merged with
+    /// the server's last plays from any machine (charts this PC has hashed). A play on both counts once per
+    /// chart and time; the caller keeps one entry per song.
+    /// </summary>
+    public List<string> RecentCharts(long baid, int limit = 200)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT chart_key, played_at FROM (SELECT chart_key, played_at FROM plays WHERE baid = $baid
+                    ORDER BY played_at DESC LIMIT $limit)
+                UNION ALL
+                SELECT hashes.chart_key, remote.played_at FROM remote_plays remote
+                JOIN chart_hashes hashes ON hashes.sha256 = remote.sha256 WHERE remote.baid = $baid
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var plays = new List<(string Chart, DateTimeOffset At)>();
+            while (reader.Read())
+                plays.Add((reader.GetString(0), DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture)));
+            return [.. plays.Distinct().OrderByDescending(static play => play.At).Select(static play => play.Chart)];
+        }
+    }
+
+    public void ReplaceRemoteBests(long baid, IEnumerable<RemoteBest> bests, IEnumerable<RemotePlay>? recent = null)
     {
         ArgumentNullException.ThrowIfNull(bests);
         lock (_connection)
         {
             using var transaction = _connection.BeginTransaction();
+            if (recent is not null)
+                replaceRemotePlays(baid, recent, transaction);
             using (var clear = _connection.CreateCommand())
             {
                 clear.Transaction = transaction;

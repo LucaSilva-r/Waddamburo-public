@@ -99,6 +99,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(T("section.songs")),
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
+        new(Setting: toggle("settings.random_song_folder", static s => s.RandomSongFolder, static (s, v) => s with { RandomSongFolder = v })),
         new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
         new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v })),
         new(Setting: new(T("settings.gameplay_skin"), skinIndex,

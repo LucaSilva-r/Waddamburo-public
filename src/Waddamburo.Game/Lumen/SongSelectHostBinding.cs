@@ -501,7 +501,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             // (the patched ボーカロイド art: own colour and name slots) while there are slots; more than ten
             // left on feature art share its slots (see nameFeatureFolders).
             var featureSlot = -1;
-            if (label == SongSelectCatalogView.FeatureLabel && custom < genres)
+            // The random-song spine keeps the movie's plain イベント art, as its developer setup (no recoloured folder).
+            if (category.Key == SongSelectCatalogView.RollKey)
+            {
+            }
+            else if (label == SongSelectCatalogView.FeatureLabel && custom < genres)
                 label = customGenre(custom++, category);
             else if (label == SongSelectCatalogView.FeatureLabel)
             {
@@ -521,6 +525,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // The by-difficulty panel's counts per course (0 easy..3 oni) and ★ 1-10 (traced 40 calls after AssignMusic).
         if (_session.Catalog.CourseStarCategory >= 0)
             publishCourseStars();
+        if (_session.Catalog.RollCategory >= 0)
+            hookRollTitles();
         // A song board takes its colours from GetGenreLabel(its folder) in MusicBoard.ResetMusicInfo(genre,
         // music): the search folder's boards show their song's library instead (see SongSelectCatalogView.SourceLabel).
         if (!requirePlayer().TryWrapScriptMethod("_global.MusicBoard.prototype", "ResetMusicInfo", (call, original) =>
@@ -706,6 +712,37 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     // SetClearBits(player, silver, gold): one bit per authored course slot (ura = hidden oni, 7);
     // the movie shows a gold crown for a full combo, silver for a clear.
+    // The random-pick board shuffles: each frame it asks RequestSongBoardTexture_LongRandom(14) for the detail and
+    // _ShortRandom(slot) for its spine, wrappers Green left empty (they never reach the game). Here each draws the
+    // title of a song from the pool in turn; the song played is the folder's one (chosen as Song Select loads).
+    // ponytail: the shuffled ★ are the movie's own random ones; the board settles on the folder's song only once decided.
+    private int _rollTitle;
+
+    private void hookRollTitles()
+    {
+        var pool = _session.Catalog.RollPool;
+        var player = requirePlayer();
+        foreach (var (method, kind) in new[] { ("RequestSongBoardTexture_LongRandom", SongBoardTextureKind.Expanded),
+                     ("RequestSongBoardTexture_ShortRandom", SongBoardTextureKind.Compact) })
+        {
+            LumenHostValue draw(LumenHostCall call, Func<LumenHostValue> original)
+            {
+                if (call.Arguments.Length < 1 || call.Arguments[0].Kind != LumenHostValueKind.Number || pool.IsEmpty)
+                    return original();
+                var slot = (int)call.Arguments[0].AsNumber();
+                var song = pool[_rollTitle++ % pool.Length];
+                if (_session.Catalog.Find(_session.Catalog.HomeOf(_session.Catalog.RollCategory, song.Descriptor.Key), song.Descriptor.Key) is not { } at)
+                    return original();
+                requirePlayer().SetNativeFill(slot == 14 ? "song_name_detail" : slot == 13 ? "song_name_center" : $"song_name{slot}",
+                    _session.GetBoardTexture(at.Category, at.Song, kind));
+                return LumenHostValue.Undefined;
+            }
+            if (!player.TryWrapScriptMethod("_global.CppConnection", method, draw)
+                && !player.TryWrapScriptMethod("_global.CppConnection.prototype", method, draw))
+                Console.Error.WriteLine($"Song Select has no CppConnection.{method}; the random board shows no titles.");
+        }
+    }
+
     // The by-difficulty panel: songs per course and ★; per joined player its crowns there (SetCourseStarSilverNum
     // clears, GoldNum full combos; traced silver >= gold), the 前回 board (the drum's last course and ★) and
     // おすすめ. Boards whose ★ is 0 or has no songs stay invalid (CourseStarResource.IsValidBoard).
@@ -732,7 +769,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     tryInvoke("SetCourseStarGoldNum", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(course),
                         LumenHostValue.FromNumber(stars), LumenHostValue.FromNumber(gold));
                 }
-            if (TaikoGuest.LastCourseStar[player] is not { } last)
+            // This run's last pick, else the play history's newest (the view's player only).
+            if ((TaikoGuest.LastCourseStar[player] ?? (_sides.Length == 1 ? catalog.LastCourseStar : null)) is not { } last)
                 continue;
             tryInvoke("SetCourseStarHistory", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(last.Course),
                 LumenHostValue.FromNumber(last.Star));

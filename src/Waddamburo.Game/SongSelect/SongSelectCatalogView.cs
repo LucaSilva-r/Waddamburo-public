@@ -23,6 +23,8 @@ public enum SongCategoryPresentation
     HideSongCount = 1 << 1,
     /// <summary>GenreResource.FLAG_FOLDER_END: a folder without songs that decides at once (the mode switch).</summary>
     FolderEnd = 1 << 2,
+    /// <summary>GenreResource.FLAG_ROLL_MUSIC: one board that shuffles titles and ★ while the cursor is on it (a random pick).</summary>
+    Roll = 1 << 4,
     /// <summary>GenreResource.FLAG_COURSESTAR_SELECT: deciding the folder opens the course and ★ panel first.</summary>
     CourseStar = 1 << 5,
 }
@@ -113,6 +115,27 @@ public sealed class SongSelectCatalogView
     /// <summary>The by-difficulty folder's key.</summary>
     public static readonly CategoryKey CourseStarKey = new(SongSourceKind.Stock, "course-star");
 
+    /// <summary>The recommended folder (GenreResource.RECOMMEND, id 9): random songs, as TaikOnline answers a cabinet's recommend.</summary>
+    public const string RecommendLabel = "おすすめ";
+
+    /// <summary>The recommended folder's key.</summary>
+    public static readonly CategoryKey RecommendKey = new(SongSourceKind.Stock, "recommend");
+
+    /// <summary>How many songs the recommended folder lists (the recommend reply's best songs).</summary>
+    public const int RecommendSongs = 10;
+
+    /// <summary>The random-pick folder's key (a spine with FLAG_ROLL_MUSIC, as in the movie's developer setup).</summary>
+    public static readonly CategoryKey RollKey = new(SongSourceKind.Stock, "roll");
+
+    /// <summary>The recently played folder (GenreResource.HISTORY, id 11).</summary>
+    public const string HistoryLabel = "最近あそんだ曲";
+
+    /// <summary>The recently played folder's key.</summary>
+    public static readonly CategoryKey HistoryKey = new(SongSourceKind.Stock, "history");
+
+    /// <summary>How many songs the recently played folder lists (traced AssignMusic_GenreID(11, 20, 0) for a card).</summary>
+    public const int HistorySongs = 20;
+
     /// <summary>
     /// <paramref name="library"/> lists only that source's categories (null: every source);
     /// <paramref name="links"/> appends a folder per other library that switches Song Select to it.
@@ -133,7 +156,7 @@ public sealed class SongSelectCatalogView
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
         IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null,
-        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false)
+        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false, IReadOnlyList<string>? recentCharts = null, Random? random = null, bool rollFolder = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -208,7 +231,37 @@ public sealed class SongSelectCatalogView
                 SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount | SongCategoryPresentation.CourseStar,
                 boardStyle(""), []),
         };
-        var categories = searchFolder.Concat(tutorialFolder).Concat(courseStarFolder).Concat(favouriteFolder).Concat(genres)
+        // The play history: the newest plays' songs once each, as charts (the course decides 前回's ★).
+        var charts = genres.SelectMany(static category => category.Songs)
+            .SelectMany(static song => song.Descriptor.Charts.Select(chart => (Key: chart.Key.ToString(), song, chart.Course)))
+            .DistinctBy(static entry => entry.Key).ToDictionary(static entry => entry.Key);
+        var played = (recentCharts ?? []).Where(charts.ContainsKey).Select(key => charts[key]).ToArray();
+        LastCourseStar = played.Where(static entry => entry.Course is >= TaikoCourse.Easy and <= TaikoCourse.Oni)
+            .Select(static entry => star(entry.song, (int)entry.Course!.Value) is { } stars ? ((int)entry.Course!.Value, stars) : ((int, int)?)null)
+            .FirstOrDefault(static entry => entry is not null);
+        // Flags 0 as traced: the movie drops an empty one, so it is only listed with songs.
+        var historyFolder = played.Length == 0 || mode != SongSelectMode.Normal ? [] : new[]
+        {
+            new SongSelectCategory(HistoryKey, "Recently Played", HistoryLabel, SongCategoryPresentation.None, boardStyle(""),
+                [.. played.Select(static entry => entry.song).DistinctBy(static song => song.Descriptor.Key).Take(HistorySongs)]),
+        };
+        // おすすめ and the random pick: shuffled anew each time Song Select loads (same library pool).
+        // ponytail: the game's recommend asked the server (player age/gender); random here, as TaikOnline answers it.
+        random ??= Random.Shared;
+        var shuffled = _courseStarPool.OrderBy(_ => random.Next()).ToArray();
+        var extraFolders = shuffled.Length == 0 ? [] : new[]
+        {
+            new SongSelectCategory(RecommendKey, "Recommended", RecommendLabel, SongCategoryPresentation.None, boardStyle(""),
+                [.. shuffled.Take(RecommendSongs)]),
+        };
+        // The roll folder is an option (random_song_folder): Green never showed it.
+        if (rollFolder && shuffled.Length > 0)
+            // The developer setup's イベント art; the roll board is framed in any genre's (user-checked with バラエティ).
+            extraFolders = [.. extraFolders, new SongSelectCategory(RollKey, "Random", FeatureLabel,
+                SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount | SongCategoryPresentation.Roll,
+                boardStyle(""), [shuffled[^1]])];
+        RollPool = [.. shuffled];
+        var categories = searchFolder.Concat(tutorialFolder).Concat(courseStarFolder).Concat(extraFolders).Concat(favouriteFolder).Concat(historyFolder).Concat(genres)
             .Concat(danDojo && mode == SongSelectMode.Normal && library is null or SongSourceKind.Stock ? new[]
             {
                 // At home a folder of series, one spine each; a cabinet's one series opens straight away.
@@ -295,7 +348,7 @@ public sealed class SongSelectCatalogView
 
     /// <summary>The title outline a song's board gets: its folder's, or in the search folder its library's.</summary>
     public SongBoardTextureStyle BoardStyle(int category, SongSelectSong song) =>
-        Categories[category].Key == CourseStarKey && _homeStyles.TryGetValue(song.Descriptor.Key, out var home) ? home
+        isListing(Categories[category].Key) && _homeStyles.TryGetValue(song.Descriptor.Key, out var home) ? home
         : Categories[category].Key == SearchKey ? boardStyle(song.Descriptor.Key.Source switch
         {
             SongSourceKind.Tja => "Variety",
@@ -311,6 +364,15 @@ public sealed class SongSelectCatalogView
     private readonly SongCatalogSnapshot _snapshot;
     private readonly ImmutableArray<SongSelectSong> _courseStarPool;
     private readonly Dictionary<SongKey, SongBoardTextureStyle> _homeStyles = [];
+
+    /// <summary>The songs the random-pick folder's shuffling titles come from (its pool, shuffled).</summary>
+    public ImmutableArray<SongSelectSong> RollPool { get; }
+
+    /// <summary>Index of the random-pick folder, or -1.</summary>
+    public int RollCategory => Categories.ToList().FindIndex(static category => category.Key == RollKey);
+
+    /// <summary>The newest play's course (0 easy..3 oni) and ★ among the listed songs (the panel's 前回); null: none.</summary>
+    public (int Course, int Star)? LastCourseStar { get; }
 
     /// <summary>Index of the by-difficulty folder, or -1.</summary>
     public int CourseStarCategory => Categories.ToList().FindIndex(static category => category.Key == CourseStarKey);
@@ -340,9 +402,12 @@ public sealed class SongSelectCatalogView
 
     /// <summary>The folder a song is remembered in: its own genre's when picked in the by-difficulty folder.</summary>
     public CategoryKey HomeOf(int category, SongKey song) =>
-        Categories[category].Key == CourseStarKey
-        && Categories.FirstOrDefault(entry => entry.Key != CourseStarKey && entry.Songs.Any(item => item.Descriptor.Key == song)) is { } home
+        isListing(Categories[category].Key)
+        && Categories.FirstOrDefault(entry => !isListing(entry.Key) && entry.Songs.Any(item => item.Descriptor.Key == song)) is { } home
             ? home.Key : Categories[category].Key;
+
+    // Folders that list other folders' songs (by difficulty, recently played): their boards look like the song's own folder.
+    private static bool isListing(CategoryKey key) => key == CourseStarKey || key == HistoryKey || key == RecommendKey || key == RollKey;
     private readonly SongSourceKind? _library;
 
     /// <summary>Index of the favourites folder, or -1.</summary>

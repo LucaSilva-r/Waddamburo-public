@@ -55,6 +55,8 @@
   "settings.title_language.hint": "曲名とサブタイトルを英語（ある曲のみ）か日本語の原題で表示します。再起動後に反映されます。",
   "settings.fast_song_scroll": "高速曲スクロール",
   "settings.show_oni": "おにを表示",
+  "settings.random_song_folder": "ランダム曲",
+  "settings.random_song_folder.hint": "曲選択: 曲名がくるくる変わり、開くたびにランダムな曲をえらぶ背表紙を追加します。オリジナルにはありません。",
   "settings.show_oni.hint": "曲選択: おにコースを最初から表示します。オフ: オリジナルどおり、右のふちを連打するとおにが現れます。",
   "settings.mouse_controls": "マウス操作",
   "settings.mouse_controls.hint": "メニューでマウスホイールがふちのように動き（曲、エントリー、難易度、設定。リプレイではシーク）、左クリックが面になります。オフ：マウスは何もしません。",

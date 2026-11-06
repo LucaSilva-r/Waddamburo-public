@@ -362,6 +362,12 @@ public sealed class ScoreSavingTests
             Assert.Equal(700, store.PreviousBest(42, "sha", Guid.NewGuid()));
             Assert.Null(store.PreviousBest(7, "sha", id));
 
+            // History: this PC's play merged with the server's last plays (charts this PC has hashed), newest first.
+            store.ReplaceRemoteBests(42, [], [new RemotePlay("remote-sha", 3, DateTimeOffset.UtcNow.AddMinutes(1)),
+                new RemotePlay("unknown-sha", 3, DateTimeOffset.UtcNow.AddMinutes(2))]);
+            Assert.Equal([other.ToString(), played.ToString()], store.RecentCharts(42));
+            Assert.Empty(store.RecentCharts(7));
+
             // A fresh download replaces the old one.
             store.ReplaceRemoteBests(42, []);
             Assert.False(store.Crowns(42).ContainsKey(other.ToString()));

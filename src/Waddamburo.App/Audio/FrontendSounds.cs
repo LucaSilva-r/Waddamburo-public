@@ -74,6 +74,11 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             "How to Play" => 12, // the tutorial folder (traced session22)
             "Dan Dojo" => 11, // traced session30
             "Difficulty" => 59, // the by-difficulty folder (traced session36)
+            "Favourites" => 9, // traced session38
+            "Recently Played" => 10, // traced session38
+            // Not in Green: the gap in the cue order (genres 0-7, then favourites 9, history 10) sits where
+            // GenreResource.RECOMMEND does, just before FAVORITE; user-confirmed by ear.
+            "Recommended" => 8,
             // The mode-switch folder (traced 65 in normal Song Select, 66 in Waiwai's).
             "To Waiwai" => 65,
             "To Normal" => 66,

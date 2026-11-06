@@ -150,7 +150,7 @@ public sealed class SongSelectSessionTests
     public async Task CourseStarFolderListsSongsOfTheChosenCourseAndStar()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
-        var view = new SongSelectCatalogView(await catalog.RefreshAsync(), courseStar: true);
+        var view = new SongSelectCatalogView(await catalog.RefreshAsync(), courseStar: true, rollFolder: true);
 
         var folder = view.CourseStarCategory;
         Assert.Equal(0, folder);
@@ -162,10 +162,33 @@ public sealed class SongSelectSessionTests
 
         view.SelectCourseStar((int)TaikoCourse.Oni, 8);
         var song = Assert.Single(view.Categories[folder].Songs);
-        Assert.Equal(view.Categories[1].Key, view.HomeOf(folder, song.Descriptor.Key));
-        Assert.Equal(view.Categories[1].BoardStyle, view.BoardStyle(folder, song)); // the genre's title outline
+        var genre = view.Categories[^1]; // after おすすめ and the random pick
+        Assert.Equal("Anime", genre.Name);
+        Assert.Equal(genre.Key, view.HomeOf(folder, song.Descriptor.Key));
+        Assert.Equal(genre.BoardStyle, view.BoardStyle(folder, song)); // the genre's title outline
+        Assert.Equal(SongSelectCatalogView.RecommendLabel, view.Categories[1].AuthoredLabel);
+        Assert.Equal(16 | 2 | 1, (int)view.Categories[view.RollCategory].Presentation); // FLAG_ROLL_MUSIC, as the developer setup
+        Assert.Single(view.Categories[view.RollCategory].Songs);
         view.SelectCourseStar((int)TaikoCourse.Easy, 3);
         Assert.Empty(view.Categories[folder].Songs);
+    }
+
+    [Fact]
+    public async Task RecentlyPlayedFolderListsHistorySongsOnceAndGivesTheLastCourseStar()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var song = new SongSelectCatalogView(snapshot).Categories[0].Songs[0];
+        string key(string course) => song.Descriptor.Charts.Single(chart => chart.Key.StableId == course).Key.ToString();
+
+        Assert.Single(new SongSelectCatalogView(snapshot).Categories); // no history, no folder (the movie drops an empty one)
+        var view = new SongSelectCatalogView(snapshot, recentCharts: [key("oni"), "gone", key("easy")]);
+        var history = view.Categories[0];
+        Assert.Equal(SongSelectCatalogView.HistoryLabel, history.AuthoredLabel);
+        Assert.Equal(SongCategoryPresentation.None, history.Presentation); // traced AssignMusic_GenreID(11, 20, 0)
+        Assert.Single(history.Songs);
+        Assert.Equal(((int)TaikoCourse.Oni, 8), view.LastCourseStar);
+        Assert.Equal(view.Categories[1].Key, view.HomeOf(0, song.Descriptor.Key));
     }
 
     [Fact]

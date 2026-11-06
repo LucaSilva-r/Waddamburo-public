@@ -45,6 +45,9 @@ internal sealed class LayerHostFactory(
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
+    /// <summary>A drum's play history as chart keys, newest first (this PC's plays and the server's); null: none.</summary>
+    public Func<int, IReadOnlyList<string>?>? RecentCharts { get; init; }
+
     /// <summary>The songs marked favourite (a folder per library, a red coin icon on their boards).</summary>
     public SongFavourites? Favourites { get; init; }
 
@@ -142,6 +145,9 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The live show_oni setting (the Settings menu changes it while the game runs).</summary>
     public Func<bool>? ShowOni { get; init; }
+
+    /// <summary>The settings' random-song spine (the movie's roll folder) is on.</summary>
+    public Func<bool>? RandomSongFolder { get; init; }
 
     /// <summary>The boot's music credit pages there are (the copyright NUT's).</summary>
     public int CopyrightPages { get; init; }
@@ -396,7 +402,8 @@ internal sealed class LayerHostFactory(
                 && InOnlineRoom?.Invoke() != true,
             danSeries: arcade.Home ? Dan?.Series : null,
             online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received,
-            courseStar: OnlineSong is null && Search is null);
+            courseStar: OnlineSong is null && Search is null, rollFolder: RandomSongFolder?.Invoke() == true,
+            recentCharts: TwoPlayers || OnlineSong is not null ? null : RecentCharts?.Invoke(PlayerSide));
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
         _lastPick = SongSelect?.Picked ?? _lastPick;

@@ -640,6 +640,7 @@ internal sealed class GameShell : IDisposable
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => Players.SongsPlayed,
             ShowOni = () => Arcade.ShowOni,
+            RandomSongFolder = () => Arcade.RandomSongFolder,
             CopyrightPages = _copyright.Pages,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
@@ -650,6 +651,9 @@ internal sealed class GameShell : IDisposable
             Crowns = side => Sync.Scores is not { } scores ? null
                 : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
                 : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
+            RecentCharts = side => Sync.Scores is not { } scores ? null
+                : TaikoGuest.Profiles[side] is { } profile ? scores.RecentCharts(profile.Baid)
+                : Arcade.Home ? scores.RecentCharts(ScoreProfile.LocalGuestBaid) : null,
             CardClaimed = (side, card) =>
             {
                 TaikoGuest.Profiles[side] = card;

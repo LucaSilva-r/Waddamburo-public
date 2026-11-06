@@ -55,6 +55,8 @@
   "settings.title_language.hint": "Song titles and subtitles in English (when a song has them) or the Japanese originals. Applies after a restart.",
   "settings.fast_song_scroll": "Fast Song Scrolling",
   "settings.show_oni": "Show Oni",
+  "settings.random_song_folder": "Random Song Spine",
+  "settings.random_song_folder.hint": "Song Select gets a spine that flips through song titles and picks a random song each time you open it. Not in the original.",
   "settings.show_oni.hint": "Song Select shows the Oni course at once. Off: the original, where Oni appears after hitting the right rim repeatedly.",
   "settings.mouse_controls": "Mouse Controls",
   "settings.mouse_controls.hint": "In the menus the mouse wheel moves as the drum's rims do (songs, player entry, difficulties, settings; replays seek) and a left click is a don. Off: the mouse does nothing there.",

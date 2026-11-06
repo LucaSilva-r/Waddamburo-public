@@ -277,6 +277,12 @@ public sealed record ArcadeSettings
         discord_presence = true
 
         """,
+        """
+        # random_song_folder (also in the Settings menu): song select gets a spine that flips through song
+        # titles and gives a random song each time it's decided (the movie's own roll folder, unused by Green).
+        random_song_folder = false
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -338,6 +344,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Song select shows Oni at once instead of after repeated right-rim hits (the original).</summary>
     public bool ShowOni { get; init; } = true;
+
+    /// <summary>Song select has the random-song spine (the movie's roll folder; not in the original).</summary>
+    public bool RandomSongFolder { get; init; }
 
     /// <summary>
     /// The gameplay skin for every song: "auto" (each song's own theme), "original" (the regular gameplay) or
@@ -742,6 +751,7 @@ public sealed record ArcadeSettings
                 "record_performance" => settings with { RecordPerformance = boolean(value, index) },
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
+                "random_song_folder" => settings with { RandomSongFolder = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
                 "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
@@ -837,6 +847,7 @@ public sealed record ArcadeSettings
             ["record_performance"] = settings.RecordPerformance ? "true" : "false",
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
+            ["random_song_folder"] = settings.RandomSongFolder ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
             ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,
