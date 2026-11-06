@@ -56,9 +56,10 @@ internal sealed class SoundBank
                 _latestVoice = clip;
                 _latestVoiceCue = cue;
             }
-            // A few milliseconds of fade: a hard cut clicks.
+            // A fade, as a hard cut clicks. Drum hits release over 20 ms: fitted to a Green roll recorded
+            // on rpcs3 (60 hits/s), where 3 ms sounded thin; other cues keep a few milliseconds.
             if (!loop && _lastPlayed.TryGetValue(key, out var previous))
-                _audio.Mixer.Stop(previous, TimeSpan.FromMilliseconds(3));
+                _audio.Mixer.Stop(previous, TimeSpan.FromMilliseconds(bus == AudioBus.DrumHit ? 20 : 3));
             var handle = _audio.Mixer.Play(clip, bus, loop: loop);
             if (!loop)
                 _lastPlayed[key] = handle;
