@@ -430,7 +430,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     /// default one) or divided parts (parts/head, parts/body, parts/paint). Player 2 uses an "r"
     /// face variant when one exists, otherwise the Katsu recolour (as the game looks them up).
     /// </summary>
-    public void SetCostume(int playerIndex, int? whole, int head, int body, int paint)
+    public void SetCostume(int playerIndex, int? whole, int head, int body, int paint, int variant = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
@@ -439,7 +439,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         string face;
         if (whole is { } costume)
         {
-            meshes.AddRange(model($"full/cos/cos_{costume:000}000.nud"));
+            meshes.AddRange(model($"full/cos/cos_{costume:000}{variant:000}.nud"));
             face = assetExists($"full/face/face_{costume:000}000.nut")
                 ? $"full/face/face_{costume:000}000.nut" : "full/face/face_000000.nut";
         }

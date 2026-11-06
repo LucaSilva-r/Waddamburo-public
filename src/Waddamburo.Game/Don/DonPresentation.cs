@@ -13,6 +13,9 @@ public readonly record struct DonCostume(int? Whole, int Head, int Body, int Pai
 {
     public static DonCostume Default { get; } = new(null, 0, 0, 0);
 
+    /// <summary>Green's dan costume: the renderer draws the model of the wearer's displayed rank.</summary>
+    public const int Dan = 36;
+
     public static DonCostume FromWhole(int id) => id <= 0 ? Default : new(id, 0, 0, 0);
 }
 
@@ -24,6 +27,9 @@ public sealed record DonLook(int[] Costume, string Face, string Body, string Lim
 {
     /// <summary>The entry's three costume sets, [kigurumi, head, body, puchi] each; null: none served.</summary>
     public int[][]? Presets { get; init; }
+
+    /// <summary>The displayed dan rank (0 none, 1-25 Beginner through Tatsujin): which dan costume model to draw.</summary>
+    public int DanRank { get; init; }
 
     public DonCostume ToCostume() => Costume switch
     {

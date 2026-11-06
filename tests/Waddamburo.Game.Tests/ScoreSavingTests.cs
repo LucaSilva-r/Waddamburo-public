@@ -259,6 +259,10 @@ public sealed class ScoreSavingTests
         Assert.Equal((0xB3DBFFu, 0xDD1400u, 0xB9B9B9u), profile.Look.Colors);
         Assert.Equal(new Waddamburo.Game.Don.DonCostume(null, 5, 6, 7),
             (profile.Look with { Costume = [0, 5, 6, 7, 0] }).ToCostume());
+        Assert.Equal(0, profile.Look.DanRank);
+        Assert.Equal(12, JsonSerializer.Deserialize<ScoreProfile>("""
+            {"baid":24,"name":"x","look":{"costume":[36,0,0,0,0],"face":"#b3dbff","body":"#dd1400","limb":"#b9b9b9","dan_rank":12}}
+            """, ScoreClient.Json)!.Look!.DanRank);
     }
 
     [Fact]

@@ -15,6 +15,9 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
         new("don:2"),
     ];
 
+    /// <summary>Each player's displayed dan rank (from their look), which picks the dan costume's model.</summary>
+    private readonly int[] _danRanks = new int[3];
+
     /// <summary>
     /// The player's drum. The right drum's player alone is drawn as Katsu-chan (the renderer's
     /// second slot) and never with the mirrored second-player camera.
@@ -70,7 +73,9 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
     {
         try
         {
-            _renderer.SetCostume(playerIndex, costume.Whole, costume.Head, costume.Body, costume.Paint);
+            // The dan costume has one model per rank (cos_036001..025); without a rank, the plain cos_036000.
+            var variant = costume.Whole == DonCostume.Dan && playerIndex < _danRanks.Length ? _danRanks[playerIndex] : 0;
+            _renderer.SetCostume(playerIndex, costume.Whole, costume.Head, costume.Body, costume.Paint, variant);
         }
         catch (FileNotFoundException exception)
         {
@@ -93,6 +98,8 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
 
     public void SetLook(int playerIndex, DonLook? look)
     {
+        if (playerIndex < _danRanks.Length)
+            _danRanks[playerIndex] = look?.DanRank is >= 1 and <= 25 and var rank ? rank : 0;
         SetCostume(playerIndex, look?.ToCostume() ?? DonCostume.Default);
         SetAccessory(playerIndex, look?.Puchi ?? 0);
         _renderer.SetColors(playerIndex, look?.Colors);
