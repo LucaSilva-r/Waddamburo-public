@@ -202,6 +202,7 @@
   "notices.empty": "新しいお知らせはありません。",
   "notices.source.server": "TaikOnline",
   "notices.source.local": "このPC",
+  "notices.profile_changed": "TaikOnlineでどんちゃんや段位が変更されました。タイトル画面に戻ると反映されます。",
   "notices.source.player": "{0}さんへ",
   "job.hash_library": "オンラインスコアのために曲を準備中",
   "job.rescore_scores": "新しい採点ルールでスコアを更新中",

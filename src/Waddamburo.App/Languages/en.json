@@ -202,6 +202,7 @@
   "notices.empty": "Nothing new.",
   "notices.source.server": "TaikOnline",
   "notices.source.local": "This PC",
+  "notices.profile_changed": "Your Don-chan or dan rank changed on TaikOnline. It shows after returning to the title screen.",
   "notices.source.player": "For {0}",
   "job.hash_library": "Preparing the song library for online scores",
   "job.rescore_scores": "Updating scores to the new scoring rules",

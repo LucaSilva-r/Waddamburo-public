@@ -121,9 +121,17 @@ public sealed class AccountBook
                 Remove(account.Baid);
             }
             else
-                Add(account with { Name = current.Name, Look = current.Look, Avatar = current.Avatar, AccountName = current.AccountName,
-                    Title = current.Title, TitlePlate = current.TitlePlate, DanRank = current.DanRank, DanGold = current.DanGold });
+                Apply(current);
         }
+    }
+
+    /// <summary>Takes a stored account's name, look and name board from a fresh profile (the server's, or a realtime push).</summary>
+    public void Apply(ScoreProfile current)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        if (Accounts.FirstOrDefault(account => account.Baid == current.Baid) is { } account)
+            Add(account with { Name = current.Name, Look = current.Look, Avatar = current.Avatar, AccountName = current.AccountName,
+                Title = current.Title, TitlePlate = current.TitlePlate, DanRank = current.DanRank, DanGold = current.DanGold });
     }
 
     private void save()

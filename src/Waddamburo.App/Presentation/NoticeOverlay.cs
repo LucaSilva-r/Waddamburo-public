@@ -163,7 +163,8 @@ internal sealed class NoticeOverlay : IDisposable
                 NoticeSource.Local => T("notices.source.local"),
                 _ => T("notices.source.server"),
             };
-            var at = notice.At.ToLocalTime().ToString("t", CultureInfo.CurrentCulture);
+            // ICU puts a narrow no-break space before AM/PM, which the game font lacks.
+            var at = notice.At.ToLocalTime().ToString("t", CultureInfo.CurrentCulture).Replace('\u202F', ' ');
             canvas.Text($"{source} · {at}", 22, 16 + 9, CardWidth - 36, 16, anchorX: 0, tint: (170, 175, 190));
             for (var line = 0; line < text.Count; line++)
                 canvas.Text(text[line], 22, 16 + 20 + line * LineHeight + LineHeight / 2f, CardWidth - 36, FontSize, anchorX: 0);

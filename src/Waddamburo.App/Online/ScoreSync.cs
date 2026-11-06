@@ -280,6 +280,12 @@ internal sealed class ScoreSync : IDisposable
                             Notices.Dismiss($"{NoticeSource.System}:{endedId}");
                             return;
                         }
+                        // The account's loadout changed on the website: shown from the next scene that dresses Don.
+                        if (name == "profile" && ownerOf(channel) is { } changed)
+                        {
+                            applyProfile(changed.Baid, data);
+                            return;
+                        }
                         if (name != "notice" || NoticeClient.ParseNotice(data) is not { } notice)
                             return;
                         Notices.Add(ownerOf(channel) is { } owner
@@ -322,6 +328,34 @@ internal sealed class ScoreSync : IDisposable
                 }
             }
         });
+    }
+
+    /// <summary>A pushed profile: the stored account and any joined player with that baid take it (keeping their token).</summary>
+    private void applyProfile(long baid, System.Text.Json.JsonElement data)
+    {
+        ScoreProfile? current;
+        try
+        {
+            current = System.Text.Json.JsonSerializer.Deserialize<ScoreProfile>(data, ScoreClient.Json);
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Console.Error.WriteLine($"Warning ACCOUNT: unreadable profile push ({exception.Message}).");
+            return;
+        }
+        if (current is null || current.Baid != baid)
+            return;
+        _accounts?.Apply(current);
+        // One notice per account, replaced by each push so it shows again (a save can push twice: costume and colours).
+        var id = $"{NoticeSource.Personal}:profile:{baid}";
+        Notices.Dismiss(id);
+        Notices.Add(new Notice(id, NoticeSource.Personal, NoticeSeverity.Info,
+            Strings.T("notices.profile_changed"), DateTimeOffset.UtcNow) { Kind = "profile", Baid = baid });
+        for (var side = 0; side < TaikoGuest.Profiles.Length; side++)
+            if (TaikoGuest.Profiles[side] is { } joined && joined.Baid == baid)
+                TaikoGuest.Profiles[side] = joined with { Name = current.Name, Look = current.Look, Avatar = current.Avatar,
+                    AccountName = current.AccountName, Title = current.Title, TitlePlate = current.TitlePlate,
+                    DanRank = current.DanRank, DanGold = current.DanGold };
     }
 
     /// <summary>
