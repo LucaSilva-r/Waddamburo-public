@@ -52,6 +52,10 @@ public static class TaikoGuest
     /// </summary>
     public static (int Course, int Star)?[] LastCourseStar { get; } = new (int, int)?[2];
 
+    /// <summary>Each drum's last course board (0 easy..3 oni/ura): the course select cursor starts there, as on the cabinet.
+    /// Kept for the app's run, or the credit (PlayerSession.Reset clears it with Mania).</summary>
+    public static int?[] LastCourse { get; } = new int?[2];
+
     /// <summary>Green's drum sounds: 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン.</summary>
     public const int ToneCount = 6;
 }

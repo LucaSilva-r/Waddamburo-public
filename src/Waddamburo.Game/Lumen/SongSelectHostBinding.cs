@@ -591,6 +591,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (ShowOni || TaikoGuest.Mania[player])
                 if (!requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.isMania.{player}", true))
                     Console.Error.WriteLine("Song Select has no CourseResource.isMania; Oni stays hidden.");
+        // The course cursor starts on each drum's last course (ResetCourse copies def_selected into selected).
+        foreach (var player in new[] { 0, 1 })
+            if (TaikoGuest.LastCourse[player] is { } last)
+                foreach (var field in new[] { "def_selected", "selected" })
+                    requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.{field}.{player}", (double)last);
         _parts?.ShowGuestNames(_shown);
         _optionsPending = true;
         _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
@@ -1176,6 +1181,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             TaikoGuest.Options);
         Picked = (_session.Catalog.HomeOf(request.Category, selection.Song), selection.Song);
         // The by-difficulty panel's 前回 board: each drum's course and ★ (Ura is not on the panel).
+        foreach (var player in _sides)
+            if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } picked and >= 0)
+                TaikoGuest.LastCourse[player] = picked % 4;
         if (_session.Catalog.TryGetSong(request.Category, request.Song, out var played))
             foreach (var player in _sides)
                 if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } authored and >= 0 and < 4

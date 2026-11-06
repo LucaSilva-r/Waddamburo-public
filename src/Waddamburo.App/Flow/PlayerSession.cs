@@ -53,6 +53,7 @@ internal sealed class PlayerSession(GameShell shell)
         Array.Clear(TaikoGuest.Options);
         Array.Clear(TaikoGuest.Tones);
         Array.Clear(TaikoGuest.Mania);
+        Array.Clear(TaikoGuest.LastCourse);
         shell.Sync.RefreshProfiles();
         for (var slot = 0; slot < 3; slot++)
             shell.Don?.SetLook(slot, null);
