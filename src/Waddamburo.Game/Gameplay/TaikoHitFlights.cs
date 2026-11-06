@@ -9,10 +9,14 @@ public sealed class TaikoHitFlights
     private readonly LumenSceneLayer[] _layers;
     private readonly bool[] _active;
     private int _next;
+    private readonly int _kadonAt; // the Kadon flights (purple big ka) follow the others; none: _layers.Length
 
-    public TaikoHitFlights(IEnumerable<LumenSceneLayer> layers)
+    /// <param name="kadonLayers">Flights for OpenTaiko's Kadon (the flight movie on its purple texture copies).</param>
+    public TaikoHitFlights(IEnumerable<LumenSceneLayer> layers, IEnumerable<LumenSceneLayer>? kadonLayers = null)
     {
-        _layers = layers.ToArray();
+        var own = layers.ToArray();
+        _kadonAt = own.Length;
+        _layers = [.. own, .. kadonLayers ?? []];
         if (_layers.Length == 0)
             throw new ArgumentException("At least one flight player is required.", nameof(layers));
         _active = new bool[_layers.Length];
@@ -37,7 +41,10 @@ public sealed class TaikoHitFlights
     public void Trigger(TaikoNoteJudgement judgement)
     {
         var label = StateFor(judgement.HitObject.Kind, judgement.Result, judgement.StrongHitCompleted);
-        trigger(label);
+        if (judgement.HitObject.IsKadon && _kadonAt < _layers.Length)
+            trigger(label is null ? null : "katsu_d_hit", _kadonAt, _layers.Length);
+        else
+            trigger(label);
     }
 
     public static string? StateFor(PlayableLongNoteKind kind, TaikoInputAction action) => kind switch
@@ -56,17 +63,20 @@ public sealed class TaikoHitFlights
             trigger(progress.IsPopped ? "geki_hit" : StateFor(progress.Note.Kind, action));
     }
 
-    private void trigger(string? label)
+    private void trigger(string? label) => trigger(label, 0, _kadonAt);
+
+    // A free player in [from, until), else the next in turn there.
+    private void trigger(string? label, int from, int until)
     {
         if (label is null)
             return;
-        var index = Array.FindIndex(_active, active => !active);
+        var index = Array.FindIndex(_active, from, until - from, active => !active);
         if (index < 0)
-            index = _next;
+            index = _next >= from && _next < until ? _next : from;
         // Independent players allow simultaneous judgements without restarting peers.
         _layers[index].Player.GotoLabel(label, play: true);
         _active[index] = true;
-        _next = (index + 1) % _layers.Length;
+        _next = index + 1 < until ? index + 1 : from;
     }
 
     public void Advance()

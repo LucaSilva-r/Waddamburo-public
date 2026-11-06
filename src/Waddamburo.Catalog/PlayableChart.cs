@@ -193,7 +193,11 @@ public readonly record struct ChartScrollPoint
         Multiplier = multiplier;
     }
 
-    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier) { Imaginary = Imaginary, Show = Show, Wait = Wait };
+    public ChartScrollPoint At(TimeSpan time) => new(time, Multiplier) { Imaginary = Imaginary, Show = Show, Wait = Wait, ByBeat = ByBeat };
+
+    /// <summary>The same point at <paramref name="speed"/> times the speed (the player's scroll speed option).</summary>
+    public ChartScrollPoint Scaled(double speed) =>
+        new(Time, Multiplier * speed) { Imaginary = Imaginary * speed, Show = Show, Wait = Wait, ByBeat = ByBeat };
 
     public TimeSpan Time { get; }
     public double Multiplier { get; }
@@ -209,7 +213,16 @@ public readonly record struct ChartScrollPoint
 
     /// <summary>TJA #SUDDEN: a note under this point stays where it would be this long before its time, then moves; null: always moves.</summary>
     public TimeSpan? Wait { get; init; }
+
+    /// <summary>
+    /// TJA #HBSCROLL/#BMSCROLL: a note under this point is placed by the beats left to it (<see cref="PlayableChart.BeatAt"/>),
+    /// not the seconds, so a tempo change moves it only as it is reached and #DELAY stops the lane. Drawing only.
+    /// </summary>
+    public bool ByBeat { get; init; }
 }
+
+/// <summary>From <see cref="Time"/> the chart's beat count is <see cref="Beat"/>, going on at <see cref="BeatsPerSecond"/> (0 in a #DELAY).</summary>
+public readonly record struct ChartBeatPoint(TimeSpan Time, double Beat, double BeatsPerSecond);
 
 /// <summary>
 /// TJA <c>#JPOSSCROLL</c>: from <see cref="Time"/> the hit target slides by (<see cref="X"/>, <see cref="Y"/>) stage
@@ -283,9 +296,9 @@ public sealed record PlayableChart
     public ChartKey Key { get; init; }
     public TimeSpan AuthoredOffset { get; }
     public TimeSpan Duration { get; init; }
-    public ImmutableArray<PlayableHitObject> HitObjects { get; }
+    public ImmutableArray<PlayableHitObject> HitObjects { get; init; }
     public ImmutableArray<ChartTimingPoint> TimingPoints { get; }
-    public ImmutableArray<ChartScrollPoint> ScrollPoints { get; }
+    public ImmutableArray<ChartScrollPoint> ScrollPoints { get; init; }
     public ImmutableArray<ChartEffectPoint> EffectPoints { get; }
     public ImmutableArray<ChartBarLine> BarLines { get; }
     public ImmutableArray<PlayableLongNote> LongNotes { get; init; }
@@ -317,6 +330,36 @@ public sealed record PlayableChart
     /// Go-Go scores its notes and its bar lines are drawn by a server's replay, so <see cref="ChartHash"/> carries them.
     /// </summary>
     public ImmutableArray<ChartRouteControls> RouteControls { get; init; } = [];
+
+    /// <summary>The beat count over time (for <see cref="ChartScrollPoint.ByBeat"/>), in time order; empty when no point scrolls by beat.</summary>
+    public ImmutableArray<ChartBeatPoint> Beats { get; init; } = [];
+
+    /// <summary>The chart's beat count at <paramref name="time"/> (<see cref="Beats"/>; 0 without them).</summary>
+    public double BeatAt(TimeSpan time)
+    {
+        var (low, high) = (0, Beats.Length);
+        while (low < high)
+        {
+            var middle = (low + high) / 2;
+            if (Beats[middle].Time <= time) low = middle + 1;
+            else high = middle;
+        }
+        if (Beats.IsEmpty) return 0;
+        var point = Beats[Math.Max(low - 1, 0)];
+        return point.Beat + (time - point.Time).TotalSeconds * point.BeatsPerSecond;
+    }
+
+    /// <summary>When the beat count reaches <paramref name="beat"/> (one a #DELAY stops at: the delay's end).</summary>
+    public TimeSpan TimeAtBeat(double beat)
+    {
+        if (Beats.IsEmpty) return TimeSpan.Zero;
+        var index = 0;
+        while (index + 1 < Beats.Length && Beats[index + 1].Beat <= beat)
+            index++;
+        var point = Beats[index];
+        var seconds = point.BeatsPerSecond > 0 ? (beat - point.Beat) / point.BeatsPerSecond : 0;
+        return point.Time + TimeSpan.FromSeconds(Math.Clamp(seconds, -1e6, 1e6));
+    }
 
     /// <summary>The hit target's moves (TJA #JPOSSCROLL), in time order; drawing only, so not in <see cref="ChartHash"/>.</summary>
     public ImmutableArray<ChartJudgeMove> JudgeMoves { get; init; } = [];
@@ -428,6 +471,7 @@ public sealed record PlayableChart
             ScoreDiff = ScoreDiff,
             ShinuchiBase = ShinuchiBase,
             JudgeMoves = JudgeMoves,
+            Beats = Beats,
         };
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(

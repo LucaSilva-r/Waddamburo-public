@@ -9,17 +9,18 @@ public sealed record PackagedChart(string StableId, TaikoCourse Course, int? Lev
 
 /// <summary>
 /// A custom song the host sends a guest who lacks it: what Song Select shows, every course's chart in its canonical
-/// playable form (<see cref="ChartHash"/>), and the audio as the host's file has it. Never a source file: the guest only
+/// playable form (<see cref="ChartHash"/>) with what it draws beside it (<see cref="ChartDrawing"/>), and the audio as the host's file has it. Never a source file: the guest only
 /// reads these bytes and the audio, through the same decoder the host's game played it with.
 /// </summary>
 /// <remarks>
-/// Bytes: "WDBS", version, header length (u32), UTF-8 JSON header, then per chart a length (u32) and its bytes, then the
-/// audio's length (u32) and bytes.
+/// Bytes: "WDBS", version, header length (u32), UTF-8 JSON header, then per chart a length (u32) and its canonical bytes and a
+/// length and its drawing bytes, then the audio's length (u32) and bytes. Version 2 added the drawing bytes (a version 1
+/// guest refuses the package rather than play the chart without its gimmicks).
 /// </remarks>
 public sealed record SongPackage(SongKey Song, SongTitle Title, string? Artist, string? Subtitle, TimeSpan? PreviewStart,
     IReadOnlyList<PackagedChart> Charts, byte[] Audio)
 {
-    private const byte Version = 1;
+    private const byte Version = 2;
     private const int MaxHeaderBytes = 64 * 1024;
     private const int MaxText = 256;
     private static readonly TimeSpan MaxLength = TimeSpan.FromMinutes(30);
@@ -59,7 +60,10 @@ public sealed record SongPackage(SongKey Song, SongTitle Title, string? Artist, 
         output.WriteByte(Version);
         writeBlock(output, header.ToArray());
         foreach (var chart in Charts)
+        {
             writeBlock(output, ChartHash.Serialize(chart.Chart, chart.Course));
+            writeBlock(output, ChartDrawing.Serialize(chart.Chart));
+        }
         writeBlock(output, Audio);
         return output.ToArray();
     }
@@ -94,7 +98,8 @@ public sealed record SongPackage(SongKey Song, SongTitle Title, string? Artist, 
                     return null;
                 int? level = entry.TryGetProperty("level", out var levelValue) && levelValue.TryGetInt32(out var parsed) && parsed is >= 0 and <= 99
                     ? parsed : null;
-                var (chart, course) = ChartHash.Deserialize(readBlock(span, ref position, SongTransfer.MaxBytes).ToArray(), source);
+                var (canonical, course) = ChartHash.Deserialize(readBlock(span, ref position, SongTransfer.MaxBytes).ToArray(), source);
+                var chart = ChartDrawing.Apply(canonical, readBlock(span, ref position, SongTransfer.MaxBytes).ToArray());
                 if ((int)course != courseIndex)
                     return null;
                 var duration = TimeSpan.FromMilliseconds(durationMs);

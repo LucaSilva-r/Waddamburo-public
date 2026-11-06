@@ -360,8 +360,18 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var flightKey = layers.ContainsKey("onp_kiseki_don_1p") ? "onp_kiseki_don_1p" : "onp_kiseki_w_00_1p";
             var flightTemplate = layers[flightKey];
             var flightContent = content(flightKey);
+            // Kadon flights: the flight movie on its purple copies (KadonNotePatch), when the chart has Kadons.
+            var kadonFlights = chart.HitObjects.Any(static note => note.IsKadon) && KadonNotePatch.AppliesTo(flightContent)
+                && KadonNotePatch.CopiesAt(flightContent) is var flightCopies and > 0
+                ? Enumerable.Range(0, 4).Select(_ => flightTemplate with
+                {
+                    Player = flightContent.CreatePlayer(),
+                    TextureOffset = flightTemplate.TextureOffset + (uint)flightCopies,
+                    TextureCount = (uint)flightCopies,
+                })
+                : null;
             _flights = new TaikoHitFlights(Enumerable.Range(0, 16)
-                .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }));
+                .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }), kadonFlights);
             var courseLabel = course switch
             {
                 TaikoCourse.Easy => "easy",

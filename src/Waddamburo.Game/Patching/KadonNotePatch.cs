@@ -4,16 +4,17 @@ using System.Runtime.InteropServices;
 namespace Waddamburo.Game.Patching;
 
 /// <summary>
-/// OpenTaiko's Kadon (TJA G) has no art in the game's files: onp_katsu_dai gets a purple copy of each of its textures
-/// appended (its blue keyed to purple; white, black and the face untouched). A Kadon note is that movie drawn with its
-/// texture namespace moved onto the copies (<see cref="CopiesAt"/>), so the big ka itself stays as it is.
+/// OpenTaiko's Kadon (TJA G) has no art in Green's files: the big ka (onp_katsu_dai) and the flying note
+/// (onp_kiseki_don_1p) get a purple copy of each of their textures appended (blue keyed to purple; white, black, red and
+/// the faces untouched). A Kadon is that movie drawn with its texture namespace moved onto the copies
+/// (<see cref="CopiesAt"/>), so the big ka and its flight stay as they are.
 /// </summary>
 public static class KadonNotePatch
 {
-    public const string MovieName = "onp_katsu_dai/onp_katsu_dai.lm";
+    private static readonly string[] MovieNames = ["onp_katsu_dai/onp_katsu_dai.lm", "onp_kiseki_don_1p/onp_kiseki_don_1p.lm"];
 
-    public static bool AppliesTo(LumenMovieContent content) =>
-        content.Name == MovieName || content.Name.EndsWith("/" + MovieName, StringComparison.Ordinal);
+    public static bool AppliesTo(LumenMovieContent content) => MovieNames.Any(name =>
+        content.Name == name || content.Name.EndsWith("/" + name, StringComparison.Ordinal));
 
     /// <summary>Where the purple copies start in a patched movie's textures (half of them).</summary>
     public static int CopiesAt(LumenMovieContent content) => content.Textures.Length / 2;

@@ -38,7 +38,9 @@ internal static class TjaPlayableChartReader
         var numerator = 4;
         var denominator = 4;
         var bpm = 0m;
-        var scroll = new TjaScroll(1, 0, 0, null, null, null);
+        var scroll = new TjaScroll(1, 0, 0, null, null, null, 0);
+        // The main route's beat count over time (#HBSCROLL/#BMSCROLL): time, beat, beats per second from there.
+        var beatAnchors = new List<(decimal Time, decimal Beat, decimal Bps)>();
         var judgeMoves = new List<(decimal At, double Seconds, double X, double Y)>();
         var isGoGo = false;
         var isBarlineVisible = true;
@@ -96,6 +98,7 @@ internal static class TjaPlayableChartReader
                         bpm = positiveNumber(bpmText, "BPM");
                         timingPoints.Add(new ChartTimingPoint(TimeSpan.Zero, (double)bpm, numerator, denominator));
                         scrollPoints.Add(scrollPoint(TimeSpan.Zero, scroll));
+                        beatAnchors.Add((0, 0, bpm / 60));
                         effectPoints.Add(new ChartEffectPoint(TimeSpan.Zero, isGoGo));
                         active = true;
                     }
@@ -116,8 +119,12 @@ internal static class TjaPlayableChartReader
                     if (header == "SCOREINIT") scoreInit = parsed;
                     else scoreDiff = parsed;
                 }
+                // #HBSCROLL/#BMSCROLL before #START set the chart's scroll mode (TJAP3), until the next COURSE.
+                if (line.Equals("#HBSCROLL", StringComparison.OrdinalIgnoreCase) || line.Equals("#BMSCROLL", StringComparison.OrdinalIgnoreCase))
+                    scroll = scroll with { Mode = line.Equals("#HBSCROLL", StringComparison.OrdinalIgnoreCase) ? 1 : 2 };
                 if (header == "COURSE" && course.Length != 0)
                 {
+                    scroll = scroll with { Mode = 0 };
                     balloons.Clear();
                     branchBalloons.Clear();
                     scoreInit = null;
@@ -146,7 +153,7 @@ internal static class TjaPlayableChartReader
                     throw new InvalidDataException("The selected TJA chart ends with an unterminated measure.");
                 foreach (var command in commands)
                     applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves);
+                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null);
                 commands.Clear();
                 closeBranch();
                 closeLong(chartTime(cursorSeconds));
@@ -168,6 +175,9 @@ internal static class TjaPlayableChartReader
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
                     JudgeMoves = resolveJudgeMoves(judgeMoves),
+                    Beats = scrollPoints.Any(static point => point.ByBeat)
+                        ? [.. beatAnchors.Select(static anchor => new ChartBeatPoint(chartTime(anchor.Time), (double)anchor.Beat, (double)anchor.Bps))]
+                        : [],
                     RouteControls = routeBlocks.Count == 0 ? [] : [.. ((string[])["#N", "#E", "#M"]).Select(name => new ChartRouteControls(
                         routeStream(timingPoints, routeBlocks, name, static own => own.Timing, static point => point.Time, static (point, at) => new ChartTimingPoint(at, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
                         routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => point.At(at)))
@@ -278,7 +288,7 @@ internal static class TjaPlayableChartReader
                     {
                         applyCommand(commands[commandIndex++].Line, ref numerator, ref denominator,
                             ref bpm, ref scroll, ref isGoGo, ref isBarlineVisible, ref cursorSeconds,
-                            timing, scrolls, effects, judgeMoves);
+                            timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null);
                     }
                     if (index == count) break;
                     if (index == 0) bars.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
@@ -347,7 +357,7 @@ internal static class TjaPlayableChartReader
             // Commands after a route's last measure are that route's, not the next one's.
             foreach (var command in commands)
                 applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves);
+                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null);
             commands.Clear();
             if (!onMain())
             {
@@ -549,8 +559,11 @@ internal static class TjaPlayableChartReader
         ImmutableArray<ChartTimingPoint>.Builder timingPoints,
         ImmutableArray<ChartScrollPoint>.Builder scrollPoints,
         ImmutableArray<ChartEffectPoint>.Builder effectPoints,
-        List<(decimal At, double Seconds, double X, double Y)> judgeMoves)
+        List<(decimal At, double Seconds, double X, double Y)> judgeMoves,
+        List<(decimal Time, decimal Beat, decimal Bps)>? beats)
     {
+        // The beat count at a time from the last anchor (anchors go in time order: a tempo change or a #DELAY each).
+        decimal beatAt(decimal time) => beats![^1].Beat + (time - beats[^1].Time) * beats[^1].Bps;
         var separator = line.IndexOfAny([' ', '\t']);
         var name = (separator < 0 ? line : line[..separator]).ToUpperInvariant();
         var argument = separator < 0 ? string.Empty : line[(separator + 1)..].Trim();
@@ -570,6 +583,7 @@ internal static class TjaPlayableChartReader
                 break;
             case "#BPMCHANGE":
                 bpm = positiveNumber(argument, "#BPMCHANGE");
+                beats?.Add((cursorSeconds, beatAt(cursorSeconds), bpm / 60));
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
@@ -593,7 +607,15 @@ internal static class TjaPlayableChartReader
             }
             case "#DELAY":
                 // Negative delays are legal: editors offset one note with #DELAY x … #DELAY -x.
-                cursorSeconds = checked(cursorSeconds + finiteDecimal(argument, "#DELAY"));
+                var delay = finiteDecimal(argument, "#DELAY");
+                // A delay stops the beat count. ponytail: a negative one (a single note's offset) leaves the count be.
+                if (beats is not null && delay > 0)
+                {
+                    var beat = beatAt(cursorSeconds);
+                    beats.Add((cursorSeconds, beat, 0));
+                    beats.Add((cursorSeconds + delay, beat, bpm / 60));
+                }
+                cursorSeconds = checked(cursorSeconds + delay);
                 ensureTimeFits(cursorSeconds, "TJA #DELAY places the chart outside the supported time range.");
                 break;
             case "#GOGOSTART":
@@ -629,6 +651,13 @@ internal static class TjaPlayableChartReader
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
             }
+            case "#HBSCROLL":
+            case "#BMSCROLL":
+            case "#NMSCROLL":
+                // Scroll by beats (#HBSCROLL), by beats ignoring #SCROLL (#BMSCROLL), or by time again (#NMSCROLL).
+                scroll = scroll with { Mode = name switch { "#HBSCROLL" => 1, "#BMSCROLL" => 2, _ => 0 } };
+                appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
+                break;
             case "#SENOTECHANGE":
                 // The label under the next don or ka (1 ドン 2 ド 3 コ 4 カッ 5 カ 6 ドン(大) 7 カッ(大); the roll ones unused).
                 scroll = scroll with { NoteText = int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text switch
@@ -649,12 +678,16 @@ internal static class TjaPlayableChartReader
     }
 
     // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN, and #SENOTECHANGE's label for the next note.
-    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, string? NoteText);
+    // Mode: 0 by time, 1 by beat (#HBSCROLL), 2 by beat at speed 1 (#BMSCROLL).
+    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, string? NoteText, int Mode);
 
     // #DIRECTION turns the real speed (OpenTaiko's table: diagonals keep the full speed on both axes); a complex
     // #SCROLL keeps its own vertical part (TJAP3).
     private static ChartScrollPoint scrollPoint(TimeSpan time, TjaScroll scroll)
     {
+        // #BMSCROLL ignores #SCROLL and #DIRECTION (OpenTaiko: speed 1, no vertical part); the speed option still applies.
+        if (scroll.Mode == 2)
+            return new(time, 1) { Show = scroll.Show, Wait = scroll.Wait, ByBeat = true };
         var (re, im) = scroll.Direction switch
         {
             1 => (0, -scroll.Re),
@@ -666,7 +699,7 @@ internal static class TjaPlayableChartReader
             7 => (-scroll.Re, scroll.Re),
             _ => (scroll.Re, 0d),
         };
-        return new(time, re) { Imaginary = scroll.Im != 0 ? scroll.Im : im, Show = scroll.Show, Wait = scroll.Wait };
+        return new(time, re) { Imaginary = scroll.Im != 0 ? scroll.Im : im, Show = scroll.Show, Wait = scroll.Wait, ByBeat = scroll.Mode == 1 };
     }
 
     // Moves in time order, each cut short where the next starts so the target ends where OpenTaiko's does.

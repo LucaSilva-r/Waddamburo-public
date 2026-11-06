@@ -41,6 +41,29 @@ public sealed class SongPackageTests
     }
 
     [Fact]
+    public void AGimmickChartArrivesWithWhatItDraws()
+    {
+        // Drawing-only data (not in the canonical bytes): complex scroll, #SUDDEN, beat scrolling, target moves, labels.
+        var gimmick = chart(TaikoCourse.Oni) with
+        {
+            ScrollPoints = [new ChartScrollPoint(TimeSpan.Zero, 1),
+                new ChartScrollPoint(TimeSpan.FromSeconds(2), -1) { Imaginary = 2, Show = TimeSpan.FromSeconds(1), Wait = TimeSpan.FromSeconds(0.5), ByBeat = true }],
+            JudgeMoves = [new ChartJudgeMove(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1), 390, -100)],
+            Beats = [new ChartBeatPoint(TimeSpan.Zero, 0, 2.5), new ChartBeatPoint(TimeSpan.FromSeconds(4), 10, 0)],
+        };
+        gimmick = gimmick with { HitObjects = gimmick.HitObjects.SetItem(0, gimmick.HitObjects[0] with { Text = "ko" }) };
+        var sent = new SongPackage(Song, new SongTitle("Song"), null, null, null, [new PackagedChart("chart-oni", TaikoCourse.Oni, 8, "Oni", gimmick)], [1]);
+
+        var read = Assert.Single(SongPackage.Decode(sent.Encode(), Song)!.Charts).Chart;
+
+        Assert.Equal(gimmick.ScrollPoints.AsEnumerable(), read.ScrollPoints.AsEnumerable());
+        Assert.Equal(gimmick.JudgeMoves.AsEnumerable(), read.JudgeMoves.AsEnumerable());
+        Assert.Equal(gimmick.Beats.AsEnumerable(), read.Beats.AsEnumerable());
+        Assert.Equal("ko", read.HitObjects[0].Text);
+        Assert.Equal(ChartHash.Compute(gimmick, TaikoCourse.Oni), ChartHash.Compute(read, TaikoCourse.Oni));
+    }
+
+    [Fact]
     public void AnotherSongOrBrokenBytesAreRefused()
     {
         var bytes = package().Encode();
@@ -53,6 +76,6 @@ public sealed class SongPackageTests
         corrupt[^20] ^= 0xFF;
         corrupt[200] ^= 0xFF;
         _ = SongPackage.Decode(corrupt, Song); // never throws
-        Assert.Null(SongPackage.Decode([.. "WDBS"u8, 1, 0xFF, 0xFF, 0xFF, 0x7F], Song));
+        Assert.Null(SongPackage.Decode([.. "WDBS"u8, 2, 0xFF, 0xFF, 0xFF, 0x7F], Song));
     }
 }

@@ -446,6 +446,18 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task BeatScrollModesCountBeatsThatADelayStops()
+    {
+        // 120 BPM: a measure is 2 s and 4 beats. #DELAY 1 stops the count for a second, then 240 BPM counts 4 a second.
+        var chart = await loadSynthetic("1,\n#DELAY 1\n#BPMCHANGE 240\n#SCROLL 2\n1,\n#BMSCROLL\n1,\n#NMSCROLL\n1,", "#HBSCROLL\n");
+        Assert.Equal([(true, 1d), (true, 2d), (true, 1d), (false, 2d)], chart.ScrollPoints.Select(point => (point.ByBeat, point.Multiplier)));
+        Assert.Equal(2, chart.BeatAt(TimeSpan.FromSeconds(1)));
+        Assert.Equal(4, chart.BeatAt(TimeSpan.FromSeconds(2.5)));
+        Assert.Equal(6, chart.BeatAt(TimeSpan.FromSeconds(3.5)));
+        Assert.Equal(TimeSpan.FromSeconds(3.5), chart.TimeAtBeat(6));
+    }
+
+    [Fact]
     public async Task OpenTaikoExtrasLoadWithoutTheirEffects()
     {
         // Camera/object commands, scroll modes and typos are skipped; ADLIB (F) and mines (C) are left out; a Kadon (G) is a big

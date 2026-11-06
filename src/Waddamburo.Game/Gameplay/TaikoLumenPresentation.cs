@@ -140,7 +140,6 @@ public sealed class TaikoLumenPresentation
 
     // lane_hit's children at the target: its ring, the hit ring and the Go-Go fire, which shares the gogo clip with
     // the lane's Go-Go glow (a shape, character 19) and stays with the lane, as do the branch colour and flash.
-    // ponytail: the fire is Green's character 37; check other releases' lane_hit if their fire stays behind.
     private static readonly string[] TargetClips = ["target", "hit_effect", "gogo/#37"];
 
     /// <summary>Half the hit target's height on the stage.</summary>
@@ -251,8 +250,10 @@ public sealed class TaikoLumenPresentation
             ? layer with { Transform = layer.Transform with { X = layer.Transform.X + _moved.X, Y = layer.Transform.Y + _moved.Y } }
             : layer)];
         var front = new List<LumenSceneLayer>(foreground.Take(_flightsAt));
+        // The flights move with the target (OpenTaiko keeps them where they'd be relative to it, landing included).
         if (_flights is not null)
-            front.AddRange(_flights.ActiveLayers);
+            front.AddRange(_moved == default ? _flights.ActiveLayers : _flights.ActiveLayers.Select(layer => layer with
+                { Transform = layer.Transform with { X = layer.Transform.X + _moved.X, Y = layer.Transform.Y + _moved.Y } }));
         front.AddRange(foreground.Skip(_flightsAt));
         return (layers, front);
     }
@@ -292,10 +293,11 @@ public sealed class TaikoLumenPresentation
     {
         var (ox, oy) = origin(time);
         var scroll = _chart.ScrollPointAt(controlTime, route);
-        var ahead = noteTime - time;
-        if (sudden && scroll.Wait is { } wait && ahead > wait)
-            ahead = wait;
-        var distance = ahead.TotalSeconds * ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), 1);
+        var now = sudden && scroll.Wait is { } wait && noteTime - time > wait ? noteTime - wait : time;
+        // #HBSCROLL/#BMSCROLL: by the beats left (four to 948 px), else by the seconds at the note's tempo.
+        // ponytail: the beat count is the main route's; a 譜面分岐 route with its own tempo scrolls by it too.
+        var distance = scroll.ByBeat ? (_chart.BeatAt(noteTime) - _chart.BeatAt(now)) * 948 / 4
+            : (noteTime - now).TotalSeconds * ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), 1);
         return ((float)Math.Clamp(ox + distance * scroll.Multiplier, -100_000, 100_000),
             (float)Math.Clamp(oy + distance * scroll.Imaginary, -100_000, 100_000));
     }
@@ -323,6 +325,16 @@ public sealed class TaikoLumenPresentation
         // Gimmicks (backwards or slanted scroll, a moving target): the note may come from any side, so it is
         // listed for as long as it is within a screen's diagonal of the target.
         var scroll = _chart.ScrollPointAt(noteTime, route);
+        if (scroll.ByBeat && !_chart.Beats.IsEmpty)
+        {
+            // Within a screen's diagonal of the target, in beats; a #DELAY on the way keeps it listed longer.
+            var beat = _chart.BeatAt(noteTime);
+            var reachBeats = 1500 / (948 / 4.0 * Math.Max(0.01, Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary)));
+            var from = _chart.TimeAtBeat(beat - reachBeats);
+            if (scroll.Show is { } appear && noteTime - appear > from)
+                from = noteTime - appear;
+            return (from, _chart.TimeAtBeat(beat + reachBeats) + TimeSpan.FromSeconds(1));
+        }
         // #SUDDEN: shown from its appear time (a note held still may wait on screen from the start).
         if (scroll.Show is not null || scroll.Wait is not null)
             return (scroll.Show is { } show ? noteTime - show : TimeSpan.MinValue, noteTime + TimeSpan.FromSeconds(1500 / Math.Max(1,
@@ -336,7 +348,7 @@ public sealed class TaikoLumenPresentation
     }
 
     // A bar line follows whichever route is playing, so it stays listed for as long as the slowest would show it.
-    private (TimeSpan From, TimeSpan Until) barWindow(TimeSpan time) =>
+    private (TimeSpan From, TimeSpan Until) barWindow(TimeSpan time) => _chart.ScrollPointAt(time).ByBeat ? window(time, null) :
         VisibleWindow(time, Enum.GetValues<ChartBranch>().Min(route => pixelsPerSecond(time, route)), _hitX);
 
     /// <summary>When something moving at this speed is between x -100 and 1380, the lane's drawn range; always, if it barely moves.</summary>
