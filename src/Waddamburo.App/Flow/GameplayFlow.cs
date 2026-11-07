@@ -229,8 +229,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _charts = [.. _sourceCharts.Select((chart, lane) =>
         {
             var player = players.ElementAtOrDefault(lane);
-            var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course,
-                chart.Key.Song.Source == SongSourceKind.Tja ? Shell.Assets.ModchartPath(player.ChartAsset) : null);
+            var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
             return (player?.Options ?? default).Apply(authored, _seed + (lane < request.Players.Length ? lane : 0));
         })];
         // Online, the kusudama is each player's own: the other player's lane gets balloons in its place.
@@ -247,15 +246,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _shutterStartTick = -1;
         _shutterClosing = false;
         var active = Shell.Active;
-        // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
-        var songInfoIndex = active.Layers.ToList().FindIndex(layer =>
-            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
-        if (songInfoIndex >= 0 && _song is not null)
+        if (_song is not null && sceneLayer("song_info") is { } songInfo)
         {
-            var title = Shell.Titles.GetGameplayTitle(_song);
-            _ = Shell.Titles.Resolve(title);
-            active.Player.Layers[songInfoIndex].Player.SetNativeFill("song_name", title);
-            ModeLabel.Show(active.Player.Layers[songInfoIndex].Player, modeLabel(_demo ? Strings.T("mode.demo") : ModeText(request)));
+            showSongTitle(_song);
+            ModeLabel.Show(songInfo, modeLabel(_demo ? Strings.T("mode.demo") : ModeText(request)));
         }
         _timeline = _course is { } course
             ? new GameplayTimeline(course.Songs[0].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn)
@@ -791,26 +785,33 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (_course is null)
             return;
         var song = _courseSongs[_courseSong];
-        LumenPlayer? layer(string movie)
-        {
-            var index = Shell.Active.Layers.ToList().FindIndex(entry => Path.GetFileNameWithoutExtension(entry.Definition.MovieId) == movie);
-            return index < 0 ? null : Shell.Active.Player.Layers[index].Player;
-        }
         var card = Shell.Titles.GetTransitionTitle(song);
         _ = Shell.Titles.Resolve(card);
-        if (layer("between") is { } between)
+        if (sceneLayer("between") is { } between)
         {
             between.SetNativeFill("next_song_name", card);
             if (!between.TryGotoLabel("nextsong", "start"))
                 Console.Error.WriteLine("between has no nextsong clip to start.");
         }
         Shell.SongInfo = Shell.SongInfo with { Stage = _courseSong + 1 };
-        if (layer("song_info") is { } info)
-        {
-            var title = Shell.Titles.GetGameplayTitle(song);
-            _ = Shell.Titles.Resolve(title);
-            info.SetNativeFill("song_name", title);
-        }
+        showSongTitle(song);
+    }
+
+    // A movie of the active scene by name (song_info, between); null when the scene has none.
+    private LumenPlayer? sceneLayer(string movie)
+    {
+        var index = Shell.Active.Layers.ToList().FindIndex(entry => Path.GetFileNameWithoutExtension(entry.Definition.MovieId) == movie);
+        return index < 0 ? null : Shell.Active.Player.Layers[index].Player;
+    }
+
+    // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
+    private void showSongTitle(SongSelectSong song)
+    {
+        if (sceneLayer("song_info") is not { } info)
+            return;
+        var title = Shell.Titles.GetGameplayTitle(song);
+        _ = Shell.Titles.Resolve(title);
+        info.SetNativeFill("song_name", title);
     }
 
     // A finished song shows its results (the shutter stays over them until their first frames are

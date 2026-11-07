@@ -96,11 +96,11 @@ public sealed class ChartModKeyframeTests
     [Fact]
     public void DrawingBlockRoundTripsCurvesAndReadsPreviousVersion()
     {
-        var chart = Chart() with { Effects = new() { Mods = [new(TimeSpan.Zero, TimeSpan.FromSeconds(4), "don", "yaw", 360, ChartEase.Linear, new(.3, 0, .2, 1), Initial: true)] } };
+        var chart = Chart() with { Effects = new() { Mods = [new(TimeSpan.Zero, TimeSpan.FromSeconds(4), "don", "yaw", 360, ChartEase.Linear, new(.3, 0, .2, 1))] } };
         var data = ChartDrawing.Serialize(chart);
         Assert.Equal(chart.Effects.Mods.AsEnumerable(), ChartDrawing.Apply(Chart(), data).Effects.Mods.AsEnumerable());
-        var named = chart with { Effects = chart.Effects with { Mods = [chart.Effects.Mods[0] with { Curve = null, Initial = false }] } };
-        var old = ChartDrawing.Serialize(named)[..^2]; // v1 has no initial-value or optional-curve flags.
+        var named = chart with { Effects = chart.Effects with { Mods = [chart.Effects.Mods[0] with { Curve = null }] } };
+        var old = ChartDrawing.Serialize(named)[..^1]; // v1 has no optional-curve flag.
         old[4] = 1;
         Assert.Equal(named.Effects.Mods.AsEnumerable(), ChartDrawing.Apply(Chart(), old).Effects.Mods.AsEnumerable());
         var plain = ChartDrawing.Serialize(Chart());

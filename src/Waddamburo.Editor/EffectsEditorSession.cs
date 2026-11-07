@@ -46,9 +46,8 @@ public sealed partial class EffectsEditorSession : IDisposable
         _replaceEffects = replaceEffects;
         _getElements = elements;
         _openTja = openTja; _tjaPath = tjaPath;
-        _history = new(chart.Effects.ModTracks.Count == 0 && !chart.Effects.Mods.IsEmpty
-            ? EffectDocument.EmbeddedPreview : EffectDocument.FromTracks(chart.Effects.ModTracks));
-        _preview = new(chart);
+        _history = new(OpeningDocument(chart, files));
+        _preview = new(chart, _history.Current.UsesEmbeddedEffects ? null : _history.Current.Tracks);
         _reference = new(chart, _preview.BeatMap);
         _trackNames = [.. _preview.Tracks.Keys.Order(StringComparer.Ordinal)];
         if (_trackNames.Length > 0) Select(_trackNames[0], false);

@@ -15,6 +15,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     internal const ushort ClearView = 16;
     private const ushort MainView = 17;
     private const ushort PresentView = 18; // the stage drawn at RenderHeight, scaled into the window
+    private const ushort ImGuiView = 19; // the effects editor's panels, over the whole window
 
     private readonly SDL_Window* _window;
     private readonly Dictionary<uint, bgfx.TextureHandle> _textures = [];
@@ -516,7 +517,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     {
         if (data.NativePtr == null || data.TotalVtxCount == 0 || data.DisplaySize.X <= 0 || data.DisplaySize.Y <= 0)
             return;
-        const ushort view = 19;
+        const ushort view = ImGuiView;
         bgfx.set_view_frame_buffer(view, BgfxSupport.BackBuffer);
         bgfx.set_view_rect(view, 0, 0, (ushort)_width, (ushort)_height, 0, 1);
         bgfx.set_view_scissor(view, 0, 0, (ushort)_width, (ushort)_height);

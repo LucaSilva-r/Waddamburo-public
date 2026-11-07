@@ -153,7 +153,7 @@ public sealed partial class EffectsEditorSession
         var chart = _history.Current.UsesEmbeddedEffects ? _sourceChart : ChartModFile.Apply(_sourceChart, _history.Current.Tracks);
         _replaceEffects?.Invoke(chart.Effects);
         _message = null; _messageError = false;
-        _preview = new(chart);
+        _preview = new(chart, _history.Current.UsesEmbeddedEffects ? null : _history.Current.Tracks);
         _trackNames = [.. _preview.Tracks.Keys.Order(StringComparer.Ordinal)];
         _selected.RemoveWhere(key => !_preview.Tracks.ContainsKey(key));
         _selectedKeys.RemoveWhere(key => !_history.Current.Contains(key));

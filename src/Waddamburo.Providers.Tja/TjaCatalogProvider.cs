@@ -28,6 +28,9 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
     public SongSourceKind Source => SongSourceKind.Tja;
 
+    /// <summary>The library folder this provider reads below.</summary>
+    public string Root => _root;
+
     public ValueTask<SongCatalogContribution> ScanAsync(
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)

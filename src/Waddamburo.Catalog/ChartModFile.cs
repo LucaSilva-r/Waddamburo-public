@@ -5,7 +5,7 @@ namespace Waddamburo.Catalog;
 
 /// <summary>A timed transition compiled from keyframes (beats measured from chart start).</summary>
 public readonly record struct ChartModCue(double Beat, double Beats, ChartEase Ease, string Target, string Property,
-    double Value, ChartModCurve? Curve = null, bool Initial = false);
+    double Value, ChartModCurve? Curve = null);
 
 /// <summary>A value at a beat. Ease or Curve describes the segment into this key.</summary>
 public readonly record struct ChartModKeyframe(double Beat, double Value, ChartEase Ease = ChartEase.Linear,
@@ -164,7 +164,10 @@ public static class ChartModFile
         return stream.ToArray();
     }
 
-    /// <summary>The first value holds before its beat; later keys ease from their predecessor.</summary>
+    /// <summary>
+    /// A track's first value holds from the chart's start (a zero-length change at beat 0, which also covers the lead-in,
+    /// see <see cref="ChartMods.ValueAt"/>); later keys ease from their predecessor.
+    /// </summary>
     public static IReadOnlyList<ChartModCue> Compile(IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
     {
         ArgumentNullException.ThrowIfNull(tracks);
@@ -177,32 +180,27 @@ public static class ChartModFile
             for (var i = 0; i < keys.Length; i++)
             {
                 var k = keys[i];
-                var start = i == 0 ? k.Beat : keys[i - 1].Beat;
-                cues.Add(new(start, i == 0 ? 0 : k.Beat - start, k.Ease, key[..dot], key[(dot + 1)..], k.Value, k.Curve, Initial: i == 0));
+                var start = i == 0 ? 0 : keys[i - 1].Beat;
+                cues.Add(new(start, i == 0 ? 0 : k.Beat - start, k.Ease, key[..dot], key[(dot + 1)..], k.Value, k.Curve));
             }
         }
         return cues.OrderBy(c => c.Beat).ToArray();
     }
 
-    public static PlayableChart Apply(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
-    {
-        var applied = Apply(chart, Compile(tracks));
-        return applied with { Effects = applied.Effects with { ModTracks = tracks.ToImmutableDictionary(StringComparer.Ordinal) } };
-    }
+    public static PlayableChart Apply(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks) =>
+        Apply(chart, Compile(tracks));
 
     /// <summary>Replaces drawing mods while preserving the chart's other effects and identity.</summary>
     public static PlayableChart Apply(PlayableChart chart, IReadOnlyList<ChartModCue> cues)
     {
         var beats = chart.Effects.Beats.IsEmpty ? new ChartEffects { Beats = BeatsOf(chart.TimingPoints) } : chart.Effects;
-        TimeSpan at(double beat) => beats.TimeAtBeat(beat) is var time && time < TimeSpan.Zero ? TimeSpan.Zero : time;
-        var mods = cues.Select(cue => (Start: cue.Initial ? TimeSpan.Zero : at(cue.Beat), End: cue.Initial ? TimeSpan.Zero : at(cue.Beat + cue.Beats), Cue: cue))
-            .Select(static t => new ChartModEase(t.Start, t.End - t.Start, t.Cue.Target, t.Cue.Property, t.Cue.Value, t.Cue.Ease, t.Cue.Curve, t.Cue.Initial))
+        // Beat 0 or before is the chart's start, even when a #DELAY there holds the beat count at 0.
+        TimeSpan at(double beat) => beat <= 0 ? TimeSpan.Zero
+            : beats.TimeAtBeat(beat) is var time && time < TimeSpan.Zero ? TimeSpan.Zero : time;
+        var mods = cues.Select(cue => (Start: at(cue.Beat), End: at(cue.Beat + cue.Beats), Cue: cue))
+            .Select(static t => new ChartModEase(t.Start, t.End - t.Start, t.Cue.Target, t.Cue.Property, t.Cue.Value, t.Cue.Ease, t.Cue.Curve))
             .OrderBy(static change => change.Start);
-        var tracks = cues.GroupBy(c => c.Target + "." + c.Property)
-            .Where(group => group.Any(c => c.Initial))
-            .ToImmutableDictionary(group => group.Key, group => group.Select(c =>
-                new ChartModKeyframe(c.Initial ? c.Beat : c.Beat + c.Beats, c.Value, c.Ease, c.Curve)).ToImmutableArray());
-        return chart with { Effects = chart.Effects with { Mods = [.. mods], ModTracks = tracks } };
+        return chart with { Effects = chart.Effects with { Mods = [.. mods] } };
     }
 
     /// <summary>The beat count over time from tempo points alone (no #DELAY to stop it).</summary>

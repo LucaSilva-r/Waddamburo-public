@@ -3,9 +3,9 @@ using Waddamburo.Catalog;
 namespace Waddamburo.App.Gameplay;
 
 /// <summary>
-/// Stock/player overrides for one chart and course: &lt;folder&gt;/&lt;chart hash&gt;.wddmod (<see cref="ChartModFile"/>), over
-/// the chart's own effects. Effects only change what is drawn, so the chart's hash and scores stay as they are: any song,
-/// stock included, can have one. TJA files use their adjacent modchart instead of a player override.
+/// A player's own modchart for one chart and course: &lt;folder&gt;/&lt;chart hash&gt;.wddmod (<see cref="ChartModFile"/>), over
+/// the chart's own effects (a TJA's Song.wddmod, applied when the chart loads). Effects only change what is drawn, so the
+/// chart's hash and scores stay as they are: any song, stock and TJA alike, can have one.
 /// </summary>
 internal static class PlayerModcharts
 {
@@ -17,10 +17,9 @@ internal static class PlayerModcharts
     /// <paramref name="chart"/> with the player's modchart when its file exists; the path is printed either way, so one can
     /// be written for the chart. A broken file is reported and the chart keeps its own effects.
     /// </summary>
-    public static PlayableChart Apply(string folder, PlayableChart chart, TaikoCourse course, string? adjacentPath = null)
+    public static PlayableChart Apply(string folder, PlayableChart chart, TaikoCourse course)
     {
-        if (chart.Key.Song.Source == SongSourceKind.Tja && adjacentPath is null) return chart;
-        var path = chart.Key.Song.Source == SongSourceKind.Tja ? adjacentPath! : PathFor(folder, chart, course);
+        var path = PathFor(folder, chart, course);
         if (!File.Exists(path))
         {
             Console.WriteLine($"Modchart: none for this chart ({path}).");

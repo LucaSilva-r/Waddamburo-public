@@ -11,9 +11,9 @@ public sealed class EffectPreviewTests
     [Fact]
     public void FileKeyBeatsArePreservedInsteadOfInferredFromCompiledInitialValues()
     {
-        var cues = ChartModFile.Read("""{"wddmod":1,"tracks":{"don.yaw":[{"beat":8,"value":10},{"beat":16,"value":90,"ease":"outQuad"}],"don.pitch":[{"beat":12,"value":20}]}}"""u8, null);
-        var chart = ChartModFile.Apply(Chart(), cues);
-        var preview = new EffectPreview(chart);
+        var tracks = ChartModFile.ReadTracks("""{"wddmod":1,"tracks":{"don.yaw":[{"beat":8,"value":10},{"beat":16,"value":90,"ease":"outQuad"}],"don.pitch":[{"beat":12,"value":20}]}}"""u8, null);
+        var chart = ChartModFile.Apply(Chart(), tracks);
+        var preview = new EffectPreview(chart, tracks);
         Assert.Equal(8, preview.Tracks["don.yaw"][0].Beat);
         Assert.Equal(12, Assert.Single(preview.Tracks["don.pitch"]).Beat);
         Assert.Equal(10, preview.ValueAt("don.yaw", TimeSpan.FromSeconds(-2)));
@@ -27,7 +27,7 @@ public sealed class EffectPreviewTests
     {
         var tracks = ChartModFile.ReadTracks("""{"wddmod":1,"tracks":{"don.yaw":[]}}"""u8, null);
         var chart = ChartModFile.Apply(Chart(), tracks);
-        var preview = new EffectPreview(chart);
+        var preview = new EffectPreview(chart, tracks);
         Assert.Empty(preview.Tracks["don.yaw"]);
         Assert.Empty(chart.Effects.Mods);
         Assert.Equal(ChartHash.Compute(Chart(), TaikoCourse.Oni), ChartHash.Compute(chart, TaikoCourse.Oni));

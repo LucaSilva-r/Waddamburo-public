@@ -122,14 +122,24 @@ public sealed partial class EffectsEditorSession
         _tjaPath = source.TjaPath; _courses = source.Courses ?? [source.Files.Course];
         if (!preserveEdits)
         {
-            _history = new(source.Chart.Effects.ModTracks.Count == 0 && !source.Chart.Effects.Mods.IsEmpty
-                ? EffectDocument.EmbeddedPreview : EffectDocument.FromTracks(source.Chart.Effects.ModTracks));
+            _history = new(OpeningDocument(source.Chart, source.Files));
             _selectedKeys.Clear(); _key = null; _inspectorKey = null; _primary = null;
             _selected.Clear(); _expandedGraphs.Clear(); _noteBranch = 0;
         }
         ApplyCurrent(); _reference = new(_sourceChart, _preview.BeatMap, (ChartBranch)_noteBranch);
         _readout.Update(Environment.TickCount64, _transport.Clock.Position, CurrentBeat, true);
         if (!preserveEdits) _view.Frame(0, _preview.BeatAt(_sourceChart.Duration));
+    }
+
+    // The keyframes of the file that plays; effects without one (a file that could not be read) show read-only.
+    private static EffectDocument OpeningDocument(PlayableChart chart, EffectEditorFiles? files)
+    {
+        try
+        {
+            if (files?.Load() is { } document) return document;
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { }
+        return chart.Effects.Mods.IsEmpty ? EffectDocument.Empty : EffectDocument.EmbeddedPreview;
     }
 
     private void ImportEffects()

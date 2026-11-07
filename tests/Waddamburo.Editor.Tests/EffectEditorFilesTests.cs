@@ -6,7 +6,7 @@ namespace Waddamburo.Editor.Tests;
 public sealed class EffectEditorFilesTests
 {
     [Fact]
-    public void AdjacentTjaFilesArePrimaryAndSavingPreservesOtherCourses()
+    public void APlayersFileGoesOverTheTjasOwnAndSavingTheSongFilePreservesOtherCourses()
     {
         var folder = Directory.CreateTempSubdirectory("waddamburo-editor-");
         try
@@ -16,11 +16,13 @@ public sealed class EffectEditorFilesTests
             File.WriteAllText(song, """{"wddmod":1,"author":"Synthetic","tracks":{"camera.x":[{"beat":0,"value":4}]},"courses":{"*":{"tracks":{"notes.drunk":[{"beat":0,"value":1}]}},"easy":{"tracks":{"don.yaw":[{"beat":0,"value":90}]}},"oni":{"tracks":{"don.yaw":[{"beat":0,"value":180}]}}}}""");
             var files = new EffectEditorFiles(player, TaikoCourse.Oni, song);
             Assert.Equal(180, files.Load()!.Tracks["don.yaw"][0].Value);
+            Assert.Equal(song, files.PrimaryPath);
             var document = EffectDocument.Empty.AddTrack("don.yaw").SetKey("don.yaw", new(8, 360, Curve: new(.3, 0, .2, 1)));
             files.SavePlayer(document);
-            Assert.Equal(180, files.Load()!.Tracks["don.yaw"][0].Value); // A legacy player override cannot shadow the adjacent file.
-            files.Save(document);
-            Assert.Equal(song, files.PrimaryPath);
+            // The player's own file is what plays (as in gameplay), so the editor opens and saves it.
+            Assert.Equal(player, files.PrimaryPath);
+            Assert.Equal(360, files.Load()!.Tracks["don.yaw"][0].Value);
+            files.SaveSong(document);
             using var written = JsonDocument.Parse(File.ReadAllBytes(song));
             Assert.Equal("Synthetic", written.RootElement.GetProperty("author").GetString());
             Assert.Equal(90, ChartModFile.ReadTracks(File.ReadAllBytes(song), TaikoCourse.Easy)["don.yaw"][0].Value);

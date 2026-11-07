@@ -5,34 +5,43 @@ namespace Waddamburo.App.Gameplay;
 /// <summary>Sends each asset and chart request to the provider that owns it.</summary>
 internal sealed class CatalogAssetRouter(IEnumerable<object> providers) : ICatalogAssetResolver, IPlayableChartProvider
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<CatalogProviderId, ICatalogAssetResolver> _resolvers =
-        new(providers.OfType<ICatalogAssetResolver>().ToDictionary(static provider => provider.Id));
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<CatalogProviderId, IPlayableChartProvider> _charts =
-        new(providers.OfType<IPlayableChartProvider>().ToDictionary(static provider => provider.Id));
+    private readonly Dictionary<CatalogProviderId, ICatalogAssetResolver> _resolvers =
+        providers.OfType<ICatalogAssetResolver>().ToDictionary(static provider => provider.Id);
+    private readonly Dictionary<CatalogProviderId, IPlayableChartProvider> _charts =
+        providers.OfType<IPlayableChartProvider>().ToDictionary(static provider => provider.Id);
+
+    // The effects editor's TJA opened from outside the libraries: one slot, replaced by the next one opened.
+    private volatile EditorSource? _editor;
+    private sealed record EditorSource(ICatalogAssetResolver Assets, IPlayableChartProvider Charts);
 
     public CatalogProviderId Id { get; } = new("router");
 
-    public bool Resolves(CatalogAssetKey asset) => _resolvers.ContainsKey(asset.Provider);
-
-    public void Register(ICatalogAssetResolver resolver, IPlayableChartProvider charts)
+    /// <summary>Resolves the effects editor's outside TJA (its audio, chart and modchart paths) in place of the last one.</summary>
+    public void UseEditorSource(ICatalogAssetResolver assets, IPlayableChartProvider charts)
     {
-        if (resolver.Id != charts.Id) throw new ArgumentException("Asset and chart providers must match.");
-        _resolvers[resolver.Id] = resolver; _charts[charts.Id] = charts;
+        if (assets.Id != charts.Id) throw new ArgumentException("Asset and chart providers must match.");
+        _editor = new(assets, charts);
     }
 
-    public string? ModchartPath(CatalogAssetKey asset) => _charts.TryGetValue(asset.Provider, out var provider)
-        ? (provider as IChartModFileProvider)?.ModchartPath(asset) : null;
+    public bool Resolves(CatalogAssetKey asset) => resolver(asset) is not null;
 
-    public string? ChartPath(CatalogAssetKey asset) => _charts.TryGetValue(asset.Provider, out var provider)
-        ? (provider as IChartModFileProvider)?.ChartPath(asset) : null;
+    public string? ModchartPath(CatalogAssetKey asset) => (charts(asset) as IChartModFileProvider)?.ModchartPath(asset);
+
+    public string? ChartPath(CatalogAssetKey asset) => (charts(asset) as IChartModFileProvider)?.ChartPath(asset);
 
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default) =>
-        _resolvers.TryGetValue(asset.Provider, out var resolver)
-            ? resolver.OpenReadAsync(asset, cancellationToken)
+        resolver(asset) is { } owner
+            ? owner.OpenReadAsync(asset, cancellationToken)
             : throw new ArgumentException($"No provider '{asset.Provider}' resolves assets.", nameof(asset));
 
     public ValueTask<PlayableChart> LoadChartAsync(ChartKey chart, CatalogAssetKey asset, CancellationToken cancellationToken = default) =>
-        _charts.TryGetValue(asset.Provider, out var provider)
-            ? provider.LoadChartAsync(chart, asset, cancellationToken)
+        charts(asset) is { } owner
+            ? owner.LoadChartAsync(chart, asset, cancellationToken)
             : throw new ArgumentException($"No provider '{asset.Provider}' loads charts.", nameof(asset));
+
+    private ICatalogAssetResolver? resolver(CatalogAssetKey asset) =>
+        _editor is { } editor && editor.Assets.Id == asset.Provider ? editor.Assets : _resolvers.GetValueOrDefault(asset.Provider);
+
+    private IPlayableChartProvider? charts(CatalogAssetKey asset) =>
+        _editor is { } editor && editor.Charts.Id == asset.Provider ? editor.Charts : _charts.GetValueOrDefault(asset.Provider);
 }

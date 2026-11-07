@@ -25,14 +25,16 @@ public sealed class EffectPreview
     public ImmutableDictionary<string, ImmutableArray<ChartModKeyframe>> Tracks { get; }
     public ImmutableArray<double> Bars { get; }
 
-    public EffectPreview(PlayableChart chart)
+    /// <param name="keyframes">The editor document's tracks; changes without one are shown from their timed segments.</param>
+    public EffectPreview(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>>? keyframes = null)
     {
         ArgumentNullException.ThrowIfNull(chart);
         Chart = chart;
         BeatMap = chart.Effects.Beats.IsEmpty ? new() { Beats = ChartModFile.BeatsOf(chart.TimingPoints) } : chart.Effects;
         _changes = chart.Effects.Mods.GroupBy(c => c.Target + "." + c.Property)
             .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Start).ToArray());
-        var tracks = chart.Effects.ModTracks.ToBuilder();
+        var tracks = ImmutableDictionary.CreateBuilder<string, ImmutableArray<ChartModKeyframe>>(StringComparer.Ordinal);
+        if (keyframes is not null) tracks.AddRange(keyframes);
         // Charts authored with TJA SET/EASE have timed segments rather than file keyframes.
         // Display the segment starts and ends, preserving discontinuities at the same beat.
         foreach (var (key, changes) in _changes)

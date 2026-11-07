@@ -13,7 +13,7 @@ public enum ChartEase
 /// A modchart change (TJA #EASE / #SET): from <see cref="Start"/>, over <see cref="Length"/> (0: at once),
 /// <see cref="Target"/>'s <see cref="Property"/> eases from whatever it was to <see cref="Value"/>. Drawing only.
 /// </summary>
-public readonly record struct ChartModEase(TimeSpan Start, TimeSpan Length, string Target, string Property, double Value, ChartEase Ease, ChartModCurve? Curve = null, bool Initial = false);
+public readonly record struct ChartModEase(TimeSpan Start, TimeSpan Length, string Target, string Property, double Value, ChartEase Ease, ChartModCurve? Curve = null);
 
 /// <summary>CSS-style cubic Bézier handles. X handles stay in [0,1]; Y may overshoot.</summary>
 public readonly record struct ChartModCurve(double X1, double Y1, double X2, double Y2)
@@ -56,13 +56,16 @@ public static class ChartMods
     {
         foreach (var change in changes)
         {
-            if (change.Initial)
-            {
-                value = change.Value;
-                continue;
-            }
             if (time < change.Start)
+            {
+                // A change at the chart's start holds through the lead-in before it too (a track's first keyframe).
+                if (change.Start == TimeSpan.Zero && change.Length <= TimeSpan.Zero)
+                {
+                    value = change.Value;
+                    continue;
+                }
                 break;
+            }
             if (change.Length <= TimeSpan.Zero || time - change.Start >= change.Length)
             {
                 value = change.Value;

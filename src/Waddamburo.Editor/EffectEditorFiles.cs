@@ -8,7 +8,11 @@ public sealed class EffectEditorFiles(string playerPath, TaikoCourse course, str
     public string PlayerPath { get; } = playerPath;
     public string? SongPath { get; } = songPath;
     public TaikoCourse Course { get; } = course;
-    public string PrimaryPath => SongPath ?? PlayerPath;
+    /// <summary>
+    /// The file that plays, so the one opened and saved: the player's own (by chart hash) when it exists, as gameplay
+    /// applies it over the chart's; else the song file beside a TJA; else a new player file.
+    /// </summary>
+    public string PrimaryPath => SongPath is null || File.Exists(PlayerPath) ? PlayerPath : SongPath;
 
     public EffectDocument? Load()
     {
@@ -20,7 +24,7 @@ public sealed class EffectEditorFiles(string playerPath, TaikoCourse course, str
 
     public void Save(EffectDocument document)
     {
-        if (SongPath is not null) SaveSong(document); else SavePlayer(document);
+        if (PrimaryPath == PlayerPath) SavePlayer(document); else SaveSong(document);
     }
 
     public EffectDocument Import(string path)
