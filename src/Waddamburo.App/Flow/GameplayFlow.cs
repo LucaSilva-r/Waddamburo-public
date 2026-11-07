@@ -81,6 +81,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _courseSong = 0;
         _courseHold = TimeSpan.Zero;
         _courseEndsAt = null;
+        _courseCardTick = null;
         _restartCourse = (course, Shell.Gameplay.Dan!);
     }
 
@@ -367,6 +368,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     private TimeSpan _courseHold;
+    // Traced session31: between's nextsong starts 61 ticks after the rainbow's out (163861 -> 164878 ms); the card
+    // started with the reveal, so its doors closed (and their Close sound played) under the rainbow. Reported on Discord.
+    private const int CourseCardDelayTicks = 61;
+    private int? _courseCardTick;
     private TimeSpan? _courseEndsAt;
 
     private TimeSpan songTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
@@ -627,6 +632,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _courseSong = 0;
             _courseHold = TimeSpan.Zero;
             _courseEndsAt = null;
+            _courseCardTick = null;
         }
         Shell.PlayRequests.ClearActive();
         if (!Shell.PlayRequests.TryRequestPlay(request))
@@ -764,9 +770,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             var request = Shell.PlayRequests.Active
                 ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
             _startTick = Shell.Tick;
-            _music = _review is null ? startAudio(request) : null; // a review plays its own music
-            _clock.Restart();
-            showCourseSong();
+            // A dan course's first card (and its music) waits under the opening rainbow, as Green's does; the rest start now.
+            if (_course is not null && _review is null)
+                _courseCardTick = Shell.Tick + CourseCardDelayTicks;
+            else
+            {
+                _music = _review is null ? startAudio(request) : null; // a review plays its own music
+                _clock.Restart();
+                showCourseSong();
+            }
             rainbow.GotoLabel(_course is null ? RainbowTransitionComposition.RevealLabel
                 : RainbowTransitionComposition.PlainRevealLabel, play: true);
             Rainbow.StartReveal();
@@ -777,6 +789,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             overlay.Clear();
             Console.WriteLine($"Rainbow reveal completed at tick {Shell.Tick}.");
+        }
+        if (_courseCardTick is { } cardAt && Shell.Tick >= cardAt)
+        {
+            _courseCardTick = null;
+            _music = startAudio(Shell.PlayRequests.Active!);
+            _clock.Restart();
+            showCourseSong();
         }
         if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it
             return;
