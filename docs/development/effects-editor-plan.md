@@ -122,7 +122,7 @@ what changed from this plan, and anything the next session must know. Start each
 - [x] 3. Read-only editor (layout, transport, timeline, graph view)
 - [x] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
 - [x] 5. Graph editing (keys and bezier handles)
-- [ ] 6. Viewport (click-select, gizmos, auto-key, Don model sliders)
+- [x] 6. Viewport (click-select, gizmos, auto-key, Don model sliders)
 
 ### Notes
 
@@ -185,6 +185,18 @@ what changed from this plan, and anything the next session must know. Start each
   throughout each gesture; each drag is one undo operation and Escape cancels it. All 732 managed tests pass.
   A native synthetic mouse probe verified two-dimensional key dragging, handle overshoot, one-step undo and
   Escape cancellation, with six live updates. Viewport selection/gizmos are next; Windows runtime remains pending.
+
+- 2026-11-07: milestone 6 landed in `4dd650d`. The editor requests live role bounds and pivots from
+  `StageEffects` (only while open), with camera-aware viewport selection, move arrows/body dragging, a rotation
+  ring and scale corners. Bounds exclude mask-only and transparent drawing commands. Auto-key defaults on and
+  writes the affected channels at the snapped playhead; off only edits existing keys there and reports missing
+  keys without changing the document. Actual edits pause preview playback; selecting alone does not. Don has
+  yaw/pitch/roll sliders with live preview and gesture undo. Scene bounds follow current animation and seek state;
+  grouped roles use aggregate axis-aligned bounds, rather than pixel-alpha picking. Every gesture is one undo step;
+  cancelling with Escape restores its initial document. Viewport keyboard navigation stays disabled so live drum
+  keys still reach gameplay. A synthetic native probe passed selection, move/rotate/scale, auto-key off, one-step
+  undo, drum K, Don slider undo/redo, save/reload and F8 exit, with eleven live updates. All 737 tests pass.
+  Remaining release validation: user-driven checks on real scene art and Windows VM runtime (milestone 1).
 
 ## Milestones (each ends committed and tested)
 
