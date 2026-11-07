@@ -96,8 +96,8 @@ Undo/redo = stack of documents. Load/save via `ChartModFile`. Beat ↔ time thro
 - **Timeline**: rows per track, keyframe diamonds, drag to move (snapped), box/multi-select, playhead = practice
   `ReviewClock`; click ruler to seek; wheel zoom, middle-drag pan.
 - Panel snapping/docking is requested for the editor layout milestone (the integration demo is temporary).
-- **Graph**: selected track(s) as value-over-beat curves drawn with ImDrawList; drag keys (beat/value) and bezier
-  handles; frame-all.
+- **Graph**: each timeline track expands to an inline value-over-beat curve drawn with ImDrawList, sharing its
+  beat ruler and horizontal view; drag keys (beat/value) and bezier handles; frame-all. No separate graph tab.
 - **Inspector**: exact numbers, easing dropdown with curve thumbnails.
 - **Viewport gizmos**: click selects the element under the cursor (bounds from `StageEffects` pivots, extended to
   bounds); drag to move, ring to rotate, corner to scale; with auto-key, writes keyframes at the playhead. Don-chan's
@@ -203,6 +203,19 @@ what changed from this plan, and anything the next session must know. Start each
   graph/gizmo and focus-loss checks. The available VM display still shows firmware/boot output, so Windows runtime
   remains unverified; packaging success does not complete milestone 1. Two existing Game-project warnings remain
   (XML parameter documentation and an unused using directive); no editor build errors.
+
+- 2026-11-07: usability follow-up landed in `2f70225` after user feedback. Timeline rows now expand their own
+  editable graphs under a shared ruler; selecting or opening a track reveals its curve, several can remain open,
+  and variable-height rows retain correct key picking/box selection. Shift+wheel scrolls the track list; wheel zoom
+  and middle pan keep beat alignment. Scene tools are explicit buttons above a separate preview canvas. Selection
+  favors smaller elements over broad backdrops, target labels select even without tracks, and rotate/scale work
+  by dragging the selection as well as the ring/corners. Near-pivot drags use horizontal rotation/scale movement.
+  The editor uses original neutral colors/rounded controls and the existing Apache-2.0 Kosugi Maru font rasterized
+  at initial pixel density. Per user preference, ImGui is retained; no BUI/Blender code or dependencies are added.
+  All 740 managed tests pass (35 Editor cases); native probes verify real tool buttons, stable selection,
+  body move/rotate/scale, gesture undo, drum K, inline key/Bezier dragging, collapse/open/reveal of another curve
+  and timeline alignment after expansion. Synthetic layout/font captures cover 100% and 150% framebuffer scales.
+  Windows runtime validation remains pending.
 
 ## Milestones (each ends committed and tested)
 
