@@ -23,6 +23,12 @@ public sealed record TaikoPlayResult(
     /// <see cref="Rolls"/>; set by the rescorer for the score server (0 elsewhere).</summary>
     public int RollMax { get; init; }
 
+    /// <summary>
+    /// Balloon and kusudama hits, beside <see cref="Rolls"/> (drumroll hits only, as scores keep them): the result
+    /// screen's 連打数 counts both, as the dan panel does.
+    /// </summary>
+    public int BalloonHits { get; init; }
+
     /// <summary>The play options it was played with (真打 scores on its own scale).</summary>
     public TaikoPlayOptions Options { get; init; }
 

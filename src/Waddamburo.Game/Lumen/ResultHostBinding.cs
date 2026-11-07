@@ -134,7 +134,7 @@ public sealed class ResultHostBinding(
         call(player, "SetKa", p, number(play.Good));
         call(player, "SetFuka", p, number(play.Miss));
         call(player, "SetCombo", p, number(play.MaxCombo));
-        call(player, "SetRenda", p, number(play.Rolls));
+        call(player, "SetRenda", p, number(play.Rolls + play.BalloonHits)); // balloons count too (reported on Discord)
         call(player, "SetGauge", p, number(play.GaugeSegments));
         call(player, "SetResultLevel", p, number(play.ResultLevel));
         call(player, "SetFullCombo", p, number(play.FullCombo ? 1 : 0));

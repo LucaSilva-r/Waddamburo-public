@@ -536,7 +536,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Waiwai: both players share the voltage (clear at its norm).
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
-                (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
+                (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options, BalloonHits = score.BalloonHits };
             var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
             if (dan is not null && danArt is { } challengeArt)
                 layers["dani_enso"].Player.SetNativeFill("challenge_lv_mini", challengeArt);
