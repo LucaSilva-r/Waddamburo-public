@@ -103,7 +103,8 @@ Undo/redo = stack of documents. Load/save via `ChartModFile`. Beat ↔ time thro
   bounds); drag to move, ring to rotate, corner to scale; with auto-key, writes keyframes at the playhead. Don-chan's
   model: yaw/pitch/roll sliders.
 - **Controls**: Space play/pause, ←/→ beat (Shift measure), K key the selected property, Del, Ctrl+Z/Y, Ctrl+S,
-  A/B loop (practice's own keys).
+  A/B loop (practice's own keys). Double-click a curve to add a sampled key; double-click a key for
+  a nearby value entry popup. Ctrl+C/V copy selected keys and paste at the snapped playhead; right-click for repeat.
 
 **Saving**: the chart's own player file `waddamburo/modcharts/<chart hash>.wddmod` (`PlayerModcharts.PathFor`); for TJA
 charts also “Save into Song.wddmod” (its course section) so authors ship it with the chart.
@@ -216,6 +217,27 @@ what changed from this plan, and anything the next session must know. Start each
   body move/rotate/scale, gesture undo, drum K, inline key/Bezier dragging, collapse/open/reveal of another curve
   and timeline alignment after expansion. Synthetic layout/font captures cover 100% and 150% framebuffer scales.
   Windows runtime validation remains pending.
+
+- 2026-11-07: authoring shortcuts and chart references landed in `d3362ab`. Double-clicking a curve adds
+  a key sampled at its snapped beat (an existing key retains its interpolation); double-clicking a timeline/graph
+  key opens a nearby numeric value popup with Enter/Apply and Cancel. Ctrl+C/V use an application-local key
+  clipboard that retains tracks, relative beat offsets, values and easing/Bezier data; a single-track clipboard
+  can also be pasted into the context track. Right-click exposes copy, paste, value editing, deletion and repeat.
+  Repeat takes additional-copy count and period, defaults to a closed cycle's span or adds the smallest key gap,
+  checks collisions atomically unless replacement is enabled, and preserves closing curves at matching shared
+  endpoints. Each paste/repeat/value entry is one undo operation.
+  The timeline now has chart notes (red/blue hits, strong hits, long-note spans/endpoints), a Normal/Expert/Master
+  note-branch selector, measure numbers including hidden game bars, BPM/meter changes, delay/branch markers,
+  and current measure/BPM/meter in the toolbar. The note-branch selector affects reference notes/timing/snapping;
+  live gameplay retains its practice route and all effect tracks remain shared. Reference times are projected
+  through the modchart's canonical beat map, including delays and route-specific timing/bar streams. Charts
+  without bars get meter-aware measure guides. Snap → Chart notes uses hits plus long-note starts/ends, with faint
+  alignment guides; Alt temporarily bypasses snapping. Multi-key drags/pastes snap their anchor while retaining
+  relative spacing. The default bottom panel grows to 44% to leave room for chart references and inline curves.
+  All 752 managed tests pass (47 Editor cases after final adjustments). A synthetic native workflow verified
+  double-click insertion/value entry, multi-key clipboard undo/redo, the branch and note-snap dropdowns, a paste
+  aligned to an Expert-route note, right-click repeat with numeric count, repeat undo/redo, save/reload and F8 exit,
+  with fourteen live preview updates. Windows runtime validation remains pending.
 
 ## Milestones (each ends committed and tested)
 
