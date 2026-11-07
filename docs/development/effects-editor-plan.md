@@ -62,6 +62,8 @@ Waddamburo.App            opens the editor from practice mode; references Editor
   `ChartMods.ValueAt`, `ChartModValues`, `NoteGeometry`, `StageEffects` stay unchanged.
 - **Bezier**: `ChartModEase` gains an optional `Curve` (x1, y1, x2, y2); `ChartMods.Eased` solves it (Newton on x(t),
   bisection fallback). `ChartDrawing` (online block) serialises it.
+- Course-specific tracks replace the corresponding wildcard track as a whole; an empty track disables it. Keys are
+  sorted on read and must have distinct beats. `ease: "step"` holds the previous value until the next key (instant SET).
 - **Writing**: `ChartModFile.Write(tracks)` for the editor; round-trips with `Read`.
 - Migrate `Test Charts/Modchart - EASE and SET demo/Modchart Demo.wddmod` and the mikuse user file.
 - **Live preview** (`src/Waddamburo.Game/Gameplay/TaikoLumenPresentation.cs`): `ReplaceEffects(ChartEffects)` rebuilds
@@ -93,6 +95,7 @@ Undo/redo = stack of documents. Load/save via `ChartModFile`. Beat ↔ time thro
 - **Targets**: `ChartMods.Elements`/`NoteProperties`/`DonModelProperties`; “+” adds a track.
 - **Timeline**: rows per track, keyframe diamonds, drag to move (snapped), box/multi-select, playhead = practice
   `ReviewClock`; click ruler to seek; wheel zoom, middle-drag pan.
+- Panel snapping/docking is requested for the editor layout milestone (the integration demo is temporary).
 - **Graph**: selected track(s) as value-over-beat curves drawn with ImDrawList; drag keys (beat/value) and bezier
   handles; frame-all.
 - **Inspector**: exact numbers, easing dropdown with curve thumbnails.
@@ -115,7 +118,7 @@ Work spans several sessions. Tick a box when a milestone is committed, and add a
 what changed from this plan, and anything the next session must know. Start each session from the first unchecked box.
 
 - [ ] 1. ImGui layer + Editor skeleton
-- [ ] 2. Keyframe format + bezier + ReplaceEffects
+- [x] 2. Keyframe format + bezier + ReplaceEffects
 - [ ] 3. Read-only editor (layout, transport, timeline, graph view)
 - [ ] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
 - [ ] 5. Graph editing (keys and bezier handles)
@@ -136,6 +139,22 @@ what changed from this plan, and anything the next session must know. Start each
   with a build assertion that `cimgui.dll` enters its self-extracting bundle. Dependency and font licenses ship in
   the release notices. Milestone 1 stays unchecked until the user-driven practice entry/exit check and Windows VM
   runtime check are completed. Keyframe/editor authoring features (milestones 2–6) are not implemented yet.
+
+- 2026-11-07: user confirmed the ImGui UI renders correctly. The Windows runtime check remains outstanding;
+  Linux confirmation does not stand in for that check. Panel snapping/docking is part of the layout work.
+
+- 2026-11-07: milestone 2 landed in `b5b6b1c`. Version 1 `.wddmod` now reads/writes keyframe tracks;
+  first values hold through pre-roll and initial delays, named/Bezier curves describe incoming segments, and course
+  tracks replace matching wildcard tracks. Added `step` easing for instantaneous SET changes. Legacy `changes`
+  files report a migration error instead of silently dropping effects. Compiled initial-value metadata preserves
+  pre-roll semantics without changing TJA SET timing. `ChartDrawing` writes v2 (initial values and curves), reads
+  v1/v2; older binaries cannot consume the new v2 drawing blocks. `ReplaceEffects` rebuilds geometry/stage caches
+  per lane and clears prior target offsets without resetting judgement. Fixed empty-chart drawing deserialization.
+  All 703 managed tests pass (18 new cases); the App builds. The demo and player modcharts were migrated locally
+  with `.pre-keyframes.bak` backups; one same-beat rise/reset endpoint in each is separated by one millionth of a
+  beat, with maximum sampled value deviation below 0.000007. Local paths and files remain outside this repository.
+  Restart using the updated build before testing migrated files. UI remains the integration demo; next is milestone 3
+  (layout, transport, timeline and read-only graph), with panel snapping/docking requested by the user.
 
 ## Milestones (each ends committed and tested)
 
