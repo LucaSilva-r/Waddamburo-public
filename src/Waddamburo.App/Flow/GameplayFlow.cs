@@ -431,9 +431,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     // The player's layout is showing (the chart has no modchart of its own).
     private bool _layoutShown;
 
-    /// <summary>The chart for the effects editor: without the player's layout, which is not the chart's own effects.</summary>
-    public PlayableChart EditorChartWithoutLayout => _layoutShown
-        ? _charts[0] with { Effects = _charts[0].Effects with { Mods = [] } } : _charts[0];
+    /// <summary>
+    /// The chart for the modchart editor: the stock screen, without the player's layout (in its place, or under a
+    /// modchart), which is not the chart's own effects.
+    /// </summary>
+    public PlayableChart EditorChartWithoutLayout => _charts[0] with
+        { Effects = _charts[0].Effects with { Mods = _layoutShown ? [] : _charts[0].Effects.Mods, Layout = [] } };
 
     /// <summary>The chart for the layout editor: the layout it edits takes the place of one carried under a modchart.</summary>
     public PlayableChart LayoutEditorChart => _charts[0] with { Effects = _charts[0].Effects with { Layout = [] } };

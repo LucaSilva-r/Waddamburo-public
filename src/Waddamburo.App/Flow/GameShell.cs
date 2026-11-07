@@ -86,9 +86,17 @@ internal sealed class GameShell : IDisposable
                 ? new EffectsEditorSession(Application, _gameplay.LayoutEditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.LayoutElements, layout: true, layoutName: _gameplay.ActiveLayout, renameLayout: renameLayout,
                     twoPlayers: _gameplay.TwoPlayerLayouts)
-                : new EffectsEditorSession(Application, _gameplay.EditorChartWithoutLayout, _gameplay.Training!, _gameplay.EditorFiles(),
+                : new EffectsEditorSession(Application, stockLayout(), _gameplay.Training!, _gameplay.EditorFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
         }
+    }
+
+    // The modchart editor works on the stock screen: the song drops the player's layout (and its 4:3) as it opens.
+    private Waddamburo.Catalog.PlayableChart stockLayout()
+    {
+        var chart = _gameplay.EditorChartWithoutLayout;
+        _gameplay.ReplaceEditorEffects(chart.Effects);
+        return chart;
     }
 
     // The layout editor's name field: the active layout's file renamed, the settings following it.
