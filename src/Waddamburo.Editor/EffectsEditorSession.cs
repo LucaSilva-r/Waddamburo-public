@@ -31,7 +31,7 @@ public sealed partial class EffectsEditorSession : IDisposable
     private const string Status = "Double-click: add/edit key | Drag empty space: box select | Shift+drag key: time only | Ctrl+C/V: copy/paste | Right-click: repeat | Alt: bypass snap | Shift+wheel: scroll";
     private static readonly uint Background = Color(.115f, .125f, .14f), Grid = Color(.20f, .22f, .25f),
         Bar = Color(.31f, .34f, .39f), Text = Color(.85f, .87f, .9f), Muted = Color(.52f, .56f, .61f),
-        Playhead = Color(1, .56f, .18f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
+        Playhead = Color(1, .56f, .18f), Guide = Color(.95f, .3f, .85f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
 
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
         Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null,

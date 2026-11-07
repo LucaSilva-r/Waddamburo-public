@@ -73,4 +73,26 @@ public sealed class EffectGizmoTests
         Assert.Throws<InvalidDataException>(() => document.SetValuesAt(8, values, true));
         Assert.Single(document.Tracks);
     }
+
+    [Fact]
+    public void SnapMovesTheNearestEdgeOntoATargetWithinTheThreshold()
+    {
+        Assert.Equal((3f, (float?)100), EffectGizmo.Snap([97, 150, 203], [0, 100, 640], 6));
+        Assert.Equal((-2f, (float?)200), EffectGizmo.Snap([97, 150, 202], [200, 640], 6)); // the right edge is nearer
+        Assert.Equal((0f, (float?)null), EffectGizmo.Snap([90, 150], [100, 640], 6));
+    }
+
+    [Fact]
+    public void ClickingAgainOnOneSpotSelectsTheElementsBehindInTurn()
+    {
+        static StageEffectElement element(string target, float size) =>
+            new(target, new(100 - size, 100 - size), new(100 + size, 100 + size), new(100, 100), Waddamburo.Lumen.Runtime.LumenMatrix.Identity);
+        StageEffectElement[] elements = [element("background", 90), element("gauge", 10), element("don", 40)];
+        var point = new System.Numerics.Vector2(100, 100);
+        Assert.Equal("gauge", EffectGizmo.Pick(elements, point, null)!.Target);
+        Assert.Equal("don", EffectGizmo.Next(elements, point, "gauge")!.Target);
+        Assert.Equal("background", EffectGizmo.Next(elements, point, "don")!.Target);
+        Assert.Equal("gauge", EffectGizmo.Next(elements, point, "background")!.Target);
+        Assert.Equal("gauge", EffectGizmo.Next(elements, point, "board")!.Target); // not under the spot: the front one
+    }
 }

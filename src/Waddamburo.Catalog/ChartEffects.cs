@@ -56,6 +56,12 @@ public sealed record ChartEffects
         return point.Time + TimeSpan.FromSeconds(Math.Clamp(seconds, -1e6, 1e6));
     }
 
+    /// <summary>
+    /// The player's 4:3 layout under a chart's own modchart (constant changes): each element's modchart transform is
+    /// applied first, in the 16:9 stage it was written for, then the layout's, which fits it to the 4:3 screen.
+    /// </summary>
+    public ImmutableArray<ChartModEase> Layout { get; init; } = [];
+
     /// <summary>The hit target's moves (TJA #JPOSSCROLL), in time order.</summary>
     public ImmutableArray<ChartJudgeMove> JudgeMoves { get; init; } = [];
 

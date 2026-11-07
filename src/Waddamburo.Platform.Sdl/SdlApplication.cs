@@ -121,6 +121,13 @@ public sealed unsafe partial class SdlApplication : IDisposable
     }
 
     /// <summary>Optional normalized region containing the aspect-fitted stage (editor panels surround it).</summary>
+    /// <summary>The 16:9 stage drawn squeezed into a 4:3 picture (a 4:3 layout's songs).</summary>
+    public bool Squeeze43
+    {
+        get => _renderer!.Squeeze43;
+        set { ensureOwnerThread(); _renderer!.Squeeze43 = value; }
+    }
+
     public RenderRectangle? StageRegion
     {
         get => _renderer!.StageRegion;
@@ -1164,7 +1171,6 @@ public sealed unsafe partial class SdlApplication : IDisposable
         SDL_Keycode.SDLK_F2 => SdlKeyboardKey.F2,
         SDL_Keycode.SDLK_F3 => SdlKeyboardKey.F3,
         SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,
-        SDL_Keycode.SDLK_F7 => SdlKeyboardKey.F7,
         SDL_Keycode.SDLK_F8 => SdlKeyboardKey.F8,
         SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,
         SDL_Keycode.SDLK_UP => SdlKeyboardKey.Up,

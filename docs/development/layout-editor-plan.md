@@ -44,4 +44,18 @@ restricted mode of that editor plus a fallback file.
   (`EffectsEditorSession.Layout.cs`; F7 in a song opens it until milestone 4; F8 ignores the layout).
 - [x] 3. Layering: `depth` element property (whole steps, default 0), stable sort by depth in
   `TaikoLumenPresentation.CreateLayers` (stock order untouched when no depth is set); Send back / Bring forward in layout mode.
-- [ ] 4. Gameplay options entry key; manual check (user drives): move the lane, rotate Don, 4:3 framing, Reset.
+- [x] 4. Pause menu "Edit layout" (F7 removed); user-checked: move, rotate Don, 4:3, Reset.
+
+## Added after the milestones (2026-11-07, user-driven)
+
+- **4:3 screen** is part of the layout (`camera.aspect` 0.75): songs draw the stage squeezed into 4:3 (renderer
+  `Squeeze43`, eased over 0.35 s), the editor previews the same. The toggle sets every element but the backgrounds to
+  0.75 height (the player stretches the backgrounds). Under a chart's own modchart a 4:3 layout is kept as
+  `ChartEffects.Layout`, applied after the modchart (its motion is relative to the layout); 16:9 layouts are still
+  replaced. System indicators and the timing glow are drawn to match.
+- Editor: corner and side scale handles (opposite edge fixed, Shift keeps shape), snapping to other elements and the
+  stage (Alt off) with guides, click-through selection (a click inside the selection selects what's behind), Freeze
+  animations, autoplay while editing a layout, `banner` element (the clear banner now shows in reviews and the editors;
+  rebuilt lanes reset it).
+- Element pivots are taken once at the song's start and kept per movie, so rebuilt lanes and the editors place a
+  layout exactly as the song does.

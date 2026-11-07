@@ -31,7 +31,7 @@ public static class ChartMods
     /// <summary>Scene elements (Green's gameplay roles, the same for every skin) and what moves them.</summary>
     public static readonly ImmutableArray<string> Elements =
         ["camera", "playfield", "don", "background", "donbg", "renda", "dancers", "stage", "fever", "runners",
-         "gauge", "board", "songinfo", "nameplate", "gogo"];
+         "gauge", "board", "songinfo", "nameplate", "gogo", "banner"];
 
     /// <summary>
     /// depth: draw order, in whole steps (default 0): elements are drawn by depth, a higher one in front, the game's own
@@ -47,10 +47,13 @@ public static class ChartMods
 
     public static bool IsKnown(string target, string property) =>
         target == "notes" ? NoteProperties.Contains(property)
-        : Elements.Contains(target) && (ElementProperties.Contains(property) || target == "don" && DonModelProperties.Contains(property));
+        : Elements.Contains(target) && (ElementProperties.Contains(property) || target == "don" && DonModelProperties.Contains(property)
+            || target == "camera" && property == "aspect");
 
     /// <summary>A property's value before any change: 1 for scales, zoom and alpha, else 0.</summary>
-    public static double Default(string property) => property is "scale" or "scalex" or "scaley" or "zoom" or "alpha" ? 1 : 0;
+    /// <remarks>camera.aspect: the stage's width on screen, 1 = 16:9, below 1 = a 4:3 screen (the stage squeezed into it,
+    /// read at the chart's start).</remarks>
+    public static double Default(string property) => property is "scale" or "scalex" or "scaley" or "zoom" or "alpha" or "aspect" ? 1 : 0;
 
     /// <summary>
     /// The value at <paramref name="time"/> of one target's property, from its changes in start order: each eases from

@@ -14,6 +14,8 @@ public interface IEffectsEditorTransport
     void MarkLoopStart();
     void MarkLoopEnd();
     void ClearLoop();
+    /// <summary>The scene's movies stand still (their bounds stop moving under the gizmos); chart time goes on.</summary>
+    bool FreezeAnimations { get; set; }
 }
 
 /// <summary>Read-only data shared by timeline, graph, and inspector. No GPU or file access.</summary>

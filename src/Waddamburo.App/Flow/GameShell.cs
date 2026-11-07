@@ -73,14 +73,17 @@ internal sealed class GameShell : IDisposable
 
     public bool EffectsEditorOpen => _effectsEditor is not null;
 
+    /// <summary>The effects editor's toggle: the scene's movies don't advance while it's open.</summary>
+    public bool FreezeAnimations { get; set; }
+
     /// <summary>The effects editor on the playing chart, or (<paramref name="layout"/>) on the player's gameplay layout.</summary>
     public void OpenEffectsEditor(bool layout = false)
     {
         if (_effectsEditor is null && _gameplay.CanEditEffects && _home.CloseForEffectsEditor())
         {
-            _gameplay.BeginEffectsEditing();
+            _gameplay.BeginEffectsEditing(autoplay: layout);
             _effectsEditor = layout
-                ? new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
+                ? new EffectsEditorSession(Application, _gameplay.LayoutEditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, layout: true)
                 : new EffectsEditorSession(Application, _gameplay.EditorChartWithoutLayout, _gameplay.Training!, _gameplay.EditorFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
@@ -91,6 +94,7 @@ internal sealed class GameShell : IDisposable
     {
         _effectsEditor?.Dispose();
         _effectsEditor = null;
+        FreezeAnimations = false;
     }
 
     public SdlDonRenderer? DonRenderer { get; }
@@ -1209,8 +1213,8 @@ internal sealed class GameShell : IDisposable
             _inspected = scene;
         var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
-            : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
-                "Indicator", Titles.Resolve).Quads;
+            : unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
+                "Indicator", Titles.Resolve).Quads);
         // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
         // collection expression's growing list plus RenderFrame's copy of it, every frame.
         var quads = _frameQuads;
@@ -1248,6 +1252,18 @@ internal sealed class GameShell : IDisposable
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);
+    }
+
+    // A 4:3 layout squeezes the stage to 3/4 of its width: the system indicators (network, coins), not part of the
+    // layout, are widened back by 4/3 from their side's edge so they keep their shape in their corner.
+    private IEnumerable<RenderQuad> unsqueezed(IEnumerable<RenderQuad> quads)
+    {
+        if (!Application.Squeeze43)
+            return quads;
+        static float x(float value) => value >= .5f ? 1 - (1 - value) * 4 / 3 : value * 4 / 3;
+        static RenderVertex v(RenderVertex vertex) => vertex with { X = x(vertex.X) };
+        return quads.Select(static quad => quad with
+            { TopLeft = v(quad.TopLeft), TopRight = v(quad.TopRight), BottomRight = v(quad.BottomRight), BottomLeft = v(quad.BottomLeft) });
     }
 
     private RenderFrame blackLoadingFrame()

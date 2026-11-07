@@ -35,6 +35,12 @@ public sealed class ChartModKeyframeTests
 
         var authored = ChartModFile.Apply(Chart(), ChartModFile.Read("""{"wddmod":1,"tracks":{"don.roll":[{"beat":0,"value":10}]}}"""u8, null));
         Assert.Same(authored, ChartModFile.ApplyLayout(authored, layout)); // chart effects replace the layout, no merge
+
+        // A 4:3 layout goes under the modchart instead, which keeps its own changes.
+        var fourThree = ChartModFile.ReadTracks("""{"wddmod":1,"tracks":{"camera.aspect":[{"beat":0,"value":0.75}],"don.scaley":[{"beat":0,"value":0.75}]}}"""u8, null);
+        var under = ChartModFile.ApplyLayout(authored, fourThree);
+        Assert.Equal(authored.Effects.Mods, under.Effects.Mods);
+        Assert.Equal(0.75, ChartMods.ValueAt(under.Effects.Layout.Where(m => m.Target == "camera").ToArray(), TimeSpan.FromSeconds(5), 1));
     }
 
     [Fact]

@@ -14,6 +14,8 @@ internal enum HomeMenuAction
     Restart,
     /// <summary>Review the song played so far (the play is void).</summary>
     InstantReplay,
+    /// <summary>Open the effects editor's layout mode on the song (the play is void).</summary>
+    EditLayout,
     /// <summary>Report the watched replay's player to the moderators (the replay carries on).</summary>
     Report,
     SongSelect,
@@ -343,9 +345,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
     /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
     /// <paramref name="quit"/>: home, outside a song (the demo play counts as the attract): the game can be closed.
+    /// <paramref name="layout"/>: the song can open the layout editor (a local single-player song).
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool layout = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -354,6 +357,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 ? ["menu.resume", restart, "menu.instant_replay", "menu.settings", "menu.song_select"]
                 : ["menu.resume", restart, "menu.settings", "menu.song_select"]
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
+        if (gameplay && layout)
+            _choices = [.. _choices[..^2], "menu.edit_layout", .. _choices[^2..]];
         if (reportable)
             _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
         if (noResume)
@@ -427,6 +432,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 return HomeMenuAction.Settings;
             case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
             case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
+            case "menu.edit_layout": return close(HomeMenuAction.EditLayout);
             case "menu.report_player":
                 _reportPrompt = true;
                 _pauseChoices = _choices;

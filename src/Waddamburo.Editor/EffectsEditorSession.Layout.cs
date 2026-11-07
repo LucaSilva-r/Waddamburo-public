@@ -25,6 +25,18 @@ public sealed partial class EffectsEditorSession
         ImGui.SameLine();
         // Back to the stock screen; undoable, and nothing changes on disk until Save.
         if (ImGui.Button("Reset layout")) Edit(EffectDocument.Empty, "Reset layout");
+        ImGui.SameLine();
+        // A 4:3 screen: songs draw the stage squeezed into 4:3 (camera.aspect 0.75); lay the elements out to fit.
+        var fourThree = FourThree;
+        if (ImGui.Checkbox("4:3 screen", ref fourThree))
+        {
+            // Squeezed to 3/4 of its width, each element keeps its shape at 3/4 of its height; the backgrounds stretch
+            // (make them taller to fill). Turning it off gives the heights back.
+            var values = new Dictionary<string, double> { ["camera.aspect"] = fourThree ? .75 : 1 };
+            foreach (var target in ChartMods.Elements.Where(static t => t is not ("camera" or "background" or "fever" or "stage")))
+                values[target + ".scaley"] = _preview.ValueAt(target + ".scaley", 0d) * (fourThree ? .75 : 1 / .75);
+            Edit(_history.Current.SetValuesAt(0, values, true), fourThree ? "4:3 screen" : "16:9 screen");
+        }
     }
 
     // The scrubber: jump anywhere in the chart to see its notes under the layout.

@@ -45,7 +45,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
 
     /// <summary>The song's clear / fail banner shows at its end (off in practice; set before <see cref="Start"/>).</summary>
-    /// <remarks>Turning it off mid-song (the effects editor, practice) stops a banner not yet shown: one scrubbed past stays up.</remarks>
+    /// <remarks>Read each frame; lanes rebuilt (a seek back in a review) start without a banner shown.</remarks>
     public bool EndBanner
     {
         get => _endBanner;
@@ -301,6 +301,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly Func<int> _combo;
         private readonly LumenSceneLayer[] _fixedLayers;
         private readonly Action<TimeSpan> _onChartTime; // end-of-song banner check
+        private readonly Action<bool> _setMissed = static _ => { }; // a reviewed play's full combo, from its bake
         private readonly Func<TaikoPlayResult> _result;
         private readonly Action<int?, TaikoInputAction>? _playHitSound;
         private bool _stopped;
@@ -521,8 +522,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeFire = skin("gage_fire_1p"); // none in Waiwai
             var goGoSplash = skin("action_gogotime");
             var banner = skin("action_result"); // none in Waiwai
+            // Lanes built again (a seek back in a review or the editors): a banner already shown goes away.
+            banner?.GotoFrame(0, play: false);
             var full = false;
             var missed = false;
+            _setMissed = value => missed = value;
             int great = 0, good = 0, miss = 0, maxCombo = 0;
             // Waiwai: both players share the voltage (clear at its norm).
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
@@ -574,7 +578,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 {
                     var (x, y) = _presentation?.HitPoint ?? hitPoint;
                     LastTiming = new TimingMark(offset < TimeSpan.Zero, result == TaikoHitResult.Great, x, y, hitRadius,
-                        System.Diagnostics.Stopwatch.GetTimestamp());
+                        System.Diagnostics.Stopwatch.GetTimestamp(),
+                        _presentation?.PlayfieldPlacement(counted.CurrentTime) ?? Waddamburo.Lumen.Runtime.LumenMatrix.Identity);
                 }
                 stage?.Apply(judgement);
                 var previousScore = score.Value;
@@ -782,6 +787,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _restore(review.Timeline.StateAt(time));
             _presentation.Update(time);
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
+            // The end banner, as in play (seeking back rebuilds the lanes, which takes it down).
+            // ponytail: a pass over the bake each frame; keep a cursor if long charts show it.
+            _setMissed(review.Timeline.Events.Any(e => e.Time <= time && e.Judgement?.Result == TaikoHitResult.Miss));
+            _onChartTime(time);
         }
 
         public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default, double clockSpeed = 1)
@@ -878,4 +887,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 /// A judged hit, early or late (<paramref name="Great"/>: within the Great window), at a lane's hit
 /// target (X, Y and Radius on the 1280x720 stage); <paramref name="At"/> is a Stopwatch timestamp.
 /// </summary>
-internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At);
+/// <param name="Placement">The playfield's placement at the hit (modchart, layout): the glow is drawn through it.</param>
+internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At,
+    Waddamburo.Lumen.Runtime.LumenMatrix Placement);
