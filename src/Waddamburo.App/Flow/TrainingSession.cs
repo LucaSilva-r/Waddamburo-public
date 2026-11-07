@@ -135,6 +135,14 @@ internal sealed class TrainingSession : IEffectsEditorTransport
 
     public void ClearLoop() => (LoopStart, LoopEnd) = (null, null);
 
+    public void RestoreLoop(TrainingSession previous)
+    {
+        LoopStart = previous.LoopStart is { } a && a >= Clock.Start && a < Clock.End ? a : null;
+        LoopEnd = previous.LoopEnd is { } b && b > Clock.Start ? b < Clock.End ? b : Clock.End : null;
+        if (LoopStart >= LoopEnd) ClearLoop();
+        PauseAfterAttempt = previous.PauseAfterAttempt;
+    }
+
     private void jump(TimeSpan to)
     {
         showAttempt();

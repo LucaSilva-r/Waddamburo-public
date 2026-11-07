@@ -8,13 +8,31 @@ public sealed class EffectEditorFiles(string playerPath, TaikoCourse course, str
     public string PlayerPath { get; } = playerPath;
     public string? SongPath { get; } = songPath;
     public TaikoCourse Course { get; } = course;
+    public string PrimaryPath => SongPath ?? PlayerPath;
 
     public EffectDocument? Load()
     {
-        var path = File.Exists(PlayerPath) ? PlayerPath : SongPath is { } song && File.Exists(song) ? song : null;
+        var path = File.Exists(PrimaryPath) ? PrimaryPath : null;
         if (path is null) return null;
         if (new FileInfo(path).Length > ChartModFile.MaxBytes) throw new InvalidDataException("The modchart file is too large.");
         return EffectDocument.FromTracks(ChartModFile.ReadTracks(File.ReadAllBytes(path), Course));
+    }
+
+    public void Save(EffectDocument document)
+    {
+        if (SongPath is not null) SaveSong(document); else SavePlayer(document);
+    }
+
+    public EffectDocument Import(string path)
+    {
+        if (new FileInfo(path).Length > ChartModFile.MaxBytes) throw new InvalidDataException("The modchart is too large.");
+        return EffectDocument.FromTracks(ChartModFile.ReadTracks(File.ReadAllBytes(path), Course));
+    }
+
+    public static void Export(string path, EffectDocument document)
+    {
+        if (document.UsesEmbeddedEffects) throw new InvalidOperationException("Start a keyframe modchart before exporting chart-command effects.");
+        AtomicWrite(path, ChartModFile.Write(document.Tracks));
     }
 
     public void SavePlayer(EffectDocument document)
@@ -24,6 +42,7 @@ public sealed class EffectEditorFiles(string playerPath, TaikoCourse course, str
     }
     public void SaveSong(EffectDocument document)
     {
+        if (document.UsesEmbeddedEffects) throw new InvalidOperationException("Start a keyframe modchart before saving chart-command effects.");
         if (SongPath is not { } path) throw new InvalidOperationException("This chart has no song modchart destination.");
         if (File.Exists(path) && new FileInfo(path).Length > ChartModFile.MaxBytes) throw new InvalidDataException("The song modchart is too large.");
         AtomicWrite(path, ChartModFile.WriteCourse(File.Exists(path) ? File.ReadAllBytes(path) : [], Course, document.Tracks));

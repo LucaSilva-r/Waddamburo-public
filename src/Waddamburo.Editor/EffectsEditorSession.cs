@@ -15,7 +15,7 @@ public sealed partial class EffectsEditorSession : IDisposable
     private readonly ImGuiLayer _layer;
     private readonly RenderRectangle? _previousRegion;
     private EffectPreview _preview;
-    private readonly IEffectsEditorTransport _transport;
+    private IEffectsEditorTransport _transport;
     private readonly BeatView _view = new();
     private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
     private readonly HashSet<string> _expandedGraphs = new(StringComparer.Ordinal);
@@ -34,7 +34,8 @@ public sealed partial class EffectsEditorSession : IDisposable
         Playhead = Color(1, .56f, .18f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
 
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
-        Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null)
+        Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null,
+        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null)
     {
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(transport);
@@ -44,6 +45,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         _files = files;
         _replaceEffects = replaceEffects;
         _getElements = elements;
+        _openTja = openTja; _tjaPath = tjaPath;
         _history = new(chart.Effects.ModTracks.Count == 0 && !chart.Effects.Mods.IsEmpty
             ? EffectDocument.EmbeddedPreview : EffectDocument.FromTracks(chart.Effects.ModTracks));
         _preview = new(chart);
@@ -57,12 +59,14 @@ public sealed partial class EffectsEditorSession : IDisposable
         _layer.CaptureControlShortcuts = true;
         _layer.CaptureKey = key => key is ImGuiKey.Space or ImGuiKey.LeftArrow or ImGuiKey.RightArrow
             or ImGuiKey.A or ImGuiKey.B or ImGuiKey.Escape or ImGuiKey.F8 or ImGuiKey.Delete;
+        StartWatching(refresh: true);
     }
 
     public bool CloseRequested { get; private set; }
 
     private void Draw()
     {
+        PollFiles();
         var io = ImGui.GetIO();
         HandleEditorShortcuts();
         if (!io.WantTextInput && _pending == PendingAction.None && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
@@ -106,8 +110,9 @@ public sealed partial class EffectsEditorSession : IDisposable
 
     private void Toolbar(EditorPanel rect)
     {
-        if (Panel("Effects preview", rect, false))
+        if (Panel("Effects preview", rect, false, ImGuiWindowFlags.MenuBar))
         {
+            FileMenu();
             if (ImGui.Button("Back (Esc)")) _closeQueued = true;
             ImGui.SameLine();
             if (ImGui.Button(_transport.Clock.Paused ? "Play (Space)" : "Pause (Space)")) _transport.Clock.TogglePause();
@@ -136,9 +141,7 @@ public sealed partial class EffectsEditorSession : IDisposable
             ImGui.BeginDisabled(!_history.CanRedo);
             if (ImGui.Button("Redo")) _redoRequested = true;
             ImGui.EndDisabled();
-            var timing = _reference.TimingAt(_transport.Clock.Position);
-            var measure = _reference.MeasureAt(CurrentBeat)?.Number.ToString(CultureInfo.InvariantCulture) ?? "--";
-            ImGui.TextUnformatted($"M{measure} | Beat {F(CurrentBeat)} | {F(timing.BeatsPerMinute)} BPM {timing.BeatsPerMeasure}/{timing.BeatUnit} | {_transport.Clock.Position.TotalSeconds:0.00} s | {(_history.Dirty ? "Unsaved" : "Saved")} | A: {LoopLabel(_transport.LoopStart)} B: {LoopLabel(_transport.LoopEnd)}");
+            TransportReadout();
         }
         ImGui.End();
     }
@@ -436,6 +439,7 @@ public sealed partial class EffectsEditorSession : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        _watch?.Dispose();
         _layer.Dispose();
         _application.StageRegion = _previousRegion;
         _disposed = true;

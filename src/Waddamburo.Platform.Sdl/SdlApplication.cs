@@ -7,7 +7,7 @@ using static SDL.SDL3;
 namespace Waddamburo.Platform.Sdl;
 
 /// <summary>Owns SDL video, one window, and the bgfx renderer on the creating thread.</summary>
-public sealed unsafe class SdlApplication : IDisposable
+public sealed unsafe partial class SdlApplication : IDisposable
 {
     private readonly int _ownerThreadId;
     private SDL_Window* _window;

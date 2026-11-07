@@ -24,7 +24,7 @@ internal sealed class ReviewSession : IDisposable
     private readonly int _side;
     private readonly WaiwaiComposition? _waiwai;
     private readonly TimeSpan _inputOffset;
-    private readonly TimeSpan _songStart;
+    private TimeSpan _songStart;
     private readonly Stopwatch _frame = new();
     private readonly Task<ScrubAudioSource>? _decode;
     private ScrubAudioSource? _audio;
@@ -96,6 +96,14 @@ internal sealed class ReviewSession : IDisposable
     {
         _charts[lane] = _charts[lane] with { Effects = effects };
         _shell.Gameplay.ReplaceEffects(lane, effects);
+    }
+
+    public void ReloadChart(PlayableChart chart, TaikoCourse course, TimeSpan leadIn, TimeSpan songStart)
+    {
+        _charts[0] = chart; _courses[0] = course; _songStart = songStart;
+        Clock.SetRange(-leadIn, chart.Duration + TimeSpan.FromSeconds(2));
+        Timelines = bake([[]], null, null);
+        _stale = true;
     }
 
     /// <summary>The lanes play live from <paramref name="from"/> (a training attempt): fresh, judging the drum from there.</summary>

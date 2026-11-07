@@ -28,15 +28,27 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
     public SongSourceKind Source => SongSourceKind.Tja;
 
-    public async ValueTask<SongCatalogContribution> ScanAsync(
+    public ValueTask<SongCatalogContribution> ScanAsync(
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)
+        => inspectPaths(enumerateCharts(cancellationToken), progress, cancellationToken);
+
+    /// <summary>Inspects one selected file without scanning its surrounding library.</summary>
+    public ValueTask<SongCatalogContribution> InspectFileAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var contained = resolveContainedPath(normalizeRelative(Path.GetRelativePath(_root, Path.GetFullPath(path))));
+        rejectReparsePoints(contained);
+        if (!string.Equals(Path.GetExtension(contained), ".tja", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Select a TJA file.");
+        return inspectPaths([contained], null, cancellationToken);
+    }
+
+    private async ValueTask<SongCatalogContribution> inspectPaths(string[] paths, IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(_root))
             throw new DirectoryNotFoundException("The configured custom TJA library does not exist.");
 
         progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));
-        var paths = enumerateCharts(cancellationToken);
         var inspected = new List<InspectedTjaFile>(paths.Length);
         var diagnostics = new List<CatalogDiagnostic>();
 
@@ -203,6 +215,14 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         rejectReparsePoints(chartPath);
         var path = Path.ChangeExtension(chartPath, ChartModFile.Extension);
         if (File.Exists(path)) rejectReparsePoints(path);
+        return path;
+    }
+
+    public string? ChartPath(CatalogAssetKey chartAsset)
+    {
+        if (chartAsset.Provider != Id) throw new ArgumentException("This provider does not own the chart.", nameof(chartAsset));
+        var path = resolveContainedPath(TjaChartAssetKeyCodec.Decode(chartAsset).RelativePath);
+        rejectReparsePoints(path);
         return path;
     }
 

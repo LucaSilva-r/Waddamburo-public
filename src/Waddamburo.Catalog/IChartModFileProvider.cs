@@ -4,4 +4,5 @@ namespace Waddamburo.Catalog;
 public interface IChartModFileProvider
 {
     string? ModchartPath(CatalogAssetKey chartAsset);
+    string? ChartPath(CatalogAssetKey chartAsset) => null;
 }

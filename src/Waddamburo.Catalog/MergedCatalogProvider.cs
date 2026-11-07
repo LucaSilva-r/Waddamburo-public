@@ -99,6 +99,9 @@ public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetR
     public string? ModchartPath(CatalogAssetKey chartAsset) =>
         (owner(chartAsset) as IChartModFileProvider)?.ModchartPath(chartAsset);
 
+    public string? ChartPath(CatalogAssetKey chartAsset) =>
+        (owner(chartAsset) as IChartModFileProvider)?.ChartPath(chartAsset);
+
     private ISongCatalogProvider owner(CatalogAssetKey asset) => _owners.TryGetValue(asset.StableId, out var source)
         ? source : throw new ArgumentException($"No merged source has '{asset.StableId}'.", nameof(asset));
 

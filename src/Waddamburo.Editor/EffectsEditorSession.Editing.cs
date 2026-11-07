@@ -6,15 +6,15 @@ namespace Waddamburo.Editor;
 
 public sealed partial class EffectsEditorSession
 {
-    private readonly PlayableChart _sourceChart;
-    private readonly EffectHistory _history;
-    private readonly EffectEditorFiles? _files;
+    private PlayableChart _sourceChart;
+    private EffectHistory _history;
+    private EffectEditorFiles? _files;
     private readonly Action<ChartEffects>? _replaceEffects;
     private readonly HashSet<EffectKey> _selectedKeys = [];
     private string? _message;
     private bool _messageError;
     private bool _closeQueued;
-    private bool _saveRequested, _saveSongRequested, _undoRequested, _redoRequested, _deleteRequested, _reloadRequested;
+    private bool _saveRequested, _undoRequested, _redoRequested, _deleteRequested, _reloadRequested;
     private int _addTarget, _addProperty, _snapChoice = 3;
     private static readonly double[] Snaps = [0, 1, .5, .25, .125, .0625];
     private static readonly string[] SnapNames = ["Off", "1 beat", "1/2 beat", "1/4 beat", "1/8 beat", "1/16 beat", "Chart notes"];
@@ -24,7 +24,7 @@ public sealed partial class EffectsEditorSession
     private double _inspectBeat, _inspectValue;
     private ChartEase _inspectEase;
     private ChartModCurve? _inspectCurve;
-    private enum PendingAction { None, Close, Reload }
+    private enum PendingAction { None, Close, Reload, OpenSource, ImportEffects }
     private PendingAction _pending;
     private bool _openConfirm, _cancelConfirm;
     private EffectDocument? _dragBefore;
@@ -52,6 +52,8 @@ public sealed partial class EffectsEditorSession
     {
         if (action == PendingAction.Close) CloseRequested = true;
         else if (action == PendingAction.Reload) LoadDocument();
+        else if (action == PendingAction.OpenSource) OpenSource();
+        else if (action == PendingAction.ImportEffects) ImportEffects();
     }
 
     private void HandleEditorShortcuts()
@@ -93,14 +95,14 @@ public sealed partial class EffectsEditorSession
         MoveDraggedKeys();
         if (_dragBefore is not null && !ImGui.IsMouseDown(ImGuiMouseButton.Left) && _viewportDrag?.Mode != GizmoMode.Slider) EndDrag();
         var inspectorValid = true;
-        if (_saveRequested || _saveSongRequested || _undoRequested || _redoRequested || _reloadRequested) inspectorValid = CommitInspector();
+        if (_saveRequested || _undoRequested || _redoRequested || _reloadRequested) inspectorValid = CommitInspector();
         if (_undoRequested) { EndDrag(); if (_history.Undo()) ApplyCurrent(); }
         if (_redoRequested) { EndDrag(); if (_history.Redo()) ApplyCurrent(); }
         if (_deleteRequested) DeleteSelected();
         FinishKeyCommands();
-        if ((_saveRequested || _saveSongRequested) && inspectorValid) SaveDocument(_saveSongRequested);
+        if (_saveRequested && inspectorValid) SaveDocument();
         if (_reloadRequested) Request(PendingAction.Reload);
-        (_saveRequested, _saveSongRequested, _undoRequested, _redoRequested, _deleteRequested, _reloadRequested) = (false, false, false, false, false, false);
+        (_saveRequested, _undoRequested, _redoRequested, _deleteRequested, _reloadRequested) = (false, false, false, false, false);
         if (_closeQueued) { _closeQueued = false; RequestClose(); }
         ConfirmUnsaved();
     }
@@ -113,7 +115,7 @@ public sealed partial class EffectsEditorSession
         if (_messageError && _message is { } error) ImGui.TextWrapped(error);
         if (ImGui.Button("Save and continue"))
         {
-            if (SaveDocument(false))
+            if (SaveDocument())
             {
                 var action = _pending; _pending = PendingAction.None;
                 ImGui.CloseCurrentPopup(); Perform(action);
@@ -164,24 +166,22 @@ public sealed partial class EffectsEditorSession
         if (_selectedKeys.Count > 0) FocusKey(_selectedKeys.First());
     }
 
-    private bool SaveDocument(bool intoSong)
+    private bool SaveDocument()
     {
-        var playerSaved = false;
         try
         {
             EndDrag();
             if (!CommitInspector()) return false;
             if (_files is null) throw new InvalidOperationException("No save destination is available.");
-            _files.SavePlayer(_history.Current);
-            _history.MarkSaved(); playerSaved = true;
-            if (intoSong) _files.SaveSong(_history.Current);
-            _message = intoSong ? "Saved player modchart and song course" : "Saved player modchart";
+            _files.Save(_history.Current);
+            _history.MarkSaved();
+            _message = _files.SongPath is null ? "Saved player modchart" : "Saved beside TJA (current course)";
             _messageError = false;
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or InvalidDataException)
         {
-            _message = (playerSaved ? "Player saved; song save failed: " : "Save failed: ") + e.Message; _messageError = true; return false;
+            _message = "Save failed: " + e.Message; _messageError = true; return false;
         }
     }
 
@@ -237,7 +237,6 @@ public sealed partial class EffectsEditorSession
         if (_files is not null)
         {
             if (ImGui.Button("Reload saved")) _reloadRequested = true;
-            if (_files.SongPath is not null && ImGui.Button("Save into song")) _saveSongRequested = true;
         }
     }
 

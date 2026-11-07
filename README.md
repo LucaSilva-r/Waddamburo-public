@@ -106,6 +106,11 @@ Open **Escape → Settings** to change language, volume, graphics, controls, and
 - **Extra songs:** put TJA charts in `USRDIR/custom_songs`, or choose your TJA,
   osu!lazer, or Nijiiro library in **Settings → Song Libraries**.
 
+Press **F8 during a local single-player song** to open the effects editor. The current run becomes
+unranked. **File → Open TJA** opens an external chart and watches it for saves; effects save beside it as
+`Song.wddmod`, with a section per course. For a stock chart, use **File → Export effects** to share a `.wddmod`;
+the recipient selects the same song and course, presses F8, then uses **Import effects → Save**.
+
 For build instructions on Windows and Linux, tests, release packaging, and
 contributions, see the [Build and development guide](BUILDING.md).
 

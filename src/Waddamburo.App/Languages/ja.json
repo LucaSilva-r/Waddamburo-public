@@ -225,7 +225,6 @@
   "review.keys": "{0} 一時停止 · ←/→長押し 早送り/巻き戻し · ホイール 1秒 · ↑/↓ 速さ · {1} ここから練習",
   "review.paused": "一時停止中",
   "menu.play_song": "演奏する",
-  "menu.edit_effects": "エフェクト編集 (F8)",
   "menu.instant_replay": "リプレイ・練習",
 
   "score_list.leaderboard": "ランキング",

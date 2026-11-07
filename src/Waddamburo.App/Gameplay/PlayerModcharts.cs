@@ -17,9 +17,10 @@ internal static class PlayerModcharts
     /// <paramref name="chart"/> with the player's modchart when its file exists; the path is printed either way, so one can
     /// be written for the chart. A broken file is reported and the chart keeps its own effects.
     /// </summary>
-    public static PlayableChart Apply(string folder, PlayableChart chart, TaikoCourse course)
+    public static PlayableChart Apply(string folder, PlayableChart chart, TaikoCourse course, string? adjacentPath = null)
     {
-        var path = PathFor(folder, chart, course);
+        if (chart.Key.Song.Source == SongSourceKind.Tja && adjacentPath is null) return chart;
+        var path = chart.Key.Song.Source == SongSourceKind.Tja ? adjacentPath! : PathFor(folder, chart, course);
         if (!File.Exists(path))
         {
             Console.WriteLine($"Modchart: none for this chart ({path}).");

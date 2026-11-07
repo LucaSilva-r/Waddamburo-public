@@ -75,8 +75,12 @@ internal sealed class GameShell : IDisposable
 
     public void OpenEffectsEditor()
     {
-        if (_effectsEditor is null && _gameplay.CanEditEffects)
-            _effectsEditor = new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.EditorFiles(), _gameplay.ReplaceEditorEffects, _gameplay.EditorElements);
+        if (_effectsEditor is null && _gameplay.CanEditEffects && _home.CloseForEffectsEditor())
+        {
+            _gameplay.BeginEffectsEditing();
+            _effectsEditor = new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.EditorFiles(),
+                _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
+        }
     }
 
     private void closeEffectsEditor()

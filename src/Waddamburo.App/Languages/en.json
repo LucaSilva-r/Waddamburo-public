@@ -225,7 +225,6 @@
   "review.keys": "{0} pause · hold ←/→ scrub · wheel 1 s · ↑/↓ speed · {1} practise from here",
   "review.paused": "Paused",
   "menu.play_song": "Play the Song",
-  "menu.edit_effects": "Edit effects (F8)",
   "menu.instant_replay": "Replay / Practice",
 
   "score_list.leaderboard": "Leaderboard",

@@ -22,7 +22,7 @@ namespace Waddamburo.App.Flow;
 /// A song being played: the rainbow opens on it and the music starts; when chart and music are over,
 /// the shutter closes (not in Waiwai) and the results load. Escape abandons the song.
 /// </summary>
-internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
+internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 {
     // The charts as played (each player's options applied) and as authored (hashed, uploaded, saved under).
     private PlayableChart[] _charts = [];
@@ -226,9 +226,13 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
         // A player's own modchart for their chart (by its hash) goes over the chart's effects, before the options.
-        _charts = [.. _sourceCharts.Select((chart, lane) => (players.ElementAtOrDefault(lane)?.Options ?? default)
-            .Apply(Shell.Modcharts is { } modcharts && players.ElementAtOrDefault(lane) is { } player
-                ? PlayerModcharts.Apply(modcharts, chart, player.Course) : chart, _seed + (lane < request.Players.Length ? lane : 0)))];
+        _charts = [.. _sourceCharts.Select((chart, lane) =>
+        {
+            var player = players.ElementAtOrDefault(lane);
+            var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course,
+                chart.Key.Song.Source == SongSourceKind.Tja ? Shell.Assets.ModchartPath(player.ChartAsset) : null);
+            return (player?.Options ?? default).Apply(authored, _seed + (lane < request.Players.Length ? lane : 0));
+        })];
         // Online, the kusudama is each player's own: the other player's lane gets balloons in its place.
         if (Shell.Match.InSong && request.Players.ToList().FindIndex(player => player.Player != localSlot()) is var remote and >= 0
             && remote < _charts.Length)
@@ -427,16 +431,37 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         try { songPath = Shell.Assets.ModchartPath(player.ChartAsset); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         { Console.Error.WriteLine($"Song modchart destination unavailable: {e.Message}"); }
-        return new(PlayerModcharts.PathFor(Shell.Modcharts!, _sourceCharts[0], player.Course), player.Course, songPath);
+        return new(PlayerModcharts.PathFor(EditorModchartFolder, _sourceCharts[0], player.Course), player.Course, songPath);
     }
 
     public void ReplaceEditorEffects(ChartEffects effects) => _review!.ReplaceEffects(0, effects);
 
     public IReadOnlyList<StageEffectElement> EditorElements(TimeSpan time) => Shell.Gameplay.EffectElements(time);
 
-    /// <summary>Effects authoring is available in local, single-lane home practice.</summary>
-    public bool CanEditEffects => Shell.Arcade.Home && _training is not null && _charts.Length == 1
-        && _waiwai is null && !Shell.Match.InSong;
+    /// <summary>F8 can turn a local play into an unranked authoring session, without a replay prerequisite.</summary>
+    public bool CanEditEffects => Shell.Arcade.Home && !Shell.Headless && revealed && _charts.Length == 1
+        && _waiwai is null && _course is null && !_demo && !Shell.Match.InSong && Shell.Active.Id == FlowScenes.Gameplay;
+
+    public void BeginEffectsEditing()
+    {
+        if (!CanEditEffects || _lastRequest is not { } request) return;
+        _voided = true; Playing = false; PlayingChart = null; Presence = null;
+        if (_training is null)
+        {
+            var at = chartTime();
+            if (_music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
+            _music = null; _autoplay = null;
+            _review?.Dispose();
+            Shell.Players.StopWatching();
+            _review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
+            _training = new TrainingSession(Shell, _review, _charts[0]);
+            _training.Begin(at);
+        }
+        Shell.Gameplay.EndBanner = false;
+        showMode("Effects editor - unranked");
+        if (_paused) SetPaused(false);
+        Console.WriteLine("Effects editor: this play is unranked and will not save a score.");
+    }
 
     /// <summary>
     /// A training attempt is being played (live, not paused): the drum is a drum, not a menu pad. Paused,
@@ -543,11 +568,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
+        if (CanEditEffects && !Shell.EffectsEditorOpen
+            && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8)) Shell.OpenEffectsEditor();
         if (_review is { } review)
         {
-            if (CanEditEffects && !Shell.HomeMenuOpen && !Shell.EffectsEditorOpen
-                && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8))
-                Shell.OpenEffectsEditor();
             if (revealed && !_paused && _training is { } training)
                 training.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
             else if (revealed && !_paused && !Shell.HomeMenuOpen && canPractise

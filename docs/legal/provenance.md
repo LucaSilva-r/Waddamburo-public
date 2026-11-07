@@ -292,3 +292,10 @@ No upstream backend source or private proof-of-concept code is adapted.
 The effects editor's neutral theme, inline timeline curves and scene manipulation controls are original
 project code. BUI was evaluated from its public README (<https://github.com/ppmpreetham/BUI>, accessed
 2026-11-07) as a UI reference; no BUI or Blender code, assets, theme tables, or dependencies are included.
+
+The editor's asynchronous open/save picker is original Platform.Sdl code against SDL 3's public
+`SDL_ShowOpenFileDialog` / `SDL_ShowSaveFileDialog` APIs (available since SDL 3.2.0;
+<https://wiki.libsdl.org/SDL3/SDL_ShowOpenFileDialog>,
+<https://wiki.libsdl.org/SDL3/SDL_ShowSaveFileDialog>, accessed 2026-11-07).
+Filter buffers live until SDL's callback completes. No upstream dialog implementation is copied;
+the existing SDL binding/native dependency and notices are unchanged.

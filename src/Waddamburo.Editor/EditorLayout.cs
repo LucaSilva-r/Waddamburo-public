@@ -22,7 +22,7 @@ public readonly record struct EditorLayout(EditorPanel Toolbar, EditorPanel Targ
         left = Math.Clamp(left, .1f, .3f);
         right = Math.Clamp(right, .12f, .32f);
         bottom = Math.Clamp(bottom, .22f, .6f);
-        var top = Math.Min(70, height * .18f);
+        var top = Math.Min(94, height * .25f);
         var y = height * (1 - bottom);
         var x1 = width * left;
         var x2 = width * (1 - right);

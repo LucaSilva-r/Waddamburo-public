@@ -4,6 +4,19 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class ReviewClockTests
 {
+    [Fact]
+    public void ReloadedChartsCanGrowOrShrinkWhileRetainingPauseAndSpeed()
+    {
+        var clock = new ReviewClock(TimeSpan.FromSeconds(-3), TimeSpan.FromSeconds(10));
+        clock.Seek(TimeSpan.FromSeconds(8)); clock.Faster(); clock.SetPaused(true);
+        clock.SetRange(TimeSpan.FromSeconds(-4), TimeSpan.FromSeconds(20));
+        Assert.Equal(TimeSpan.FromSeconds(8), clock.Position); Assert.True(clock.Paused); Assert.Equal(1.05, clock.Speed);
+        clock.SetRange(TimeSpan.FromSeconds(-4), TimeSpan.FromSeconds(5));
+        Assert.Equal(TimeSpan.FromSeconds(5), clock.Position);
+        Assert.Throws<ArgumentOutOfRangeException>(() => clock.SetRange(TimeSpan.FromSeconds(5), TimeSpan.Zero));
+        Assert.Equal(TimeSpan.FromSeconds(5), clock.End);
+    }
+
     private static TimeSpan s(double seconds) => TimeSpan.FromSeconds(seconds);
 
     [Fact]

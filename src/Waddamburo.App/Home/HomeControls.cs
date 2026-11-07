@@ -358,7 +358,7 @@ internal sealed class HomeControls : IDisposable
         {
             countdown.Cancel();
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
-                inRoom: _shell.Match.InSong, effectsEditable: _gameplay.CanEditEffects);
+                inRoom: _shell.Match.InSong);
         }
         else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
             resumeSong();
@@ -404,7 +404,7 @@ internal sealed class HomeControls : IDisposable
             if (!online)
                 _gameplay.SetPaused(true, _pauseInterpolation);
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
-                inRoom: _shell.Match.InSong, effectsEditable: _gameplay.CanEditEffects);
+                inRoom: _shell.Match.InSong);
             return true;
         }
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
@@ -458,10 +458,6 @@ internal sealed class HomeControls : IDisposable
                 break;
             case HomeMenuAction.Resume:
                 resumeSong();
-                break;
-            case HomeMenuAction.EditEffects when active == FlowScenes.Gameplay:
-                resumeSong();
-                _shell.OpenEffectsEditor();
                 break;
             case HomeMenuAction.InstantReplay when active == FlowScenes.Gameplay:
                 _gameplay.StartInstantReplay();
@@ -524,6 +520,15 @@ internal sealed class HomeControls : IDisposable
     {
         if (active == FlowScenes.Gameplay)
             _gameplay.SetPaused(false);
+    }
+
+    public bool CloseForEffectsEditor()
+    {
+        if (_settingsOverlay || _menu.Bake is not null || _menu.Calibration is not null) return false;
+        _menu.Close(); _pause?.Close(); _resume?.Cancel();
+        _audio.HoldMenuMusic(false); _audio.MuteAttract(false);
+        resumeSong();
+        return true;
     }
 
     // A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else is

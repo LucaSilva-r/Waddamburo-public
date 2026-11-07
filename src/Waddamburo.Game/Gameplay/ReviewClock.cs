@@ -10,9 +10,16 @@ public sealed class ReviewClock(TimeSpan start, TimeSpan end)
     /// <summary>The speeds <see cref="Faster"/> and <see cref="Slower"/> step through: 0.05 to 2, every 0.05 (#25).</summary>
     public static readonly double[] Speeds = [.. Enumerable.Range(1, 40).Select(static step => Math.Round(step * 0.05, 2))];
 
-    public TimeSpan Start { get; } = start;
+    public TimeSpan Start { get; private set; } = start;
 
-    public TimeSpan End { get; } = end;
+    public TimeSpan End { get; private set; } = end;
+
+    /// <summary>A chart reloaded by the authoring workspace may grow or shrink without replacing its clock.</summary>
+    public void SetRange(TimeSpan start, TimeSpan end)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(end, start);
+        Start = start; End = end; Seek(Position);
+    }
 
     public TimeSpan Position { get; private set; } = start;
 

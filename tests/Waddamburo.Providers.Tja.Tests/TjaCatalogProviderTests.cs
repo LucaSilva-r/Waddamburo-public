@@ -6,6 +6,28 @@ namespace Waddamburo.Providers.Tja.Tests;
 public sealed class TjaCatalogProviderTests
 {
     [Fact]
+    public async Task ASelectedFileCanBeReinspectedAfterSavingWithoutScanningTheRestOfTheLibrary()
+    {
+        using var library = new TemporaryLibrary();
+        const string first = "TITLE:Authoring\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n";
+        library.WriteText("Authoring.tja", first);
+        library.WriteText("Other.tja", "TITLE:Other\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        var path = Path.Combine(library.Path, "Authoring.tja");
+        var provider = new TjaCatalogProvider(library.Path);
+        var song = Assert.Single((await provider.InspectFileAsync(path)).Songs);
+        var chart = Assert.Single(song.Charts);
+        Assert.Single((await provider.LoadChartAsync(chart.Key, chart.ChartAsset)).HitObjects);
+        Assert.Equal(path, provider.ChartPath(chart.ChartAsset));
+        library.WriteText("Authoring.tja", first.Replace("1000,", "1100,", StringComparison.Ordinal)
+            + "COURSE:Easy\n#START\n1000,\n#END\n");
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await provider.LoadChartAsync(chart.Key, chart.ChartAsset));
+        var updated = Assert.Single((await provider.InspectFileAsync(path)).Songs);
+        Assert.Equal(2, updated.Charts.Length);
+        var oni = Assert.Single(updated.Charts, c => c.Course == TaikoCourse.Oni);
+        Assert.Equal(2, (await provider.LoadChartAsync(oni.Key, oni.ChartAsset)).HitObjects.Length);
+    }
+
+    [Fact]
     public async Task BoxDefNamesAndColoursItsFolder()
     {
         using var library = new TemporaryLibrary();
