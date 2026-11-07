@@ -121,7 +121,7 @@ what changed from this plan, and anything the next session must know. Start each
 - [x] 2. Keyframe format + bezier + ReplaceEffects
 - [x] 3. Read-only editor (layout, transport, timeline, graph view)
 - [x] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
-- [ ] 5. Graph editing (keys and bezier handles)
+- [x] 5. Graph editing (keys and bezier handles)
 - [ ] 6. Viewport (click-select, gizmos, auto-key, Don model sliders)
 
 ### Notes
@@ -177,6 +177,14 @@ what changed from this plan, and anything the next session must know. Start each
   A synthetic native UI probe verified snapped dragging as one undo step, redo, numeric input/Enter, Ctrl+S round-trip,
   K at playhead, unsaved prompt/cancel and closing, with six live preview updates. Graph dragging and viewport
   manipulation remain milestones 5 and 6. Windows runtime validation from milestone 1 remains pending.
+
+- 2026-11-07: milestone 5 landed in `6b4289c`. Graph keys drag in beat/value space with timeline snapping
+  and multi-key offsets; selected Bezier segments expose two draggable control handles, with x clamped to the
+  segment and unrestricted finite y overshoot. Enable Bezier in the inspector to replace a named ease. Flat
+  segments retain their normalized y handles while allowing horizontal movement. The value scale stays fixed
+  throughout each gesture; each drag is one undo operation and Escape cancels it. All 732 managed tests pass.
+  A native synthetic mouse probe verified two-dimensional key dragging, handle overshoot, one-step undo and
+  Escape cancellation, with six live updates. Viewport selection/gizmos are next; Windows runtime remains pending.
 
 ## Milestones (each ends committed and tested)
 
