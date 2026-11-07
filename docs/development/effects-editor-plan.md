@@ -127,6 +127,16 @@ what changed from this plan, and anything the next session must know. Start each
   (merges to master once the editor is usable). State before milestone 1: modcharts load from `.wddmod` beside a TJA
   or `waddamburo/modcharts/<chart hash>.wddmod`; effects run through `ChartEffects` → `NoteGeometry`/`StageEffects`.
 
+- 2026-11-07: milestone 1 implementation landed in `d6ecda3` (ImGui.NET 1.91.6.1, owned UI context, SDL event
+  capture, indexed/scissored bgfx overlay, high-DPI scaling, Editor project and dependency rules, practice pause
+  menu / F8 entry, Esc exit, cursor/text-input/letterbox restoration). No new shaders. Linux GPU smoke rendered
+  the demo successfully at 150% display scale; a second synthetic smoke passed closing during an active frame,
+  reopening, viewport restoration and double disposal. All 685 managed tests pass (the 690 count above was stale).
+  Linux self-contained publish includes `libcimgui.so`; `eng/package.sh windows` produces the single executable,
+  with a build assertion that `cimgui.dll` enters its self-extracting bundle. Dependency and font licenses ship in
+  the release notices. Milestone 1 stays unchecked until the user-driven practice entry/exit check and Windows VM
+  runtime check are completed. Keyframe/editor authoring features (milestones 2–6) are not implemented yet.
+
 ## Milestones (each ends committed and tested)
 
 1. **ImGui layer + Editor skeleton**: ImGuiLayer render/input, letterboxed stage, Editor project + dependency test,
