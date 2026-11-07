@@ -432,11 +432,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
             if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
                 throw new InvalidDataException("Gameplay board is missing its score initialization callback.");
-            void updateScore(long award)
+            void updateScore(long award, bool popup = true)
             {
                 if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
                     throw new InvalidDataException("Gameplay board is missing SetScore.");
-                if (scoreAdd is null) return;
+                if (scoreAdd is null || !popup) return;
                 if (!scoreAdd.TryInvokeCallback("Create", []))
                     throw new InvalidDataException("Gameplay score-add movie is missing Create.");
                 if (!scoreAdd.TryInvokeCallback("SetCount", [LumenHostValue.FromNumber(award)]))
@@ -573,6 +573,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
                 if (cleared && !missed) _character?.React("don_full_combo");
             };
+            var partnerHands = players == 2 && remote is null && relay is null; // as the session below
+            (int Note, long Award)? heldAward = null; // a big hit's first half, shown with its completion
             (float X, float Y) hitPoint = default; // the lane's target (moved by #JPOSSCROLL), once its presentation exists below
             var hitRadius = 0f;
             counted.Judged += judgement =>
@@ -588,7 +590,27 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 }
                 stage?.Apply(judgement);
                 var previousScore = score.Value;
-                if (score.Apply(judgement, counted.CurrentTime)) updateScore(score.Value - previousScore);
+                if (score.Apply(judgement, counted.CurrentTime))
+                {
+                    var award = score.Value - previousScore;
+                    // A big hit is one popup with both halves (Green: one Create per hit; two "+1090" read as a big
+                    // note scoring single, reported on Discord). Its completion follows at once, except a duet's hand
+                    // note, whose other half is the partner's.
+                    if (!judgement.StrongHitCompleted && judgement.HitObject.IsStrong && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good
+                        && !(judgement.HitObject.IsHand && partnerHands))
+                    {
+                        if (heldAward is { } stale) updateScore(stale.Award); // ponytail: a completion that never came
+                        heldAward = (judgement.NoteIndex, award);
+                        updateScore(award, popup: false);
+                    }
+                    else
+                    {
+                        if (heldAward is { } held && judgement.StrongHitCompleted && held.Note == judgement.NoteIndex) award += held.Award;
+                        else if (heldAward is { } stale) updateScore(stale.Award);
+                        heldAward = null;
+                        updateScore(award);
+                    }
+                }
                 // Combo bonus popup at every 100 combo (the movie picks its label from the count).
                 if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
                     comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
@@ -759,8 +781,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _flights.Advance();
             _longNotes.AdvanceAnimations(note => TaikoNoteFaces.LongNoteSteps(note, combo, beat));
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
-            // Balloon one-shots follow their authored real-time overlay.
-            return _longNotes.BalloonVisible ? 1 : delta;
+            // Balloon one-shots follow their authored real-time overlay. Otherwise Don plays BPM / 120 frames a tick
+            // (traced: don_combo's 45 frames take 29 ticks at 185 BPM), not the Lumen movies' BPM / 89: he ran
+            // 120 / 89 too fast (reported on Discord).
+            return _longNotes.BalloonVisible ? 1 : delta * 89 / 120;
         }
 
         public void ReportDiagnostics()
