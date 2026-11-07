@@ -102,6 +102,11 @@ public interface IDonPresentationController
     {
     }
 
+    /// <summary>Turns a player's Don model in the gameplay view (degrees; a modchart's). The other views ignore it.</summary>
+    void SetModelRotation(int playerIndex, float yaw, float pitch, float roll)
+    {
+    }
+
     /// <summary>The entry's card dialog Don (the donExM marker, slot 2): shown while a read card waits for a drum.</summary>
     void SetDialogDon(bool visible)
     {

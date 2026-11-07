@@ -331,6 +331,9 @@ public sealed record PlayableChart
     /// </summary>
     public ImmutableArray<ChartRouteControls> RouteControls { get; init; } = [];
 
+    /// <summary>Modchart changes (TJA #EASE/#SET) in start order (<see cref="ChartMods"/>); drawing only, so not in <see cref="ChartHash"/>.</summary>
+    public ImmutableArray<ChartModEase> Mods { get; init; } = [];
+
     /// <summary>The beat count over time (for <see cref="ChartScrollPoint.ByBeat"/>), in time order; empty when no point scrolls by beat.</summary>
     public ImmutableArray<ChartBeatPoint> Beats { get; init; } = [];
 
@@ -472,6 +475,7 @@ public sealed record PlayableChart
             ShinuchiBase = ShinuchiBase,
             JudgeMoves = JudgeMoves,
             Beats = Beats,
+            Mods = Mods,
         };
 
     private static ImmutableArray<T> nonEmptyOrdered<T>(

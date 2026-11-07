@@ -4,8 +4,8 @@ namespace Waddamburo.Catalog;
 
 /// <summary>
 /// What a chart draws that <see cref="ChartHash"/> leaves out (it changes no judgement or score): complex scroll,
-/// #SUDDEN, scrolling by beat, the target's moves, forced note labels, and each 譜面分岐 route's own tempo and
-/// scroll. A song package carries it beside the canonical bytes so a guest sees the chart as the host does.
+/// #SUDDEN, scrolling by beat, the target's moves, forced note labels, each 譜面分岐 route's own tempo and
+/// scroll, and modchart changes (#EASE/#SET). A song package carries it beside the canonical bytes so a guest sees the chart as the host does.
 /// </summary>
 public static class ChartDrawing
 {
@@ -52,6 +52,16 @@ public static class ChartDrawing
             }
             writeScroll(writer, route.Scroll);
         }
+        writer.Write(chart.Mods.Length);
+        foreach (var change in chart.Mods)
+        {
+            writer.Write(change.Start.Ticks);
+            writer.Write(change.Length.Ticks);
+            writer.Write(change.Target);
+            writer.Write(change.Property);
+            writer.Write(change.Value);
+            writer.Write((byte)change.Ease);
+        }
         return stream.ToArray();
     }
 
@@ -95,6 +105,15 @@ public static class ChartDrawing
             routes[route] = chart.RouteControls.IsEmpty ? new ChartRouteControls(ordered(timing), scrolls)
                 : chart.RouteControls[route] with { Timing = ordered(timing), Scroll = scrolls };
         }
+        var mods = new ChartModEase[count(reader)];
+        for (var index = 0; index < mods.Length; index++)
+        {
+            var (start, length, target, property, value, ease) =
+                (time(reader), time(reader), reader.ReadString(), reader.ReadString(), finite(reader), (ChartEase)reader.ReadByte());
+            if (!ChartMods.IsKnown(target, property) || !Enum.IsDefined(ease))
+                throw new InvalidDataException("Unknown modchart target, property or easing.");
+            mods[index] = new ChartModEase(start, length, target, property, value, ease);
+        }
         if (reader.BaseStream.Position != reader.BaseStream.Length)
             throw new InvalidDataException("Trailing bytes after the chart drawing data.");
         return chart with
@@ -103,6 +122,7 @@ public static class ChartDrawing
             HitObjects = notes.MoveToImmutable(),
             JudgeMoves = ordered(moves),
             Beats = ordered(beats),
+            Mods = ordered(mods),
             RouteControls = [.. routes],
         };
     }
@@ -151,6 +171,7 @@ public static class ChartDrawing
         ChartTimingPoint value => value.Time,
         ChartJudgeMove value => value.Time,
         ChartBeatPoint value => value.Time,
+        ChartModEase value => value.Start,
         _ => throw new InvalidOperationException(),
     };
 

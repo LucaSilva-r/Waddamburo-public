@@ -127,6 +127,9 @@ public sealed class TaikoDonPresentation
     /// <summary>A one-shot motion that returns to the current idle (e.g. the end-of-song full combo).</summary>
     public void React(string motion) => react(motion);
 
+    /// <summary>Turns the model in the gameplay view (a modchart's yaw, pitch and roll, degrees).</summary>
+    public void Turn(double yaw, double pitch, double roll) => _controller.SetModelRotation(_player, (float)yaw, (float)pitch, (float)roll);
+
     // ponytail: the long-note presentation owns Don while its overlay is up, so state changes
     // there only update what the idle will be once the overlay closes.
     private void react(string motion)

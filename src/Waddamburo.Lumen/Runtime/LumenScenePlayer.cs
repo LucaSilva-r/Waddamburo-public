@@ -7,7 +7,11 @@ public sealed record LumenSceneLayer(
     LumenPlayer Player,
     LumenMatrix Transform,
     uint TextureOffset,
-    uint TextureCount);
+    uint TextureCount)
+{
+    /// <summary>The whole movie's opacity on the stage (a host fade, e.g. a modchart's), over its own.</summary>
+    public float Alpha { get; init; } = 1;
+}
 
 /// <summary>
 /// Composes independently owned Lumen players into one depth-ordered stage.
@@ -80,6 +84,8 @@ public sealed class LumenScenePlayer
                 }
                 quads.Add(quad with
                 {
+                    MultiplyColor = layer.Alpha == 1 ? quad.MultiplyColor : quad.MultiplyColor with { Alpha = quad.MultiplyColor.Alpha * layer.Alpha },
+                    AddColor = layer.Alpha == 1 ? quad.AddColor : quad.AddColor with { Alpha = quad.AddColor.Alpha * layer.Alpha },
                     TextureIndex = quad.NativeSurface is null
                         ? checked(layer.TextureOffset + quad.TextureIndex)
                         : 0,

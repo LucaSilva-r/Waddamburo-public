@@ -47,7 +47,8 @@ public sealed class TaikoLumenPresentation
         LumenSceneLayer? kadonNote = null,
         IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null,
         LumenSceneLayer? branchBar = null,
-        LumenPlayer? branchBubble = null)
+        LumenPlayer? branchBubble = null,
+        IReadOnlyDictionary<LumenPlayer, string>? roles = null)
     {
         _branchBar = branchBar;
         _branchBubble = branchBubble;
@@ -56,12 +57,17 @@ public sealed class TaikoLumenPresentation
         _noteLabels = TaikoNoteText.Labels(chart);
         _rareNote = rareNote;
         _kadonNote = kadonNote;
+        _roles = roles;
         _handNotes = handNotes;
         _synchroNotes = synchroNotes;
         _chart = chart;
         _judgement = judgement;
         _background = background.ToArray();
         _foreground = foreground.ToArray();
+        _scenePlayers = [.. _background.Concat(_foreground).Select(static layer => layer.Player)];
+        _mods = chart.Mods.GroupBy(static change => (change.Target, change.Property)).ToDictionary(static group => group.Key, static group => group.ToArray());
+        _noteMods = chart.Mods.Any(static change => change.Target == "notes");
+        _wideView = chart.Mods.Any(static change => change.Target is "playfield" or "camera");
         _flightsAt = Math.Clamp(flightsAt ?? _foreground.Length, 0, _foreground.Length);
         _notes = notes;
         _bar = bar;
@@ -150,6 +156,7 @@ public sealed class TaikoLumenPresentation
         _longNotes?.Update(time);
         _gogo.Update(time);
         moveTarget(time);
+        DonTurn?.Invoke(Mod("don", "yaw", time), Mod("don", "pitch", time), Mod("don", "roll", time));
         // The lane takes the route a check picked at once (lane_hit plays its normal_kurouto etc. transition),
         // and Don-chan's bubble says which way it went (traced: same tick; the movie stops itself after).
         if (_judgement.Branch != _shownBranch)
@@ -255,7 +262,10 @@ public sealed class TaikoLumenPresentation
             front.AddRange(_moved == default ? _flights.ActiveLayers : _flights.ActiveLayers.Select(layer => layer with
                 { Transform = layer.Transform with { X = layer.Transform.X + _moved.X, Y = layer.Transform.Y + _moved.Y } }));
         front.AddRange(foreground.Skip(_flightsAt));
-        return (layers, front);
+        if (_mods.Count == 0)
+            return (layers, front);
+        return ([.. layers.Select(layer => place(layer, targetOf(layer, character), time))],
+            [.. front.Select(layer => place(layer, targetOf(layer, character), time))]);
     }
 
     // rotate: a bar line stands across the way it travels (TJA complex scroll); notes stay upright (OpenTaiko).
@@ -267,7 +277,8 @@ public sealed class TaikoLumenPresentation
             return;
         var (x, y) = point(noteTime, time, noteTime, route, sudden);
         y += yOffset;
-        if (x < -100 || x > 1380 || y < -100 || y > 820)
+        var margin = _wideView ? 1500 : 100; // a moved camera or playfield can bring the lane's far ends in view
+        if (x < -margin || x > 1280 + margin || y < -margin || y > 720 + margin)
             return;
         var transform = LumenMatrix.Identity with { X = x, Y = y };
         if (rotate && _chart.ScrollPointAt(noteTime, route) is { Imaginary: not 0 } scroll)
@@ -275,6 +286,15 @@ public sealed class TaikoLumenPresentation
             var angle = Math.Atan2(scroll.Imaginary, scroll.Multiplier);
             var (cos, sin) = ((float)Math.Cos(angle), (float)Math.Sin(angle));
             transform = transform with { M11 = cos, M12 = sin, M21 = -sin, M22 = cos };
+        }
+        // Note mods on the note itself: dizzy turns it by how far it is, zoom sizes it, alpha fades it.
+        if (sudden && _noteMods)
+        {
+            var (spin, zoom, alpha) = (Mod("notes", "dizzy", time) * (x - _hitX) / 100, (float)Mod("notes", "zoom", time), (float)Mod("notes", "alpha", time));
+            var (cos, sin) = ((float)Math.Cos(spin), (float)Math.Sin(spin));
+            transform = transform with { M11 = zoom * cos, M12 = zoom * sin, M21 = -zoom * sin, M22 = zoom * cos };
+            layers.Add(template with { Transform = transform, Alpha = Math.Clamp(alpha, 0, 1) });
+            return;
         }
         layers.Add(template with { Transform = transform });
     }
@@ -298,8 +318,10 @@ public sealed class TaikoLumenPresentation
         // ponytail: the beat count is the main route's; a 譜面分岐 route with its own tempo scrolls by it too.
         var distance = scroll.ByBeat ? (_chart.BeatAt(noteTime) - _chart.BeatAt(now)) * 948 / 4
             : (noteTime - now).TotalSeconds * ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), 1);
-        return ((float)Math.Clamp(ox + distance * scroll.Multiplier, -100_000, 100_000),
-            (float)Math.Clamp(oy + distance * scroll.Imaginary, -100_000, 100_000));
+        var (x, y) = (ox + distance * scroll.Multiplier, oy + distance * scroll.Imaginary);
+        if (_noteMods)
+            (x, y) = noteMods(x, y, distance, noteTime, time);
+        return ((float)Math.Clamp(x, -100_000, 100_000), (float)Math.Clamp(y, -100_000, 100_000));
     }
 
     private double pixelsPerSecond(TimeSpan controlTime, ChartBranch? route) =>
@@ -322,6 +344,14 @@ public sealed class TaikoLumenPresentation
 
     private (TimeSpan From, TimeSpan Until) window(TimeSpan noteTime, ChartBranch? route)
     {
+        // A moved camera or playfield: listed as long as any of it could be on screen (a turned or shrunk lane).
+        if (_wideView)
+        {
+            var at = _chart.ScrollPointAt(noteTime, route);
+            var pace = at.ByBeat ? 0 : ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(at.Multiplier * at.Multiplier + at.Imaginary * at.Imaginary));
+            if (pace >= 1 && at.Show is null && at.Wait is null)
+                return (noteTime - TimeSpan.FromSeconds(4000 / pace), noteTime + TimeSpan.FromSeconds(4000 / pace));
+        }
         // Gimmicks (backwards or slanted scroll, a moving target): the note may come from any side, so it is
         // listed for as long as it is within a screen's diagonal of the target.
         var scroll = _chart.ScrollPointAt(noteTime, route);
@@ -404,6 +434,114 @@ public sealed class TaikoLumenPresentation
     {
         if (_hitLight is { } label)
             _target.Player.TryGotoLabel("effect", label);
+    }
+
+    // Modcharts (#EASE/#SET, ChartMods): every value is looked up from chart time each frame, nothing is kept.
+    private readonly IReadOnlyDictionary<LumenPlayer, string>? _roles;
+    private readonly HashSet<LumenPlayer> _scenePlayers;
+    private readonly Dictionary<(string Target, string Property), ChartModEase[]> _mods;
+    private readonly bool _noteMods;
+    private readonly bool _wideView;
+    private readonly Dictionary<LumenPlayer, (float X, float Y)> _pivots = [];
+
+    /// <summary>Called each <see cref="Update"/> with Don-chan's model turn (yaw, pitch, roll in degrees).</summary>
+    public Action<double, double, double>? DonTurn { get; set; }
+
+    /// <summary>A modchart value at <paramref name="time"/> (its default when the chart never changes it).</summary>
+    public double Mod(string target, string property, TimeSpan time) =>
+        _mods.TryGetValue((target, property), out var changes)
+            ? ChartMods.ValueAt(changes, time, ChartMods.Default(property)) : ChartMods.Default(property);
+
+    // Green's gameplay roles under their modchart names (the same roles whatever skin or random mix fills them).
+    // Host-drawn layers (notes, bar lines, note text, flights) and the lane's own movies are the playfield.
+    // ponytail: Waiwai's roles are not mapped (their parts stay put).
+    private string? targetOf(LumenSceneLayer layer, LumenSceneLayer? character)
+    {
+        if (character is not null && ReferenceEquals(layer, character))
+            return "don";
+        if (!_scenePlayers.Contains(layer.Player))
+            return "playfield";
+        return _roles?.GetValueOrDefault(layer.Player) switch
+        {
+            "bg_nomal" or "bg_fever" => "background",
+            "donbg" => "donbg",
+            "renda" => "renda",
+            "dance" => "dancers",
+            "dodai" => "stage",
+            "fever" => "fever",
+            "chibi" => "runners",
+            "lane_obi" => "board",
+            "song_info" => "songinfo",
+            "player_name" => "nameplate",
+            "action_gogotime" => "gogo",
+            "gage_fire_1p" => "gauge",
+            { } role when role.StartsWith("gage_don_1p_", StringComparison.Ordinal) => "gauge",
+            "lane" or "lane_hit" or "lane_hit_effect" or "renda_num" or "lane_syousetsu" => "playfield",
+            { } role when role.StartsWith("onp_", StringComparison.Ordinal) => "playfield",
+            _ => null,
+        };
+    }
+
+    // A layer under its element's transform (about the element's own centre; the playfield about the target, the
+    // camera about the screen's centre), then the camera's.
+    private LumenSceneLayer place(LumenSceneLayer layer, string? target, TimeSpan time)
+    {
+        var (matrix, alpha, moved) = (LumenMatrix.Identity, layer.Alpha, false);
+        if (target is not null && element(target, time, target == "playfield" ? origin(time) : pivotOf(layer)) is { } own)
+            (matrix, alpha, moved) = (own.Matrix, alpha * own.Alpha, true);
+        if (element("camera", time, (640, 360)) is { } camera)
+            (matrix, alpha, moved) = (matrix.Then(camera.Matrix), alpha * camera.Alpha, true);
+        return moved ? layer with { Transform = layer.Transform.Then(matrix), Alpha = Math.Clamp(alpha, 0, 1) } : layer;
+    }
+
+    private (LumenMatrix Matrix, float Alpha)? element(string target, TimeSpan time, (float X, float Y) pivot)
+    {
+        var (x, y, turn) = (Mod(target, "x", time), Mod(target, "y", time), Mod(target, "rotation", time) * Math.PI / 180);
+        var scale = Mod(target, "scale", time);
+        var (sx, sy, alpha) = (scale * Mod(target, "scalex", time), scale * Mod(target, "scaley", time), Mod(target, "alpha", time));
+        if (x == 0 && y == 0 && turn == 0 && sx == 1 && sy == 1 && alpha == 1)
+            return null;
+        var (cos, sin) = (Math.Cos(turn), Math.Sin(turn));
+        var (m11, m12, m21, m22) = ((float)(sx * cos), (float)(sx * sin), (float)(-sy * sin), (float)(sy * cos));
+        return (new LumenMatrix(m11, m12, m21, m22,
+            pivot.X - (m11 * pivot.X + m21 * pivot.Y) + (float)x,
+            pivot.Y - (m12 * pivot.X + m22 * pivot.Y) + (float)y), (float)alpha);
+    }
+
+    // The centre of what a movie draws on the stage, found the first time it draws something.
+    private (float X, float Y) pivotOf(LumenSceneLayer layer)
+    {
+        if (_pivots.TryGetValue(layer.Player, out var known))
+            return known;
+        var quads = layer.Player.CreateRenderSnapshot().Quads;
+        if (quads.IsEmpty)
+            return (640, 360);
+        var corners = quads.SelectMany(static quad => (LumenRenderVertex[])[quad.TopLeft, quad.TopRight, quad.BottomRight, quad.BottomLeft])
+            .Select(vertex => layer.Transform.Transform(vertex.X, vertex.Y)).ToArray();
+        return _pivots[layer.Player] = ((corners.Min(static c => c.X) + corners.Max(static c => c.X)) / 2,
+            (corners.Min(static c => c.Y) + corners.Max(static c => c.Y)) / 2);
+    }
+
+    // NotITG-style note mods, by screen axis: drunk and beat across the lane, tipsy and wave along it.
+    private (double X, double Y) noteMods(double x, double y, double distance, TimeSpan noteTime, TimeSpan time)
+    {
+        var seconds = time.TotalSeconds;
+        var drunk = Mod("notes", "drunk", time);
+        if (drunk != 0) y += drunk * 30 * Math.Cos(seconds * 2.5 + distance / 120);
+        var tipsy = Mod("notes", "tipsy", time);
+        if (tipsy != 0) x += tipsy * 25 * Math.Cos(seconds * 5 + noteTime.TotalSeconds * 4);
+        var wave = Mod("notes", "wave", time);
+        if (wave != 0) x += wave * 20 * Math.Sin(distance / 38);
+        var beat = Mod("notes", "beat", time);
+        if (beat != 0)
+        {
+            // A bump on every beat that fades over the first fifth of it.
+            var count = _chart.Beats.IsEmpty ? seconds * _chart.BeatsPerMinuteAt(time) / 60 : _chart.BeatAt(time);
+            var phase = count - Math.Floor(count);
+            if (phase < 0.2)
+                y += beat * 20 * (1 - phase / 0.2) * Math.Sin(distance / 15 + Math.PI / 2);
+        }
+        return (x, y);
     }
 
     private static void callback(LumenPlayer player, string name, LumenHostValue value)

@@ -458,6 +458,22 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task ModchartChangesEaseFromTheValueBeforeThem()
+    {
+        // 120 BPM: a beat is 0.5 s. Unknown targets, properties and easings are skipped like unknown commands.
+        var chart = await loadSynthetic(
+            "#EASE 4 outQuad don scale 2\n#SET notes drunk 1\n#EASE 2 wobble don scale 3\n#SET don size 3\n#SET clouds x 1\n1,\n#EASE 2 linear don scale 0\n1,");
+        Assert.Equal([("don", "scale", 2d, ChartEase.OutQuad), ("notes", "drunk", 1d, ChartEase.Linear), ("don", "scale", 0d, ChartEase.Linear)],
+            chart.Mods.Select(change => (change.Target, change.Property, change.Value, change.Ease)));
+        Assert.Equal(TimeSpan.FromSeconds(2), chart.Mods[0].Length);
+        var scale = chart.Mods.Where(change => change.Property == "scale").ToArray();
+        Assert.Equal(1, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(-1), 1));
+        Assert.Equal(1.75, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(1), 1), 9); // outQuad halfway: 0.75 of the way
+        Assert.Equal(2, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(2), 1));
+        Assert.Equal(1, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(2.5), 1)); // linear from 2 to 0, halfway
+    }
+
+    [Fact]
     public async Task OpenTaikoExtrasLoadWithoutTheirEffects()
     {
         // Camera/object commands, scroll modes and typos are skipped; ADLIB (F) and mines (C) are left out; a Kadon (G) is a big

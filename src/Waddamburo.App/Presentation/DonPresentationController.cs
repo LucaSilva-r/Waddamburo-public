@@ -53,6 +53,9 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
         _renderer.SetCameraLayout(slot(playerIndex), cameraLayout(layout));
     }
 
+    public void SetModelRotation(int playerIndex, float yaw, float pitch, float roll) =>
+        _renderer.SetModelRotation(slot(playerIndex), yaw, pitch, roll);
+
     private static DonCameraLayout cameraLayout(DonPresentationLayout layout) => layout switch
     {
         DonPresentationLayout.Gameplay => DonCameraLayout.Gameplay,

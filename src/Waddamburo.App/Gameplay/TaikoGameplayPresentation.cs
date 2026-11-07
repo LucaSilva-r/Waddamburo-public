@@ -670,7 +670,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     }),
                 // The bar line of a 譜面分岐 check: lane_syousetsu's yellow "bunki" frame.
                 chart.Branching is null ? null : layers["lane_syousetsu"] with { Player = branchBar() },
-                layers.GetValueOrDefault("fukidashi_level_1p")?.Player);
+                layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
+                // Each scene movie's role, the modcharts' universal markers (dancers, gauge, …).
+                roles: layers.GroupBy(static pair => pair.Value.Player).ToDictionary(static group => group.Key, static group => group.First().Key));
             LumenPlayer branchBar()
             {
                 var player = content("lane_syousetsu").CreatePlayer();
@@ -679,6 +681,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 return player;
             }
             hitPoint = _presentation.HitPoint;
+            // A modchart turns Don-chan's model (yaw, pitch, roll); 0 when it doesn't.
+            _presentation.DonTurn = (yaw, pitch, roll) => _character?.Turn(yaw, pitch, roll);
             if (_live is not null)
             {
                 _presentation.ExternalCombo = true;

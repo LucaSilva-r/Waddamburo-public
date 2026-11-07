@@ -98,6 +98,18 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     private bool _mirrorPlayerTwoCamera = true;
     // Per player: in two-player gameplay one Don can be in a balloon while the other plays on.
     private readonly DonCameraLayout[] _layouts = new DonCameraLayout[3];
+    // A modchart's turn of each player's model (yaw, pitch, roll in degrees), in the gameplay view only.
+    private readonly Vector3[] _modelTurns = new Vector3[3];
+    // What the model turns about: the gameplay camera's look-at point, roughly Don-chan's middle.
+    private static readonly Vector3 TurnCentre = new(6.6f, 15.6f, 0);
+
+    /// <summary>Turns a player's model in the gameplay view (degrees); the other views ignore it.</summary>
+    public void SetModelRotation(int playerIndex, float yaw, float pitch, float roll)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _modelTurns.Length);
+        _modelTurns[playerIndex] = new(yaw, pitch, roll);
+    }
 
     // A player's own colours (face, body, limb as 0xRRGGBB); null: Don-chan's, or Katsu-chan's in slot 1.
     private readonly (uint Face, uint Body, uint Limb)?[] _colors = new (uint, uint, uint)?[3];
@@ -314,10 +326,16 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             camera.M41 = -camera.M41;
         }
         matrices[0] = camera;
+        var turn = _modelTurns[playerIndex];
+        var turned = _layouts[playerIndex] == DonCameraLayout.Gameplay && turn != Vector3.Zero
+            ? Matrix4x4.CreateTranslation(-TurnCentre)
+                * Matrix4x4.CreateFromYawPitchRoll(turn.X * MathF.PI / 180, turn.Y * MathF.PI / 180, turn.Z * MathF.PI / 180)
+                * Matrix4x4.CreateTranslation(TurnCentre)
+            : Matrix4x4.Identity;
         for (var index = 0; index < PaletteSize; index++)
         {
             if (index < animatedWorld.Length && Matrix4x4.Invert(_bindWorld[index], out var inverseBind))
-                matrices[index + 1] = inverseBind * animatedWorld[index];
+                matrices[index + 1] = inverseBind * animatedWorld[index] * turned;
             else
                 matrices[index + 1] = Matrix4x4.Identity;
         }

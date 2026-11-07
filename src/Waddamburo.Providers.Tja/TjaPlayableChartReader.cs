@@ -42,6 +42,7 @@ internal static class TjaPlayableChartReader
         // The main route's beat count over time (#HBSCROLL/#BMSCROLL): time, beat, beats per second from there.
         var beatAnchors = new List<(decimal Time, decimal Beat, decimal Bps)>();
         var judgeMoves = new List<(decimal At, double Seconds, double X, double Y)>();
+        var mods = new List<ChartModEase>();
         var isGoGo = false;
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
@@ -153,7 +154,7 @@ internal static class TjaPlayableChartReader
                     throw new InvalidDataException("The selected TJA chart ends with an unterminated measure.");
                 foreach (var command in commands)
                     applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null);
+                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null, mods);
                 commands.Clear();
                 closeBranch();
                 closeLong(chartTime(cursorSeconds));
@@ -175,6 +176,7 @@ internal static class TjaPlayableChartReader
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
                     JudgeMoves = resolveJudgeMoves(judgeMoves),
+                    Mods = [.. mods.OrderBy(static change => change.Start)],
                     Beats = scrollPoints.Any(static point => point.ByBeat)
                         ? [.. beatAnchors.Select(static anchor => new ChartBeatPoint(chartTime(anchor.Time), (double)anchor.Beat, (double)anchor.Bps))]
                         : [],
@@ -288,7 +290,7 @@ internal static class TjaPlayableChartReader
                     {
                         applyCommand(commands[commandIndex++].Line, ref numerator, ref denominator,
                             ref bpm, ref scroll, ref isGoGo, ref isBarlineVisible, ref cursorSeconds,
-                            timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null);
+                            timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null, mods);
                     }
                     if (index == count) break;
                     if (index == 0) bars.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
@@ -357,7 +359,7 @@ internal static class TjaPlayableChartReader
             // Commands after a route's last measure are that route's, not the next one's.
             foreach (var command in commands)
                 applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null);
+                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null, mods);
             commands.Clear();
             if (!onMain())
             {
@@ -560,7 +562,8 @@ internal static class TjaPlayableChartReader
         ImmutableArray<ChartScrollPoint>.Builder scrollPoints,
         ImmutableArray<ChartEffectPoint>.Builder effectPoints,
         List<(decimal At, double Seconds, double X, double Y)> judgeMoves,
-        List<(decimal Time, decimal Beat, decimal Bps)>? beats)
+        List<(decimal Time, decimal Beat, decimal Bps)>? beats,
+        List<ChartModEase> mods)
     {
         // The beat count at a time from the last anchor (anchors go in time order: a tempo change or a #DELAY each).
         decimal beatAt(decimal time) => beats![^1].Beat + (time - beats[^1].Time) * beats[^1].Bps;
@@ -649,6 +652,27 @@ internal static class TjaPlayableChartReader
                     ? TimeSpan.FromSeconds(time) : null;
                 scroll = scroll with { Show = seconds(fields[0]), Wait = seconds(fields[1]) };
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
+                break;
+            }
+            case "#EASE":
+            case "#SET":
+            {
+                // Waddamburo modcharts: #EASE <beats> <easing> <target> <property> <value>, #SET <target> <property> <value>.
+                // An unknown target, property or easing is skipped, as unknown commands are.
+                var fields = argument.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+                var easing = ChartEase.Linear;
+                if (fields.Length != (name == "#EASE" ? 5 : 3)
+                    || name == "#EASE" && !ChartMods.TryParseEase(fields[1], out easing))
+                    break;
+                var (target, property, value) = (fields[^3].ToLowerInvariant(), fields[^2].ToLowerInvariant(), fields[^1]);
+                if (!ChartMods.IsKnown(target, property)
+                    || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var to) || !double.IsFinite(to))
+                    break;
+                var beatsLong = name == "#EASE" && double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var length)
+                    && double.IsFinite(length) && length > 0 ? length : 0;
+                // ponytail: the length in beats at the tempo where it starts (a tempo change inside it is not followed).
+                mods.Add(new ChartModEase(chartTime(cursorSeconds), TimeSpan.FromSeconds(beatsLong * 60 / (double)bpm),
+                    target, property, to, easing));
                 break;
             }
             case "#HBSCROLL":

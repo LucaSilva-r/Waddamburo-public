@@ -115,6 +115,7 @@ public readonly record struct TaikoPlayOptions(bool Shinuchi, int SpeedIndex, bo
             Branching = chart.Branching,
             JudgeMoves = chart.JudgeMoves,
             Beats = chart.Beats,
+            Mods = chart.Mods,
             RouteControls = [.. chart.RouteControls.Select(route => route with
                 { Scroll = [.. route.Scroll.Select(point => point.Scaled(speed))] })],
         };
