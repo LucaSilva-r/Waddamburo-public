@@ -27,6 +27,17 @@ public sealed class ChartModKeyframeTests
     }
 
     [Fact]
+    public void LayoutAppliesOnlyToChartsWithoutModchartChanges()
+    {
+        var layout = ChartModFile.ReadTracks("""{"wddmod":1,"tracks":{"don.yaw":[{"beat":0,"value":45}]}}"""u8, null);
+        var plain = ChartModFile.ApplyLayout(Chart(), layout);
+        Assert.Equal(45, ChartMods.ValueAt(plain.Effects.Mods.ToArray(), TimeSpan.FromSeconds(5), 0));
+
+        var authored = ChartModFile.Apply(Chart(), ChartModFile.Read("""{"wddmod":1,"tracks":{"don.roll":[{"beat":0,"value":10}]}}"""u8, null));
+        Assert.Same(authored, ChartModFile.ApplyLayout(authored, layout)); // chart effects replace the layout, no merge
+    }
+
+    [Fact]
     public void FirstKeyHoldsEvenDuringAnInitialDelayAndStepChangesOnlyAtItsKey()
     {
         var chart = Chart() with { Effects = new() { Beats = [new(TimeSpan.Zero, 0, 0), new(TimeSpan.FromSeconds(2), 0, 2)] } };

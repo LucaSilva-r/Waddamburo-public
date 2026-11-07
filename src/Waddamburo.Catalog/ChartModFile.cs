@@ -190,6 +190,13 @@ public static class ChartModFile
     public static PlayableChart Apply(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks) =>
         Apply(chart, Compile(tracks));
 
+    /// <summary>
+    /// The player's layout (constant tracks) for a chart without modchart changes of its own; a chart with any keeps
+    /// them and ignores the layout (no merge). Scroll gimmicks (#JPOSSCROLL, beat scroll) are not modchart changes.
+    /// </summary>
+    public static PlayableChart ApplyLayout(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> layout) =>
+        chart.Effects.Mods.IsEmpty && layout.Count > 0 ? Apply(chart, layout) : chart;
+
     /// <summary>Replaces drawing mods while preserving the chart's other effects and identity.</summary>
     public static PlayableChart Apply(PlayableChart chart, IReadOnlyList<ChartModCue> cues)
     {

@@ -230,6 +230,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var player = players.ElementAtOrDefault(lane);
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
+            // The player's layout where neither gave modchart changes; arcade is always the stock screen.
+            if (player is not null && Shell.Arcade.Home)
+                authored = PlayerModcharts.ApplyLayout(EditorModchartFolder, authored);
             return (player?.Options ?? default).Apply(authored, _seed + (lane < request.Players.Length ? lane : 0));
         })];
         // Online, the kusudama is each player's own: the other player's lane gets balloons in its place.

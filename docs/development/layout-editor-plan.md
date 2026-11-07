@@ -21,7 +21,7 @@ restricted mode of that editor plus a fallback file.
 
 ## Design
 
-- **File**: `<waddamburo data>/layout.wddmod`, `ChartModFile` format, one key at beat 0 per track, course-independent.
+- **File**: `<waddamburo data>/modcharts/layout.wddmod` (`PlayerModcharts.LayoutPath`), `ChartModFile` format, one key at beat 0 per track, course-independent.
   ponytail: one layout per install; per-account layouts when home accounts need them.
 - **Apply** (`GameplayFlow.cs`, where `PlayerModcharts.Apply` runs): when the chart has no effects after the chart's own
   and the player's per-chart modchart, apply the layout's tracks. Not in arcade.
@@ -39,7 +39,7 @@ restricted mode of that editor plus a fallback file.
 
 ## Milestones
 
-- [ ] 1. Layout file + apply fallback (no chart effects, not arcade) + test that a chart with effects ignores it.
+- [x] 1. Layout file + apply fallback (no chart effects, not arcade) + test that a chart with effects ignores it.
 - [ ] 2. Editor layout mode: panels stripped to viewport/inspector/scrubber, constant keys, Save, Reset.
 - [ ] 3. Layering: `depth` property, single sorted draw list (Don and the notes block included), order list + buttons.
 - [ ] 4. Gameplay options entry key; manual check (user drives): move the lane, rotate Don, 4:3 framing, Reset.
