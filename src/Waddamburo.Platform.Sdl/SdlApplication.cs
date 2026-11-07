@@ -120,6 +120,21 @@ public sealed unsafe class SdlApplication : IDisposable
         set { ensureOwnerThread(); _renderer!.Letterbox = value; }
     }
 
+    /// <summary>Optional normalized region containing the aspect-fitted stage (editor panels surround it).</summary>
+    public RenderRectangle? StageRegion
+    {
+        get => _renderer!.StageRegion;
+        set
+        {
+            ensureOwnerThread();
+            if (value is { } r && (!float.IsFinite(r.X) || !float.IsFinite(r.Y) || !float.IsFinite(r.Width)
+                || !float.IsFinite(r.Height) || r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0
+                || r.X + r.Width > 1.00001f || r.Y + r.Height > 1.00001f))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            _renderer!.StageRegion = value;
+        }
+    }
+
     /// <summary>Attaches one UI layer; the application owns its native lifetime as a fallback.</summary>
     public ImGuiLayer AttachImGui(Action draw)
     {

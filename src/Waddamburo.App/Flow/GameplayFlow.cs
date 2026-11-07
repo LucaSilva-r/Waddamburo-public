@@ -417,6 +417,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>The training under way (null when not training), for the review bar.</summary>
     public TrainingSession? Training => _training;
 
+    public PlayableChart EditorChart => _charts[0];
+
     /// <summary>Effects authoring is available in local, single-lane home practice.</summary>
     public bool CanEditEffects => Shell.Arcade.Home && _training is not null && _charts.Length == 1
         && _waiwai is null && !Shell.Match.InSong;

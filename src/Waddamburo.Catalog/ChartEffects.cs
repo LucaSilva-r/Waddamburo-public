@@ -23,6 +23,10 @@ public sealed record ChartEffects
 
     public bool IsEmpty => JudgeMoves.IsEmpty && Beats.IsEmpty && Mods.IsEmpty;
 
+    /// <summary>Authored file keyframes retained for local editing; drawing blocks only need compiled mods.</summary>
+    public ImmutableDictionary<string, ImmutableArray<ChartModKeyframe>> ModTracks { get; init; } =
+        ImmutableDictionary<string, ImmutableArray<ChartModKeyframe>>.Empty;
+
     /// <summary>Modchart changes (TJA #EASE/#SET) in start order (<see cref="ChartMods"/>).</summary>
     public ImmutableArray<ChartModEase> Mods { get; init; } = [];
 

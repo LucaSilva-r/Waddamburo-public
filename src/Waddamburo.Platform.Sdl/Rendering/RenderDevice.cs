@@ -243,6 +243,8 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     public RenderViewport StageViewport { get; private set; }
 
+    public RenderRectangle? StageRegion { get; set; }
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -281,7 +283,17 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.set_view_clear(ClearView, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Stencil),
             BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
         bgfx.touch(ClearView);
-        var viewport = letterbox(frame.ResolveViewport(width, height), width, height);
+        RenderViewport viewport;
+        if (StageRegion is { } region)
+        {
+            var x = (int)Math.Clamp(region.X * width, 0, width - 1);
+            var y = (int)Math.Clamp(region.Y * height, 0, height - 1);
+            var w = (uint)Math.Clamp(region.Width * width, 1, width - x);
+            var h = (uint)Math.Clamp(region.Height * height, 1, height - y);
+            var fitted = frame.ResolveViewport(w, h);
+            viewport = fitted with { X = fitted.X + x, Y = fitted.Y + y };
+        }
+        else viewport = letterbox(frame.ResolveViewport(width, height), width, height);
         StageViewport = viewport;
         // Below the window's own resolution (RenderHeight), the stage draws into a target of that size, scaled up at
         // the end (needs the blur program, which also copies); the Don prepasses then draw at that size too.

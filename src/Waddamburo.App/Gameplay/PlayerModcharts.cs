@@ -29,9 +29,9 @@ internal static class PlayerModcharts
         {
             if (new FileInfo(path).Length > ChartModFile.MaxBytes)
                 throw new InvalidDataException("The modchart file is too large.");
-            var cues = ChartModFile.Read(File.ReadAllBytes(path), course);
-            Console.WriteLine($"Modchart: {cues.Count} change(s) from {path}.");
-            return ChartModFile.Apply(chart, cues);
+            var tracks = ChartModFile.ReadTracks(File.ReadAllBytes(path), course);
+            Console.WriteLine($"Modchart: {tracks.Count} track(s) from {path}.");
+            return ChartModFile.Apply(chart, tracks);
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {

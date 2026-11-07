@@ -1,4 +1,5 @@
 using Waddamburo.Catalog;
+using Waddamburo.Editor;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Platform.Sdl;
 
@@ -11,7 +12,7 @@ namespace Waddamburo.App.Flow;
 /// hit); let go and the drum plays live from there. A/B mark a loop: at its end play starts again from A
 /// with a short lead-in, or (L) stops on the attempt. Nothing is saved.
 /// </summary>
-internal sealed class TrainingSession
+internal sealed class TrainingSession : IEffectsEditorTransport
 {
     // Real time played before the loop's start, to catch the rhythm.
     private static readonly TimeSpan LeadIn = TimeSpan.FromSeconds(2);
@@ -86,17 +87,11 @@ internal sealed class TrainingSession
             // The loop's two keys together clear it.
             if (pressed(GameAction.LoopStart) && GameActions.Down(keys, GameAction.LoopEnd)
                 || pressed(GameAction.LoopEnd) && GameActions.Down(keys, GameAction.LoopStart))
-                (LoopStart, LoopEnd) = (null, null);
+                ClearLoop();
             else if (pressed(GameAction.LoopStart))
-            {
-                LoopStart = Clock.Position;
-                if (LoopEnd <= LoopStart) LoopEnd = null;
-            }
+                MarkLoopStart();
             else if (pressed(GameAction.LoopEnd))
-            {
-                LoopEnd = Clock.Position;
-                if (LoopStart >= LoopEnd) LoopStart = null;
-            }
+                MarkLoopEnd();
             if (pressed(GameAction.AfterPass))
                 PauseAfterAttempt = !PauseAfterAttempt;
             if (!jump)
@@ -123,6 +118,22 @@ internal sealed class TrainingSession
         if (direction > 0) Clock.Faster(); else Clock.Slower();
         _speedRepeat = (direction, at + (repeat ? SpeedRepeatInterval : SpeedRepeatDelay));
     }
+
+    public void Seek(TimeSpan position) => jump(position);
+
+    public void MarkLoopStart()
+    {
+        LoopStart = Clock.Position;
+        if (LoopEnd <= LoopStart) LoopEnd = null;
+    }
+
+    public void MarkLoopEnd()
+    {
+        LoopEnd = Clock.Position;
+        if (LoopStart >= LoopEnd) LoopStart = null;
+    }
+
+    public void ClearLoop() => (LoopStart, LoopEnd) = (null, null);
 
     private void jump(TimeSpan to)
     {

@@ -145,15 +145,18 @@ public static class ChartModFile
             for (var i = 0; i < keys.Length; i++)
             {
                 var k = keys[i];
-                var start = i == 0 ? Math.Min(0, k.Beat) : keys[i - 1].Beat;
+                var start = i == 0 ? k.Beat : keys[i - 1].Beat;
                 cues.Add(new(start, i == 0 ? 0 : k.Beat - start, k.Ease, key[..dot], key[(dot + 1)..], k.Value, k.Curve, Initial: i == 0));
             }
         }
         return cues.OrderBy(c => c.Beat).ToArray();
     }
 
-    public static PlayableChart Apply(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks) =>
-        Apply(chart, Compile(tracks));
+    public static PlayableChart Apply(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
+    {
+        var applied = Apply(chart, Compile(tracks));
+        return applied with { Effects = applied.Effects with { ModTracks = tracks.ToImmutableDictionary(StringComparer.Ordinal) } };
+    }
 
     /// <summary>Replaces drawing mods while preserving the chart's other effects and identity.</summary>
     public static PlayableChart Apply(PlayableChart chart, IReadOnlyList<ChartModCue> cues)
@@ -163,7 +166,11 @@ public static class ChartModFile
         var mods = cues.Select(cue => (Start: cue.Initial ? TimeSpan.Zero : at(cue.Beat), End: cue.Initial ? TimeSpan.Zero : at(cue.Beat + cue.Beats), Cue: cue))
             .Select(static t => new ChartModEase(t.Start, t.End - t.Start, t.Cue.Target, t.Cue.Property, t.Cue.Value, t.Cue.Ease, t.Cue.Curve, t.Cue.Initial))
             .OrderBy(static change => change.Start);
-        return chart with { Effects = chart.Effects with { Mods = [.. mods] } };
+        var tracks = cues.GroupBy(c => c.Target + "." + c.Property)
+            .Where(group => group.Any(c => c.Initial))
+            .ToImmutableDictionary(group => group.Key, group => group.Select(c =>
+                new ChartModKeyframe(c.Initial ? c.Beat : c.Beat + c.Beats, c.Value, c.Ease, c.Curve)).ToImmutableArray());
+        return chart with { Effects = chart.Effects with { Mods = [.. mods], ModTracks = tracks } };
     }
 
     /// <summary>The beat count over time from tempo points alone (no #DELAY to stop it).</summary>

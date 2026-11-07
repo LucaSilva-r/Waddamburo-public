@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using Waddamburo.Catalog;
@@ -228,7 +229,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
     // The chart's own Song.wddmod beside Song.tja (ChartModFile), read fresh each load so edits show on the next play.
     // A broken one is reported and the chart plays without it. ponytail: printed, no diagnostics list for the UI yet.
-    private async Task<IReadOnlyList<ChartModCue>?> modchartAsync(string chartPath, TaikoCourse course, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>>?> modchartAsync(string chartPath, TaikoCourse course, CancellationToken cancellationToken)
     {
         var path = Path.ChangeExtension(chartPath, ChartModFile.Extension);
         var file = new FileInfo(path);
@@ -239,7 +240,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             rejectReparsePoints(path);
             if (file.Length > ChartModFile.MaxBytes)
                 throw new InvalidDataException("The modchart file is too large.");
-            return ChartModFile.Read(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), course);
+            return ChartModFile.ReadTracks(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), course);
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {

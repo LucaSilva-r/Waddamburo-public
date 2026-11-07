@@ -33,6 +33,7 @@ public sealed unsafe class ImGuiLayer : IDisposable
             _font = renderer.UploadRgba8((uint)width, (uint)height, new ReadOnlySpan<byte>((void*)pixels, checked(width * height * 4)));
             io.Fonts.SetTexID((nint)_font.Value);
             io.Fonts.ClearTexData();
+            SeedMousePosition();
         }
         catch
         {
@@ -103,11 +104,22 @@ public sealed unsafe class ImGuiLayer : IDisposable
             case SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED:
                 io.AddFocusEvent(true);
                 break;
+            case SDL_EventType.SDL_EVENT_WINDOW_MOUSE_ENTER:
+                SeedMousePosition();
+                break;
             case SDL_EventType.SDL_EVENT_WINDOW_MOUSE_LEAVE:
                 io.AddMousePosEvent(-float.MaxValue, -float.MaxValue);
                 break;
         }
         return false;
+    }
+
+    private static void SeedMousePosition()
+    {
+        if (SDL3.SDL_GetMouseFocus() == null) return;
+        float x, y;
+        SDL3.SDL_GetMouseState(&x, &y);
+        ImGui.GetIO().AddMousePosEvent(x, y);
     }
 
     // SDL scancodes use USB HID ordering, independent of the keyboard's text layout.

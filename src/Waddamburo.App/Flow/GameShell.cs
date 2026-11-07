@@ -76,7 +76,7 @@ internal sealed class GameShell : IDisposable
     public void OpenEffectsEditor()
     {
         if (_effectsEditor is null && _gameplay.CanEditEffects)
-            _effectsEditor = new EffectsEditorSession(Application);
+            _effectsEditor = new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!);
     }
 
     private void closeEffectsEditor()
@@ -1203,7 +1203,7 @@ internal sealed class GameShell : IDisposable
         quads.AddRange(frame.Quads);
         if (Active.Id == FlowScenes.Gameplay)
             quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
-        if (_gameplay.Reviewing && _gameplay.Review is { } review)
+        if (!EffectsEditorOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
             quads.AddRange(_reviewBar.Quads(review, _gameplay.Training));
         if (_playerSetup is not null)
             quads.AddRange(_playerSetup.Quads(interpolation));
