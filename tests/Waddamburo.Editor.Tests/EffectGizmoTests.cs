@@ -95,4 +95,22 @@ public sealed class EffectGizmoTests
         Assert.Equal("gauge", EffectGizmo.Next(elements, point, "background")!.Target);
         Assert.Equal("gauge", EffectGizmo.Next(elements, point, "board")!.Target); // not under the spot: the front one
     }
+
+    [Fact]
+    public void ThePlayheadSnapsToTheNearestKeyframeWithinTolerance()
+    {
+        double[] keys = [4, 8, 8.5];
+        Assert.Equal(8, BeatView.SnapTo(keys, 7.8, .5));
+        Assert.Equal(8.5, BeatView.SnapTo(keys, 8.4, .5));
+        Assert.Equal(6, BeatView.SnapTo(keys, 6, .5));
+    }
+
+    [Fact]
+    public void OrbitTurnsClockwiseOnTheStageAndScales()
+    {
+        var turned = EffectGizmo.Orbit(new(10, 0), 90, 2);
+        Assert.Equal(0, turned.X, 4);
+        Assert.Equal(20, turned.Y, 4); // y points down: a quarter turn takes right to below
+        Assert.Equal(new(5, 0), EffectGizmo.Orbit(new(10, 0), 0, .5f));
+    }
 }

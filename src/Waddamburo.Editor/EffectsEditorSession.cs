@@ -165,7 +165,10 @@ public sealed partial class EffectsEditorSession : IDisposable
             if (_layout)
             {
                 foreach (var target in _layoutTargets)
-                    if (ImGui.Selectable(target, _viewportTarget == target)) SelectElement(target);
+                    if (ImGui.Selectable(target, SelectedTargets.Contains(target)))
+                    {
+                        if (ImGui.GetIO().KeyCtrl) ToggleElement(target); else SelectElement(target);
+                    }
                 ImGui.End();
                 return;
             }
@@ -175,8 +178,11 @@ public sealed partial class EffectsEditorSession : IDisposable
                 var tracks = _trackNames.Where(k => k.StartsWith(target + ".", StringComparison.Ordinal)).ToArray();
                 ImGui.SetNextItemOpen(tracks.Length > 0, ImGuiCond.Once);
                 var open = ImGui.TreeNodeEx($"{target} ({tracks.Length})", ImGuiTreeNodeFlags.OpenOnArrow
-                    | ImGuiTreeNodeFlags.SpanAvailWidth | (_viewportTarget == target ? ImGuiTreeNodeFlags.Selected : 0));
-                if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen()) SelectElement(target);
+                    | ImGuiTreeNodeFlags.SpanAvailWidth | (SelectedTargets.Contains(target) ? ImGuiTreeNodeFlags.Selected : 0));
+                if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
+                {
+                    if (ImGui.GetIO().KeyCtrl) ToggleElement(target); else SelectElement(target);
+                }
                 if (!open) continue;
                 foreach (var key in tracks)
                     if (ImGui.Selectable(key[(key.IndexOf('.') + 1)..], _selected.Contains(key)))
@@ -325,7 +331,14 @@ public sealed partial class EffectsEditorSession : IDisposable
         Navigate(ruler, width, hovered);
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) _seekDrag = true;
         if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _seekDrag = false;
-        if (_seekDrag) SeekBeat(_view.BeatAt(Math.Clamp((ImGui.GetIO().MousePos.X - ruler.X) / width, 0, 1)));
+        if (_seekDrag)
+        {
+            // The playhead snaps onto keyframes (any track) within 8 px as it's dragged over them; Alt: no snapping.
+            var beat = _view.BeatAt(Math.Clamp((ImGui.GetIO().MousePos.X - ruler.X) / width, 0, 1));
+            if (!ImGui.GetIO().KeyAlt)
+                beat = BeatView.SnapTo(_preview.Tracks.Values.SelectMany(static keys => keys.Select(static key => key.Beat)), beat, 8 / width * _view.Span);
+            SeekBeat(beat);
+        }
         draw.AddRectFilled(ruler, ruler + new Vector2(width, 40), Background);
         ChartRuler(draw, ruler, width, hovered);
         DrawPlayhead(draw, ruler, new(width, 40));

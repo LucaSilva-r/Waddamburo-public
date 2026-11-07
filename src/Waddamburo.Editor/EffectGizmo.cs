@@ -52,6 +52,13 @@ public static class EffectGizmo
         return new((float)x, (float)y);
     }
 
+    /// <summary><paramref name="offset"/> turned by <paramref name="degrees"/> (the stage's y points down) and scaled.</summary>
+    public static Vector2 Orbit(Vector2 offset, double degrees, float scale)
+    {
+        var (sin, cos) = Math.SinCos(degrees * Math.PI / 180);
+        return new Vector2((float)(offset.X * cos - offset.Y * sin), (float)(offset.X * sin + offset.Y * cos)) * scale;
+    }
+
     public static double Rotation(Vector2 from, Vector2 to)
     {
         var degrees = (Math.Atan2(to.Y, to.X) - Math.Atan2(from.Y, from.X)) * 180 / Math.PI;

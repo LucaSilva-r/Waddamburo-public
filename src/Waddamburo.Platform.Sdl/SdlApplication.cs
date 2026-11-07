@@ -798,6 +798,14 @@ public sealed unsafe partial class SdlApplication : IDisposable
             SDL_Event currentEvent;
             while (SDL_PollEvent(&currentEvent))
             {
+                // F11 (fullscreen) before any UI: the effects editor's panels take the keys under the mouse.
+                if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_F11)
+                {
+                    // F11: borderless desktop fullscreen <-> window, like a browser.
+                    if (!currentEvent.key.repeat)
+                        SDL_SetWindowFullscreen(_window, (SDL_GetWindowFlags(_window) & SDL_WindowFlags.SDL_WINDOW_FULLSCREEN) == 0);
+                    continue;
+                }
                 if (_renderer!.ImGuiLayer?.ProcessEvent(currentEvent) == true)
                 {
                     // A key pressed before UI capture must still be released in game state.
@@ -881,13 +889,6 @@ public sealed unsafe partial class SdlApplication : IDisposable
                         for (var notch = 0; notch < Math.Max(1, (int)Math.Abs(currentEvent.wheel.y)); notch++)
                             pendingPresses.Add(new SdlKeyPress(currentEvent.wheel.y > 0 ? SdlKeyboardKey.WheelUp : SdlKeyboardKey.WheelDown,
                                 TimeSpan.FromTicks(checked((long)(currentEvent.wheel.timestamp / 100)))));
-                }
-                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
-                    && currentEvent.key.key == SDL_Keycode.SDLK_F11)
-                {
-                    // F11: borderless desktop fullscreen <-> window, like a browser.
-                    if (!currentEvent.key.repeat)
-                        SDL_SetWindowFullscreen(_window, (SDL_GetWindowFlags(_window) & SDL_WindowFlags.SDL_WINDOW_FULLSCREEN) == 0);
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
                     && currentEvent.key.key == SDL_Keycode.SDLK_F9)

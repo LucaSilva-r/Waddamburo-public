@@ -72,43 +72,54 @@ public sealed partial class EffectsEditorSession
         ImGui.End();
     }
 
+    private static string[] PropertiesOf(string target) => ChartMods.BaseTarget(target) switch
+    {
+        "notes" => [.. ChartMods.NoteProperties],
+        "don" => [.. ChartMods.ElementProperties, .. ChartMods.DonModelProperties],
+        _ => [.. ChartMods.ElementProperties],
+    };
+
+    // The selection's values: only the properties every selected element has (as Unity's inspector does); one that
+    // differs between them shows "-", and setting it sets them all.
     private void LayoutValues(string target)
     {
-        string[] properties = ChartMods.BaseTarget(target) switch
-        {
-            "notes" => [.. ChartMods.NoteProperties],
-            "don" => [.. ChartMods.ElementProperties, .. ChartMods.DonModelProperties],
-            _ => [.. ChartMods.ElementProperties],
-        };
+        var targets = SelectedTargets.ToArray();
+        if (targets.Length > 1) ImGui.TextWrapped($"{targets.Length} elements: {string.Join(", ", targets)}");
+        var properties = targets.Skip(1).Aggregate((IEnumerable<string>)PropertiesOf(target), (shared, t) => shared.Intersect(PropertiesOf(t))).ToArray();
         foreach (var property in properties)
         {
-            var value = (float)_preview.ValueAt(target + "." + property, 0d);
-            ImGui.SetNextItemWidth(-64);
             if (property == "depth")
             {
-                LayoutDepth(target, value);
+                LayoutDepth(targets, (float)_preview.ValueAt(target + ".depth", 0d));
                 continue;
             }
-            var changed = ImGui.DragFloat(property, ref value, property is "x" or "y" or "rotation" or "yaw" or "pitch" or "roll" ? 1f : .01f);
+            var values = targets.Select(t => _preview.ValueAt(t + "." + property, 0d)).ToArray();
+            var mixed = values.Any(v => Math.Abs(v - values[0]) > 1e-6);
+            var value = (float)values[0];
+            ImGui.SetNextItemWidth(-64);
+            var changed = ImGui.DragFloat(property, ref value, property is "x" or "y" or "rotation" or "yaw" or "pitch" or "roll" ? 1f : .01f,
+                0, 0, mixed ? "-" : "%.3f");
             if (ImGui.IsItemActivated())
                 BeginViewportDrag(GizmoMode.Slider, SelectedElement() ?? new(target, default, default, default, LumenMatrix.Identity),
                     EffectViewport.Fit(new(0, 0, 1280, 720)), default, property);
-            if (changed && _viewportDrag is { Mode: GizmoMode.Slider }) PreviewElementValues(new() { [target + "." + property] = value });
+            if (changed && _viewportDrag is { Mode: GizmoMode.Slider })
+                PreviewElementValues(targets.ToDictionary(t => t + "." + property, _ => (double)value));
             if (ImGui.IsItemDeactivated()) EndDrag();
         }
         ImGui.Separator();
     }
 
     // Draw order in whole steps: a higher depth is drawn in front, equals keep the game's order.
-    private void LayoutDepth(string target, float value)
+    // Several selected: each moves one step from its own depth.
+    private void LayoutDepth(string[] targets, float value)
     {
         var depth = (int)Math.Round(value);
-        void set(int to) => Edit(_history.Current.SetValuesAt(0, new Dictionary<string, double> { [target + ".depth"] = to }, true),
-            $"{target} depth {to}");
-        if (ImGui.Button("Send back")) set(depth - 1);
+        void step(int by) => Edit(_history.Current.SetValuesAt(0, targets.ToDictionary(t => t + ".depth",
+            t => Math.Round(_preview.ValueAt(t + ".depth", 0d)) + by), true), by < 0 ? "Send back" : "Bring forward");
+        if (ImGui.Button("Send back")) step(-1);
         ImGui.SameLine();
-        if (ImGui.Button("Bring forward")) set(depth + 1);
+        if (ImGui.Button("Bring forward")) step(1);
         ImGui.SameLine();
-        ImGui.TextUnformatted($"depth {depth}");
+        ImGui.TextUnformatted(targets.Length > 1 ? "depth" : $"depth {depth}");
     }
 }
