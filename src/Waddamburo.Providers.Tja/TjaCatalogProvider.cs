@@ -216,12 +216,36 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         var currentHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         if (!string.Equals(currentHash, locator.SourceHash, StringComparison.Ordinal))
             throw new InvalidDataException("The selected TJA chart changed after the catalog snapshot was published; rescan the library.");
-        return TjaPlayableChartReader.Read(
+        var modchart = await modchartAsync(path, locator.Course, cancellationToken).ConfigureAwait(false);
+        var playable = TjaPlayableChartReader.Read(
             bytes,
             chart,
             locator,
             _options.MaximumMeasures,
             _options.MaximumNotes);
+        return modchart is null ? playable : ChartModFile.Apply(playable, modchart);
+    }
+
+    // The chart's own Song.wddmod beside Song.tja (ChartModFile), read fresh each load so edits show on the next play.
+    // A broken one is reported and the chart plays without it. ponytail: printed, no diagnostics list for the UI yet.
+    private async Task<IReadOnlyList<ChartModCue>?> modchartAsync(string chartPath, TaikoCourse course, CancellationToken cancellationToken)
+    {
+        var path = Path.ChangeExtension(chartPath, ChartModFile.Extension);
+        var file = new FileInfo(path);
+        if (!file.Exists)
+            return null;
+        try
+        {
+            rejectReparsePoints(path);
+            if (file.Length > ChartModFile.MaxBytes)
+                throw new InvalidDataException("The modchart file is too large.");
+            return ChartModFile.Read(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), course);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Modchart {path} not used: {exception.Message}");
+            return null;
+        }
     }
 
     private string[] enumerateCharts(CancellationToken cancellationToken)

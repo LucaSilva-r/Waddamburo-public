@@ -433,7 +433,7 @@ internal sealed class GameShell : IDisposable
                     problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
-            Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
+            Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs], Path.Combine(dataRoot, "waddamburo", "modcharts"));
             ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
             SongCatalog = new SongSelectCatalogView(snapshot);
             // Server crowns need every chart's hash before song select lists it.

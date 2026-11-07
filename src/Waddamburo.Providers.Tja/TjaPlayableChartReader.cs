@@ -39,7 +39,7 @@ internal static partial class TjaPlayableChartReader
         var denominator = 4;
         var bpm = 0m;
         var scroll = new TjaScroll(1, 0, 0, null, null, 0);
-        var drawn = new TjaEffectsBuilder(); // drawing-only commands (#JPOSSCROLL, beat count, #EASE/#SET, #SENOTECHANGE)
+        var drawn = new TjaEffectsBuilder(); // drawing-only commands (#JPOSSCROLL, beat count, #SENOTECHANGE)
         var isGoGo = false;
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
@@ -637,27 +637,6 @@ internal static partial class TjaPlayableChartReader
                     ? TimeSpan.FromSeconds(time) : null;
                 scroll = scroll with { Show = seconds(fields[0]), Wait = seconds(fields[1]) };
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
-                break;
-            }
-            case "#EASE":
-            case "#SET":
-            {
-                // Waddamburo modcharts: #EASE <beats> <easing> <target> <property> <value>, #SET <target> <property> <value>.
-                // An unknown target, property or easing is skipped, as unknown commands are.
-                var fields = argument.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-                var easing = ChartEase.Linear;
-                if (fields.Length != (name == "#EASE" ? 5 : 3)
-                    || name == "#EASE" && !ChartMods.TryParseEase(fields[1], out easing))
-                    break;
-                var (target, property, value) = (fields[^3].ToLowerInvariant(), fields[^2].ToLowerInvariant(), fields[^1]);
-                if (!ChartMods.IsKnown(target, property)
-                    || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var to) || !double.IsFinite(to))
-                    break;
-                var beatsLong = name == "#EASE" && double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var length)
-                    && double.IsFinite(length) && length > 0 ? length : 0;
-                // ponytail: the length in beats at the tempo where it starts (a tempo change inside it is not followed).
-                drawn.Mod(new ChartModEase(chartTime(cursorSeconds), TimeSpan.FromSeconds(beatsLong * 60 / (double)bpm),
-                    target, property, to, easing));
                 break;
             }
             case "#HBSCROLL":

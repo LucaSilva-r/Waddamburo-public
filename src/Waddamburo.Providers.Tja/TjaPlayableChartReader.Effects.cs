@@ -14,8 +14,8 @@ internal static partial class TjaPlayableChartReader
         // The main route's beat count over time (#HBSCROLL/#BMSCROLL): time, beat, beats per second from there.
         private readonly List<(decimal Time, decimal Beat, decimal Bps)> _beats = [];
         private readonly List<(decimal At, double Seconds, double X, double Y)> _moves = [];
-        private readonly List<ChartModEase> _mods = [];
         private string? _noteText;
+        private bool _delayed;
 
         public void Start(decimal bpm) => _beats.Add((0, 0, bpm / 60));
 
@@ -30,14 +30,13 @@ internal static partial class TjaPlayableChartReader
             if (seconds <= 0)
                 return;
             var beat = beatAt(at);
+            _delayed = true;
             _beats.Add((at, beat, 0));
             _beats.Add((at + seconds, beat, bpm / 60));
         }
 
         /// <summary>#JPOSSCROLL. ponytail: one list for every 譜面分岐 route.</summary>
         public void MoveTarget(decimal at, double seconds, double x, double y) => _moves.Add((at, seconds, x, y));
-
-        public void Mod(ChartModEase change) => _mods.Add(change);
 
         /// <summary>#SENOTECHANGE: the label under the next don or ka (1 ドン 2 ド 3 コ 4 カッ 5 カ 6 ドン(大) 7 カッ(大); the roll ones unused).</summary>
         public void NoteText(int index) => _noteText = index switch
@@ -53,14 +52,18 @@ internal static partial class TjaPlayableChartReader
             return text;
         }
 
-        /// <param name="byBeat">Whether any scroll point scrolls by beat (the beat count is kept only then).</param>
+        /// <param name="byBeat">Whether any scroll point scrolls by beat.</param>
+        /// <remarks>
+        /// The beat count is kept for beat scrolling and whenever a #DELAY stops it, so a modchart (ChartModFile.Apply)
+        /// times its beats as the chart counts them; otherwise tempo points alone give the same count.
+        /// </remarks>
         public ChartEffects Build(bool byBeat)
         {
             var effects = new ChartEffects
             {
                 JudgeMoves = resolveMoves(),
-                Beats = byBeat ? [.. _beats.Select(static anchor => new ChartBeatPoint(chartTime(anchor.Time), (double)anchor.Beat, (double)anchor.Bps))] : [],
-                Mods = [.. _mods.OrderBy(static change => change.Start)],
+                Beats = byBeat || _delayed
+                    ? [.. _beats.Select(static anchor => new ChartBeatPoint(chartTime(anchor.Time), (double)anchor.Beat, (double)anchor.Bps))] : [],
             };
             return effects.IsEmpty ? ChartEffects.None : effects;
         }

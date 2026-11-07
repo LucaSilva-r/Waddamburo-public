@@ -458,19 +458,46 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
-    public async Task ModchartChangesEaseFromTheValueBeforeThem()
+    public async Task AModchartFileBesideTheChartEasesAlongItsBeats()
     {
-        // 120 BPM: a beat is 0.5 s. Unknown targets, properties and easings are skipped like unknown commands.
-        var chart = await loadSynthetic(
-            "#EASE 4 outQuad don scale 2\n#SET notes drunk 1\n#EASE 2 wobble don scale 3\n#SET don size 3\n#SET clouds x 1\n1,\n#EASE 2 linear don scale 0\n1,");
+        // 120 BPM: a beat is 0.5 s; #DELAY 1 at 2 s stops the count, so beat 4 is reached at 3 s. Unknown targets,
+        // properties and easings skip their entry; "oni" adds to "*"; the other courses' entries stay out.
+        var chart = await loadSynthetic("1,\n#DELAY 1\n1,", modchart: """
+            { "wddmod": 1, // comments are allowed
+              "courses": {
+                "*":    [ { "beat": 0, "beats": 4, "ease": "outQuad", "target": "don.scale", "value": 2 },
+                          { "beat": 0, "target": "clouds.x", "value": 1 },
+                          { "beat": 0, "ease": "wobble", "target": "don.scale", "value": 3 } ],
+                "oni":  [ { "beat": 4, "beats": 2, "target": "don.scale", "value": 0 },
+                          { "beat": 1, "target": "notes.drunk", "value": 1 } ],
+                "easy": [ { "beat": 0, "target": "camera.x", "value": 9 } ] } }
+            """);
         Assert.Equal([("don", "scale", 2d, ChartEase.OutQuad), ("notes", "drunk", 1d, ChartEase.Linear), ("don", "scale", 0d, ChartEase.Linear)],
             chart.Effects.Mods.Select(change => (change.Target, change.Property, change.Value, change.Ease)));
-        Assert.Equal(TimeSpan.FromSeconds(2), chart.Effects.Mods[0].Length);
+        Assert.Equal((TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1)), (chart.Effects.Mods[2].Start, chart.Effects.Mods[2].Length));
         var scale = chart.Effects.Mods.Where(change => change.Property == "scale").ToArray();
-        Assert.Equal(1, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(-1), 1));
-        Assert.Equal(1.75, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(1), 1), 9); // outQuad halfway: 0.75 of the way
-        Assert.Equal(2, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(2), 1));
-        Assert.Equal(1, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(2.5), 1)); // linear from 2 to 0, halfway
+        // Beats 0-4 span the delay (0 to 3 s): outQuad halfway, at 1.5 s, is 0.75 of the way.
+        Assert.Equal(1.75, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(1.5), 1), 9);
+        Assert.Equal(1, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(3.5), 1)); // linear from 2 to 0, halfway
+
+        // A broken file is skipped: the chart plays plain.
+        Assert.True((await loadSynthetic("1,", modchart: "{ not json")).Effects.IsEmpty);
+        Assert.True((await loadSynthetic("1,", modchart: """{ "wddmod": 99 }""")).Effects.IsEmpty);
+    }
+
+    [Fact]
+    public void APlayersModchartTimesItsBeatsAlongAnyChartsTempo()
+    {
+        // A chart with tempo points only (stock, osu!): 120 BPM, then 240 from 4 s (beat 8).
+        var chart = new PlayableChart(new ChartKey(new SongKey(SongSourceKind.Stock, "song"), "oni"), TimeSpan.Zero, TimeSpan.FromSeconds(10), [],
+            [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4), new ChartTimingPoint(TimeSpan.FromSeconds(4), 240, 4, 4)],
+            [new ChartScrollPoint(TimeSpan.Zero, 1)], [new ChartEffectPoint(TimeSpan.Zero, false)], []);
+        var cues = ChartModFile.Read("""{ "wddmod": 1, "courses": { "oni": [ { "beat": 6, "beats": 4, "target": "camera.rotation", "value": 90 } ] } }"""u8,
+            ChartModFile.CourseOf(chart.Key));
+
+        var change = Assert.Single(ChartModFile.Apply(chart, cues).Effects.Mods);
+        Assert.Equal((TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1.5)), (change.Start, change.Length)); // 1 s to beat 8, then 0.5 s
+        Assert.Null(ChartModFile.CourseOf(new ChartKey(new SongKey(SongSourceKind.OsuLazer, "song"), "0123abcd")));
     }
 
     [Fact]
@@ -691,10 +718,12 @@ public sealed class TjaCatalogProviderTests
         await Assert.ThrowsAsync<InvalidDataException>(async () => await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset));
     }
 
-    private static async Task<PlayableChart> loadSynthetic(string body, string headers = "")
+    private static async Task<PlayableChart> loadSynthetic(string body, string headers = "", string? modchart = null)
     {
         using var library = new TemporaryLibrary();
         library.WriteText("synthetic.tja", "TITLE:Synthetic\nBPM:120\nCOURSE:Oni\n" + headers + "#START\n" + body + "\n#END");
+        if (modchart is not null)
+            library.WriteText("synthetic.wddmod", modchart);
         var provider = new TjaCatalogProvider(library.Path);
         var contribution = await provider.ScanAsync(null, CancellationToken.None);
         var descriptor = Assert.Single(Assert.Single(contribution.Songs).Charts);
