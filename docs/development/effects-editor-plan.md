@@ -106,12 +106,19 @@ Undo/redo = stack of documents. Load/save via `ChartModFile`. Beat ↔ time thro
   A/B loop (practice's own keys). Double-click a curve to add a sampled key; double-click a key for
   a nearby value entry popup. Ctrl+C/V copy selected keys and paste at the snapped playhead; right-click for repeat.
 
-**Saving**: the chart's own player file `waddamburo/modcharts/<chart hash>.wddmod` (`PlayerModcharts.PathFor`); for TJA
-charts also “Save into Song.wddmod” (its course section) so authors ship it with the chart.
+**Files**: stock charts save a local override at `waddamburo/modcharts/<chart hash>.wddmod` and expose
+File → Export effects / Import effects for sharing portable keyframe files. The recipient selects the same chart
+and course, imports, then saves. TJA authoring saves the selected course directly beside the source as `Song.wddmod`,
+retaining other courses. Player overrides do not shadow adjacent TJA files; a legacy override can be imported explicitly.
+File → Open TJA loads a selected external file without adding/scanning a library, offers its courses, and watches
+atomic replacement saves. Reload keeps the last valid preview through incomplete saves and retains effect edits,
+playhead, playback speed/state and valid A/B loop bounds. File → Frame entire chart fits the note timeline.
 
-**Entry point**: home mode, practice → pause menu “Edit effects” (and a key in practice). Opens the editor session
-around the existing `TrainingSession`/`ReviewSession` (clock, seek, loop, speed). Leaving restores the full-size
-stage. Judgement is untouched; the drum still plays live when the editor is playing.
+**Entry point**: F8 during local single-player home gameplay (including the pause menu), with no replay prerequisite.
+The current play becomes unranked before editor entry and cannot save/upload a score; closing the editor keeps it
+unranked. There is no effects entry in the replay/pause menu. The existing practice transport runs underneath for
+seek, loop, speed and live drumming. Leaving restores the full-size stage. The readout uses fixed columns and a
+10 Hz refresh during playback, with two displayed decimals; exact key input remains available.
 
 ## Progress
 
@@ -238,6 +245,25 @@ what changed from this plan, and anything the next session must know. Start each
   double-click insertion/value entry, multi-key clipboard undo/redo, the branch and note-snap dropdowns, a paste
   aligned to an Expert-route note, right-click repeat with numeric count, repeat undo/redo, save/reload and F8 exit,
   with fourteen live preview updates. Windows runtime validation remains pending.
+
+- 2026-11-07: direct authoring/file workflow landed in `eeccbef`. F8 now converts a regular local
+  single-lane home play into an unranked editor session using the full practice clock; it also closes a normal pause
+  menu, and the old menu entry/translations are removed. `_voided` is set before editor creation and the existing
+  score-saving guard continues to reject the run after editor close. A visible File menu adds Open TJA, reload,
+  import/export, save, course selection and frame-chart commands with SDL asynchronous file pickers. Stock exports
+  contain only portable keyframe tracks; importing is undoable and saving installs the current chart's override.
+  TJA saves now use the adjacent per-course file, including when a chart's note hash changes. Old player overrides
+  are left intact and can be imported explicitly; they no longer mask a TJA adjunct, which is reread on retries.
+  The app registers an ephemeral provider for selected external files, freshly inspects their metadata/hash on each
+  reload, and retains the current Green scene. A debounced file watch handles atomic rename saves and retries failed
+  parses without losing the working preview or effect history. Notes, timing, duration, course list, authored offset,
+  audio choice and title refresh; unchanged audio is retained. Playhead, speed, pause state and valid loop bounds
+  survive same-file reload. A different TJA/course uses unsaved-change confirmation. The toolbar's number columns
+  are fixed and playback values refresh at ten Hz with two decimals; paused edits remain immediate.
+  All 759 tests pass. Native synthetic UI checks pass hot reload, incomplete-save recovery, edit/playhead retention,
+  duration/courses, adjacent save, portable export/import, undo/cancel, file switching and watcher cleanup, with eight
+  live previews; the visible File menu was inspected. The App builds. Real-game F8 entry and audio reload need the
+  user's check; Windows runtime validation remains pending.
 
 ## Milestones (each ends committed and tested)
 

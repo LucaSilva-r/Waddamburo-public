@@ -3,9 +3,9 @@ using Waddamburo.Catalog;
 namespace Waddamburo.App.Gameplay;
 
 /// <summary>
-/// A player's own modchart for one chart and course: &lt;folder&gt;/&lt;chart hash&gt;.wddmod (<see cref="ChartModFile"/>), over
+/// Stock/player overrides for one chart and course: &lt;folder&gt;/&lt;chart hash&gt;.wddmod (<see cref="ChartModFile"/>), over
 /// the chart's own effects. Effects only change what is drawn, so the chart's hash and scores stay as they are: any song,
-/// stock included, can have one.
+/// stock included, can have one. TJA files use their adjacent modchart instead of a player override.
 /// </summary>
 internal static class PlayerModcharts
 {
