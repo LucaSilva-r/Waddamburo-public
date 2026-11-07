@@ -33,6 +33,7 @@ public sealed partial class EffectsEditorSession
                 draw.AddLine(new(origin.X + (i - 1) / 256f * plotSize.X, Y(samples[i - 1])),
                     new(origin.X + i / 256f * plotSize.X, Y(samples[i])), Accent, 2);
         var hitHandle = _key?.Track == track && GraphHandles(draw, origin, plotSize, scale, hovered);
+        int? hitKey = null;
         for (var i = 0; i < keys.Length; i++)
         {
             var center = new Vector2(X(keys[i].Beat, origin, plotSize.X), Y(keys[i].Value));
@@ -40,8 +41,20 @@ public sealed partial class EffectsEditorSession
             var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 9;
             draw.AddCircleFilled(center, 4.5f, hit || _selectedKeys.Contains(new(track, keys[i].Beat)) ? Playhead : Accent);
             if (!hit) continue;
+            hitKey = i;
             ImGui.SetTooltip($"{track}\nBeat {F(keys[i].Beat)} | Value {F(keys[i].Value)}");
             if (!hitHandle && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(track, i, plotSize.X, scale, plotSize.Y);
+        }
+        var mouse = ImGui.GetIO().MousePos;
+        var inPlot = hovered && mouse.X >= origin.X && mouse.X <= origin.X + plotSize.X
+            && mouse.Y >= origin.Y && mouse.Y <= origin.Y + plotSize.Y;
+        if (inPlot)
+        {
+            var beat = _view.BeatAt((mouse.X - origin.X) / plotSize.X);
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Right)) KeyContext(track, hitKey, beat);
+            if (!hitHandle && hitKey is null && !_history.Current.UsesEmbeddedEffects
+                && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && Math.Abs(mouse.Y - Y(_preview.ValueAt(track, beat))) < 9)
+                _insertRequested = (track, SnapBeat(beat));
         }
         DrawPlayhead(draw, origin, plotSize);
         draw.PopClipRect();

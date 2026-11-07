@@ -23,12 +23,12 @@ public sealed partial class EffectsEditorSession : IDisposable
     private string[] _trackNames;
     private (string Track, int Index)? _key;
     private string? _primary;
-    private float _left = .18f, _right = .22f, _bottom = .34f;
+    private float _left = .18f, _right = .22f, _bottom = .44f;
     private bool _disposed;
     private bool _seekDrag;
     private int _divider;
     private float _dividerOrigin;
-    private const string Status = "Arrow: show curve | Wheel: zoom | Shift+wheel: scroll | Middle drag: pan";
+    private const string Status = "Double-click: add/edit key | Ctrl+C/V: copy/paste | Right-click: repeat | Alt: bypass snap | Shift+wheel: scroll";
     private static readonly uint Background = Color(.115f, .125f, .14f), Grid = Color(.20f, .22f, .25f),
         Bar = Color(.31f, .34f, .39f), Text = Color(.85f, .87f, .9f), Muted = Color(.52f, .56f, .61f),
         Playhead = Color(1, .56f, .18f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
@@ -47,6 +47,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         _history = new(chart.Effects.ModTracks.Count == 0 && !chart.Effects.Mods.IsEmpty
             ? EffectDocument.EmbeddedPreview : EffectDocument.FromTracks(chart.Effects.ModTracks));
         _preview = new(chart);
+        _reference = new(chart, _preview.BeatMap);
         _trackNames = [.. _preview.Tracks.Keys.Order(StringComparer.Ordinal)];
         if (_trackNames.Length > 0) Select(_trackNames[0], false);
         _previousRegion = application.StageRegion;
@@ -122,7 +123,7 @@ public sealed partial class EffectsEditorSession : IDisposable
             ImGui.SameLine();
             if (ImGui.Button("Clear loop")) _transport.ClearLoop();
             ImGui.SameLine();
-            if (ImGui.Button("Reset panels")) (_left, _right, _bottom) = (.18f, .22f, .34f);
+            if (ImGui.Button("Reset panels")) (_left, _right, _bottom) = (.18f, .22f, .44f);
             ImGui.SameLine();
             ImGui.BeginDisabled(_files is null || _history.Current.UsesEmbeddedEffects);
             if (ImGui.Button("Save (Ctrl+S)")) _saveRequested = true;
@@ -135,7 +136,9 @@ public sealed partial class EffectsEditorSession : IDisposable
             ImGui.BeginDisabled(!_history.CanRedo);
             if (ImGui.Button("Redo")) _redoRequested = true;
             ImGui.EndDisabled();
-            ImGui.TextUnformatted($"Beat {F(CurrentBeat)}  |  {_transport.Clock.Position.TotalSeconds:0.00} s  |  {(_history.Dirty ? "Unsaved" : "Saved")}  |  A: {LoopLabel(_transport.LoopStart)}  B: {LoopLabel(_transport.LoopEnd)}");
+            var timing = _reference.TimingAt(_transport.Clock.Position);
+            var measure = _reference.MeasureAt(CurrentBeat)?.Number.ToString(CultureInfo.InvariantCulture) ?? "--";
+            ImGui.TextUnformatted($"M{measure} | Beat {F(CurrentBeat)} | {F(timing.BeatsPerMinute)} BPM {timing.BeatsPerMeasure}/{timing.BeatUnit} | {_transport.Clock.Position.TotalSeconds:0.00} s | {(_history.Dirty ? "Unsaved" : "Saved")} | A: {LoopLabel(_transport.LoopStart)} B: {LoopLabel(_transport.LoopEnd)}");
         }
         ImGui.End();
     }
@@ -220,9 +223,10 @@ public sealed partial class EffectsEditorSession : IDisposable
         if (Panel("Tracks", rect, false))
         {
             if (ImGui.Button("Frame all")) FrameAll();
-            ImGui.SameLine(); ImGui.TextColored(_messageError ? new(1, .4f, .35f, 1) : new(.6f, .68f, .75f, 1), _message ?? Status);
             ImGui.SameLine();
             if (ImGui.Button("Collapse curves")) _expandedGraphs.Clear();
+            ChartControls();
+            ImGui.TextColored(_messageError ? new(1, .4f, .35f, 1) : new(.6f, .68f, .75f, 1), _message ?? Status);
             Timeline();
         }
         ImGui.End();
@@ -252,11 +256,23 @@ public sealed partial class EffectsEditorSession : IDisposable
             draw.AddLine(new(x, origin.Y), new(x, origin.Y + size.Y), Grid);
             if (labels) draw.AddText(new(x + 3, origin.Y + 3), Text, F(beat));
         }
-        foreach (var beat in _preview.Bars)
+        foreach (var measure in _reference.Measures)
         {
+            var beat = measure.Beat;
             if (beat < _view.Start || beat > _view.Start + _view.Span) continue;
             var x = X(beat, origin, size.X);
             draw.AddLine(new(x, origin.Y), new(x, origin.Y + size.Y), Bar);
+        }
+        if (_snapChoice == Snaps.Length)
+        {
+            var last = float.NegativeInfinity;
+            foreach (var beat in _reference.SnapBeats)
+            {
+                if (beat < _view.Start || beat > _view.Start + _view.Span) continue;
+                var x = X(beat, origin, size.X);
+                if (x - last < 2) continue;
+                draw.AddLine(new(x, origin.Y), new(x, origin.Y + size.Y), Color(.52f, .7f, .85f, .22f)); last = x;
+            }
         }
         if (_transport.LoopStart is { } a && _transport.LoopEnd is { } b)
         {
@@ -283,20 +299,21 @@ public sealed partial class EffectsEditorSession : IDisposable
         var ruler = start + new Vector2(labelWidth, 0);
         var draw = ImGui.GetWindowDrawList();
         ImGui.SetCursorScreenPos(ruler);
-        ImGui.InvisibleButton("Beat ruler", new(width, 25));
+        ImGui.InvisibleButton("Beat ruler", new(width, 40));
         var hovered = ImGui.IsItemHovered();
         Navigate(ruler, width, hovered);
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) _seekDrag = true;
         if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _seekDrag = false;
         if (_seekDrag) SeekBeat(_view.BeatAt(Math.Clamp((ImGui.GetIO().MousePos.X - ruler.X) / width, 0, 1)));
-        draw.AddRectFilled(ruler, ruler + new Vector2(width, 25), Background);
-        GridLines(draw, ruler, new(width, 25), true);
-        DrawPlayhead(draw, ruler, new(width, 25));
-        ImGui.SetCursorScreenPos(start + new Vector2(0, 27));
-        if (ImGui.BeginChild("Timeline rows", new(0, Math.Max(32, available.Y - 27)), ImGuiChildFlags.None, ImGuiWindowFlags.NoScrollWithMouse))
+        draw.AddRectFilled(ruler, ruler + new Vector2(width, 40), Background);
+        ChartRuler(draw, ruler, width, hovered);
+        DrawPlayhead(draw, ruler, new(width, 40));
+        ChartLanes(start + new Vector2(0, 41), labelWidth, width);
+        ImGui.SetCursorScreenPos(start + new Vector2(0, 94));
+        if (ImGui.BeginChild("Timeline rows", new(0, Math.Max(32, available.Y - 94)), ImGuiChildFlags.None, ImGuiWindowFlags.NoScrollWithMouse))
         {
             var origin = ImGui.GetCursorScreenPos();
-            var rows = TimelineTrackRow.Arrange(_trackNames, _expandedGraphs, graphHeight: Math.Clamp(available.Y - 71, 100, 180));
+            var rows = TimelineTrackRow.Arrange(_trackNames, _expandedGraphs, graphHeight: Math.Clamp(available.Y - 138, 100, 180));
             var height = Math.Max(32, rows.Sum(r => r.Height));
             var plot = origin + new Vector2(labelWidth, 0);
             draw = ImGui.GetWindowDrawList();
@@ -309,7 +326,7 @@ public sealed partial class EffectsEditorSession : IDisposable
                 ImGui.SetCursorScreenPos(new(origin.X, y));
                 if (_revealTrack == track) { ImGui.SetScrollY(row.Top); _revealTrack = null; }
                 ImGui.InvisibleButton("Track##" + track, new(Math.Max(32, available.X - 16), row.HeaderHeight),
-                    ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle);
+                    ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle | ImGuiButtonFlags.MouseButtonRight);
                 hovered = ImGui.IsItemHovered(); headerHovered |= hovered;
                 var mouse = ImGui.GetIO().MousePos;
                 draw.AddRectFilled(new(origin.X, y), new(origin.X + available.X, y + row.HeaderHeight),
@@ -337,6 +354,7 @@ public sealed partial class EffectsEditorSession : IDisposable
                 draw.PushClipRect(new(plot.X, y), new(plot.X + width, y + row.HeaderHeight), true);
                 GridLines(draw, new(plot.X, y), new(width, row.HeaderHeight), false);
                 var keys = _preview.Tracks[track];
+                int? contextIndex = null;
                 for (var i = 0; i < keys.Length; i++)
                 {
                     var key = keys[i];
@@ -352,16 +370,19 @@ public sealed partial class EffectsEditorSession : IDisposable
                             key.Curve is null ? key.Ease.ToString() : "Bezier");
                     if (!hit) continue;
                     hitAnyKey = true;
+                    contextIndex = i;
                     ImGui.SetTooltip($"{track}\nBeat {F(key.Beat)} | Value {F(key.Value)}");
                     if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(track, i, width);
                 }
+                if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                    KeyContext(track, contextIndex, mouse.X < plot.X ? CurrentBeat : _view.BeatAt((mouse.X - plot.X) / width));
                 draw.PopClipRect();
                 if (row.GraphHeight > 0)
                 {
                     var graphPosition = new Vector2(origin.X, y + row.HeaderHeight);
                     ImGui.SetCursorScreenPos(graphPosition);
                     ImGui.InvisibleButton("Curve##" + track, new(Math.Max(32, available.X - 16), row.GraphHeight),
-                        ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle);
+                        ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle | ImGuiButtonFlags.MouseButtonRight);
                     InlineGraph(track, graphPosition, new(labelWidth + width, row.GraphHeight), labelWidth, ImGui.IsItemHovered());
                 }
             }
@@ -405,7 +426,7 @@ public sealed partial class EffectsEditorSession : IDisposable
                 var delta = ImGui.GetMouseDragDelta(ImGuiMouseButton.Left);
                 if (id == 1) _left = Math.Clamp(EditorLayout.Snap(_dividerOrigin + delta.X / size.X, .18f), .1f, .3f);
                 else if (id == 2) _right = Math.Clamp(EditorLayout.Snap(_dividerOrigin - delta.X / size.X, .22f), .12f, .32f);
-                else _bottom = Math.Clamp(EditorLayout.Snap(_dividerOrigin - delta.Y / size.Y, .34f), .22f, .6f);
+                else _bottom = Math.Clamp(EditorLayout.Snap(_dividerOrigin - delta.Y / size.Y, .44f), .22f, .6f);
             }
         }
         ImGui.End();

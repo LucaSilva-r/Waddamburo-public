@@ -17,7 +17,7 @@ public sealed partial class EffectsEditorSession
     private bool _saveRequested, _saveSongRequested, _undoRequested, _redoRequested, _deleteRequested, _reloadRequested;
     private int _addTarget, _addProperty, _snapChoice = 3;
     private static readonly double[] Snaps = [0, 1, .5, .25, .125, .0625];
-    private static readonly string[] SnapNames = ["Off", "1 beat", "1/2 beat", "1/4 beat", "1/8 beat", "1/16 beat"];
+    private static readonly string[] SnapNames = ["Off", "1 beat", "1/2 beat", "1/4 beat", "1/8 beat", "1/16 beat", "Chart notes"];
     private static readonly string[] TargetsList = [.. ChartMods.Elements, "notes"];
     private static readonly ChartEase[] Eases = Enum.GetValues<ChartEase>();
     private EffectKey? _inspectorKey;
@@ -57,6 +57,11 @@ public sealed partial class EffectsEditorSession
     private void HandleEditorShortcuts()
     {
         var io = ImGui.GetIO();
+        if (_pending == PendingAction.None && ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+        {
+            if (ImGui.IsKeyPressed(ImGuiKey.Escape, false) || ImGui.IsKeyPressed(ImGuiKey.F8, false)) _cancelCommandPopup = true;
+            return;
+        }
         if (ImGui.IsKeyPressed(ImGuiKey.Escape, false) || ImGui.IsKeyPressed(ImGuiKey.F8, false))
         {
             if (io.WantTextInput && !ImGui.IsKeyPressed(ImGuiKey.F8, false)) return;
@@ -76,6 +81,8 @@ public sealed partial class EffectsEditorSession
             if (io.KeyShift) _redoRequested = true; else _undoRequested = true;
         }
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y)) _redoRequested = true;
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.C, false)) _copyRequested = true;
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.V, false)) _pasteRequested = true;
         if (ImGui.IsKeyPressed(ImGuiKey.Delete)) _deleteRequested = true;
         if (!io.WantCaptureKeyboard) return;
         if (!io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.K, false)) AddKey();
@@ -90,6 +97,7 @@ public sealed partial class EffectsEditorSession
         if (_undoRequested) { EndDrag(); if (_history.Undo()) ApplyCurrent(); }
         if (_redoRequested) { EndDrag(); if (_history.Redo()) ApplyCurrent(); }
         if (_deleteRequested) DeleteSelected();
+        FinishKeyCommands();
         if ((_saveRequested || _saveSongRequested) && inspectorValid) SaveDocument(_saveSongRequested);
         if (_reloadRequested) Request(PendingAction.Reload);
         (_saveRequested, _saveSongRequested, _undoRequested, _redoRequested, _deleteRequested, _reloadRequested) = (false, false, false, false, false, false);
@@ -233,13 +241,14 @@ public sealed partial class EffectsEditorSession
         }
     }
 
-    private double SnapBeat(double beat) => Math.Max(0, EffectDocument.Snap(beat, Snaps[_snapChoice]));
+    private double SnapBeat(double beat) => Math.Max(0, ImGui.GetIO().KeyAlt ? beat
+        : _snapChoice == Snaps.Length ? _reference.Snap(beat) : EffectDocument.Snap(beat, Snaps[_snapChoice]));
 
     private void AddKey()
     {
         if (_primary is not { } track || _history.Current.UsesEmbeddedEffects) return;
         var beat = SnapBeat(CurrentBeat);
-        var value = _preview.ValueAt(track, _transport.Clock.Position);
+        var value = _preview.ValueAt(track, beat);
         try
         {
             var keys = _history.Current.Tracks.GetValueOrDefault(track, []);
@@ -374,6 +383,7 @@ public sealed partial class EffectsEditorSession
 
     private void BeginKeyDrag(string track, int index, float width, GraphScale? scale = null, float height = 0)
     {
+        if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) { OpenKeyValue(track, index); return; }
         if (ChooseKey(track, index, ImGui.GetIO().KeyCtrl, keepTracks: scale.HasValue) is not { } anchor) return;
         if (_history.Current.UsesEmbeddedEffects) return;
         if (!_selectedKeys.Contains(anchor)) return;
