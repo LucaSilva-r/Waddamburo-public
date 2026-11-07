@@ -62,7 +62,7 @@ public sealed partial class EffectsEditorSession
             if (io.WantTextInput && !ImGui.IsKeyPressed(ImGuiKey.F8, false)) return;
             if (_dragBefore is not null)
             {
-                _history.CancelGesture(); _dragBefore = null; ApplyCurrent();
+                _history.CancelGesture(); _dragBefore = null; _handleDrag = null; _graphDragScale = null; ApplyCurrent();
             }
             else if (_boxStart is not null) _boxStart = null;
             else if (_pending != PendingAction.None) _cancelConfirm = true;
@@ -369,24 +369,32 @@ public sealed partial class EffectsEditorSession
         _selectedKeys.Clear();
     }
 
-    private void BeginKeyDrag(string track, int index, float width)
+    private void BeginKeyDrag(string track, int index, float width, GraphScale? scale = null, float height = 0)
     {
-        if (ChooseKey(track, index, ImGui.GetIO().KeyCtrl) is not { } anchor) return;
+        if (ChooseKey(track, index, ImGui.GetIO().KeyCtrl, keepTracks: scale.HasValue) is not { } anchor) return;
         if (_history.Current.UsesEmbeddedEffects) return;
         if (!_selectedKeys.Contains(anchor)) return;
         _dragBefore = _history.Current; _dragKeys = [.. _selectedKeys]; _dragAnchor = anchor;
+        _graphDragScale = scale; _graphDragHeight = height;
         _dragWidth = width; _dragSpan = _view.Span; _history.BeginGesture();
     }
 
     private void MoveDraggedKeys()
     {
         if (_dragBefore is null || !ImGui.IsMouseDragging(ImGuiMouseButton.Left)) return;
+        if (_handleDrag is not null) { MoveCurveHandle(); return; }
         var delta = ImGui.GetMouseDragDelta(ImGuiMouseButton.Left).X / _dragWidth * _dragSpan;
         delta = SnapBeat(_dragAnchor.Beat + delta) - _dragAnchor.Beat;
         delta = Math.Max(delta, -_dragKeys.Min(k => k.Beat));
         try
         {
-            var document = _dragBefore.MoveKeys(_dragKeys, delta);
+            var valueDelta = 0d;
+            if (_graphDragScale is { } scale)
+            {
+                var original = _dragBefore.Tracks[_dragAnchor.Track].First(k => k.Beat == _dragAnchor.Beat).Value;
+                valueDelta = scale.ValueAt(scale.Fraction(original) - ImGui.GetMouseDragDelta(ImGuiMouseButton.Left).Y / _graphDragHeight) - original;
+            }
+            var document = _dragBefore.MoveKeys(_dragKeys, delta, valueDelta);
             if (_history.Preview(document)) ApplyCurrent();
             _selectedKeys.Clear(); _selectedKeys.UnionWith(_dragKeys.Select(k => k with { Beat = k.Beat + delta }));
             FocusKey(_dragAnchor with { Beat = _dragAnchor.Beat + delta });
@@ -442,6 +450,6 @@ public sealed partial class EffectsEditorSession
     private void EndDrag()
     {
         if (_dragBefore is null) return;
-        _history.EndGesture(); _dragBefore = null;
+        _history.EndGesture(); _dragBefore = null; _handleDrag = null; _graphDragScale = null;
     }
 }

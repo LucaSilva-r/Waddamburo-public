@@ -365,7 +365,7 @@ public sealed partial class EffectsEditorSession : IDisposable
             draw.AddText(new(legendX, position.Y + 3), TrackColors[i % TrackColors.Length], label);
             legendX += width;
         }
-        var scale = GraphScale.Fit(values);
+        var scale = _graphDragScale ?? GraphScale.Fit(values.Concat(VisibleHandleValues()));
         float Y(double value) => origin.Y + (float)(1 - scale.Fraction(value)) * plotSize.Y;
         GridLines(draw, origin, plotSize, true);
         for (var i = 0; i <= 4; i++)
@@ -376,6 +376,7 @@ public sealed partial class EffectsEditorSession : IDisposable
             draw.AddText(new(position.X + 2, y - 6), Muted, F(value));
         }
         draw.PushClipRect(origin, origin + plotSize, true);
+        var hitHandle = GraphHandles(draw, origin, plotSize, scale, hovered);
         for (var s = 0; s < samples.Length; s++)
         {
             var sample = samples[s];
@@ -394,7 +395,7 @@ public sealed partial class EffectsEditorSession : IDisposable
                 if (hit)
                 {
                     ImGui.SetTooltip($"{sample.Key}\nBeat {F(keys[i].Beat)} | Value {F(keys[i].Value)}");
-                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) ChooseKey(sample.Key, i, ImGui.GetIO().KeyCtrl, keepTracks: true);
+                    if (!hitHandle && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(sample.Key, i, plotSize.X, scale, plotSize.Y);
                 }
             }
         }
