@@ -119,7 +119,7 @@ what changed from this plan, and anything the next session must know. Start each
 
 - [ ] 1. ImGui layer + Editor skeleton
 - [x] 2. Keyframe format + bezier + ReplaceEffects
-- [ ] 3. Read-only editor (layout, transport, timeline, graph view)
+- [x] 3. Read-only editor (layout, transport, timeline, graph view)
 - [ ] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
 - [ ] 5. Graph editing (keys and bezier handles)
 - [ ] 6. Viewport (click-select, gizmos, auto-key, Don model sliders)
@@ -155,6 +155,16 @@ what changed from this plan, and anything the next session must know. Start each
   beat, with maximum sampled value deviation below 0.000007. Local paths and files remain outside this repository.
   Restart using the updated build before testing migrated files. UI remains the integration demo; next is milestone 3
   (layout, transport, timeline and read-only graph), with panel snapping/docking requested by the user.
+
+- 2026-11-07: milestone 3 landed in `84fc9c9`. The demo is replaced with target/inspector panels, transport and
+  A/B loop controls on the existing practice clock, a beat timeline with chart bars, key inspection and ruler seek,
+  and multi-track read-only graphs with wheel zoom, middle-button pan and frame-all/selected. Edge-attached panels
+  resize using dividers and snap near their default proportions; arbitrary floating-window docking is not implemented.
+  The stage aspect-fits an explicit normalized center region and restores its prior region on exit. Authored keyframes
+  (including first-key beats and empty tracks) remain local chart metadata so the UI does not guess them from timed
+  drawing segments; chart hashes and drawing-block formats are unchanged. 715 tests pass, the App builds, and a
+  synthetic native UI smoke verifies timeline seek, divider resizing, playback, key inspection, graph selection,
+  pan/zoom and viewport restoration at 150% DPI. Preview viewing is usable; authoring/save remains milestone 4.
 
 ## Milestones (each ends committed and tested)
 
