@@ -5,7 +5,8 @@ namespace Waddamburo.Editor;
 
 public sealed partial class EffectsEditorSession
 {
-    private void InlineGraph(string track, Vector2 position, Vector2 size, float labelWidth, bool hovered)
+    // Returns whether the pointer is on one of its keys or handles (so a press there is not a box selection).
+    private bool InlineGraph(string track, Vector2 position, Vector2 size, float labelWidth, bool hovered)
     {
         var origin = position + new Vector2(labelWidth, 12);
         var plotSize = new Vector2(size.X - labelWidth, size.Y - 24);
@@ -34,11 +35,14 @@ public sealed partial class EffectsEditorSession
                     new(origin.X + i / 256f * plotSize.X, Y(samples[i])), Accent, 2);
         var hitHandle = _key?.Track == track && GraphHandles(draw, origin, plotSize, scale, hovered);
         int? hitKey = null;
+        var nearest = hovered && !hitHandle
+            ? NearestKey(keys.Select(k => new Vector2(X(k.Beat, origin, plotSize.X), Y(k.Value))), ImGui.GetIO().MousePos) : null;
         for (var i = 0; i < keys.Length; i++)
         {
             var center = new Vector2(X(keys[i].Beat, origin, plotSize.X), Y(keys[i].Value));
             if (center.X < origin.X || center.X > origin.X + plotSize.X || center.Y < origin.Y || center.Y > origin.Y + plotSize.Y) continue;
-            var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 9;
+            _keyScreen.Add((new(track, keys[i].Beat), center));
+            var hit = i == nearest;
             draw.AddCircleFilled(center, 4.5f, hit || _selectedKeys.Contains(new(track, keys[i].Beat)) ? Playhead : Accent);
             if (!hit) continue;
             hitKey = i;
@@ -58,6 +62,7 @@ public sealed partial class EffectsEditorSession
         }
         DrawPlayhead(draw, origin, plotSize);
         draw.PopClipRect();
+        return hitHandle || hitKey is not null;
     }
 
     private GraphScale? _graphDragScale;

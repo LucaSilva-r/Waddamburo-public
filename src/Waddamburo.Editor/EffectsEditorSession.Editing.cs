@@ -33,6 +33,23 @@ public sealed partial class EffectsEditorSession
     private float _dragWidth;
     private double _dragSpan;
     private Vector2? _boxStart;
+    // Every key drawn this frame (timeline rows and curves) where it is on screen: what a selection box picks from.
+    private readonly List<(EffectKey Key, Vector2 Center)> _keyScreen = [];
+
+    // The index of the point nearest the pointer within reach (9 px), so dense keys give one hit, not all of them.
+    private static int? NearestKey(IEnumerable<Vector2> centers, Vector2 mouse)
+    {
+        int? nearest = null;
+        var best = 9f;
+        var index = 0;
+        foreach (var center in centers)
+        {
+            var distance = Vector2.Distance(mouse, center);
+            if (distance < best) (best, nearest) = (distance, index);
+            index++;
+        }
+        return nearest;
+    }
     private HashSet<EffectKey> _boxOriginal = [];
     private bool _boxAppend;
 
@@ -402,7 +419,8 @@ public sealed partial class EffectsEditorSession
         try
         {
             var valueDelta = 0d;
-            if (_graphDragScale is { } scale)
+            // Shift keeps the values and moves the keys in time only.
+            if (_graphDragScale is { } scale && !ImGui.GetIO().KeyShift)
             {
                 var original = _dragBefore.Tracks[_dragAnchor.Track].First(k => k.Beat == _dragAnchor.Beat).Value;
                 valueDelta = scale.ValueAt(scale.Fraction(original) - ImGui.GetMouseDragDelta(ImGuiMouseButton.Left).Y / _graphDragHeight) - original;
@@ -437,17 +455,11 @@ public sealed partial class EffectsEditorSession
         {
             var min = Vector2.Min(start, mouse); var max = Vector2.Max(start, mouse);
             _selectedKeys.Clear(); _selectedKeys.UnionWith(_boxOriginal);
-            foreach (var row in rows)
-            {
-                var y = origin.Y + row.KeyCenter;
-                if (y < min.Y || y > max.Y) continue;
-                var track = row.Track;
-                foreach (var key in _preview.Tracks[track])
+            foreach (var (key, center) in _keyScreen)
+                if (center.X >= min.X && center.X <= max.X && center.Y >= min.Y && center.Y <= max.Y)
                 {
-                    var x = X(key.Beat, plot, width);
-                    if (x >= min.X && x <= max.X) { _selectedKeys.Add(new(track, key.Beat)); _selected.Add(track); }
+                    _selectedKeys.Add(key); _selected.Add(key.Track);
                 }
-            }
             draw.PushClipRect(plot, new(plot.X + width, origin.Y + height), true);
             draw.AddRectFilled(min, max, Color(.3f, .7f, 1, .12f));
             draw.AddRect(min, max, Accent);

@@ -25,6 +25,7 @@ public sealed class EffectPreview
     public ImmutableDictionary<string, ImmutableArray<ChartModKeyframe>> Tracks { get; }
     public ImmutableArray<double> Bars { get; }
 
+    /// <param name="chart">The chart as previewed, its effects applied.</param>
     /// <param name="keyframes">The editor document's tracks; changes without one are shown from their timed segments.</param>
     public EffectPreview(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>>? keyframes = null)
     {

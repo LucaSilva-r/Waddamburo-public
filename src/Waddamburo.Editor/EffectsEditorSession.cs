@@ -28,7 +28,7 @@ public sealed partial class EffectsEditorSession : IDisposable
     private bool _seekDrag;
     private int _divider;
     private float _dividerOrigin;
-    private const string Status = "Double-click: add/edit key | Ctrl+C/V: copy/paste | Right-click: repeat | Alt: bypass snap | Shift+wheel: scroll";
+    private const string Status = "Double-click: add/edit key | Drag empty space: box select | Shift+drag key: time only | Ctrl+C/V: copy/paste | Right-click: repeat | Alt: bypass snap | Shift+wheel: scroll";
     private static readonly uint Background = Color(.115f, .125f, .14f), Grid = Color(.20f, .22f, .25f),
         Bar = Color(.31f, .34f, .39f), Text = Color(.85f, .87f, .9f), Muted = Color(.52f, .56f, .61f),
         Playhead = Color(1, .56f, .18f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
@@ -321,6 +321,7 @@ public sealed partial class EffectsEditorSession : IDisposable
             draw = ImGui.GetWindowDrawList();
             var headerHovered = false;
             var hitAnyKey = false;
+            _keyScreen.Clear();
             foreach (var row in rows)
             {
                 var track = row.Track;
@@ -357,13 +358,17 @@ public sealed partial class EffectsEditorSession : IDisposable
                 GridLines(draw, new(plot.X, y), new(width, row.HeaderHeight), false);
                 var keys = _preview.Tracks[track];
                 int? contextIndex = null;
+                // Only the key nearest the pointer is hit: dense keys would otherwise all highlight, and one click
+                // would start a drag on each of them (each replacing the selection).
+                var nearest = hovered ? NearestKey(keys.Select(k => new Vector2(X(k.Beat, plot, width), y + row.HeaderHeight / 2)), mouse) : null;
                 for (var i = 0; i < keys.Length; i++)
                 {
                     var key = keys[i];
                     var x = X(key.Beat, plot, width);
                     if (x < plot.X - 6 || x > plot.X + width + 6) continue;
                     var center = new Vector2(x, y + row.HeaderHeight / 2);
-                    var hit = hovered && Vector2.Distance(mouse, center) < 9;
+                    _keyScreen.Add((new(track, key.Beat), center));
+                    var hit = i == nearest;
                     var selected = _selectedKeys.Contains(new(track, key.Beat));
                     draw.AddQuadFilled(center + new Vector2(0, -5), center + new Vector2(5, 0), center + new Vector2(0, 5),
                         center + new Vector2(-5, 0), selected || hit ? Playhead : Accent);
@@ -385,7 +390,9 @@ public sealed partial class EffectsEditorSession : IDisposable
                     ImGui.SetCursorScreenPos(graphPosition);
                     ImGui.InvisibleButton("Curve##" + track, new(Math.Max(32, available.X - 16), row.GraphHeight),
                         ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle | ImGuiButtonFlags.MouseButtonRight);
-                    InlineGraph(track, graphPosition, new(labelWidth + width, row.GraphHeight), labelWidth, ImGui.IsItemHovered());
+                    var graphHovered = ImGui.IsItemHovered();
+                    headerHovered |= graphHovered;
+                    hitAnyKey |= InlineGraph(track, graphPosition, new(labelWidth + width, row.GraphHeight), labelWidth, graphHovered);
                 }
             }
             BoxSelection(draw, origin, plot, width, rows, height, headerHovered, hitAnyKey);
