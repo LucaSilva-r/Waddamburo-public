@@ -891,7 +891,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 /// <summary>
 /// A judged hit, early or late (<paramref name="Great"/>: within the Great window), at a lane's hit
 /// target (X, Y and Radius on the 1280x720 stage); <paramref name="At"/> is a Stopwatch timestamp.
+/// <paramref name="Placement"/> is the playfield's placement at the hit (modchart, layout): the glow is drawn through it.
 /// </summary>
-/// <param name="Placement">The playfield's placement at the hit (modchart, layout): the glow is drawn through it.</param>
 internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At,
     Waddamburo.Lumen.Runtime.LumenMatrix Placement);

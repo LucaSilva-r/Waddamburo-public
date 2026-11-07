@@ -17,6 +17,7 @@ public sealed class TaikoScore
     private long _pendingStrongPoints;
     private readonly TimeSpan _goodWindow;
 
+    /// <param name="chart">The chart played.</param>
     /// <param name="goodWindow">The chart's Good window: a note hittable while Go-Go is on counts as Go-Go.</param>
     public TaikoScore(PlayableChart chart, TimeSpan goodWindow = default)
     {

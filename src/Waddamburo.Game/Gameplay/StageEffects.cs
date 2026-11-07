@@ -146,14 +146,14 @@ public sealed class StageEffects
     }
 
     /// <summary>Takes the movies' pivots now (the song's start) unless they have them already.</summary>
-    public void Prime(IEnumerable<LumenSceneLayer> layers)
+    public static void Prime(IEnumerable<LumenSceneLayer> layers)
     {
         foreach (var layer in layers)
             _ = pivotOf(layer);
     }
 
     // The centre of what a movie draws on the stage, found the first time it draws something.
-    private (float X, float Y) pivotOf(LumenSceneLayer layer)
+    private static (float X, float Y) pivotOf(LumenSceneLayer layer)
     {
         if (Pivots.TryGetValue(layer.Player, out var known))
             return known.Value;

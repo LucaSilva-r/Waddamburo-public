@@ -1,7 +1,5 @@
-using System.Numerics;
 using ImGuiNET;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Editor;

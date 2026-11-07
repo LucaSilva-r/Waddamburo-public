@@ -89,7 +89,7 @@ public sealed class TaikoLumenPresentation
         _geometry = new NoteGeometry(chart, _hitX, _hitY, _mods);
         _layout = new ChartModValues(chart.Effects.Layout);
         _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty, _layout);
-        _stage.Prime(_background.Concat(_foreground));
+        StageEffects.Prime(_background.Concat(_foreground));
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
         // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.

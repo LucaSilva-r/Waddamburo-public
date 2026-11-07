@@ -7,6 +7,7 @@ namespace Waddamburo.Editor;
 /// <summary>Stage/screen mapping uses logical window units, independent of the backing framebuffer scale.</summary>
 public readonly record struct EffectViewport(EditorPanel Rectangle)
 {
+    /// <param name="region">The panel the stage is fitted into.</param>
     /// <param name="aspect">The stage's shape on screen: 16:9, or 4:3 for a 4:3 layout (the stage squeezed).</param>
     public static EffectViewport Fit(EditorPanel region, float aspect = 16f / 9)
     {
