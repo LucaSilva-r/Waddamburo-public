@@ -8,6 +8,31 @@ namespace Waddamburo.Game.Tests;
 public sealed class LiveEffectsTests
 {
     [Fact]
+    public void EditorBoundsUseTheLiveSceneRolesPivotsAndCameraTransforms()
+    {
+        var chart = new PlayableChart(new(new(SongSourceKind.Tja, "synthetic"), "oni"), TimeSpan.Zero, TimeSpan.FromSeconds(20),
+            [], [new(TimeSpan.Zero, 120, 4, 4)], [new(TimeSpan.Zero, 1)], [new(TimeSpan.Zero, false)], []);
+        var session = new TaikoJudgementSession(chart, new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)));
+        var initialTime = session.CurrentTime;
+        var dancers = Marker(); var don = Marker(); var lane = Marker();
+        var presentation = new TaikoLumenPresentation(chart, session, [dancers], [],
+            new Dictionary<PlayableNoteKind, LumenSceneLayer>(), lane, lane, lane.Player, lane.Player,
+            roles: new Dictionary<LumenPlayer, string> { [dancers.Player] = "dance" });
+        var initial = presentation.EffectElements(TimeSpan.Zero, don);
+        Assert.Equal(2, initial.Count);
+        Assert.Contains(initial, e => e.Target == "dancers" && e.Minimum.X == 396 && e.Pivot.X == 400);
+        Assert.Contains(initial, e => e.Target == "don");
+        presentation.ReplaceEffects(new() { Mods = [new(TimeSpan.Zero, TimeSpan.Zero, "dancers", "x", 100, ChartEase.Linear),
+            new(TimeSpan.Zero, TimeSpan.Zero, "camera", "scale", 2, ChartEase.Linear)] });
+        var moved = Assert.Single(presentation.EffectElements(TimeSpan.Zero), e => e.Target == "dancers");
+        Assert.Equal(352, moved.Minimum.X, 4); Assert.Equal(368, moved.Maximum.X, 4);
+        Assert.Equal(360, moved.Pivot.X, 4); Assert.Equal(140, moved.Pivot.Y, 4);
+        Assert.True(moved.Contains(new(360, 140)));
+        Assert.Equal(2, moved.Parent.M11);
+        Assert.Equal(initialTime, session.CurrentTime);
+    }
+
+    [Fact]
     public void ReplacingEffectsRebuildsVisibilityAndResetsTargetWithoutResettingJudgement()
     {
         var chart = new PlayableChart(new(new(SongSourceKind.Tja, "synthetic"), "oni"), TimeSpan.Zero, TimeSpan.FromSeconds(20),

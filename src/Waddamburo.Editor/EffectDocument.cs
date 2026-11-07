@@ -57,6 +57,20 @@ public sealed class EffectDocument
         return document;
     }
 
+    public EffectDocument SetValuesAt(double beat, IReadOnlyDictionary<string, double> values, bool autoKey)
+    {
+        if (UsesEmbeddedEffects) throw new InvalidDataException("Start a keyframe modchart before editing scene elements.");
+        if (!autoKey && values.Keys.Any(track => !Contains(new(track, beat))))
+            throw new InvalidDataException("No key at this beat. Enable Auto-key to create keys at the playhead.");
+        var document = this;
+        foreach (var (track, value) in values)
+        {
+            var key = Tracks.GetValueOrDefault(track, []).FirstOrDefault(k => k.Beat == beat, new ChartModKeyframe(beat, value));
+            document = document.SetKey(track, key with { Value = value });
+        }
+        return document;
+    }
+
     private EffectDocument ReplaceTrack(string track, ImmutableArray<ChartModKeyframe> keys)
     {
         keys = Canonical(keys);

@@ -62,7 +62,7 @@ public sealed partial class EffectsEditorSession
             if (io.WantTextInput && !ImGui.IsKeyPressed(ImGuiKey.F8, false)) return;
             if (_dragBefore is not null)
             {
-                _history.CancelGesture(); _dragBefore = null; _handleDrag = null; _graphDragScale = null; ApplyCurrent();
+                _history.CancelGesture(); _dragBefore = null; _handleDrag = null; _viewportDrag = null; _graphDragScale = null; ApplyCurrent();
             }
             else if (_boxStart is not null) _boxStart = null;
             else if (_pending != PendingAction.None) _cancelConfirm = true;
@@ -84,7 +84,7 @@ public sealed partial class EffectsEditorSession
     private void FinishEditingFrame()
     {
         MoveDraggedKeys();
-        if (_dragBefore is not null && !ImGui.IsMouseDown(ImGuiMouseButton.Left)) EndDrag();
+        if (_dragBefore is not null && !ImGui.IsMouseDown(ImGuiMouseButton.Left) && _viewportDrag?.Mode != GizmoMode.Slider) EndDrag();
         var inspectorValid = true;
         if (_saveRequested || _saveSongRequested || _undoRequested || _redoRequested || _reloadRequested) inspectorValid = CommitInspector();
         if (_undoRequested) { EndDrag(); if (_history.Undo()) ApplyCurrent(); }
@@ -131,6 +131,7 @@ public sealed partial class EffectsEditorSession
 
     private bool Edit(EffectDocument document, string label)
     {
+        EndDrag();
         if (!_history.Edit(document, label)) return false;
         ApplyCurrent();
         _message = label; _messageError = false;
@@ -141,6 +142,7 @@ public sealed partial class EffectsEditorSession
     {
         var chart = _history.Current.UsesEmbeddedEffects ? _sourceChart : ChartModFile.Apply(_sourceChart, _history.Current.Tracks);
         _replaceEffects?.Invoke(chart.Effects);
+        _message = null; _messageError = false;
         _preview = new(chart);
         _trackNames = [.. _preview.Tracks.Keys.Order(StringComparer.Ordinal)];
         _selected.RemoveWhere(key => !_preview.Tracks.ContainsKey(key));
@@ -252,6 +254,7 @@ public sealed partial class EffectsEditorSession
     private void FocusKey(EffectKey key)
     {
         _primary = key.Track; _selected.Add(key.Track);
+        _viewportTarget = key.Track.Split('.')[0];
         if (!_preview.Tracks.TryGetValue(key.Track, out var keys)) return;
         for (var i = 0; i < keys.Length; i++)
             if (keys[i].Beat == key.Beat) { _key = (key.Track, i); _inspectorKey = null; return; }
@@ -381,6 +384,7 @@ public sealed partial class EffectsEditorSession
 
     private void MoveDraggedKeys()
     {
+        if (_viewportDrag is not null) { MoveViewport(); return; }
         if (_dragBefore is null || !ImGui.IsMouseDragging(ImGuiMouseButton.Left)) return;
         if (_handleDrag is not null) { MoveCurveHandle(); return; }
         var delta = ImGui.GetMouseDragDelta(ImGuiMouseButton.Left).X / _dragWidth * _dragSpan;
@@ -450,6 +454,6 @@ public sealed partial class EffectsEditorSession
     private void EndDrag()
     {
         if (_dragBefore is null) return;
-        _history.EndGesture(); _dragBefore = null; _handleDrag = null; _graphDragScale = null;
+        _history.EndGesture(); _dragBefore = null; _handleDrag = null; _viewportDrag = null; _graphDragScale = null;
     }
 }

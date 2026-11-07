@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using ImGuiNET;
 using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
@@ -31,7 +32,8 @@ public sealed partial class EffectsEditorSession : IDisposable
         Playhead = Color(1, .56f, .18f), Accent = Color(.32f, .8f, .95f), SelectedRow = Color(.11f, .2f, .28f, .65f);
     private static readonly uint[] TrackColors = [Color(.32f, .8f, .95f), Color(.9f, .54f, .82f), Color(.55f, .88f, .55f), Color(1, .8f, .3f)];
 
-    public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null)
+    public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
+        Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null)
     {
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(transport);
@@ -40,6 +42,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         _sourceChart = chart;
         _files = files;
         _replaceEffects = replaceEffects;
+        _getElements = elements;
         _history = new(chart.Effects.ModTracks.Count == 0 && !chart.Effects.Mods.IsEmpty
             ? EffectDocument.EmbeddedPreview : EffectDocument.FromTracks(chart.Effects.ModTracks));
         _preview = new(chart);
@@ -72,11 +75,13 @@ public sealed partial class EffectsEditorSession : IDisposable
         if (size.X < 32 || size.Y < 32) return;
         var layout = EditorLayout.Calculate(size.X, size.Y, _left, _right, _bottom);
         _application.StageRegion = layout.Stage.Normalized(size.X, size.Y);
+        _elements = _getElements?.Invoke(_transport.Clock.Position) ?? [];
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
         Toolbar(layout.Toolbar);
         Targets(layout.Targets);
         Inspector(layout.Inspector);
         TrackPanel(layout.Tracks);
+        Viewport(layout.Stage);
         Dividers(layout, size);
         ImGui.PopStyleVar();
         FinishEditingFrame();
@@ -161,6 +166,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         if (!toggle) _selected.Clear();
         if (!toggle || !_selected.Remove(track)) _selected.Add(track);
         _primary = _selected.Contains(track) ? track : _selected.Order(StringComparer.Ordinal).FirstOrDefault();
+        _viewportTarget = _primary?.Split('.')[0];
         _key = null;
         _selectedKeys.Clear();
         _inspectorKey = null;
@@ -170,6 +176,7 @@ public sealed partial class EffectsEditorSession : IDisposable
     {
         if (Panel("Inspector", rect))
         {
+            ElementInspector();
             if (_primary is { } track)
             {
                 ImGui.TextUnformatted(track);

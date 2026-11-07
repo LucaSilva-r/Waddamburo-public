@@ -1,3 +1,4 @@
+using System.Numerics;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
@@ -24,6 +25,30 @@ public sealed class StageEffects
 
     /// <summary>Whether any layer can move at all (else <see cref="Place"/> is never needed).</summary>
     public bool IsActive => _moves || !_mods.IsEmpty;
+
+    /// <summary>Describes a movie using the same pivots and transforms as its live placement.</summary>
+    public StageEffectElement? Describe(LumenSceneLayer layer, string target, bool followsTarget, TimeSpan time)
+    {
+        var placed = Place(layer, target, followsTarget, time);
+        var quads = layer.Player.CreateRenderSnapshot().Quads;
+        if (quads.IsEmpty) return null;
+        var minimum = new Vector2(float.PositiveInfinity);
+        var maximum = new Vector2(float.NegativeInfinity);
+        foreach (var quad in quads.Where(q => q.MaskOperation == LumenRenderMaskOperation.Draw
+            && (q.MultiplyColor.Alpha > 0 || q.AddColor.Alpha > 0)))
+            foreach (var vertex in (LumenRenderVertex[])[quad.TopLeft, quad.TopRight, quad.BottomRight, quad.BottomLeft])
+            {
+                var point = placed.Transform.Transform(vertex.X, vertex.Y);
+                var position = new Vector2(point.X, point.Y);
+                minimum = Vector2.Min(minimum, position); maximum = Vector2.Max(maximum, position);
+            }
+        if (!float.IsFinite(minimum.X) || !float.IsFinite(minimum.Y) || !float.IsFinite(maximum.X) || !float.IsFinite(maximum.Y)) return null;
+        var pivot = target == "playfield" ? _geometry.Origin(time) : pivotOf(layer);
+        var own = Element(target, time, pivot)?.Matrix ?? LumenMatrix.Identity;
+        var parent = Element("camera", time, (640, 360))?.Matrix ?? LumenMatrix.Identity;
+        var transformed = own.Then(parent).Transform(pivot.Item1, pivot.Item2);
+        return new(target, minimum, maximum, new(transformed.X, transformed.Y), parent);
+    }
 
     /// <summary>
     /// Green's gameplay role under its modchart name (the same role whatever skin or random mix fills it); the lane's

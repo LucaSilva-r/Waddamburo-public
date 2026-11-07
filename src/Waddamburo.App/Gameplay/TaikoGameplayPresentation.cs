@@ -138,6 +138,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _lanes[lane].ReplaceEffects(effects);
     }
 
+    public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time) =>
+        _lanes.Length == 1 ? _lanes[0].EffectElements(time) : [];
+
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);
 
@@ -825,6 +828,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         }
 
         public void ReplaceEffects(ChartEffects effects) => _presentation.ReplaceEffects(effects);
+
+        public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time) =>
+            _presentation.EffectElements(shown(time), _character?.Layer, _characterSlot);
 
         public void RemoveNote(int index) => _presentation.RemoveNote(index);
 

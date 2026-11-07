@@ -195,6 +195,30 @@ public sealed class TaikoLumenPresentation
         return new LumenScenePlayer(1280, 720, [.. back, .. front]).CreateRenderSnapshot(interpolation, playerInterpolation);
     }
 
+    /// <summary>Scene bounds for the effects editor; evaluated only while the workspace requests them.</summary>
+    public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time, LumenSceneLayer? character = null, int characterSlot = 0)
+    {
+        var layers = new List<LumenSceneLayer>(_background);
+        if (character is not null) layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), character);
+        layers.AddRange(_foreground);
+        var elements = new List<StageEffectElement>();
+        foreach (var layer in layers)
+        {
+            var target = targetOf(layer, character);
+            if (target is null || _stage.Describe(layer, target, followsTarget(layer), time) is not { } element) continue;
+            var previous = elements.FindIndex(e => e.Target == target);
+            if (previous >= 0)
+            {
+                var old = elements[previous];
+                element = element with { Minimum = System.Numerics.Vector2.Min(old.Minimum, element.Minimum),
+                    Maximum = System.Numerics.Vector2.Max(old.Maximum, element.Maximum) };
+                elements.RemoveAt(previous);
+            }
+            elements.Add(element);
+        }
+        return elements;
+    }
+
     /// <summary>
     /// The lane's layers in draw order, split at the notes: backgrounds, lane, bar lines and notes;
     /// then the overlays in front (two lanes are merged back, back, front, front).
@@ -284,13 +308,16 @@ public sealed class TaikoLumenPresentation
     // OpenTaiko keeps those where they are relative to the moved target, a flight's landing included).
     private LumenSceneLayer place(LumenSceneLayer layer, LumenSceneLayer? character, TimeSpan time)
     {
-        var target = character is not null && ReferenceEquals(layer, character) ? "don"
+        return _stage.Place(layer, targetOf(layer, character), followsTarget(layer), time);
+    }
+
+    private string? targetOf(LumenSceneLayer layer, LumenSceneLayer? character) =>
+        character is not null && ReferenceEquals(layer, character) ? "don"
             : _scenePlayers.Contains(layer.Player) ? StageEffects.TargetOf(_roles?.GetValueOrDefault(layer.Player))
             : "playfield";
-        var followsTarget = layer.Player == _feedback || _flights?.Owns(layer.Player) == true
+
+    private bool followsTarget(LumenSceneLayer layer) => layer.Player == _feedback || _flights?.Owns(layer.Player) == true
             || _longNotes?.TargetOverlays.Contains(layer.Player) == true;
-        return _stage.Place(layer, target, followsTarget, time);
-    }
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
         TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool hitNote = false, bool barLine = false)

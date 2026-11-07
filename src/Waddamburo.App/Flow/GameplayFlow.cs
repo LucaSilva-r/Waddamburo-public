@@ -432,6 +432,8 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public void ReplaceEditorEffects(ChartEffects effects) => _review!.ReplaceEffects(0, effects);
 
+    public IReadOnlyList<StageEffectElement> EditorElements(TimeSpan time) => Shell.Gameplay.EffectElements(time);
+
     /// <summary>Effects authoring is available in local, single-lane home practice.</summary>
     public bool CanEditEffects => Shell.Arcade.Home && _training is not null && _charts.Length == 1
         && _waiwai is null && !Shell.Match.InSong;
