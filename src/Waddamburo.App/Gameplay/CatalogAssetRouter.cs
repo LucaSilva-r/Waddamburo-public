@@ -14,6 +14,9 @@ internal sealed class CatalogAssetRouter(IEnumerable<object> providers) : ICatal
 
     public bool Resolves(CatalogAssetKey asset) => _resolvers.ContainsKey(asset.Provider);
 
+    public string? ModchartPath(CatalogAssetKey asset) => _charts.TryGetValue(asset.Provider, out var provider)
+        ? (provider as IChartModFileProvider)?.ModchartPath(asset) : null;
+
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default) =>
         _resolvers.TryGetValue(asset.Provider, out var resolver)
             ? resolver.OpenReadAsync(asset, cancellationToken)

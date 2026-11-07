@@ -8,16 +8,16 @@ using Waddamburo.Platform.Sdl.Rendering;
 namespace Waddamburo.Editor;
 
 /// <summary>The effect preview workspace, attached to the current practice session.</summary>
-public sealed class EffectsEditorSession : IDisposable
+public sealed partial class EffectsEditorSession : IDisposable
 {
     private readonly SdlApplication _application;
     private readonly ImGuiLayer _layer;
     private readonly RenderRectangle? _previousRegion;
-    private readonly EffectPreview _preview;
+    private EffectPreview _preview;
     private readonly IEffectsEditorTransport _transport;
     private readonly BeatView _view = new();
     private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
-    private readonly string[] _trackNames;
+    private string[] _trackNames;
     private (string Track, int Index)? _key;
     private string? _primary;
     private float _left = .18f, _right = .22f, _bottom = .34f;
@@ -31,18 +31,26 @@ public sealed class EffectsEditorSession : IDisposable
         Playhead = Color(1, .56f, .18f), Accent = Color(.32f, .8f, .95f), SelectedRow = Color(.11f, .2f, .28f, .65f);
     private static readonly uint[] TrackColors = [Color(.32f, .8f, .95f), Color(.9f, .54f, .82f), Color(.55f, .88f, .55f), Color(1, .8f, .3f)];
 
-    public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport)
+    public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null)
     {
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(transport);
         _application = application;
         _transport = transport;
+        _sourceChart = chart;
+        _files = files;
+        _replaceEffects = replaceEffects;
+        _history = new(chart.Effects.ModTracks.Count == 0 && !chart.Effects.Mods.IsEmpty
+            ? EffectDocument.EmbeddedPreview : EffectDocument.FromTracks(chart.Effects.ModTracks));
         _preview = new(chart);
         _trackNames = [.. _preview.Tracks.Keys.Order(StringComparer.Ordinal)];
         if (_trackNames.Length > 0) Select(_trackNames[0], false);
         _previousRegion = application.StageRegion;
         FrameAll();
         _layer = application.AttachImGui(Draw);
+        _layer.CaptureControlShortcuts = true;
+        _layer.CaptureKey = key => key is ImGuiKey.Space or ImGuiKey.LeftArrow or ImGuiKey.RightArrow
+            or ImGuiKey.A or ImGuiKey.B or ImGuiKey.Escape or ImGuiKey.F8 or ImGuiKey.Delete;
     }
 
     public bool CloseRequested { get; private set; }
@@ -50,15 +58,15 @@ public sealed class EffectsEditorSession : IDisposable
     private void Draw()
     {
         var io = ImGui.GetIO();
-        if (ImGui.IsKeyPressed(ImGuiKey.Escape)) CloseRequested = true;
-        if (io.WantCaptureKeyboard && !io.WantTextInput)
+        HandleEditorShortcuts();
+        if (!io.WantTextInput && _pending == PendingAction.None && !ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
         {
-            if (ImGui.IsKeyPressed(ImGuiKey.Space)) _transport.Clock.TogglePause();
+            if (ImGui.IsKeyPressed(ImGuiKey.Space, false)) _transport.Clock.TogglePause();
             var step = io.KeyShift ? _preview.MeasureAt(_transport.Clock.Position) : 1;
             if (ImGui.IsKeyPressed(ImGuiKey.LeftArrow)) SeekBeat(CurrentBeat - step);
             if (ImGui.IsKeyPressed(ImGuiKey.RightArrow)) SeekBeat(CurrentBeat + step);
-            if (ImGui.IsKeyPressed(ImGuiKey.A)) _transport.MarkLoopStart();
-            if (ImGui.IsKeyPressed(ImGuiKey.B)) _transport.MarkLoopEnd();
+            if (!io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.A, false)) _transport.MarkLoopStart();
+            if (!io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.B, false)) _transport.MarkLoopEnd();
         }
         var size = io.DisplaySize;
         if (size.X < 32 || size.Y < 32) return;
@@ -71,6 +79,7 @@ public sealed class EffectsEditorSession : IDisposable
         TrackPanel(layout.Tracks);
         Dividers(layout, size);
         ImGui.PopStyleVar();
+        FinishEditingFrame();
     }
 
     private double CurrentBeat => _preview.BeatAt(_transport.Clock.Position);
@@ -91,7 +100,7 @@ public sealed class EffectsEditorSession : IDisposable
     {
         if (Panel("Effects preview", rect, false))
         {
-            if (ImGui.Button("Back (Esc)")) CloseRequested = true;
+            if (ImGui.Button("Back (Esc)")) _closeQueued = true;
             ImGui.SameLine();
             if (ImGui.Button(_transport.Clock.Paused ? "Play (Space)" : "Pause (Space)")) _transport.Clock.TogglePause();
             ImGui.SameLine();
@@ -107,7 +116,19 @@ public sealed class EffectsEditorSession : IDisposable
             if (ImGui.Button("Clear loop")) _transport.ClearLoop();
             ImGui.SameLine();
             if (ImGui.Button("Reset panels")) (_left, _right, _bottom) = (.18f, .22f, .34f);
-            ImGui.TextUnformatted($"Beat {F(CurrentBeat)}  |  {_transport.Clock.Position.TotalSeconds:0.00} s  |  Preview only  |  A: {LoopLabel(_transport.LoopStart)}  B: {LoopLabel(_transport.LoopEnd)}");
+            ImGui.SameLine();
+            ImGui.BeginDisabled(_files is null || _history.Current.UsesEmbeddedEffects);
+            if (ImGui.Button("Save (Ctrl+S)")) _saveRequested = true;
+            ImGui.EndDisabled();
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!_history.CanUndo);
+            if (ImGui.Button("Undo")) _undoRequested = true;
+            ImGui.EndDisabled();
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!_history.CanRedo);
+            if (ImGui.Button("Redo")) _redoRequested = true;
+            ImGui.EndDisabled();
+            ImGui.TextUnformatted($"Beat {F(CurrentBeat)}  |  {_transport.Clock.Position.TotalSeconds:0.00} s  |  {(_history.Dirty ? "Unsaved" : "Saved")}  |  A: {LoopLabel(_transport.LoopStart)}  B: {LoopLabel(_transport.LoopEnd)}");
         }
         ImGui.End();
     }
@@ -118,6 +139,7 @@ public sealed class EffectsEditorSession : IDisposable
     {
         if (Panel("Targets", rect))
         {
+            AddTrackControls();
             foreach (var target in ChartMods.Elements.Append("notes"))
             {
                 var tracks = _trackNames.Where(k => k.StartsWith(target + ".", StringComparison.Ordinal)).ToArray();
@@ -135,10 +157,13 @@ public sealed class EffectsEditorSession : IDisposable
 
     private void Select(string track, bool toggle)
     {
+        CommitInspector();
         if (!toggle) _selected.Clear();
         if (!toggle || !_selected.Remove(track)) _selected.Add(track);
         _primary = _selected.Contains(track) ? track : _selected.Order(StringComparer.Ordinal).FirstOrDefault();
         _key = null;
+        _selectedKeys.Clear();
+        _inspectorKey = null;
     }
 
     private void Inspector(EditorPanel rect)
@@ -157,20 +182,12 @@ public sealed class EffectsEditorSession : IDisposable
                     var k = _preview.Tracks[track][selected.Index];
                     ImGui.Separator();
                     ImGui.TextUnformatted($"Key {selected.Index + 1}");
-                    ImGui.TextUnformatted($"Beat: {Exact(k.Beat)}");
-                    ImGui.TextUnformatted($"Time: {_preview.TimeAt(k.Beat).TotalSeconds:0.000} s");
-                    ImGui.TextUnformatted($"Value: {Exact(k.Value)}");
-                    if (k.Curve is { } c)
-                    {
-                        ImGui.TextUnformatted("Cubic Bezier");
-                        ImGui.TextUnformatted($"x1 {F(c.X1)}  y1 {F(c.Y1)}");
-                        ImGui.TextUnformatted($"x2 {F(c.X2)}  y2 {F(c.Y2)}");
-                    }
-                    else ImGui.TextUnformatted($"Ease: {k.Ease}");
+                    KeyInspector(track, k);
                     if (ImGui.Button("Seek to key")) SeekBeat(k.Beat);
                 }
+                TrackEditingControls(track);
                 ImGui.Separator();
-                ImGui.TextWrapped("Click keys to inspect. Ctrl-click tracks to compare curves.");
+                ImGui.TextWrapped("K: add key | Delete: remove keys | Ctrl-click: select multiple");
             }
             else ImGui.TextWrapped("Select an effect track in Targets or the timeline.");
         }
@@ -190,7 +207,7 @@ public sealed class EffectsEditorSession : IDisposable
         if (Panel("Tracks", rect, false))
         {
             if (ImGui.Button("Frame all")) FrameAll();
-            ImGui.SameLine(); ImGui.TextDisabled(Status);
+            ImGui.SameLine(); ImGui.TextColored(_messageError ? new(1, .4f, .35f, 1) : new(.6f, .68f, .75f, 1), _message ?? Status);
             var visible = false;
             var graph = false;
             if (ImGui.BeginTabBar("Track views"))
@@ -210,7 +227,7 @@ public sealed class EffectsEditorSession : IDisposable
 
     private void Navigate(Vector2 origin, float width, bool hovered)
     {
-        if (!hovered) return;
+        if (!hovered || _dragBefore is not null || _boxStart is not null) return;
         var io = ImGui.GetIO();
         if (io.MouseWheel != 0) _view.Zoom(io.MouseWheel, (io.MousePos.X - origin.X) / width);
         if (ImGui.IsMouseDragging(ImGuiMouseButton.Middle)) _view.Pan(io.MouseDelta.X / width);
@@ -282,6 +299,7 @@ public sealed class EffectsEditorSession : IDisposable
             draw.PushClipRect(plot, plot + new Vector2(width, height), true);
             GridLines(draw, plot, new(width, height), false);
             draw.PopClipRect();
+            var hitAnyKey = false;
             for (var row = 0; row < _trackNames.Length; row++)
             {
                 var track = _trackNames[row];
@@ -289,7 +307,7 @@ public sealed class EffectsEditorSession : IDisposable
                 if (_selected.Contains(track)) draw.AddRectFilled(new(origin.X, y), new(origin.X + available.X, y + rowHeight), SelectedRow);
                 draw.AddText(new(origin.X + 5, y + 5), _selected.Contains(track) ? Accent : Text, track);
                 draw.AddLine(new(origin.X, y + rowHeight), new(origin.X + available.X, y + rowHeight), Grid);
-                if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && ImGui.GetIO().MousePos.Y >= y && ImGui.GetIO().MousePos.Y < y + rowHeight)
+                if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && ImGui.GetIO().MousePos.X < plot.X && ImGui.GetIO().MousePos.Y >= y && ImGui.GetIO().MousePos.Y < y + rowHeight)
                     Select(track, ImGui.GetIO().KeyCtrl);
                 var keys = _preview.Tracks[track];
                 draw.PushClipRect(new(plot.X, y), new(plot.X + width, y + rowHeight), true);
@@ -300,18 +318,20 @@ public sealed class EffectsEditorSession : IDisposable
                     if (x < plot.X - 6 || x > plot.X + width + 6) continue;
                     var center = new Vector2(x, y + rowHeight / 2);
                     var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 8;
-                    var selected = _key is { } chosen && chosen.Track == track && chosen.Index == i;
+                    var selected = _selectedKeys.Contains(new(track, k.Beat));
                     draw.AddQuadFilled(center + new Vector2(0, -5), center + new Vector2(5, 0), center + new Vector2(0, 5), center + new Vector2(-5, 0), selected || hit ? Playhead : Accent);
                     if (i > 0 && x - X(keys[i - 1].Beat, plot, width) > 95)
                         draw.AddText(new(Math.Max(plot.X, X(keys[i - 1].Beat, plot, width)) + 9, y + 5), Muted, k.Curve is null ? k.Ease.ToString() : "Bezier");
                     if (hit)
                     {
+                        hitAnyKey = true;
                         ImGui.SetTooltip($"{track}\nBeat {F(k.Beat)} | Value {F(k.Value)}");
-                        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) { Select(track, false); _key = (track, i); }
+                        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(track, i, width);
                     }
                 }
                 draw.PopClipRect();
             }
+            BoxSelection(draw, origin, plot, width, rowHeight, height, hovered, hitAnyKey);
             if (_trackNames.Length == 0) draw.AddText(origin + new Vector2(12, 10), Muted, "This chart has no effect tracks.");
             draw.PushClipRect(plot, plot + new Vector2(width, height), true);
             DrawPlayhead(draw, plot, new(width, height));
@@ -370,11 +390,11 @@ public sealed class EffectsEditorSession : IDisposable
                 var center = new Vector2(X(keys[i].Beat, origin, plotSize.X), Y(keys[i].Value));
                 if (center.X < origin.X || center.X > origin.X + plotSize.X) continue;
                 var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 8;
-                draw.AddCircleFilled(center, 4, hit || _key == (sample.Key, i) ? Playhead : color);
+                draw.AddCircleFilled(center, 4, hit || _selectedKeys.Contains(new(sample.Key, keys[i].Beat)) ? Playhead : color);
                 if (hit)
                 {
                     ImGui.SetTooltip($"{sample.Key}\nBeat {F(keys[i].Beat)} | Value {F(keys[i].Value)}");
-                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) { _primary = sample.Key; _key = (sample.Key, i); }
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) ChooseKey(sample.Key, i, ImGui.GetIO().KeyCtrl, keepTracks: true);
                 }
             }
         }

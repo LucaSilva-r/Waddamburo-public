@@ -3,6 +3,7 @@ using Waddamburo.App.Gameplay;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
+using Waddamburo.Editor;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -418,6 +419,18 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     public TrainingSession? Training => _training;
 
     public PlayableChart EditorChart => _charts[0];
+
+    public EffectEditorFiles EditorFiles()
+    {
+        var player = _lastRequest!.Players[0];
+        string? songPath = null;
+        try { songPath = Shell.Assets.ModchartPath(player.ChartAsset); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        { Console.Error.WriteLine($"Song modchart destination unavailable: {e.Message}"); }
+        return new(PlayerModcharts.PathFor(Shell.Modcharts!, _sourceCharts[0], player.Course), player.Course, songPath);
+    }
+
+    public void ReplaceEditorEffects(ChartEffects effects) => _review!.ReplaceEffects(0, effects);
 
     /// <summary>Effects authoring is available in local, single-lane home practice.</summary>
     public bool CanEditEffects => Shell.Arcade.Home && _training is not null && _charts.Length == 1

@@ -76,7 +76,7 @@ internal sealed class GameShell : IDisposable
     public void OpenEffectsEditor()
     {
         if (_effectsEditor is null && _gameplay.CanEditEffects)
-            _effectsEditor = new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!);
+            _effectsEditor = new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.EditorFiles(), _gameplay.ReplaceEditorEffects);
     }
 
     private void closeEffectsEditor()
@@ -810,11 +810,18 @@ internal sealed class GameShell : IDisposable
                 Options.ScreenshotPath is null ? null : capture => ScreenshotWriter.Write(Options.ScreenshotPath, capture),
                 updateFrame: keyboard =>
                 {
-                    if (_effectsEditor is { } editor && (editor.CloseRequested || !_gameplay.CanEditEffects
-                        || keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Escape)))
+                    if (_effectsEditor is { } editor)
                     {
-                        closeEffectsEditor();
-                        keyboard = SdlKeyboardSnapshot.Empty;
+                        if (keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Escape))
+                        {
+                            editor.RequestClose();
+                            keyboard = SdlKeyboardSnapshot.Empty;
+                        }
+                        if (editor.CloseRequested || !_gameplay.CanEditEffects)
+                        {
+                            closeEffectsEditor();
+                            keyboard = SdlKeyboardSnapshot.Empty;
+                        }
                     }
                     _input.Frame(keyboard);
                     if (!keyboard.Presses.IsEmpty)

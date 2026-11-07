@@ -6,7 +6,7 @@ namespace Waddamburo.Catalog;
 /// from the first (the newest version of it), and its assets are read from that source. Categories with the same key
 /// are one folder, in the order the newest source lists them, then the songs only older ones have.
 /// </summary>
-public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
+public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartModFileProvider
 {
     private readonly ISongCatalogProvider[] _sources;
     // Each listed song's assets, by stable id, to the source it was taken from.
@@ -95,6 +95,9 @@ public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetR
 
     public ValueTask<PlayableChart> LoadChartAsync(ChartKey chart, CatalogAssetKey asset, CancellationToken cancellationToken = default) =>
         ((IPlayableChartProvider)owner(asset)).LoadChartAsync(chart, asset, cancellationToken);
+
+    public string? ModchartPath(CatalogAssetKey chartAsset) =>
+        (owner(chartAsset) as IChartModFileProvider)?.ModchartPath(chartAsset);
 
     private ISongCatalogProvider owner(CatalogAssetKey asset) => _owners.TryGetValue(asset.StableId, out var source)
         ? source : throw new ArgumentException($"No merged source has '{asset.StableId}'.", nameof(asset));

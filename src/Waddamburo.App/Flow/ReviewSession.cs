@@ -91,6 +91,13 @@ internal sealed class ReviewSession : IDisposable
         ShowFresh(until);
     }
 
+    /// <summary>Retains edited effects across the fresh lanes built by seeks and practice retries.</summary>
+    public void ReplaceEffects(int lane, ChartEffects effects)
+    {
+        _charts[lane] = _charts[lane] with { Effects = effects };
+        _shell.Gameplay.ReplaceEffects(lane, effects);
+    }
+
     /// <summary>The lanes play live from <paramref name="from"/> (a training attempt): fresh, judging the drum from there.</summary>
     public void StartLive(TimeSpan from)
     {

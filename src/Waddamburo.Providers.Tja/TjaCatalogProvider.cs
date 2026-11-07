@@ -7,7 +7,7 @@ using Waddamburo.Catalog;
 namespace Waddamburo.Providers.Tja;
 
 /// <summary>Discovers read-only custom TJA songs below one configured library root.</summary>
-public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
+public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartModFileProvider
 {
     private readonly string _root;
     private readonly TjaProviderOptions _options;
@@ -193,6 +193,18 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
     /// <summary>A single-player TJA held in memory (the benchmark's own chart): <paramref name="course"/>'s first chart.</summary>
     public static PlayableChart ReadChart(ReadOnlySpan<byte> bytes, ChartKey key, TaikoCourse course) =>
         TjaPlayableChartReader.Read(bytes, key, new TjaChartLocator("", "", course, "", 1), int.MaxValue, int.MaxValue);
+
+    public string? ModchartPath(CatalogAssetKey chartAsset)
+    {
+        ArgumentNullException.ThrowIfNull(chartAsset);
+        if (chartAsset.Provider != Id) throw new ArgumentException("This provider does not own the chart asset.", nameof(chartAsset));
+        var locator = TjaChartAssetKeyCodec.Decode(chartAsset);
+        var chartPath = resolveContainedPath(locator.RelativePath);
+        rejectReparsePoints(chartPath);
+        var path = Path.ChangeExtension(chartPath, ChartModFile.Extension);
+        if (File.Exists(path)) rejectReparsePoints(path);
+        return path;
+    }
 
     public async ValueTask<PlayableChart> LoadChartAsync(
         ChartKey chart,

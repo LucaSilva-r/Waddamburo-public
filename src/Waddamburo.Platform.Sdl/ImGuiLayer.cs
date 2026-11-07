@@ -42,6 +42,10 @@ public sealed unsafe class ImGuiLayer : IDisposable
         }
     }
 
+    /// <summary>Host shortcuts which should reach the UI even when its windows are unfocused.</summary>
+    public Func<ImGuiKey, bool>? CaptureKey { get; set; }
+    public bool CaptureControlShortcuts { get; set; }
+
     internal void BeginFrame(float deltaSeconds, Vector2 windowSize, Vector2 pixelSize)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -92,9 +96,10 @@ public sealed unsafe class ImGuiLayer : IDisposable
                 io.AddKeyEvent(ImGuiKey.ModShift, (e.key.mod & SDL_Keymod.SDL_KMOD_SHIFT) != 0);
                 io.AddKeyEvent(ImGuiKey.ModAlt, (e.key.mod & SDL_Keymod.SDL_KMOD_ALT) != 0);
                 io.AddKeyEvent(ImGuiKey.ModSuper, (e.key.mod & SDL_Keymod.SDL_KMOD_GUI) != 0);
-                if (Key(e.key.scancode) is var key && key != ImGuiKey.None)
-                    io.AddKeyEvent(key, down);
-                return io.WantCaptureKeyboard;
+                var key = Key(e.key.scancode);
+                if (key != ImGuiKey.None) io.AddKeyEvent(key, down);
+                return io.WantCaptureKeyboard || CaptureKey?.Invoke(key) == true
+                    || CaptureControlShortcuts && (e.key.mod & SDL_Keymod.SDL_KMOD_CTRL) != 0;
             case SDL_EventType.SDL_EVENT_TEXT_INPUT:
                 io.AddInputCharactersUTF8(e.text.GetText());
                 return io.WantTextInput || io.WantCaptureKeyboard;

@@ -717,6 +717,18 @@ public sealed class TjaCatalogProviderTests
         await Assert.ThrowsAsync<InvalidDataException>(async () => await provider.LoadChartAsync(descriptor.Key, descriptor.ChartAsset));
     }
 
+    [Fact]
+    public async Task ModchartDestinationIsResolvedByTheOwningProviderBesideTheChart()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("nested/synthetic.tja", "TITLE:Synthetic\nBPM:120\nCOURSE:Oni\n#START\n1,\n#END");
+        var provider = new TjaCatalogProvider(library.Path);
+        var contribution = await provider.ScanAsync(null, CancellationToken.None);
+        var chart = Assert.Single(Assert.Single(contribution.Songs).Charts);
+        Assert.Equal(Path.Combine(library.Path, "nested", "synthetic.wddmod"), provider.ModchartPath(chart.ChartAsset));
+        Assert.Throws<ArgumentException>(() => provider.ModchartPath(new(new("foreign"), chart.ChartAsset.StableId)));
+    }
+
     private static async Task<PlayableChart> loadSynthetic(string body, string headers = "", string? modchart = null)
     {
         using var library = new TemporaryLibrary();

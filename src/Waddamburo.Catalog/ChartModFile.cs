@@ -132,6 +132,38 @@ public static class ChartModFile
         return stream.ToArray();
     }
 
+    /// <summary>Writes a complete effective course, masking removed inherited tracks with empty arrays; other sections remain intact.</summary>
+    public static byte[] WriteCourse(ReadOnlySpan<byte> existing, TaikoCourse course,
+        IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
+    {
+        if (!Enum.IsDefined(course)) throw new ArgumentOutOfRangeException(nameof(course));
+        if (!existing.IsEmpty) _ = ReadTracks(existing, course);
+        var effective = tracks.ToImmutableDictionary(StringComparer.Ordinal).ToBuilder();
+        if (!existing.IsEmpty)
+            foreach (var inherited in ReadTracks(existing, null).Keys)
+                if (!effective.ContainsKey(inherited)) effective[inherited] = [];
+        using var original = JsonDocument.Parse(existing.IsEmpty ? "{\"wddmod\":1}"u8.ToArray() : existing.ToArray(),
+            new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        using var replacement = JsonDocument.Parse(Write(effective.ToImmutable()));
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            foreach (var property in original.RootElement.EnumerateObject())
+                if (property.Name != "courses") property.WriteTo(writer);
+            writer.WriteStartObject("courses");
+            if (original.RootElement.TryGetProperty("courses", out var courses))
+                foreach (var property in courses.EnumerateObject())
+                    if (property.Name != CourseKey(course)) property.WriteTo(writer);
+            writer.WriteStartObject(CourseKey(course));
+            writer.WritePropertyName("tracks");
+            replacement.RootElement.GetProperty("tracks").WriteTo(writer);
+            writer.WriteEndObject(); writer.WriteEndObject(); writer.WriteEndObject();
+        }
+        if (stream.Length > MaxBytes) throw new InvalidDataException("The song modchart is too large.");
+        return stream.ToArray();
+    }
+
     /// <summary>The first value holds before its beat; later keys ease from their predecessor.</summary>
     public static IReadOnlyList<ChartModCue> Compile(IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
     {
