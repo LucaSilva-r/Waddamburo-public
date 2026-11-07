@@ -1,84 +1,167 @@
+using System.Collections.Immutable;
 using System.Text.Json;
 
 namespace Waddamburo.Catalog;
 
-/// <summary>A modchart change as a .wddmod file writes it: in beats from the chart's start (before tempo is applied).</summary>
-public readonly record struct ChartModCue(double Beat, double Beats, ChartEase Ease, string Target, string Property, double Value);
+/// <summary>A timed transition compiled from keyframes (beats measured from chart start).</summary>
+public readonly record struct ChartModCue(double Beat, double Beats, ChartEase Ease, string Target, string Property,
+    double Value, ChartModCurve? Curve = null, bool Initial = false);
 
-/// <summary>
-/// A chart's modchart file (<c>Song.wddmod</c> beside <c>Song.tja</c>): JSON, so the chart stays as its author wrote it and
-/// effects can be added in Waddamburo whatever editor made the notes.
-/// <code>
-/// { "wddmod": 1,
-///   "courses": {
-///     "*":   [ { "beat": 0, "beats": 8, "ease": "inOutSine", "target": "don.yaw", "value": 360 } ],
-///     "oni": [ { "beat": 16, "target": "notes.drunk", "value": 1 } ] } }
-/// </code>
-/// "*" applies to every course; a player's own file for one chart (named by its <see cref="ChartHash"/>) just lists
-/// <c>"changes": [ … ]</c>. "beats" (default 0: at once) and "ease" (default linear) may be left out. Beats count
-/// from #START along the chart's tempo, and a #DELAY stops them. Targets and properties are <see cref="ChartMods"/>'s.
-/// </summary>
+/// <summary>A value at a beat. Ease or Curve describes the segment into this key.</summary>
+public readonly record struct ChartModKeyframe(double Beat, double Value, ChartEase Ease = ChartEase.Linear,
+    ChartModCurve? Curve = null);
+
+/// <summary>Version 1 keyframe tracks, either at the root or in per-course objects under "courses".</summary>
 public static class ChartModFile
 {
     public const string Extension = ".wddmod";
     public const int Version = 1;
     public const int MaxBytes = 4 << 20;
-    private const int MaxCues = 100_000;
+    private const int MaxKeys = 100_000;
 
-    /// <summary>
-    /// The cues for <paramref name="course"/> ("*" first, then the course's own; null: "*" alone). An unknown target,
-    /// property or easing skips its entry (a newer file still plays); a broken or newer-version file throws
-    /// <see cref="InvalidDataException"/>.
-    /// </summary>
-    public static IReadOnlyList<ChartModCue> Read(ReadOnlySpan<byte> json, TaikoCourse? course)
+    /// <summary>Loads and compiles tracks into transitions for existing gameplay consumers.</summary>
+    public static IReadOnlyList<ChartModCue> Read(ReadOnlySpan<byte> json, TaikoCourse? course) =>
+        Compile(ReadTracks(json, course));
+
+    /// <summary>Root, wildcard, then course tracks; a more specific track replaces that whole property.</summary>
+    public static ImmutableDictionary<string, ImmutableArray<ChartModKeyframe>> ReadTracks(ReadOnlySpan<byte> json, TaikoCourse? course)
     {
-        if (json.Length > MaxBytes)
-            throw new InvalidDataException("The modchart file is too large.");
+        if (json.Length > MaxBytes) throw new InvalidDataException("The modchart file is too large.");
         try
         {
-            var reader = new Utf8JsonReader(json, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-            using var document = JsonDocument.ParseValue(ref reader);
+            using var document = JsonDocument.Parse(json.ToArray(), new JsonDocumentOptions
+                { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
             var root = document.RootElement;
-            if (!root.TryGetProperty("wddmod", out var version) || !version.TryGetInt32(out var number) || number is < 1 or > Version)
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("wddmod", out var version)
+                || version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var fileVersion) || fileVersion != Version)
                 throw new InvalidDataException($"Not a version {Version} modchart file.");
-            var cues = new List<ChartModCue>();
-            var lists = new List<JsonElement>();
-            if (root.TryGetProperty("changes", out var changes))
-                lists.Add(changes);
-            if (root.TryGetProperty("courses", out var courses) && courses.ValueKind == JsonValueKind.Object)
-                foreach (var key in course is { } own ? (string[])["*", CourseKey(own)] : ["*"])
-                    if (courses.TryGetProperty(key, out var entries))
-                        lists.Add(entries);
-            foreach (var entries in lists)
+            var tracks = ImmutableDictionary.CreateBuilder<string, ImmutableArray<ChartModKeyframe>>(StringComparer.Ordinal);
+            var count = 0;
+            readSection(root);
+            if (root.TryGetProperty("courses", out var courses))
             {
-                if (entries.ValueKind != JsonValueKind.Array)
-                    continue;
-                foreach (var entry in entries.EnumerateArray())
+                if (courses.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Expected course objects.");
+                foreach (var key in course is { } own ? (string[])["*", CourseKey(own)] : ["*"])
+                    if (courses.TryGetProperty(key, out var section)) readSection(section);
+            }
+            return tracks.ToImmutable();
+
+            void readSection(JsonElement section)
+            {
+                if (section.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Expected a modchart section.");
+                if (section.TryGetProperty("changes", out _))
+                    throw new InvalidDataException("This modchart uses the old changes format; migrate it to keyframe tracks.");
+                if (!section.TryGetProperty("tracks", out var entries)) return;
+                if (entries.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Expected tracks keyed by target.property.");
+                foreach (var entry in entries.EnumerateObject())
                 {
-                    if (cues.Count == MaxCues)
-                        throw new InvalidDataException("The modchart file has too many entries.");
-                    if (cue(entry) is { } read)
-                        cues.Add(read);
+                    if (entry.Value.ValueKind != JsonValueKind.Array) throw new InvalidDataException("Expected a keyframe array.");
+                    count += entry.Value.GetArrayLength();
+                    if (count > MaxKeys) throw new InvalidDataException("The modchart has too many keyframes.");
+                    var key = entry.Name.ToLowerInvariant();
+                    if (!Known(key)) continue;
+                    var keys = new List<ChartModKeyframe>();
+                    foreach (var item in entry.Value.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Expected a keyframe object.");
+                        var beat = number(item, "beat");
+                        var value = number(item, "value");
+                        var ease = ChartEase.Linear;
+                        ChartModCurve? curve = null;
+                        if (item.TryGetProperty("curve", out var handles))
+                        {
+                            if (handles.ValueKind != JsonValueKind.Array || handles.GetArrayLength() != 4)
+                                throw new InvalidDataException("A Bézier curve needs four handles.");
+                            curve = new ChartModCurve(finite(handles[0]), finite(handles[1]), finite(handles[2]), finite(handles[3]));
+                            if (!curve.Value.IsValid) throw new InvalidDataException("Bézier X handles must be in [0,1].");
+                            if (item.TryGetProperty("ease", out _)) throw new InvalidDataException("Use ease or curve, not both.");
+                        }
+                        else if (item.TryGetProperty("ease", out var easing)
+                            && (easing.ValueKind != JsonValueKind.String || !ChartMods.TryParseEase(easing.GetString()!, out ease)))
+                            continue; // Unknown easings from newer authors are ignored.
+                        keys.Add(new(beat, value, ease, curve));
+                    }
+                    var ordered = keys.OrderBy(k => k.Beat).ToImmutableArray();
+                    validate(key, ordered);
+                    tracks[key] = ordered;
                 }
             }
-            return cues;
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException($"The modchart file is not valid JSON: {exception.Message}", exception);
+            throw new InvalidDataException("The modchart file is not valid JSON.", exception);
         }
     }
 
-    /// <summary>
-    /// <paramref name="chart"/> with these cues as its modchart (in place of its own), timed along its beat count:
-    /// <see cref="ChartEffects.Beats"/> when it has one (a TJA with #DELAY or beat scrolling), else its tempo points.
-    /// </summary>
+    /// <summary>Writes deterministic UTF-8 JSON without serializer reflection.</summary>
+    public static byte[] Write(IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
+    {
+        ArgumentNullException.ThrowIfNull(tracks);
+        if (tracks.Values.Sum(keys => keys.IsDefault ? throw new InvalidDataException("Invalid keyframe array.") : (long)keys.Length) > MaxKeys) throw new InvalidDataException("Too many keyframes.");
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("wddmod", Version);
+            writer.WriteStartObject("tracks");
+            foreach (var (key, keys) in tracks.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                validate(key, keys);
+                writer.WriteStartArray(key);
+                foreach (var k in keys)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("beat", k.Beat);
+                    writer.WriteNumber("value", k.Value);
+                    if (k.Curve is { } c)
+                    {
+                        writer.WriteStartArray("curve");
+                        writer.WriteNumberValue(c.X1); writer.WriteNumberValue(c.Y1);
+                        writer.WriteNumberValue(c.X2); writer.WriteNumberValue(c.Y2);
+                        writer.WriteEndArray();
+                    }
+                    else if (k.Ease != ChartEase.Linear)
+                        writer.WriteString("ease", JsonNamingPolicy.CamelCase.ConvertName(k.Ease.ToString()));
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
+            writer.WriteEndObject(); writer.WriteEndObject();
+        }
+        if (stream.Length > MaxBytes) throw new InvalidDataException("The modchart file is too large.");
+        return stream.ToArray();
+    }
+
+    /// <summary>The first value holds before its beat; later keys ease from their predecessor.</summary>
+    public static IReadOnlyList<ChartModCue> Compile(IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks)
+    {
+        ArgumentNullException.ThrowIfNull(tracks);
+        if (tracks.Values.Sum(keys => keys.IsDefault ? throw new InvalidDataException("Invalid keyframe array.") : (long)keys.Length) > MaxKeys) throw new InvalidDataException("Too many keyframes.");
+        var cues = new List<ChartModCue>();
+        foreach (var (key, keys) in tracks.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            validate(key, keys);
+            var dot = key.IndexOf('.');
+            for (var i = 0; i < keys.Length; i++)
+            {
+                var k = keys[i];
+                var start = i == 0 ? Math.Min(0, k.Beat) : keys[i - 1].Beat;
+                cues.Add(new(start, i == 0 ? 0 : k.Beat - start, k.Ease, key[..dot], key[(dot + 1)..], k.Value, k.Curve, Initial: i == 0));
+            }
+        }
+        return cues.OrderBy(c => c.Beat).ToArray();
+    }
+
+    public static PlayableChart Apply(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> tracks) =>
+        Apply(chart, Compile(tracks));
+
+    /// <summary>Replaces drawing mods while preserving the chart's other effects and identity.</summary>
     public static PlayableChart Apply(PlayableChart chart, IReadOnlyList<ChartModCue> cues)
     {
         var beats = chart.Effects.Beats.IsEmpty ? new ChartEffects { Beats = BeatsOf(chart.TimingPoints) } : chart.Effects;
         TimeSpan at(double beat) => beats.TimeAtBeat(beat) is var time && time < TimeSpan.Zero ? TimeSpan.Zero : time;
-        var mods = cues.Select(cue => (Start: at(cue.Beat), End: at(cue.Beat + cue.Beats), Cue: cue))
-            .Select(static timed => new ChartModEase(timed.Start, timed.End - timed.Start, timed.Cue.Target, timed.Cue.Property, timed.Cue.Value, timed.Cue.Ease))
+        var mods = cues.Select(cue => (Start: cue.Initial ? TimeSpan.Zero : at(cue.Beat), End: cue.Initial ? TimeSpan.Zero : at(cue.Beat + cue.Beats), Cue: cue))
+            .Select(static t => new ChartModEase(t.Start, t.End - t.Start, t.Cue.Target, t.Cue.Property, t.Cue.Value, t.Cue.Ease, t.Cue.Curve, t.Cue.Initial))
             .OrderBy(static change => change.Start);
         return chart with { Effects = chart.Effects with { Mods = [.. mods] } };
     }
@@ -105,26 +188,25 @@ public static class ChartModFile
         _ => "ura",
     };
 
-    private static ChartModCue? cue(JsonElement entry)
+    public static bool Known(string key)
     {
-        if (entry.ValueKind != JsonValueKind.Object
-            || !number(entry, "beat", out var beat) || !number(entry, "value", out var value)
-            || !entry.TryGetProperty("target", out var name) || name.GetString() is not { } targetProperty)
-            return null;
-        var dot = targetProperty.IndexOf('.');
-        var (target, property) = dot < 0 ? ("", "") : (targetProperty[..dot].ToLowerInvariant(), targetProperty[(dot + 1)..].ToLowerInvariant());
-        var beats = number(entry, "beats", out var length) && length > 0 ? length : 0;
-        var ease = ChartEase.Linear;
-        if (!ChartMods.IsKnown(target, property)
-            || entry.TryGetProperty("ease", out var easing) && !(easing.GetString() is { } easeName && ChartMods.TryParseEase(easeName, out ease)))
-            return null;
-        return new ChartModCue(beat, beats, ease, target, property, value);
+        var dot = key.IndexOf('.');
+        return dot > 0 && ChartMods.IsKnown(key[..dot], key[(dot + 1)..]);
     }
 
-    private static bool number(JsonElement entry, string name, out double value)
+    private static void validate(string key, ImmutableArray<ChartModKeyframe> keys)
     {
-        value = 0;
-        return entry.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.Number
-            && element.TryGetDouble(out value) && double.IsFinite(value);
+        if (!Known(key) || keys.IsDefault) throw new InvalidDataException("Unknown track or invalid keyframe array.");
+        for (var i = 0; i < keys.Length; i++)
+            if (!double.IsFinite(keys[i].Beat) || !double.IsFinite(keys[i].Value) || !Enum.IsDefined(keys[i].Ease)
+                || keys[i].Curve is { IsValid: false } || i > 0 && keys[i].Beat <= keys[i - 1].Beat)
+                throw new InvalidDataException("Keyframes need finite values, valid curves and strictly increasing beats.");
     }
+
+    private static double number(JsonElement entry, string name) => entry.TryGetProperty(name, out var value)
+        ? finite(value) : throw new InvalidDataException($"Missing keyframe {name}.");
+
+    private static double finite(JsonElement value) => value.ValueKind == JsonValueKind.Number
+        && value.TryGetDouble(out var result) && double.IsFinite(result) ? result
+        : throw new InvalidDataException("Expected a finite number.");
 }

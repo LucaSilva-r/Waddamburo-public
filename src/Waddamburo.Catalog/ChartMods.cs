@@ -6,14 +6,21 @@ namespace Waddamburo.Catalog;
 public enum ChartEase
 {
     Linear, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic, InSine, OutSine, InOutSine,
-    InExpo, OutExpo, InOutExpo, InBack, OutBack, InOutBack, OutElastic, OutBounce,
+    InExpo, OutExpo, InOutExpo, InBack, OutBack, InOutBack, OutElastic, OutBounce, Step,
 }
 
 /// <summary>
 /// A modchart change (TJA #EASE / #SET): from <see cref="Start"/>, over <see cref="Length"/> (0: at once),
 /// <see cref="Target"/>'s <see cref="Property"/> eases from whatever it was to <see cref="Value"/>. Drawing only.
 /// </summary>
-public readonly record struct ChartModEase(TimeSpan Start, TimeSpan Length, string Target, string Property, double Value, ChartEase Ease);
+public readonly record struct ChartModEase(TimeSpan Start, TimeSpan Length, string Target, string Property, double Value, ChartEase Ease, ChartModCurve? Curve = null, bool Initial = false);
+
+/// <summary>CSS-style cubic Bézier handles. X handles stay in [0,1]; Y may overshoot.</summary>
+public readonly record struct ChartModCurve(double X1, double Y1, double X2, double Y2)
+{
+    public bool IsValid => double.IsFinite(X1) && double.IsFinite(Y1) && double.IsFinite(X2) && double.IsFinite(Y2)
+        && X1 is >= 0 and <= 1 && X2 is >= 0 and <= 1;
+}
 
 /// <summary>
 /// The modchart vocabulary and its values over time. Every value is a function of chart time alone (no state kept
@@ -49,23 +56,68 @@ public static class ChartMods
     {
         foreach (var change in changes)
         {
+            if (change.Initial)
+            {
+                value = change.Value;
+                continue;
+            }
             if (time < change.Start)
                 break;
-            var progress = change.Length <= TimeSpan.Zero ? 1 : Math.Min(1, (time - change.Start) / change.Length);
-            value += (change.Value - value) * Eased(change.Ease, progress);
+            if (change.Length <= TimeSpan.Zero || time - change.Start >= change.Length)
+            {
+                value = change.Value;
+                continue;
+            }
+            var progress = (time - change.Start) / change.Length;
+            value += (change.Value - value) * Eased(change.Ease, progress, change.Curve);
         }
         return value;
+    }
+
+    /// <summary>Solves x(u) = progress, then evaluates y(u); never clamps an overshooting Y.</summary>
+    public static double Bezier(ChartModCurve curve, double progress)
+    {
+        if (!curve.IsValid) throw new ArgumentException("Invalid Bézier handles.", nameof(curve));
+        if (progress <= 0) return 0;
+        if (progress >= 1) return 1;
+        var u = progress;
+        for (var i = 0; i < 8; i++)
+        {
+            var error = coordinate(u, curve.X1, curve.X2) - progress;
+            if (Math.Abs(error) < 1e-10) return coordinate(u, curve.Y1, curve.Y2);
+            var derivative = 3 * (1 - u) * (1 - u) * curve.X1
+                + 6 * (1 - u) * u * (curve.X2 - curve.X1) + 3 * u * u * (1 - curve.X2);
+            if (Math.Abs(derivative) < 1e-8) break;
+            var next = u - error / derivative;
+            if (next is < 0 or > 1) break;
+            u = next;
+        }
+        var (low, high) = (0d, 1d);
+        for (var i = 0; i < 48; i++)
+        {
+            u = (low + high) / 2;
+            if (coordinate(u, curve.X1, curve.X2) < progress) low = u;
+            else high = u;
+        }
+        return coordinate((low + high) / 2, curve.Y1, curve.Y2);
+
+        static double coordinate(double u, double a, double b) =>
+            3 * (1 - u) * (1 - u) * u * a + 3 * (1 - u) * u * u * b + u * u * u;
     }
 
     public static bool TryParseEase(string name, out ChartEase ease) =>
         Enum.TryParse(name, ignoreCase: true, out ease) && Enum.IsDefined(ease);
 
     /// <summary>The curve at <paramref name="t"/> (0..1).</summary>
-    public static double Eased(ChartEase ease, double t)
+    public static double Eased(ChartEase ease, double t, ChartModCurve? curve = null)
     {
+        t = Math.Clamp(t, 0, 1);
+        if (curve is { } handles)
+            return Bezier(handles, t);
         const double back = 1.70158, backInOut = back * 1.525;
         return ease switch
         {
+            ChartEase.Step => t < 1 ? 0 : 1,
             ChartEase.InQuad => t * t,
             ChartEase.OutQuad => 1 - (1 - t) * (1 - t),
             ChartEase.InOutQuad => t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2,

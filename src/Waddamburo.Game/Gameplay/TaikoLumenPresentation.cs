@@ -8,7 +8,7 @@ namespace Waddamburo.Game.Gameplay;
 /// <summary>Authored presentation driven by native judgement; no asset loading or audio.</summary>
 public sealed class TaikoLumenPresentation
 {
-    private readonly PlayableChart _chart;
+    private PlayableChart _chart;
     private readonly ITaikoJudgementSource _judgement;
     private readonly LumenSceneLayer[] _background;
     private readonly LumenSceneLayer[] _foreground;
@@ -92,6 +92,25 @@ public sealed class TaikoLumenPresentation
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
         // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.
         callback(_target.Player, "SetBranchAvailable", LumenHostValue.FromBoolean(chart.Branching is not null));
+    }
+
+    /// <summary>Replaces drawing effects without rebuilding judgement, movie players, or the live attempt.</summary>
+    public void ReplaceEffects(ChartEffects effects)
+    {
+        ArgumentNullException.ThrowIfNull(effects);
+        var chart = _chart with { Effects = effects };
+        var mods = new ChartModValues(effects.Mods);
+        var geometry = new NoteGeometry(chart, _hitX, _hitY, mods);
+        var stage = new StageEffects(mods, geometry, targetMoves: !effects.JudgeMoves.IsEmpty);
+        _chart = chart;
+        _mods = mods;
+        _geometry = geometry;
+        _stage = stage;
+        _noteWindows = null;
+        _barStreams = null;
+        // Removing judge moves must also restore offsets already written into the target movie.
+        _moved = default;
+        offsetTarget(0, 0);
     }
 
     /// <summary>Shows a combo count at once (a reviewed play's restored state).</summary>
@@ -337,9 +356,9 @@ public sealed class TaikoLumenPresentation
     }
 
     // The chart's effects (ChartEffects): note placement, and the scene's movies under modcharts and target moves.
-    private readonly ChartModValues _mods;
-    private readonly NoteGeometry _geometry;
-    private readonly StageEffects _stage;
+    private ChartModValues _mods;
+    private NoteGeometry _geometry;
+    private StageEffects _stage;
     private readonly IReadOnlyDictionary<LumenPlayer, string>? _roles;
     private readonly HashSet<LumenPlayer> _scenePlayers;
 

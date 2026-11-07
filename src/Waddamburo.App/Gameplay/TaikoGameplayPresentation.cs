@@ -130,6 +130,14 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private static string role(SceneLayerDefinition definition) =>
         GameplaySceneComposition.Role(Path.GetFileNameWithoutExtension(definition.MovieId));
 
+    /// <summary>Updates one lane's drawing effects while its practice session carries on.</summary>
+    public void ReplaceEffects(int lane, ChartEffects effects)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(lane);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(lane, _lanes.Length);
+        _lanes[lane].ReplaceEffects(effects);
+    }
+
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);
 
@@ -815,6 +823,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _onChartTime(chartTime);
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
         }
+
+        public void ReplaceEffects(ChartEffects effects) => _presentation.ReplaceEffects(effects);
 
         public void RemoveNote(int index) => _presentation.RemoveNote(index);
 

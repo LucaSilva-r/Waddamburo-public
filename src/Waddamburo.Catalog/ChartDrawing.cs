@@ -9,7 +9,7 @@ namespace Waddamburo.Catalog;
 /// </summary>
 public static class ChartDrawing
 {
-    private const byte Version = 1;
+    private const byte Version = 2;
     private const int MaxCount = 1 << 20;
     private static readonly string[] Labels = ["don", "do", "ko", "katsu", "ka", "don_dai", "katsu_dai"];
 
@@ -61,6 +61,13 @@ public static class ChartDrawing
             writer.Write(change.Property);
             writer.Write(change.Value);
             writer.Write((byte)change.Ease);
+            writer.Write(change.Initial);
+            writer.Write(change.Curve.HasValue);
+            if (change.Curve is { } c)
+            {
+                if (!c.IsValid) throw new InvalidDataException("Invalid Bézier handles.");
+                writer.Write(c.X1); writer.Write(c.Y1); writer.Write(c.X2); writer.Write(c.Y2);
+            }
         }
         return stream.ToArray();
     }
@@ -74,8 +81,10 @@ public static class ChartDrawing
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(data);
         using var reader = new BinaryReader(new MemoryStream(data));
-        if (!reader.ReadBytes(4).AsSpan().SequenceEqual("WDBD"u8) || reader.ReadByte() != Version)
+        if (!reader.ReadBytes(4).AsSpan().SequenceEqual("WDBD"u8))
             throw new InvalidDataException("Not chart drawing data of this version.");
+        var version = reader.ReadByte();
+        if (version is < 1 or > Version) throw new InvalidDataException("Unknown chart drawing version.");
         var scroll = readScroll(reader);
         var moves = new ChartJudgeMove[count(reader)];
         for (var index = 0; index < moves.Length; index++)
@@ -112,11 +121,15 @@ public static class ChartDrawing
                 (time(reader), time(reader), reader.ReadString(), reader.ReadString(), finite(reader), (ChartEase)reader.ReadByte());
             if (!ChartMods.IsKnown(target, property) || !Enum.IsDefined(ease))
                 throw new InvalidDataException("Unknown modchart target, property or easing.");
-            mods[index] = new ChartModEase(start, length, target, property, value, ease);
+            var initial = version >= 2 && reader.ReadBoolean();
+            ChartModCurve? curve = version >= 2 && reader.ReadBoolean()
+                ? new ChartModCurve(finite(reader), finite(reader), finite(reader), finite(reader)) : null;
+            if (curve is { IsValid: false }) throw new InvalidDataException("Invalid Bézier handles.");
+            mods[index] = new ChartModEase(start, length, target, property, value, ease, curve, initial);
         }
         if (reader.BaseStream.Position != reader.BaseStream.Length)
             throw new InvalidDataException("Trailing bytes after the chart drawing data.");
-        return chart.WithScrollPoints(scroll).WithHitObjects(notes.MoveToImmutable()) with
+        return chart.WithScrollPoints(scroll).WithHitObjects(notes.ToImmutable()) with
         {
             Effects = new ChartEffects { JudgeMoves = ordered(moves), Beats = ordered(beats), Mods = ordered(mods) },
             RouteControls = [.. routes],

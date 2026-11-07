@@ -54,7 +54,7 @@ public sealed class SongPackageTests
             {
                 JudgeMoves = [new ChartJudgeMove(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1), 390, -100)],
                 Beats = [new ChartBeatPoint(TimeSpan.Zero, 0, 2.5), new ChartBeatPoint(TimeSpan.FromSeconds(4), 10, 0)],
-                Mods = [new ChartModEase(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "don", "yaw", 180, ChartEase.OutBack)],
+                Mods = [new ChartModEase(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "don", "yaw", 180, ChartEase.OutBack, new ChartModCurve(.3, -.2, .2, 1.2))],
             },
         };
         var sent = new SongPackage(Song, new SongTitle("Song"), null, null, null, [new PackagedChart("chart-oni", TaikoCourse.Oni, 8, "Oni", gimmick)], [1]);
