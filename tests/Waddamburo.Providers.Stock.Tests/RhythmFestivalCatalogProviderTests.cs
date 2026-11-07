@@ -45,6 +45,16 @@ public sealed class RhythmFestivalCatalogProviderTests
             zip(Path.Combine(downloads, "0002_trail_001.zip"), ("SONG_PACKED.bin", [9]), ("packed_e.bin", [0]));
             zip(Path.Combine(downloads, "0002_trail_002.zip"), ("SONG_PACKED.bin", encrypt("SONG_PACKED", [4, 5])), ("packed_m.bin", [0]));
             zip(Path.Combine(downloads, "0002_trail_stream_001.zip"), ("PSONG_PACKED.bin", [0]));
+            // A song only the server's song data knows; for one musicinfo has too, musicinfo's entry wins.
+            zip(Path.Combine(downloads, "0003_trail_001.zip"), ("SONG_SERVER.bin", [0]), ("server_h.bin", [0]));
+            Directory.CreateDirectory(Path.Combine(install, "ServerDataCacheSteam"));
+            File.WriteAllBytes(Path.Combine(install, "ServerDataCacheSteam", "SongdataDetails"), serverEncrypt(
+                """
+                {"ary_song_datail":[
+                  {"song_uid":2,"song_id":"packed","genre_id":0,"star_4":1,"song_name_en":"<font=efigs>Old"},
+                  {"song_uid":3,"song_id":"server","genre_id":1,"star_3":6,"is_branch_3":true,"song_name_ja":"<font=jp>サーバー","song_name_en":"<font=efigs>Server","song_name_sub_en":"<font=efigs>Sub"}
+                ]}
+                """));
 
             var cache = Path.Combine(install, "cache");
             var provider = new RhythmFestivalCatalogProvider(install, cache, downloads);
@@ -52,7 +62,7 @@ public sealed class RhythmFestivalCatalogProviderTests
             Assert.Null(provider.Problem);
             var contribution = await provider.ScanAsync(null, default);
 
-            Assert.Equal(["loose", "packed"], contribution.Songs.Select(static song => song.Key.StableId));
+            Assert.Equal(["loose", "packed", "server"], contribution.Songs.Select(static song => song.Key.StableId));
             var loose = contribution.Songs[0];
             Assert.Equal("テスト", loose.Title.Japanese);
             Assert.Equal("Test", loose.Title.English);
@@ -62,7 +72,14 @@ public sealed class RhythmFestivalCatalogProviderTests
             var oni = Assert.Single(packed.Charts);
             Assert.Equal(TaikoCourse.Oni, oni.Course);
             Assert.True(oni.HasBranches);
-            Assert.Equal(["Vocaloid", "Namco Original"], contribution.Categories.Select(static category => category.Name));
+            Assert.Equal(9, oni.Level);
+            Assert.Equal("Packed", packed.Title.English);
+            var server = contribution.Songs[2];
+            Assert.Equal("サーバー", server.Title.Japanese);
+            Assert.Equal("Sub", server.EnglishSubtitle);
+            var hard = Assert.Single(server.Charts);
+            Assert.Equal((TaikoCourse.Hard, 6, true), (hard.Course, hard.Level, hard.HasBranches));
+            Assert.Equal(["Anime", "Vocaloid", "Namco Original"], contribution.Categories.Select(static category => category.Name));
 
             // The music is decrypted into the cache.
             await using (var music = await provider.OpenReadAsync(packed.AudioAsset!))
@@ -161,6 +178,15 @@ public sealed class RhythmFestivalCatalogProviderTests
         using var aes = Aes.Create();
         aes.Key = Rfc2898DeriveBytes.Pbkdf2(password, salt, KeyIterations, HashAlgorithmName.SHA256, 32);
         return aes.EncryptCbc(plain, Rfc2898DeriveBytes.Pbkdf2(password, salt, IvIterations, HashAlgorithmName.SHA256, 16), PaddingMode.PKCS7);
+    }
+
+    // The server data cache's fixed cipher (see RhythmFestivalKeys.DecryptServerCache): UTF-16 text.
+    private static byte[] serverEncrypt(string text)
+    {
+        var stream = Rfc2898DeriveBytes.Pbkdf2("xbox"u8, "taikoxboxdepelop"u8, 1000, HashAlgorithmName.SHA1, 48);
+        using var aes = Aes.Create();
+        aes.Key = stream[..32];
+        return aes.EncryptCbc(Encoding.Unicode.GetBytes(text), stream.AsSpan(32), PaddingMode.PKCS7);
     }
 
     private static byte[] gzip(string text)

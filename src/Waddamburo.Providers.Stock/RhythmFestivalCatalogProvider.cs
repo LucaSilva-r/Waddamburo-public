@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -7,7 +8,9 @@ namespace Waddamburo.Providers.Stock;
 
 /// <summary>
 /// A user's Taiko no Tatsujin: Rhythm Festival (Steam) installation, read in place. The song table is
-/// <c>StreamingAssets/ReadAssets/musicinfo.bin</c> (JSON <c>items</c>, titles included). A song's files are its music
+/// <c>StreamingAssets/ReadAssets/musicinfo.bin</c> (JSON <c>items</c>, titles included), joined by the songs the game
+/// has from its subscription server (<c>ServerDataCacheSteam/SongdataDetails</c> beside the downloads; musicinfo's entry
+/// wins for a song in both). A song's files are its music
 /// <c>SONG_&lt;ID&gt;.bin</c> (a CRI ACB) and charts <c>&lt;id&gt;_&lt;e|n|h|m|x&gt;[_1|_2].bin</c> (fumen,
 /// little-endian), found loose (<c>sound/</c>, <c>fumen/</c>), in the bundled <c>packedSongs</c> and
 /// <c>localPackedSongs</c> (folders or zips), and in the downloaded songs (LocalLow's <c>PackedSongsSteam</c>), as
@@ -171,6 +174,7 @@ public sealed partial class RhythmFestivalCatalogProvider : ISongCatalogProvider
         var diagnostics = new List<CatalogDiagnostic>();
         var files = discover(diagnostics, cancellationToken);
         var music = table("musicinfo");
+        music.AddRange(serverSongs(diagnostics));
         var songs = new List<SongDescriptor>();
         var categories = new SortedDictionary<int, List<SongKey>>();
         var stars = new Dictionary<string, int[]>(StringComparer.Ordinal);
@@ -320,6 +324,55 @@ public sealed partial class RhythmFestivalCatalogProvider : ISongCatalogProvider
         var path = Path.Combine(Assets, "ReadAssets", name + ".bin");
         using var document = JsonDocument.Parse(keys().Decrypt(File.ReadAllBytes(path), name));
         return [.. document.RootElement.GetProperty("items").EnumerateArray().Select(static item => item.Clone())];
+    }
+
+    // musicinfo's names for the server song data's fields (genre, stars and branches are numbered alike).
+    private static readonly (string Server, string MusicInfo)[] ServerFields =
+    [
+        ("song_uid", "UniqueId"), ("song_id", "Id"), ("genre_id", "GenreNo"),
+        ("song_name_ja", "SongNameJP"), ("song_name_en", "SongNameEN"), ("song_name_sub_ja", "SongSubJP"), ("song_name_sub_en", "SongSubEN"),
+        ("star_1", "StarEasy"), ("star_2", "StarNormal"), ("star_3", "StarHard"), ("star_4", "StarMania"), ("star_5", "StarUra"),
+        ("is_branch_1", "BranchEasy"), ("is_branch_2", "BranchNormal"), ("is_branch_3", "BranchHard"),
+        ("is_branch_4", "BranchMania"), ("is_branch_5", "BranchUra"),
+    ];
+
+    // The server's song data as musicinfo items: none when the game has not cached it.
+    private List<JsonElement> serverSongs(List<CatalogDiagnostic> diagnostics)
+    {
+        var path = Path.Combine(Path.GetDirectoryName(_downloads) ?? _downloads, "ServerDataCacheSteam", "SongdataDetails");
+        if (!File.Exists(path))
+            return [];
+        try
+        {
+            if (new FileInfo(path).Length > MaximumFileBytes)
+                throw new InvalidDataException("SongdataDetails exceeds 64 MiB.");
+            using var document = JsonDocument.Parse(RhythmFestivalKeys.DecryptServerCache(File.ReadAllBytes(path)));
+            var items = new List<JsonElement>();
+            foreach (var song in document.RootElement.GetProperty("ary_song_datail").EnumerateArray())
+            {
+                var buffer = new ArrayBufferWriter<byte>();
+                using (var writer = new Utf8JsonWriter(buffer))
+                {
+                    writer.WriteStartObject();
+                    foreach (var (server, name) in ServerFields)
+                        if (song.TryGetProperty(server, out var value))
+                        {
+                            writer.WritePropertyName(name);
+                            value.WriteTo(writer);
+                        }
+                    writer.WriteEndObject();
+                }
+                using var item = JsonDocument.Parse(buffer.WrittenMemory);
+                items.Add(item.RootElement.Clone());
+            }
+            return items;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException
+            or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            diagnostics.Add(warning("RHYTHM_FESTIVAL_SERVER_DATA_UNREADABLE", $"The downloaded songs' details could not be read: {exception.Message}"));
+            return [];
+        }
     }
 
     // Every song's files: loose ones (version 0), then packed folders and zips, a higher version replacing a lower.

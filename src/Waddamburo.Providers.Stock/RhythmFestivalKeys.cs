@@ -12,6 +12,7 @@ namespace Waddamburo.Providers.Stock;
 /// at one iteration count for the key, 16 at another for the IV). The password and salt are Base64 string literals in
 /// <c>global-metadata.dat</c>; the iteration counts are two adjacent immediate stores in <c>GameAssembly.dll</c>, kept
 /// XORed with 0xFFFFFF and 0xFFFFF. Candidates are confirmed by opening <c>ReadAssets/musicinfo.bin</c>.
+/// The server data cache's cipher is fixed and kept here instead (<see cref="DecryptServerCache"/>).
 /// </summary>
 public sealed class RhythmFestivalKeys
 {
@@ -57,6 +58,24 @@ public sealed class RhythmFestivalKeys
         throw new InvalidDataException(strings.Count == 0 || counts.Count == 0
             ? "The installation's GameAssembly.dll and global-metadata.dat do not hold the file cipher's parameters."
             : "No parameters in the installation's binaries open its song table.");
+    }
+
+    /// <summary>A <c>ServerDataCacheSteam</c> file as its JSON text (fixed cipher, the game's <c>Cryptgraphy.decryptB</c>).</summary>
+    public static string DecryptServerCache(ReadOnlySpan<byte> data)
+    {
+        if (data.Length == 0 || data.Length % 16 != 0 || data.Length > MaximumFileBytes)
+            throw new InvalidDataException("The file is not server cache data.");
+        var stream = Rfc2898DeriveBytes.Pbkdf2("xbox"u8, "taikoxboxdepelop"u8, 1000, HashAlgorithmName.SHA1, 48);
+        using var aes = Aes.Create();
+        aes.Key = stream[..32];
+        try
+        {
+            return Encoding.Unicode.GetString(aes.DecryptCbc(data, stream.AsSpan(32), PaddingMode.PKCS7));
+        }
+        catch (CryptographicException exception)
+        {
+            throw new InvalidDataException("The server cache data does not decrypt.", exception);
+        }
     }
 
     /// <summary>Decrypts one file; <paramref name="name"/> is its file name (the extension is ignored).</summary>
