@@ -407,6 +407,20 @@ public sealed class LumenPlayer
         return true;
     }
 
+    /// <summary>Seeks a named clip to a zero-based frame (a script's gotoAndStop(n) is frame n - 1).</summary>
+    public bool TryGotoFrame(string instancePath, int frame, bool play = true)
+    {
+        ArgumentNullException.ThrowIfNull(instancePath);
+        var instance = findInstance(instancePath);
+        if (instance is null || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
+            || frame < 0 || frame >= timeline.Frames.Length)
+            return false;
+        jumpInstance(instance, frame, play);
+        drainActions();
+        resetInterpolation(instance);
+        return true;
+    }
+
     /// <summary>The frame a named clip is on and whether it is playing; null when there is no such clip.</summary>
     public (int Frame, bool Playing)? InstanceFrame(string instancePath)
     {

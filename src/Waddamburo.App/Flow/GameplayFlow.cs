@@ -231,9 +231,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var player = players.ElementAtOrDefault(lane);
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
-            // The player's layout where neither gave modchart changes; arcade and the attract's demo play are always the
-            // stock screen.
-            if (player is not null && Shell.Arcade.Home && _waiwai is null && !_demo)
+            // The player's layout where neither gave modchart changes; arcade, the attract's demo play and dan courses
+            // (a chart of several songs) are always the stock screen.
+            if (player is not null && Shell.Arcade.Home && _waiwai is null && !_demo && chart.Segments.IsEmpty)
             {
                 var laid = forLane(authored, PlayerModcharts.ApplyLayout(ActiveLayoutPath, authored), lane);
                 if (lane == 0) _layoutShown = authored.Effects.Mods.IsEmpty && !ReferenceEquals(laid, authored); // as the chart's mods
@@ -898,9 +898,24 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             if (!between.TryGotoLabel("nextsong", "start"))
                 Console.Error.WriteLine("between has no nextsong clip to start.");
         }
-        Shell.SongInfo = Shell.SongInfo with { Stage = _courseSong + 1 };
+        // Each song's own genre, as the select screen shows it (the genre Song Select had set stayed for the whole
+        // course; reported on Discord).
+        Shell.SongInfo = Shell.SongInfo with
+        {
+            Genre = Shell.Hosts.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
+            Stage = _courseSong + 1,
+        };
+        // song_info asks LumenSongInfo only as the song starts (main.genre.gotoAndStop(genreArray[GetGenrNumber()]),
+        // main.stage.gotoAndStop(GetPlayCount())), so a course's next songs set its clips the same way here.
+        if (sceneLayer("song_info") is { } info
+            && !(info.TryGotoLabel("main/genre", GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)], play: false)
+                && info.TryGotoFrame("main/stage", Shell.SongInfo.StageFrame - 1, play: false)))
+            Console.Error.WriteLine("song_info has no main.genre / main.stage clip to set.");
         showSongTitle(song);
     }
+
+    // song_info's genreArray: TaikoSongInfo.Genre's labels.
+    private static readonly string[] GenreLabels = ["jpop", "anime", "vocaloid", "doyo", "variety", "classic", "game", "namco"];
 
     // A movie of the active scene by name (song_info, between); null when the scene has none.
     private LumenPlayer? sceneLayer(string movie)

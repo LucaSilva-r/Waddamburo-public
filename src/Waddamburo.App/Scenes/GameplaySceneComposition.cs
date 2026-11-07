@@ -280,7 +280,7 @@ internal static class GameplaySceneComposition
         return name.Contains("pop") ? 0
             : name.Contains("anime") ? 1
             : name.Contains("vocaloid") ? 2
-            : name.Contains("children") || name.Contains("folk") ? 3
+            : name.Contains("children") || name.Contains("folk") || name.Contains("kids") ? 3
             : name.Contains("classic") ? 5
             : name.Contains("game") ? 6
             : name.Contains("namco") ? 7
