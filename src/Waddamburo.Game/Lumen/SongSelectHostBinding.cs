@@ -1262,7 +1262,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             var leaving = _speedShown[player];
             _speedShown[player] = index;
             _player.SetInstanceOverlay($"{selector}/in_", SpeedText.Key(index, _speedBox.Value), _speedBox.Value, replace: true);
-            _player.SetInstanceOverlay($"{selector}/out_", leaving < 0 ? null : SpeedText.Key(leaving, _speedBox.Value), _speedBox.Value, replace: true);
+            // A board just opened rests on out_ (SessionSelector.Reset sets only it): it shows the current speed too,
+            // or Green's art for the item stayed (a reopened 1.1x read ふつう; reported on Discord).
+            _player.SetInstanceOverlay($"{selector}/out_", SpeedText.Key(leaving < 0 ? index : leaving, _speedBox.Value), _speedBox.Value, replace: true);
         }
     }
 
