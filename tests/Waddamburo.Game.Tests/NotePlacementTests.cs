@@ -17,7 +17,7 @@ public sealed class NotePlacementTests
     [InlineData(120, -1, -474)]
     public void ScrollSpeedUsesTheMeasuredFourBeatDistance(double bpm, double scroll, double expected)
     {
-        Assert.Equal(expected, TaikoLumenPresentation.ScrollPixelsPerSecond(bpm, scroll), 8);
+        Assert.Equal(expected, NoteGeometry.ScrollPixelsPerSecond(bpm, scroll), 8);
     }
 
     [Theory]
@@ -29,18 +29,18 @@ public sealed class NotePlacementTests
     {
         var duration = 60 / bpm * numerator * 4 / denominator;
 
-        Assert.Equal(expected, duration * TaikoLumenPresentation.ScrollPixelsPerSecond(bpm, 1), 8);
+        Assert.Equal(expected, duration * NoteGeometry.ScrollPixelsPerSecond(bpm, 1), 8);
     }
 
     [Fact]
     public void FourBeatsBeginOffscreenAndVisibilityUsesTheCorrectedVelocity()
     {
         const float hitX = 413;
-        var speed = TaikoLumenPresentation.ScrollPixelsPerSecond(120, 1);
+        var speed = NoteGeometry.ScrollPixelsPerSecond(120, 1);
         var hitTime = TimeSpan.FromSeconds(10);
 
         Assert.Equal(1361, hitX + 2 * speed);
-        var (from, until) = TaikoLumenPresentation.VisibleWindow(hitTime, speed, hitX);
+        var (from, until) = NoteGeometry.VisibleWindow(hitTime, speed, hitX);
         Assert.InRange(Math.Abs(hitX + (hitTime - from).TotalSeconds * speed - 1380), 0, 0.0001);
         Assert.InRange(Math.Abs(hitX + (hitTime - until).TotalSeconds * speed + 100), 0, 0.0001);
     }
@@ -66,7 +66,7 @@ public sealed class NotePlacementTests
     [Fact]
     public void ANoteIsVisibleFromTheRightEdgeUntilPastTheLeft()
     {
-        var (from, until) = TaikoLumenPresentation.VisibleWindow(TimeSpan.FromSeconds(100), 400, 300);
+        var (from, until) = NoteGeometry.VisibleWindow(TimeSpan.FromSeconds(100), 400, 300);
 
         Assert.Equal(TimeSpan.FromSeconds(100 - 2.7), from);
         Assert.Equal(TimeSpan.FromSeconds(101), until);
@@ -75,6 +75,6 @@ public sealed class NotePlacementTests
     [Fact]
     public void ANoteThatBarelyMovesIsAlwaysVisible()
     {
-        Assert.Equal((TimeSpan.MinValue, TimeSpan.MaxValue), TaikoLumenPresentation.VisibleWindow(TimeSpan.Zero, -50, 300));
+        Assert.Equal((TimeSpan.MinValue, TimeSpan.MaxValue), NoteGeometry.VisibleWindow(TimeSpan.Zero, -50, 300));
     }
 }

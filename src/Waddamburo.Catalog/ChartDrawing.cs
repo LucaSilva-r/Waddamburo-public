@@ -21,16 +21,16 @@ public static class ChartDrawing
         writer.Write("WDBD"u8);
         writer.Write(Version);
         writeScroll(writer, chart.ScrollPoints);
-        writer.Write(chart.JudgeMoves.Length);
-        foreach (var move in chart.JudgeMoves)
+        writer.Write(chart.Effects.JudgeMoves.Length);
+        foreach (var move in chart.Effects.JudgeMoves)
         {
             writer.Write(move.Time.Ticks);
             writer.Write(move.Duration.Ticks);
             writer.Write(move.X);
             writer.Write(move.Y);
         }
-        writer.Write(chart.Beats.Length);
-        foreach (var point in chart.Beats)
+        writer.Write(chart.Effects.Beats.Length);
+        foreach (var point in chart.Effects.Beats)
         {
             writer.Write(point.Time.Ticks);
             writer.Write(point.Beat);
@@ -52,8 +52,8 @@ public static class ChartDrawing
             }
             writeScroll(writer, route.Scroll);
         }
-        writer.Write(chart.Mods.Length);
-        foreach (var change in chart.Mods)
+        writer.Write(chart.Effects.Mods.Length);
+        foreach (var change in chart.Effects.Mods)
         {
             writer.Write(change.Start.Ticks);
             writer.Write(change.Length.Ticks);
@@ -116,13 +116,9 @@ public static class ChartDrawing
         }
         if (reader.BaseStream.Position != reader.BaseStream.Length)
             throw new InvalidDataException("Trailing bytes after the chart drawing data.");
-        return chart with
+        return chart.WithScrollPoints(scroll).WithHitObjects(notes.MoveToImmutable()) with
         {
-            ScrollPoints = scroll,
-            HitObjects = notes.MoveToImmutable(),
-            JudgeMoves = ordered(moves),
-            Beats = ordered(beats),
-            Mods = ordered(mods),
+            Effects = new ChartEffects { JudgeMoves = ordered(moves), Beats = ordered(beats), Mods = ordered(mods) },
             RouteControls = [.. routes],
         };
     }

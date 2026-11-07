@@ -65,9 +65,6 @@ public sealed class TaikoLumenPresentation
         _background = background.ToArray();
         _foreground = foreground.ToArray();
         _scenePlayers = [.. _background.Concat(_foreground).Select(static layer => layer.Player)];
-        _mods = chart.Mods.GroupBy(static change => (change.Target, change.Property)).ToDictionary(static group => group.Key, static group => group.ToArray());
-        _noteMods = chart.Mods.Any(static change => change.Target == "notes");
-        _wideView = chart.Mods.Any(static change => change.Target is "playfield" or "camera");
         _flightsAt = Math.Clamp(flightsAt ?? _foreground.Length, 0, _foreground.Length);
         _notes = notes;
         _bar = bar;
@@ -88,6 +85,9 @@ public sealed class TaikoLumenPresentation
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
         _hitRadius = _hitY - target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y).Y;
+        _mods = new ChartModValues(chart.Effects.Mods);
+        _geometry = new NoteGeometry(chart, _hitX, _hitY, _mods);
+        _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty);
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
         // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.
@@ -129,10 +129,9 @@ public sealed class TaikoLumenPresentation
     // chart's #JPOSSCROLL, as OpenTaiko moves its judge frame.
     private void moveTarget(TimeSpan time)
     {
-        if (_chart.JudgeMoves.IsEmpty) return;
-        var (x, y) = _chart.JudgeOffsetAt(time);
+        if (_chart.Effects.JudgeMoves.IsEmpty) return;
         // Every tick, not only on a change: a clip the timeline places again (the fire at each Go-Go) comes back unmoved.
-        _moved = ((float)x, (float)y);
+        _moved = _geometry.JudgeOffset(time);
         offsetTarget(_moved.X, _moved.Y);
     }
 
@@ -156,7 +155,7 @@ public sealed class TaikoLumenPresentation
         _longNotes?.Update(time);
         _gogo.Update(time);
         moveTarget(time);
-        DonTurn?.Invoke(Mod("don", "yaw", time), Mod("don", "pitch", time), Mod("don", "roll", time));
+        DonTurn?.Invoke(_mods.Value("don", "yaw", time), _mods.Value("don", "pitch", time), _mods.Value("don", "roll", time));
         // The lane takes the route a check picked at once (lane_hit plays its normal_kurouto etc. transition),
         // and Don-chan's bubble says which way it went (traced: same tick; the movie stops itself after).
         if (_judgement.Branch != _shownBranch)
@@ -206,17 +205,17 @@ public sealed class TaikoLumenPresentation
                 if (!bar.IsVisible || time < from || time > until) continue;
                 var at = _judgement.BranchAt(bar.Time);
                 if (route is null || route == at)
-                    addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time, at, rotate: true);
+                    addAt(layers, _branchBar is { } yellow && _checkBars.Contains(bar.Time) ? yellow : _bar, bar.Time, time, at, barLine: true);
             }
         // Notes of every kind in chart order, later ones behind (the game gives each spawned note a
         // deeper depth), so an earlier roll body covers the notes that follow it.
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
         if (_longNotes is not null)
             notes.AddRange(_longNotes.NoteLayers(time,
-                (noteTime, controlTime, route) => point(noteTime, time, controlTime, route), origin(time), bodies: !Doron));
+                (noteTime, controlTime, route) => _geometry.Point(noteTime, time, controlTime, route), _geometry.Origin(time), bodies: !Doron));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
-        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => window(note.StartTime, note.Branch))];
+        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => _geometry.Window(note.StartTime, note.Branch))];
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
             if (time < noteWindows[index].From || time > noteWindows[index].Until) continue;
@@ -231,11 +230,11 @@ public sealed class TaikoLumenPresentation
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
-            addAt(hitNotes, template, note.StartTime, time, note.Branch, sudden: true);
+            addAt(hitNotes, template, note.StartTime, time, note.Branch, hitNote: true);
             if (hitNotes.Count != 0 && !Doron) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
-                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset, sudden: true);
+                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset, hitNote: true);
         }
         // Balloons and kusudamas carry their text until their overlay takes over (a balloon waiting on the
         // target keeps it there).
@@ -252,140 +251,41 @@ public sealed class TaikoLumenPresentation
         layers.AddRange(texts);
         // Foreground in depth order (roll counter and balloon/kusudama overlays included); the hit
         // flights sit at their template's depth.
-        var atTarget = _moved == default ? null : (_longNotes?.TargetOverlays ?? []).Append(_feedback).ToHashSet();
-        var foreground = atTarget is null ? _foreground : [.. _foreground.Select(layer => atTarget.Contains(layer.Player)
-            ? layer with { Transform = layer.Transform with { X = layer.Transform.X + _moved.X, Y = layer.Transform.Y + _moved.Y } }
-            : layer)];
-        var front = new List<LumenSceneLayer>(foreground.Take(_flightsAt));
-        // The flights move with the target (OpenTaiko keeps them where they'd be relative to it, landing included).
+        var front = new List<LumenSceneLayer>(_foreground.Take(_flightsAt));
         if (_flights is not null)
-            front.AddRange(_moved == default ? _flights.ActiveLayers : _flights.ActiveLayers.Select(layer => layer with
-                { Transform = layer.Transform with { X = layer.Transform.X + _moved.X, Y = layer.Transform.Y + _moved.Y } }));
-        front.AddRange(foreground.Skip(_flightsAt));
-        if (_mods.Count == 0)
+            front.AddRange(_flights.ActiveLayers);
+        front.AddRange(_foreground.Skip(_flightsAt));
+        if (!_stage.IsActive)
             return (layers, front);
-        return ([.. layers.Select(layer => place(layer, targetOf(layer, character), time))],
-            [.. front.Select(layer => place(layer, targetOf(layer, character), time))]);
+        return ([.. layers.Select(layer => place(layer, character, time))], [.. front.Select(layer => place(layer, character, time))]);
     }
 
-    // rotate: a bar line stands across the way it travels (TJA complex scroll); notes stay upright (OpenTaiko).
-    // sudden: a note (or its text) that #SUDDEN hides until shortly before its time and holds still until then.
+    // A layer where the chart's effects put it: its modchart element (Don-chan, a scene role, or the playfield for
+    // everything drawn on the lane) and whether it sits at the target (judgement text, roll counter, balloon, flights:
+    // OpenTaiko keeps those where they are relative to the moved target, a flight's landing included).
+    private LumenSceneLayer place(LumenSceneLayer layer, LumenSceneLayer? character, TimeSpan time)
+    {
+        var target = character is not null && ReferenceEquals(layer, character) ? "don"
+            : _scenePlayers.Contains(layer.Player) ? StageEffects.TargetOf(_roles?.GetValueOrDefault(layer.Player))
+            : "playfield";
+        var followsTarget = layer.Player == _feedback || _flights?.Owns(layer.Player) == true
+            || _longNotes?.TargetOverlays.Contains(layer.Player) == true;
+        return _stage.Place(layer, target, followsTarget, time);
+    }
+
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
-        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool rotate = false, bool sudden = false)
+        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool hitNote = false, bool barLine = false)
     {
-        if (sudden && _chart.ScrollPointAt(noteTime, route).Show is { } show && noteTime - time > show)
-            return;
-        var (x, y) = point(noteTime, time, noteTime, route, sudden);
-        y += yOffset;
-        var margin = _wideView ? 1500 : 100; // a moved camera or playfield can bring the lane's far ends in view
-        if (x < -margin || x > 1280 + margin || y < -margin || y > 720 + margin)
-            return;
-        var transform = LumenMatrix.Identity with { X = x, Y = y };
-        if (rotate && _chart.ScrollPointAt(noteTime, route) is { Imaginary: not 0 } scroll)
-        {
-            var angle = Math.Atan2(scroll.Imaginary, scroll.Multiplier);
-            var (cos, sin) = ((float)Math.Cos(angle), (float)Math.Sin(angle));
-            transform = transform with { M11 = cos, M12 = sin, M21 = -sin, M22 = cos };
-        }
-        // Note mods on the note itself: dizzy turns it by how far it is, zoom sizes it, alpha fades it.
-        if (sudden && _noteMods)
-        {
-            var (spin, zoom, alpha) = (Mod("notes", "dizzy", time) * (x - _hitX) / 100, (float)Mod("notes", "zoom", time), (float)Mod("notes", "alpha", time));
-            var (cos, sin) = ((float)Math.Cos(spin), (float)Math.Sin(spin));
-            transform = transform with { M11 = zoom * cos, M12 = zoom * sin, M21 = -zoom * sin, M22 = zoom * cos };
-            layers.Add(template with { Transform = transform, Alpha = Math.Clamp(alpha, 0, 1) });
-            return;
-        }
-        layers.Add(template with { Transform = transform });
+        if (_geometry.Place(noteTime, time, route, yOffset, hitNote, barLine) is { } placed)
+            layers.Add(template with { Transform = placed.Transform, Alpha = placed.Alpha });
     }
-
-    // The target's centre at time (moved by #JPOSSCROLL).
-    private (float X, float Y) origin(TimeSpan time)
-    {
-        if (_chart.JudgeMoves.IsEmpty) return (_hitX, _hitY);
-        var (x, y) = _chart.JudgeOffsetAt(time);
-        return (_hitX + (float)x, _hitY + (float)y);
-    }
-
-    // Where a note of noteTime is at time: its own scroll's way (TJA complex scroll: x+yi), from the target.
-    // sudden: a hit note waits where #SUDDEN's wait time puts it (OpenTaiko: hit notes only, not rolls or bar lines).
-    private (float X, float Y) point(TimeSpan noteTime, TimeSpan time, TimeSpan controlTime, ChartBranch? route, bool sudden = false)
-    {
-        var (ox, oy) = origin(time);
-        var scroll = _chart.ScrollPointAt(controlTime, route);
-        var now = sudden && scroll.Wait is { } wait && noteTime - time > wait ? noteTime - wait : time;
-        // #HBSCROLL/#BMSCROLL: by the beats left (four to 948 px), else by the seconds at the note's tempo.
-        // ponytail: the beat count is the main route's; a 譜面分岐 route with its own tempo scrolls by it too.
-        var distance = scroll.ByBeat ? (_chart.BeatAt(noteTime) - _chart.BeatAt(now)) * 948 / 4
-            : (noteTime - now).TotalSeconds * ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), 1);
-        var (x, y) = (ox + distance * scroll.Multiplier, oy + distance * scroll.Imaginary);
-        if (_noteMods)
-            (x, y) = noteMods(x, y, distance, noteTime, time);
-        return ((float)Math.Clamp(x, -100_000, 100_000), (float)Math.Clamp(y, -100_000, 100_000));
-    }
-
-    private double pixelsPerSecond(TimeSpan controlTime, ChartBranch? route) =>
-        ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(controlTime, route), _chart.ScrollAt(controlTime, route));
-
-    /// <summary>
-    /// Scroll velocity on the 1280x720 stage: four beats at scroll 1 span 948 pixels,
-    /// including the offscreen approach. The hit target's position does not set the speed.
-    /// </summary>
-    // Public reference and independent runtime measurements: docs/development/gameplay-integration.md.
-    public static double ScrollPixelsPerSecond(double beatsPerMinute, double scrollMultiplier) =>
-        beatsPerMinute / 240 * 948 * scrollMultiplier;
 
     // When each note and bar is on the lane, so a frame skips the rest of a chart with one comparison each.
     // ponytail: still a pass over every note, a cursor needs care as scroll changes reorder arrivals.
     private (TimeSpan From, TimeSpan Until)[]? _noteWindows;
     private (ChartBranch? Route, (ChartBarLine Bar, TimeSpan From, TimeSpan Until)[] Bars)[]? _barStreams;
     private (ChartBarLine Bar, TimeSpan From, TimeSpan Until)[] barTimes(ImmutableArray<ChartBarLine> bars) =>
-        [.. bars.Select(bar => barWindow(bar.Time) is var window ? (bar, window.From, window.Until) : default)];
-
-    private (TimeSpan From, TimeSpan Until) window(TimeSpan noteTime, ChartBranch? route)
-    {
-        // A moved camera or playfield: listed as long as any of it could be on screen (a turned or shrunk lane).
-        if (_wideView)
-        {
-            var at = _chart.ScrollPointAt(noteTime, route);
-            var pace = at.ByBeat ? 0 : ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(at.Multiplier * at.Multiplier + at.Imaginary * at.Imaginary));
-            if (pace >= 1 && at.Show is null && at.Wait is null)
-                return (noteTime - TimeSpan.FromSeconds(4000 / pace), noteTime + TimeSpan.FromSeconds(4000 / pace));
-        }
-        // Gimmicks (backwards or slanted scroll, a moving target): the note may come from any side, so it is
-        // listed for as long as it is within a screen's diagonal of the target.
-        var scroll = _chart.ScrollPointAt(noteTime, route);
-        if (scroll.ByBeat && !_chart.Beats.IsEmpty)
-        {
-            // Within a screen's diagonal of the target, in beats; a #DELAY on the way keeps it listed longer.
-            var beat = _chart.BeatAt(noteTime);
-            var reachBeats = 1500 / (948 / 4.0 * Math.Max(0.01, Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary)));
-            var from = _chart.TimeAtBeat(beat - reachBeats);
-            if (scroll.Show is { } appear && noteTime - appear > from)
-                from = noteTime - appear;
-            return (from, _chart.TimeAtBeat(beat + reachBeats) + TimeSpan.FromSeconds(1));
-        }
-        // #SUDDEN: shown from its appear time (a note held still may wait on screen from the start).
-        if (scroll.Show is not null || scroll.Wait is not null)
-            return (scroll.Show is { } show ? noteTime - show : TimeSpan.MinValue, noteTime + TimeSpan.FromSeconds(1500 / Math.Max(1,
-                ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary)))));
-        if (scroll.Multiplier > 0 && scroll.Imaginary == 0 && _chart.JudgeMoves.IsEmpty)
-            return VisibleWindow(noteTime, pixelsPerSecond(noteTime, route), _hitX);
-        var speed = ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary));
-        var reach = TimeSpan.FromSeconds(1500 / speed);
-        return speed < 1 ? (TimeSpan.MinValue, TimeSpan.MaxValue)
-            : (noteTime - reach, noteTime + reach);
-    }
-
-    // A bar line follows whichever route is playing, so it stays listed for as long as the slowest would show it.
-    private (TimeSpan From, TimeSpan Until) barWindow(TimeSpan time) => _chart.ScrollPointAt(time).ByBeat ? window(time, null) :
-        VisibleWindow(time, Enum.GetValues<ChartBranch>().Min(route => pixelsPerSecond(time, route)), _hitX);
-
-    /// <summary>When something moving at this speed is between x -100 and 1380, the lane's drawn range; always, if it barely moves.</summary>
-    public static (TimeSpan From, TimeSpan Until) VisibleWindow(TimeSpan noteTime, double pixelsPerSecond, float hitX) =>
-        pixelsPerSecond < 1
-            ? (TimeSpan.MinValue, TimeSpan.MaxValue)
-            : (noteTime - TimeSpan.FromSeconds((1380 - hitX) / pixelsPerSecond), noteTime + TimeSpan.FromSeconds((hitX + 100) / pixelsPerSecond));
+        [.. bars.Select(bar => _geometry.BarWindow(bar.Time) is var window ? (bar, window.From, window.Until) : default)];
 
     /// <summary>The combo shown is set from outside (<see cref="SetCombo"/>), not counted from the judgements shown (an online partner's lane).</summary>
     public bool ExternalCombo { get; set; }
@@ -436,113 +336,15 @@ public sealed class TaikoLumenPresentation
             _target.Player.TryGotoLabel("effect", label);
     }
 
-    // Modcharts (#EASE/#SET, ChartMods): every value is looked up from chart time each frame, nothing is kept.
+    // The chart's effects (ChartEffects): note placement, and the scene's movies under modcharts and target moves.
+    private readonly ChartModValues _mods;
+    private readonly NoteGeometry _geometry;
+    private readonly StageEffects _stage;
     private readonly IReadOnlyDictionary<LumenPlayer, string>? _roles;
     private readonly HashSet<LumenPlayer> _scenePlayers;
-    private readonly Dictionary<(string Target, string Property), ChartModEase[]> _mods;
-    private readonly bool _noteMods;
-    private readonly bool _wideView;
-    private readonly Dictionary<LumenPlayer, (float X, float Y)> _pivots = [];
 
     /// <summary>Called each <see cref="Update"/> with Don-chan's model turn (yaw, pitch, roll in degrees).</summary>
     public Action<double, double, double>? DonTurn { get; set; }
-
-    /// <summary>A modchart value at <paramref name="time"/> (its default when the chart never changes it).</summary>
-    public double Mod(string target, string property, TimeSpan time) =>
-        _mods.TryGetValue((target, property), out var changes)
-            ? ChartMods.ValueAt(changes, time, ChartMods.Default(property)) : ChartMods.Default(property);
-
-    // Green's gameplay roles under their modchart names (the same roles whatever skin or random mix fills them).
-    // Host-drawn layers (notes, bar lines, note text, flights) and the lane's own movies are the playfield.
-    // ponytail: Waiwai's roles are not mapped (their parts stay put).
-    private string? targetOf(LumenSceneLayer layer, LumenSceneLayer? character)
-    {
-        if (character is not null && ReferenceEquals(layer, character))
-            return "don";
-        if (!_scenePlayers.Contains(layer.Player))
-            return "playfield";
-        return _roles?.GetValueOrDefault(layer.Player) switch
-        {
-            "bg_nomal" or "bg_fever" => "background",
-            "donbg" => "donbg",
-            "renda" => "renda",
-            "dance" => "dancers",
-            "dodai" => "stage",
-            "fever" => "fever",
-            "chibi" => "runners",
-            "lane_obi" => "board",
-            "song_info" => "songinfo",
-            "player_name" => "nameplate",
-            "action_gogotime" => "gogo",
-            "gage_fire_1p" => "gauge",
-            { } role when role.StartsWith("gage_don_1p_", StringComparison.Ordinal) => "gauge",
-            "lane" or "lane_hit" or "lane_hit_effect" or "renda_num" or "lane_syousetsu" => "playfield",
-            { } role when role.StartsWith("onp_", StringComparison.Ordinal) => "playfield",
-            _ => null,
-        };
-    }
-
-    // A layer under its element's transform (about the element's own centre; the playfield about the target, the
-    // camera about the screen's centre), then the camera's.
-    private LumenSceneLayer place(LumenSceneLayer layer, string? target, TimeSpan time)
-    {
-        var (matrix, alpha, moved) = (LumenMatrix.Identity, layer.Alpha, false);
-        if (target is not null && element(target, time, target == "playfield" ? origin(time) : pivotOf(layer)) is { } own)
-            (matrix, alpha, moved) = (own.Matrix, alpha * own.Alpha, true);
-        if (element("camera", time, (640, 360)) is { } camera)
-            (matrix, alpha, moved) = (matrix.Then(camera.Matrix), alpha * camera.Alpha, true);
-        return moved ? layer with { Transform = layer.Transform.Then(matrix), Alpha = Math.Clamp(alpha, 0, 1) } : layer;
-    }
-
-    private (LumenMatrix Matrix, float Alpha)? element(string target, TimeSpan time, (float X, float Y) pivot)
-    {
-        var (x, y, turn) = (Mod(target, "x", time), Mod(target, "y", time), Mod(target, "rotation", time) * Math.PI / 180);
-        var scale = Mod(target, "scale", time);
-        var (sx, sy, alpha) = (scale * Mod(target, "scalex", time), scale * Mod(target, "scaley", time), Mod(target, "alpha", time));
-        if (x == 0 && y == 0 && turn == 0 && sx == 1 && sy == 1 && alpha == 1)
-            return null;
-        var (cos, sin) = (Math.Cos(turn), Math.Sin(turn));
-        var (m11, m12, m21, m22) = ((float)(sx * cos), (float)(sx * sin), (float)(-sy * sin), (float)(sy * cos));
-        return (new LumenMatrix(m11, m12, m21, m22,
-            pivot.X - (m11 * pivot.X + m21 * pivot.Y) + (float)x,
-            pivot.Y - (m12 * pivot.X + m22 * pivot.Y) + (float)y), (float)alpha);
-    }
-
-    // The centre of what a movie draws on the stage, found the first time it draws something.
-    private (float X, float Y) pivotOf(LumenSceneLayer layer)
-    {
-        if (_pivots.TryGetValue(layer.Player, out var known))
-            return known;
-        var quads = layer.Player.CreateRenderSnapshot().Quads;
-        if (quads.IsEmpty)
-            return (640, 360);
-        var corners = quads.SelectMany(static quad => (LumenRenderVertex[])[quad.TopLeft, quad.TopRight, quad.BottomRight, quad.BottomLeft])
-            .Select(vertex => layer.Transform.Transform(vertex.X, vertex.Y)).ToArray();
-        return _pivots[layer.Player] = ((corners.Min(static c => c.X) + corners.Max(static c => c.X)) / 2,
-            (corners.Min(static c => c.Y) + corners.Max(static c => c.Y)) / 2);
-    }
-
-    // NotITG-style note mods, by screen axis: drunk and beat across the lane, tipsy and wave along it.
-    private (double X, double Y) noteMods(double x, double y, double distance, TimeSpan noteTime, TimeSpan time)
-    {
-        var seconds = time.TotalSeconds;
-        var drunk = Mod("notes", "drunk", time);
-        if (drunk != 0) y += drunk * 30 * Math.Cos(seconds * 2.5 + distance / 120);
-        var tipsy = Mod("notes", "tipsy", time);
-        if (tipsy != 0) x += tipsy * 25 * Math.Cos(seconds * 5 + noteTime.TotalSeconds * 4);
-        var wave = Mod("notes", "wave", time);
-        if (wave != 0) x += wave * 20 * Math.Sin(distance / 38);
-        var beat = Mod("notes", "beat", time);
-        if (beat != 0)
-        {
-            // A bump on every beat that fades over the first fifth of it.
-            var count = _chart.Beats.IsEmpty ? seconds * _chart.BeatsPerMinuteAt(time) / 60 : _chart.BeatAt(time);
-            var phase = count - Math.Floor(count);
-            if (phase < 0.2)
-                y += beat * 20 * (1 - phase / 0.2) * Math.Sin(distance / 15 + Math.PI / 2);
-        }
-        return (x, y);
-    }
 
     private static void callback(LumenPlayer player, string name, LumenHostValue value)
     {

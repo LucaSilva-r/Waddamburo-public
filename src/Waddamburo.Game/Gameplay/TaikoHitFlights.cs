@@ -91,6 +91,9 @@ public sealed class TaikoHitFlights
         }
     }
 
+    /// <summary>Whether <paramref name="player"/> is one of these flights.</summary>
+    public bool Owns(LumenPlayer player) => Array.Exists(_layers, layer => layer.Player == player);
+
     public IEnumerable<LumenSceneLayer> ActiveLayers =>
         _layers.Where((_, index) => _active[index]);
 }

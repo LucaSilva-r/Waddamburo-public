@@ -5,7 +5,7 @@ using Waddamburo.Catalog;
 
 namespace Waddamburo.Providers.Tja;
 
-internal static class TjaPlayableChartReader
+internal static partial class TjaPlayableChartReader
 {
     private const decimal TicksPerSecond = TimeSpan.TicksPerSecond;
 
@@ -38,11 +38,8 @@ internal static class TjaPlayableChartReader
         var numerator = 4;
         var denominator = 4;
         var bpm = 0m;
-        var scroll = new TjaScroll(1, 0, 0, null, null, null, 0);
-        // The main route's beat count over time (#HBSCROLL/#BMSCROLL): time, beat, beats per second from there.
-        var beatAnchors = new List<(decimal Time, decimal Beat, decimal Bps)>();
-        var judgeMoves = new List<(decimal At, double Seconds, double X, double Y)>();
-        var mods = new List<ChartModEase>();
+        var scroll = new TjaScroll(1, 0, 0, null, null, 0);
+        var drawn = new TjaEffectsBuilder(); // drawing-only commands (#JPOSSCROLL, beat count, #EASE/#SET, #SENOTECHANGE)
         var isGoGo = false;
         var isBarlineVisible = true;
         var cursorSeconds = 0m;
@@ -99,7 +96,7 @@ internal static class TjaPlayableChartReader
                         bpm = positiveNumber(bpmText, "BPM");
                         timingPoints.Add(new ChartTimingPoint(TimeSpan.Zero, (double)bpm, numerator, denominator));
                         scrollPoints.Add(scrollPoint(TimeSpan.Zero, scroll));
-                        beatAnchors.Add((0, 0, bpm / 60));
+                        drawn.Start(bpm);
                         effectPoints.Add(new ChartEffectPoint(TimeSpan.Zero, isGoGo));
                         active = true;
                     }
@@ -154,7 +151,7 @@ internal static class TjaPlayableChartReader
                     throw new InvalidDataException("The selected TJA chart ends with an unterminated measure.");
                 foreach (var command in commands)
                     applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null, mods);
+                        ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, drawn, onMain());
                 commands.Clear();
                 closeBranch();
                 closeLong(chartTime(cursorSeconds));
@@ -175,11 +172,7 @@ internal static class TjaPlayableChartReader
                     ScoreInit = scoreInit,
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
-                    JudgeMoves = resolveJudgeMoves(judgeMoves),
-                    Mods = [.. mods.OrderBy(static change => change.Start)],
-                    Beats = scrollPoints.Any(static point => point.ByBeat)
-                        ? [.. beatAnchors.Select(static anchor => new ChartBeatPoint(chartTime(anchor.Time), (double)anchor.Beat, (double)anchor.Bps))]
-                        : [],
+                    Effects = drawn.Build(byBeat: scrollPoints.Any(static point => point.ByBeat)),
                     RouteControls = routeBlocks.Count == 0 ? [] : [.. ((string[])["#N", "#E", "#M"]).Select(name => new ChartRouteControls(
                         routeStream(timingPoints, routeBlocks, name, static own => own.Timing, static point => point.Time, static (point, at) => new ChartTimingPoint(at, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
                         routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => point.At(at)))
@@ -290,7 +283,7 @@ internal static class TjaPlayableChartReader
                     {
                         applyCommand(commands[commandIndex++].Line, ref numerator, ref denominator,
                             ref bpm, ref scroll, ref isGoGo, ref isBarlineVisible, ref cursorSeconds,
-                            timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null, mods);
+                            timing, scrolls, effects, drawn, onMain());
                     }
                     if (index == count) break;
                     if (index == 0) bars.Add(new ChartBarLine(chartTime(cursorSeconds), isBarlineVisible));
@@ -338,8 +331,7 @@ internal static class TjaPlayableChartReader
                         if (kind is { } value)
                         {
                             checkNoteLimit();
-                            var forcedText = value is PlayableNoteKind.Don or PlayableNoteKind.Ka ? scroll.NoteText : null;
-                            scroll = scroll with { NoteText = null };
+                            var forcedText = drawn.TakeNoteText(value);
                             hitObjects.Add(new PlayableHitObject(time, value, isHand: symbol is 'A' or 'B') { Branch = tag(), Text = forcedText, IsKadon = symbol == 'G' });
                         }
                     }
@@ -359,7 +351,7 @@ internal static class TjaPlayableChartReader
             // Commands after a route's last measure are that route's, not the next one's.
             foreach (var command in commands)
                 applyCommand(command.Line, ref numerator, ref denominator, ref bpm, ref scroll,
-                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, judgeMoves, ReferenceEquals(timing, timingPoints) ? beatAnchors : null, mods);
+                    ref isGoGo, ref isBarlineVisible, ref cursorSeconds, timing, scrolls, effects, drawn, onMain());
             commands.Clear();
             if (!onMain())
             {
@@ -561,12 +553,9 @@ internal static class TjaPlayableChartReader
         ImmutableArray<ChartTimingPoint>.Builder timingPoints,
         ImmutableArray<ChartScrollPoint>.Builder scrollPoints,
         ImmutableArray<ChartEffectPoint>.Builder effectPoints,
-        List<(decimal At, double Seconds, double X, double Y)> judgeMoves,
-        List<(decimal Time, decimal Beat, decimal Bps)>? beats,
-        List<ChartModEase> mods)
+        TjaEffectsBuilder drawn,
+        bool mainRoute)
     {
-        // The beat count at a time from the last anchor (anchors go in time order: a tempo change or a #DELAY each).
-        decimal beatAt(decimal time) => beats![^1].Beat + (time - beats[^1].Time) * beats[^1].Bps;
         var separator = line.IndexOfAny([' ', '\t']);
         var name = (separator < 0 ? line : line[..separator]).ToUpperInvariant();
         var argument = separator < 0 ? string.Empty : line[(separator + 1)..].Trim();
@@ -586,7 +575,8 @@ internal static class TjaPlayableChartReader
                 break;
             case "#BPMCHANGE":
                 bpm = positiveNumber(argument, "#BPMCHANGE");
-                beats?.Add((cursorSeconds, beatAt(cursorSeconds), bpm / 60));
+                if (mainRoute)
+                    drawn.TempoChanged(cursorSeconds, bpm);
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
@@ -605,19 +595,14 @@ internal static class TjaPlayableChartReader
                 var (x, y) = complex(fields[1], "#JPOSSCROLL");
                 if (fields.Length < 3 || fields[2] == "0")
                     (x, y) = (0 - x, 0 - y); // 0 - x: no -0 for a move that does not go that way
-                judgeMoves.Add((cursorSeconds, seconds, x, y));
+                drawn.MoveTarget(cursorSeconds, seconds, x, y);
                 break;
             }
             case "#DELAY":
                 // Negative delays are legal: editors offset one note with #DELAY x … #DELAY -x.
                 var delay = finiteDecimal(argument, "#DELAY");
-                // A delay stops the beat count. ponytail: a negative one (a single note's offset) leaves the count be.
-                if (beats is not null && delay > 0)
-                {
-                    var beat = beatAt(cursorSeconds);
-                    beats.Add((cursorSeconds, beat, 0));
-                    beats.Add((cursorSeconds + delay, beat, bpm / 60));
-                }
+                if (mainRoute)
+                    drawn.Delayed(cursorSeconds, delay, bpm);
                 cursorSeconds = checked(cursorSeconds + delay);
                 ensureTimeFits(cursorSeconds, "TJA #DELAY places the chart outside the supported time range.");
                 break;
@@ -671,7 +656,7 @@ internal static class TjaPlayableChartReader
                 var beatsLong = name == "#EASE" && double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var length)
                     && double.IsFinite(length) && length > 0 ? length : 0;
                 // ponytail: the length in beats at the tempo where it starts (a tempo change inside it is not followed).
-                mods.Add(new ChartModEase(chartTime(cursorSeconds), TimeSpan.FromSeconds(beatsLong * 60 / (double)bpm),
+                drawn.Mod(new ChartModEase(chartTime(cursorSeconds), TimeSpan.FromSeconds(beatsLong * 60 / (double)bpm),
                     target, property, to, easing));
                 break;
             }
@@ -683,11 +668,7 @@ internal static class TjaPlayableChartReader
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
             case "#SENOTECHANGE":
-                // The label under the next don or ka (1 ドン 2 ド 3 コ 4 カッ 5 カ 6 ドン(大) 7 カッ(大); the roll ones unused).
-                scroll = scroll with { NoteText = int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text switch
-                {
-                    1 => "don", 2 => "do", 3 => "ko", 4 => "katsu", 5 => "ka", 6 => "don_dai", 7 => "katsu_dai", _ => null,
-                } : null };
+                drawn.NoteText(int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text : 0);
                 break;
             case "#GAMETYPE" when !argument.Equals("Taiko", StringComparison.OrdinalIgnoreCase):
                 throw new NotSupportedException($"TJA #GAMETYPE {argument} (OpenTaiko) is not a taiko chart.");
@@ -701,9 +682,9 @@ internal static class TjaPlayableChartReader
         }
     }
 
-    // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN, and #SENOTECHANGE's label for the next note.
+    // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN.
     // Mode: 0 by time, 1 by beat (#HBSCROLL), 2 by beat at speed 1 (#BMSCROLL).
-    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, string? NoteText, int Mode);
+    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, int Mode);
 
     // #DIRECTION turns the real speed (OpenTaiko's table: diagonals keep the full speed on both axes); a complex
     // #SCROLL keeps its own vertical part (TJAP3).
@@ -724,21 +705,6 @@ internal static class TjaPlayableChartReader
             _ => (scroll.Re, 0d),
         };
         return new(time, re) { Imaginary = scroll.Im != 0 ? scroll.Im : im, Show = scroll.Show, Wait = scroll.Wait, ByBeat = scroll.Mode == 1 };
-    }
-
-    // Moves in time order, each cut short where the next starts so the target ends where OpenTaiko's does.
-    private static ImmutableArray<ChartJudgeMove> resolveJudgeMoves(List<(decimal At, double Seconds, double X, double Y)> moves)
-    {
-        var ordered = moves.OrderBy(static move => move.At).ToArray();
-        var result = ImmutableArray.CreateBuilder<ChartJudgeMove>(ordered.Length);
-        for (var index = 0; index < ordered.Length; index++)
-        {
-            var (at, seconds, x, y) = ordered[index];
-            var room = index + 1 < ordered.Length ? (double)(ordered[index + 1].At - at) : double.MaxValue;
-            var done = seconds <= room ? 1 : room / seconds;
-            result.Add(new ChartJudgeMove(chartTime(at), TimeSpan.FromSeconds(Math.Min(seconds, room)), x * done, y * done));
-        }
-        return result.MoveToImmutable();
     }
 
     /// <summary>A TJA real or complex number: <c>2</c>, <c>-1.5</c>, <c>3i</c>, <c>1+2i</c>, <c>0-100i</c>, <c>-i</c>.</summary>

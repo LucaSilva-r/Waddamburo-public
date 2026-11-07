@@ -429,9 +429,9 @@ public sealed class TjaCatalogProviderTests
         Assert.Equal([(-1d, 0d), (1d, 1d), (0d, -1d), (0.25d, -4d)],
             chart.ScrollPoints.Select(point => (point.Multiplier, point.Imaginary)));
         Assert.Equal([new ChartJudgeMove(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2), -50, 0),
-            new ChartJudgeMove(TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(0.5), 0, -100)], chart.JudgeMoves.AsEnumerable());
-        Assert.Equal((-25d, 0d), chart.JudgeOffsetAt(TimeSpan.FromSeconds(3)));
-        Assert.Equal((-50d, -100d), chart.JudgeOffsetAt(TimeSpan.FromSeconds(5)));
+            new ChartJudgeMove(TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(0.5), 0, -100)], chart.Effects.JudgeMoves.AsEnumerable());
+        Assert.Equal((-25d, 0d), chart.Effects.JudgeOffsetAt(TimeSpan.FromSeconds(3)));
+        Assert.Equal((-50d, -100d), chart.Effects.JudgeOffsetAt(TimeSpan.FromSeconds(5)));
     }
 
     [Fact]
@@ -451,10 +451,10 @@ public sealed class TjaCatalogProviderTests
         // 120 BPM: a measure is 2 s and 4 beats. #DELAY 1 stops the count for a second, then 240 BPM counts 4 a second.
         var chart = await loadSynthetic("1,\n#DELAY 1\n#BPMCHANGE 240\n#SCROLL 2\n1,\n#BMSCROLL\n1,\n#NMSCROLL\n1,", "#HBSCROLL\n");
         Assert.Equal([(true, 1d), (true, 2d), (true, 1d), (false, 2d)], chart.ScrollPoints.Select(point => (point.ByBeat, point.Multiplier)));
-        Assert.Equal(2, chart.BeatAt(TimeSpan.FromSeconds(1)));
-        Assert.Equal(4, chart.BeatAt(TimeSpan.FromSeconds(2.5)));
-        Assert.Equal(6, chart.BeatAt(TimeSpan.FromSeconds(3.5)));
-        Assert.Equal(TimeSpan.FromSeconds(3.5), chart.TimeAtBeat(6));
+        Assert.Equal(2, chart.Effects.BeatAt(TimeSpan.FromSeconds(1)));
+        Assert.Equal(4, chart.Effects.BeatAt(TimeSpan.FromSeconds(2.5)));
+        Assert.Equal(6, chart.Effects.BeatAt(TimeSpan.FromSeconds(3.5)));
+        Assert.Equal(TimeSpan.FromSeconds(3.5), chart.Effects.TimeAtBeat(6));
     }
 
     [Fact]
@@ -464,9 +464,9 @@ public sealed class TjaCatalogProviderTests
         var chart = await loadSynthetic(
             "#EASE 4 outQuad don scale 2\n#SET notes drunk 1\n#EASE 2 wobble don scale 3\n#SET don size 3\n#SET clouds x 1\n1,\n#EASE 2 linear don scale 0\n1,");
         Assert.Equal([("don", "scale", 2d, ChartEase.OutQuad), ("notes", "drunk", 1d, ChartEase.Linear), ("don", "scale", 0d, ChartEase.Linear)],
-            chart.Mods.Select(change => (change.Target, change.Property, change.Value, change.Ease)));
-        Assert.Equal(TimeSpan.FromSeconds(2), chart.Mods[0].Length);
-        var scale = chart.Mods.Where(change => change.Property == "scale").ToArray();
+            chart.Effects.Mods.Select(change => (change.Target, change.Property, change.Value, change.Ease)));
+        Assert.Equal(TimeSpan.FromSeconds(2), chart.Effects.Mods[0].Length);
+        var scale = chart.Effects.Mods.Where(change => change.Property == "scale").ToArray();
         Assert.Equal(1, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(-1), 1));
         Assert.Equal(1.75, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(1), 1), 9); // outQuad halfway: 0.75 of the way
         Assert.Equal(2, ChartMods.ValueAt(scale, TimeSpan.FromSeconds(2), 1));
