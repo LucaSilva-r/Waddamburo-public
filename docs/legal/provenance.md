@@ -280,10 +280,15 @@ at commit `b9438627eef73a1157e84201b6fa6eb2ffd6d9f0` (hashes in THIRD_PARTY_NOTI
 
 The effects editor uses ImGui.NET 1.91.6.1 (upstream revision
 `8e26803be78b344fd68834817905405b3cdffb94`, MIT) and its bundled Dear ImGui 1.91.6 /
-cimgui native runtimes from NuGet. The default font is Dear ImGui's embedded
-ProggyClean (MIT). Their notices ship from `eng/packaging/licenses/`; the exact
+cimgui native runtimes from NuGet. The native library includes Dear ImGui's embedded ProggyClean (MIT); the editor uses
+the project's existing Kosugi Maru resource (Apache-2.0, exact source and hash in THIRD_PARTY_NOTICES.md),
+rasterized into the ImGui atlas at the window's initial pixel density. Their notices ship from `eng/packaging/licenses/`; the exact
 managed dependency graph is recorded in the package lock files. The SDL event
 adapter, bgfx indexed-triangle renderer, and editor session are original project
 code, implemented against the published Dear ImGui backend contract
 (<https://github.com/ocornut/imgui/blob/v1.91.6/docs/BACKENDS.md>) and ImGui.NET API.
 No upstream backend source or private proof-of-concept code is adapted.
+
+The effects editor's neutral theme, inline timeline curves and scene manipulation controls are original
+project code. BUI was evaluated from its public README (<https://github.com/ppmpreetham/BUI>, accessed
+2026-11-07) as a UI reference; no BUI or Blender code, assets, theme tables, or dependencies are included.

@@ -16,6 +16,7 @@
     <EmbeddedResource Include="Shaders/Compiled/*.*"
                       LogicalName="Waddamburo.Shaders.%(Filename)%(Extension)" />
     <EmbeddedResource Include="../../eng/packaging/waddamburo.png" LogicalName="Waddamburo.Icon.png" />
+    <EmbeddedResource Include="../Waddamburo.App/Resources/fonts/KosugiMaru-Regular.ttf.gz" LogicalName="Waddamburo.EditorFont.gz" />
   </ItemGroup>
 
   <!-- Developer builds: the bgfx renderer from the native debug build (native/bgfx) runs next to

@@ -18,6 +18,8 @@ public sealed partial class EffectsEditorSession : IDisposable
     private readonly IEffectsEditorTransport _transport;
     private readonly BeatView _view = new();
     private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _expandedGraphs = new(StringComparer.Ordinal);
+    private string? _revealTrack;
     private string[] _trackNames;
     private (string Track, int Index)? _key;
     private string? _primary;
@@ -26,11 +28,10 @@ public sealed partial class EffectsEditorSession : IDisposable
     private bool _seekDrag;
     private int _divider;
     private float _dividerOrigin;
-    private const string Status = "Wheel: zoom | Middle drag: pan | Click a key to inspect";
-    private static readonly uint Background = Color(.055f, .065f, .085f), Grid = Color(.17f, .19f, .23f),
-        Bar = Color(.28f, .32f, .4f), Text = Color(.8f, .84f, .9f), Muted = Color(.48f, .54f, .63f),
-        Playhead = Color(1, .56f, .18f), Accent = Color(.32f, .8f, .95f), SelectedRow = Color(.11f, .2f, .28f, .65f);
-    private static readonly uint[] TrackColors = [Color(.32f, .8f, .95f), Color(.9f, .54f, .82f), Color(.55f, .88f, .55f), Color(1, .8f, .3f)];
+    private const string Status = "Arrow: show curve | Wheel: zoom | Shift+wheel: scroll | Middle drag: pan";
+    private static readonly uint Background = Color(.115f, .125f, .14f), Grid = Color(.20f, .22f, .25f),
+        Bar = Color(.31f, .34f, .39f), Text = Color(.85f, .87f, .9f), Muted = Color(.52f, .56f, .61f),
+        Playhead = Color(1, .56f, .18f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
 
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
         Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null)
@@ -51,6 +52,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         _previousRegion = application.StageRegion;
         FrameAll();
         _layer = application.AttachImGui(Draw);
+        EditorTheme.Apply();
         _layer.CaptureControlShortcuts = true;
         _layer.CaptureKey = key => key is ImGuiKey.Space or ImGuiKey.LeftArrow or ImGuiKey.RightArrow
             or ImGuiKey.A or ImGuiKey.B or ImGuiKey.Escape or ImGuiKey.F8 or ImGuiKey.Delete;
@@ -74,7 +76,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         var size = io.DisplaySize;
         if (size.X < 32 || size.Y < 32) return;
         var layout = EditorLayout.Calculate(size.X, size.Y, _left, _right, _bottom);
-        _application.StageRegion = layout.Stage.Normalized(size.X, size.Y);
+        _application.StageRegion = EditorLayout.Preview(layout.Stage).Normalized(size.X, size.Y);
         _elements = _getElements?.Invoke(_transport.Clock.Position) ?? [];
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
         Toolbar(layout.Toolbar);
@@ -149,7 +151,10 @@ public sealed partial class EffectsEditorSession : IDisposable
             {
                 var tracks = _trackNames.Where(k => k.StartsWith(target + ".", StringComparison.Ordinal)).ToArray();
                 ImGui.SetNextItemOpen(tracks.Length > 0, ImGuiCond.Once);
-                if (!ImGui.TreeNode($"{target} ({tracks.Length})")) continue;
+                var open = ImGui.TreeNodeEx($"{target} ({tracks.Length})", ImGuiTreeNodeFlags.OpenOnArrow
+                    | ImGuiTreeNodeFlags.SpanAvailWidth | (_viewportTarget == target ? ImGuiTreeNodeFlags.Selected : 0));
+                if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen()) SelectElement(target);
+                if (!open) continue;
                 foreach (var key in tracks)
                     if (ImGui.Selectable(key[(key.IndexOf('.') + 1)..], _selected.Contains(key)))
                         Select(key, ImGui.GetIO().KeyCtrl);
@@ -160,13 +165,14 @@ public sealed partial class EffectsEditorSession : IDisposable
         ImGui.End();
     }
 
-    private void Select(string track, bool toggle)
+    private void Select(string track, bool toggle, bool revealGraph = true)
     {
         CommitInspector();
         if (!toggle) _selected.Clear();
         if (!toggle || !_selected.Remove(track)) _selected.Add(track);
         _primary = _selected.Contains(track) ? track : _selected.Order(StringComparer.Ordinal).FirstOrDefault();
         _viewportTarget = _primary?.Split('.')[0];
+        if (revealGraph && _primary is { } primary) { _expandedGraphs.Add(primary); _revealTrack = primary; }
         _key = null;
         _selectedKeys.Clear();
         _inspectorKey = null;
@@ -215,19 +221,9 @@ public sealed partial class EffectsEditorSession : IDisposable
         {
             if (ImGui.Button("Frame all")) FrameAll();
             ImGui.SameLine(); ImGui.TextColored(_messageError ? new(1, .4f, .35f, 1) : new(.6f, .68f, .75f, 1), _message ?? Status);
-            var visible = false;
-            var graph = false;
-            if (ImGui.BeginTabBar("Track views"))
-            {
-                if (ImGui.BeginTabItem("Timeline")) { visible = true; ImGui.EndTabItem(); }
-                if (ImGui.BeginTabItem("Graph")) { visible = graph = true; ImGui.EndTabItem(); }
-                ImGui.EndTabBar();
-            }
-            // Submit both selectors together before drawing the selected canvas.
-            if (visible)
-            {
-                if (graph) Graph(); else Timeline();
-            }
+            ImGui.SameLine();
+            if (ImGui.Button("Collapse curves")) _expandedGraphs.Clear();
+            Timeline();
         }
         ImGui.End();
     }
@@ -236,7 +232,11 @@ public sealed partial class EffectsEditorSession : IDisposable
     {
         if (!hovered || _dragBefore is not null || _boxStart is not null) return;
         var io = ImGui.GetIO();
-        if (io.MouseWheel != 0) _view.Zoom(io.MouseWheel, (io.MousePos.X - origin.X) / width);
+        if (io.MouseWheel != 0)
+        {
+            if (io.KeyShift) ImGui.SetScrollY(ImGui.GetScrollY() - io.MouseWheel * 70);
+            else _view.Zoom(io.MouseWheel, (io.MousePos.X - origin.X) / width);
+        }
         if (ImGui.IsMouseDragging(ImGuiMouseButton.Middle)) _view.Pan(io.MouseDelta.X / width);
     }
 
@@ -276,7 +276,7 @@ public sealed partial class EffectsEditorSession : IDisposable
 
     private void Timeline()
     {
-        const float labelWidth = 148, rowHeight = 26;
+        const float labelWidth = 194;
         var available = ImGui.GetContentRegionAvail();
         var start = ImGui.GetCursorScreenPos();
         var width = Math.Max(32, available.X - labelWidth - 16);
@@ -296,118 +296,86 @@ public sealed partial class EffectsEditorSession : IDisposable
         if (ImGui.BeginChild("Timeline rows", new(0, Math.Max(32, available.Y - 27)), ImGuiChildFlags.None, ImGuiWindowFlags.NoScrollWithMouse))
         {
             var origin = ImGui.GetCursorScreenPos();
-            var height = Math.Max(32, _trackNames.Length * rowHeight);
-            ImGui.InvisibleButton("Timeline canvas", new(Math.Max(32, available.X - 16), height), ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle);
-            hovered = ImGui.IsItemHovered();
+            var rows = TimelineTrackRow.Arrange(_trackNames, _expandedGraphs, graphHeight: Math.Clamp(available.Y - 71, 100, 180));
+            var height = Math.Max(32, rows.Sum(r => r.Height));
             var plot = origin + new Vector2(labelWidth, 0);
             draw = ImGui.GetWindowDrawList();
-            draw.AddRectFilled(origin, origin + new Vector2(available.X, height), Background);
-            Navigate(plot, width, hovered);
-            draw.PushClipRect(plot, plot + new Vector2(width, height), true);
-            GridLines(draw, plot, new(width, height), false);
-            draw.PopClipRect();
+            var headerHovered = false;
             var hitAnyKey = false;
-            for (var row = 0; row < _trackNames.Length; row++)
+            foreach (var row in rows)
             {
-                var track = _trackNames[row];
-                var y = origin.Y + row * rowHeight;
-                if (_selected.Contains(track)) draw.AddRectFilled(new(origin.X, y), new(origin.X + available.X, y + rowHeight), SelectedRow);
-                draw.AddText(new(origin.X + 5, y + 5), _selected.Contains(track) ? Accent : Text, track);
-                draw.AddLine(new(origin.X, y + rowHeight), new(origin.X + available.X, y + rowHeight), Grid);
-                if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && ImGui.GetIO().MousePos.X < plot.X && ImGui.GetIO().MousePos.Y >= y && ImGui.GetIO().MousePos.Y < y + rowHeight)
-                    Select(track, ImGui.GetIO().KeyCtrl);
+                var track = row.Track;
+                var y = origin.Y + row.Top;
+                ImGui.SetCursorScreenPos(new(origin.X, y));
+                if (_revealTrack == track) { ImGui.SetScrollY(row.Top); _revealTrack = null; }
+                ImGui.InvisibleButton("Track##" + track, new(Math.Max(32, available.X - 16), row.HeaderHeight),
+                    ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle);
+                hovered = ImGui.IsItemHovered(); headerHovered |= hovered;
+                var mouse = ImGui.GetIO().MousePos;
+                draw.AddRectFilled(new(origin.X, y), new(origin.X + available.X, y + row.HeaderHeight),
+                    _selected.Contains(track) ? SelectedRow : Background);
+                draw.AddLine(new(origin.X, y + row.HeaderHeight), new(origin.X + available.X, y + row.HeaderHeight), Grid);
+                var arrow = new Vector2(origin.X + 12, y + row.HeaderHeight / 2);
+                if (_expandedGraphs.Contains(track))
+                    draw.AddTriangleFilled(arrow + new Vector2(-4, -2), arrow + new Vector2(4, -2), arrow + new Vector2(0, 3), Muted);
+                else draw.AddTriangleFilled(arrow + new Vector2(-2, -4), arrow + new Vector2(-2, 4), arrow + new Vector2(3, 0), Muted);
+                draw.AddText(new(origin.X + 26, y + 8), _selected.Contains(track) ? Accent : Text, track);
+                if (hovered && mouse.X < plot.X)
+                {
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    {
+                        if (mouse.X < origin.X + 24)
+                        {
+                            if (!_expandedGraphs.Remove(track)) { _expandedGraphs.Add(track); _revealTrack = track; }
+                            Select(track, ImGui.GetIO().KeyCtrl, revealGraph: false);
+                        }
+                        else Select(track, ImGui.GetIO().KeyCtrl);
+                    }
+                    ImGui.SetTooltip("Click the arrow to expand or collapse this track's curve.");
+                }
+                if (hovered && mouse.X >= plot.X) Navigate(plot, width, true);
+                draw.PushClipRect(new(plot.X, y), new(plot.X + width, y + row.HeaderHeight), true);
+                GridLines(draw, new(plot.X, y), new(width, row.HeaderHeight), false);
                 var keys = _preview.Tracks[track];
-                draw.PushClipRect(new(plot.X, y), new(plot.X + width, y + rowHeight), true);
                 for (var i = 0; i < keys.Length; i++)
                 {
-                    var k = keys[i];
-                    var x = X(k.Beat, plot, width);
+                    var key = keys[i];
+                    var x = X(key.Beat, plot, width);
                     if (x < plot.X - 6 || x > plot.X + width + 6) continue;
-                    var center = new Vector2(x, y + rowHeight / 2);
-                    var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 8;
-                    var selected = _selectedKeys.Contains(new(track, k.Beat));
-                    draw.AddQuadFilled(center + new Vector2(0, -5), center + new Vector2(5, 0), center + new Vector2(0, 5), center + new Vector2(-5, 0), selected || hit ? Playhead : Accent);
+                    var center = new Vector2(x, y + row.HeaderHeight / 2);
+                    var hit = hovered && Vector2.Distance(mouse, center) < 9;
+                    var selected = _selectedKeys.Contains(new(track, key.Beat));
+                    draw.AddQuadFilled(center + new Vector2(0, -5), center + new Vector2(5, 0), center + new Vector2(0, 5),
+                        center + new Vector2(-5, 0), selected || hit ? Playhead : Accent);
                     if (i > 0 && x - X(keys[i - 1].Beat, plot, width) > 95)
-                        draw.AddText(new(Math.Max(plot.X, X(keys[i - 1].Beat, plot, width)) + 9, y + 5), Muted, k.Curve is null ? k.Ease.ToString() : "Bezier");
-                    if (hit)
-                    {
-                        hitAnyKey = true;
-                        ImGui.SetTooltip($"{track}\nBeat {F(k.Beat)} | Value {F(k.Value)}");
-                        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(track, i, width);
-                    }
+                        draw.AddText(new(Math.Max(plot.X, X(keys[i - 1].Beat, plot, width)) + 10, y + 8), Muted,
+                            key.Curve is null ? key.Ease.ToString() : "Bezier");
+                    if (!hit) continue;
+                    hitAnyKey = true;
+                    ImGui.SetTooltip($"{track}\nBeat {F(key.Beat)} | Value {F(key.Value)}");
+                    if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(track, i, width);
                 }
                 draw.PopClipRect();
+                if (row.GraphHeight > 0)
+                {
+                    var graphPosition = new Vector2(origin.X, y + row.HeaderHeight);
+                    ImGui.SetCursorScreenPos(graphPosition);
+                    ImGui.InvisibleButton("Curve##" + track, new(Math.Max(32, available.X - 16), row.GraphHeight),
+                        ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle);
+                    InlineGraph(track, graphPosition, new(labelWidth + width, row.GraphHeight), labelWidth, ImGui.IsItemHovered());
+                }
             }
-            BoxSelection(draw, origin, plot, width, rowHeight, height, hovered, hitAnyKey);
-            if (_trackNames.Length == 0) draw.AddText(origin + new Vector2(12, 10), Muted, "This chart has no effect tracks.");
+            BoxSelection(draw, origin, plot, width, rows, height, headerHovered, hitAnyKey);
+            if (_trackNames.Length == 0)
+            {
+                ImGui.Dummy(new(32, 40));
+                draw.AddText(origin + new Vector2(12, 10), Muted, "Add a track in Targets, or select an element in the preview.");
+            }
             draw.PushClipRect(plot, plot + new Vector2(width, height), true);
             DrawPlayhead(draw, plot, new(width, height));
             draw.PopClipRect();
         }
         ImGui.EndChild();
-    }
-
-    private void Graph()
-    {
-        var position = ImGui.GetCursorScreenPos();
-        var size = Vector2.Max(new(60, 40), ImGui.GetContentRegionAvail());
-        ImGui.InvisibleButton("Graph canvas", size, ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle);
-        var hovered = ImGui.IsItemHovered();
-        var origin = position + new Vector2(54, 24);
-        var plotSize = Vector2.Max(new(1, 1), size - new Vector2(62, 30));
-        Navigate(origin, plotSize.X, hovered);
-        var draw = ImGui.GetWindowDrawList();
-        draw.AddRectFilled(position, position + size, Background);
-        if (_selected.Count == 0) { draw.AddText(position + new Vector2(10, 10), Muted, "Select a track to view its curve."); return; }
-        var samples = _selected.Order(StringComparer.Ordinal).Select(key => (Key: key,
-            Values: Enumerable.Range(0, 257).Select(i => _preview.ValueAt(key, _view.BeatAt(i / 256d))).ToArray())).ToArray();
-        var values = samples.SelectMany(s => s.Values).Concat(_selected.SelectMany(key => _preview.Tracks[key])
-            .Where(k => k.Beat >= _view.Start && k.Beat <= _view.Start + _view.Span).Select(k => k.Value)).Where(double.IsFinite).ToArray();
-        var legendX = position.X + 6;
-        for (var i = 0; i < samples.Length; i++)
-        {
-            var label = samples[i].Key;
-            var width = ImGui.CalcTextSize(label).X + 18;
-            if (legendX + width > position.X + size.X) break;
-            draw.AddText(new(legendX, position.Y + 3), TrackColors[i % TrackColors.Length], label);
-            legendX += width;
-        }
-        var scale = _graphDragScale ?? GraphScale.Fit(values.Concat(VisibleHandleValues()));
-        float Y(double value) => origin.Y + (float)(1 - scale.Fraction(value)) * plotSize.Y;
-        GridLines(draw, origin, plotSize, true);
-        for (var i = 0; i <= 4; i++)
-        {
-            var value = scale.ValueAt(i / 4d);
-            var y = origin.Y + (1 - i / 4f) * plotSize.Y;
-            draw.AddLine(new(origin.X, y), new(origin.X + plotSize.X, y), Grid);
-            draw.AddText(new(position.X + 2, y - 6), Muted, F(value));
-        }
-        draw.PushClipRect(origin, origin + plotSize, true);
-        var hitHandle = GraphHandles(draw, origin, plotSize, scale, hovered);
-        for (var s = 0; s < samples.Length; s++)
-        {
-            var sample = samples[s];
-            var color = TrackColors[s % TrackColors.Length];
-            for (var i = 1; i < sample.Values.Length; i++)
-                if (double.IsFinite(sample.Values[i - 1]) && double.IsFinite(sample.Values[i]))
-                    draw.AddLine(new(origin.X + (i - 1) / 256f * plotSize.X, Y(sample.Values[i - 1])),
-                        new(origin.X + i / 256f * plotSize.X, Y(sample.Values[i])), color, 2);
-            var keys = _preview.Tracks[sample.Key];
-            for (var i = 0; i < keys.Length; i++)
-            {
-                var center = new Vector2(X(keys[i].Beat, origin, plotSize.X), Y(keys[i].Value));
-                if (center.X < origin.X || center.X > origin.X + plotSize.X) continue;
-                var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 8;
-                draw.AddCircleFilled(center, 4, hit || _selectedKeys.Contains(new(sample.Key, keys[i].Beat)) ? Playhead : color);
-                if (hit)
-                {
-                    ImGui.SetTooltip($"{sample.Key}\nBeat {F(keys[i].Beat)} | Value {F(keys[i].Value)}");
-                    if (!hitHandle && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(sample.Key, i, plotSize.X, scale, plotSize.Y);
-                }
-            }
-        }
-        DrawPlayhead(draw, origin, plotSize);
-        draw.PopClipRect();
     }
 
     private void Dividers(EditorLayout layout, Vector2 size)

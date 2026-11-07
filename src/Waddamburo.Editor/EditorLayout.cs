@@ -14,6 +14,7 @@ public readonly record struct EditorPanel(float X, float Y, float Width, float H
 public readonly record struct EditorLayout(EditorPanel Toolbar, EditorPanel Targets, EditorPanel Inspector,
     EditorPanel Stage, EditorPanel Tracks)
 {
+    public static EditorPanel Preview(EditorPanel stage) => stage with { Y = stage.Y + 37, Height = Math.Max(1, stage.Height - 37) };
     public static EditorLayout Calculate(float width, float height, float left = .18f, float right = .22f, float bottom = .34f)
     {
         if (!float.IsFinite(width) || !float.IsFinite(height) || width < 32 || height < 32)

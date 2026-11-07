@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.IO.Compression;
 using ImGuiNET;
 using SDL;
 using Waddamburo.Platform.Sdl.Rendering;
@@ -16,7 +17,7 @@ public sealed unsafe class ImGuiLayer : IDisposable
     private bool _inFrame;
     private bool _disposed;
 
-    internal ImGuiLayer(RenderDevice renderer, Action draw, Action detached)
+    internal ImGuiLayer(RenderDevice renderer, Action draw, Action detached, float pixelDensity)
     {
         _renderer = renderer;
         _draw = draw;
@@ -29,6 +30,19 @@ public sealed unsafe class ImGuiLayer : IDisposable
             io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
             io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
             ImGui.StyleColorsDark();
+            using (var resource = typeof(ImGuiLayer).Assembly.GetManifestResourceStream("Waddamburo.EditorFont.gz")!)
+            using (var gzip = new GZipStream(resource, CompressionMode.Decompress))
+            using (var font = new MemoryStream())
+            {
+                gzip.CopyTo(font);
+                var bytes = font.ToArray();
+                var memory = ImGui.MemAlloc((uint)bytes.Length);
+                bytes.CopyTo(new Span<byte>((void*)memory, bytes.Length));
+                // The atlas owns this allocation until the context is destroyed.
+                var density = Math.Clamp(pixelDensity, 1, 4);
+                io.Fonts.AddFontFromMemoryTTF(memory, bytes.Length, 15 * density);
+                io.FontGlobalScale = 1 / density;
+            }
             io.Fonts.GetTexDataAsRGBA32(out nint pixels, out int width, out int height);
             _font = renderer.UploadRgba8((uint)width, (uint)height, new ReadOnlySpan<byte>((void*)pixels, checked(width * height * 4)));
             io.Fonts.SetTexID((nint)_font.Value);

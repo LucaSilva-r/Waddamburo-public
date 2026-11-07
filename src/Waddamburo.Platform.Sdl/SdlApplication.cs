@@ -152,7 +152,7 @@ public sealed unsafe class SdlApplication : IDisposable
             _pressedKeys.Clear();
             if (!textWasActive) StopTextInput();
             if (!cursorWasVisible) SDL_HideCursor();
-        });
+        }, SDL_GetWindowPixelDensity(_window));
         _renderer.ImGuiLayer = layer;
         _heldInputs.Clear();
         _pressedKeys.Clear();

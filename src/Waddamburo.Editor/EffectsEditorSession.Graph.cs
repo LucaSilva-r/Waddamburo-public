@@ -5,6 +5,48 @@ namespace Waddamburo.Editor;
 
 public sealed partial class EffectsEditorSession
 {
+    private void InlineGraph(string track, Vector2 position, Vector2 size, float labelWidth, bool hovered)
+    {
+        var origin = position + new Vector2(labelWidth, 12);
+        var plotSize = new Vector2(size.X - labelWidth, size.Y - 24);
+        Navigate(origin, plotSize.X, hovered);
+        var draw = ImGui.GetWindowDrawList();
+        draw.AddRectFilled(position, position + size, Color(.10f, .11f, .125f));
+        var samples = Enumerable.Range(0, 257).Select(i => _preview.ValueAt(track, _view.BeatAt(i / 256d))).ToArray();
+        var keys = _preview.Tracks[track];
+        var handles = _key?.Track == track ? VisibleHandleValues() : [];
+        var scale = _dragAnchor.Track == track && _graphDragScale is { } frozen ? frozen
+            : GraphScale.Fit(samples.Concat(keys.Where(k => k.Beat >= _view.Start && k.Beat <= _view.Start + _view.Span)
+                .Select(k => k.Value)).Concat(handles));
+        float Y(double value) => origin.Y + (float)(1 - scale.Fraction(value)) * plotSize.Y;
+        for (var i = 0; i <= 4; i++)
+        {
+            var value = scale.ValueAt(i / 4d);
+            var y = origin.Y + (1 - i / 4f) * plotSize.Y;
+            draw.AddText(new(origin.X - 72, y - 7), Muted, F(value));
+            draw.AddLine(new(origin.X, y), new(origin.X + plotSize.X, y), Grid);
+        }
+        draw.PushClipRect(origin, origin + plotSize, true);
+        GridLines(draw, origin, plotSize, false);
+        for (var i = 1; i < samples.Length; i++)
+            if (double.IsFinite(samples[i - 1]) && double.IsFinite(samples[i]))
+                draw.AddLine(new(origin.X + (i - 1) / 256f * plotSize.X, Y(samples[i - 1])),
+                    new(origin.X + i / 256f * plotSize.X, Y(samples[i])), Accent, 2);
+        var hitHandle = _key?.Track == track && GraphHandles(draw, origin, plotSize, scale, hovered);
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var center = new Vector2(X(keys[i].Beat, origin, plotSize.X), Y(keys[i].Value));
+            if (center.X < origin.X || center.X > origin.X + plotSize.X || center.Y < origin.Y || center.Y > origin.Y + plotSize.Y) continue;
+            var hit = hovered && Vector2.Distance(ImGui.GetIO().MousePos, center) < 9;
+            draw.AddCircleFilled(center, 4.5f, hit || _selectedKeys.Contains(new(track, keys[i].Beat)) ? Playhead : Accent);
+            if (!hit) continue;
+            ImGui.SetTooltip($"{track}\nBeat {F(keys[i].Beat)} | Value {F(keys[i].Value)}");
+            if (!hitHandle && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) BeginKeyDrag(track, i, plotSize.X, scale, plotSize.Y);
+        }
+        DrawPlayhead(draw, origin, plotSize);
+        draw.PopClipRect();
+    }
+
     private GraphScale? _graphDragScale;
     private float _graphDragHeight;
     private (EffectCurveSegment Segment, int Handle)? _handleDrag;

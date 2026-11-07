@@ -44,7 +44,7 @@ public sealed partial class EffectsEditorSession
     private void Viewport(EditorPanel region)
     {
         if (_getElements is null) return;
-        var view = EffectViewport.Fit(region);
+        var view = EffectViewport.Fit(EditorLayout.Preview(region));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         if (Panel("##Effects viewport", region, false, ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoScrollbar
             | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoNav | ImGuiWindowFlags.NoBringToFrontOnFocus))
@@ -53,7 +53,10 @@ public sealed partial class EffectsEditorSession
             ImGui.BeginDisabled(_history.Current.UsesEmbeddedEffects);
             foreach (var mode in new[] { GizmoMode.Move, GizmoMode.Rotate, GizmoMode.Scale })
             {
-                if (ImGui.RadioButton(mode.ToString(), _gizmoMode == mode)) _gizmoMode = mode;
+                var active = _gizmoMode == mode;
+                if (active) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(.35f, .44f, .54f, 1));
+                if (ImGui.Button(mode.ToString(), new(67, 24))) { EndDrag(); _gizmoMode = mode; }
+                if (active) ImGui.PopStyleColor();
                 ImGui.SameLine();
             }
             ImGui.Checkbox("Auto-key", ref _autoKey);
@@ -71,15 +74,18 @@ public sealed partial class EffectsEditorSession
             if (hovered && !hitGizmo && _pending == PendingAction.None && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             {
                 var point = view.ToStage(mouse);
-                var hit = _elements.Reverse().FirstOrDefault(e => e.Contains(point));
+                var hit = selected?.Contains(point) == true && selected.Target == "camera" ? selected
+                    : EffectGizmo.Pick(_elements, point, _viewportTarget);
                 if (hit is not null)
                 {
                     SelectElement(hit.Target);
-                    if (_gizmoMode == GizmoMode.Move) BeginViewportDrag(_gizmoMode, hit, view, mouse);
+                    BeginViewportDrag(_gizmoMode, hit, view, mouse);
                 }
             }
-            if (hovered && _viewportDrag is null && selected is not null)
-                ImGui.SetTooltip($"{selected.Target} | {_gizmoMode}: drag {(_gizmoMode == GizmoMode.Move ? "the element or arrows" : _gizmoMode == GizmoMode.Rotate ? "the ring" : "a corner")} | Auto-key {(_autoKey ? "on" : "off")}");
+            var help = _gizmoMode == GizmoMode.Move ? "Drag the selection to move" : _gizmoMode == GizmoMode.Rotate
+                ? "Drag the ring or selection to rotate" : "Drag a corner or selection to scale";
+            draw.AddText(view.Rectangle.Position + new Vector2(8, view.Rectangle.Height - 22), Text,
+                selected is null ? "Click an element to select it" : $"{selected.Target}  |  {help}");
             draw.PopClipRect();
         }
         ImGui.End(); ImGui.PopStyleVar();
@@ -104,15 +110,16 @@ public sealed partial class EffectsEditorSession
         }
         else if (_gizmoMode == GizmoMode.Rotate)
         {
-            draw.AddCircle(pivot, 40, Playhead, 48, 2);
-            hit = hovered && Math.Abs(Vector2.Distance(mouse, pivot) - 40) < 7;
+            draw.AddCircle(pivot, 48, Playhead, 48, 2.5f);
+            draw.AddCircleFilled(pivot + new Vector2(48, 0), 5, Playhead);
+            hit = hovered && Math.Abs(Vector2.Distance(mouse, pivot) - 48) < 10;
         }
         else
         {
             foreach (var corner in new[] { min, new Vector2(max.X, min.Y), max, new Vector2(min.X, max.Y) })
             {
-                draw.AddRectFilled(corner - new Vector2(4), corner + new Vector2(4), Playhead);
-                hit |= hovered && Vector2.Distance(mouse, corner) < 9;
+                draw.AddRectFilled(corner - new Vector2(5), corner + new Vector2(5), Playhead, 2);
+                hit |= hovered && Vector2.Distance(mouse, corner) < 11;
             }
         }
         draw.AddCircleFilled(pivot, 3, Playhead);
@@ -151,8 +158,11 @@ public sealed partial class EffectsEditorSession
             {
                 var from = EffectGizmo.ParentVector(drag.Element.Parent, drag.Start - drag.Element.Pivot);
                 var to = EffectGizmo.ParentVector(drag.Element.Parent, point - drag.Element.Pivot);
-                if (drag.Mode == GizmoMode.Rotate) values[drag.Element.Target + ".rotation"] += EffectGizmo.Rotation(from, to);
-                else values[drag.Element.Target + ".scale"] *= EffectGizmo.Scale(from, to);
+                var screenDelta = ImGui.GetIO().MousePos.X - drag.View.ToScreen(drag.Start).X;
+                var nearPivot = Vector2.Distance(drag.View.ToScreen(drag.Start), drag.View.ToScreen(drag.Element.Pivot)) < 12;
+                if (drag.Mode == GizmoMode.Rotate)
+                    values[drag.Element.Target + ".rotation"] += nearPivot ? screenDelta : EffectGizmo.Rotation(from, to);
+                else values[drag.Element.Target + ".scale"] *= nearPivot ? Math.Exp(Math.Clamp(screenDelta / 120, -7, 7)) : EffectGizmo.Scale(from, to);
             }
             PreviewElementValues(values);
         }
@@ -167,7 +177,9 @@ public sealed partial class EffectsEditorSession
             var document = _dragBefore.SetValuesAt(drag.Beat, values, drag.AutoKey);
             if (_history.Preview(document)) { _transport.Clock.SetPaused(true); ApplyCurrent(); }
             _selectedKeys.Clear(); _selectedKeys.UnionWith(values.Keys.Select(t => new EffectKey(t, drag.Beat)));
-            FocusKey(new(values.Keys.First(), drag.Beat));
+            var first = values.Keys.First();
+            if (_expandedGraphs.Add(first)) _revealTrack = first;
+            FocusKey(new(first, drag.Beat));
         }
         catch (InvalidDataException e) { _message = e.Message; _messageError = true; }
     }

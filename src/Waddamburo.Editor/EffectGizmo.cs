@@ -1,5 +1,6 @@
 using System.Numerics;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.Editor;
 
@@ -20,6 +21,13 @@ public readonly record struct EffectViewport(EditorPanel Rectangle)
 
 public static class EffectGizmo
 {
+    public static StageEffectElement? Pick(IEnumerable<StageEffectElement> elements, Vector2 point, string? selected)
+    {
+        // Large backdrops should not hide smaller selectable scene elements.
+        return elements.Reverse().Where(e => e.Contains(point))
+            .OrderBy(e => (double)(e.Maximum.X - e.Minimum.X) * (e.Maximum.Y - e.Minimum.Y))
+            .ThenBy(e => e.Target == selected ? 0 : 1).FirstOrDefault();
+    }
     public static Vector2 ParentVector(LumenMatrix parent, Vector2 vector)
     {
         var determinant = (double)parent.M11 * parent.M22 - (double)parent.M12 * parent.M21;

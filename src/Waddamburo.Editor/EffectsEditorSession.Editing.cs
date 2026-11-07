@@ -406,7 +406,7 @@ public sealed partial class EffectsEditorSession
         catch (InvalidDataException e) { _message = e.Message; _messageError = true; }
     }
 
-    private void BoxSelection(ImDrawListPtr draw, Vector2 origin, Vector2 plot, float width, float rowHeight,
+    private void BoxSelection(ImDrawListPtr draw, Vector2 origin, Vector2 plot, float width, IReadOnlyList<TimelineTrackRow> rows,
         float height, bool hovered, bool hitKey)
     {
         if (_history.Current.UsesEmbeddedEffects) return;
@@ -419,8 +419,8 @@ public sealed partial class EffectsEditorSession
             if (!_boxAppend)
             {
                 _selectedKeys.Clear(); _key = null; _inspectorKey = null;
-                var row = (int)((mouse.Y - origin.Y) / rowHeight);
-                if (row >= 0 && row < _trackNames.Length) Select(_trackNames[row], false);
+                var row = rows.FirstOrDefault(r => r.ContainsHeader(mouse.Y - origin.Y));
+                if (row.Track is not null) Select(row.Track, false, revealGraph: false);
             }
         }
         if (_boxStart is not { } start) return;
@@ -428,11 +428,11 @@ public sealed partial class EffectsEditorSession
         {
             var min = Vector2.Min(start, mouse); var max = Vector2.Max(start, mouse);
             _selectedKeys.Clear(); _selectedKeys.UnionWith(_boxOriginal);
-            for (var row = 0; row < _trackNames.Length; row++)
+            foreach (var row in rows)
             {
-                var y = origin.Y + row * rowHeight + rowHeight / 2;
+                var y = origin.Y + row.KeyCenter;
                 if (y < min.Y || y > max.Y) continue;
-                var track = _trackNames[row];
+                var track = row.Track;
                 foreach (var key in _preview.Tracks[track])
                 {
                     var x = X(key.Beat, plot, width);

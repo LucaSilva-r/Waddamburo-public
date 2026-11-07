@@ -7,6 +7,29 @@ namespace Waddamburo.Editor.Tests;
 
 public sealed class EffectGizmoTests
 {
+    [Fact]
+    public void PickingFindsSmallElementsInsideBackdropsAndKeepsAnOverlappingSelection()
+    {
+        var background = new StageEffectElement("background", new(0, 0), new(1280, 720), new(640, 360), LumenMatrix.Identity);
+        var dancers = new StageEffectElement("dancers", new(500, 300), new(700, 500), new(600, 400), LumenMatrix.Identity);
+        var don = dancers with { Target = "don" };
+        Assert.Equal("dancers", EffectGizmo.Pick([dancers, background], new(600, 400), null)?.Target);
+        Assert.Equal("dancers", EffectGizmo.Pick([dancers, don, background], new(600, 400), "dancers")?.Target);
+        Assert.Equal("don", EffectGizmo.Pick([dancers, don, background], new(600, 400), null)?.Target);
+        Assert.Null(EffectGizmo.Pick([background, dancers], new(-1, -1), null));
+    }
+
+    [Fact]
+    public void ToolButtonsSitAboveTheFittedPreviewAndCannotBecomeCanvasInput()
+    {
+        var stage = EditorLayout.Calculate(1280, 720).Stage;
+        var preview = EditorLayout.Preview(stage);
+        var map = EffectViewport.Fit(preview);
+        Assert.False(map.Contains(stage.Position + new Vector2(100, 20)));
+        Assert.True(map.Contains(map.ToScreen(new(640, 360))));
+        Assert.True(preview.Y > stage.Y + 32);
+    }
+
     [Theory]
     [InlineData(20, 40, 800, 600)]
     [InlineData(100, 80, 1000, 300)]
