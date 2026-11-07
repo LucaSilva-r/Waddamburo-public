@@ -79,12 +79,13 @@ internal sealed class GameShell : IDisposable
     /// <summary>The effects editor on the playing chart, or (<paramref name="layout"/>) on the player's gameplay layout.</summary>
     public void OpenEffectsEditor(bool layout = false)
     {
-        if (_effectsEditor is null && _gameplay.CanEditEffects && _home.CloseForEffectsEditor())
+        if (_effectsEditor is null && (layout ? _gameplay.CanEditLayout : _gameplay.CanEditEffects) && _home.CloseForEffectsEditor())
         {
             _gameplay.BeginEffectsEditing(autoplay: layout);
             _effectsEditor = layout
                 ? new EffectsEditorSession(Application, _gameplay.LayoutEditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
-                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, layout: true, layoutName: Arcade.Layout, renameLayout: renameLayout)
+                    _gameplay.ReplaceEditorEffects, _gameplay.LayoutElements, layout: true, layoutName: _gameplay.ActiveLayout, renameLayout: renameLayout,
+                    twoPlayers: _gameplay.TwoPlayerLayouts)
                 : new EffectsEditorSession(Application, _gameplay.EditorChartWithoutLayout, _gameplay.Training!, _gameplay.EditorFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
         }
@@ -93,11 +94,11 @@ internal sealed class GameShell : IDisposable
     // The layout editor's name field: the active layout's file renamed, the settings following it.
     private EffectEditorFiles? renameLayout(string name)
     {
-        if (Arcade.Layout is not { } from) return null;
+        if (_gameplay.ActiveLayout is not { } from) return null;
         try
         {
-            if (Waddamburo.App.Gameplay.PlayerLayouts.Rename(_gameplay.ModchartFolder, from, name) is not { } renamed) return null;
-            Arcade = Arcade with { Layout = renamed };
+            if (Waddamburo.App.Gameplay.PlayerLayouts.Rename(_gameplay.LayoutFolder, from, name) is not { } renamed) return null;
+            Arcade = _gameplay.WithActiveLayout(Arcade, renamed);
             if (Options.ArcadePath is { } config) ArcadeSettings.SaveMenuSettings(config, Arcade);
             return _gameplay.LayoutFiles();
         }
@@ -854,7 +855,7 @@ internal sealed class GameShell : IDisposable
                             editor.RequestClose();
                             keyboard = SdlKeyboardSnapshot.Empty;
                         }
-                        if (editor.CloseRequested || !_gameplay.CanEditEffects)
+                        if (editor.CloseRequested || !_gameplay.CanEditLayout)
                         {
                             closeEffectsEditor();
                             keyboard = SdlKeyboardSnapshot.Empty;
@@ -1214,7 +1215,8 @@ internal sealed class GameShell : IDisposable
             _presenter.Presented(menu, withIntermission: false);
             return menu;
         }
-        var interpolation = _home.Interpolation(interpolationFraction);
+        // Freeze animations (the editors): everything stands on one tick, Don and the overlays too.
+        var interpolation = FreezeAnimations && EffectsEditorOpen ? 1 : _home.Interpolation(interpolationFraction);
         if (_presenter.Held(Tick) is { } held)
         {
             _home.HoldBlack();

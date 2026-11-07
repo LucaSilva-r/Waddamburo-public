@@ -44,6 +44,18 @@ public sealed class ChartModKeyframeTests
     }
 
     [Fact]
+    public void TwoPlayerLayoutsSplitPerLaneWithTheCameraShared()
+    {
+        Assert.True(ChartMods.IsKnown("playfield_p2", "x"));
+        Assert.True(ChartMods.IsKnown("notes_p2", "zoom"));
+        Assert.False(ChartMods.IsKnown("camera_p2", "x"));
+        ChartModEase change(string target) => new(TimeSpan.Zero, TimeSpan.Zero, target, "x", 1, ChartEase.Linear);
+        ChartModEase[] changes = [change("camera"), change("playfield"), change("playfield_p2"), change("gauge_p2")];
+        Assert.Equal(["camera", "playfield"], ChartMods.ForLane(changes, 0).Select(c => c.Target));
+        Assert.Equal(["camera", "playfield", "gauge"], ChartMods.ForLane(changes, 1).Select(c => c.Target));
+    }
+
+    [Fact]
     public void FirstKeyHoldsEvenDuringAnInitialDelayAndStepChangesOnlyAtItsKey()
     {
         var chart = Chart() with { Effects = new() { Beats = [new(TimeSpan.Zero, 0, 0), new(TimeSpan.FromSeconds(2), 0, 2)] } };

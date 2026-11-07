@@ -36,9 +36,11 @@ public sealed partial class EffectsEditorSession : IDisposable
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
         Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null,
         Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null, bool layout = false,
-        string? layoutName = null, Func<string, EffectEditorFiles?>? renameLayout = null)
+        string? layoutName = null, Func<string, EffectEditorFiles?>? renameLayout = null, bool twoPlayers = false)
     {
         _layout = layout;
+        _layoutTargets = [.. ChartMods.Elements, "notes",
+            .. twoPlayers ? ChartMods.Elements.Where(static t => t != "camera").Append("notes").Select(static t => t + ChartMods.SecondLane) : []];
         _layoutName = layoutName ?? "";
         _renameLayout = renameLayout;
         ArgumentNullException.ThrowIfNull(application);
@@ -162,7 +164,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         {
             if (_layout)
             {
-                foreach (var target in ChartMods.Elements.Append("notes"))
+                foreach (var target in _layoutTargets)
                     if (ImGui.Selectable(target, _viewportTarget == target)) SelectElement(target);
                 ImGui.End();
                 return;

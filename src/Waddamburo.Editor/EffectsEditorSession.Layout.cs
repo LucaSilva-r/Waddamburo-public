@@ -9,6 +9,9 @@ namespace Waddamburo.Editor;
 /// <summary>Layout mode: the player's gameplay layout, every value constant (a single key at beat 0).</summary>
 public sealed partial class EffectsEditorSession
 {
+    // The elements a layout can change: a two-player layout's second lane as *_p2 too.
+    private readonly string[] _layoutTargets;
+
     // The layout's name (its file's), renamed by the app: null back when the name can't be used.
     private string _layoutName = "";
     private readonly Func<string, EffectEditorFiles?>? _renameLayout;
@@ -48,7 +51,7 @@ public sealed partial class EffectsEditorSession
             // Squeezed to 3/4 of its width, each element keeps its shape at 3/4 of its height; the backgrounds stretch
             // (make them taller to fill). Turning it off gives the heights back.
             var values = new Dictionary<string, double> { ["camera.aspect"] = fourThree ? .75 : 1 };
-            foreach (var target in ChartMods.Elements.Where(static t => t is not ("camera" or "background" or "fever" or "stage")))
+            foreach (var target in _layoutTargets.Where(static t => ChartMods.BaseTarget(t) is not ("camera" or "background" or "fever" or "stage" or "notes")))
                 values[target + ".scaley"] = _preview.ValueAt(target + ".scaley", 0d) * (fourThree ? .75 : 1 / .75);
             Edit(_history.Current.SetValuesAt(0, values, true), fourThree ? "4:3 screen" : "16:9 screen");
         }
@@ -71,8 +74,12 @@ public sealed partial class EffectsEditorSession
 
     private void LayoutValues(string target)
     {
-        string[] properties = target == "notes" ? [.. ChartMods.NoteProperties]
-            : target == "don" ? [.. ChartMods.ElementProperties, .. ChartMods.DonModelProperties] : [.. ChartMods.ElementProperties];
+        string[] properties = ChartMods.BaseTarget(target) switch
+        {
+            "notes" => [.. ChartMods.NoteProperties],
+            "don" => [.. ChartMods.ElementProperties, .. ChartMods.DonModelProperties],
+            _ => [.. ChartMods.ElementProperties],
+        };
         foreach (var property in properties)
         {
             var value = (float)_preview.ValueAt(target + "." + property, 0d);

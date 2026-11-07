@@ -228,6 +228,7 @@
   "menu.instant_replay": "Replay / Practice",
   "menu.layouts": "Layouts",
   "menu.title.layouts": "Layouts",
+  "menu.title.layouts_two": "Layouts (2 players)",
   "menu.title.remove_layout": "Remove {0}?",
   "layouts.stock": "Stock layout",
   "layouts.new": "New layout",

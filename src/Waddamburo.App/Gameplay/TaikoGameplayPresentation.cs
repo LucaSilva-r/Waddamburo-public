@@ -144,8 +144,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _lanes[lane].ReplaceEffects(effects);
     }
 
-    public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time) =>
-        _lanes.Length == 1 ? _lanes[0].EffectElements(time) : [];
+    /// <remarks><paramref name="allLanes"/>: both lanes' elements, the second lane's named *_p2 (a two-player layout).</remarks>
+    public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time, bool allLanes = false) =>
+        _lanes.Length == 1 ? _lanes[0].EffectElements(time)
+        : !allLanes ? []
+        : [.. _lanes.SelectMany((lane, index) => lane.EffectElements(time).Select(element => index == 0 || element.Target == "camera"
+            ? element : element with { Target = element.Target + Waddamburo.Catalog.ChartMods.SecondLane }))];
 
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);

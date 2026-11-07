@@ -61,5 +61,8 @@ restricted mode of that editor plus a fallback file.
   `modcharts/layout.wddmod` moves in as "My layout"). Pause menu › Layouts: stock, each layout (Use / Edit / Remove with
   a confirmation), New layout; Use applies to the running song at once. Rename in the layout editor's name field.
   Menus and corner indicators are widened back by 4/3 on a 4:3 screen.
+- **Two-player layouts** are their own list (`modcharts/layouts-2p`, config `layout_2p`): plain element names are the
+  first lane's, `*_p2` the second's (`ChartMods.ForLane` splits them), camera and 4:3 shared. Waiwai, arcade and the
+  attract's demo play always use the stock screen.
 - Element pivots are taken once at the song's start and kept per movie, so rebuilt lanes and the editors place a
   layout exactly as the song does.

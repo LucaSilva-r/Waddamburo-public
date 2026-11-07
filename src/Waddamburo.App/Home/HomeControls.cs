@@ -53,7 +53,9 @@ internal sealed class HomeControls : IDisposable
             shell.ApplyRecording();
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
-        HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.ModchartFolder);
+        HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.LayoutFolder);
+        HomeMenu.ActiveLayout = () => gameplay.ActiveLayout;
+        HomeMenu.TwoPlayerLayouts = () => gameplay.TwoPlayerLayouts;
         HomeMenu.Skins = shell.Skins.Names;
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart, () => TimeSpan.FromMilliseconds(shell.Arcade.RetryHoldMs));
@@ -360,7 +362,7 @@ internal sealed class HomeControls : IDisposable
         {
             countdown.Cancel();
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
-                inRoom: _shell.Match.InSong, layout: _gameplay.CanEditEffects);
+                inRoom: _shell.Match.InSong, layout: _gameplay.CanEditLayout);
         }
         else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
             resumeSong();
@@ -406,7 +408,7 @@ internal sealed class HomeControls : IDisposable
             if (!online)
                 _gameplay.SetPaused(true, _pauseInterpolation);
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
-                inRoom: _shell.Match.InSong, layout: _gameplay.CanEditEffects);
+                inRoom: _shell.Match.InSong, layout: _gameplay.CanEditLayout);
             return true;
         }
         // The attract, the entry (and its player setup) and Song Select: settings, back to the title.
@@ -565,7 +567,7 @@ internal sealed class HomeControls : IDisposable
     // and Edit/New open the layout editor on it.
     private void layoutAction(HomeMenuAction action, string? name)
     {
-        var folder = _gameplay.ModchartFolder;
+        var folder = _gameplay.LayoutFolder;
         try
         {
             if (action == HomeMenuAction.NewLayout) name = PlayerLayouts.Create(folder);
@@ -577,8 +579,8 @@ internal sealed class HomeControls : IDisposable
             resumeSong();
             return;
         }
-        var layout = action == HomeMenuAction.RemoveLayout ? name == _shell.Arcade.Layout ? null : _shell.Arcade.Layout : name;
-        _shell.Arcade = _shell.Arcade with { Layout = layout };
+        var layout = action == HomeMenuAction.RemoveLayout ? name == _gameplay.ActiveLayout ? null : _gameplay.ActiveLayout : name;
+        _shell.Arcade = _gameplay.WithActiveLayout(_shell.Arcade, layout);
         save();
         _gameplay.ReapplyLayout();
         resumeSong();

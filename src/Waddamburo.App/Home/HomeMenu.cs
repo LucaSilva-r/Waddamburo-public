@@ -72,6 +72,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The saved layouts' names (the Layouts page lists them).</summary>
     public static Func<IReadOnlyList<string>> LayoutNames { get; set; } = static () => [];
 
+    /// <summary>The active layout for the song's player count, and whether that count is two (the page's title says so).</summary>
+    public static Func<string?> ActiveLayout { get; set; } = static () => null;
+    public static Func<bool> TwoPlayerLayouts { get; set; } = static () => false;
+
     /// <summary>The layout the picked layout action is for (null: the stock screen).</summary>
     public string? LayoutName { get; private set; }
 
@@ -289,7 +293,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
         : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report"
-        : _quitPrompt ? "menu.title.quit" : _layoutsPage ? "menu.title.layouts" : "menu.title.paused") is var title
+        : _quitPrompt ? "menu.title.quit" : _layoutsPage ? TwoPlayerLayouts() ? "menu.title.layouts_two" : "menu.title.layouts"
+        : "menu.title.paused") is var title
         && _layoutPick is { } pick ? _removePrompt ? T("menu.title.remove_layout", pick) : pick : title;
 
     /// <summary>The texture bake shown instead of the choices (running or finished).</summary>
@@ -513,7 +518,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private string[] _layoutsNames = [];
     private void showLayouts()
     {
-        var active = get().Layout;
+        var active = ActiveLayout();
         _layoutsNames = [.. LayoutNames()];
         _choices = ["layouts.stock", .. _layoutsNames.Select(name => "=" + (name == active ? "● " : "") + name), "layouts.new", "menu.back"];
         Selection = active is null ? 0 : Math.Max(0, Array.IndexOf(_layoutsNames, active) + 1);

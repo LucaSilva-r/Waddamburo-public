@@ -231,10 +231,11 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var player = players.ElementAtOrDefault(lane);
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
-            // The player's layout where neither gave modchart changes; arcade is always the stock screen.
-            if (player is not null && Shell.Arcade.Home)
+            // The player's layout where neither gave modchart changes; arcade and the attract's demo play are always the
+            // stock screen.
+            if (player is not null && Shell.Arcade.Home && _waiwai is null && !_demo)
             {
-                var laid = PlayerModcharts.ApplyLayout(ActiveLayoutPath, authored);
+                var laid = forLane(authored, PlayerModcharts.ApplyLayout(ActiveLayoutPath, authored), lane);
                 if (lane == 0) _layoutShown = authored.Effects.Mods.IsEmpty && !ReferenceEquals(laid, authored); // as the chart's mods
                 authored = laid;
             }
@@ -449,30 +450,64 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public EffectEditorFiles LayoutFiles() => new(ActiveLayoutPath!, _lastRequest!.Players[0].Course);
 
-    /// <summary>The modcharts folder (player modcharts and layouts).</summary>
-    public string ModchartFolder => EditorModchartFolder;
+    /// <summary>The layout editor's elements: both lanes' as one (a two-player layout moves them alike).</summary>
+    public IReadOnlyList<StageEffectElement> LayoutElements(TimeSpan time) => Shell.Gameplay.EffectElements(time, allLanes: true);
+
+    /// <summary>Two lanes: the song takes the two-player layouts (applied alike to both lanes).</summary>
+    public bool TwoPlayerLayouts => _sourceCharts.Length == 2;
+
+    // A two-player layout's own changes for one lane (its *_p2 elements are the second lane's); a chart's own modchart is
+    // left as it is.
+    private PlayableChart forLane(PlayableChart authored, PlayableChart laid, int lane) => !TwoPlayerLayouts ? laid
+        : laid with
+        {
+            Effects = laid.Effects with
+            {
+                Mods = authored.Effects.Mods.IsEmpty ? [.. ChartMods.ForLane(laid.Effects.Mods, lane)] : laid.Effects.Mods,
+                Layout = [.. ChartMods.ForLane(laid.Effects.Layout, lane)],
+            },
+        };
+
+    /// <summary>The folder of the layouts for this song's player count.</summary>
+    public string LayoutFolder => PlayerLayouts.Folder(EditorModchartFolder, TwoPlayerLayouts);
+
+    /// <summary>The active layout for this song's player count (null: the stock screen).</summary>
+    public string? ActiveLayout => TwoPlayerLayouts ? Shell.Arcade.Layout2P : Shell.Arcade.Layout;
+
+    /// <summary><paramref name="settings"/> with <paramref name="name"/> as the active layout for this song's player count.</summary>
+    public ArcadeSettings WithActiveLayout(ArcadeSettings settings, string? name) =>
+        TwoPlayerLayouts ? settings with { Layout2P = name } : settings with { Layout = name };
 
     // The active layout's file; null: the stock screen.
-    private string? ActiveLayoutPath => Shell.Arcade.Layout is { } name ? PlayerLayouts.PathOf(EditorModchartFolder, name) : null;
+    private string? ActiveLayoutPath => ActiveLayout is { } name ? PlayerLayouts.PathOf(LayoutFolder, name) : null;
 
     /// <summary>
     /// The active layout changed (picked in the pause menu): the song on screen takes it at once, as a song start would.
     /// </summary>
     public void ReapplyLayout()
     {
-        if (_lastRequest is not { } request || _charts.Length == 0 || _sourceCharts.Length == 0) return;
-        var player = request.Players[0];
-        var authored = PlayerModcharts.ApplyLayout(ActiveLayoutPath, PlayerModcharts.Apply(EditorModchartFolder, _sourceCharts[0], player.Course));
-        _layoutShown = _sourceCharts[0].Effects.Mods.IsEmpty && authored.Effects.Mods.Length > 0;
-        _charts[0] = _charts[0] with { Effects = authored.Effects };
-        if (_review is { } review) review.ReplaceEffects(0, authored.Effects);
-        else Shell.Gameplay.ReplaceEffects(0, authored.Effects);
-        Shell.Application.Squeeze43 = !Shell.Headless && fourThree(authored.Effects);
+        if (_lastRequest is not { } request || _charts.Length == 0 || _sourceCharts.Length < _charts.Length) return;
+        for (var lane = 0; lane < _charts.Length; lane++)
+        {
+            var course = request.Players.ElementAtOrDefault(lane)?.Course ?? request.Players[0].Course;
+            var own = PlayerModcharts.Apply(EditorModchartFolder, _sourceCharts[lane], course);
+            var authored = forLane(own, PlayerModcharts.ApplyLayout(ActiveLayoutPath, own), lane);
+            if (lane == 0) _layoutShown = _sourceCharts[0].Effects.Mods.IsEmpty && authored.Effects.Mods.Length > 0;
+            _charts[lane] = _charts[lane] with { Effects = authored.Effects };
+            if (_review is { } review) review.ReplaceEffects(lane, authored.Effects);
+            else Shell.Gameplay.ReplaceEffects(lane, authored.Effects);
+        }
+        Shell.Application.Squeeze43 = !Shell.Headless && fourThree(_charts[0].Effects);
     }
 
     public void ReplaceEditorEffects(ChartEffects effects)
     {
-        _review!.ReplaceEffects(0, effects);
+        // Two players (the layout editor): each lane takes its own part of the layout (the second lane's are *_p2).
+        if (_charts.Length == 2)
+            for (var lane = 0; lane < 2; lane++)
+                _review!.ReplaceEffects(lane, _charts[lane].Effects with { Mods = [.. ChartMods.ForLane(effects.Mods, lane)], Layout = [] });
+        else
+            _review!.ReplaceEffects(0, effects);
         Shell.Application.Squeeze43 = fourThree(effects); // the editor's 4:3 toggle shows at once
     }
 
@@ -483,14 +518,17 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     public IReadOnlyList<StageEffectElement> EditorElements(TimeSpan time) => Shell.Gameplay.EffectElements(time);
 
     /// <summary>F8 can turn a local play into an unranked authoring session, without a replay prerequisite.</summary>
-    public bool CanEditEffects => Shell.Arcade.Home && !Shell.Headless && revealed && _charts.Length == 1
+    public bool CanEditEffects => CanEditLayout && _charts.Length == 1;
+
+    /// <summary>The layout editor and the Layouts menu: a local song for one or two players (not Waiwai, dan, online).</summary>
+    public bool CanEditLayout => Shell.Arcade.Home && !Shell.Headless && revealed && _charts.Length is 1 or 2
         && _waiwai is null && _course is null && !_demo && !Shell.Match.InSong && Shell.Active.Id == FlowScenes.Gameplay;
 
     /// <remarks><paramref name="autoplay"/>: the layout editor watches the song on autoplay, so every part of the
     /// screen shows up (combo, Go-Go, balloons, the gauge filling) to be placed.</remarks>
     public void BeginEffectsEditing(bool autoplay = false)
     {
-        if (!CanEditEffects || _lastRequest is not { } request) return;
+        if (!(autoplay ? CanEditLayout : CanEditEffects) || _lastRequest is not { } request) return;
         _voided = true; Playing = false; PlayingChart = null; Presence = null;
         if (autoplay)
         {
@@ -618,8 +656,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.DonRenderer?.Advance(animationFrames);
     }
 
+    // Paused or frozen (the editors' Freeze animations), the movies stand on one tick: no blending between ticks.
     public override LumenRenderSnapshot CreateSnapshot(float interpolation) =>
-        Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation : interpolation);
+        Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation
+            : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
 
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)

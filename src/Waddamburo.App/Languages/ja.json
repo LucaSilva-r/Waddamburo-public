@@ -228,6 +228,7 @@
   "menu.instant_replay": "リプレイ・練習",
   "menu.layouts": "レイアウト",
   "menu.title.layouts": "レイアウト",
+  "menu.title.layouts_two": "レイアウト（2人プレイ）",
   "menu.title.remove_layout": "{0}を削除しますか？",
   "layouts.stock": "標準レイアウト",
   "layouts.new": "新しいレイアウト",

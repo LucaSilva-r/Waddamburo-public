@@ -45,10 +45,30 @@ public static class ChartMods
     /// <summary>Note mods (the "notes" target): 1 = full strength, except zoom and alpha (1 = as drawn).</summary>
     public static readonly ImmutableArray<string> NoteProperties = ["drunk", "tipsy", "wave", "beat", "dizzy", "zoom", "alpha"];
 
-    public static bool IsKnown(string target, string property) =>
-        target == "notes" ? NoteProperties.Contains(property)
+    /// <summary>A two-player layout's second lane: its elements are the first lane's names with this suffix (playfield_p2).</summary>
+    public const string SecondLane = "_p2";
+
+    /// <summary>The element a target names, without the second lane's suffix.</summary>
+    public static string BaseTarget(string target) =>
+        target.EndsWith(SecondLane, StringComparison.Ordinal) && target != "camera" + SecondLane ? target[..^SecondLane.Length] : target;
+
+    /// <summary>
+    /// A two-player layout's changes for one lane: the first lane's (and shared camera) as they are; the second lane's
+    /// (*_p2) under the plain names, with the camera.
+    /// </summary>
+    public static IEnumerable<ChartModEase> ForLane(IEnumerable<ChartModEase> changes, int lane) => lane == 0
+        ? changes.Where(static change => !change.Target.EndsWith(SecondLane, StringComparison.Ordinal))
+        : changes.Where(static change => change.Target == "camera" || change.Target.EndsWith(SecondLane, StringComparison.Ordinal))
+            .Select(static change => change with { Target = BaseTarget(change.Target) });
+
+    public static bool IsKnown(string target, string property)
+    {
+        if (target != "camera" && BaseTarget(target) is var lane && lane != target)
+            return lane != "camera" && IsKnown(lane, property);
+        return target == "notes" ? NoteProperties.Contains(property)
         : Elements.Contains(target) && (ElementProperties.Contains(property) || target == "don" && DonModelProperties.Contains(property)
             || target == "camera" && property == "aspect");
+    }
 
     /// <summary>A property's value before any change: 1 for scales, zoom and alpha, else 0.</summary>
     /// <remarks>camera.aspect: the stage's width on screen, 1 = 16:9, below 1 = a 4:3 screen (the stage squeezed into it,
