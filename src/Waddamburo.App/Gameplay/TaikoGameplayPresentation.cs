@@ -45,7 +45,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
 
     /// <summary>The song's clear / fail banner shows at its end (off in practice; set before <see cref="Start"/>).</summary>
-    public bool EndBanner { get; set; } = true;
+    /// <remarks>Turning it off mid-song (the effects editor, practice) stops a banner not yet shown: one scrubbed past stays up.</remarks>
+    public bool EndBanner
+    {
+        get => _endBanner;
+        set { _endBanner = value; foreach (var lane in _lanes) lane.EndBanner = value; }
+    }
+    private bool _endBanner = true;
 
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
@@ -262,6 +268,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
     private sealed class Lane
     {
+        /// <summary>The end banner shows when the song reaches it (read each frame: the editor turns it off mid-song).</summary>
+        public bool EndBanner { get; set; }
+
         private static readonly string[] NoteMovieNames = ["onp_don", "onp_katsu", "onp_don_dai",
             "onp_katsu_dai", "onp_tetunagidon_1p", "onp_tetunagikatsu_1p", "onp_synchro_don_1p", "onp_synchro_katsu_1p",
             "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p", "onp_rare_0_w_00", "onp_kadon"];
@@ -526,7 +535,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
             var bannerTime = TaikoResultBanner.Time(chart);
-            var bannerShown = !endBanner;
+            EndBanner = endBanner;
+            var bannerShown = false;
             _onChartTime = time =>
             {
                 // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
@@ -545,7 +555,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 DanFailed = danPanel?.Failed == true;
                 if (EndsAt is { } end)
                     bannerTime = end;
-                if (bannerShown || time < bannerTime) return;
+                if (bannerShown || !EndBanner || time < bannerTime) return;
                 bannerShown = true;
                 var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false, danSongEnds)
                     : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;

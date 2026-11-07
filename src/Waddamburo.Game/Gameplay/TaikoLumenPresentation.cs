@@ -300,6 +300,14 @@ public sealed class TaikoLumenPresentation
         front.AddRange(_foreground.Skip(_flightsAt));
         if (!_stage.IsActive)
             return (layers, front);
+        if (_mods.TouchesProperty("depth"))
+        {
+            // Elements by depth (a stable sort: the game's order among equals), all in one list: front is left empty.
+            // ponytail: with two lanes, a lane with depths no longer interleaves its front behind the other lane's.
+            var all = layers.Concat(front).ToArray();
+            var depths = all.Select(layer => targetOf(layer, character) is { } target ? Math.Round(_mods.Value(target, "depth", time)) : 0).ToArray();
+            return ([.. Enumerable.Range(0, all.Length).OrderBy(i => depths[i]).Select(i => place(all[i], character, time))], []);
+        }
         return ([.. layers.Select(layer => place(layer, character, time))], [.. front.Select(layer => place(layer, character, time))]);
     }
 

@@ -42,5 +42,6 @@ restricted mode of that editor plus a fallback file.
 - [x] 1. Layout file + apply fallback (no chart effects, not arcade) + test that a chart with effects ignores it.
 - [x] 2. Editor layout mode: panels stripped to viewport/inspector/scrubber, constant keys, Save, Reset
   (`EffectsEditorSession.Layout.cs`; F7 in a song opens it until milestone 4; F8 ignores the layout).
-- [ ] 3. Layering: `depth` property, single sorted draw list (Don and the notes block included), order list + buttons.
+- [x] 3. Layering: `depth` element property (whole steps, default 0), stable sort by depth in
+  `TaikoLumenPresentation.CreateLayers` (stock order untouched when no depth is set); Send back / Bring forward in layout mode.
 - [ ] 4. Gameplay options entry key; manual check (user drives): move the lane, rotate Don, 4:3 framing, Reset.

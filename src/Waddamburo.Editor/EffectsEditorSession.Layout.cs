@@ -50,6 +50,11 @@ public sealed partial class EffectsEditorSession
         {
             var value = (float)_preview.ValueAt(target + "." + property, 0d);
             ImGui.SetNextItemWidth(-64);
+            if (property == "depth")
+            {
+                LayoutDepth(target, value);
+                continue;
+            }
             var changed = ImGui.DragFloat(property, ref value, property is "x" or "y" or "rotation" or "yaw" or "pitch" or "roll" ? 1f : .01f);
             if (ImGui.IsItemActivated())
                 BeginViewportDrag(GizmoMode.Slider, SelectedElement() ?? new(target, default, default, default, LumenMatrix.Identity),
@@ -58,5 +63,18 @@ public sealed partial class EffectsEditorSession
             if (ImGui.IsItemDeactivated()) EndDrag();
         }
         ImGui.Separator();
+    }
+
+    // Draw order in whole steps: a higher depth is drawn in front, equals keep the game's order.
+    private void LayoutDepth(string target, float value)
+    {
+        var depth = (int)Math.Round(value);
+        void set(int to) => Edit(_history.Current.SetValuesAt(0, new Dictionary<string, double> { [target + ".depth"] = to }, true),
+            $"{target} depth {to}");
+        if (ImGui.Button("Send back")) set(depth - 1);
+        ImGui.SameLine();
+        if (ImGui.Button("Bring forward")) set(depth + 1);
+        ImGui.SameLine();
+        ImGui.TextUnformatted($"depth {depth}");
     }
 }

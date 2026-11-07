@@ -33,7 +33,11 @@ public static class ChartMods
         ["camera", "playfield", "don", "background", "donbg", "renda", "dancers", "stage", "fever", "runners",
          "gauge", "board", "songinfo", "nameplate", "gogo"];
 
-    public static readonly ImmutableArray<string> ElementProperties = ["x", "y", "rotation", "scale", "scalex", "scaley", "alpha"];
+    /// <summary>
+    /// depth: draw order, in whole steps (default 0): elements are drawn by depth, a higher one in front, the game's own
+    /// order kept among equals; e.g. don 1 puts Don-chan in front of everything. The playfield (lane, notes) is one block.
+    /// </summary>
+    public static readonly ImmutableArray<string> ElementProperties = ["x", "y", "rotation", "scale", "scalex", "scaley", "alpha", "depth"];
 
     /// <summary>Don-chan's model turned in his gameplay view (degrees; not the balloon or kusudama views).</summary>
     public static readonly ImmutableArray<string> DonModelProperties = ["yaw", "pitch", "roll"];
