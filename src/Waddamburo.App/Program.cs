@@ -48,6 +48,7 @@ try
     var login = args.Contains("--login", StringComparer.Ordinal);
     var logout = args.Contains("--logout", StringComparer.Ordinal);
     var exportCharts = parseOption(args, "--export-charts=");
+    var listSongs = args.FirstOrDefault(static arg => arg == "--list-songs" || arg.StartsWith("--list-songs=", StringComparison.Ordinal));
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
     var recordPerformance = args.Contains("--benchmark-record", StringComparer.Ordinal);
     var benchmark = args.Contains("--benchmark", StringComparer.Ordinal) ? BenchmarkMode.Quit
@@ -169,6 +170,10 @@ try
         // One-off: every stock and Nijiiro chart, hashed, for the server to import as ranked (see ChartExport).
         if (exportCharts is not null)
             return ChartExport.Run(Path.GetFullPath(Path.Combine(layout.LumenRoot, "..", "..")), arcade, exportCharts);
+        // The songs these settings list, as CSV (see SongList): FILE, else songs.csv beside config.cfg.
+        if (listSongs is not null)
+            return SongList.Run(Path.GetFullPath(Path.Combine(layout.LumenRoot, "..", "..")), arcade, layout.TjaRoot,
+                listSongs.Split('=', 2) is [_, var file] ? Path.GetFullPath(file) : Path.Combine(layout.Home, "songs.csv"));
         var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
         if (login || logout)
             return AccountCommands.Run(arcade, accounts, login);
