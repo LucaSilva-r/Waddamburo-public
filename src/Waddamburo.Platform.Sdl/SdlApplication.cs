@@ -110,6 +110,42 @@ public sealed unsafe class SdlApplication : IDisposable
 
     public string GpuDriver { get; } = string.Empty;
 
+    /// <summary>The last presented stage rectangle, in framebuffer pixels.</summary>
+    public RenderViewport StageViewport => _renderer!.StageViewport;
+
+    /// <summary>Places the stage inside the window; restored by the editor when it closes.</summary>
+    public (float Size, float X, float Y) Letterbox
+    {
+        get => _renderer!.Letterbox;
+        set { ensureOwnerThread(); _renderer!.Letterbox = value; }
+    }
+
+    /// <summary>Attaches one UI layer; the application owns its native lifetime as a fallback.</summary>
+    public ImGuiLayer AttachImGui(Action draw)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(draw);
+        if (_renderer!.ImGuiLayer is not null)
+            throw new InvalidOperationException("An ImGui layer is already attached.");
+        var cursorWasVisible = (bool)SDL_CursorVisible();
+        var textWasActive = (bool)SDL_TextInputActive(_window);
+        var layer = new ImGuiLayer(_renderer, draw, () =>
+        {
+            _renderer.ImGuiLayer = null;
+            _heldInputs.Clear();
+            _pressedKeys.Clear();
+            if (!textWasActive) StopTextInput();
+            if (!cursorWasVisible) SDL_HideCursor();
+        });
+        _renderer.ImGuiLayer = layer;
+        _heldInputs.Clear();
+        _pressedKeys.Clear();
+        SDL_ShowCursor();
+        if (!textWasActive) StartTextInput();
+        return layer;
+    }
+
     private DisplaySettings? _display;
 
     // Stopwatch ticks between frame starts under the frame limit; 0 = none.
@@ -740,6 +776,13 @@ public sealed unsafe class SdlApplication : IDisposable
             SDL_Event currentEvent;
             while (SDL_PollEvent(&currentEvent))
             {
+                if (_renderer!.ImGuiLayer?.ProcessEvent(currentEvent) == true)
+                {
+                    // A key pressed before UI capture must still be released in game state.
+                    if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
+                        inputUp(new SdlInput(SdlInputKind.Key, (int)currentEvent.key.scancode));
+                    continue;
+                }
                 if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_QUIT
                     or (uint)SDL_EventType.SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 {
@@ -937,6 +980,15 @@ public sealed unsafe class SdlApplication : IDisposable
             previousTimestamp = timestamp;
             var remainingTicks = tickLimit is int limit ? limit - simulationTicks : int.MaxValue;
             var eventTime = TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)));
+            if (_renderer!.ImGuiLayer is { } gui)
+            {
+                int logicalWidth, logicalHeight;
+                SDL_GetWindowSize(_window, &logicalWidth, &logicalHeight);
+                var (pixelWidth, pixelHeight) = GetPixelSize();
+                gui.BeginFrame((float)elapsed.TotalSeconds,
+                    new(Math.Max(1, logicalWidth), Math.Max(1, logicalHeight)),
+                    new(Math.Max(1, pixelWidth), Math.Max(1, pixelHeight)));
+            }
             var keyboard = new SdlKeyboardSnapshot(_pressedKeys, pendingPresses, eventTime);
             updateFrame?.Invoke(keyboard);
             var inputTime = performanceActive ? Stopwatch.GetElapsedTime(inputStart) : TimeSpan.Zero;
@@ -1125,6 +1177,7 @@ public sealed unsafe class SdlApplication : IDisposable
             if (pad != IntPtr.Zero)
                 SDL_CloseGamepad((SDL_Gamepad*)pad);
         Array.Clear(_pads);
+        _renderer?.ImGuiLayer?.Dispose();
         _renderer?.Dispose();
         _renderer = null;
         if (_bgfxInitialized)

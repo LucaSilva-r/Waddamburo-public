@@ -8,6 +8,7 @@ using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
+using Waddamburo.Editor;
 using Waddamburo.Formats.Layout;
 using Waddamburo.Game.Online;
 using Waddamburo.Game.Dan;
@@ -68,6 +69,22 @@ internal sealed class GameShell : IDisposable
     public ArcadeSettings Arcade { get; set; }
 
     public SdlApplication Application { get; }
+    private EffectsEditorSession? _effectsEditor;
+
+    public bool EffectsEditorOpen => _effectsEditor is not null;
+
+    public void OpenEffectsEditor()
+    {
+        if (_effectsEditor is null && _gameplay.CanEditEffects)
+            _effectsEditor = new EffectsEditorSession(Application);
+    }
+
+    private void closeEffectsEditor()
+    {
+        _effectsEditor?.Dispose();
+        _effectsEditor = null;
+    }
+
     public SdlDonRenderer? DonRenderer { get; }
     public DonPresentationController? Don { get; }
     public AudioEngine? Audio { get; }
@@ -793,6 +810,12 @@ internal sealed class GameShell : IDisposable
                 Options.ScreenshotPath is null ? null : capture => ScreenshotWriter.Write(Options.ScreenshotPath, capture),
                 updateFrame: keyboard =>
                 {
+                    if (_effectsEditor is { } editor && (editor.CloseRequested || !_gameplay.CanEditEffects
+                        || keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Escape)))
+                    {
+                        closeEffectsEditor();
+                        keyboard = SdlKeyboardSnapshot.Empty;
+                    }
                     _input.Frame(keyboard);
                     if (!keyboard.Presses.IsEmpty)
                         _sinceInput.Restart();
@@ -1252,6 +1275,7 @@ internal sealed class GameShell : IDisposable
 
     public void Dispose()
     {
+        closeEffectsEditor();
         _playerSetup?.Dispose();
         _textFields.Dispose();
         _nameTexts.Dispose();

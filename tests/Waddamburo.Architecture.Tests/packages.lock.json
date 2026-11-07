@@ -129,6 +129,7 @@
       "waddamburo.platform.sdl": {
         "type": "Project",
         "dependencies": {
+          "ImGui.NET": "[1.91.6.1, )",
           "Waddamburo.Formats": "[0.0.0-dev, )",
           "Waddamburo.Lumen": "[0.0.0-dev, )",
           "ppy.SDL3-CS": "[2026.722.0, )"
@@ -140,6 +141,12 @@
           "Realm": "[20.1.0, )",
           "Waddamburo.Catalog": "[0.0.0-dev, )"
         }
+      },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
       },
       "ppy.SDL3-CS": {
         "type": "CentralTransitive",
@@ -160,6 +167,12 @@
       }
     },
     "net10.0/linux-x64": {
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
+      },
       "ppy.SDL3-CS": {
         "type": "CentralTransitive",
         "requested": "[2026.722.0, )",
@@ -179,6 +192,12 @@
       }
     },
     "net10.0/win-x64": {
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
+      },
       "ppy.SDL3-CS": {
         "type": "CentralTransitive",
         "requested": "[2026.722.0, )",

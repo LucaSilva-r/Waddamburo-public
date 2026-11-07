@@ -67,6 +67,15 @@
       "waddamburo.catalog": {
         "type": "Project"
       },
+      "waddamburo.editor": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Catalog": "[0.0.0-dev, )",
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )",
+          "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.formats": {
         "type": "Project"
       },
@@ -88,6 +97,7 @@
       "waddamburo.platform.sdl": {
         "type": "Project",
         "dependencies": {
+          "ImGui.NET": "[1.91.6.1, )",
           "Waddamburo.Formats": "[0.0.0-dev, )",
           "Waddamburo.Lumen": "[0.0.0-dev, )",
           "ppy.SDL3-CS": "[2026.722.0, )"
@@ -114,6 +124,12 @@
       },
       "waddamburo.upscale": {
         "type": "Project"
+      },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
       },
       "Microsoft.Data.Sqlite": {
         "type": "CentralTransitive",
@@ -150,6 +166,12 @@
         "resolved": "2.1.12",
         "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
       },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
+      },
       "ppy.SDL3-CS": {
         "type": "CentralTransitive",
         "requested": "[2026.722.0, )",
@@ -173,6 +195,12 @@
         "type": "Transitive",
         "resolved": "2.1.12",
         "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
       },
       "ppy.SDL3-CS": {
         "type": "CentralTransitive",

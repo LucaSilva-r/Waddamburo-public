@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
+    <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
+    <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
+    <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+  </ItemGroup>
+</Project>

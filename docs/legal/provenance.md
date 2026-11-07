@@ -277,3 +277,13 @@ The upscaled-texture cache stores BC7 blocks encoded by bc7enc (bc7enc_rdo, MIT 
 domain, copyright Richard Geldreich, Jr.), vendored unchanged in `native/texture/third_party/bc7enc/`
 at commit `b9438627eef73a1157e84201b6fa6eb2ffd6d9f0` (hashes in THIRD_PARTY_NOTICES.md). The
 `waddamburo_texture` C ABI around it and the C# bindings are original project code.
+
+The effects editor uses ImGui.NET 1.91.6.1 (upstream revision
+`8e26803be78b344fd68834817905405b3cdffb94`, MIT) and its bundled Dear ImGui 1.91.6 /
+cimgui native runtimes from NuGet. The default font is Dear ImGui's embedded
+ProggyClean (MIT). Their notices ship from `eng/packaging/licenses/`; the exact
+managed dependency graph is recorded in the package lock files. The SDL event
+adapter, bgfx indexed-triangle renderer, and editor session are original project
+code, implemented against the published Dear ImGui backend contract
+(<https://github.com/ocornut/imgui/blob/v1.91.6/docs/BACKENDS.md>) and ImGui.NET API.
+No upstream backend source or private proof-of-concept code is adapted.

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Bgfx;
+using ImGuiNET;
 using SDL;
 using static SDL.SDL3;
 
@@ -238,6 +239,10 @@ internal sealed unsafe class RenderDevice : IDisposable
         return BgfxSupport.RenderThreadReady;
     }
 
+    internal ImGuiLayer? ImGuiLayer { get; set; }
+
+    public RenderViewport StageViewport { get; private set; }
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -277,6 +282,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
         bgfx.touch(ClearView);
         var viewport = letterbox(frame.ResolveViewport(width, height), width, height);
+        StageViewport = viewport;
         // Below the window's own resolution (RenderHeight), the stage draws into a target of that size, scaled up at
         // the end (needs the blur program, which also copies); the Don prepasses then draw at that size too.
         var scaled = RenderHeight > 0 && viewport.Height > RenderHeight && _blurProgram is not null;
@@ -313,6 +319,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.set_view_mode(PresentView, bgfx.ViewMode.Sequential);
             fullscreen(PresentView, _stage!.Color, _blurProgram!.Value, 0, 0, 1, blend: false);
         }
+
+        if (ImGuiLayer is { } gui)
+            submitImGui(gui.EndFrame());
 
         if (!capture)
         {
@@ -487,6 +496,76 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.destroy_frame_buffer(Scene);
             bgfx.destroy_frame_buffer(A);
             bgfx.destroy_frame_buffer(B);
+        }
+    }
+
+    // ImGui shares the straight-alpha quad shader; it premultiplies its output for BlendOne.
+    private void submitImGui(ImDrawDataPtr data)
+    {
+        if (data.NativePtr == null || data.TotalVtxCount == 0 || data.DisplaySize.X <= 0 || data.DisplaySize.Y <= 0)
+            return;
+        const ushort view = 19;
+        bgfx.set_view_frame_buffer(view, BgfxSupport.BackBuffer);
+        bgfx.set_view_rect(view, 0, 0, (ushort)_width, (ushort)_height, 0, 1);
+        bgfx.set_view_scissor(view, 0, 0, (ushort)_width, (ushort)_height);
+        bgfx.set_view_clear(view, (ushort)bgfx.ClearFlags.None, 0, 1, 0);
+        bgfx.set_view_mode(view, bgfx.ViewMode.Sequential);
+        for (var listIndex = 0; listIndex < data.CmdListsCount; listIndex++)
+        {
+            var list = data.CmdLists[listIndex];
+            var vertexCount = (uint)list.VtxBuffer.Size;
+            var indexCount = (uint)list.IdxBuffer.Size;
+            bgfx.TransientVertexBuffer vb;
+            bgfx.TransientIndexBuffer ib;
+            fixed (bgfx.VertexLayout* layout = &_layout)
+            {
+                if (bgfx.get_avail_transient_vertex_buffer(vertexCount, layout) < vertexCount
+                    || bgfx.get_avail_transient_index_buffer(indexCount, false) < indexCount)
+                    return;
+                bgfx.alloc_transient_vertex_buffer(&vb, vertexCount, layout);
+                bgfx.alloc_transient_index_buffer(&ib, indexCount, false);
+            }
+            var vertices = new Span<QuadVertex>(vb.data, (int)vertexCount);
+            for (var i = 0; i < vertices.Length; i++)
+            {
+                var v = list.VtxBuffer[i];
+                var position = (v.pos - data.DisplayPos) / data.DisplaySize;
+                var c = v.col;
+                vertices[i] = new QuadVertex(position.X, position.Y, v.uv.X, v.uv.Y,
+                    (c & 255) / 255f, ((c >> 8) & 255) / 255f, ((c >> 16) & 255) / 255f, (c >> 24) / 255f,
+                    0, 0, 0, 0);
+            }
+            new ReadOnlySpan<ushort>((void*)list.IdxBuffer.Data, (int)indexCount)
+                .CopyTo(new Span<ushort>(ib.data, (int)indexCount));
+            for (var commandIndex = 0; commandIndex < list.CmdBuffer.Size; commandIndex++)
+            {
+                var command = list.CmdBuffer[commandIndex];
+                // The reset-state sentinel needs no action: each submission sets every state it uses.
+                if (command.UserCallback != 0)
+                {
+                    if (command.UserCallback != -8)
+                        throw new NotSupportedException("Custom ImGui draw callbacks are not supported.");
+                    continue;
+                }
+                var clip = command.ClipRect;
+                var scale = data.FramebufferScale;
+                var x = (int)Math.Clamp(MathF.Floor((clip.X - data.DisplayPos.X) * scale.X), 0, _width);
+                var y = (int)Math.Clamp(MathF.Floor((clip.Y - data.DisplayPos.Y) * scale.Y), 0, _height);
+                var right = (int)Math.Clamp(MathF.Ceiling((clip.Z - data.DisplayPos.X) * scale.X), 0, _width);
+                var bottom = (int)Math.Clamp(MathF.Ceiling((clip.W - data.DisplayPos.Y) * scale.Y), 0, _height);
+                if (right <= x || bottom <= y || command.ElemCount == 0) continue;
+                var id = (uint)command.TextureId;
+                if (!_textures.ContainsKey(id)) continue;
+                bgfx.set_scissor((ushort)x, (ushort)y, (ushort)(right - x), (ushort)(bottom - y));
+                bgfx.set_stencil(0, 0);
+                bgfx.set_state((ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA)
+                    | BgfxSupport.BlendSeparate(bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha,
+                        bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha), 0);
+                bgfx.set_texture(0, _textureSampler, drawn(id), (uint)(bgfx.SamplerFlags.UClamp | bgfx.SamplerFlags.VClamp));
+                bgfx.set_transient_vertex_buffer(0, &vb, command.VtxOffset, vertexCount - command.VtxOffset);
+                bgfx.set_transient_index_buffer(&ib, command.IdxOffset, command.ElemCount);
+                bgfx.submit(view, _quadProgram, 0, (byte)bgfx.DiscardFlags.All);
+            }
         }
     }
 

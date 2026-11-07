@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="ppy.SDL3-CS" />
+    <PackageReference Include="ImGui.NET" />
   </ItemGroup>
 
   <ItemGroup>

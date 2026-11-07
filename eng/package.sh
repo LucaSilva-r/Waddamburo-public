@@ -82,6 +82,8 @@ for target in $targets; do
     case $target in
     windows)
         native windows-package "$root/out/build/native/win-x64/windows-package/stage/Release/bin" win-x64
+        # ImGui.NET supplies cimgui.dll as a NuGet runtime asset. VerifyImGuiBundle in
+        # the App project checks it enters the same self-extracting bundle as SDL/bgfx.
         publish win-x64 "$root/out/build/native/win-x64/windows-package/stage/Release/bin" "$out/win-x64" \
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true
@@ -100,6 +102,7 @@ for target in $targets; do
         # ponytail: plain self-contained publish inside the AppDir; the AppImage is already one file.
         appdir=$out/Waddamburo.AppDir
         publish linux-x64 "$root/out/build/native/linux-x64/linux-package/stage/Release/lib" "$appdir/usr/bin"
+        [[ -f "$appdir/usr/bin/libcimgui.so" ]] || { echo "error: missing ImGui native runtime" >&2; exit 1; }
         cp eng/packaging/waddamburo.png "$appdir/waddamburo.png"
         licenses out/build/native/linux-x64/linux-package "$appdir/usr/share/licenses/waddamburo"
         (cd "$appdir/usr/share/licenses" && rm -f "$out/licenses.zip" \

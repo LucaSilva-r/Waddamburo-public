@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
+    <ProjectReference Include="../Waddamburo.Editor/Waddamburo.Editor.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />
@@ -59,4 +60,14 @@
     <PackageReference Include="QRCoder" />
   </ItemGroup>
 
+  <!-- NuGet runtime assets must enter the single-file bundle (not a loose cimgui.dll). -->
+  <Target Name="VerifyImGuiBundle" BeforeTargets="GenerateSingleFileBundle"
+          DependsOnTargets="PrepareForBundle"
+          Condition="'$(PublishSingleFile)' == 'true' and '$(RuntimeIdentifier)' == 'win-x64'">
+    <ItemGroup>
+      <_ImGuiBundle Include="@(FilesToBundle)" Condition="'%(Filename)%(Extension)' == 'cimgui.dll'" />
+    </ItemGroup>
+    <Error Condition="'@(_ImGuiBundle)' == ''" Text="The Windows bundle is missing the ImGui cimgui.dll runtime." />
+    <Error Condition="'$(IncludeNativeLibrariesForSelfExtract)' != 'true'" Text="The Windows bundle must self-extract native libraries, including cimgui.dll." />
+  </Target>
 </Project>

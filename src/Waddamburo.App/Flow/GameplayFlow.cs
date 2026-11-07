@@ -417,6 +417,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>The training under way (null when not training), for the review bar.</summary>
     public TrainingSession? Training => _training;
 
+    /// <summary>Effects authoring is available in local, single-lane home practice.</summary>
+    public bool CanEditEffects => Shell.Arcade.Home && _training is not null && _charts.Length == 1
+        && _waiwai is null && !Shell.Match.InSong;
+
     /// <summary>
     /// A training attempt is being played (live, not paused): the drum is a drum, not a menu pad. Paused,
     /// a controller is its gamepad layout again (scrub, speed, loop marks).
@@ -524,6 +528,9 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (_review is { } review)
         {
+            if (CanEditEffects && !Shell.HomeMenuOpen && !Shell.EffectsEditorOpen
+                && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8))
+                Shell.OpenEffectsEditor();
             if (revealed && !_paused && _training is { } training)
                 training.Frame(keys, keysEnabled: !Shell.HomeMenuOpen);
             else if (revealed && !_paused && !Shell.HomeMenuOpen && canPractise

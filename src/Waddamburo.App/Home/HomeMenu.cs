@@ -14,6 +14,7 @@ internal enum HomeMenuAction
     Restart,
     /// <summary>Review the song played so far (the play is void).</summary>
     InstantReplay,
+    EditEffects,
     /// <summary>Report the watched replay's player to the moderators (the replay carries on).</summary>
     Report,
     SongSelect,
@@ -345,7 +346,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="quit"/>: home, outside a song (the demo play counts as the attract): the game can be closed.
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool effectsEditable = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -354,6 +355,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 ? ["menu.resume", restart, "menu.instant_replay", "menu.settings", "menu.song_select"]
                 : ["menu.resume", restart, "menu.settings", "menu.song_select"]
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
+        if (effectsEditable)
+            _choices = [.. _choices[..^1], "menu.edit_effects", _choices[^1]];
         if (reportable)
             _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
         if (noResume)
@@ -427,6 +430,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 return HomeMenuAction.Settings;
             case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
             case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
+            case "menu.edit_effects": return close(HomeMenuAction.EditEffects);
             case "menu.report_player":
                 _reportPrompt = true;
                 _pauseChoices = _choices;
