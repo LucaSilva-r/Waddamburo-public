@@ -120,7 +120,7 @@ what changed from this plan, and anything the next session must know. Start each
 - [ ] 1. ImGui layer + Editor skeleton
 - [x] 2. Keyframe format + bezier + ReplaceEffects
 - [x] 3. Read-only editor (layout, transport, timeline, graph view)
-- [ ] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
+- [x] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
 - [ ] 5. Graph editing (keys and bezier handles)
 - [ ] 6. Viewport (click-select, gizmos, auto-key, Don model sliders)
 
@@ -165,6 +165,18 @@ what changed from this plan, and anything the next session must know. Start each
   drawing segments; chart hashes and drawing-block formats are unchanged. 715 tests pass, the App builds, and a
   synthetic native UI smoke verifies timeline seek, divider resizing, playback, key inspection, graph selection,
   pan/zoom and viewport restoration at 150% DPI. Preview viewing is usable; authoring/save remains milestone 4.
+
+- 2026-11-07: milestone 4 landed in `ba8e35d`. Immutable documents and gesture history now support adding,
+  moving, deleting and box/multi-selecting timeline keys, exact inspector numbers, named easing thumbnails and
+  Bezier handles as numeric fields. Every edit updates the practice preview and survives seeks. Ctrl+S atomically
+  saves the player override; TJA authors can also save the selected course into the song adjunct while retaining
+  other courses and masking deleted inherited tracks. Reload and unsaved-close confirmation are available.
+  Native chart-command effects remain a read-only preview until “Start keyframe modchart” explicitly replaces them;
+  Undo restores them. User confirmed milestone 3 preview controls. Focus-loss auto-pause is disabled during editing
+  (`75928a0`); native pause-menu input also stays out of the editor. All 727 tests pass; App builds without warnings.
+  A synthetic native UI probe verified snapped dragging as one undo step, redo, numeric input/Enter, Ctrl+S round-trip,
+  K at playhead, unsaved prompt/cancel and closing, with six live preview updates. Graph dragging and viewport
+  manipulation remain milestones 5 and 6. Windows runtime validation from milestone 1 remains pending.
 
 ## Milestones (each ends committed and tested)
 
