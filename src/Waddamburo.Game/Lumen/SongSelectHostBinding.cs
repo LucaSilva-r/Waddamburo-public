@@ -1164,16 +1164,25 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return LumenHostValue.Undefined;
     }
 
+    /// <summary>
+    /// Each joined drum's play options (GetSession: the chosen items' bits), kept for its next song and for Song
+    /// Select's next visit. Also before watching a replay: options set without picking a song were lost (reported on Discord).
+    /// </summary>
+    public void KeepOptions()
+    {
+        if (_player is null) return;
+        foreach (var player in _sides)
+            if (_player.TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
+                && bits.Kind == LumenHostValueKind.Number)
+                TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+    }
+
     private LumenHostValue notifySelection(LumenHostCall call)
     {
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
-        // Each joined drum's play options (GetSession: the chosen items' bits), kept for its next song.
-        foreach (var player in _sides)
-            if (requirePlayer().TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
-                && bits.Kind == LumenHostValueKind.Number)
-                TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+        KeepOptions();
         foreach (var player in _sides)
             if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.course.isMania.{player}") is true)
                 TaikoGuest.Mania[player] = true;

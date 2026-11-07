@@ -615,6 +615,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (_lastRequest is not { } last || _charts.Length == 0) return false;
         var request = last with { Review = null, Seed = null };
+        // Playing a watched replay's chart: with your own options, not the replay's (they stayed on; reported on Discord).
+        if (last.Review is not null)
+            request = new PlayRequest(last.CatalogRevision, last.Song, last.AudioAsset,
+                last.Players.Select(static player => player with { Options = TaikoGuest.Options[(int)player.Player] }));
         Shell.Players.StopWatching();
         if (_paused) SetPaused(false);
         if (_music is { } music)
