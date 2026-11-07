@@ -9,8 +9,23 @@ namespace Waddamburo.Editor;
 /// <summary>Layout mode: the player's gameplay layout, every value constant (a single key at beat 0).</summary>
 public sealed partial class EffectsEditorSession
 {
+    // The layout's name (its file's), renamed by the app: null back when the name can't be used.
+    private string _layoutName = "";
+    private readonly Func<string, EffectEditorFiles?>? _renameLayout;
+
     private void LayoutToolbar()
     {
+        if (_renameLayout is not null)
+        {
+            ImGui.SetNextItemWidth(180);
+            var name = _layoutName;
+            if (ImGui.InputText("##layout name", ref name, 64, ImGuiInputTextFlags.EnterReturnsTrue) && name != _layoutName)
+            {
+                if (_renameLayout(name) is { } files) { _files = files; _layoutName = name.Trim(); _message = "Renamed"; _messageError = false; }
+                else { _message = "That name can't be used (taken, or not a file name)"; _messageError = true; }
+            }
+            ImGui.SameLine();
+        }
         ImGui.BeginDisabled(_files is null);
         if (ImGui.Button("Save (Ctrl+S)")) _saveRequested = true;
         ImGui.EndDisabled();

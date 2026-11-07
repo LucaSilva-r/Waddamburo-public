@@ -57,5 +57,9 @@ restricted mode of that editor plus a fallback file.
   stage (Alt off) with guides, click-through selection (a click inside the selection selects what's behind), Freeze
   animations, autoplay while editing a layout, `banner` element (the clear banner now shows in reviews and the editors;
   rebuilt lanes reset it).
+- **Several layouts** (`modcharts/layouts/<name>.wddmod`, active one = config `layout`; the old single
+  `modcharts/layout.wddmod` moves in as "My layout"). Pause menu › Layouts: stock, each layout (Use / Edit / Remove with
+  a confirmation), New layout; Use applies to the running song at once. Rename in the layout editor's name field.
+  Menus and corner indicators are widened back by 4/3 on a 4:3 screen.
 - Element pivots are taken once at the song's start and kept per movie, so rebuilt lanes and the editors place a
   layout exactly as the song does.

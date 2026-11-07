@@ -234,7 +234,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             // The player's layout where neither gave modchart changes; arcade is always the stock screen.
             if (player is not null && Shell.Arcade.Home)
             {
-                var laid = PlayerModcharts.ApplyLayout(EditorModchartFolder, authored);
+                var laid = PlayerModcharts.ApplyLayout(ActiveLayoutPath, authored);
                 if (lane == 0) _layoutShown = authored.Effects.Mods.IsEmpty && !ReferenceEquals(laid, authored); // as the chart's mods
                 authored = laid;
             }
@@ -447,7 +447,28 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         return new(PlayerModcharts.PathFor(EditorModchartFolder, _sourceCharts[0], player.Course), player.Course, songPath);
     }
 
-    public EffectEditorFiles LayoutFiles() => new(PlayerModcharts.LayoutPath(EditorModchartFolder), _lastRequest!.Players[0].Course);
+    public EffectEditorFiles LayoutFiles() => new(ActiveLayoutPath!, _lastRequest!.Players[0].Course);
+
+    /// <summary>The modcharts folder (player modcharts and layouts).</summary>
+    public string ModchartFolder => EditorModchartFolder;
+
+    // The active layout's file; null: the stock screen.
+    private string? ActiveLayoutPath => Shell.Arcade.Layout is { } name ? PlayerLayouts.PathOf(EditorModchartFolder, name) : null;
+
+    /// <summary>
+    /// The active layout changed (picked in the pause menu): the song on screen takes it at once, as a song start would.
+    /// </summary>
+    public void ReapplyLayout()
+    {
+        if (_lastRequest is not { } request || _charts.Length == 0 || _sourceCharts.Length == 0) return;
+        var player = request.Players[0];
+        var authored = PlayerModcharts.ApplyLayout(ActiveLayoutPath, PlayerModcharts.Apply(EditorModchartFolder, _sourceCharts[0], player.Course));
+        _layoutShown = _sourceCharts[0].Effects.Mods.IsEmpty && authored.Effects.Mods.Length > 0;
+        _charts[0] = _charts[0] with { Effects = authored.Effects };
+        if (_review is { } review) review.ReplaceEffects(0, authored.Effects);
+        else Shell.Gameplay.ReplaceEffects(0, authored.Effects);
+        Shell.Application.Squeeze43 = !Shell.Headless && fourThree(authored.Effects);
+    }
 
     public void ReplaceEditorEffects(ChartEffects effects)
     {

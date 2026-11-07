@@ -35,9 +35,12 @@ public sealed partial class EffectsEditorSession : IDisposable
 
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
         Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null,
-        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null, bool layout = false)
+        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null, bool layout = false,
+        string? layoutName = null, Func<string, EffectEditorFiles?>? renameLayout = null)
     {
         _layout = layout;
+        _layoutName = layoutName ?? "";
+        _renameLayout = renameLayout;
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(transport);
         _application = application;

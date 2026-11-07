@@ -6,6 +6,7 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Flow;
+using Waddamburo.App.Gameplay;
 
 namespace Waddamburo.App.Home;
 
@@ -52,6 +53,7 @@ internal sealed class HomeControls : IDisposable
             shell.ApplyRecording();
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
+        HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.ModchartFolder);
         HomeMenu.Skins = shell.Skins.Names;
         _assetRoot = assetRoot;
         _restart = new QuickRestart(gameplay.Restart, () => TimeSpan.FromMilliseconds(shell.Arcade.RetryHoldMs));
@@ -293,13 +295,13 @@ internal sealed class HomeControls : IDisposable
         // The pause menu's own choices take the overlay look; its other pages (the old settings page, the bake, the
         // calibration's result) keep their panel.
         var pauseChoices = overlayPage && !_settingsOverlay;
-        var extra = (_resume is { Running: true } countdown
+        var extra = _shell.Unsqueezed((_resume is { Running: true } countdown
                 ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
                 : [])
             .Concat(_settingsOverlay && _shell.Service is { } settings ? settings.Quads()
                 : pauseChoices ? pause().Quads() : [])
             .Concat(_overlay.Quads(_restart.Black,
-                _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration))
+                _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)), centred: true)
             .ToList();
         // Nothing on top (most frames): keep the frame rather than copying all its quads.
         if (extra.Count == 0)
@@ -462,8 +464,9 @@ internal sealed class HomeControls : IDisposable
             case HomeMenuAction.InstantReplay when active == FlowScenes.Gameplay:
                 _gameplay.StartInstantReplay();
                 break;
-            case HomeMenuAction.EditLayout when active == FlowScenes.Gameplay:
-                _shell.OpenEffectsEditor(layout: true);
+            case HomeMenuAction.UseLayout or HomeMenuAction.EditLayout or HomeMenuAction.NewLayout or HomeMenuAction.RemoveLayout
+                when active == FlowScenes.Gameplay:
+                layoutAction(action, _menu.LayoutName);
                 break;
             case HomeMenuAction.Report when active == FlowScenes.Gameplay:
                 _gameplay.Report(_menu.ReportReason);
@@ -556,6 +559,31 @@ internal sealed class HomeControls : IDisposable
         }
         warn(Strings.T("library.no_official"));
         return arcade;
+    }
+
+    // A layout picked in the pause menu: the active one changes (saved with the settings), the song takes it at once,
+    // and Edit/New open the layout editor on it.
+    private void layoutAction(HomeMenuAction action, string? name)
+    {
+        var folder = _gameplay.ModchartFolder;
+        try
+        {
+            if (action == HomeMenuAction.NewLayout) name = PlayerLayouts.Create(folder);
+            if (action == HomeMenuAction.RemoveLayout && name is not null) PlayerLayouts.Remove(folder, name);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Layout not changed: {exception.Message}");
+            resumeSong();
+            return;
+        }
+        var layout = action == HomeMenuAction.RemoveLayout ? name == _shell.Arcade.Layout ? null : _shell.Arcade.Layout : name;
+        _shell.Arcade = _shell.Arcade with { Layout = layout };
+        save();
+        _gameplay.ReapplyLayout();
+        resumeSong();
+        if (action is HomeMenuAction.EditLayout or HomeMenuAction.NewLayout)
+            _shell.OpenEffectsEditor(layout: true);
     }
 
     private void save()

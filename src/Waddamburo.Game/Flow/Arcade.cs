@@ -498,6 +498,9 @@ public sealed record ArcadeSettings
     /// <summary>The custom TJA library (null: custom_songs beside the game data).</summary>
     public string? TjaFolder { get; init; }
 
+    /// <summary>The player's active gameplay layout (modcharts/layouts/&lt;name&gt;.wddmod); null: the stock screen.</summary>
+    public string? Layout { get; init; }
+
     /// <summary>Nijiiro installations, separated by | (null: none); see <see cref="Folders"/>.</summary>
     public string? NijiiroFolder { get; init; }
 
@@ -722,6 +725,7 @@ public sealed record ArcadeSettings
                 "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
+                "layout" => settings with { Layout = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
                 "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
@@ -827,6 +831,7 @@ public sealed record ArcadeSettings
             ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
             ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
+            ["layout"] = settings.Layout ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
             ["stock_folders"] = settings.StockFolders ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",

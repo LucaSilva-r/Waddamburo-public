@@ -84,9 +84,27 @@ internal sealed class GameShell : IDisposable
             _gameplay.BeginEffectsEditing(autoplay: layout);
             _effectsEditor = layout
                 ? new EffectsEditorSession(Application, _gameplay.LayoutEditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
-                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, layout: true)
+                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, layout: true, layoutName: Arcade.Layout, renameLayout: renameLayout)
                 : new EffectsEditorSession(Application, _gameplay.EditorChartWithoutLayout, _gameplay.Training!, _gameplay.EditorFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
+        }
+    }
+
+    // The layout editor's name field: the active layout's file renamed, the settings following it.
+    private EffectEditorFiles? renameLayout(string name)
+    {
+        if (Arcade.Layout is not { } from) return null;
+        try
+        {
+            if (Waddamburo.App.Gameplay.PlayerLayouts.Rename(_gameplay.ModchartFolder, from, name) is not { } renamed) return null;
+            Arcade = Arcade with { Layout = renamed };
+            if (Options.ArcadePath is { } config) ArcadeSettings.SaveMenuSettings(config, Arcade);
+            return _gameplay.LayoutFiles();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Layout not renamed: {exception.Message}");
+            return null;
         }
     }
 
@@ -469,6 +487,13 @@ internal sealed class GameShell : IDisposable
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
             // Next to the settings file (USRDIR/waddamburo), like the favourites; none without one.
             Modcharts = Options.ArcadePath is { } settingsFile ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsFile))!, "modcharts") : null;
+            // The one layout of earlier versions becomes the first of the list, and stays the active one.
+            if (Modcharts is not null && Options.ArcadePath is { } config && Waddamburo.App.Gameplay.PlayerLayouts.Migrate(Modcharts) is { } migrated
+                && Arcade.Layout is null)
+            {
+                Arcade = Arcade with { Layout = migrated };
+                ArcadeSettings.SaveMenuSettings(config, Arcade);
+            }
             ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
             SongCatalog = new SongSelectCatalogView(snapshot);
             // Server crowns need every chart's hash before song select lists it.
@@ -1213,7 +1238,7 @@ internal sealed class GameShell : IDisposable
             _inspected = scene;
         var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
-            : unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
+            : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads);
         // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
         // collection expression's growing list plus RenderFrame's copy of it, every frame.
@@ -1254,15 +1279,19 @@ internal sealed class GameShell : IDisposable
         return _home.Draw(result);
     }
 
-    // A 4:3 layout squeezes the stage to 3/4 of its width: the system indicators (network, coins), not part of the
-    // layout, are widened back by 4/3 from their side's edge so they keep their shape in their corner.
-    private IEnumerable<RenderQuad> unsqueezed(IEnumerable<RenderQuad> quads)
+    /// <summary>
+    /// A 4:3 layout squeezes the stage to 3/4 of its width: what isn't part of the layout is widened back by 4/3 to keep
+    /// its shape, from its side's edge (the corner indicators: network, coins) or about the centre (the menus).
+    /// </summary>
+    public IEnumerable<RenderQuad> Unsqueezed(IEnumerable<RenderQuad> quads, bool centred = false)
     {
         if (!Application.Squeeze43)
             return quads;
-        static float x(float value) => value >= .5f ? 1 - (1 - value) * 4 / 3 : value * 4 / 3;
-        static RenderVertex v(RenderVertex vertex) => vertex with { X = x(vertex.X) };
-        return quads.Select(static quad => quad with
+        RenderVertex v(RenderVertex vertex) => vertex with
+        {
+            X = centred ? .5f + (vertex.X - .5f) * 4 / 3 : vertex.X >= .5f ? 1 - (1 - vertex.X) * 4 / 3 : vertex.X * 4 / 3,
+        };
+        return quads.Select(quad => quad with
             { TopLeft = v(quad.TopLeft), TopRight = v(quad.TopRight), BottomRight = v(quad.BottomRight), BottomLeft = v(quad.BottomLeft) });
     }
 
