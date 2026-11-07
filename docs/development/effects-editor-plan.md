@@ -198,6 +198,12 @@ what changed from this plan, and anything the next session must know. Start each
   undo, drum K, Don slider undo/redo, save/reload and F8 exit, with eleven live updates. All 737 tests pass.
   Remaining release validation: user-driven checks on real scene art and Windows VM runtime (milestone 1).
 
+- 2026-11-07: the final App build and `eng/package.sh windows` both pass with milestones 4–6 included;
+  the Windows single-file bundle assertion includes cimgui. The Linux game was launched for user-driven authoring,
+  graph/gizmo and focus-loss checks. The available VM display still shows firmware/boot output, so Windows runtime
+  remains unverified; packaging success does not complete milestone 1. Two existing Game-project warnings remain
+  (XML parameter documentation and an unused using directive); no editor build errors.
+
 ## Milestones (each ends committed and tested)
 
 1. **ImGui layer + Editor skeleton**: ImGuiLayer render/input, letterboxed stage, Editor project + dependency test,
