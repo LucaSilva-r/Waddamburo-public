@@ -14,7 +14,8 @@ public readonly record struct ChartModCue(double Beat, double Beats, ChartEase E
 ///     "*":   [ { "beat": 0, "beats": 8, "ease": "inOutSine", "target": "don.yaw", "value": 360 } ],
 ///     "oni": [ { "beat": 16, "target": "notes.drunk", "value": 1 } ] } }
 /// </code>
-/// "*" applies to every course; "beats" (default 0: at once) and "ease" (default linear) may be left out. Beats count
+/// "*" applies to every course; a player's own file for one chart (named by its <see cref="ChartHash"/>) just lists
+/// <c>"changes": [ … ]</c>. "beats" (default 0: at once) and "ease" (default linear) may be left out. Beats count
 /// from #START along the chart's tempo, and a #DELAY stops them. Targets and properties are <see cref="ChartMods"/>'s.
 /// </summary>
 public static class ChartModFile
@@ -41,11 +42,16 @@ public static class ChartModFile
             if (!root.TryGetProperty("wddmod", out var version) || !version.TryGetInt32(out var number) || number is < 1 or > Version)
                 throw new InvalidDataException($"Not a version {Version} modchart file.");
             var cues = new List<ChartModCue>();
-            if (!root.TryGetProperty("courses", out var courses) || courses.ValueKind != JsonValueKind.Object)
-                return cues;
-            foreach (var key in course is { } own ? (string[])["*", CourseKey(own)] : ["*"])
+            var lists = new List<JsonElement>();
+            if (root.TryGetProperty("changes", out var changes))
+                lists.Add(changes);
+            if (root.TryGetProperty("courses", out var courses) && courses.ValueKind == JsonValueKind.Object)
+                foreach (var key in course is { } own ? (string[])["*", CourseKey(own)] : ["*"])
+                    if (courses.TryGetProperty(key, out var entries))
+                        lists.Add(entries);
+            foreach (var entries in lists)
             {
-                if (!courses.TryGetProperty(key, out var entries) || entries.ValueKind != JsonValueKind.Array)
+                if (entries.ValueKind != JsonValueKind.Array)
                     continue;
                 foreach (var entry in entries.EnumerateArray())
                 {
@@ -88,21 +94,6 @@ public static class ChartModFile
         }
         return [.. points];
     }
-
-    /// <summary>
-    /// The course a chart id names (stock and Nijiiro ids are the course, TJA ids hold it); null when it names none
-    /// (osu!), so only a file's "*" entries apply.
-    /// </summary>
-    public static TaikoCourse? CourseOf(ChartKey chart) =>
-        chart.StableId.Split(':').Select(static part => part.ToLowerInvariant() switch
-        {
-            "easy" => (TaikoCourse?)TaikoCourse.Easy,
-            "normal" => TaikoCourse.Normal,
-            "hard" => TaikoCourse.Hard,
-            "oni" => TaikoCourse.Oni,
-            "ura" or "edit" => TaikoCourse.Ura,
-            _ => null,
-        }).FirstOrDefault(static course => course is not null);
 
     /// <summary>The file's name for a course (Edit is ura).</summary>
     public static string CourseKey(TaikoCourse course) => course switch

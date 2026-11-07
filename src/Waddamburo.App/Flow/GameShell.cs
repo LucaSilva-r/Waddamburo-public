@@ -113,6 +113,10 @@ internal sealed class GameShell : IDisposable
     private readonly ReviewOverlay _reviewBar;
 
     public CatalogAssetRouter Assets { get; }
+
+    /// <summary>The players' own modcharts: &lt;chart hash&gt;.wddmod, one per chart and course (ChartModFile).</summary>
+
+    public string? Modcharts { get; private set; }
     public SongSelectCatalogView SongCatalog { get; }
     public TaikoGameplayPresentation Gameplay { get; }
     public GameplaySkinResolver Skins { get; }
@@ -433,7 +437,9 @@ internal sealed class GameShell : IDisposable
                     problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
-            Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs], Path.Combine(dataRoot, "waddamburo", "modcharts"));
+            Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
+            // Next to the settings file (USRDIR/waddamburo), like the favourites; none without one.
+            Modcharts = Options.ArcadePath is { } settingsFile ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsFile))!, "modcharts") : null;
             ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
             SongCatalog = new SongSelectCatalogView(snapshot);
             // Server crowns need every chart's hash before song select lists it.
@@ -982,8 +988,7 @@ internal sealed class GameShell : IDisposable
             return false;
         }
         Sounds?.StopAll();
-        Overlay.Clear();
-        PlayRequests.CancelPending();
+        SongSelectFlow.AbandonCover();
         Don?.SetDialogDon(false);
         Players.Reset();
         Players.SongsPlayed = 0; // a new credit starts at the first song

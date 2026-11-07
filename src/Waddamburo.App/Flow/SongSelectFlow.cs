@@ -218,12 +218,22 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     /// <summary>The rainbow over a pick goes, and Song Select comes back without it (an online host giving up waiting).</summary>
     public void CancelCover()
     {
+        AbandonCover();
+        Shell.Scenes.Show(FlowScenes.SongSelect);
+    }
+
+    /// <summary>
+    /// The rainbow over a pick goes with its pending play (back to the title mid-cover too): the next pick starts a fresh
+    /// transition. A rainbow left mid-cover made every later pick wait on it, with no song ever starting.
+    /// </summary>
+    public void AbandonCover()
+    {
         Shell.PlayRequests.CancelPending();
         Shell.Overlay.Clear();
         gameplay.ResetRainbow();
         _coveredAt = null;
         _prefetch = null;
-        Shell.Scenes.Show(FlowScenes.SongSelect);
+        _musicUnderCover = false;
     }
 
     private bool _musicUnderCover;

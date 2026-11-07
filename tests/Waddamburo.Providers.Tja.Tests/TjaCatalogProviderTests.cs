@@ -492,12 +492,12 @@ public sealed class TjaCatalogProviderTests
         var chart = new PlayableChart(new ChartKey(new SongKey(SongSourceKind.Stock, "song"), "oni"), TimeSpan.Zero, TimeSpan.FromSeconds(10), [],
             [new ChartTimingPoint(TimeSpan.Zero, 120, 4, 4), new ChartTimingPoint(TimeSpan.FromSeconds(4), 240, 4, 4)],
             [new ChartScrollPoint(TimeSpan.Zero, 1)], [new ChartEffectPoint(TimeSpan.Zero, false)], []);
-        var cues = ChartModFile.Read("""{ "wddmod": 1, "courses": { "oni": [ { "beat": 6, "beats": 4, "target": "camera.rotation", "value": 90 } ] } }"""u8,
-            ChartModFile.CourseOf(chart.Key));
+        // A player's own file for this one chart: a plain list of changes.
+        var cues = ChartModFile.Read("""{ "wddmod": 1, "changes": [ { "beat": 6, "beats": 4, "target": "camera.rotation", "value": 90 } ] }"""u8,
+            TaikoCourse.Oni);
 
         var change = Assert.Single(ChartModFile.Apply(chart, cues).Effects.Mods);
         Assert.Equal((TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1.5)), (change.Start, change.Length)); // 1 s to beat 8, then 0.5 s
-        Assert.Null(ChartModFile.CourseOf(new ChartKey(new SongKey(SongSourceKind.OsuLazer, "song"), "0123abcd")));
     }
 
     [Fact]

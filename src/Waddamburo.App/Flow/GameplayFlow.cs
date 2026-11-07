@@ -224,8 +224,10 @@ internal sealed class GameplayFlow(GameShell shell) : FlowScene(shell)
         _seed = request.Seed ?? Random.Shared.Next();
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
+        // A player's own modchart for their chart (by its hash) goes over the chart's effects, before the options.
         _charts = [.. _sourceCharts.Select((chart, lane) => (players.ElementAtOrDefault(lane)?.Options ?? default)
-            .Apply(chart, _seed + (lane < request.Players.Length ? lane : 0)))];
+            .Apply(Shell.Modcharts is { } modcharts && players.ElementAtOrDefault(lane) is { } player
+                ? PlayerModcharts.Apply(modcharts, chart, player.Course) : chart, _seed + (lane < request.Players.Length ? lane : 0)))];
         // Online, the kusudama is each player's own: the other player's lane gets balloons in its place.
         if (Shell.Match.InSong && request.Players.ToList().FindIndex(player => player.Player != localSlot()) is var remote and >= 0
             && remote < _charts.Length)
