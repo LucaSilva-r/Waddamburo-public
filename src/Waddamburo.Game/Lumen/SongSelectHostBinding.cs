@@ -41,15 +41,19 @@ public readonly record struct SongSelectCoursePresentation(
         ArgumentNullException.ThrowIfNull(song);
         return new SongSelectCoursePresentation(
             restrictions(song),
-            song.Level(TaikoCourse.Easy) ?? 0,
-            song.Level(TaikoCourse.Normal) ?? 0,
-            song.Level(TaikoCourse.Hard) ?? 0,
-            song.Level(TaikoCourse.Oni) ?? 0,
+            stars(song, TaikoCourse.Easy),
+            stars(song, TaikoCourse.Normal),
+            stars(song, TaikoCourse.Hard),
+            stars(song, TaikoCourse.Oni),
             0,
             0,
             0,
-            song.Level(TaikoCourse.Ura) ?? 0);
+            stars(song, TaikoCourse.Ura));
     }
+
+    // The board draws 1-10 ★ (MusicInfo.STARMAX); custom 11s and 12s (OpenTaiko) left the board blank
+    // and Ura unreachable, so they show as 10.
+    private static int stars(SongSelectSong song, TaikoCourse course) => Math.Clamp(song.Level(course) ?? 0, 0, 10);
 
     // osu!lazer songs, and any other song missing one of Easy to Oni, get restriction bits (the rest
     // keep the game's board, zero bits): every slot the song lacks is marked invalid, hidden

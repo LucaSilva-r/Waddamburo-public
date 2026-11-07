@@ -104,12 +104,12 @@ public sealed class SongSelectSessionTests
                     "Ura",
                     new CatalogAssetKey(new CatalogProviderId("synthetic"), "ura"),
                     TaikoCourse.Ura,
-                    9) } : Array.Empty<SongChartDescriptor>(),
+                    12) } : Array.Empty<SongChartDescriptor>(),
             ]);
         var song = new SongSelectSong(
             descriptor,
             SongCourseBits.Oni | (hasUra ? SongCourseBits.Ura : SongCourseBits.None),
-            [null, null, null, 8, hasUra ? 9 : null]);
+            [null, null, null, 8, hasUra ? 12 : null]);
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
@@ -117,7 +117,7 @@ public sealed class SongSelectSessionTests
         Assert.Equal(hasUra ? AuthoredSongCourseBits.None : AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni,
             presentation.SelectionRestrictions);
         Assert.Equal(8, presentation.OniStars);
-        Assert.Equal(hasUra ? 9 : 0, presentation.HiddenOniStars);
+        Assert.Equal(hasUra ? 10 : 0, presentation.HiddenOniStars); // a custom 12 shows as the board's 10
         Assert.Equal(0, presentation.EasyStars);
         Assert.Equal(0, presentation.NormalStars);
         Assert.Equal(0, presentation.HardStars);
