@@ -374,7 +374,7 @@ internal sealed class HomeControls : IDisposable
     {
         // Online, the song goes on whatever this player does: leaving the window doesn't stop it.
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
-        if (_menu.IsOpen || !(escape || home && !online && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
+        if (_menu.IsOpen || !(escape || home && !_shell.EffectsEditorOpen && !online && !_focused && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
         // The attract's demo play: like an online song, it goes on muted under the attract's menu.
         if (home && active == FlowScenes.Gameplay && _gameplay.Demo)
