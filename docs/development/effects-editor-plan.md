@@ -21,7 +21,7 @@ Waddamburo.Platform.Sdl   + ImGuiLayer: SDL input -> ImGui IO, ImGui draw data -
 Waddamburo.Catalog        + keyframe tracks + bezier curves in ChartModFile / ChartMods
 Waddamburo.Game           + TaikoLumenPresentation.ReplaceEffects (live preview of edits)
 Waddamburo.Editor (new)   document model, undo, panels, timeline, graph, viewport gizmos (ImGui widget code)
-Waddamburo.App            opens the editor from practice mode; references Editor
+Waddamburo.App            opens the editor with F8 during local play; references Editor
 ```
 
 - `tests/Waddamburo.Architecture.Tests/DependencyRulesTests.cs`: add
@@ -262,8 +262,10 @@ what changed from this plan, and anything the next session must know. Start each
   are fixed and playback values refresh at ten Hz with two decimals; paused edits remain immediate.
   All 759 tests pass. Native synthetic UI checks pass hot reload, incomplete-save recovery, edit/playhead retention,
   duration/courses, adjacent save, portable export/import, undo/cancel, file switching and watcher cleanup, with eight
-  live previews; the visible File menu was inspected. The App builds. Real-game F8 entry and audio reload need the
-  user's check; Windows runtime validation remains pending.
+  live previews; the visible File menu was inspected. An App storage probe verifies adjacent-file precedence,
+  rereading a saved sidecar on retry, retaining legacy overrides, and stock override routing. The App builds and
+  Windows packaging passes. Real-game F8 entry, native picker interaction and audio reload need the user's check;
+  Windows runtime validation remains pending.
 
 ## Milestones (each ends committed and tested)
 
@@ -289,8 +291,8 @@ what changed from this plan, and anything the next session must know. Start each
 ## Verification
 
 - Unit tests: keyframe → ease conversion, bezier solver (endpoints, monotonic x), file round-trip, document undo/redo,
-  beat↔time mapping; existing suites stay green (690 tests).
-- Manual (user drives, per CLAUDE.md): practice a chart → Edit effects; add a `don.yaw` track, keys at two beats,
+  beat↔time mapping; existing suites stay green (759 tests).
+- Manual (user drives, per AGENTS.md): start a local single-player chart → F8; add a `don.yaw` track, keys at two beats,
   outBack, scrub/play to see Don spin; drag a key in the graph; select dancers in the viewport and drag them; save,
   restart the song normally and see the effect; Ctrl+Z restores.
 - Windows build via `eng/package.sh windows` and run on the Windows VM to confirm cimgui ships.
