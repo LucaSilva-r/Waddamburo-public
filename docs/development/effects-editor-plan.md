@@ -1,0 +1,158 @@
+# Effects editor (Waddamburo.Editor)
+
+## Context
+
+Modcharts (`ChartEffects`, `.wddmod` files) work, but writing them by hand is slow. We want a built-in **effects
+editor**: notes stay in external editors (PeepoDrumKit…), effects are authored in Waddamburo with the live Lumen
+preview. Decisions taken with the user:
+
+- Separate module **`Waddamburo.Editor`** so the engine stays clean.
+- **Dear ImGui** (ImGui.NET) for the UI.
+- **Shrunk preview + panels**: game stage letterboxed into a viewport, panels around it.
+- **Full graph editor** and a **keyframe** timeline (value at a beat; the segment into a keyframe carries its curve).
+
+Ground rules kept: every effect stays a pure function of chart time (seek/practice/replay safe), drawing only
+(no `ChartHash` change), Green only.
+
+## Architecture
+
+```
+Waddamburo.Platform.Sdl   + ImGuiLayer: SDL input -> ImGui IO, ImGui draw data -> bgfx (existing quad program)
+Waddamburo.Catalog        + keyframe tracks + bezier curves in ChartModFile / ChartMods
+Waddamburo.Game           + TaikoLumenPresentation.ReplaceEffects (live preview of edits)
+Waddamburo.Editor (new)   document model, undo, panels, timeline, graph, viewport gizmos (ImGui widget code)
+Waddamburo.App            opens the editor from practice mode; references Editor
+```
+
+- `tests/Waddamburo.Architecture.Tests/DependencyRulesTests.cs`: add
+  `["Waddamburo.Editor"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"]`,
+  App gains `Waddamburo.Editor`. ImGui.NET's P/Invokes live in its own assembly, so the "native imports only in
+  Platform.Sdl" rule holds.
+- `Directory.Packages.props`: `ImGui.NET` (bundles cimgui for win-x64/linux-x64). `eng/package.sh` must ship the cimgui
+  native with the other self-extracted natives (check the single-file layout).
+
+## 1. ImGui in Platform.Sdl (no new shaders)
+
+- **Rendering** (`Rendering/RenderDevice.cs`): the quad program (`vs_quad`/`fs_quad`, layout pos2/uv2/color0 f4/
+  color1 f4, positions normalised 0..1) draws ImGui as is: per ImGui vertex `color0 = rgba8/255`, `color1 = 0`,
+  position / display size. Use transient vertex + index buffers (`bgfx.TransientIndexBuffer`) and `bgfx.set_scissor`
+  per draw command, in a new view after `MainView`/`PresentView` covering the whole window. Font atlas via
+  `UploadRgba8`; `ImTextureID` = `RenderTextureId.Value` so the editor can show textures too.
+- **Input** (`SdlApplication.cs` event loop, lines ~760–840): when an `ImGuiLayer` is attached, feed it mouse
+  pos/buttons/wheel, key down/up with modifiers and `SDL_EVENT_TEXT_INPUT` (start/stop text input exists:
+  `StartTextInput`), and let the game skip input ImGui wants (`WantCaptureMouse/Keyboard`).
+- **Viewport**: the editor sets `RenderDevice.Letterbox` to place the stage in the middle region; expose the last
+  stage viewport rect so window-space mouse positions map to stage coordinates (click-to-select).
+- New `ImGuiLayer` (Platform.Sdl): owns the ImGui context, `BeginFrame(dt, windowSize)`, `Render()` → draw data handed
+  to `RenderDevice.Present`.
+
+## 2. Engine: keyframes and curves (format not released yet, so `.wddmod` v1 is redefined in place)
+
+- **File** (`src/Waddamburo.Catalog/ChartModFile.cs`): tracks of keyframes per `target.property`:
+  ```json
+  { "wddmod": 1,
+    "tracks": { "don.yaw": [ { "beat": 8, "value": 0 },
+                             { "beat": 16, "value": 360, "ease": "outBack" },
+                             { "beat": 20, "value": 90, "curve": [0.3, 0, 0.2, 1] } ] } }
+  ```
+  A song file beside a TJA nests the same per course: `"courses": { "*": { "tracks": … }, "oni": { "tracks": … } }`.
+  Keyframe semantics (animation-tool style): before the first key the track holds its first value; each later key
+  eases from the previous key's value over the beats between them, by its `ease` (named) or `curve` (cubic bezier,
+  CSS-style handles). Converted at load to the existing `ChartModEase` list (one segment per key), so
+  `ChartMods.ValueAt`, `ChartModValues`, `NoteGeometry`, `StageEffects` stay unchanged.
+- **Bezier**: `ChartModEase` gains an optional `Curve` (x1, y1, x2, y2); `ChartMods.Eased` solves it (Newton on x(t),
+  bisection fallback). `ChartDrawing` (online block) serialises it.
+- **Writing**: `ChartModFile.Write(tracks)` for the editor; round-trips with `Read`.
+- Migrate `Test Charts/Modchart - EASE and SET demo/Modchart Demo.wddmod` and the mikuse user file.
+- **Live preview** (`src/Waddamburo.Game/Gameplay/TaikoLumenPresentation.cs`): `ReplaceEffects(ChartEffects)` rebuilds
+  `_mods`, `_geometry`, `_stage` and clears `_noteWindows`/`_barStreams`; exposed through `TaikoGameplayPresentation`
+  (App) per lane.
+
+## 3. Waddamburo.Editor
+
+**Document** (pure, unit-tested): `EffectDocument` = immutable map trackKey → keyframes (beat, value, ease | curve).
+Undo/redo = stack of documents. Load/save via `ChartModFile`. Beat ↔ time through the chart's beat map
+(`ChartEffects.Beats`, else `ChartModFile.BeatsOf(chart.TimingPoints)`). Every edit → `ChartModFile.Apply`-equivalent
+→ `ReplaceEffects` for an instant preview.
+
+**Layout** (fixed docked ImGui windows around the letterboxed stage):
+```
++-- toolbar: Save | Undo Redo | ▶ speed | loop A-B | snap 1/4 | auto-key ------------------------+
+| Targets      |                                                         | Inspector             |
+| camera       |              live game stage (letterboxed)              | keyframe: beat value  |
+| playfield    |              click an element to select it              | ease ▾  [curve thumb] |
+| don (+model) |              gizmo: move / rotate / scale               | bezier x1 y1 x2 y2    |
+| dancers …    |                                                         | element now: x y rot  |
+| notes        |                                                         |                       |
++--------------+---------------------------------------------------------+-----------------------+
+| Timeline | Graph   (beats; bar lines from the chart; playhead; loop region)                    |
+| don.yaw     ◆─────────outBack─────────◆            ◆                                            |
+| notes.drunk           ◆──◆                                                                      |
++-------------------------------------------------------------------------------------------------+
+```
+- **Targets**: `ChartMods.Elements`/`NoteProperties`/`DonModelProperties`; “+” adds a track.
+- **Timeline**: rows per track, keyframe diamonds, drag to move (snapped), box/multi-select, playhead = practice
+  `ReviewClock`; click ruler to seek; wheel zoom, middle-drag pan.
+- **Graph**: selected track(s) as value-over-beat curves drawn with ImDrawList; drag keys (beat/value) and bezier
+  handles; frame-all.
+- **Inspector**: exact numbers, easing dropdown with curve thumbnails.
+- **Viewport gizmos**: click selects the element under the cursor (bounds from `StageEffects` pivots, extended to
+  bounds); drag to move, ring to rotate, corner to scale; with auto-key, writes keyframes at the playhead. Don-chan's
+  model: yaw/pitch/roll sliders.
+- **Controls**: Space play/pause, ←/→ beat (Shift measure), K key the selected property, Del, Ctrl+Z/Y, Ctrl+S,
+  A/B loop (practice's own keys).
+
+**Saving**: the chart's own player file `waddamburo/modcharts/<chart hash>.wddmod` (`PlayerModcharts.PathFor`); for TJA
+charts also “Save into Song.wddmod” (its course section) so authors ship it with the chart.
+
+**Entry point**: home mode, practice → pause menu “Edit effects” (and a key in practice). Opens the editor session
+around the existing `TrainingSession`/`ReviewSession` (clock, seek, loop, speed). Leaving restores the full-size
+stage. Judgement is untouched; the drum still plays live when the editor is playing.
+
+## Progress
+
+Work spans several sessions. Tick a box when a milestone is committed, and add a dated note: what landed (commits),
+what changed from this plan, and anything the next session must know. Start each session from the first unchecked box.
+
+- [ ] 1. ImGui layer + Editor skeleton
+- [ ] 2. Keyframe format + bezier + ReplaceEffects
+- [ ] 3. Read-only editor (layout, transport, timeline, graph view)
+- [ ] 4. Editing (keys, inspector, undo/redo, save/load, live preview)
+- [ ] 5. Graph editing (keys and bezier handles)
+- [ ] 6. Viewport (click-select, gizmos, auto-key, Don model sliders)
+
+### Notes
+
+- 2026-11-07: plan agreed (ImGui, shrunk preview + panels, keyframes, full graph editor). Branch `gimmick-charts`
+  (merges to master once the editor is usable). State before milestone 1: modcharts load from `.wddmod` beside a TJA
+  or `waddamburo/modcharts/<chart hash>.wddmod`; effects run through `ChartEffects` → `NoteGeometry`/`StageEffects`.
+
+## Milestones (each ends committed and tested)
+
+1. **ImGui layer + Editor skeleton**: ImGuiLayer render/input, letterboxed stage, Editor project + dependency test,
+   open/close from practice showing the ImGui demo window. Verify on Linux + Windows VM (packaging).
+2. **Keyframe format + bezier + ReplaceEffects**: Catalog/Game changes, migrations, tests.
+3. **Read-only editor**: layout, toolbar transport bound to ReviewClock, timeline showing tracks/keys/bars/playhead,
+   click-to-seek, graph view read-only.
+4. **Editing**: add/move/delete keys, inspector, undo/redo, save/load, live preview.
+5. **Graph editing**: drag keys and bezier handles.
+6. **Viewport**: click-select, move/rotate/scale gizmos, auto-key, Don model sliders.
+
+## Critical files
+
+- `src/Waddamburo.Platform.Sdl/Rendering/RenderDevice.cs`, `src/Waddamburo.Platform.Sdl/SdlApplication.cs`, new
+  `src/Waddamburo.Platform.Sdl/ImGuiLayer.cs`
+- `src/Waddamburo.Catalog/ChartModFile.cs`, `ChartMods.cs`, `ChartDrawing.cs`
+- `src/Waddamburo.Game/Gameplay/TaikoLumenPresentation.cs`, `StageEffects.cs`
+- `src/Waddamburo.App/Flow/TrainingSession.cs`, `GameShell.cs` (frame/input routing), `Gameplay/PlayerModcharts.cs`
+- new `src/Waddamburo.Editor/*`, `tests/Waddamburo.Editor.Tests/*`
+- `tests/Waddamburo.Architecture.Tests/DependencyRulesTests.cs`, `Directory.Packages.props`, `eng/package.sh`
+
+## Verification
+
+- Unit tests: keyframe → ease conversion, bezier solver (endpoints, monotonic x), file round-trip, document undo/redo,
+  beat↔time mapping; existing suites stay green (690 tests).
+- Manual (user drives, per CLAUDE.md): practice a chart → Edit effects; add a `don.yaw` track, keys at two beats,
+  outBack, scrub/play to see Don spin; drag a key in the graph; select dancers in the viewport and drag them; save,
+  restart the song normally and see the effect; Ctrl+Z restores.
+- Windows build via `eng/package.sh windows` and run on the Windows VM to confirm cimgui ships.
