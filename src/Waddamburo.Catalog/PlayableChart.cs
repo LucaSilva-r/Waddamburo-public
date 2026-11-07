@@ -386,6 +386,24 @@ public sealed record PlayableChart
     }
 
     /// <summary>
+    /// The fumen header's soul gauge ratios (normal, expert, master), only where they differ from
+    /// <see cref="GaugeRatio"/>'s rule (8 of Green's 101 branched charts); empty otherwise.
+    /// </summary>
+    public ImmutableArray<double> GaugeRatios { get; init; } = [];
+
+    /// <summary>
+    /// What <paramref name="route"/>'s soul gauge amounts are scaled by: normal combo ÷ the route's, never above 1
+    /// (89 of Green's 101 branched fumens store exactly this; 4 more only differ by the cap).
+    /// </summary>
+    public double GaugeRatio(ChartBranch route) => !GaugeRatios.IsEmpty ? GaugeRatios[(int)route]
+        : Branching is null ? 1
+        : Math.Min(1, (double)OnRoute(ChartBranch.Normal).NoteCount / Math.Max(1, OnRoute(route).NoteCount));
+
+    /// <summary>Whether <paramref name="route"/> is in Go-Go at any point of [<paramref name="from"/>, <paramref name="to"/>].</summary>
+    public bool IsGoGoDuring(TimeSpan from, TimeSpan to, ChartBranch? route = null) =>
+        IsGoGoAt(from, route) || EffectPointsOn(route).Any(point => point.IsGoGo && point.Time > from && point.Time <= to);
+
+    /// <summary>
     /// The checks with <see cref="ChartBranchCheck.Time"/> when they are really judged: as their route's first
     /// measure enters the lane, one 4/4 measure before it is hit, whatever the measure before it (traced on
     /// ghnpan_m, whose bar line before the branch is a quarter of a measure away). The stored Time is the previous

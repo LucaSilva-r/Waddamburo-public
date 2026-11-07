@@ -69,7 +69,7 @@ public sealed class TaikoScoreTests
             test.Apply(judgement(combo, TaikoHitResult.Great), TimeSpan.Zero);
             Assert.Equal(award, test.Value - before);
         }
-        score.Apply(judgement(0, TaikoHitResult.Good), TimeSpan.FromSeconds(2));
+        score.Apply(judgement(0, TaikoHitResult.Good, at: TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(2));
         Assert.Equal(250, score.Value); // 420 / 2 = 210, Go-Go makes 252, truncated to 250.
         Assert.Equal(0, score.Value % 10);
     }
@@ -97,23 +97,37 @@ public sealed class TaikoScoreTests
     {
         var score = new TaikoScore(chart(goGo: true) with { ScoreInit = 510, ScoreDiff = 0 });
         for (var i = 0; i < 100; i++)
-            score.Apply(judgement(i, TaikoHitResult.Great), TimeSpan.FromSeconds(2));
+            score.Apply(judgement(i, TaikoHitResult.Great, at: TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(2));
         Assert.Equal(71000, score.Value); // 100 * 610 + fixed 10000.
         score.Apply(judgement(100, TaikoHitResult.Good), TimeSpan.Zero);
         Assert.Equal(71250, score.Value); // 510 / 2 truncates to 250.
+    }
+
+    [Theory]
+    [InlineData(1950, -25, 1200)] // just before #GOGOSTART at 2 s, hit early: its window reaches Go-Go
+    [InlineData(1950, 25, 1200)]
+    [InlineData(1900, 25, 1000)]  // 100 ms before: its window closes first, even hit late inside Go-Go
+    [InlineData(3050, -25, 1200)] // just after #GOGOEND at 3 s, hit early or late: its window reaches back
+    [InlineData(3050, 25, 1200)]
+    [InlineData(3100, -25, 1000)] // 100 ms after: never Go-Go, even hit early inside it
+    public void GoGoDependsOnTheNotesWindowNotTheHit(int noteMs, int offsetMs, long expected)
+    {
+        var score = new TaikoScore(chart(goGo: true, goGoEnd: true) with { ScoreInit = 1000, ScoreDiff = 0 }, TimeSpan.FromMilliseconds(75));
+        score.Apply(judgement(0, TaikoHitResult.Great, at: TimeSpan.FromMilliseconds(noteMs)), TimeSpan.FromMilliseconds(noteMs + offsetMs));
+        Assert.Equal(expected, score.Value);
     }
 
     [Fact]
     public void GreenGoodGoGoAndStrongGoodUseTruncatedIntermediateAwards()
     {
         var normal = new TaikoScore(chart(goGo: true) with { ScoreInit = 330, ScoreDiff = 0 });
-        normal.Apply(judgement(0, TaikoHitResult.Great), TimeSpan.FromSeconds(2));
-        normal.Apply(judgement(1, TaikoHitResult.Good), TimeSpan.FromSeconds(2));
+        normal.Apply(judgement(0, TaikoHitResult.Great, at: TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(2));
+        normal.Apply(judgement(1, TaikoHitResult.Good, at: TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(2));
         Assert.Equal(580, normal.Value); // 390 + 190, not 400 + 200.
 
         var strong = new TaikoScore(chart(goGo: true) with { ScoreInit = 330, ScoreDiff = 0 });
-        strong.Apply(judgement(0, TaikoHitResult.Good, big: true), TimeSpan.FromSeconds(2));
-        strong.Apply(judgement(0, TaikoHitResult.Good, big: true, completed: true), TimeSpan.FromSeconds(2));
+        strong.Apply(judgement(0, TaikoHitResult.Good, big: true, at: TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(2));
+        strong.Apply(judgement(0, TaikoHitResult.Good, big: true, completed: true, at: TimeSpan.FromSeconds(2)), TimeSpan.FromSeconds(2));
         Assert.Equal(380, strong.Value); // (floor10(330 / 2) then floor10(×1.2)) × 2.
     }
 
@@ -132,8 +146,8 @@ public sealed class TaikoScoreTests
     }
 
     private static TaikoNoteJudgement judgement(int index, TaikoHitResult result,
-        bool big = false, bool completed = false) =>
-        new(index, new PlayableHitObject(TimeSpan.Zero, big ? PlayableNoteKind.BigDon : PlayableNoteKind.Don),
+        bool big = false, bool completed = false, TimeSpan at = default) =>
+        new(index, new PlayableHitObject(at, big ? PlayableNoteKind.BigDon : PlayableNoteKind.Don),
             result, TimeSpan.Zero, completed);
 
     private static PlayableChart chart(bool goGo = false, bool goGoEnd = false) => new(

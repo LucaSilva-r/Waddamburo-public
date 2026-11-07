@@ -416,7 +416,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // The three gauge movies differ in their authored clear line (60/70/80%).
             if (dan is not null)
                 board.TryInvokeCallback("SetDani", []);
-            var gaugeName = dan is not null ? "gage_don_1p_dani" : course switch
+            // osu! charts fill as Oni (TaikoSoulGauge), so they show Oni's clear line.
+            var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course) switch
             {
                 TaikoCourse.Easy => "gage_don_1p_easy",
                 TaikoCourse.Normal or TaikoCourse.Hard => "gage_don_1p_normal",
@@ -426,8 +427,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
             if (gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]) == false)
                 throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
-            var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments, dan?.ExactGauge == true) : new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
-            var score = new TaikoScore(chart);
+            var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments, dan?.ExactGauge == true) : new TaikoSoulGauge(course, chart);
+            var score = new TaikoScore(chart, WindowsFor(chart, course).Good);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
             if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
                 throw new InvalidDataException("Gameplay board is missing its score initialization callback.");

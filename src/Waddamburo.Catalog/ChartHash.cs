@@ -113,6 +113,13 @@ public static class ChartHash
                     }
                 }
             }
+            // The fumen's own soul gauge ratios, last and only where they break the rule: other charts keep their hash.
+            if (!chart.GaugeRatios.IsEmpty)
+            {
+                writer.Write("GAUG"u8);
+                foreach (var ratio in chart.GaugeRatios)
+                    writer.Write(ratio);
+            }
         }
         writer.Flush();
         return stream.ToArray();
@@ -165,6 +172,7 @@ public static class ChartHash
             bars[index] = new ChartBarLine(time(reader), reader.ReadBoolean());
         ChartBranching? branching = null;
         ChartRouteControls[]? routes = null;
+        double[]? gaugeRatios = null;
         if (reader.BaseStream.Position != reader.BaseStream.Length)
         {
             if (!reader.ReadBytes(4).AsSpan().SequenceEqual("BRCH"u8))
@@ -179,10 +187,9 @@ public static class ChartHash
             for (var index = 0; index < checks.Length; index++)
                 checks[index] = new ChartBranchCheck(time(reader), time(reader), threshold(reader), threshold(reader), threshold(reader));
             branching = new ChartBranching([.. checks], points);
-            if (reader.BaseStream.Position != reader.BaseStream.Length)
+            var tag = reader.BaseStream.Position != reader.BaseStream.Length ? reader.ReadBytes(4) : [];
+            if (tag.AsSpan().SequenceEqual("ROUT"u8))
             {
-                if (!reader.ReadBytes(4).AsSpan().SequenceEqual("ROUT"u8))
-                    throw new InvalidDataException("Trailing bytes after the chart.");
                 routes = new ChartRouteControls[3];
                 for (var route = 0; route < routes.Length; route++)
                 {
@@ -194,9 +201,15 @@ public static class ChartHash
                         ownBars[index] = new ChartBarLine(time(reader), reader.ReadBoolean());
                     routes[route] = new ChartRouteControls([.. timing], [.. scroll]) { Effects = [.. own], Bars = [.. ownBars] };
                 }
-                if (reader.BaseStream.Position != reader.BaseStream.Length)
-                    throw new InvalidDataException("Trailing bytes after the chart.");
+                tag = reader.BaseStream.Position != reader.BaseStream.Length ? reader.ReadBytes(4) : [];
             }
+            if (tag.AsSpan().SequenceEqual("GAUG"u8))
+            {
+                gaugeRatios = [reader.ReadDouble(), reader.ReadDouble(), reader.ReadDouble()];
+                tag = [];
+            }
+            if (tag.Length != 0 || reader.BaseStream.Position != reader.BaseStream.Length)
+                throw new InvalidDataException("Trailing bytes after the chart.");
         }
 
         var duration = notes.Select(static note => note.StartTime).Concat(longNotes.Select(static note => note.EndTime))
@@ -208,6 +221,7 @@ public static class ChartHash
             ScoreInit = scoreInit < 0 ? null : scoreInit,
             ScoreDiff = scoreDiff < 0 ? null : scoreDiff,
             Branching = branching,
+            GaugeRatios = gaugeRatios is null ? [] : [.. gaugeRatios],
             RouteControls = routes is null ? [] : [.. routes],
         };
         return (chart, course);
