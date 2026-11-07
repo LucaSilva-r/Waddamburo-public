@@ -59,7 +59,7 @@ public sealed partial class EffectsEditorSession
                 if (active) ImGui.PopStyleColor();
                 ImGui.SameLine();
             }
-            ImGui.Checkbox("Auto-key", ref _autoKey);
+            if (!_layout) ImGui.Checkbox("Auto-key", ref _autoKey);
             ImGui.EndDisabled();
             ImGui.SetCursorScreenPos(view.Rectangle.Position);
             ImGui.InvisibleButton("Stage canvas", view.Rectangle.Size);
@@ -134,11 +134,11 @@ public sealed partial class EffectsEditorSession
         if (_history.Current.UsesEmbeddedEffects) return;
         if (!CommitInspector()) return;
         EndDrag();
-        var beat = SnapBeat(CurrentBeat);
+        var beat = _layout ? 0 : SnapBeat(CurrentBeat);
         string[] properties = property is not null ? [property] : mode == GizmoMode.Move ? ["x", "y"]
             : mode == GizmoMode.Rotate ? ["rotation"] : ["scale"];
         var values = properties.ToDictionary(p => element.Target + "." + p, p => _preview.ValueAt(element.Target + "." + p, beat));
-        _viewportDrag = new(mode, element, view, view.ToStage(pointer), beat, values, _autoKey);
+        _viewportDrag = new(mode, element, view, view.ToStage(pointer), beat, values, _layout || _autoKey);
         _dragBefore = _history.Current; _history.BeginGesture();
     }
 
@@ -191,6 +191,7 @@ public sealed partial class EffectsEditorSession
         double Value(string property) => _preview.ValueAt(target + "." + property, _transport.Clock.Position);
         ImGui.TextUnformatted($"Position: {F(Value("x"))}, {F(Value("y"))}");
         ImGui.TextUnformatted($"Rotation: {F(Value("rotation"))} | Scale: {F(Value("scale"))}");
+        if (_layout) { LayoutValues(target); return; }
         if (target == "don" && !_history.Current.UsesEmbeddedEffects)
         {
             foreach (var property in new[] { "yaw", "pitch", "roll" })

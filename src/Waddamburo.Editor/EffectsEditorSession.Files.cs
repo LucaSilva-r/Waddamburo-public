@@ -132,14 +132,15 @@ public sealed partial class EffectsEditorSession
     }
 
     // The keyframes of the file that plays; effects without one (a file that could not be read) show read-only.
-    private static EffectDocument OpeningDocument(PlayableChart chart, EffectEditorFiles? files)
+    // A layout without a file starts empty, whatever the chart's own effects (they don't show while editing it).
+    private static EffectDocument OpeningDocument(PlayableChart chart, EffectEditorFiles? files, bool layout = false)
     {
         try
         {
             if (files?.Load() is { } document) return document;
         }
         catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { }
-        return chart.Effects.Mods.IsEmpty ? EffectDocument.Empty : EffectDocument.EmbeddedPreview;
+        return layout || chart.Effects.Mods.IsEmpty ? EffectDocument.Empty : EffectDocument.EmbeddedPreview;
     }
 
     private void ImportEffects()

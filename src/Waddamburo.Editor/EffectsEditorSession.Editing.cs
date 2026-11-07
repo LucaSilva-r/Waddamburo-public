@@ -100,6 +100,7 @@ public sealed partial class EffectsEditorSession
             if (io.KeyShift) _redoRequested = true; else _undoRequested = true;
         }
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y)) _redoRequested = true;
+        if (_layout) return; // keys stay at beat 0: no copy/paste, delete or K at the playhead
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.C, false)) _copyRequested = true;
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.V, false)) _pasteRequested = true;
         if (ImGui.IsKeyPressed(ImGuiKey.Delete)) _deleteRequested = true;
@@ -192,7 +193,7 @@ public sealed partial class EffectsEditorSession
             if (_files is null) throw new InvalidOperationException("No save destination is available.");
             _files.Save(_history.Current);
             _history.MarkSaved();
-            _message = _files.SongPath is null ? "Saved player modchart" : "Saved beside TJA (current course)";
+            _message = _layout ? "Saved layout" : _files.SongPath is null ? "Saved player modchart" : "Saved beside TJA (current course)";
             _messageError = false;
             return true;
         }

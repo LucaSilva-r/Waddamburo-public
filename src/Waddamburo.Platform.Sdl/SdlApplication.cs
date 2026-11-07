@@ -1164,6 +1164,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         SDL_Keycode.SDLK_F2 => SdlKeyboardKey.F2,
         SDL_Keycode.SDLK_F3 => SdlKeyboardKey.F3,
         SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,
+        SDL_Keycode.SDLK_F7 => SdlKeyboardKey.F7,
         SDL_Keycode.SDLK_F8 => SdlKeyboardKey.F8,
         SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,
         SDL_Keycode.SDLK_UP => SdlKeyboardKey.Up,

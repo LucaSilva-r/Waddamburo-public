@@ -1,0 +1,62 @@
+using System.Numerics;
+using ImGuiNET;
+using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
+using Waddamburo.Lumen.Runtime;
+
+namespace Waddamburo.Editor;
+
+/// <summary>Layout mode: the player's gameplay layout, every value constant (a single key at beat 0).</summary>
+public sealed partial class EffectsEditorSession
+{
+    private void LayoutToolbar()
+    {
+        ImGui.BeginDisabled(_files is null);
+        if (ImGui.Button("Save (Ctrl+S)")) _saveRequested = true;
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!_history.CanUndo);
+        if (ImGui.Button("Undo")) _undoRequested = true;
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!_history.CanRedo);
+        if (ImGui.Button("Redo")) _redoRequested = true;
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        // Back to the stock screen; undoable, and nothing changes on disk until Save.
+        if (ImGui.Button("Reset layout")) Edit(EffectDocument.Empty, "Reset layout");
+    }
+
+    // The scrubber: jump anywhere in the chart to see its notes under the layout.
+    private void LayoutBar(EditorPanel rect)
+    {
+        if (Panel("Layout", rect, false))
+        {
+            var seconds = (float)_transport.Clock.Position.TotalSeconds;
+            var end = (float)Math.Max(1, _sourceChart.Duration.TotalSeconds);
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.SliderFloat("##scrub", ref seconds, 0, end, "%.1f s")) _transport.Seek(TimeSpan.FromSeconds(seconds));
+            ImGui.TextColored(_messageError ? new(1, .4f, .35f, 1) : new(.6f, .68f, .75f, 1),
+                _message ?? "Drag elements in the preview, or set values in the inspector. Save makes it your layout for songs without a modchart.");
+        }
+        ImGui.End();
+    }
+
+    private void LayoutValues(string target)
+    {
+        string[] properties = target == "notes" ? [.. ChartMods.NoteProperties]
+            : target == "don" ? [.. ChartMods.ElementProperties, .. ChartMods.DonModelProperties] : [.. ChartMods.ElementProperties];
+        foreach (var property in properties)
+        {
+            var value = (float)_preview.ValueAt(target + "." + property, 0d);
+            ImGui.SetNextItemWidth(-64);
+            var changed = ImGui.DragFloat(property, ref value, property is "x" or "y" or "rotation" or "yaw" or "pitch" or "roll" ? 1f : .01f);
+            if (ImGui.IsItemActivated())
+                BeginViewportDrag(GizmoMode.Slider, SelectedElement() ?? new(target, default, default, default, LumenMatrix.Identity),
+                    EffectViewport.Fit(new(0, 0, 1280, 720)), default, property);
+            if (changed && _viewportDrag is { Mode: GizmoMode.Slider }) PreviewElementValues(new() { [target + "." + property] = value });
+            if (ImGui.IsItemDeactivated()) EndDrag();
+        }
+        ImGui.Separator();
+    }
+}

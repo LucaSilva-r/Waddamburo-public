@@ -73,13 +73,17 @@ internal sealed class GameShell : IDisposable
 
     public bool EffectsEditorOpen => _effectsEditor is not null;
 
-    public void OpenEffectsEditor()
+    /// <summary>The effects editor on the playing chart, or (<paramref name="layout"/>) on the player's gameplay layout.</summary>
+    public void OpenEffectsEditor(bool layout = false)
     {
         if (_effectsEditor is null && _gameplay.CanEditEffects && _home.CloseForEffectsEditor())
         {
             _gameplay.BeginEffectsEditing();
-            _effectsEditor = new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.EditorFiles(),
-                _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
+            _effectsEditor = layout
+                ? new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
+                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, layout: true)
+                : new EffectsEditorSession(Application, _gameplay.EditorChartWithoutLayout, _gameplay.Training!, _gameplay.EditorFiles(),
+                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
         }
     }
 

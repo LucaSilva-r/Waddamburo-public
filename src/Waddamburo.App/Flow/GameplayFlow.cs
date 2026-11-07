@@ -232,7 +232,11 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
             // The player's layout where neither gave modchart changes; arcade is always the stock screen.
             if (player is not null && Shell.Arcade.Home)
-                authored = PlayerModcharts.ApplyLayout(EditorModchartFolder, authored);
+            {
+                var laid = PlayerModcharts.ApplyLayout(EditorModchartFolder, authored);
+                if (lane == 0) _layoutShown = !ReferenceEquals(laid, authored);
+                authored = laid;
+            }
             return (player?.Options ?? default).Apply(authored, _seed + (lane < request.Players.Length ? lane : 0));
         })];
         // Online, the kusudama is each player's own: the other player's lane gets balloons in its place.
@@ -421,6 +425,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public PlayableChart EditorChart => _charts[0];
 
+    // The player's layout is showing (the chart has no modchart of its own).
+    private bool _layoutShown;
+
+    /// <summary>The chart for the effects editor: without the player's layout, which is not the chart's own effects.</summary>
+    public PlayableChart EditorChartWithoutLayout => _layoutShown
+        ? _charts[0] with { Effects = _charts[0].Effects with { Mods = [] } } : _charts[0];
+
     public EffectEditorFiles EditorFiles()
     {
         var player = _lastRequest!.Players[0];
@@ -430,6 +441,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         { Console.Error.WriteLine($"Song modchart destination unavailable: {e.Message}"); }
         return new(PlayerModcharts.PathFor(EditorModchartFolder, _sourceCharts[0], player.Course), player.Course, songPath);
     }
+
+    public EffectEditorFiles LayoutFiles() => new(PlayerModcharts.LayoutPath(EditorModchartFolder), _lastRequest!.Players[0].Course);
 
     public void ReplaceEditorEffects(ChartEffects effects) => _review!.ReplaceEffects(0, effects);
 
@@ -566,7 +579,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
         if (CanEditEffects && !Shell.EffectsEditorOpen
-            && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8)) Shell.OpenEffectsEditor();
+            && keys.Presses.FirstOrDefault(static press => press.Key is SdlKeyboardKey.F8 or SdlKeyboardKey.F7) is { Key: not 0 } press)
+            Shell.OpenEffectsEditor(layout: press.Key == SdlKeyboardKey.F7); // ponytail: F7 until the options entry
         if (_review is { } review)
         {
             if (revealed && !_paused && _training is { } training)

@@ -35,8 +35,9 @@ public sealed partial class EffectsEditorSession : IDisposable
 
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
         Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null,
-        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null)
+        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null, bool layout = false)
     {
+        _layout = layout;
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(transport);
         _application = application;
@@ -46,11 +47,12 @@ public sealed partial class EffectsEditorSession : IDisposable
         _replaceEffects = replaceEffects;
         _getElements = elements;
         _openTja = openTja; _tjaPath = tjaPath;
-        _history = new(OpeningDocument(chart, files));
+        _history = new(OpeningDocument(chart, files, layout));
         _preview = new(chart, _history.Current.UsesEmbeddedEffects ? null : _history.Current.Tracks);
         _reference = new(chart, _preview.BeatMap);
         _trackNames = [.. _preview.Tracks.Keys.Order(StringComparer.Ordinal)];
         if (_trackNames.Length > 0) Select(_trackNames[0], false);
+        if (layout) ApplyCurrent(); // the layout shows at once, in place of the chart's own effects
         _previousRegion = application.StageRegion;
         FrameAll();
         _layer = application.AttachImGui(Draw);
@@ -62,6 +64,9 @@ public sealed partial class EffectsEditorSession : IDisposable
     }
 
     public bool CloseRequested { get; private set; }
+
+    // Layout mode: the player's gameplay layout. Constant values only (one key at beat 0 per track), no timeline.
+    private readonly bool _layout;
 
     private void Draw()
     {
@@ -79,16 +84,16 @@ public sealed partial class EffectsEditorSession : IDisposable
         }
         var size = io.DisplaySize;
         if (size.X < 32 || size.Y < 32) return;
-        var layout = EditorLayout.Calculate(size.X, size.Y, _left, _right, _bottom);
+        var layout = EditorLayout.Calculate(size.X, size.Y, _left, _right, _layout ? .1f : _bottom);
         _application.StageRegion = EditorLayout.Preview(layout.Stage).Normalized(size.X, size.Y);
         _elements = _getElements?.Invoke(_transport.Clock.Position) ?? [];
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
         Toolbar(layout.Toolbar);
         Targets(layout.Targets);
         Inspector(layout.Inspector);
-        TrackPanel(layout.Tracks);
+        if (_layout) LayoutBar(layout.Tracks); else TrackPanel(layout.Tracks);
         Viewport(layout.Stage);
-        Dividers(layout, size);
+        if (!_layout) Dividers(layout, size);
         ImGui.PopStyleVar();
         FinishEditingFrame();
     }
@@ -109,13 +114,14 @@ public sealed partial class EffectsEditorSession : IDisposable
 
     private void Toolbar(EditorPanel rect)
     {
-        if (Panel("Effects preview", rect, false, ImGuiWindowFlags.MenuBar))
+        if (Panel("Effects preview", rect, false, _layout ? 0 : ImGuiWindowFlags.MenuBar))
         {
-            FileMenu();
+            if (!_layout) FileMenu();
             if (ImGui.Button("Back (Esc)")) _closeQueued = true;
             ImGui.SameLine();
             if (ImGui.Button(_transport.Clock.Paused ? "Play (Space)" : "Pause (Space)")) _transport.Clock.TogglePause();
             ImGui.SameLine();
+            if (_layout) { LayoutToolbar(); ImGui.End(); return; }
             if (ImGui.Button("-##speed")) _transport.Clock.Slower();
             ImGui.SameLine(); ImGui.TextUnformatted($"{F(_transport.Clock.Speed)}x");
             ImGui.SameLine();
@@ -151,6 +157,13 @@ public sealed partial class EffectsEditorSession : IDisposable
     {
         if (Panel("Targets", rect))
         {
+            if (_layout)
+            {
+                foreach (var target in ChartMods.Elements.Append("notes"))
+                    if (ImGui.Selectable(target, _viewportTarget == target)) SelectElement(target);
+                ImGui.End();
+                return;
+            }
             AddTrackControls();
             foreach (var target in ChartMods.Elements.Append("notes"))
             {
@@ -188,7 +201,8 @@ public sealed partial class EffectsEditorSession : IDisposable
         if (Panel("Inspector", rect))
         {
             ElementInspector();
-            if (_primary is { } track)
+            if (_layout) { if (_viewportTarget is null) ImGui.TextWrapped("Click an element or pick one in Targets."); }
+            else if (_primary is { } track)
             {
                 ImGui.TextUnformatted(track);
                 ImGui.Separator();
