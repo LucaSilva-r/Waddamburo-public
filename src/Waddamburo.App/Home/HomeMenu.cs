@@ -324,11 +324,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         var now = get();
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
             || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder
+            || now.RhythmFestivalFolder != _atStart.RhythmFestivalFolder
             || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.RhythmFestivalFolder}|{now.StockFolders}|{now.OsuFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>

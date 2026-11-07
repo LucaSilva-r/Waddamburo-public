@@ -228,7 +228,8 @@ internal sealed class LayerHostFactory(
     // one source needs no switching.
     private SongSourceKind[] libraries()
     {
-        var sources = catalog.Categories.Select(static category => category.Key.Source).Distinct().Order().ToArray();
+        var sources = catalog.Categories.Select(static category => category.Key.Source).Distinct()
+            .OrderBy(SongSelectCatalogView.LibraryOrder).ToArray();
         return arcade.Home && sources.Length > 1 ? sources : [];
     }
 

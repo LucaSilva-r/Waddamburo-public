@@ -33,6 +33,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // SONG LIBRARIES: the folder picker is open for this library (tja, osu, official); a problem with the last pick.
     private string? _picking;
     private string? _message;
+    // What FIND RHYTHM FESTIVAL ON STEAM found, when it added nothing.
+    private string? _steamMessage;
     private Action<ArcadeSettings>? _apply;
     private Action? _rehash;
 
@@ -94,7 +96,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         _canCalibrate = canCalibrate;
         (_settings, _credits, _drum, _exit, _apply, _rehash, _defaultTja) = (settings, credits, drum, exit, apply, rehash, defaultTja);
         (_home, _command) = (settings.Home, command);
-        (_listening, _picking, _message) = (false, null, null);
+        (_listening, _picking, _message, _steamMessage) = (false, null, null, null);
         Array.Clear(_hits);
         // Home: the menus' ka and don as the cursor moves and picks.
         _menu.Sound = _home ? drum : null;
@@ -195,6 +197,18 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     {
         _settings = change(_settings);
         _apply?.Invoke(_settings);
+    }
+
+    // Rhythm Festival installations Steam knows of, added as if picked; what happened is the row's hint.
+    private void findRhythmFestival()
+    {
+        var listed = ArcadeSettings.Folders(_settings.RhythmFestivalFolder);
+        var found = Waddamburo.Providers.Stock.RhythmFestivalCatalogProvider.FindInstallations();
+        var added = found.Where(folder => !listed.Contains(folder, StringComparer.OrdinalIgnoreCase)).ToList();
+        _steamMessage = found.Count == 0 ? S("service.find_rhythm_festival.none")
+            : added.Count == 0 ? S("service.find_rhythm_festival.listed") : null;
+        foreach (var folder in added)
+            set(s => HomeControls.AddOfficialFolder(s, folder, problem => _steamMessage = problem));
     }
 
     // The platform holds the next input back for the pad; Escape there cancels (ending SET UP ALL PADS).
@@ -437,8 +451,13 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row(S("service.nijiiro"), 400, () => folderName(folder), 640,
                 Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
                 Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            .. ArcadeSettings.Folders(_settings.RhythmFestivalFolder).Select(folder => new Row(S("service.rhythm_festival"), 400, () => folderName(folder), 640,
+                Enter: () => set(s => s with { RhythmFestivalFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.RhythmFestivalFolder).Where(f => f != folder)) }),
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
             new(S("service.add_official"), 400, Enter: () => pick("official", null),
                 Hint: _message ?? S("service.add_official.hint")),
+            new(S("service.find_rhythm_festival"), 400, Enter: findRhythmFestival,
+                Hint: _steamMessage ?? S("service.find_rhythm_festival.hint")),
             new(S("service.rehash"), 400, Gap: true, Enter: () => _rehash?.Invoke(),
                 Hint: S("service.rehash.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),

@@ -531,11 +531,9 @@ internal sealed class HomeControls : IDisposable
         return true;
     }
 
-    // A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else is
-    // said and left out.
     /// <summary>
-    /// A folder added to the official songs: another release's game data, or a Nijiiro installation; anything else
-    /// (or a Nijiiro one it can't read) is told to <paramref name="warn"/> and left out.
+    /// A folder added to the official songs: another release's game data, a Nijiiro or a Rhythm Festival installation;
+    /// anything else (or an installation it can't read) is told to <paramref name="warn"/> and left out.
     /// </summary>
     public static ArcadeSettings AddOfficialFolder(ArcadeSettings arcade, string folder, Action<string> warn)
     {
@@ -550,6 +548,15 @@ internal sealed class HomeControls : IDisposable
                 return arcade;
             }
             return arcade with { NijiiroFolder = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.NijiiroFolder), folder]) };
+        }
+        if (new Waddamburo.Providers.Stock.RhythmFestivalCatalogProvider(folder) is { Exists: true } festival)
+        {
+            if (festival.Problem is not null)
+            {
+                warn(Strings.T("library.rhythm_festival_unreadable"));
+                return arcade;
+            }
+            return arcade with { RhythmFestivalFolder = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.RhythmFestivalFolder), folder]) };
         }
         warn(Strings.T("library.no_official"));
         return arcade;

@@ -6,6 +6,7 @@ public enum SongSourceKind
     Nijiiro,
     Tja,
     OsuLazer,
+    RhythmFestival,
 }
 
 public sealed record CatalogProviderId

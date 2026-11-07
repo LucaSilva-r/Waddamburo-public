@@ -79,6 +79,11 @@ the user's `data` folder (the one holding `lumendata/packed`):
 
 Not yet read: duet charts, branches other than normal, English titles.
 
+The Rhythm Festival adapter reads a Steam installation in place (`rhythm_festival_folder`; Song Libraries can find
+it by Steam app id). Its files are encrypted; `RhythmFestivalKeys` reads the cipher's parameters from the user's
+own `GameAssembly.dll` and `global-metadata.dat`, so none is in this repository. Music is decrypted into the
+vgmstream cache as `.acb` for vgmstream-cli.
+
 The Nijiiro adapter remains to be implemented against the same interface.
 Source-specific parsing and asset resolution stay in their provider assemblies
 rather than entering Song Select or the Lumen runtime.

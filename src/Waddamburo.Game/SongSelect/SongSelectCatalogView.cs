@@ -305,13 +305,25 @@ public sealed class SongSelectCatalogView
 
     public SongSelectMode Mode { get; }
 
-    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet.</summary>
+    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet, Rhythm Festival orange.</summary>
     public static (byte R, byte G, byte B) LibraryTint(SongSourceKind library) => library switch
     {
         SongSourceKind.Tja => (130, 210, 60),
         SongSourceKind.OsuLazer => (255, 102, 171),
         SongSourceKind.Nijiiro => (170, 110, 255),
+        SongSourceKind.RhythmFestival => (255, 150, 40),
         _ => (60, 170, 240),
+    };
+
+    /// <summary>Where a library is listed: stock, Nijiiro, Rhythm Festival, custom TJA, osu!lazer.</summary>
+    public static int LibraryOrder(SongSourceKind library) => library switch
+    {
+        SongSourceKind.Stock => 0,
+        SongSourceKind.Nijiiro => 1,
+        SongSourceKind.RhythmFestival => 2,
+        SongSourceKind.Tja => 3,
+        SongSourceKind.OsuLazer => 4,
+        _ => 5,
     };
 
     /// <summary>The search results folder's key (see the constructor's search).</summary>
@@ -336,13 +348,14 @@ public sealed class SongSelectCatalogView
 
     /// <summary>
     /// A library's genre art for boards in a folder of mixed songs (search results): stock J-POP blue,
-    /// custom TJA Variety green, osu!lazer Kids pink, Nijiiro おすすめ.
+    /// custom TJA Variety green, osu!lazer Kids pink, Nijiiro おすすめ, Rhythm Festival イベント.
     /// </summary>
     public static string SourceLabel(SongSourceKind source) => source switch
     {
         SongSourceKind.Tja => "バラエティ",
         SongSourceKind.OsuLazer => "童謡",
         SongSourceKind.Nijiiro => "おすすめ",
+        SongSourceKind.RhythmFestival => FeatureLabel,
         _ => "J-POP",
     };
 
@@ -353,7 +366,7 @@ public sealed class SongSelectCatalogView
         {
             SongSourceKind.Tja => "Variety",
             SongSourceKind.OsuLazer => "Kids",
-            SongSourceKind.Nijiiro => "",
+            SongSourceKind.Nijiiro or SongSourceKind.RhythmFestival => "",
             _ => "J-POP",
         }) : Categories[category].BoardStyle;
 
@@ -449,6 +462,7 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library), "Play the\noriginal\nsongs!!"),
         SongSourceKind.OsuLazer => new FolderArt(FolderArtStyle.Osu, LibraryName(library), "Play your\nosu!taiko\nmaps!!"),
         SongSourceKind.Nijiiro => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library), "Play Taiko\nNijiiro\ncharts!!"),
+        SongSourceKind.RhythmFestival => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library), "Play Rhythm\nFestival\ncharts!!"),
         SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library), "Play your\ncustom\ncharts!!"),
         _ => null,
     };
@@ -464,6 +478,7 @@ public sealed class SongSelectCatalogView
     {
         SongSourceKind.Stock => "ORIGINAL",
         SongSourceKind.Nijiiro => "NIJIIRO",
+        SongSourceKind.RhythmFestival => "RHYTHM FESTIVAL",
         SongSourceKind.Tja => "CUSTOM TJA",
         SongSourceKind.OsuLazer => "OSU! LAZER",
         _ => library.ToString(),

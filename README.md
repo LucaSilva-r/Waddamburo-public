@@ -104,7 +104,7 @@ To change keys or set up a controller or MIDI drum, open **Escape → Settings �
 Open **Escape → Settings** to change language, volume, graphics, controls, and timing.
 
 - **Extra songs:** put TJA charts in `USRDIR/custom_songs`, or choose your TJA,
-  osu!lazer, or Nijiiro library in **Settings → Song Libraries**.
+  osu!lazer, Nijiiro, or Rhythm Festival library in **Settings → Song Libraries**.
 
 Press **F8 during a local single-player song** to open the effects editor. The current run becomes
 unranked. **File → Open TJA** opens an external chart and watches it for saves; effects save beside it as
@@ -202,7 +202,7 @@ chmod +x Waddamburo-x86_64.AppImage
 **Escape → Settings**から言語、音量、画質、操作、タイミングを変更できます。
 
 - **追加楽曲：** TJA譜面を`USRDIR/custom_songs`に配置するか、**Settings → Song Libraries**で
-  TJA、osu!lazer、ニジイロの楽曲フォルダーを指定してください。
+  TJA、osu!lazer、ニジイロ、ドンダフルフェスティバルの楽曲フォルダーを指定してください。
 
 Windows・Linuxでのビルド、テスト、リリース用ファイルの作成、開発・翻訳への参加については、
 [ビルド・開発ガイド（英語）](BUILDING.md)を参照してください。

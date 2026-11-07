@@ -27,8 +27,13 @@ internal static class FumenChartReader
     {
         if (data.Length < HeaderSize)
             throw new InvalidDataException("The fumen is shorter than its header.");
-        // The byte order is the one that gives a plausible measure count.
-        var bigEndian = BinaryPrimitives.ReadInt32BigEndian(data[MeasureCountOffset..]) is > 0 and <= 100_000;
+        // The byte order is the one whose measure count fits the file (256 little-endian measures read as 65536
+        // big-endian ones); when both do, the smaller.
+        var big = BinaryPrimitives.ReadInt32BigEndian(data[MeasureCountOffset..]);
+        var little = BinaryPrimitives.ReadInt32LittleEndian(data[MeasureCountOffset..]);
+        var length = data.Length;
+        bool fits(int count) => count > 0 && HeaderSize + (long)count * MeasureSize <= length;
+        var bigEndian = fits(big) && (!fits(little) || big <= little);
         var reader = new Reader(data, bigEndian) { Position = MeasureCountOffset };
         var measureCount = reader.Int32();
         if (measureCount <= 0 || measureCount > maximumMeasures)

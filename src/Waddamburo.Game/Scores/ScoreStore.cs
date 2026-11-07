@@ -70,7 +70,7 @@ public sealed record ChartUpload(string Notes, string? Title, string? Subtitle, 
         {
             SongKey = source switch
             {
-                SongSourceKind.Stock or SongSourceKind.Nijiiro => chart.Key.Song.StableId,
+                SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.RhythmFestival => chart.Key.Song.StableId,
                 // An unsubmitted set has no online id; its local key is still one song on this machine.
                 SongSourceKind.OsuLazer => song?.OnlineSetId is { } set ? $"set:{set}" : $"local:{chart.Key.Song.StableId}",
                 _ => null,

@@ -97,8 +97,10 @@ public sealed record ArcadeSettings
         """
         # Song folders (home mode; also set from the Settings menu). tja_folder: custom TJA songs, empty =
         # custom_songs beside the game data. nijiiro_folder: a Nijiiro installation, empty = none.
+        # rhythm_festival_folder: a Taiko no Tatsujin: Rhythm Festival (Steam) installation, empty = none.
         tja_folder =
         nijiiro_folder =
+        rhythm_festival_folder =
 
         """,
         """
@@ -501,6 +503,9 @@ public sealed record ArcadeSettings
     /// <summary>Nijiiro installations, separated by | (null: none); see <see cref="Folders"/>.</summary>
     public string? NijiiroFolder { get; init; }
 
+    /// <summary>Rhythm Festival installations, separated by | (null: none); see <see cref="Folders"/>.</summary>
+    public string? RhythmFestivalFolder { get; init; }
+
     /// <summary>Other releases' game data folders, separated by | (null: none); see <see cref="Folders"/>.</summary>
     public string? StockFolders { get; init; }
 
@@ -723,6 +728,7 @@ public sealed record ArcadeSettings
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
                 "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
+                "rhythm_festival_folder" => settings with { RhythmFestivalFolder = value.Length == 0 ? null : value },
                 "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
                 "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
@@ -828,6 +834,7 @@ public sealed record ArcadeSettings
             ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
+            ["rhythm_festival_folder"] = settings.RhythmFestivalFolder ?? "",
             ["stock_folders"] = settings.StockFolders ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",
             ["cache_folder"] = settings.CacheFolder ?? "",

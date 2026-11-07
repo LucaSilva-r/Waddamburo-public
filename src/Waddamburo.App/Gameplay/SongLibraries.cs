@@ -70,6 +70,8 @@ internal sealed class SongLibraries : IDisposable
                 ? [new TjaCatalogProvider(tja)] : Array.Empty<ISongCatalogProvider>(),
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
             .. arcade.Home ? nijiiro(arcade, problems) : [],
+            // Rhythm Festival installations added in the settings (home mode), left out when they cannot play.
+            .. arcade.Home ? rhythmFestival(arcade, problems) : [],
             // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
             .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
                 ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
@@ -123,6 +125,32 @@ internal sealed class SongLibraries : IDisposable
             .ToList();
         foreach (var installation in installs)
             Console.WriteLine($"Nijiiro installation {installation.Root}: newest song #{installation.NewestSong}.");
+        return installs.Count switch
+        {
+            0 => [],
+            1 => [installs[0]],
+            _ => [new MergedCatalogProvider(installs)],
+        };
+    }
+
+    // Rhythm Festival installations that can play; several are one library, the first listed winning a shared song.
+    private static ISongCatalogProvider[] rhythmFestival(ArcadeSettings arcade, List<(string, string)> problems)
+    {
+        var cache = Path.Combine(VgmstreamCli.CacheDirectory, "rhythm-festival");
+        var installs = ArcadeSettings.Folders(arcade.RhythmFestivalFolder)
+            .Select(folder => (Folder: folder, Installation: new RhythmFestivalCatalogProvider(folder, cache)))
+            .Where(install =>
+            {
+                if ((install.Installation.Problem ?? VgmstreamProblem) is not { } problem)
+                    return true;
+                Console.Error.WriteLine($"Rhythm Festival library left out: {problem}");
+                problems.Add((install.Folder, problem));
+                return false;
+            })
+            .Select(static install => install.Installation)
+            .ToList();
+        foreach (var installation in installs)
+            Console.WriteLine($"Rhythm Festival installation {installation.Root}.");
         return installs.Count switch
         {
             0 => [],

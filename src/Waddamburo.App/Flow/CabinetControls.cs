@@ -96,6 +96,7 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
         if (settings.Language != before.Language || settings.EnglishTitles != before.EnglishTitles
             || settings.TjaFolder != before.TjaFolder || settings.OsuFolder != before.OsuFolder
             || settings.NijiiroFolder != before.NijiiroFolder || settings.StockFolders != before.StockFolders
+            || settings.RhythmFestivalFolder != before.RhythmFestivalFolder
             || settings.CacheFolder != before.CacheFolder || settings.AudioBufferFrames != before.AudioBufferFrames
             || settings.AudioExclusive != before.AudioExclusive)
         {

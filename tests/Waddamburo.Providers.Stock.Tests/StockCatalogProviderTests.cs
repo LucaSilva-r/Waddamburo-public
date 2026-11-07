@@ -121,6 +121,24 @@ public sealed class StockCatalogProviderTests
         Assert.Equal(1000, Assert.Single(playable.HitObjects).StartTime.TotalMilliseconds);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ByteOrderIsTheOneWhoseMeasureCountFitsTheFile(bool littleEndian)
+    {
+        // 256 measures read in the other byte order are 65536.
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "曲", "J-POP"));
+        data.WriteBytes("fumen/song/solo/song_e.bin", Fumen(littleEndian,
+            [.. Enumerable.Range(0, 256).Select(static index => new Measure(120, index * 2000, [N(1, 0)]))]));
+        var provider = new StockCatalogProvider(data.Path);
+        var chart = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs[0].Charts);
+
+        var playable = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
+
+        Assert.Equal(256, playable.HitObjects.Length);
+    }
+
     [Fact]
     public async Task DuetChartsAreOfferedPerDrumWithHandNotes()
     {
@@ -220,12 +238,24 @@ public sealed class StockCatalogProviderTests
 
     // Big-endian fumen: 520-byte header (measure count at 0x200), 40-byte measures, three
     // branches (normal carries the notes), 24-byte notes plus 8 bytes after rolls.
-    private static byte[] Fumen(params Measure[] measures)
+    private static byte[] Fumen(params Measure[] measures) => Fumen(littleEndian: false, measures);
+
+    private static byte[] Fumen(bool littleEndian, params Measure[] measures)
     {
         using var stream = new MemoryStream();
         var buffer = new byte[4];
-        void i32(int value) { BinaryPrimitives.WriteInt32BigEndian(buffer, value); stream.Write(buffer); }
-        void u16(int value) { BinaryPrimitives.WriteUInt16BigEndian(buffer, (ushort)value); stream.Write(buffer, 0, 2); }
+        void i32(int value)
+        {
+            if (littleEndian) BinaryPrimitives.WriteInt32LittleEndian(buffer, value);
+            else BinaryPrimitives.WriteInt32BigEndian(buffer, value);
+            stream.Write(buffer);
+        }
+        void u16(int value)
+        {
+            if (littleEndian) BinaryPrimitives.WriteUInt16LittleEndian(buffer, (ushort)value);
+            else BinaryPrimitives.WriteUInt16BigEndian(buffer, (ushort)value);
+            stream.Write(buffer, 0, 2);
+        }
         void f32(float value) => i32(BitConverter.SingleToInt32Bits(value));
         stream.Write(new byte[0x200]);
         i32(measures.Length);
