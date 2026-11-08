@@ -149,6 +149,17 @@ internal sealed class LayerHostFactory(
     /// <summary>The settings' random-song spine (the movie's roll folder) is on.</summary>
     public Func<bool>? RandomSongFolder { get; init; }
 
+    /// <summary>Home without the arcade HUD: the timer and song number are hidden.</summary>
+    public Func<bool>? HideArcadeHud { get; init; }
+
+    /// <summary>The live timer freeze setting: timers show but never run out.</summary>
+    public Func<bool>? TimerFreeze { get; init; }
+
+    private bool counting => countdown && TimerFreeze?.Invoke() != true;
+
+    /// <summary>Home: the tutorial was watched once (kept in config.cfg); song select no longer offers it.</summary>
+    public Func<bool>? HomeTutorialSeen { get; init; }
+
     /// <summary>The boot's music credit pages there are (the copyright NUT's).</summary>
     public int CopyrightPages { get; init; }
 
@@ -278,7 +289,7 @@ internal sealed class LayerHostFactory(
         // A front-end scene movie starts the indicator parts its following layers attach to.
         if (layer.HostId == "player-entry")
         {
-            _parts = new IndicatorParts(IndicatorPartsScene.Entry, countdown);
+            _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = HideArcadeHud?.Invoke() != true };
             _entry = new EntrySceneHost(_parts)
             {
                 Coins = Coins,
@@ -308,10 +319,11 @@ internal sealed class LayerHostFactory(
         {
             // time_counter has art for songs 1-4 (red when final); home's endless credit stays on 1.
             var next = arcade.Home ? 1 : (SongsStarted?.Invoke() ?? 0) + 1;
-            _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, countdown)
+            _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, counting)
             {
                 MusicNumber = Math.Min(next, 4),
                 FinalStage = !arcade.Home && next >= arcade.SongsPerSession,
+                ShowCounter = HideArcadeHud?.Invoke() != true,
             };
         }
         return layer.HostId switch
@@ -396,7 +408,7 @@ internal sealed class LayerHostFactory(
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
-            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen,
+            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen && HomeTutorialSeen?.Invoke() != true,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,

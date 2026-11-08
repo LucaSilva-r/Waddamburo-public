@@ -236,13 +236,13 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     }
 
     // The coin switch's place in ArcadeSettings.Buttons (the service switch's follows).
-    private const int CoinButton = 7;
+    private const int CoinButton = 7, ScreenshotButton = 9;
 
     // The buttons on DRUM CONTROLS (indexes in ArcadeSettings.Buttons): a cabinet's coin and service switches; at home
     // the buttons beside the drum.
-    private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton)] : [CoinButton, CoinButton + 1];
+    private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton), ScreenshotButton] : [CoinButton, CoinButton + 1, ScreenshotButton];
 
-    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service")];
+    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service"), S("service.button.screenshot")];
 
     // A pad's (0-3) or a button's (4 on, see buttons) inputs on the shown device, by name.
     // line: a drum pad's second line, its inputs after the first four.
@@ -327,6 +327,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 new(S("service.stages"), 400, () => S("service.stages.value", _settings.SongsPerSession), 800,
                     Step: step => set(s => s with { SongsPerSession = wrap(s.SongsPerSession, step, 1, 5) }),
                     IsDefault: () => _settings.SongsPerSession == Defaults.SongsPerSession),
+                new(S("service.timer_freeze"), 400, () => $"{{{S(_settings.TimerFreeze ? "service.on" : "service.off")}}}", 800,
+                    Step: _ => set(s => s with { TimerFreeze = !s.TimerFreeze }), IsDefault: () => _settings.TimerFreeze == Defaults.TimerFreeze),
             ],
             .. shared(SongsSection),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),

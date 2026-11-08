@@ -124,6 +124,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.fast_song_scroll", static s => s.FastSongScroll, static (s, v) => s with { FastSongScroll = v })),
         new(Setting: toggle("settings.show_oni", static s => s.ShowOni, static (s, v) => s with { ShowOni = v })),
         new(Setting: toggle("settings.random_song_folder", static s => s.RandomSongFolder, static (s, v) => s with { RandomSongFolder = v })),
+        new(Setting: toggle("settings.autoplay", static s => s.Autoplay, static (s, v) => s with { Autoplay = v })),
+        new(Setting: toggle("settings.arcade_hud", static s => s.ArcadeHud, static (s, v) => s with { ArcadeHud = v })),
         new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
         new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v })),
         new(Setting: new(T("settings.gameplay_skin"), skinIndex,
@@ -276,7 +278,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         ("buttons.back", "buttons.back.hint"), ("buttons.search", "buttons.search.hint"),
         ("buttons.scores", "buttons.scores.hint"), ("buttons.practise", "buttons.practise.hint"),
         ("buttons.notices", "buttons.notices.hint"), ("buttons.restart", "buttons.restart.hint"),
-        ("buttons.confirm", "buttons.confirm.hint"),
+        ("buttons.confirm", "buttons.confirm.hint"), ("buttons.screenshot", "buttons.screenshot.hint"),
     ];
 
     /// <summary>Why a Nijiiro installation can't be read, in the player's language; null when it can.</summary>

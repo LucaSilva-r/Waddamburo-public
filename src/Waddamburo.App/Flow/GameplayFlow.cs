@@ -260,7 +260,11 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (_song is not null && sceneLayer("song_info") is { } songInfo)
         {
             showSongTitle(_song);
-            ModeLabel.Show(songInfo, modeLabel(_demo ? Strings.T("mode.demo") : ModeText(request)));
+            ModeLabel.Show(songInfo, modeLabel(_demo ? Strings.T("mode.demo")
+                : Shell.Autoplay && request.Review is null && _course is null ? Strings.T("mode.autoplay") : ModeText(request)));
+            // Home without the arcade HUD: no song number (a dan course keeps its N曲目).
+            if (Shell.HideArcadeHud && _course is null)
+                songInfo.TrySetInstanceAlpha("main/stage", 0);
         }
         _timeline = _course is { } course
             ? new GameplayTimeline(course.Songs[0].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn)
@@ -278,9 +282,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _review = !Shell.Arcade.Home || Shell.Headless || _course is not null ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
-            : Shell.Options.Autoplay
+            : Shell.Autoplay
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
+        AutoplayReview = _review is not null && request.Review is null;
         // Reviews show it too: seeking back rebuilds the lanes, which takes a shown banner down.
         Shell.Gameplay.EndBanner = !_demo;
         _training = null;
@@ -288,7 +293,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _voided = request.Review is not null || _demo || _course is not null;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.Players.WatchAs(_side, watched);
-        _autoplay = (Shell.Options.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
+        _autoplay = (Shell.Autoplay || _demo) && _review is null ? new GameplayAutoplay(_charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
         _echo = _demo || _review is not null || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
@@ -393,6 +398,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>A reviewed play is on screen (home autoplay): its clock is paused, sought and sped up by the keys.</summary>
     public bool Reviewing => _review is not null && Shell.Active.Id == FlowScenes.Gameplay;
+
+    /// <summary>The review is the autoplay (watched like a video: its bar hides until a key is pressed).</summary>
+    public bool AutoplayReview { get; private set; }
 
     // Plays reported from a replay's pause menu this session: each once.
     private readonly HashSet<Guid> _reported = [];
@@ -1032,7 +1040,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private void saveCourse(PlayRequest request, DanCourseResult result, DanCourseTimeline course)
     {
         // Failed runs aren't kept, here or on the server.
-        if (result.Level == 0 || Shell.Options.Autoplay || Shell.Sync.Scores is not { } scores
+        if (result.Level == 0 || Shell.Autoplay || Shell.Sync.Scores is not { } scores
             || TaikoGuest.Profiles[(int)request.Players[0].Player] is not { } profile)
             return;
         var replays = course.Split(Shell.Gameplay.Replays[0]);
@@ -1082,7 +1090,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
-        if (Shell.Options.Autoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        if (Shell.Autoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)

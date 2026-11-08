@@ -135,6 +135,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (Shell.Hosts.SongSelect?.TutorialRequested == true)
         {
             Shell.Hosts.TutorialSeen = true;
+            // Home: once is enough (Green offers it every credit until watched; a PC has one endless credit).
+            if (Shell.Arcade.Home && !Shell.Arcade.TutorialSeen)
+                Shell.SaveArcade(Shell.Arcade with { TutorialSeen = true });
             Shell.Scenes.Show(FlowScenes.Tutorial);
             return;
         }

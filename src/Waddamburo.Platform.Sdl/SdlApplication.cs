@@ -699,6 +699,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// shown when the renderer is ready for it. False once the window was closed; <paramref name="escape"/>: Escape
     /// was pressed.
     /// </summary>
+    /// <summary>Hears the next presented frame once (the screenshot button), then clears itself.</summary>
+    public Action<RenderCapture>? CaptureNextFrame { get; set; }
+
     public bool PumpAndPresent(RenderFrame frame, out bool escape)
     {
         ensureOwnerThread();
@@ -1044,9 +1047,13 @@ public sealed unsafe partial class SdlApplication : IDisposable
             var reachedTickLimit = tickLimit is int requestedTicks && simulationTicks >= requestedTicks;
             var reachedFrameLimit = frameLimit is int requestedFrames && renderedFrames + 1 >= requestedFrames;
             var shouldCapture = captureFinalFrame is not null && (reachedTickLimit || reachedFrameLimit);
+            var captureRequest = CaptureNextFrame;
+            CaptureNextFrame = null;
             var interpolationFraction = reachedTickLimit ? 1d : clock.InterpolationFraction;
             var renderStart = Stopwatch.GetTimestamp();
-            var capture = _renderer!.Present(createFrame(interpolationFraction), shouldCapture);
+            var capture = _renderer!.Present(createFrame(interpolationFraction), shouldCapture || captureRequest is not null);
+            if (capture is not null)
+                captureRequest?.Invoke(capture);
             if (_discardElapsed)
             {
                 _discardElapsed = false;
@@ -1084,7 +1091,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 if (renderedFrames % 300 == 0)
                     Console.Error.WriteLine($"GPU sample at tick {simulationTicks}{gpuStats()}.");
             }
-            if (capture is not null)
+            if (capture is not null && shouldCapture)
                 captureFinalFrame!(capture);
             renderedFrames++;
             if (reachedTickLimit)
@@ -1187,6 +1194,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         SDL_Keycode.SDLK_F3 => SdlKeyboardKey.F3,
         SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,
         SDL_Keycode.SDLK_F8 => SdlKeyboardKey.F8,
+        SDL_Keycode.SDLK_F12 => SdlKeyboardKey.F12,
         SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,
         SDL_Keycode.SDLK_UP => SdlKeyboardKey.Up,
         SDL_Keycode.SDLK_RIGHT => SdlKeyboardKey.Right,

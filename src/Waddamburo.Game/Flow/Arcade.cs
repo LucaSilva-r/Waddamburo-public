@@ -272,6 +272,12 @@ public sealed record ArcadeSettings
 
         """,
         """
+        # button_screenshot (also in Settings > Drum Controls): saves the screen as a PNG in the screenshots folder
+        # beside this file.
+        button_screenshot = f12
+
+        """,
+        """
         # discord_presence (also in the Settings menu): show what you're playing on your Discord profile
         # (the song, its course, who you play against online) while Discord runs on this PC. Home mode only.
         discord_presence = true
@@ -281,6 +287,29 @@ public sealed record ArcadeSettings
         # random_song_folder (also in the Settings menu): song select gets a spine that flips through song
         # titles and gives a random song each time it's decided (the movie's own roll folder, unused by Green).
         random_song_folder = false
+
+        """,
+        """
+        # autoplay (also in the Settings menu, home only): every song plays itself, as a replay you can pause, seek and
+        # speed up; nothing is saved.
+        autoplay = false
+
+        """,
+        """
+        # arcade_hud (also in the Settings menu, home only): song select's timer, the song number (N曲目) and the
+        # free-play line, which mean nothing at home. false = hidden.
+        arcade_hud = false
+
+        """,
+        """
+        # tutorial_seen (home): the how-to-play folder was watched once and is no longer offered. false = it comes back.
+        tutorial_seen = false
+
+        """,
+        """
+        # timer_freeze (also in the arcade service menu, GAME OPTIONS): the menus' timers show but never run out, as
+        # the cabinet setting. Home never counts down.
+        timer_freeze = false
 
         """,
     ];
@@ -311,7 +340,7 @@ public sealed record ArcadeSettings
     /// <summary>The buttons beside the drum, in the order of <see cref="Buttons"/> (SdlInputBindings.Buttons).</summary>
     public static readonly string[] ButtonKeys =
         ["button_back", "button_search", "button_scores", "button_practise", "button_notices", "button_restart", "button_confirm",
-            "button_coin", "button_service"];
+            "button_coin", "button_service", "button_screenshot"];
 
     /// <summary>What presses each button (<see cref="ButtonKeys"/> order), as <see cref="Controls"/> lists a pad's.</summary>
     public EquatableList Buttons { get; init; } = new(
@@ -325,6 +354,7 @@ public sealed record ArcadeSettings
         "return, pad1:south",
         "f2",
         "f3",
+        "f12",
     ]);
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
@@ -347,6 +377,18 @@ public sealed record ArcadeSettings
 
     /// <summary>Song select has the random-song spine (the movie's roll folder; not in the original).</summary>
     public bool RandomSongFolder { get; init; }
+
+    /// <summary>Home: songs play themselves (a reviewed play, never saved).</summary>
+    public bool Autoplay { get; init; }
+
+    /// <summary>Home: the arcade's timer, song number and free-play line show.</summary>
+    public bool ArcadeHud { get; init; }
+
+    /// <summary>Home: the tutorial was watched once; song select no longer offers it.</summary>
+    public bool TutorialSeen { get; init; }
+
+    /// <summary>Arcade: the menus' timers show frozen (the cabinet's timer freeze setting).</summary>
+    public bool TimerFreeze { get; init; }
 
     /// <summary>
     /// The gameplay skin for every song: "auto" (each song's own theme), "original" (the regular gameplay) or
@@ -760,6 +802,10 @@ public sealed record ArcadeSettings
                 "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
                 "show_oni" => settings with { ShowOni = boolean(value, index) },
                 "random_song_folder" => settings with { RandomSongFolder = boolean(value, index) },
+                "autoplay" => settings with { Autoplay = boolean(value, index) },
+                "arcade_hud" => settings with { ArcadeHud = boolean(value, index) },
+                "tutorial_seen" => settings with { TutorialSeen = boolean(value, index) },
+                "timer_freeze" => settings with { TimerFreeze = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
                 "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
@@ -858,6 +904,10 @@ public sealed record ArcadeSettings
             ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
             ["show_oni"] = settings.ShowOni ? "true" : "false",
             ["random_song_folder"] = settings.RandomSongFolder ? "true" : "false",
+            ["autoplay"] = settings.Autoplay ? "true" : "false",
+            ["arcade_hud"] = settings.ArcadeHud ? "true" : "false",
+            ["tutorial_seen"] = settings.TutorialSeen ? "true" : "false",
+            ["timer_freeze"] = settings.TimerFreeze ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
             ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,

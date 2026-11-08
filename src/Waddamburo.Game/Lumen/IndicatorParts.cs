@@ -30,6 +30,9 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     public int MusicNumber { get; init; } = 1;
     public bool FinalStage { get; init; }
 
+    /// <summary>The timer (and song select's song number) shows; false hides it (home without the arcade HUD).</summary>
+    public bool ShowCounter { get; init; } = true;
+
     public void Attach(string movie, LumenPlayer player) => _pending.Add((player, () => setup(movie, player)));
 
     /// <summary>Runs pending setups whose callbacks exist; true once all parts are set up.</summary>
@@ -55,6 +58,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
             call(counter, "SetTime", number(seconds));
             call(counter, "Stop");
         }
+        if (!ShowCounter)
+            call(counter, "SetVisible", LumenHostValue.FromBoolean(false));
     }
 
     public void StopCountdown() => callCounter("Stop");
@@ -217,6 +222,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                     call(player, "SetMusicNum", number(MusicNumber));
                     call(player, "SetVisible", LumenHostValue.FromBoolean(true));
                 }
+                if (!ShowCounter)
+                    call(player, "SetVisible", LumenHostValue.FromBoolean(false));
                 break;
             case "over_msg":
                 _overMessage = player;

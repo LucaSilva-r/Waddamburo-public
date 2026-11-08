@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Waddamburo.App.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Platform.Sdl.Rendering;
@@ -14,8 +15,41 @@ namespace Waddamburo.App.Presentation;
 internal sealed class ReviewOverlay(OverlayPainter painter)
 {
     private const float Top = 672, Height = 48, Margin = 16;
+    private static readonly long ShowFor = Stopwatch.Frequency * 3;
 
-    public IEnumerable<RenderQuad> Quads(ReviewClock review, TrainingSession? training = null)
+    private ReviewClock? _for;
+    private long _shownUntil, _last;
+    private float _slide = 1;
+
+    /// <summary>A key was pressed: an auto-hiding bar slides up for a few seconds.</summary>
+    public void Poke() => _shownUntil = Stopwatch.GetTimestamp() + ShowFor;
+
+    /// <summary>
+    /// <paramref name="autoHide"/>: the autoplay, watched like a video: the bar starts hidden under the screen and
+    /// slides up while paused or for a few seconds after a key.
+    /// </summary>
+    public IEnumerable<RenderQuad> Quads(ReviewClock review, TrainingSession? training, bool autoHide)
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (!ReferenceEquals(review, _for))
+            (_for, _slide, _shownUntil) = (review, autoHide ? 0 : 1, 0);
+        var step = Math.Min(0.1f, (float)((now - _last) / (double)Stopwatch.Frequency));
+        _last = now;
+        _slide = !autoHide || review.Paused || now < _shownUntil ? Math.Min(1, _slide + step / 0.2f) : Math.Max(0, _slide - step / 0.3f);
+        if (_slide <= 0)
+            return [];
+        var drop = (Height + 12) * MathF.Pow(1 - _slide, 3); // ease-out
+        var quads = bar(review, training);
+        return drop < 0.01f ? quads : quads.Select(quad => quad with
+        {
+            TopLeft = quad.TopLeft with { Y = quad.TopLeft.Y + drop },
+            TopRight = quad.TopRight with { Y = quad.TopRight.Y + drop },
+            BottomRight = quad.BottomRight with { Y = quad.BottomRight.Y + drop },
+            BottomLeft = quad.BottomLeft with { Y = quad.BottomLeft.Y + drop },
+        });
+    }
+
+    private List<RenderQuad> bar(ReviewClock review, TrainingSession? training)
     {
         var length = review.End - review.Start;
         var done = length > TimeSpan.Zero ? (float)((review.Position - review.Start) / length) : 0;

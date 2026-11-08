@@ -20,6 +20,7 @@ internal enum GameAction
     LoopEnd,
     NoteJump,
     AfterPass,
+    Screenshot,
 }
 
 /// <summary>
@@ -51,6 +52,7 @@ internal static class GameActions
         [GameAction.LoopEnd] = SdlKeyboardKey.E,
         [GameAction.NoteJump] = SdlKeyboardKey.Tab,
         [GameAction.AfterPass] = SdlKeyboardKey.L,
+        [GameAction.Screenshot] = SdlKeyboardKey.F12,
     };
 
     /// <summary>What presses each button (ArcadeSettings.Buttons, in SdlInputBindings.Buttons order).</summary>

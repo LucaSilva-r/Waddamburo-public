@@ -120,6 +120,44 @@ internal sealed class GameShell : IDisposable
         }
     }
 
+    // The screenshot button (#27): the frame as presented, a PNG in screenshots/ beside config.cfg, encoded off the
+    // render thread.
+    private void saveScreenshot(RenderCapture capture)
+    {
+        var folder = Path.Combine(Path.GetDirectoryName(Options.ArcadePath ?? Options.ScoresPath) ?? ".", "screenshots");
+        var name = $"Screenshot_{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}";
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+                ScreenshotWriter.WritePng(Path.Combine(folder, name + ".png"), capture);
+                Console.WriteLine($"Screenshot: {Path.Combine(folder, name)}.png");
+                Sync.Notices.AddLocal(Strings.T("screenshot.saved", name));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"Screenshot not saved: {exception.Message}");
+                Sync.Notices.AddLocal(exception.Message, NoticeSeverity.Warning);
+            }
+        });
+    }
+
+    /// <summary>Applies settings the game changed by itself and keeps them in config.cfg.</summary>
+    public void SaveArcade(ArcadeSettings settings)
+    {
+        Arcade = settings;
+        if (Options.ArcadePath is not { } config) return;
+        try
+        {
+            ArcadeSettings.SaveMenuSettings(config, settings);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+        }
+    }
+
     private void closeEffectsEditor()
     {
         _effectsEditor?.Dispose();
@@ -151,6 +189,12 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
     public ScoreSync Sync { get; }
+
+    /// <summary>Songs play themselves: --autoplay, or the home setting (not in an online match).</summary>
+    /// <summary>Home with the arcade HUD off: no timer, song number or free-play line (they don't count there).</summary>
+    public bool HideArcadeHud => Arcade.Home && !Arcade.ArcadeHud;
+
+    public bool Autoplay => Options.Autoplay || (Arcade.Home && Arcade.Autoplay && Match?.InSong != true);
 
     /// <summary>The accounts stored on this PC (home mode; empty in arcade).</summary>
     public AccountBook? Accounts => Arcade.Home ? Options.Accounts : null;
@@ -713,6 +757,9 @@ internal sealed class GameShell : IDisposable
             SongsStarted = () => Players.SongsPlayed,
             ShowOni = () => Arcade.ShowOni,
             RandomSongFolder = () => Arcade.RandomSongFolder,
+            HideArcadeHud = () => HideArcadeHud,
+            TimerFreeze = () => Arcade.TimerFreeze,
+            HomeTutorialSeen = () => Arcade.Home && Arcade.TutorialSeen,
             CopyrightPages = _copyright.Pages,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
@@ -823,7 +870,7 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"Showing {Active.Id} at launch.");
             _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
-                .AsTask().GetAwaiter().GetResult()) { Coins = Coins };
+                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud };
             _home.LoadResume(_loader);
             Hosts.LayerLoading = host =>
             {
@@ -874,6 +921,10 @@ internal sealed class GameShell : IDisposable
                         }
                     }
                     _input.Frame(keyboard);
+                    if (_gameplay.Reviewing && !keyboard.Presses.IsEmpty && !GameActions.Pressed(keyboard, GameAction.Screenshot))
+                        _reviewBar.Poke();
+                    if (GameActions.Pressed(keyboard, GameAction.Screenshot))
+                        Application.CaptureNextFrame = saveScreenshot;
                     if (!keyboard.Presses.IsEmpty)
                         _sinceInput.Restart();
                     // The notice sidebar (live presses only reach this callback; not over a lane, nor while the
@@ -1262,7 +1313,7 @@ internal sealed class GameShell : IDisposable
         if (Active.Id == FlowScenes.Gameplay)
             quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
         if (!EffectsEditorOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
-            quads.AddRange(_reviewBar.Quads(review, _gameplay.Training));
+            quads.AddRange(_reviewBar.Quads(review, _gameplay.Training, _gameplay.AutoplayReview && _gameplay.Training is null));
         if (_playerSetup is not null)
             quads.AddRange(_playerSetup.Quads(interpolation));
         quads.AddRange(indicatorQuads(false));

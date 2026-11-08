@@ -61,6 +61,9 @@ internal sealed class SystemIndicators
     /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
     public CoinBank? Coins { get; set; }
 
+    /// <summary>True hides the coin/free-play line (home without the arcade HUD); the join prompts stay.</summary>
+    public Func<bool>? HideCoinType { get; set; }
+
     /// <summary>The (expected) player's drum: 0 left, 1 right. The panels mirror for the right one (traced).</summary>
     public int Side { get; set; }
 
@@ -123,7 +126,7 @@ internal sealed class SystemIndicators
         }));
         // sic, the movie's spelling. A card read as the entry loads opens its dialog before this runs.
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt && !_cardDialog));
-        call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean(!attract || prompt));
+        call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean((!attract || prompt) && HideCoinType?.Invoke() != true));
         _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Tutorial or IndicatorScene.Gameplay or IndicatorScene.Result;
         if (Coins is not null)
         {
