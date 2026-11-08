@@ -91,6 +91,8 @@ public enum SongSelectSoundRequestKind
     SystemEffect,
     PlayerEffect,
     LoopVoice,
+    /// <summary>The tone board's preview: (bank, tone); the bank is the movie's own SoundDef id (7-9 = C/L/R).</summary>
+    TonePreview,
 }
 
 public readonly record struct SongSelectSoundRequest(
@@ -393,7 +395,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 var (player, part) = (slot / 4, slot % 4 >= 2 ? "in_" : "out_");
                 var tone = integer(call, 1);
                 var lumenPlayer = requirePlayer();
-                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone));
+                // The name's clip (ToneNameFillrect) is 360x72, the art 304x48: drawn at its own size, centred.
+                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone),
+                    LumenNativeSurfacePlacement.Centered(ToneSurfaces.NameWidth, ToneSurfaces.NameHeight));
                 if (ToneSurfaces.Icon(tone) is { } icon)
                     lumenPlayer.SetNativeFill($"tone_icon_{part}{player}", icon);
                 else
@@ -459,14 +463,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("RequestPlayerSE", call => requestSound(SongSelectSoundRequestKind.PlayerEffect, call));
             // RequestSE_Save(player, bank, cue): a player's sound on the course boards (traced (0, 5, 51));
-            // the tone board previews its drum sounds with it (SE_SELECT_NEIRO_000_005, cue = tone).
+            // the tone board previews its drum sounds with it (SoundDef's NEIRO_000_005 ids 7-9, cue = tone).
             lumen.RegisterMethod("RequestSE_Save", call =>
             {
                 if (call.Arguments.Length >= 3)
-                    _sounds?.RequestSound(new SongSelectSoundRequest(SongSelectSoundRequestKind.Effect, call.Arguments[1..]));
+                    _sounds?.RequestSound(new SongSelectSoundRequest(
+                        integer(call, 1) is >= 7 and <= 9 ? SongSelectSoundRequestKind.TonePreview : SongSelectSoundRequestKind.Effect,
+                        call.Arguments[1..]));
                 return LumenHostValue.Undefined;
             });
-            // ponytail: RequestSE_Stop(player) cuts the player's last one; previews just overlap.
+            // RequestSE_Stop(player): the movie calls it before each preview; the preview cuts the last one itself.
             lumen.RegisterMethod("RequestSE_Stop", static _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(SongSelectSoundRequestKind.LoopVoice, call));
             lumen.RegisterMethod("StopVoice", _ =>

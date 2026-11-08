@@ -111,6 +111,9 @@ public static class ToneSurfaces
 {
     public const string Prefix = "tone-art:";
 
+    /// <summary>Green's tone_name textures' size (all six).</summary>
+    public const float NameWidth = 304, NameHeight = 48;
+
     public static LumenNativeSurfaceKey Name(int tone) => new($"{Prefix}name:{tone}");
 
     public static LumenNativeSurfaceKey? Icon(int tone) => tone <= 0 ? null : new($"{Prefix}icon:{tone}");
