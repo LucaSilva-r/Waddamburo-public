@@ -34,6 +34,9 @@ public sealed class TaikoDonPresentation
     private static readonly LumenRenderColor FullGaugeGlow = new(0.4906f, 0.4312f, 0.0203f, 0);
     // Lying down after a long miss streak: the character's colours are halved.
     private static readonly LumenRenderColor MissDarken = new(0.5f, 0.5f, 0.5f, 1);
+    // AI battle: the Don's fill in the battle movie, taken off while a balloon shows it (Green: the stage's Dons vanish
+    // during balloons, user-confirmed).
+    private readonly (LumenSceneLayer Layer, string State, LumenNativeSurfacePlacement Placement)? _stageFill;
     private bool _goGo;
     private bool _balloonVisible;
     private TaikoGaugeState _gauge;
@@ -55,10 +58,13 @@ public sealed class TaikoDonPresentation
         _view = stage ? DonPresentationLayout.Kusudama : DonPresentationLayout.Gameplay;
         controller.SetCameraLayout(player, _view);
         var state = player == 1 ? "don2p" : "don1p";
-        layer.Player.SetNativeFill(state, _surface,
-            // ponytail: the battle's size read off the recomp (about 60% of the menus' 600); tune against it.
-            // and the player's 40 px left (the kusudama view leans it to the centre, into AI-don's side).
-            stage ? LumenNativeSurfacePlacement.Centered(360, 360) with { X = -180 - (player == 0 ? 40 : 0) } : LumenNativeSurfacePlacement.Centered(448, 256));
+        // ponytail: the battle's size read off the recomp (about 60% of the menus' 600); tune against it.
+        // and the player's 40 px left (the kusudama view leans it to the centre, into AI-don's side).
+        var placement = stage ? LumenNativeSurfacePlacement.Centered(360, 360) with { X = -180 - (player == 0 ? 40 : 0) }
+            : LumenNativeSurfacePlacement.Centered(448, 256);
+        layer.Player.SetNativeFill(state, _surface, placement);
+        if (stage)
+            _stageFill = (layer, state, placement);
         if (!stage && !layer.Player.TryGotoLabel("", state))
             throw new InvalidDataException($"Gameplay Don movie is missing its '{state}' state.");
         _controller.SetMotion(new(player, null, idle));
@@ -95,6 +101,8 @@ public sealed class TaikoDonPresentation
     /// </summary>
     public void ResetPose()
     {
+        if (_balloonVisible && _stageFill is var (stage, state, placement))
+            stage.Player.SetNativeFill(state, _surface, placement);
         _balloonVisible = false;
         _controller.SetCameraLayout(_player, _view);
         _controller.SetMotion(new(_player, null, idle));
@@ -104,6 +112,13 @@ public sealed class TaikoDonPresentation
     {
         var wasVisible = _balloonVisible;
         _balloonVisible = visible;
+        if (_stageFill is var (stage, state, placement) && wasVisible != visible)
+        {
+            if (visible)
+                stage.Player.RemoveNativeFill(state);
+            else
+                stage.Player.SetNativeFill(state, _surface, placement);
+        }
         if (wasVisible && !visible)
         {
             _controller.SetCameraLayout(_player, _view);
