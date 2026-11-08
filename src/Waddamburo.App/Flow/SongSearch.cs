@@ -28,7 +28,9 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog, O
         if (!IsOpen)
         {
             // Not during a scene switch (entry -> Song Select): the reload's restart needs an active scene.
+            // ponytail: not in Waiwai or AI battle either: their song selects don't take the results folder yet.
             if (!GameActions.Down(keys, GameAction.Search) || shell.Active.Id != FlowScenes.SongSelect
+                || shell.Hosts.Waiwai || shell.Hosts.AiBattle
                 || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active
                 || shell.Hosts.SongSelect is null || shell.PlayRequests.Pending is not null)
                 return false;
