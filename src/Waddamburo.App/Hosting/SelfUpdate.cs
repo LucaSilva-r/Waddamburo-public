@@ -158,9 +158,13 @@ internal static class SelfUpdate
     private static Release? findNewer(HttpClient http, Version current)
     {
         using var json = JsonDocument.Parse(http.GetStringAsync(new Uri(LatestReleaseUrl)).GetAwaiter().GetResult());
-        // A nightly reads the release list (newest first); a stable build only the latest stable release.
+        // A nightly reads the release list, its most recently published one the newest (the list's own order is not
+        // by date: it gave an older nightly first); a stable build only the latest stable release.
         var newest = json.RootElement.ValueKind == JsonValueKind.Array
-            ? json.RootElement.EnumerateArray().FirstOrDefault(static release => !(release.TryGetProperty("draft", out var draft) && draft.GetBoolean()))
+            ? json.RootElement.EnumerateArray()
+                .Where(static release => !(release.TryGetProperty("draft", out var draft) && draft.GetBoolean()))
+                .MaxBy(static release => release.TryGetProperty("published_at", out var published)
+                    && published.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.MinValue)
             : json.RootElement;
         if (newest.ValueKind != JsonValueKind.Object)
             return null;
