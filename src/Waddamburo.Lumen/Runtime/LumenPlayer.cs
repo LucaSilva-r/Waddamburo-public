@@ -25,6 +25,8 @@ public sealed class LumenPlayer
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
     private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
     private readonly List<PendingFrameAction> _pendingActions = [];
+    // Clips a goto creates on the frames it passes through (their scripts are not queued there).
+    private List<DisplayInstance>? _gotoBorn;
     private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
@@ -591,7 +593,7 @@ public sealed class LumenPlayer
                     .Select(pair => pair.Key).FirstOrDefault() : null;
             lines.Add($"{new string(' ', 2 * level)}{(instance.Name.Length > 0 ? instance.Name : "-")} ch={instance.CharacterId} "
                 + $"frame={instance.Frame}{(label is null ? "" : $"({label})")}{(instance.Playing ? " playing" : "")}"
-                + $"{(instance.Visible ? "" : " HIDDEN")} a={instance.Color.Multiply.Alpha:0.##}");
+                + $"{(instance.Visible ? "" : " HIDDEN")} a={instance.Color.Multiply.Alpha:0.##} at=({instance.Transform.X:0},{instance.Transform.Y:0})");
             foreach (var child in instance.Children.Values)
                 visit(child, level + 1);
         }
@@ -1860,14 +1862,36 @@ public sealed class LumenPlayer
         if (instance.Frame != frame)
         {
             instance.Playing = true;
-            if (frame > instance.Frame)
+            var outer = _gotoBorn;
+            var born = _gotoBorn = [];
+            try
             {
-                for (var nextFrame = instance.Frame + 1; nextFrame <= frame; nextFrame++)
-                    enterFrame(instance, nextFrame, queueActions: nextFrame == frame);
+                if (frame > instance.Frame)
+                {
+                    for (var nextFrame = instance.Frame + 1; nextFrame <= frame; nextFrame++)
+                        enterFrame(instance, nextFrame, queueActions: nextFrame == frame);
+                }
+                else
+                {
+                    rewindTimeline(instance, frame, queueActions: true);
+                }
             }
-            else
+            finally
             {
-                rewindTimeline(instance, frame, queueActions: true);
+                _gotoBorn = outer;
+            }
+            // Flash: a clip the goto creates on a frame it passes through still runs its first frame's script when it
+            // survives to the target frame (ai_hit_effect's mc_don_position, placed at frame 0 of mc_don_move: its
+            // stop() keeps it from playing on into don_clash after a section win).
+            foreach (var child in born)
+            {
+                var alive = true;
+                for (var node = child; node is not null && node != instance; node = node.Parent)
+                    alive &= !node.Removed;
+                if (!alive || child.Frame < 0 || !_sprites.TryGetValue(child.CharacterId, out var childTimeline))
+                    continue;
+                foreach (var action in childTimeline.Frames[child.Frame].OfType<LmbDoActionCommand>())
+                    enqueueAction(child, action.ActionIndex);
             }
             resetInterpolation(instance);
         }
@@ -2282,6 +2306,8 @@ public sealed class LumenPlayer
                 };
                 parent.Children[depth] = instance;
                 applyPlacementFields(instance, placement, isNew: true);
+                if (!queueActions)
+                    _gotoBorn?.Add(instance);
                 if (_sprites.TryGetValue(instance.CharacterId, out var childTimeline))
                 {
                     enterFrame(instance, 0, queueActions);
