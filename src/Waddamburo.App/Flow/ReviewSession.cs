@@ -44,7 +44,8 @@ internal sealed class ReviewSession : IDisposable
     {
         _shell = shell;
         _charts = charts;
-        _courses = [.. request.Players.Select(static player => player.Course)];
+        // A lane without a player of its own (AI battle's AI-don) plays the first player's course.
+        _courses = [.. charts.Select((_, lane) => request.Players[Math.Min(lane, request.Players.Length - 1)].Course)];
         _side = side;
         _waiwai = waiwai;
         _inputOffset = inputOffset;

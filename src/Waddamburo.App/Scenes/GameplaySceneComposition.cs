@@ -105,6 +105,83 @@ internal static class GameplaySceneComposition
             .Select(entry => entry.Layer));
     }
 
+    // AI battle (traced session-ai-battle-3): the battle's backdrop and hit effects, its song info, score board,
+    // section timer, section win icons and result banner, shared; per lane its own lane art at the two-player
+    // places (ensolayout 14/15 etc.).
+    private static readonly (string Archive, string Movie, int Index, int Depth)[] AiBattleShared =
+    [
+        ("ghost/enso_system/enso_bg", "ai_enso_bg", 0, 3500),
+        ("ghost/enso_system/hit_effect", "ai_hit_effect", 0, 3006),
+        ("ghost/enso_system/common", "time", 0, 2002),
+        ("ghost/enso_system/common", "ai_song_info", 0, 505),
+        ("ghost/enso_system/common", "score_board", 0, 505),
+        ("ghost/enso_system/common", "section_win_icon", 0, 505),
+        ("ghost/enso_system/common", "battle_result", 0, 501),
+        ("enso_system/common", "action_kusudama", 0, 500),
+    ];
+
+    // Per lane; index is the player's lane's (the AI's takes the pair's next). Lane-only movies list their lane.
+    private static readonly (string Archive, string Movie, int? Index, int Depth, int? Lane)[] AiBattleLane =
+    [
+        // ponytail: the Dons at the two-player places (ensolayout 22/23); AI battle's own are untraced (no lookup).
+        ("enso_system/common", "don3d", 22, 3001, null),
+        ("ghost/enso_system/common", "ai_lane", 14, 2003, null),
+        ("ghost/enso_system/player", "gage_don_1p_easy", 14, 2002, 0),
+        ("ghost/enso_system/player", "gage_don_1p_normal", 14, 2002, 0),
+        ("ghost/enso_system/player", "gage_don_1p_hard", 14, 2002, 0),
+        ("enso_system/common", "lane_hit", 14, 2001, null),
+        ("enso_system/common", "lane_syousetsu", null, 2000, null),
+        ("enso_system/common", "onp_don", null, 1002, null),
+        ("enso_system/common", "onp_katsu", null, 1002, null),
+        ("enso_system/common", "onp_don_dai", null, 1002, null),
+        ("enso_system/common", "onp_katsu_dai", null, 1002, null),
+        ("enso_system/common", "onp_renda", null, 1002, null),
+        ("enso_system/common", "onp_renda_dai", null, 1002, null),
+        ("enso_system/common", "onp_fusen", null, 1002, null),
+        ("enso_system/common", "onp_kusudama", null, 1002, null),
+        ("enso_system/common", "onp_moji", null, 1002, null),
+        ("enso_system/common", "onp_renda_moji", null, 1002, null),
+        ("enso_system/common", "onp_renda_dai_moji", null, 1002, null),
+        ("enso_system/common", "action_result", 14, 1000, null),
+        ("ghost/enso_system/common", "ai_lane_obi", 14, 507, null),
+        // Traced: a name board on both lanes (11 / 12), AI-don's own plate over the second.
+        ("indicator", "player_name", 11, 505, null),
+        ("ghost/enso_system/common", "ai_player_name", 12, 505, 1),
+        ("ghost/enso_system/player", "score_add_don_1p", 24, 502, 0),
+        // ponytail: AI-don's lane takes the player's combo bonus art too (only the first lane's was traced).
+        ("ghost/enso_system/player", "combo_bonus_don_1p", 20, 502, null),
+        ("ghost/enso_system/player", "fukidashi_level_1p", 16, 502, 0),
+        ("ghost/enso_system/ghost", "fukidashi_level_2p", 17, 502, 1),
+        ("ghost/enso_system/common", "ai_renda_num", 18, 500, null),
+        ("enso_system/common", "lane_hit_effect", 14, 502, null),
+        ("ghost/enso_system/player", "onp_kiseki_don_1p", 14, 502, 0),
+        ("ghost/enso_system/ghost", "onp_kiseki_katsu_2p", 15, 502, 1),
+        ("ghost/enso_system/player", "action_fusen_1p", 0, 500, 0),
+        ("ghost/enso_system/ghost", "action_fusen_2p", 0, 500, 1),
+    ];
+
+    /// <summary>
+    /// AI battle: the player's lane on top, AI-don's below (host <see cref="PlayerTwoHostId"/>), on the battle's own
+    /// backdrop (no skin).
+    /// </summary>
+    public static SceneDefinition CreateAiBattle(SceneId id, EnsoLayout layout)
+    {
+        IEnumerable<(SceneLayerDefinition Layer, int Depth)> lane(int lane) => AiBattleLane
+            .Where(entry => entry.Lane is null || entry.Lane == lane)
+            .Select(entry =>
+            {
+                var index = entry.Index is { } first ? lane == 1 && entry.Lane is null && PairedIndices.Contains(first) ? first + 1 : first : (int?)null;
+                var at = index is { } i ? layout[i] : default;
+                return (Layer: layer($"{entry.Archive}/packeddata.ddp", $"{entry.Movie}/{entry.Movie}.lm", at.X, at.Y,
+                    lane == 1 ? PlayerTwoHostId : StaticHostId), entry.Depth);
+            });
+        var shared = AiBattleShared.Select(entry => (Layer: layer($"{entry.Archive}/packeddata.ddp", $"{entry.Movie}/{entry.Movie}.lm",
+            layout[entry.Index].X, layout[entry.Index].Y, StaticHostId), entry.Depth));
+        return new(SceneDefinition.CurrentVersion, id, shared.Concat(lane(0)).Concat(lane(1))
+            .OrderByDescending(entry => entry.Depth)
+            .Select(entry => entry.Layer));
+    }
+
     // ensolayout pairs: the second player's lane movie sits at the next index (research/ensolayout.md,
     // traced session9-2p). Index 0 (overlays), 13 (song_info) and the backgrounds have no pair.
     private static readonly int[] PairedIndices = [2, 7, 9, 11, 14, 16, 18, 20, 22, 24];
@@ -189,6 +266,7 @@ internal static class GameplaySceneComposition
         : SystemLayers.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } system ? system.Depth
         : WaiwaiShared.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } shared ? shared.Depth
         : WaiwaiLane.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } waiwai ? waiwai.Depth
+        : AiBattleShared.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } ai ? ai.Depth
         : null;
 
     /// <summary>
@@ -302,6 +380,9 @@ internal static class GameplaySceneComposition
     /// </summary>
     public static string Role(string layerName)
     {
+        // AI battle's own lane art plays the common movies' roles.
+        if (layerName is "ai_lane" or "ai_lane_obi" or "ai_renda_num" or "ai_song_info")
+            return layerName[3..];
         // The dojo's own parts play the skin's roles.
         if (layerName is "bg_nomal_dojo" or "dodai_dojo" or "chibi_dojo")
             return layerName[..^5];

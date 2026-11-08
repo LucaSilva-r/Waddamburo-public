@@ -428,6 +428,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // Testing online play alone: this player's own hits come back as the second lane's (OnlineEcho).
         if (Gameplay.OnlineEcho.Delay is not null && charts.Length == 1 && timeline is null && !Shell.Hosts.Waiwai)
             charts = [charts[0], charts[0]];
+        // AI battle: AI-don plays the same chart on a second lane.
+        if (Shell.Hosts.AiBattle && charts.Length == 1 && timeline is null)
+            charts = [charts[0], charts[0]];
         var twoPlayers = charts.Length == 2;
         // Waiwai: both players on the song's Waiwai layout (its duet charts reshaped by section).
         WaiwaiComposition? waiwai = null;
@@ -460,7 +463,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), stage,
             Final: !Shell.Arcade.Home && stage >= Shell.Arcade.SongsPerSession);
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
-        Shell.Catalog.Replace(prefetched?.Scene ?? (waiwai is not null
+        Shell.Catalog.Replace(Shell.Hosts.AiBattle && twoPlayers ? GameplaySceneComposition.CreateAiBattle(FlowScenes.Gameplay, Shell.EnsoLayout)
+            : prefetched?.Scene ?? (waiwai is not null
             ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
             : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
                 twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
