@@ -10,15 +10,15 @@ namespace Waddamburo.App.Audio;
 
 /// <summary>
 /// Custom songs turned down to stock's loudness (osu! songs are mastered up to 6 dB louder): each one's integrated
-/// loudness is measured once, decoding the whole file, and kept in the cache folder. Stock songs play untouched.
+/// loudness is measured once, decoding the whole file, and kept in the cache folder. Stock songs play at their banks' authored gain.
 /// Only ever turns down: songs peak near full scale, so turning a quiet one up would clip.
 /// </summary>
 internal static class SongLoudness
 {
-    // Green's songs as played today: the median of 40 stock SONG_*.nub (raw ATRAC, no authored gain) is -10.9 LUFS,
-    // spread -9.6..-12.8; osu! songs measured -5.4..-12.3 (Idola no Circus -0.9, peaks +6.4 dBFS). Matched by measure:
-    // a clipped low-bitrate mp3 can still sound a little smaller than stock at the same level (user, by ear).
-    private const double Target = -11;
+    // Green's songs as the game plays them: the median of 40 stock SONG_*.nub is -10.9 LUFS raw, -13.0 with each bank's
+    // authored gain (spread -16.5..-8.2); osu! songs measured -5.4..-12.3 (Idola no Circus -0.9, peaks +6.4 dBFS).
+    // Matched by measure: a clipped low-bitrate mp3 can still sound a little smaller at the same level (user, by ear).
+    private const double Target = -13;
 
     /// <summary>The cache file (set at startup); null keeps measurements for this run only.</summary>
     public static string? CacheFile { get; set; }
@@ -31,7 +31,7 @@ internal static class SongLoudness
         CancellationToken cancellationToken = default)
     {
         if (asset.Provider.Value == "stock")
-            return 1f;
+            return stockGain(assets, asset, cancellationToken);
         // ponytail: keyed by the provider's id, so a TJA whose audio file is swapped keeps its old level; clear the cache then.
         var key = $"{asset.Provider.Value}/{asset.StableId}";
         if (!Measured.Value.TryGetValue(key, out var lufs))
@@ -49,6 +49,25 @@ internal static class SongLoudness
             save();
         }
         return (float)Math.Clamp(Math.Pow(10, (Target - lufs) / 20), 0.05, 1);
+    }
+
+    // A stock song plays at its bank's authored gain, as the game plays it (SONG_*.nub's at3 header; 1 if unreadable).
+    private static float stockGain(CatalogAssetRouter assets, CatalogAssetKey asset, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var input = assets.OpenReadAsync(asset, cancellationToken).AsTask().GetAwaiter().GetResult();
+            var header = new byte[4096];
+            var length = 0;
+            while (length < header.Length && input.Read(header, length, header.Length - length) is var read and > 0)
+                length += read;
+            return Math.Min(1f, NubCueDelay.ReadGain(header.AsSpan(0, length), 0));
+        }
+        catch (IOException exception)
+        {
+            Console.Error.WriteLine($"Stock song gain unreadable, playing as is: {exception.Message}");
+            return 1f;
+        }
     }
 
     private static double measure(CatalogAssetRouter assets, CatalogAssetKey asset, SdlAudioFormat format,

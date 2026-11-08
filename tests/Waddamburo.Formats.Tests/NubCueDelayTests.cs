@@ -38,5 +38,11 @@ public sealed class NubCueDelayTests
         Assert.Equal(1f, NubCueDelay.ReadGain(bank, 1));
         BinaryPrimitives.WriteSingleBigEndian(bank.AsSpan(0x40 + 0x34), float.NaN);
         Assert.Equal(1f, NubCueDelay.ReadGain(bank, 0));
+        // A song bank's at3 stream: the same gain field, but no delay.
+        "at3\0"u8.CopyTo(bank.AsSpan(0x40));
+        BinaryPrimitives.WriteSingleBigEndian(bank.AsSpan(0x40 + 0x34), -2f);
+        BinaryPrimitives.WriteUInt32BigEndian(bank.AsSpan(0x40 + 0x4C), 1200);
+        Assert.Equal(0.794f, NubCueDelay.ReadGain(bank, 0), 0.001f);
+        Assert.Equal(TimeSpan.Zero, NubCueDelay.Read(bank, 0));
     }
 }

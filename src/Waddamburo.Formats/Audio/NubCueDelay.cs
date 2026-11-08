@@ -27,17 +27,18 @@ public static class NubCueDelay
     /// <summary>
     /// The cue's authored gain as an amplitude factor (a big-endian float in dB at 0x34: Green's
     /// default drum Don -3.5, Ka -4.5); 1 for other stream kinds, a missing cue or an implausible value.
+    /// A song's "at3\0" stream (SONG_*.nub) holds it at the same place (0 to -3.5 dB across Green's songs).
     /// </summary>
     public static float ReadGain(ReadOnlySpan<byte> bank, int cue)
     {
-        if (vagHeader(bank, cue) is not { } header)
+        if (vagHeader(bank, cue, at3: true) is not { } header)
             return 1f;
         var decibels = BinaryPrimitives.ReadSingleBigEndian(bank[(header + GainField)..]);
         return float.IsFinite(decibels) && decibels is >= -100 and <= 24 ? MathF.Pow(10, decibels / 20) : 1f;
     }
 
     // The offset of the cue's "vag\0" stream header, null when there is none.
-    private static int? vagHeader(ReadOnlySpan<byte> bank, int cue)
+    private static int? vagHeader(ReadOnlySpan<byte> bank, int cue, bool at3 = false)
     {
         if (bank.Length < HeaderTable || cue < 0)
             return null;
@@ -46,7 +47,8 @@ public static class NubCueDelay
         if ((uint)cue >= count || entry + 4 > bank.Length)
             return null;
         var header = BinaryPrimitives.ReadUInt32BigEndian(bank[(int)entry..]);
-        if (header + DelayField + 4L > bank.Length || !bank.Slice((int)header, 4).SequenceEqual("vag\0"u8))
+        if (header + DelayField + 4L > bank.Length || !(bank.Slice((int)header, 4).SequenceEqual("vag\0"u8)
+            || at3 && bank.Slice((int)header, 4).SequenceEqual("at3\0"u8)))
             return null;
         return (int)header;
     }
