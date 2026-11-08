@@ -11,7 +11,10 @@ namespace Waddamburo.App.Hosting;
 /// Keeps a release build on the latest GitHub release: at boot it checks, and when a newer
 /// release exists it downloads it on an update screen and restarts into it, so nobody stays on
 /// an old client. Only release builds (a <c>vX.Y.Z</c> tag stamped by eng/package.sh, run as the
-/// single-file exe or the AppImage) update; development builds (version 0.0.0) never do.
+/// single-file exe or the AppImage) update; development builds (version 0.0.0) never do. A nightly
+/// (version <c>X.Y.Z-nightly</c>, X.Y.Z the stable release it was built after; a pre-release the Release workflow
+/// publishes on demand, tagged with its short commit) follows the newest release of any kind: another commit's
+/// nightly, or a stable release newer than X.Y.Z.
 /// </summary>
 /// <remarks>
 /// A running single-file app reopens its own file by path whenever it loads another bundled
@@ -26,9 +29,11 @@ internal static class SelfUpdate
     private const string ApplyOption = "--apply-update=";
     private const string UpdatedOption = "--updated";
 
-    // ponytail: test hook; point it at a local server serving a releases/latest-shaped JSON.
-    private static readonly string LatestReleaseUrl = Environment.GetEnvironmentVariable("WADDAMBURO_UPDATE_URL")
-        ?? "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases/latest";
+    // ponytail: test hook; point it at a local server serving a releases/latest-shaped JSON (an array for nightlies).
+    private static string LatestReleaseUrl => Environment.GetEnvironmentVariable("WADDAMBURO_UPDATE_URL")
+        ?? (nightly
+            ? "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases?per_page=30"
+            : "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases/latest");
 
     /// <summary>
     /// Runs first in Main: finishes or hands over to a pending update. Returns true when this
@@ -153,11 +158,21 @@ internal static class SelfUpdate
     private static Release? findNewer(HttpClient http, Version current)
     {
         using var json = JsonDocument.Parse(http.GetStringAsync(new Uri(LatestReleaseUrl)).GetAwaiter().GetResult());
-        var tag = json.RootElement.GetProperty("tag_name").GetString() ?? "";
-        if (!Version.TryParse(tag.TrimStart('v'), out var latest) || latest <= current)
+        // A nightly reads the release list (newest first); a stable build only the latest stable release.
+        var newest = json.RootElement.ValueKind == JsonValueKind.Array
+            ? json.RootElement.EnumerateArray().FirstOrDefault(static release => !(release.TryGetProperty("draft", out var draft) && draft.GetBoolean()))
+            : json.RootElement;
+        if (newest.ValueKind != JsonValueKind.Object)
+            return null;
+        var tag = newest.GetProperty("tag_name").GetString() ?? "";
+        var newer = Version.TryParse(tag.TrimStart('v'), out var latest)
+            ? latest > current
+            // A nightly's tag: its short commit.
+            : nightly && tag.Length >= 7 && !commit.StartsWith(tag, StringComparison.OrdinalIgnoreCase);
+        if (!newer)
             return null;
         var assetName = OperatingSystem.IsWindows() ? "Waddamburo.exe" : "Waddamburo-x86_64.AppImage";
-        var asset = json.RootElement.GetProperty("assets").EnumerateArray()
+        var asset = newest.GetProperty("assets").EnumerateArray()
             .FirstOrDefault(candidate => candidate.GetProperty("name").GetString() == assetName);
         if (asset.ValueKind != JsonValueKind.Object)
             return null;
@@ -235,24 +250,29 @@ internal static class SelfUpdate
         : OperatingSystem.IsWindows() ? Environment.ProcessPath
         : null;
 
-    /// <summary>The window title: the release version, or "dev" and the commit for other builds.</summary>
+    /// <summary>The window title: the release version (and a nightly's commit), or "dev" and the commit for other builds.</summary>
     public static string WindowTitle
     {
         get
         {
-            var informational = typeof(SelfUpdate).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
-            var commit = informational.Contains('+', StringComparison.Ordinal) ? informational.Split('+')[1] : "";
             return currentVersion() is { } version
-                ? $"Waddamburo v{version}"
+                ? $"Waddamburo v{version}{(nightly && commit.Length >= 7 ? $" nightly ({commit[..7]})" : "")}"
                 : $"Waddamburo dev{(commit.Length >= 7 ? $" ({commit[..7]})" : "")}";
         }
     }
 
-    private static Version? currentVersion()
-    {
-        var informational = typeof(SelfUpdate).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        return Version.TryParse(informational?.Split('+')[0], out var version) && version > new Version(0, 0, 0)
-            ? version
-            : null;
-    }
+    private static Version? currentVersion() =>
+        Version.TryParse(informational.Split('+')[0].Replace(NightlySuffix, "", StringComparison.Ordinal), out var version)
+            && version > new Version(0, 0, 0) ? version : null;
+
+    private const string NightlySuffix = "-nightly";
+
+    // A nightly build (version X.Y.Z-nightly).
+    private static bool nightly => informational.Split('+')[0].EndsWith(NightlySuffix, StringComparison.Ordinal);
+
+    // The commit this was built from (the informational version's +hash).
+    private static string commit => informational.Contains('+', StringComparison.Ordinal) ? informational.Split('+')[1] : "";
+
+    private static string informational =>
+        typeof(SelfUpdate).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
 }

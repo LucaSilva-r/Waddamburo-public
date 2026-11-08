@@ -1,6 +1,8 @@
 # Pushing a vX.Y.Z tag builds both releases and drafts a GitHub release with them; publishing
 # the draft is what makes installed copies update. Run it by hand (Actions > Release > Run
-# workflow) to only build and download the files from the run's artifacts.
+# workflow) to only build and download the files from the run's artifacts, or with "nightly" ticked
+# to publish a nightly: version X.Y.Z-nightly (X.Y.Z the latest stable release), tagged with the short
+# commit, a pre-release that installed nightlies update to (stable builds ignore it).
 name: Release
 
 on:
@@ -11,12 +13,36 @@ on:
     branches: [master]
     paths: ['native/**', '.github/workflows/release.yml']
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: Publish a nightly pre-release
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
+  # The version stamped into both builds: the tag's, a nightly's, or none (a development build).
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY: ${{ inputs.nightly }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [ "$NIGHTLY" = true ]; then
+            stable=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+            echo "version=${stable#v}-nightly" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: version
     strategy:
       matrix:
         include:
@@ -56,9 +82,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev libgl-dev libwayland-dev
 
       - name: Build
-        run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then export WADDAMBURO_VERSION=${GITHUB_REF_NAME#v}; fi
-          eng/package.sh ${{ matrix.target }}
+        env:
+          WADDAMBURO_VERSION: ${{ needs.version.outputs.version }}
+        run: eng/package.sh ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v7
         with:
@@ -85,3 +111,20 @@ jobs:
         run: >
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
           --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip native-*.zip
+
+  nightly:
+    if: github.ref_type != 'tag' && inputs.nightly
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      # Published at once (installed nightlies update to it); the tag is made on the commit built.
+      - name: Publish the nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes
+          --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip native-*.zip

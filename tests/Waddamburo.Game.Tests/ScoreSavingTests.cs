@@ -217,6 +217,8 @@ public sealed class ScoreSavingTests
         Assert.True(ScoreClient.AcceptsDevPlays(new Uri("http://127.0.0.1/")));
         Assert.True(ScoreClient.AcceptsDevPlays(new Uri("https://staging.taikonline.com/")));
         Assert.False(ScoreClient.AcceptsDevPlays(new Uri("https://taikonline.com/")));
+        Assert.True(ScoreClient.IsDevVersion("0.26.0-nightly+2968f7d4"));
+        Assert.False(ScoreClient.IsDevVersion("0.26.0+abc"));
         var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
         try
         {

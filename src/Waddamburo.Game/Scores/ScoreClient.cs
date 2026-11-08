@@ -282,15 +282,16 @@ public sealed class ScoreClient(HttpClient http)
     }
 
     /// <summary>
-    /// Whether <paramref name="server"/> takes plays made by development builds (engine version "-dev"): only a
+    /// Whether <paramref name="server"/> takes plays made by development builds and nightlies (<see cref="IsDevVersion"/>): only a
     /// local or staging server. Elsewhere they are marked uploaded without being sent: a dev build's chart or scoring
     /// code may score plays the server's scorer can't.
     /// </summary>
     public static bool AcceptsDevPlays(Uri? server) => server is not null
         && (server.IsLoopback || server.Host.StartsWith("staging", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Whether a play's engine version is a development build's.</summary>
-    public static bool IsDevVersion(string engineVersion) => engineVersion.Contains("-dev", StringComparison.Ordinal);
+    /// <summary>Whether a play's engine version is a development build's or a nightly's (unreleased scoring code).</summary>
+    public static bool IsDevVersion(string engineVersion) => engineVersion.Contains("-dev", StringComparison.Ordinal)
+        || engineVersion.Contains("-nightly", StringComparison.Ordinal);
 
     // The plays a server that takes no dev plays gets; the dev ones are marked uploaded (dropped) here.
     private static List<T> keep<T>(List<T> plays, Func<T, (string Version, Guid Id)> play, Action<IEnumerable<Guid>> markUploaded)
