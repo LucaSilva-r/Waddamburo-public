@@ -152,6 +152,7 @@ try
         else
             ReleaseConsole.Show(arcade.ShowConsole);
         Strings.Use(arcade.Language);
+        Waddamburo.Game.SongSelect.SongSelectCatalogView.Japanese = Strings.Language.StartsWith("ja", StringComparison.Ordinal);
         Console.WriteLine($"Language: {Strings.Language}");
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
         if (arcade.Renderer is not null && Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER") is null)
