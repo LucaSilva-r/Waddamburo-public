@@ -121,10 +121,13 @@ jobs:
         with:
           merge-multiple: true
 
-      # Published at once (installed nightlies update to it); the tag is made on the commit built.
+      # Published at once (installed nightlies update to it); the tag is made on the commit built. The files are
+      # named apart so a nightly sits beside the stable build (it keeps its own waddamburo-nightly folder too).
       - name: Publish the nightly
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes
-          --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip native-*.zip
+        run: |
+          mv Waddamburo.exe Waddamburo-nightly.exe
+          mv Waddamburo-x86_64.AppImage Waddamburo-nightly-x86_64.AppImage
+          gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
+            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage licenses.zip native-*.zip

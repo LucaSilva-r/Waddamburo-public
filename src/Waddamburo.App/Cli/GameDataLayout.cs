@@ -5,7 +5,9 @@ namespace Waddamburo.App.Cli;
 /// <summary>
 /// Resolves the stable paths used by a normal game boot from one USRDIR root. Waddamburo's own files
 /// (settings, accounts, scores, avatars, caches) live together in <see cref="Home"/>
-/// (USRDIR/waddamburo); custom_songs stays at the root, as the user's own song folder.
+/// (USRDIR/waddamburo); custom_songs stays at the root, as the user's own song folder. A nightly keeps its own
+/// (USRDIR/waddamburo-nightly, first a copy of the stable one) so it never writes the stable build's settings or
+/// scores; the cache stays shared.
 /// </summary>
 internal sealed record GameDataLayout(
     string Root,
@@ -18,6 +20,9 @@ internal sealed record GameDataLayout(
     IReadOnlyList<string> FallbackFonts,
     string ServiceFontPath)
 {
+    /// <summary>The stable build's home (the cache's default place, shared with a nightly).</summary>
+    public string CacheHome { get; init; } = Home;
+
     public static GameDataLayout Resolve(string root, string? fontOverride = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
@@ -33,22 +38,64 @@ internal sealed record GameDataLayout(
         requireDirectory(don, "Don asset root");
         requireDirectory(sound, "sound root");
 
-        var home = Path.Combine(fullRoot, "waddamburo");
-        moveIntoHome(fullRoot, home);
+        var stableHome = Path.Combine(fullRoot, "waddamburo");
+        moveIntoHome(fullRoot, stableHome);
+        var home = BuildInfo.Nightly ? Path.Combine(fullRoot, "waddamburo-nightly") : stableHome;
+        if (home != stableHome && !Directory.Exists(home))
+            seedNightly(stableHome, home);
         // The user's font when they supplied one, else the bundled one; the bundled fonts draw what it lacks.
         var bundled = BundledFonts.Extract(Path.Combine(home, "fonts"));
         var font = fontOverride is null ? findTitleFont(fullRoot) ?? bundled.Title : Path.GetFullPath(fontOverride);
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
         string[] fallbacks = font == bundled.Title ? [bundled.Fallback] : [bundled.Title, bundled.Fallback];
-        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service);
+        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service) { CacheHome = stableHome };
+    }
+
+    // Not copied into a nightly's home: what it makes for itself, and the shared cache.
+    private static readonly string[] NotSeeded = ["cache", "logs", "screenshots", "fonts"];
+
+    // A nightly's first start: a copy of the stable home (settings, accounts, scores, favourites, avatars...), the
+    // scores through SQLite's backup (consistent even while the stable build has the database open).
+    private static void seedNightly(string stable, string nightly)
+    {
+        var partial = nightly + ".part";
+        if (Directory.Exists(partial))
+            Directory.Delete(partial, recursive: true);
+        Directory.CreateDirectory(partial);
+        if (Directory.Exists(stable))
+        {
+            foreach (var file in Directory.EnumerateFiles(stable, "*", SearchOption.AllDirectories))
+            {
+                var relative = Path.GetRelativePath(stable, file);
+                var top = relative.Split(Path.DirectorySeparatorChar)[0];
+                if (NotSeeded.Contains(top) || top.StartsWith("backup-", StringComparison.Ordinal)
+                    || top.StartsWith(Waddamburo.Game.Scores.ScoreStore.FileName, StringComparison.Ordinal))
+                    continue;
+                var target = Path.Combine(partial, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target);
+            }
+            var scores = Path.Combine(stable, Waddamburo.Game.Scores.ScoreStore.FileName);
+            if (File.Exists(scores))
+            {
+                using var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={scores};Mode=ReadOnly;Pooling=False");
+                using var copy = new Microsoft.Data.Sqlite.SqliteConnection(
+                    $"Data Source={Path.Combine(partial, Waddamburo.Game.Scores.ScoreStore.FileName)};Pooling=False");
+                source.Open();
+                copy.Open();
+                source.BackupDatabase(copy);
+            }
+        }
+        Directory.Move(partial, nightly);
+        Console.WriteLine($"Nightly: its own settings and scores in {nightly} (copied from {stable}).");
     }
 
     /// <summary>
     /// The cache folder: <paramref name="chosen"/> (config cache_folder, e.g. an internal disk when the
     /// game runs from a USB stick) or waddamburo/cache. Upscaled textures and decoded audio go inside it.
     /// </summary>
-    public string Cache(string? chosen) => Waddamburo.Game.Flow.ArcadeSettings.CacheRoot(Home, chosen);
+    public string Cache(string? chosen) => Waddamburo.Game.Flow.ArcadeSettings.CacheRoot(CacheHome, chosen);
 
     /// <summary>
     /// Moves a cache left in waddamburo/cache (where every cache lived before cache_folder) into
@@ -57,7 +104,7 @@ internal sealed record GameDataLayout(
     /// </summary>
     public void MoveGameCacheTo(string root)
     {
-        var from = Path.Combine(Home, "cache");
+        var from = Path.Combine(CacheHome, "cache");
         if (!Directory.Exists(from) || Path.GetFullPath(from).TrimEnd(Path.DirectorySeparatorChar)
             .Equals(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar), OperatingSystem.IsWindows()
                 ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))

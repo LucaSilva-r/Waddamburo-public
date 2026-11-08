@@ -171,7 +171,14 @@ internal static class SelfUpdate
             : nightly && tag.Length >= 7 && !commit.StartsWith(tag, StringComparison.OrdinalIgnoreCase);
         if (!newer)
             return null;
-        var assetName = OperatingSystem.IsWindows() ? "Waddamburo.exe" : "Waddamburo-x86_64.AppImage";
+        // A nightly's files are named apart, to sit beside the stable ones.
+        var assetName = (OperatingSystem.IsWindows(), nightly) switch
+        {
+            (true, false) => "Waddamburo.exe",
+            (true, true) => "Waddamburo-nightly.exe",
+            (false, false) => "Waddamburo-x86_64.AppImage",
+            (false, true) => "Waddamburo-nightly-x86_64.AppImage",
+        };
         var asset = newest.GetProperty("assets").EnumerateArray()
             .FirstOrDefault(candidate => candidate.GetProperty("name").GetString() == assetName);
         if (asset.ValueKind != JsonValueKind.Object)
@@ -267,8 +274,7 @@ internal static class SelfUpdate
 
     private const string NightlySuffix = "-nightly";
 
-    // A nightly build (version X.Y.Z-nightly).
-    private static bool nightly => informational.Split('+')[0].EndsWith(NightlySuffix, StringComparison.Ordinal);
+    private static bool nightly => BuildInfo.Nightly;
 
     // The commit this was built from (the informational version's +hash).
     private static string commit => informational.Contains('+', StringComparison.Ordinal) ? informational.Split('+')[1] : "";
