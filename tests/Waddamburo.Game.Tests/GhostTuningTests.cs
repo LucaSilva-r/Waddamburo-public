@@ -17,6 +17,7 @@ public sealed class GhostTuningTests
           <patternnode><inferior>0</inferior><superior>-1</superior></patternnode>
           <statistics_type>0</statistics_type><statistics_samplesize>10</statistics_samplesize>
           <hitscore_ryo>5</hitscore_ryo><hitscore_ka>3</hitscore_ka><hitscore_fuka>0</hitscore_fuka>
+          <emotionofs_center>0</emotionofs_center><emotionofs_threslow>5</emotionofs_threslow><emotionofs_threshigh>6</emotionofs_threshigh>
         </tuning_lv0>
         </boost_serialization>
         """;
@@ -35,14 +36,22 @@ public sealed class GhostTuningTests
         foreach (var ms in new[] { 500, 500, -20, 60, -20, 60, -20, 60, -20, 60, -20, 60 })
             model.Observe(TimeSpan.FromMilliseconds(ms));
         Assert.Equal((20d, 1600d), model.Statistics);
-        // Behind tightens, ahead loosens.
-        Assert.Equal(-50, model.PatternFor(-2).VariancePercent);
-        Assert.Equal(40, model.PatternFor(2).VariancePercent);
-        Assert.Equal(5, model.PatternFor(0).VariancePercent);
+        // Level: the rubber band, from the first pattern's spread (+5%) toward the second's (-50%) all the way at 7 points
+        // behind, toward the third's (+40%) at 5 ahead; an aggressive AI-don plays as if 6 points further behind.
+        Assert.Equal(5, model.VariancePercent(0));
+        Assert.Equal(-50, model.VariancePercent(-7));
+        Assert.Equal(-50, model.VariancePercent(-9));
+        Assert.Equal(40, model.VariancePercent(5));
+        Assert.Equal(5 + (40 - 5) * 0.4, model.VariancePercent(2), 6);
+        model.Emotion = 4;
+        Assert.Equal(-50, model.VariancePercent(-1));
+        model.Emotion = 0;
+        Assert.Equal(40, model.VariancePercent(0));
+        model.Emotion = 2;
 
-        // AI-don replays the player's own offsets (-20 or +60 ms), their distance from the median scaled by the pattern:
-        // behind (-50%: x0.71) it lands closer, -8 or +48 ms.
+        // AI-don replays the player's own offsets (-20 or +60 ms), their distance from the median scaled by the band:
+        // far behind (-50%: x0.71) it lands closer, -8 or +48 ms.
         var random = new Random(1);
-        Assert.Equal([-8d, 48d], Enumerable.Range(0, 200).Select(_ => Math.Round(model.NextOffset(-2, random).TotalMilliseconds)).Distinct().Order());
+        Assert.Equal([-8d, 48d], Enumerable.Range(0, 200).Select(_ => Math.Round(model.NextOffset(-7, random).TotalMilliseconds)).Distinct().Order());
     }
 }

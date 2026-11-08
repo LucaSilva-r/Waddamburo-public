@@ -19,7 +19,12 @@ public sealed record GhostLevel(
     int SampleSize,
     int ScoreGreat,
     int ScoreGood,
-    int ScoreBad);
+    int ScoreBad)
+{
+    /// <summary>emotionofs_center / threslow / threshigh: how far AI-don's mood moves the lead its spread follows
+    /// (neutral, passive: as if ahead by this, aggressive: as if behind by this).</summary>
+    public (int Center, int Low, int High) EmotionOffsets { get; init; } = (0, 2, 6);
+}
 
 public static class GhostTuning
 {
@@ -43,7 +48,10 @@ public static class GhostTuning
                 value(element, "statistics_samplesize"),
                 value(element, "hitscore_ryo"),
                 value(element, "hitscore_ka"),
-                value(element, "hitscore_fuka"));
+                value(element, "hitscore_fuka"))
+            {
+                EmotionOffsets = (value(element, "emotionofs_center"), value(element, "emotionofs_threslow"), value(element, "emotionofs_threshigh")),
+            };
         }
         return [.. levels.Values];
     }
@@ -67,9 +75,10 @@ public static class GhostTuning
 /// (testers): a few late hits widen the variance of a mostly tight player, and every AI hit then plays that loose.
 /// </summary>
 /// <remarks>
-/// ponytail: the pattern choice (behind: the second pattern, ahead: the third, else the first) is a reading of
-/// ghosttuning.xml, not traced; defvariance_second is unused (as a floor it made AI-don too easy to beat, user-tested);
-/// tracetype/traceprob and the pattern nodes' exact use are unknown.
+/// ponytail: the rubber band is a reading of ghosttuning.xml, not traced: the spread moves from the first pattern's
+/// toward the second's as AI-don falls behind (all of it at the first pattern node's inferior lead) and toward the
+/// third's as it gets ahead (at its superior); the mood offsets the lead. defvariance_second is unused (as a floor it
+/// made AI-don too easy to beat, user-tested); tracetype/traceprob and the other pattern nodes are unknown.
 /// </remarks>
 public sealed class GhostTimingModel(GhostLevel level)
 {
@@ -102,15 +111,31 @@ public sealed class GhostTimingModel(GhostLevel level)
         }
     }
 
-    /// <summary>The pattern for AI-don's lead, in 良 (negative: behind).</summary>
-    public GhostPattern PatternFor(double lead) =>
-        Level.Patterns.Count < 3 ? default : lead <= -1 ? Level.Patterns[1] : lead >= 1 ? Level.Patterns[2] : Level.Patterns[0];
+    /// <summary>AI-don's mood, as ai_hit_effect's ChangeAIEmotion takes it: 0 more passive .. 2 neutral .. 4 more aggressive.</summary>
+    public int Emotion { get; set; } = 2;
+
+    /// <summary>How much AI-don's spread grows (percent; negative: tighter) at this lead, in territory points (the
+    /// needle's units, negative: behind), after its mood's offset.</summary>
+    public double VariancePercent(double lead)
+    {
+        if (Level.Patterns.Count < 3)
+            return 0;
+        var (inferior, superior) = Level.PatternNodes.Count > 0 ? Level.PatternNodes[0] : (-8, 4);
+        var (center, low, high) = Level.EmotionOffsets;
+        lead += Emotion >= 4 ? -high : Emotion <= 0 ? low : center;
+        double baseline = Level.Patterns[0].VariancePercent;
+        return lead < 0 && inferior < 0
+            ? baseline + (Level.Patterns[1].VariancePercent - baseline) * Math.Min(1, lead / inferior)
+            : lead > 0 && superior > 0
+                ? baseline + (Level.Patterns[2].VariancePercent - baseline) * Math.Min(1, lead / superior)
+                : baseline;
+    }
 
     /// <summary>AI-don's offset for its next hit.</summary>
     public TimeSpan NextOffset(double lead, Random random)
     {
         var (median, variance) = Statistics;
-        var scale = Math.Sqrt(Math.Max(0.05, 1 + PatternFor(lead).VariancePercent / 100.0));
+        var scale = Math.Sqrt(Math.Max(0.05, 1 + VariancePercent(lead) / 100.0));
         if (_samples.Count >= MinimumSamples)
             return TimeSpan.FromMilliseconds(median + (_samples.ElementAt(random.Next(_samples.Count)) - median) * scale);
         // Box-Muller: a standard normal draw.

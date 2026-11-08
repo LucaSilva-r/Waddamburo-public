@@ -325,7 +325,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             var aiLevel = Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0]
                 : new GhostLevel(1024, 256, [new(0, 0, 5), new(0, 0, -50), new(0, 0, 40)], [], 100, 5, 3, 0);
             var bot = _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, new GhostTimingModel(aiLevel), () => battle.Territory,
-                () => Shell.Gameplay.Results is [var player, ..] ? player.Rolls + player.BalloonHits : 0);
+                () => Shell.Gameplay.Results is [var player, ..] ? player.Rolls + player.BalloonHits : 0, () => battle.Emotion);
             Shell.Gameplay.OnJudged(0, bot.Observe);
         }
         if (Shell.Sounds is { } sounds)

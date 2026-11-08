@@ -20,6 +20,7 @@ internal sealed class AiDrummer
     private readonly GhostTimingModel _model;
     private readonly Func<(int Player, int Ai)> _territory;
     private readonly Func<int> _playerRolls;
+    private readonly Func<int> _emotion;
     private readonly Random _random;
     private readonly List<(TimeSpan Time, SdlKeyboardKey Key)> _pending = [];
     private int _nextNote, _rolls;
@@ -32,8 +33,9 @@ internal sealed class AiDrummer
     /// <param name="model">AI-don's timing, learning the player's.</param>
     /// <param name="territory">This section's territory points, the player's and AI-don's.</param>
     /// <param name="playerRolls">The player's roll and balloon hits so far.</param>
+    /// <param name="emotion">AI-don's mood (ChangeAIEmotion's 0-4).</param>
     public AiDrummer(PlayableChart chart, TaikoCourse course, int seed, GhostTimingModel model,
-        Func<(int Player, int Ai)> territory, Func<int> playerRolls)
+        Func<(int Player, int Ai)> territory, Func<int> playerRolls, Func<int> emotion)
     {
         chart = chart.OnRoute(ChartBranch.Master);
         _notes = [.. chart.HitObjects];
@@ -41,6 +43,7 @@ internal sealed class AiDrummer
         _model = model;
         _territory = territory;
         _playerRolls = playerRolls;
+        _emotion = emotion;
         _random = new Random(seed);
     }
 
@@ -76,9 +79,10 @@ internal sealed class AiDrummer
 
     private void decide(PlayableHitObject note)
     {
-        // AI-don's lead this section, in 良.
+        // AI-don's lead this section in territory points (the needle's units), and its mood.
         var (player, ai) = _territory();
-        var offset = _model.NextOffset((ai - player) / (double)Math.Max(1, _model.Level.ScoreGreat), _random);
+        _model.Emotion = _emotion();
+        var offset = _model.NextOffset(Math.Clamp(ai - player, -9, 9), _random);
         if (offset.Duration() > _windows.Miss)
             return; // past the 不可 window: no hit, a miss
         var time = note.StartTime + offset;

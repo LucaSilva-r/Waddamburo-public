@@ -53,6 +53,9 @@ internal sealed class AiBattlePresentation
     /// <summary>This section's territory so far: the player's and AI-don's.</summary>
     public (int Player, int Ai) Territory => (territory(0), territory(1));
 
+    /// <summary>AI-don's mood (ChangeAIEmotion's 0 more passive .. 2 neutral .. 4 more aggressive).</summary>
+    public int Emotion { get; private set; } = 2;
+
     public void Advance(TimeSpan time, IReadOnlyList<TaikoPlayResult> lanes)
     {
         // The movies register their callbacks on their first frame.
@@ -121,6 +124,15 @@ internal sealed class AiBattlePresentation
             call(_timer, "ChangeNextSection");
         }
         both(won ? "StartSectionWin" : "StartSectionLose");
+        // AI-don's mood (traced, sessions ai-battle-3/4/5: ChangeAIEmotion with the section's start, once the player's
+        // wins minus losses reach +2: 4, more aggressive (the angry icon); -2: 0, more passive).
+        var net = _won.Count(static section => section) * 2 - _won.Count;
+        var emotion = net >= 2 ? 4 : net <= -2 ? 0 : Emotion;
+        if (emotion != Emotion)
+        {
+            Emotion = emotion;
+            call(_hitEffect, "ChangeAIEmotion", number(emotion));
+        }
         // Traced: VO_AIBTL_ENSO 3 with a section won, 8 with one lost.
         _cue?.Invoke("VO_AIBTL_ENSO", won ? 3 : 8);
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
