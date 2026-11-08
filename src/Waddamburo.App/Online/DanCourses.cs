@@ -148,7 +148,7 @@ internal sealed class DanCourses
     private int genre(SongDescriptor? song) => song is null ? 0
         : _snapshot.Categories.Where(category => category.Songs.Contains(song.Key))
             .OrderBy(static category => category.Key.Source == SongSourceKind.Stock ? 0 : 1)
-            .Select(static category => (int?)Scenes.GameplaySceneComposition.GenreIndex(category.Name)).FirstOrDefault() ?? 0;
+            .Select(static category => (int?)Scenes.GameplaySceneComposition.GenreIndex(category.Genre ?? category.Name)).FirstOrDefault() ?? 0;
 
     /// <summary>Matches the library against the courses again (after the library was hashed again).</summary>
     public void Rematch()
