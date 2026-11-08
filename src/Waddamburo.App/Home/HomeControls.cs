@@ -239,6 +239,7 @@ internal sealed class HomeControls : IDisposable
     public bool Tick(SdlKeyboardSnapshot keys, SdlKeyboardSnapshot held, bool escape)
     {
         FollowFocus();
+        previewHidden();
         return _restart.UpdateMenuAction() || resumeCountdown(escape) || calibrationDone() || openMenu(escape)
             || menuInput(keys, held, escape);
     }
@@ -284,7 +285,7 @@ internal sealed class HomeControls : IDisposable
     /// <summary>The frame's blend between ticks: frozen where it stopped while the menu or countdown is up.</summary>
     public float Interpolation(double fraction)
     {
-        if (_menu.IsOpen || _resume?.Running == true)
+        if (_menu.IsOpen || _resume?.Running == true && !_timerPreview)
             return _pauseInterpolation;
         return _lastInterpolation = (float)fraction;
     }
@@ -297,13 +298,16 @@ internal sealed class HomeControls : IDisposable
         // The pause menu's own choices take the overlay look; its other pages (the old settings page, the bake, the
         // calibration's result) keep their panel.
         var pauseChoices = overlayPage && !_settingsOverlay;
-        var extra = _shell.Unsqueezed((_resume is { Running: true } countdown
-                ? SceneTextures.Compose(countdown.CreateSnapshot(1), _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
+        // The resume countdown is the layout's "timer" element, drawn on the stage (squeezed with it on a 4:3 screen).
+        var extra = (_resume is { Running: true } countdown
+                ? SceneTextures.Compose(countdown.CreateSnapshot(1, layer => _shell.Gameplay.PlaceOverlay(layer, "timer")),
+                    _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
                 : [])
+            .Concat(_shell.Unsqueezed(Enumerable.Empty<RenderQuad>()
             .Concat(_settingsOverlay && _shell.Service is { } settings ? settings.Quads()
                 : pauseChoices ? pause().Quads() : [])
             .Concat(_overlay.Quads(_restart.Black,
-                _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)), centred: true)
+                _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)), centred: true))
             .ToList();
         // Nothing on top (most frames): keep the frame rather than copying all its quads.
         if (extra.Count == 0)
@@ -353,10 +357,24 @@ internal sealed class HomeControls : IDisposable
         return true;
     }
 
+    // The layout editor's "Show hidden": the countdown counts 3-2-1 over and over, silent, never resuming the song; the
+    // 100-combo announcement pops up again whenever it is gone.
+    private bool _timerPreview;
+
+    private void previewHidden()
+    {
+        var show = _shell.ShowHiddenElements;
+        if (show) _shell.Gameplay.ShowHiddenElements();
+        if (_resume is not { } countdown || !show && !_timerPreview) return;
+        if (!show) { _timerPreview = false; countdown.Cancel(); return; }
+        if (!_timerPreview || !countdown.Running) { _timerPreview = true; countdown.Start(); }
+        countdown.Advance(static (_, _) => { });
+    }
+
     // Resume's countdown: the song stays held until it ends; Escape or leaving the window pauses again.
     private bool resumeCountdown(bool escape)
     {
-        if (_resume is not { Running: true } countdown)
+        if (_timerPreview || _resume is not { Running: true } countdown)
             return false;
         if (escape || !_focused)
         {

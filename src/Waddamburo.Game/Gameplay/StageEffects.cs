@@ -20,6 +20,10 @@ public sealed class StageEffects
 
     // The player's 4:3 layout under the chart's modchart (ChartEffects.Layout): applied after it, element and camera.
     private readonly ChartModValues? _layout;
+    // A 4:3 screen (camera.aspect below 1, the stage squeezed to 3/4 width): the parts no element covers (score pop-ups,
+    // balloon, kusudama) and the ones that only show now and then (combo, timer: the 4:3 toggle leaves them out, so older
+    // layouts fit them too) keep their shape at 3/4 height, as the toggle sets each other element's.
+    private readonly float? _squeeze;
 
     public StageEffects(ChartModValues mods, NoteGeometry geometry, bool targetMoves, ChartModValues? layout = null)
     {
@@ -27,6 +31,8 @@ public sealed class StageEffects
         _layout = layout is { IsEmpty: false } ? layout : null;
         _geometry = geometry;
         _moves = targetMoves;
+        if (mods.Value("camera", "aspect", TimeSpan.Zero) < 1 || _layout?.Value("camera", "aspect", TimeSpan.Zero) < 1)
+            _squeeze = .75f;
     }
 
     /// <summary>Whether any layer can move at all (else <see cref="Place"/> is never needed).</summary>
@@ -75,6 +81,7 @@ public sealed class StageEffects
         "player_name" => "nameplate",
         "action_gogotime" => "gogo",
         "action_result" => "banner",
+        "combo_bonus_don_1p" or "sinuchi_combo_bonus_don_1p" => "combo",
         "gage_fire_1p" => "gauge",
         { } name when name.StartsWith("gage_don_1p_", StringComparison.Ordinal) => "gauge",
         "lane" or "lane_hit" or "lane_hit_effect" or "renda_num" or "lane_syousetsu" => "playfield",
@@ -97,6 +104,8 @@ public sealed class StageEffects
             (matrix, alpha, moved) = (matrix.Then(own.Matrix), alpha * own.Alpha, true);
         if (target is not null && _layout is not null && Element(_layout, target, time, pivot) is { } laid)
             (matrix, alpha, moved) = (matrix.Then(laid.Matrix), alpha * laid.Alpha, true);
+        if (target is null or "combo" or "timer" && _squeeze is { } squeeze && Transform(0, 0, 0, 1, squeeze, 1, pivotOf(layer)) is { } kept)
+            (matrix, moved) = (matrix.Then(kept.Matrix), true);
         if (Element("camera", time, (640, 360)) is { } camera)
             (matrix, alpha, moved) = (matrix.Then(camera.Matrix), alpha * camera.Alpha, true);
         if (_layout is not null && Element(_layout, "camera", time, (640, 360)) is { } frame)

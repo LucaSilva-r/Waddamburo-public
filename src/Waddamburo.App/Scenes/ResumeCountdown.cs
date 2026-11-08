@@ -58,6 +58,7 @@ internal sealed class ResumeCountdown
         return _ticksLeft == 0;
     }
 
-    public LumenRenderSnapshot CreateSnapshot(float interpolation) =>
-        new LumenScenePlayer(1280, 720, [Scene.Player.Layers[0]]).CreateRenderSnapshot(interpolation);
+    // place: where the layout puts the timer (its "timer" element).
+    public LumenRenderSnapshot CreateSnapshot(float interpolation, Func<LumenSceneLayer, LumenSceneLayer> place) =>
+        new LumenScenePlayer(1280, 720, [place(Scene.Player.Layers[0])]).CreateRenderSnapshot(interpolation);
 }

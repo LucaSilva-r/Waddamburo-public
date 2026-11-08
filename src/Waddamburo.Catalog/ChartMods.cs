@@ -31,7 +31,7 @@ public static class ChartMods
     /// <summary>Scene elements (Green's gameplay roles, the same for every skin) and what moves them.</summary>
     public static readonly ImmutableArray<string> Elements =
         ["camera", "playfield", "don", "background", "donbg", "renda", "dancers", "stage", "fever", "runners",
-         "gauge", "board", "songinfo", "nameplate", "gogo", "banner"];
+         "gauge", "board", "songinfo", "nameplate", "gogo", "banner", "combo", "timer"];
 
     /// <summary>
     /// depth: draw order, in whole steps (default 0): elements are drawn by depth, a higher one in front, the game's own

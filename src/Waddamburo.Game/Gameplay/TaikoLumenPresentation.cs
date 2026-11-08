@@ -209,9 +209,9 @@ public sealed class TaikoLumenPresentation
         if (character is not null) layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), character);
         layers.AddRange(_foreground);
         var elements = new List<StageEffectElement>();
-        foreach (var layer in layers)
+        foreach (var layer in layers.Concat(_overlays.Values))
         {
-            var target = targetOf(layer, character);
+            var target = _overlays.FirstOrDefault(pair => pair.Value == layer).Key ?? targetOf(layer, character);
             if (target is null || _stage.Describe(layer, target, followsTarget(layer), time) is not { } element) continue;
             var previous = elements.FindIndex(e => e.Target == target);
             if (previous >= 0)
@@ -238,6 +238,25 @@ public sealed class TaikoLumenPresentation
 
     /// <summary>The target's hit ring (a GOOD's), alone: no judgement, combo or score.</summary>
     public void FlashTarget() => _target.Player.TryGotoLabel("hit_effect", "hit_ryo");
+
+    // Movies the host draws over the lane that a layout still places (the resume countdown, "timer"), by target.
+    private readonly Dictionary<string, LumenSceneLayer> _overlays = new(StringComparer.Ordinal);
+
+    /// <summary>Registers a host-drawn movie as <paramref name="target"/>'s element (the editor can select it).</summary>
+    public void SetOverlay(string target, LumenSceneLayer layer) => _overlays[target] = layer;
+
+    /// <summary>A host-drawn movie where the effects put <paramref name="target"/> at <paramref name="time"/>.</summary>
+    public LumenSceneLayer PlaceOverlay(LumenSceneLayer layer, string target, TimeSpan time) =>
+        _stage.IsActive ? _stage.Place(layer, target, false, time) : layer;
+
+    /// <summary>The layout editor's "Show hidden": the 100-combo announcement pops up again whenever it is gone.</summary>
+    public void ShowCombo()
+    {
+        foreach (var (player, role) in _roles ?? new Dictionary<LumenPlayer, string>())
+            if (StageEffects.TargetOf(role) == "combo"
+                && !player.CreateRenderSnapshot().Quads.Any(static quad => quad.MultiplyColor.Alpha > 0))
+                player.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(100)]);
+    }
 
     public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time,
         LumenSceneLayer? character = null, int characterSlot = 0)

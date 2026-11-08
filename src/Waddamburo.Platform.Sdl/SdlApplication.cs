@@ -128,6 +128,20 @@ public sealed unsafe partial class SdlApplication : IDisposable
         set { ensureOwnerThread(); _renderer!.Squeeze43 = value; }
     }
 
+    /// <summary>Within <see cref="StageRegion"/>, where the stage goes (normalized window coordinates; null: fitted).</summary>
+    public RenderRectangle? StageBox
+    {
+        get => _renderer!.StageBox;
+        set
+        {
+            ensureOwnerThread();
+            if (value is { } r && (!float.IsFinite(r.X) || !float.IsFinite(r.Y) || !float.IsFinite(r.Width)
+                || !float.IsFinite(r.Height) || r.Width <= 0 || r.Height <= 0))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            _renderer!.StageBox = value;
+        }
+    }
+
     public RenderRectangle? StageRegion
     {
         get => _renderer!.StageRegion;

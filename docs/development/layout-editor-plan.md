@@ -64,5 +64,10 @@ restricted mode of that editor plus a fallback file.
 - **Two-player layouts** are their own list (`modcharts/layouts-2p`, config `layout_2p`): plain element names are the
   first lane's, `*_p2` the second's (`ChartMods.ForLane` splits them), camera and 4:3 shared. Waiwai, arcade and the
   attract's demo play always use the stock screen.
+- **combo / timer** elements (2026-11-08): the 100-combo announcement and the resume countdown (host-drawn, placed
+  through `TaikoLumenPresentation.PlaceOverlay`). Layout mode's "Show hidden" keeps both on screen (combo re-popped,
+  timer looping 3-2-1 silently). On 4:3 they, and parts no element covers, get 0.75 height automatically.
+- **Canvas** (2026-11-08): the stage is a box inside the editor panel (renderer `StageBox`); outside it is drawn
+  darkened and stays selectable. Wheel zooms about the pointer, right/middle drag pans, Fit resets.
 - Element pivots are taken once at the song's start and kept per movie, so rebuilt lanes and the editors place a
   layout exactly as the song does.

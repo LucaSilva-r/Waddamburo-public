@@ -73,6 +73,9 @@ internal sealed class GameShell : IDisposable
 
     public bool EffectsEditorOpen => _effectsEditor is not null;
 
+    /// <summary>The layout editor shows the parts that only appear now and then (combo announcement, resume timer).</summary>
+    public bool ShowHiddenElements => _effectsEditor?.ShowHidden == true;
+
     /// <summary>The effects editor's toggle: the scene's movies don't advance while it's open.</summary>
     public bool FreezeAnimations { get; set; }
 

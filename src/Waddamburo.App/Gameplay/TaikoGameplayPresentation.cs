@@ -154,6 +154,20 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);
 
+    /// <summary>A host-drawn movie the layout places as <paramref name="target"/> (the first lane's).</summary>
+    public LumenSceneLayer PlaceOverlay(LumenSceneLayer layer, string target)
+    {
+        if (_lanes.Length == 0) return layer;
+        _lanes[0].Presentation.SetOverlay(target, layer);
+        return _lanes[0].Presentation.PlaceOverlay(layer, target, _lanes[0].Session.CurrentTime);
+    }
+
+    /// <summary>The layout editor's "Show hidden": parts that only show now and then are kept on screen.</summary>
+    public void ShowHiddenElements()
+    {
+        foreach (var lane in _lanes) lane.Presentation.ShowCombo();
+    }
+
     /// <summary>A dan course's requirement can no longer be met: the course ends with the song being played.</summary>
     public bool DanFailed => _lanes.Any(static lane => lane.DanFailed);
 
@@ -286,6 +300,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly ReviewJudgementSource? _review;
         private readonly Action<ReviewState?> _restore = static _ => { };
         private readonly TaikoLumenPresentation _presentation;
+        public TaikoLumenPresentation Presentation => _presentation;
+        public TaikoJudgementSession Session => _session;
         private readonly TaikoHitFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
         private readonly TaikoDonPresentation? _character;
@@ -340,7 +356,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         /// <summary>The end banner's time, when a course ends before its last song.</summary>
         public TimeSpan? EndsAt { get; set; }
 
-        public TaikoJudgementSession Session => _session;
 
         public TaikoReplay Replay { get; } = new();
 

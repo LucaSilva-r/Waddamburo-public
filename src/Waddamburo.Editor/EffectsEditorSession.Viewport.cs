@@ -34,6 +34,10 @@ public sealed partial class EffectsEditorSession
     private bool FourThree => _preview.ValueAt("camera.aspect", _transport.Clock.Position) < 1;
     private ViewportDrag? _viewportDrag;
 
+    /// <summary>Layout mode: the parts that only appear now and then (combo announcement, resume timer) are kept on screen.</summary>
+    public bool ShowHidden => _layout && _showHidden;
+    private bool _showHidden = true;
+
     private StageEffectElement CameraElement()
     {
         double Value(string property) => _preview.ValueAt("camera." + property, _transport.Clock.Position);
@@ -91,10 +95,27 @@ public sealed partial class EffectsEditorSession
         _addTarget = Math.Max(0, Array.IndexOf(TargetsList, target));
     }
 
+    // The canvas: the stage box zoomed about the panel's centre and panned (screen pixels); what lies outside the stage
+    // shows darkened and stays selectable. Wheel zooms about the pointer, the middle or right button drags it, Fit resets.
+    private const float FitZoom = .85f;
+    private float _zoom = FitZoom;
+    private Vector2 _pan;
+
+    private EffectViewport CanvasView(EditorPanel canvas, float zoom, Vector2 pan)
+    {
+        var fit = EffectViewport.Fit(canvas, FourThree ? 4f / 3 : 16f / 9).Rectangle;
+        var centre = canvas.Position + canvas.Size / 2;
+        var position = centre + (fit.Position - centre) * zoom + pan;
+        return new(new(position.X, position.Y, fit.Width * zoom, fit.Height * zoom));
+    }
+
     private void Viewport(EditorPanel region)
     {
         if (_getElements is null) return;
-        var view = EffectViewport.Fit(EditorLayout.Preview(region), FourThree ? 4f / 3 : 16f / 9);
+        var canvas = EditorLayout.Preview(region);
+        var view = CanvasView(canvas, _zoom, _pan);
+        var display = ImGui.GetIO().DisplaySize;
+        _application.StageBox = view.Rectangle.Normalized(display.X, display.Y);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         if (Panel("##Effects viewport", region, false, ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoScrollbar
             | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoNav | ImGuiWindowFlags.NoBringToFrontOnFocus))
@@ -112,13 +133,37 @@ public sealed partial class EffectsEditorSession
             if (!_layout) { ImGui.Checkbox("Auto-key", ref _autoKey); ImGui.SameLine(); }
             var freeze = _transport.FreezeAnimations;
             if (ImGui.Checkbox("Freeze animations", ref freeze)) _transport.FreezeAnimations = freeze;
+            if (_layout) { ImGui.SameLine(); ImGui.Checkbox("Show hidden", ref _showHidden); }
+            ImGui.SameLine();
+            if (ImGui.Button("Fit")) (_zoom, _pan) = (FitZoom, Vector2.Zero);
             ImGui.EndDisabled();
-            ImGui.SetCursorScreenPos(view.Rectangle.Position);
-            ImGui.InvisibleButton("Stage canvas", view.Rectangle.Size);
+            ImGui.SetCursorScreenPos(canvas.Position);
+            ImGui.InvisibleButton("Stage canvas", canvas.Size,
+                ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
             var hovered = ImGui.IsItemHovered();
             var mouse = ImGui.GetIO().MousePos;
+            if (ImGui.IsItemActive() && (ImGui.IsMouseDragging(ImGuiMouseButton.Middle, 0) || ImGui.IsMouseDragging(ImGuiMouseButton.Right, 0)))
+                _pan += ImGui.GetIO().MouseDelta;
+            if (hovered && ImGui.GetIO().MouseWheel is var wheel and not 0)
+            {
+                // The stage point under the pointer stays under it.
+                var stagePoint = view.ToStage(mouse);
+                _zoom = Math.Clamp(_zoom * MathF.Exp(wheel * .12f), .2f, 6);
+                var zoomed = CanvasView(canvas, _zoom, _pan);
+                _pan += mouse - zoomed.ToScreen(stagePoint);
+                view = CanvasView(canvas, _zoom, _pan);
+            }
             var draw = ImGui.GetWindowDrawList();
-            draw.PushClipRect(view.Rectangle.Position, view.Rectangle.Position + view.Rectangle.Size, true);
+            draw.PushClipRect(canvas.Position, canvas.Position + canvas.Size, true);
+            // Outside the stage: darkened, still drawn and selectable.
+            var (stageMin, stageMax) = (view.Rectangle.Position, view.Rectangle.Position + view.Rectangle.Size);
+            var (canvasMin, canvasMax) = (canvas.Position, canvas.Position + canvas.Size);
+            var shade = ImGui.GetColorU32(new Vector4(0, 0, 0, .6f));
+            draw.AddRectFilled(canvasMin, new(canvasMax.X, stageMin.Y), shade);
+            draw.AddRectFilled(new(canvasMin.X, stageMax.Y), canvasMax, shade);
+            draw.AddRectFilled(new(canvasMin.X, stageMin.Y), new(stageMin.X, stageMax.Y), shade);
+            draw.AddRectFilled(new(stageMax.X, stageMin.Y), new(canvasMax.X, stageMax.Y), shade);
+            draw.AddRect(stageMin - Vector2.One, stageMax + Vector2.One, Muted, 0, ImDrawFlags.None, 1);
             var selected = GizmoElement();
             foreach (var member in _also.Count > 0 ? SelectedGroup : []) // each member's own box, inside the selection's
                 draw.AddRect(view.ToScreen(member.Minimum), view.ToScreen(member.Maximum), Muted, 0, ImDrawFlags.None, 1);
@@ -163,8 +208,8 @@ public sealed partial class EffectsEditorSession
                 draw.AddLine(view.ToScreen(new(0, y)), view.ToScreen(new(1280, y)), Guide, 1);
             var help = _gizmoMode == GizmoMode.Move ? "Drag the selection to move (Alt: no snapping)" : _gizmoMode == GizmoMode.Rotate
                 ? "Drag the ring or selection to rotate" : "Corners stretch (Shift: keep shape), sides one axis, the selection scales";
-            draw.AddText(view.Rectangle.Position + new Vector2(8, view.Rectangle.Height - 22), Text,
-                selected is null ? "Click an element to select it (Ctrl+click: several)"
+            draw.AddText(canvas.Position + new Vector2(8, canvas.Height - 22), Text,
+                selected is null ? "Click an element to select it (Ctrl+click: several; wheel zooms, right-drag pans)"
                 : $"{string.Join(", ", SelectedTargets)}  |  {help}");
             draw.PopClipRect();
         }

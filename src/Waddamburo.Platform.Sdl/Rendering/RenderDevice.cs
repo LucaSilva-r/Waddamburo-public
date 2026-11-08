@@ -246,6 +246,15 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     public RenderRectangle? StageRegion { get; set; }
 
+    /// <summary>
+    /// With <see cref="StageRegion"/>: where the stage goes (normalized window coordinates, may reach past the region),
+    /// the whole region drawn as a canvas around it (the layout editor shows what lies outside the stage).
+    /// </summary>
+    public RenderRectangle? StageBox { get; set; }
+
+    // The stage's place inside the main view (offset, then scale, in view units): identity but for a StageBox.
+    private (float X, float Y, float Width, float Height) _map = (0, 0, 1, 1);
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -291,8 +300,16 @@ internal sealed unsafe class RenderDevice : IDisposable
             var y = (int)Math.Clamp(region.Y * height, 0, height - 1);
             var w = (uint)Math.Clamp(region.Width * width, 1, width - x);
             var h = (uint)Math.Clamp(region.Height * height, 1, height - y);
-            var fitted = stage169(frame) ? RenderViewport.AspectFit(w, h, stageAspect()) : frame.ResolveViewport(w, h);
-            viewport = fitted with { X = fitted.X + x, Y = fitted.Y + y };
+            if (StageBox is { } box)
+            {
+                viewport = new RenderViewport(x, y, (int)w, (int)h);
+                _map = ((box.X * width - x) / w, (box.Y * height - y) / h, box.Width * width / w, box.Height * height / h);
+            }
+            else
+            {
+                var fitted = stage169(frame) ? RenderViewport.AspectFit(w, h, stageAspect()) : frame.ResolveViewport(w, h);
+                viewport = fitted with { X = fitted.X + x, Y = fitted.Y + y };
+            }
         }
         else viewport = letterbox(stage169(frame) ? RenderViewport.AspectFit(width, height, stageAspect()) : frame.ResolveViewport(width, height), width, height);
         StageViewport = viewport;
@@ -325,6 +342,7 @@ internal sealed unsafe class RenderDevice : IDisposable
             quads = quads[backdrop..];
         }
         submitQuads(MainView, quads);
+        _map = (0, 0, 1, 1);
         if (scaled)
         {
             bgfx.set_view_rect(PresentView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
@@ -407,7 +425,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     private double stageAspect()
     {
         var now = System.Diagnostics.Stopwatch.GetTimestamp();
-        var step = _squeezedAt == 0 ? 1 : (float)System.Diagnostics.Stopwatch.GetElapsedTime(_squeezedAt, now).TotalSeconds / SqueezeSeconds;
+        // A frame's step is capped at 1/30 s: a stall (the results loading as the shutter closes) must not skip the slide.
+        var step = _squeezedAt == 0 ? 1 : (float)Math.Min(System.Diagnostics.Stopwatch.GetElapsedTime(_squeezedAt, now).TotalSeconds, 1 / 30d) / SqueezeSeconds;
         _squeezedAt = now;
         _squeezed = Squeeze43 ? Math.Min(1, _squeezed + step) : Math.Max(0, _squeezed - step);
         var eased = _squeezed * _squeezed * (3 - 2 * _squeezed); // smoothstep
@@ -698,8 +717,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         return outside(quad.TopLeft) || outside(quad.TopRight) || outside(quad.BottomRight) || outside(quad.BottomLeft);
     }
 
-    private static QuadVertex vertex(RenderVertex corner, RenderColor multiply, RenderColor add) => new(
-        corner.X, corner.Y, corner.U, corner.V,
+    private QuadVertex vertex(RenderVertex corner, RenderColor multiply, RenderColor add) => new(
+        _map.X + corner.X * _map.Width, _map.Y + corner.Y * _map.Height, corner.U, corner.V,
         multiply.Red, multiply.Green, multiply.Blue, multiply.Alpha,
         add.Red, add.Green, add.Blue, add.Alpha);
 

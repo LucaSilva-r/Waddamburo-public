@@ -480,6 +480,7 @@ public sealed partial class EffectsEditorSession : IDisposable
         _watch?.Dispose();
         _layer.Dispose();
         _application.StageRegion = _previousRegion;
+        _application.StageBox = null;
         _disposed = true;
     }
 }
