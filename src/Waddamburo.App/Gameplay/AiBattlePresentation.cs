@@ -95,7 +95,7 @@ internal sealed class AiBattlePresentation
         // Each side's 良 and 可 this section.
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
         {
-            var now = countsOf(lanes[lane]);
+            var now = countsOf(lanes, lane);
             var counts = (now.Great - _base[lane].Great, now.Good - _base[lane].Good, now.Miss - _base[lane].Miss, now.Rolls - _base[lane].Rolls);
             if (counts == _shown[lane])
                 continue;
@@ -124,12 +124,16 @@ internal sealed class AiBattlePresentation
         // Traced: VO_AIBTL_ENSO 3 with a section won, 8 with one lost.
         _cue?.Invoke("VO_AIBTL_ENSO", won ? 3 : 8);
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
-            (_base[lane], _shown[lane]) = (countsOf(lanes[lane]), (-1, -1, -1, -1));
+            (_base[lane], _shown[lane]) = (countsOf(lanes, lane), (-1, -1, -1, -1));
         (_section, _progress, _middle, _closing, _endedAt) = (_section + 1, -1, false, false, time);
         _traceTicks = 0;
     }
 
     private int territory(int lane) => _shown[lane] is var (great, good, _, _) && great >= 0 ? AiBattleRules.Territory(_course, great, good) : 0;
+
+    // A side's counts; AI-don's 連打 is the player's (its rolls copy theirs: shown equal, user-asked).
+    private static (int Great, int Good, int Miss, int Rolls) countsOf(IReadOnlyList<TaikoPlayResult> lanes, int lane) =>
+        lane == 1 ? countsOf(lanes[1]) with { Rolls = countsOf(lanes[0]).Rolls } : countsOf(lanes[lane]);
 
     // A side's 良, 可, 不可 and 連打 (rolls and balloon hits) so far.
     private static (int Great, int Good, int Miss, int Rolls) countsOf(TaikoPlayResult play) => (play.Great, play.Good, play.Miss, play.Rolls + play.BalloonHits);

@@ -40,9 +40,9 @@ public sealed class GhostTuningTests
         Assert.Equal(40, model.PatternFor(2).VariancePercent);
         Assert.Equal(5, model.PatternFor(0).VariancePercent);
 
-        // AI-don's hits spread as the player's (40 ms), scaled by the pattern: sqrt(1600 * 1.05) = 41 ms around +20.
+        // AI-don replays the player's own offsets (-20 or +60 ms), their distance from the median scaled by the pattern:
+        // behind (-50%: x0.71) it lands closer, -8 or +48 ms.
         var random = new Random(1);
-        var offsets = Enumerable.Range(0, 4000).Select(_ => model.NextOffset(0, random).TotalMilliseconds - 20).ToArray();
-        Assert.InRange(Math.Sqrt(offsets.Average(static o => o * o)), 38, 44);
+        Assert.Equal([-8d, 48d], Enumerable.Range(0, 200).Select(_ => Math.Round(model.NextOffset(-2, random).TotalMilliseconds)).Distinct().Order());
     }
 }

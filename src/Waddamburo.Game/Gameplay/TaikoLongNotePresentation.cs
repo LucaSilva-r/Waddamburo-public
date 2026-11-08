@@ -69,6 +69,23 @@ public sealed class TaikoLongNotePresentation
     /// <summary>AI battle: the Dons stay in their face-off view through balloons and kusudama (no close-up).</summary>
     public bool KeepCamera { get; init; }
 
+    /// <summary>The roll count a roll shows (by long note index); null: this lane's own hits. AI battle's AI-don shows
+    /// the player's (its rolls copy theirs).</summary>
+    public Func<int, int>? ShownHits { get; set; }
+
+    private int _shownHits;
+
+    // A roll's count as shown; with ShownHits, sent whenever it changes (not only on this lane's own hits: AI-don's
+    // last copy of a hit can come after the roll ended). Returns the count.
+    private int refreshShownHits(int index)
+    {
+        var hits = ShownHits?.Invoke(index) ?? _session.GetLongNoteProgress(index).Hits;
+        if (ShownHits is not null && hits > 0 && hits != _shownHits)
+            invoke(_counter.Player, "SetRendaCount", hits);
+        _shownHits = hits;
+        return hits;
+    }
+
     public TaikoLongNotePresentation(PlayableChart chart, ITaikoJudgementSource session,
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
@@ -119,6 +136,8 @@ public sealed class TaikoLongNotePresentation
     /// </remarks>
     public void AdvanceAnimations(Func<LumenPlayer, int>? steps = null)
     {
+        if (_active is { } rolling && !_chart.LongNotes[rolling].IsBalloon)
+            refreshShownHits(rolling);
         foreach (var layer in _visible.Values)
         {
             // Each frame played is followed by its OnUpdate, as the movie expects (it lays the tail out
@@ -264,7 +283,9 @@ public sealed class TaikoLongNotePresentation
         }
         else if (note.IsBalloon)
         {
-            if (!KeepCamera) _don?.SetCameraLayout(_player, DonPresentationLayout.Balloon);
+            // AI battle keeps its battle view (KeepCamera) but, as every lane's balloon, unmirrored: the mirrored view
+            // turned AI-don's balloon motion the wrong way (user-reported).
+            _don?.SetCameraLayout(_player, KeepCamera ? DonPresentationLayout.Standard : DonPresentationLayout.Balloon);
             _overlay = _balloon;
             invoke(_balloon.Player, "Reset");
             // The opening timeline creates the balloon child two ticks after 'start'.
@@ -318,7 +339,7 @@ public sealed class TaikoLongNotePresentation
         }
         else
         {
-            invoke(_counter.Player, "SetRendaCount", progress.Hits);
+            invoke(_counter.Player, "SetRendaCount", _shownHits = ShownHits?.Invoke(progress.NoteIndex) ?? progress.Hits);
             if (_visible.TryGetValue(progress.NoteIndex, out var layer))
                 invoke(layer.Player, "HitAction");
         }
@@ -369,7 +390,7 @@ public sealed class TaikoLongNotePresentation
             }, null));
             _onBalloonCompleted?.Invoke(progress.Note.Kind, popped);
         }
-        else if (progress.Hits > 0) // no hit: the counter never appeared, RendaEnd would show 0
+        else if (refreshShownHits(index) > 0) // no hit: the counter never appeared, RendaEnd would show 0
             invoke(_counter.Player, "RendaEnd");
         _finished.Add(index);
         _active = null;

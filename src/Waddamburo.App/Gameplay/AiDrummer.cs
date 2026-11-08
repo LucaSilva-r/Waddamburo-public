@@ -12,6 +12,8 @@ namespace Waddamburo.App.Gameplay;
 internal sealed class AiDrummer
 {
     private static readonly TimeSpan Lead = TimeSpan.FromMilliseconds(200);
+    // A little over a 1/60 s frame, so each copied roll hit lands in a frame of its own.
+    private static readonly TimeSpan RollFrame = TimeSpan.FromSeconds(1 / 60d) + TimeSpan.FromMilliseconds(0.5);
 
     private readonly PlayableHitObject[] _notes;
     private readonly TaikoJudgementWindows _windows;
@@ -21,6 +23,7 @@ internal sealed class AiDrummer
     private readonly Random _random;
     private readonly List<(TimeSpan Time, SdlKeyboardKey Key)> _pending = [];
     private int _nextNote, _rolls;
+    private TimeSpan _lastRoll = TimeSpan.MinValue / 2;
     private bool _right, _rollRight;
 
     /// <param name="chart">AI-don's chart (its master route).</param>
@@ -52,9 +55,13 @@ internal sealed class AiDrummer
     {
         while (_nextNote < _notes.Length && _notes[_nextNote].StartTime <= chartTime + Lead)
             decide(_notes[_nextNote++]);
-        // Rolls and balloons: a hit for each of the player's, now.
+        // Rolls and balloons: a hit for each of the player's, a 1/60 s frame apart (a frame counts one roll hit: hits
+        // pressed together would count once; a Discord tester's nightly showed 94 against AI-don's 76).
         for (var rolls = _playerRolls(); _rolls < rolls; _rolls++)
-            _pending.Add((chartTime, key((_rollRight = !_rollRight) ? TaikoInputAction.RightDon : TaikoInputAction.LeftDon)));
+        {
+            _lastRoll = chartTime > _lastRoll + RollFrame ? chartTime : _lastRoll + RollFrame;
+            _pending.Add((_lastRoll, key((_rollRight = !_rollRight) ? TaikoInputAction.RightDon : TaikoInputAction.LeftDon)));
+        }
         if (!_pending.Any(press => press.Time <= chartTime))
             return keyboard;
         var presses = keyboard.Presses.ToList();

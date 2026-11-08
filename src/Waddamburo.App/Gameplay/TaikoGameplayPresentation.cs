@@ -120,15 +120,21 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 .ToDictionary(entry => role(entry.Definition), entry => entry.Layer.Player),
             waiwai.Timeline(charts[0]), cue => playEventSound?.Invoke(null, cue, 0));
         _stage = stage;
+        var aiStage = layers.FirstOrDefault(entry => role(entry.Definition) == "ai_hit_effect").Layer;
         _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
             courses[lane], lane, lane, players: 2, kusudama,
-            // The other player's drum isn't heard: only this player's own drum sounds under their hands.
-            lane == RemoteLaneIndex && RemoteLane is not null ? null : playHitSound, don, playEventSound, stage, reviews?[lane],
+            // The other player's drum isn't heard: only this player's own drum sounds under their hands (AI-don's
+            // neither, user-asked).
+            lane == RemoteLaneIndex && RemoteLane is not null || lane == 1 && aiStage is not null ? null : playHitSound,
+            don, playEventSound, stage, reviews?[lane],
             Options.ElementAtOrDefault(lane), EndBanner, remote: lane == RemoteLaneIndex ? RemoteLane : null,
             relay: lane != RemoteLaneIndex ? Relay : null,
-            donStage: layers.FirstOrDefault(entry => role(entry.Definition) == "ai_hit_effect").Layer))];
+            donStage: aiStage))];
+        // AI battle: AI-don's roll counter shows the player's count (its rolls copy theirs, user-asked).
+        if (aiStage is not null)
+            _lanes[1].LongNotes.ShownHits = index => _lanes[0].Session.GetLongNoteProgress(index).Hits;
         // Online, each lane has its own notes: nothing links hand notes across the network.
         if (RemoteLane is not null)
             return;
@@ -308,6 +314,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public TaikoJudgementSession Session => _session;
         private readonly TaikoHitFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
+
+        public TaikoLongNotePresentation LongNotes => _longNotes;
         private readonly TaikoDonPresentation? _character;
         private readonly TaikoAnimationClock _animationClock;
         private readonly LiveLaneSource? _live; // an online partner's lane

@@ -61,9 +61,10 @@ public static class GhostTuning
 
 /// <summary>
 /// AI-don's hit timing: a ghost of the player's own (traced, every battle: AI-don ends each section within a few notes of
-/// the player). Each hit lands at a normal offset with the player's median and spread over their last
-/// <see cref="GhostLevel.SampleSize"/> hits (the level's first variance until there are any), the spread scaled by the
-/// pattern for the current lead.
+/// the player). Each hit replays one of the player's last <see cref="GhostLevel.SampleSize"/> hit offsets, picked at
+/// random, its distance from their median scaled by the pattern for the current lead (a normal draw with the level's
+/// first variance until there are enough). A normal draw with the player's variance instead made AI-don too easy
+/// (testers): a few late hits widen the variance of a mostly tight player, and every AI hit then plays that loose.
 /// </summary>
 /// <remarks>
 /// ponytail: the pattern choice (behind: the second pattern, ahead: the third, else the first) is a reading of
@@ -109,9 +110,11 @@ public sealed class GhostTimingModel(GhostLevel level)
     public TimeSpan NextOffset(double lead, Random random)
     {
         var (median, variance) = Statistics;
-        var spread = Math.Sqrt(variance * Math.Max(0.05, 1 + PatternFor(lead).VariancePercent / 100.0));
+        var scale = Math.Sqrt(Math.Max(0.05, 1 + PatternFor(lead).VariancePercent / 100.0));
+        if (_samples.Count >= MinimumSamples)
+            return TimeSpan.FromMilliseconds(median + (_samples.ElementAt(random.Next(_samples.Count)) - median) * scale);
         // Box-Muller: a standard normal draw.
         var normal = Math.Sqrt(-2 * Math.Log(1 - random.NextDouble())) * Math.Cos(2 * Math.PI * random.NextDouble());
-        return TimeSpan.FromMilliseconds(median + spread * normal);
+        return TimeSpan.FromMilliseconds(median + Math.Sqrt(variance) * scale * normal);
     }
 }
