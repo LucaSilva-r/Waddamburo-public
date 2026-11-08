@@ -408,10 +408,11 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost songSelectHost()
     {
-        var linked = Waiwai || AiBattle ? Array.Empty<SongSourceKind>() : libraries();
+        var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
-            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !AiBattle && !TutorialSeen && HomeTutorialSeen?.Invoke() != true,
+            // AI battle: the current library's songs, without the folders leading to the others.
+            links: AiBattle ? [] : linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !AiBattle && !TutorialSeen && HomeTutorialSeen?.Invoke() != true,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: !AiBattle && Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,

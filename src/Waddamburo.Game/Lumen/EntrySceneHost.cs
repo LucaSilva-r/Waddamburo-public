@@ -147,6 +147,8 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     public int? PreJoined { get; init; }
 
     private readonly bool[] _donHidden = new bool[2], _boardShown = new bool[2];
+    // Home: a drum nobody plays after the setup; its stand (taiko_Np) goes as before any join (the movie starts it hidden).
+    private readonly bool[] _standHidden = new bool[2];
     private readonly ScoreProfile?[] _setupProfiles = new ScoreProfile?[2];
 
     /// <summary>Setup: the profile on a side's stand; its title and plate go on that side's name board.</summary>
@@ -202,6 +204,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             if (!playing[side])
             {
                 SetSetupSide(side, don: false, board: false);
+                _standHidden[side] = true;
                 // Main's constructor: this.resource = new Resource(); _global.res = this.resource.
                 if (!entry.TryWriteScriptValue($"_global.res.playerInfo.{side}.isCoin", false))
                     Console.Error.WriteLine($"Entry: no _global.res.playerInfo[{side}] to release.");
@@ -243,8 +246,12 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 _modeSelectFade = -1; // handed back to the movie
         }
         for (var side = 0; side < 2; side++)
+        {
             if (_donHidden[side])
                 _entry.TrySetInstanceAlpha(donPath(side), 0);
+            if (_standHidden[side])
+                _entry.TrySetInstanceAlpha(side == 0 ? "taiko_1p" : "taiko_2p", 0);
+        }
         foreach (var player in _costumeEffectPending)
             startCostumeEffect(player);
         foreach (var player in _costumeCuePending)
@@ -555,6 +562,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             return false;
         var p = number(player);
         _joined.Add(player);
+        if (_standHidden[player])
+        {
+            _standHidden[player] = false;
+            entry.TrySetInstanceAlpha(player == 0 ? "taiko_1p" : "taiko_2p", 1);
+        }
         if (_cardNames.Remove(player, out var cardName))
             Parts.UncoverEntryName(player, cardName);
         // Home (setup or its players): a name board whose name the host draws over it (account names

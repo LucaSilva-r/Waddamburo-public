@@ -29,7 +29,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         Shell.Players.StopWatching();
         if (scene == FlowScenes.SongSelect)
-            Shell.Previews?.StartBackground(Shell.Hosts.Waiwai);
+            Shell.Previews?.StartBackground(Shell.Hosts.Waiwai, Shell.Hosts.AiBattle);
         else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
             Shell.Sounds?.Bank.PlayMusic(DanMusicCue, DanMusicCue, loop: true);
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)

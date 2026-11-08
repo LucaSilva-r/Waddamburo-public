@@ -18,8 +18,9 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     private readonly CatalogAssetRouter _resolver;
     private readonly AudioClip? _normalBackground;
     private readonly AudioClip? _waiwaiBackground;
-    private bool _waiwai; // which song select's music is the background
-    private AudioClip? _background => _waiwai ? _waiwaiBackground : _normalBackground;
+    private readonly AudioClip? _aiBattleBackground;
+    private int _select; // which song select's music is the background: 0 normal, 1 Waiwai, 2 AI battle
+    private AudioClip? _background => _select switch { 1 => _waiwaiBackground, 2 => _aiBattleBackground, _ => _normalBackground };
     private Operation? _current;
     private bool _disposed;
     // A song was chosen: what plays goes on and nothing replaces it, until Silence (or Song Select's music again).
@@ -29,23 +30,26 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
         AudioEngine audio,
         CatalogAssetRouter resolver,
         string? backgroundPath = null,
-        string? waiwaiBackgroundPath = null)
+        string? waiwaiBackgroundPath = null,
+        string? aiBattleBackgroundPath = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _normalBackground = backgroundPath is null ? null : AudioClip.Load(backgroundPath, audio.Mixer.Format);
         _waiwaiBackground = waiwaiBackgroundPath is null ? null : AudioClip.Load(waiwaiBackgroundPath, audio.Mixer.Format);
+        _aiBattleBackground = aiBattleBackgroundPath is null ? null : AudioClip.Load(aiBattleBackgroundPath, audio.Mixer.Format);
     }
 
-    /// <summary>Song Select's music: JINGLE_GENRE, or JINGLE_WAIGENRE in Waiwai's song select.</summary>
-    public void StartBackground(bool waiwai = false)
+    /// <summary>Song Select's music: JINGLE_GENRE, JINGLE_WAIGENRE in Waiwai's, JINGLE_AIBTL_GENRE in AI battle's (traced).</summary>
+    public void StartBackground(bool waiwai = false, bool aiBattle = false)
     {
+        var select = aiBattle ? 2 : waiwai ? 1 : 0;
         lock (_gate)
         {
             _held = false;
-            if (_waiwai != waiwai)
+            if (_select != select)
             {
-                _waiwai = waiwai;
+                _select = select;
                 stopCurrent(); // the other select's music must not keep playing
                 _current = null;
             }

@@ -590,7 +590,8 @@ internal sealed class GameShell : IDisposable
             Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{Active?.Id.ToString() ?? "starting"} at tick {Tick}" };
             Previews = Audio is null
                 ? null
-                : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"));
+                : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"),
+                    FindJingle("JINGLE_AIBTL_GENRE.nub"));
             _boot.Begin("SOUND DATA");
             Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
             _boot.Begin("GRAPHICS");
