@@ -232,6 +232,19 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>AI battle: the intermediate chart picked, in steps below いつもの (0 = いつもの).</summary>
     public int SupportLevel { get; private set; }
 
+    /// <summary>The counts the support menu was last given (the song whose board is open).</summary>
+    public int[] ShownSupportCounts { get; private set; } = [0, 0, 0, 0];
+
+    /// <summary>
+    /// The level the support menu's pick is (ghost_song_select's SupportInfo: a course offering n levels below it lists
+    /// 1: [-2], 2: [-2, -3], 3: [-1, -2, -3] from its own, and sends the pick's place in that list, 0 = いつもの).
+    /// </summary>
+    public static int SupportPick(int courseLevel, int offered, int pick) =>
+        pick <= 0 || offered <= 0 ? courseLevel : courseLevel - (offered >= 3 ? pick : pick + 1);
+
+    /// <summary>AI battle: a song's intermediate levels below かんたん, ふつう, むずかしい and おに (null: none).</summary>
+    public Func<SongDescriptor, int[]>? SupportCounts { get; init; }
+
     public SongSelectHostBinding(
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
@@ -372,13 +385,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
             // AI battle's song select (traced session-ai-battle-1/4). GetMusicInfo_Detail(genre, song) as a song's
             // board opens: the game answers SetSupportLevelNum(e, n, h, m), how many intermediate charts each
-            // course offers besides いつもの (supportinfo.xml). ponytail: none yet (always いつもの), until the
-            // intermediate charts exist.
-            lumen.RegisterMethod("GetMusicInfo_Detail", _ =>
+            // course offers below いつもの (supportinfo.xml, SupportCounts).
+            lumen.RegisterMethod("GetMusicInfo_Detail", call =>
             {
                 if (AiBattle)
-                    requirePlayer().TryInvokeCallback("SetSupportLevelNum",
-                        [LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0)]);
+                {
+                    var counts = ShownSupportCounts = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
+                        ? SupportCounts?.Invoke(song.Descriptor) ?? [0, 0, 0, 0] : [0, 0, 0, 0];
+                    requirePlayer().TryInvokeCallback("SetSupportLevelNum", [.. counts.Take(4).Select(static count => LumenHostValue.FromNumber(count))]);
+                }
                 return LumenHostValue.Undefined;
             });
             lumen.RegisterMethod("NotifyMusicBoard", static _ => LumenHostValue.Undefined);

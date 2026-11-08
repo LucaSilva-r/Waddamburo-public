@@ -28,6 +28,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     // The charts as played (each player's options applied) and as authored (hashed, uploaded, saved under).
     private PlayableChart[] _charts = [];
     private PlayableChart[] _sourceCharts = [];
+    // AI battle on a level below いつもの (a simplified chart).
+    private bool _intermediate;
     private int _seed;
     private SongSelectSong? _song;
 
@@ -231,9 +233,17 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _seed = request.Seed ?? Random.Shared.Next();
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
+        // AI battle's support menu: a level below いつもの is the course's chart simplified (both lanes play it).
+        var pick = Shell.Hosts.AiBattle && _sourceCharts.Length == 2 && _review is null ? Shell.Hosts.SongSelect?.SupportLevel ?? 0 : 0;
+        var offered = Shell.Hosts.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)players[0].Course) ?? 0;
+        var supportLevel = Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(ChartSimplifier.LevelOf(players[0].Course), offered, pick);
+        _intermediate = pick > 0 && ChartSimplifier.SourceCourse(supportLevel) == players[0].Course;
+        if (_intermediate)
+            Console.WriteLine($"AI battle: level {supportLevel} (pick {pick} of {offered}).");
         // A player's own modchart for their chart (by its hash) goes over the chart's effects, before the options.
-        _charts = [.. _sourceCharts.Select((chart, lane) =>
+        _charts = [.. _sourceCharts.Select((source, lane) =>
         {
+            var chart = _intermediate ? ChartSimplifier.Simplify(source, supportLevel) : source;
             var player = players.ElementAtOrDefault(lane);
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
             // The player's layout where neither gave modchart changes; arcade, the attract's demo play and dan courses
@@ -1113,7 +1123,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
-        if (Shell.Autoplay || Shell.DevAutoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        // Intermediate levels keep no records (Green: crowns only on levels 1/5/9/13/裏).
+        if (Shell.Autoplay || Shell.DevAutoplay || _voided || _intermediate || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)

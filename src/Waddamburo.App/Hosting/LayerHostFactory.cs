@@ -467,9 +467,13 @@ internal sealed class LayerHostFactory(
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,
             AiBattle = AiBattle,
+            SupportCounts = SupportCounts,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }
+
+    /// <summary>AI battle's intermediate levels per song (below かんたん, ふつう, むずかしい, おに).</summary>
+    public Func<SongDescriptor, int[]>? SupportCounts { get; set; }
 
     /// <summary>The AI battle song the next results show; null: not a battle.</summary>
     public AiBattleOutcome? AiOutcome { get; set; }

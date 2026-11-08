@@ -608,6 +608,7 @@ internal sealed class GameShell : IDisposable
             _nameTexts = new NameTextTextures(Application, options.FontPath);
             _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
             GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
+            var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
                 Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
@@ -654,6 +655,11 @@ internal sealed class GameShell : IDisposable
             var flow = new GameFlowSession();
             Catalog = createSceneCatalog(options.StartScene);
             Hosts = createHosts(flow, snapshot, diagnosticResult);
+            // Stock songs as supportinfo.xml lists them; any other song three steps below each course it has.
+            // ponytail: three everywhere for custom songs, whether or not simplifying changes their charts.
+            Hosts.SupportCounts = song => song.Key.Source == SongSourceKind.Stock
+                ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
+                : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)];
             if (Arcade.Home && Options.Accounts is { } setupBook)
                 _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
