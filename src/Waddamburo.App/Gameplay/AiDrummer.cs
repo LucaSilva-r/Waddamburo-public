@@ -5,49 +5,52 @@ using Waddamburo.Platform.Sdl;
 namespace Waddamburo.App.Gameplay;
 
 /// <summary>
-/// AI-don's drumming in an AI battle (lane 1, the second drum's keys). Each note is decided a little before it comes:
-/// 良, 可 or a miss, leaning to keep the section close (taiko-fumen wiki: the AI keeps the battle close in real time;
-/// its rolls match the player's, so they decide nothing). A 良 lands on the note, a 可 between the 良 and 可 windows.
+/// AI-don's drumming in an AI battle (lane 1, the second drum's keys): a ghost of the player. Each note is timed a little
+/// before it comes by <see cref="GhostTimingModel"/> (the player's own timing, rubber-banded by the lead); the judgement
+/// is the lane's own. Rolls and balloons copy the player's hits exactly (user-confirmed, and traced: equal roll counts).
 /// </summary>
-/// <remarks>
-/// ponytail: a closeness heuristic, not Green's model (ghosttuning.xml: the player's timing median/variance, per-level
-/// patterns, mood); its numbers are to be tuned against plays.
-/// </remarks>
 internal sealed class AiDrummer
 {
     private static readonly TimeSpan Lead = TimeSpan.FromMilliseconds(200);
-    private static readonly TimeSpan RollInterval = TimeSpan.FromSeconds(1 / 15d);
 
     private readonly PlayableHitObject[] _notes;
-    private readonly (TimeSpan Time, SdlKeyboardKey Key)[] _rolls;
     private readonly TaikoJudgementWindows _windows;
-    private readonly int _greatWeight;
+    private readonly GhostTimingModel _model;
     private readonly Func<(int Player, int Ai)> _territory;
+    private readonly Func<int> _playerRolls;
     private readonly Random _random;
     private readonly List<(TimeSpan Time, SdlKeyboardKey Key)> _pending = [];
-    private int _nextNote, _nextRoll;
-    private bool _right;
+    private int _nextNote, _rolls;
+    private bool _right, _rollRight;
 
-    public AiDrummer(PlayableChart chart, TaikoCourse course, int seed, Func<(int Player, int Ai)> territory)
+    /// <param name="territory">This section's territory points, the player's and AI-don's.</param>
+    /// <param name="playerRolls">The player's roll and balloon hits so far.</param>
+    public AiDrummer(PlayableChart chart, TaikoCourse course, int seed, GhostTimingModel model,
+        Func<(int Player, int Ai)> territory, Func<int> playerRolls)
     {
         chart = chart.OnRoute(ChartBranch.Master);
         _notes = [.. chart.HitObjects];
-        // Rolls and balloons as the bot drums them (only the presses inside a long note).
-        _rolls = [.. GameplayAutoplay.InputsFor(chart, RollInterval)
-            .Where(input => chart.LongNotes.Any(note => input.Time >= note.StartTime && input.Time <= note.EndTime))
-            .Select(input => (input.Time, key(input.Action)))];
         _windows = TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course);
-        _greatWeight = AiBattleRules.Weights(course).Great;
+        _model = model;
         _territory = territory;
+        _playerRolls = playerRolls;
         _random = new Random(seed);
+    }
+
+    /// <summary>One of the player's judged hits (AI-don learns their timing).</summary>
+    public void Observe(TaikoNoteJudgement judgement)
+    {
+        if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is not null)
+            _model.Observe(offset);
     }
 
     public SdlKeyboardSnapshot Apply(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
     {
         while (_nextNote < _notes.Length && _notes[_nextNote].StartTime <= chartTime + Lead)
             decide(_notes[_nextNote++]);
-        while (_nextRoll < _rolls.Length && _rolls[_nextRoll].Time <= chartTime + Lead)
-            _pending.Add(_rolls[_nextRoll++]);
+        // Rolls and balloons: a hit for each of the player's, now.
+        for (var rolls = _playerRolls(); _rolls < rolls; _rolls++)
+            _pending.Add((chartTime, key((_rollRight = !_rollRight) ? TaikoInputAction.RightDon : TaikoInputAction.LeftDon)));
         if (!_pending.Any(press => press.Time <= chartTime))
             return keyboard;
         var presses = keyboard.Presses.ToList();
@@ -62,21 +65,11 @@ internal sealed class AiDrummer
 
     private void decide(PlayableHitObject note)
     {
-        // How many 良 AI-don is ahead by this section: the further ahead, the likelier a 可 or a miss.
+        // AI-don's lead this section, in 良.
         var (player, ai) = _territory();
-        var ahead = (ai - player) / (double)_greatWeight;
-        var great = Math.Clamp(0.85 - 0.12 * ahead, 0.30, 0.98);
-        var roll = _random.NextDouble();
-        TimeSpan offset;
-        if (roll < great)
-            offset = TimeSpan.FromMilliseconds((_random.NextDouble() - 0.5) * _windows.Great.TotalMilliseconds);
-        else if (roll < great + (1 - great) * 0.75)
-        {
-            var span = _windows.Good - _windows.Great;
-            offset = (_windows.Great + span * (0.2 + 0.6 * _random.NextDouble())) * (_random.Next(2) == 0 ? -1 : 1);
-        }
-        else
-            return; // a miss: no hit
+        var offset = _model.NextOffset((ai - player) / (double)Math.Max(1, _model.Level.ScoreGreat), _random);
+        if (offset.Duration() > _windows.Miss)
+            return; // past the 不可 window: no hit, a miss
         var time = note.StartTime + offset;
         var ka = note.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa;
         _right = !note.IsStrong && !_right;

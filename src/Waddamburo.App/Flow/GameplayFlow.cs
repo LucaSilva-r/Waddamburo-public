@@ -310,7 +310,14 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         _battle = aiBattle ? new AiBattlePresentation(active, _charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
         if (_battle is { } battle && _review is null)
-            _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, () => battle.Territory);
+        {
+            // ponytail: always the first level until AI ranks are kept (each rank its own level, ghostinfo.xml).
+            var aiLevel = Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0]
+                : new GhostLevel(1024, 256, [new(0, 0, 5), new(0, 0, -50), new(0, 0, 40)], [], 100, 5, 3, 0);
+            var bot = _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, new GhostTimingModel(aiLevel), () => battle.Territory,
+                () => Shell.Gameplay.Results is [var player, ..] ? player.Rolls + player.BalloonHits : 0);
+            Shell.Gameplay.OnJudged(0, bot.Observe);
+        }
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
@@ -1106,7 +1113,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
-        if (Shell.Autoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        if (Shell.Autoplay || Shell.DevAutoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)

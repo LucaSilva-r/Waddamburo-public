@@ -270,6 +270,9 @@ internal sealed class GameShell : IDisposable
     private readonly TextFieldTextures _textFields;
     private readonly NameTextTextures _nameTexts;
     private readonly NutData _nutData;
+
+    /// <summary>AI battle's AI-don levels (ghosttuning.xml; empty when the data has none).</summary>
+    public IReadOnlyList<Waddamburo.Game.Gameplay.GhostLevel> GhostLevels { get; } = [];
     private readonly ToneArt _toneArt;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
@@ -604,6 +607,7 @@ internal sealed class GameShell : IDisposable
             _textFields = new TextFieldTextures(Application, options.FontPath);
             _nameTexts = new NameTextTextures(Application, options.FontPath);
             _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
+            GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
                 Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link

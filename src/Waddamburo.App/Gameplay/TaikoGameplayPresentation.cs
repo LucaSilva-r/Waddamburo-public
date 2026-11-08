@@ -83,6 +83,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Every lane's numbers, in lane order (the second is the right drum's player).</summary>
     public IReadOnlyList<TaikoPlayResult> Results => [.. _lanes.Select(lane => lane.Result)];
 
+    /// <summary>Calls <paramref name="handler"/> with each of a lane's judgements in this play.</summary>
+    public void OnJudged(int lane, Action<TaikoNoteJudgement> handler) => _lanes[lane].Judged += handler;
+
     /// <summary>Every lane's drum inputs, in lane order.</summary>
     public IReadOnlyList<TaikoReplay> Replays => [.. _lanes.Select(lane => lane.Replay)];
 
@@ -362,6 +365,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         public TimingMark? LastTiming { get; private set; }
 
+        /// <summary>Each of the lane's judgements (AI battle's AI-don learns the player's timing from them).</summary>
+        public event Action<TaikoNoteJudgement>? Judged;
+
         /// <summary>
         /// <paramref name="lane"/> 0 = the top lane, 1 = the second player's lower lane;
         /// <paramref name="side"/> = the player's drum (keys, name, lane_obi side).
@@ -598,6 +604,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var hitRadius = 0f;
             counted.Judged += judgement =>
             {
+                Judged?.Invoke(judgement);
                 // Every hit was early or late (the setting picks which are shown); a note that passed
                 // unhit has no hit to time.
                 if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is { } result)
