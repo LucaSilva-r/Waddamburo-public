@@ -39,7 +39,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private GameplayTimeline? _timeline;
     private GameplayAutoplay? _autoplay;
     // AI battle: AI-don's lane, and the battle's own movies.
-    private GameplayAutoplay? _aiBot;
+    private AiDrummer? _aiBot;
     private AiBattlePresentation? _battle;
     // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
     private ReviewSession? _review;
@@ -301,8 +301,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _autoplay = (Shell.Autoplay || _demo) && _review is null ? new GameplayAutoplay(aiBattle ? [_charts[0]] : _charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
-        // ponytail: AI-don plays every note on time (rolls at 15 hits a second); the timing model comes next.
-        _aiBot = aiBattle && _review is null ? new GameplayAutoplay([_charts[1]], 1, TimeSpan.FromSeconds(1 / 15d)) : null;
+        _aiBot = null;
         _echo = _demo || _review is not null || aiBattle || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
         if (Shell.Match.InSong)
             Shell.Match.Start(Shell.Gameplay, request.Players.ToList().FindIndex(player => player.Player != localSlot()));
@@ -310,6 +309,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Hosts.AiBattle && _charts.Length > 0 && fourThree(_charts[0].Effects);
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         _battle = aiBattle ? new AiBattlePresentation(active, _charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
+        if (_battle is { } battle && _review is null)
+            _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, () => battle.Territory);
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)

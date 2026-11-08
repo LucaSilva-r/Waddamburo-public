@@ -45,6 +45,9 @@ internal sealed class AiBattlePresentation
 
     public int Sections => _ends.Length;
 
+    /// <summary>This section's territory so far: the player's and AI-don's.</summary>
+    public (int Player, int Ai) Territory => (territory(0), territory(1));
+
     public void Advance(TimeSpan time, IReadOnlyList<TaikoPlayResult> lanes)
     {
         // The movies register their callbacks on their first frame.
