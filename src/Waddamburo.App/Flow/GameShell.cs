@@ -219,6 +219,7 @@ internal sealed class GameShell : IDisposable
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
     private readonly NameTextTextures _nameTexts;
+    private readonly NutData _nutData;
     private readonly ToneArt _toneArt;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
@@ -551,7 +552,7 @@ internal sealed class GameShell : IDisposable
             _pill = new PairingPill(Application, options.FontPath);
             _textFields = new TextFieldTextures(Application, options.FontPath);
             _nameTexts = new NameTextTextures(Application, options.FontPath);
-            _toneArt = new ToneArt(Application, dataRoot);
+            _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
                 Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
@@ -583,10 +584,10 @@ internal sealed class GameShell : IDisposable
                 Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
                 Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
                 () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
-            _costumeIcons = new CostumeIconTextures(Application, dataRoot);
-            _danArt = new DanChallengeArt(Application, dataRoot);
-            _copyright = new CopyrightArt(Application, dataRoot);
-            _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
+            _costumeIcons = new CostumeIconTextures(Application, _nutData, dataRoot);
+            _danArt = new DanChallengeArt(_nutData);
+            _copyright = new CopyrightArt(_nutData);
+            _waiwaiResultTextures = new WaiwaiResultTextures(_nutData);
             // Other releases' installs (home's stock folders) name skins for the songs Green lacks.
             Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot), GameplaySkinResolver.MusicInfos(
                 [dataRoot, .. Arcade.Home ? ArcadeSettings.Folders(Arcade.StockFolders).Select(Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot).OfType<string>() : []]));

@@ -53,25 +53,8 @@ public sealed class LumenMovieContent
                     $"Movie texture entry {view.Entry.Index} contains {pack.Textures.Length} NTP3 textures; the initial Green profile requires exactly one",
                     view.Entry.Offset);
             }
-            var texture = pack.Textures[0];
-            var index = view.Entry.Index - movie.Entry.TextureBegin;
-            if (keepCompressed && texture.Format is NutPixelFormat.Bc1 or NutPixelFormat.Bc3
-                && texture.Width % 4 == 0 && texture.Height % 4 == 0)
-            {
-                var format = texture.Format == NutPixelFormat.Bc1 ? LumenBlockFormat.Bc1 : LumenBlockFormat.Bc3;
-                var length = texture.Width / 4 * (texture.Height / 4) * (format == LumenBlockFormat.Bc1 ? 8 : 16);
-                if (texture.Data.Length >= length)
-                {
-                    textures.Add(new LumenTextureContent(index, texture.Width, texture.Height, [])
-                        { Blocks = texture.Data[..length], BlockFormat = format });
-                    continue;
-                }
-            }
-            textures.Add(new LumenTextureContent(
-                view.Entry.Index - movie.Entry.TextureBegin,
-                texture.Width,
-                texture.Height,
-                ImmutableCollectionsMarshal.AsImmutableArray(NutTextureDecoder.DecodeRgba8(texture, parserLimits))));
+            textures.Add(LumenTextureContent.FromNut(view.Entry.Index - movie.Entry.TextureBegin, pack.Textures[0],
+                keepCompressed, parserLimits));
         }
 
         var file = LmbFile.Parse(movie.Data, parserLimits);
@@ -154,6 +137,25 @@ public sealed record LumenTextureContent(
 
     /// <summary>The upscale cache's name for this texture, when already known (it travels to the upload).</summary>
     public string? UpscaleKey { get; init; }
+
+    /// <summary>
+    /// One NUT texture: its BC1/BC3 blocks as they are when <paramref name="keepCompressed"/> (and whole blocks),
+    /// RGBA otherwise. Movies' textures and the game's nutdata art alike.
+    /// </summary>
+    public static LumenTextureContent FromNut(int index, NutTexture texture, bool keepCompressed, ParserLimits? limits = null)
+    {
+        if (keepCompressed && texture.Format is NutPixelFormat.Bc1 or NutPixelFormat.Bc3
+            && texture.Width % 4 == 0 && texture.Height % 4 == 0)
+        {
+            var format = texture.Format == NutPixelFormat.Bc1 ? LumenBlockFormat.Bc1 : LumenBlockFormat.Bc3;
+            var length = texture.Width / 4 * (texture.Height / 4) * (format == LumenBlockFormat.Bc1 ? 8 : 16);
+            if (texture.Data.Length >= length)
+                return new LumenTextureContent(index, texture.Width, texture.Height, [])
+                    { Blocks = texture.Data[..length], BlockFormat = format };
+        }
+        return new LumenTextureContent(index, texture.Width, texture.Height,
+            ImmutableCollectionsMarshal.AsImmutableArray(NutTextureDecoder.DecodeRgba8(texture, limits ?? ParserLimits.Default)));
+    }
 
     /// <summary>Decodes BC7 blocks to RGBA (the renderer's native library; set by the game).</summary>
     public static Func<ReadOnlyMemory<byte>, int, int, byte[]>? Bc7Decoder { get; set; }
