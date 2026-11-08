@@ -402,7 +402,7 @@ internal sealed class LayerHostFactory(
                 && InOnlineRoom?.Invoke() != true,
             danSeries: arcade.Home ? Dan?.Series : null,
             online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received,
-            courseStar: OnlineSong is null && Search is null, rollFolder: RandomSongFolder?.Invoke() == true,
+            courseStar: OnlineSong is null, rollFolder: RandomSongFolder?.Invoke() == true,
             recentCharts: TwoPlayers || OnlineSong is not null ? null : RecentCharts?.Invoke(PlayerSide));
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
