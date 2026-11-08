@@ -186,8 +186,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
 
     /// <summary>
     /// Home: the setup's players join the running entry (no reload, so its intro and music carry on).
-    /// The movie joined both stands for the setup; a drum not playing keeps its Don and board hidden.
-    /// ponytail: the movie still counts that drum as joined; untested whether any mode waits for it.
+    /// The movie joined both stands for the setup; a drum not playing is released in the movie's own data
+    /// (_global.res.playerInfo[side].isCoin, what Resource.GetCoinEntryNum counts), so it counts one player: mode select
+    /// offers AI battle and the dress-up waits for one drum.
     /// </summary>
     public void FinishSetup(IReadOnlyList<bool> playing)
     {
@@ -201,14 +202,28 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             if (!playing[side])
             {
                 SetSetupSide(side, don: false, board: false);
+                // Main's constructor: this.resource = new Resource(); _global.res = this.resource.
+                if (!entry.TryWriteScriptValue($"_global.res.playerInfo.{side}.isCoin", false))
+                    Console.Error.WriteLine($"Entry: no _global.res.playerInfo[{side}] to release.");
                 _joined.Remove(side);
                 Parts.SetIndicator(side, 0);
                 continue;
             }
             PlayerJoined?.Invoke(side);
             assignCostumes(entry, side, PlayerLook?.Invoke(side));
+            // An account plays as a card would: ModeSelect offers AI battle only with CardInfo.isCard and a player
+            // whose IsCoin and IsData are set (entry script); accounts never take the card path.
+            if (PlayerName?.Invoke(side) is { Length: > 0 })
+            {
+                entry.TryWriteScriptValue("_global.CardInfo.isCard", true);
+                entry.TryWriteScriptValue($"_global.res.playerInfo.{side}.isData", true);
+            }
         }
         CoinsChanged();
+        // Mode select was built during the setup (both stands joined): build it again for the real players.
+        // PlayerEntry.ModeSelectInit() runs ModeSelect.Init(this); the mode select clip keeps that PlayerEntry.
+        if (!entry.TryCallScriptMethod("modeSelect.playerentry", "ModeSelectInit", []))
+            Console.Error.WriteLine("Entry: no modeSelect.playerentry.ModeSelectInit to rebuild the modes.");
     }
 
     private static string donPath(int side) => side == 0 ? "taiko_1p/body/don1pM" : "taiko_2p/body/don2pM";

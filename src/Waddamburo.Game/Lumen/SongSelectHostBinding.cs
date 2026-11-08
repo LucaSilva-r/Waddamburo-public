@@ -604,11 +604,17 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         foreach (var player in new[] { 0, 1 })
         {
             // An online partner isn't joined for the movie: it would wait for them to choose, with nobody at that drum.
-            invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
-                LumenHostValue.FromBoolean(_crowns[player] is not null && _sides.Contains(player)),
-                // ponytail: jukuLevel -1 (none); the game sent 12 for a carded player (session13-card), from
-                // player data we do not keep yet.
-                LumenHostValue.FromNumber(-1));
+            if (AiBattle)
+                // ghost_song_select's SetPlayer(playerID, isJoin, playSide, jukuLevel): traced (0, true, 0, 1) and
+                // (1, false, 0, -1); with the normal song select's arguments its list takes no input.
+                invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
+                    LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(_sides.Contains(player) ? 1 : -1));
+            else
+                invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
+                    LumenHostValue.FromBoolean(_crowns[player] is not null && _sides.Contains(player)),
+                    // ponytail: jukuLevel -1 (none); the game sent 12 for a carded player (session13-card), from
+                    // player data we do not keep yet.
+                    LumenHostValue.FromNumber(-1));
             // (player, myScore, otherwiseScore, localrankingScore): traced (p, 2, 0, 1) for a carded
             // player, all 0 for an empty drum.
             var carded = _crowns[player] is not null && _sides.Contains(player);
