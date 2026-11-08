@@ -1,0 +1,130 @@
+using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Scenes;
+using Waddamburo.Lumen.Runtime;
+
+namespace Waddamburo.App.Gameplay;
+
+/// <summary>
+/// Drives AI battle's own movies through a song (traced session-ai-battle-3): the section timer (SetProgress, percent of
+/// the section), the score board (each side's 良 / 可 this section), the backdrops' territory needle
+/// (UpdateTargetGaugeNum: the player's territory less AI-don's, ±9), the 1/3 and 2/3 cues, and at each section's end the
+/// win icon, the board and timer moving on, and the backdrops' win or lose; after the last, the battle's result.
+/// Lane 0 is the player's, lane 1 AI-don's.
+/// </summary>
+internal sealed class AiBattlePresentation
+{
+    private const int MaxNeedle = 9;
+    private static readonly TimeSpan ResultDelay = TimeSpan.FromSeconds(3); // traced: last section end -> StartAction
+
+    private readonly LumenPlayer? _backdrop, _hitEffect, _timer, _board, _icons, _result;
+    private readonly TimeSpan[] _ends;
+    private readonly TaikoCourse _course;
+    private readonly Action<string, int>? _cue;
+    private readonly (int Great, int Good)[] _base = new (int, int)[2], _shown = new (int, int)[2];
+    private readonly List<bool> _won = [];
+    private bool _ready, _started, _middle, _closing, _resultShown;
+    private int _section, _progress = -1, _needle;
+    private TimeSpan _endedAt;
+
+    public AiBattlePresentation(LumenGameSceneInstance scene, PlayableChart chart, TaikoCourse course, Action<string, int>? cue)
+    {
+        LumenPlayer? movie(string name) => scene.Layers.ToList().FindIndex(layer =>
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == name) is var index and >= 0 ? scene.Player.Layers[index].Player : null;
+        (_backdrop, _hitEffect, _timer, _board, _icons, _result) =
+            (movie("ai_enso_bg"), movie("ai_hit_effect"), movie("time"), movie("score_board"), movie("section_win_icon"), movie("battle_result"));
+        _ends = AiBattleRules.SectionEnds(chart);
+        _course = course;
+        _cue = cue;
+        for (var lane = 0; lane < 2; lane++)
+            _shown[lane] = (-1, -1);
+    }
+
+    /// <summary>Each finished section: the player took it.</summary>
+    public IReadOnlyList<bool> SectionsWon => _won;
+
+    public int Sections => _ends.Length;
+
+    public void Advance(TimeSpan time, IReadOnlyList<TaikoPlayResult> lanes)
+    {
+        // The movies register their callbacks on their first frame.
+        if (!_ready)
+        {
+            if (new[] { _backdrop, _hitEffect, _timer, _icons }.Any(static player => player is { CallbackNames.Length: 0 }))
+                return;
+            _ready = true;
+            // Traced AIEnsoBGInitialize(5) / AIEnsoWinIconInitialize(5) with five sections, SetSectionType(1).
+            both("AIEnsoBGInitialize", number(_ends.Length));
+            call(_timer, "SetSectionType", number(_ends.Length == 5 ? 1 : 0));
+            call(_icons, "AIEnsoWinIconInitialize", number(_ends.Length));
+        }
+        if (!_started)
+        {
+            _started = true;
+            both("StartReadyAction");
+            _cue?.Invoke("VO_AIBTL_ENSO", 0);
+        }
+        if (_section >= _ends.Length)
+        {
+            if (!_resultShown && time - _endedAt >= ResultDelay)
+            {
+                _resultShown = true;
+                // ponytail: StartAction(won, false) read from two lost battles (traced (false, false)).
+                call(_result, "StartAction", LumenHostValue.FromBoolean(_won.Count(static won => won) * 2 > _won.Count), LumenHostValue.FromBoolean(false));
+            }
+            return;
+        }
+        var start = _section == 0 ? TimeSpan.Zero : _ends[_section - 1];
+        var end = _ends[_section];
+        var fraction = Math.Clamp((time - start) / (end - start), 0, 1);
+        if ((int)(fraction * 100) is var progress && progress != _progress)
+            call(_timer, "SetProgress", number(_progress = progress));
+        if (!_middle && fraction >= 1 / 3d)
+            (_middle, _) = (true, call(_backdrop, "OnSectionMiddle"));
+        if (!_closing && fraction >= 2 / 3d)
+            (_closing, _) = (true, call(_backdrop, "OnSectionClosing"));
+        // Each side's 良 and 可 this section.
+        for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
+        {
+            var counts = (lanes[lane].Great - _base[lane].Great, lanes[lane].Good - _base[lane].Good);
+            if (counts == _shown[lane])
+                continue;
+            _shown[lane] = counts;
+            call(_board, "SetPlayerSide", number(lane));
+            call(_board, "UpdateValue", number(counts.Item1), number(counts.Item2), number(0), number(0));
+            var needle = Math.Clamp(territory(0) - territory(1), -MaxNeedle, MaxNeedle);
+            if (needle != _needle)
+                both("UpdateTargetGaugeNum", number(_needle = needle));
+        }
+        if (time < end)
+            return;
+        var won = territory(0) >= territory(1);
+        _won.Add(won);
+        call(_icons, "AIEnsoWinIconMove", LumenHostValue.FromBoolean(won));
+        var last = _section == _ends.Length - 1;
+        if (!last)
+        {
+            call(_board, "Reset");
+            call(_timer, "ChangeNextSection");
+        }
+        both(won ? "StartSectionWin" : "StartSectionLose");
+        // Traced: VO_AIBTL_ENSO 3 with a section won, 8 with one lost.
+        _cue?.Invoke("VO_AIBTL_ENSO", won ? 3 : 8);
+        for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
+            (_base[lane], _shown[lane]) = ((lanes[lane].Great, lanes[lane].Good), (-1, -1));
+        (_section, _progress, _middle, _closing, _needle, _endedAt) = (_section + 1, -1, false, false, 0, time);
+    }
+
+    private int territory(int lane) => _shown[lane] is var (great, good) && great >= 0 ? AiBattleRules.Territory(_course, great, good) : 0;
+
+    private void both(string name, params LumenHostValue[] arguments)
+    {
+        call(_backdrop, name, arguments);
+        call(_hitEffect, name, arguments);
+    }
+
+    private static bool call(LumenPlayer? player, string name, params LumenHostValue[] arguments) =>
+        player?.TryInvokeCallback(name, arguments) == true;
+
+    private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
+}

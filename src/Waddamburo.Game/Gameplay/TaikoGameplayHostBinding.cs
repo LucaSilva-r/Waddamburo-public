@@ -18,7 +18,18 @@ public sealed class TaikoGameplayHostBinding(Func<TaikoSongInfo>? songInfo = nul
     public void Install(LumenHostContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        context.RegisterObject("Lumen", static _ => { });
+        // AI battle's movies: PlayGhostSound(kind, cue), 0 = SE_AIBTL_ENSO, 1 = VO_AIBTL_ENSO (traced cue for cue);
+        // FinishLastSectionEffect as the last section's effect ends.
+        context.RegisterObject("Lumen", lumen =>
+        {
+            lumen.RegisterMethod("PlayGhostSound", call =>
+            {
+                if (call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number && call.Arguments[1].Kind == LumenHostValueKind.Number)
+                    playCue?.Invoke(call.Arguments[0].AsNumber() == 1 ? "VO_AIBTL_ENSO" : "SE_AIBTL_ENSO", (int)call.Arguments[1].AsNumber());
+                return LumenHostValue.Undefined;
+            });
+            lumen.RegisterMethod("FinishLastSectionEffect", static _ => LumenHostValue.Undefined);
+        });
         // A dan course's movies: ExternalInterface CallSE(name, moment), traced SE_GAME 17, 19, 20 for between's card,
         // 16 for dani_enso's requirement that can no longer be met.
         context.RegisterExternalInterfaceCall(call =>

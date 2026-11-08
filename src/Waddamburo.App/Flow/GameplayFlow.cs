@@ -38,8 +38,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private AudioStreamTransport? _music;
     private GameplayTimeline? _timeline;
     private GameplayAutoplay? _autoplay;
-    // AI battle: AI-don's lane.
+    // AI battle: AI-don's lane, and the battle's own movies.
     private GameplayAutoplay? _aiBot;
+    private AiBattlePresentation? _battle;
     // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
     private ReviewSession? _review;
     // Home, training: attempts on the review (_review is its playback).
@@ -188,7 +189,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _music = null;
         _clock.Reset();
         _directStart = false;
-        _autoplay = null; _aiBot = null;
+        _autoplay = null; _aiBot = null; _battle = null;
         _charts = [];
         Shell.Gameplay.Stop();
         Shell.PlayRequests.ClearActive();
@@ -289,7 +290,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             : null;
         AutoplayReview = _review is not null && request.Review is null;
         // Reviews show it too: seeking back rebuilds the lanes, which takes a shown banner down.
-        Shell.Gameplay.EndBanner = !_demo;
+        Shell.Gameplay.EndBanner = !_demo && !(Shell.Hosts.AiBattle && _charts.Length == 2);
         _training = null;
         // A course saves apart, whole (saveCourse).
         _voided = request.Review is not null || _demo || _course is not null;
@@ -308,6 +309,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A 4:3 layout (camera.aspect below 1): the stage drawn squeezed into a 4:3 picture.
         Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Hosts.AiBattle && _charts.Length > 0 && fourThree(_charts[0].Effects);
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
+        _battle = aiBattle ? new AiBattlePresentation(active, _charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
@@ -558,7 +560,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var at = _training?.Clock.Position ?? chartTime();
             if (_music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
-            _music = null; _autoplay = null; _aiBot = null;
+            _music = null; _autoplay = null; _aiBot = null; _battle = null;
             _review?.Dispose();
             Shell.Players.StopWatching();
             _review = reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
@@ -569,7 +571,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var at = chartTime();
             if (_music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
-            _music = null; _autoplay = null; _aiBot = null;
+            _music = null; _autoplay = null; _aiBot = null; _battle = null;
             _review?.Dispose();
             Shell.Players.StopWatching();
             _review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
@@ -713,6 +715,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             var time = chartTime() - _inputOffset;
             var played = _autoplay?.Apply(drums(keys), time) ?? keys;
             Shell.Gameplay.Advance(_aiBot?.Apply(played, time) ?? played, time);
+            _battle?.Advance(time, Shell.Gameplay.Results);
         }
         _echo?.Pump();
     }
@@ -839,6 +842,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var played = _autoplay?.Apply(drums(input.Keys), elapsed - _inputOffset) ?? input.Keys;
             Shell.Gameplay.Advance(_aiBot?.Apply(played, elapsed - _inputOffset) ?? played, elapsed - _inputOffset);
+            _battle?.Advance(elapsed - _inputOffset, Shell.Gameplay.Results);
             _echo?.Pump();
         }
         if (Shell.Audio?.Failure is { } device)
@@ -1020,13 +1024,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!show)
         {
             _charts = [];
-            _autoplay = null; _aiBot = null;
+            _autoplay = null; _aiBot = null; _battle = null;
             return;
         }
         Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
             : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _charts = [];
-        _autoplay = null; _aiBot = null;
+        _autoplay = null; _aiBot = null; _battle = null;
         Shell.Scenes.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
     }

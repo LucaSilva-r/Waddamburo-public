@@ -142,7 +142,7 @@ internal static class GameplaySceneComposition
         ("enso_system/common", "onp_moji", null, 1002, null),
         ("enso_system/common", "onp_renda_moji", null, 1002, null),
         ("enso_system/common", "onp_renda_dai_moji", null, 1002, null),
-        ("enso_system/common", "action_result", 14, 1000, null),
+        // No clear / full-combo banner: the battle's result takes its place (none traced).
         ("ghost/enso_system/common", "ai_lane_obi", 14, 507, null),
         // Traced: a name board on both lanes (11 / 12), AI-don's own plate over the second.
         ("indicator", "player_name", 11, 505, null),
