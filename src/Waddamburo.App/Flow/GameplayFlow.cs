@@ -1,3 +1,4 @@
+using Waddamburo.App.Audio;
 using System.Diagnostics;
 using Waddamburo.App.Gameplay;
 using Waddamburo.App.Presentation;
@@ -1154,6 +1155,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _ = Shell.Titles.Resolve(Shell.Titles.GetGameplayTitle(next));
         _nextAudio = Task.Run(async () =>
         {
+            SongLoudness.Volume(Shell.Assets, asset, audio.Mixer.Format); // measured now, read back when it starts
             var stream = await Shell.Assets.OpenReadAsync(asset).ConfigureAwait(false);
             BufferedAudioSource source;
             try
@@ -1187,7 +1189,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             _nextAudio = null;
             return ready.PlayTransport(new ScheduledAudioSource(prepared.GetAwaiter().GetResult(),
-                _timeline!.AudioStart, _timeline.LeadIn + playing!.Chart.Duration + TimeSpan.FromSeconds(1)));
+                _timeline!.AudioStart, _timeline.LeadIn + playing!.Chart.Duration + TimeSpan.FromSeconds(1)),
+                volume: SongLoudness.Volume(Shell.Assets, _courseSongs[_courseSong].Descriptor.AudioAsset!, ready.Mixer.Format));
         }
         var asset = playing is null ? request.AudioAsset : _courseSongs[_courseSong].Descriptor.AudioAsset;
         if (Shell.Audio is not { } audio || asset is not { } audioAsset)
@@ -1217,7 +1220,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
             source.Ready.GetAwaiter().GetResult();
             var playback = audio.PlayTransport(new ScheduledAudioSource(source,
-                _timeline!.AudioStart, _timeline.LeadIn + (playing?.Chart ?? _charts[0]).Duration + TimeSpan.FromSeconds(1)));
+                _timeline!.AudioStart, _timeline.LeadIn + (playing?.Chart ?? _charts[0]).Duration + TimeSpan.FromSeconds(1)),
+                volume: SongLoudness.Volume(Shell.Assets, audioAsset, audio.Mixer.Format));
             source = null;
             return playback;
         }

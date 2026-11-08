@@ -146,6 +146,7 @@ try
         Console.WriteLine($"Cache: {layout.Cache(arcade.CacheFolder)}");
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache(arcade.CacheFolder);
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
+        Waddamburo.App.Audio.SongLoudness.CacheFile = Path.Combine(layout.Cache(arcade.CacheFolder), "loudness.tsv");
         // The online test reports on the console, whatever the settings say.
         if (args.Any(static arg => arg.StartsWith("--online-test", StringComparison.Ordinal)))
             ReleaseConsole.OpenForTool();
