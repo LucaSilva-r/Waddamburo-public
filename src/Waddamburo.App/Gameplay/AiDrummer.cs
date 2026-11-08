@@ -23,6 +23,10 @@ internal sealed class AiDrummer
     private int _nextNote, _rolls;
     private bool _right, _rollRight;
 
+    /// <param name="chart">AI-don's chart (its master route).</param>
+    /// <param name="course">The course (its judgement windows).</param>
+    /// <param name="seed">The play's random seed.</param>
+    /// <param name="model">AI-don's timing, learning the player's.</param>
     /// <param name="territory">This section's territory points, the player's and AI-don's.</param>
     /// <param name="playerRolls">The player's roll and balloon hits so far.</param>
     public AiDrummer(PlayableChart chart, TaikoCourse course, int seed, GhostTimingModel model,

@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Waddamburo.Catalog;

@@ -13,7 +13,9 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <TreatWarningsAsErrors Condition="'$(CI)' == 'true'">true</TreatWarningsAsErrors>
+    <!-- Only a release (a vX.Y.Z tag, which the workflow stamps as WADDAMBURO_VERSION) fails on warnings; nightlies and
+         development builds just report them. -->
+    <TreatWarningsAsErrors Condition="'$(CI)' == 'true' And '$(WADDAMBURO_VERSION)' != '' And !$(WADDAMBURO_VERSION.EndsWith('-nightly'))">true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!-- Release targets (eng/package.sh); listed so RID-specific publishes keep the lock files stable. -->
     <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>

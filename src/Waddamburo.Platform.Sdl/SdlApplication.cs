@@ -693,15 +693,15 @@ public sealed unsafe partial class SdlApplication : IDisposable
         }
     }
 
+    /// <summary>Hears the next presented frame once (the screenshot button), then clears itself.</summary>
+    public Action<RenderCapture>? CaptureNextFrame { get; set; }
+
     /// <summary>
     /// Outside <see cref="Run(Func{double, RenderFrame}, Action{SdlKeyboardSnapshot}, int?, int?, Action{RenderCapture}?, Action{SdlKeyboardSnapshot}?, Func{bool}?, Action?, Action{float, float}?, Func{bool}?, Action{float, float}?, Action?, Action{SdlFrameMetrics}?, Action?, Action{float}?)"/>
     /// (the boot screen while the game loads, or its error): the window's events are handled and <paramref name="frame"/>
     /// shown when the renderer is ready for it. False once the window was closed; <paramref name="escape"/>: Escape
     /// was pressed.
     /// </summary>
-    /// <summary>Hears the next presented frame once (the screenshot button), then clears itself.</summary>
-    public Action<RenderCapture>? CaptureNextFrame { get; set; }
-
     public bool PumpAndPresent(RenderFrame frame, out bool escape)
     {
         ensureOwnerThread();

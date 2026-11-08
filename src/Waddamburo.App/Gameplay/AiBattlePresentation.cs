@@ -148,7 +148,7 @@ internal sealed class AiBattlePresentation
     private static bool call(LumenPlayer? player, string name, params LumenHostValue[] arguments)
     {
         if (Trace && name is not ("SetProgress" or "SetPlayerSide" or "UpdateValue"))
-            Console.WriteLine($"[ai] {name}({string.Join(", ", arguments.Select(static argument => argument.Kind == LumenHostValueKind.Number ? argument.AsNumber().ToString() : argument.Kind.ToString()))})");
+            Console.WriteLine($"[ai] {name}({string.Join(", ", arguments.Select(static argument => argument.Kind == LumenHostValueKind.Number ? argument.AsNumber().ToString(System.Globalization.CultureInfo.InvariantCulture) : argument.Kind.ToString()))})");
         return player?.TryInvokeCallback(name, arguments) == true;
     }
 
