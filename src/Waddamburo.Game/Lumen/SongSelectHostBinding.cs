@@ -226,6 +226,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The score windows known for a song: per course (easy..ura), up to three players' bests.</summary>
     public Func<SongSelectSong, IReadOnlyList<RankingEntry>?[]?>? Rankings { get; init; }
 
+    /// <summary>AI battle's song select (ghost_song_select): it asks for each song's intermediate charts.</summary>
+    public bool AiBattle { get; init; }
+
+    /// <summary>AI battle: the intermediate chart picked, in steps below いつもの (0 = いつもの).</summary>
+    public int SupportLevel { get; private set; }
+
     public SongSelectHostBinding(
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
@@ -364,6 +370,34 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 return clearFolderSurfaces(closed);
             });
             lumen.RegisterMethod("NotifyEndCourseSelect", notifySelection);
+            // AI battle's song select (traced session-ai-battle-1/4). GetMusicInfo_Detail(genre, song) as a song's
+            // board opens: the game answers SetSupportLevelNum(e, n, h, m), how many intermediate charts each
+            // course offers besides いつもの (supportinfo.xml). ponytail: none yet (always いつもの), until the
+            // intermediate charts exist.
+            lumen.RegisterMethod("GetMusicInfo_Detail", _ =>
+            {
+                if (AiBattle)
+                    requirePlayer().TryInvokeCallback("SetSupportLevelNum",
+                        [LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0)]);
+                return LumenHostValue.Undefined;
+            });
+            lumen.RegisterMethod("NotifyMusicBoard", static _ => LumenHostValue.Undefined);
+            // RequestGhostVO(n): AI battle's song select voice (traced 0 at the start, 2 as a course is decided;
+            // VO_AIBTL_SEL's cues).
+            lumen.RegisterMethod("RequestGhostVO", call =>
+            {
+                PlayCue?.Invoke("VO_AIBTL_SEL", integer(call, 0));
+                return LumenHostValue.Undefined;
+            });
+            // SetSelectedCourse(player, course, ...) / SetSelectedSupportLv(player, steps below いつもの): the final
+            // picks, after NotifyEndCourseSelect (which already started the song).
+            lumen.RegisterMethod("SetSelectedCourse", static _ => LumenHostValue.Undefined);
+            lumen.RegisterMethod("SetSelectedSupportLv", call =>
+            {
+                if (integer(call, 0) == 0)
+                    SupportLevel = integer(call, 1);
+                return LumenHostValue.Undefined;
+            });
             // NotifySetCourseStar(board, course, star): the by-difficulty panel's choice (board -1 = back, 0-3 a
             // course, 4 おすすめ, 5 りれき). Traced: the game calls nothing back; the movie sizes the folder from
             // SetCourseStarMusicNum and asks GetMusicInfo_Basic(folder, n) for its songs.

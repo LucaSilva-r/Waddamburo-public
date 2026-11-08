@@ -122,6 +122,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Two players browse Waiwai's song select (and may switch to the normal one).</summary>
     public bool Waiwai { get; set; }
 
+    /// <summary>The credit is an AI battle (entry's mode select, SetNextScene(10)): its song select, battles and results.</summary>
+    public bool AiBattle { get; set; }
+
     /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
     public bool TutorialSeen { get; set; }
 
@@ -405,15 +408,15 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost songSelectHost()
     {
-        var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
+        var linked = Waiwai || AiBattle ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
-            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !TutorialSeen && HomeTutorialSeen?.Invoke() != true,
+            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !AiBattle && !TutorialSeen && HomeTutorialSeen?.Invoke() != true,
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
-            danDojo: Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
+            danDojo: !AiBattle && Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,
             danSeries: arcade.Home ? Dan?.Series : null,
-            online: !Waiwai && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received,
+            online: !Waiwai && !AiBattle && !TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: OnlineSong, received: Received,
             courseStar: OnlineSong is null, rollFolder: RandomSongFolder?.Invoke() == true,
             recentCharts: TwoPlayers || OnlineSong is not null ? null : RecentCharts?.Invoke(PlayerSide));
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
@@ -458,6 +461,7 @@ internal sealed class LayerHostFactory(
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,
+            AiBattle = AiBattle,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }

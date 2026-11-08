@@ -724,6 +724,8 @@ internal sealed class GameShell : IDisposable
             ]),
             [
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
+                // Mode select's AI battle (traced SetNextScene(10, 0, 0)): its own song select (Players.ChooseMode).
+                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(10, 0, 0), FlowScenes.SongSelect),
                 // The entry gives up (a card declined, or its dialog timed out, with nobody joined and no
                 // credits: TerminateEntry -> SetNextScene(0)): back to the attract loop.
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(0, 0, 0), FlowScenes.Logo),
@@ -845,7 +847,7 @@ internal sealed class GameShell : IDisposable
             StartScene.Boot => FlowScenes.Boot,
             StartScene.Attract => FlowScenes.Logo,
             StartScene.Entry => FlowScenes.Entry,
-            StartScene.SongSelect => FlowScenes.SongSelect,
+            StartScene.SongSelect or StartScene.AiSongSelect => FlowScenes.SongSelect,
             StartScene.DaniSelect => FlowScenes.DaniSelect,
             StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult
                 or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
@@ -855,6 +857,8 @@ internal sealed class GameShell : IDisposable
         };
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
+        if (Options.StartScene == StartScene.AiSongSelect)
+            Players.ChooseMode(aiBattle: true);
         _boot?.Begin("SYSTEM SETUP");
         try
         {
@@ -870,7 +874,7 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"Showing {Active.Id} at launch.");
             _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
-                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud };
+                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Hosts.AiBattle };
             _home.LoadResume(_loader);
             Hosts.LayerLoading = host =>
             {
@@ -1084,6 +1088,8 @@ internal sealed class GameShell : IDisposable
         // A movie asked for the next scene (entry -> song select); its last voice finishes first.
         if (Sounds?.Bank.IsVoicePlaying == true)
             return;
+        if (Active.Id == FlowScenes.Entry && Coordinator.Flow.PendingTransition is { } request)
+            Players.ChooseMode(aiBattle: request.SceneNumber == 10);
         // The entry and Song Select fade to black first, as the menu's Restart, Song Select and Title do;
         // not under an intermission (the rainbow into a song covers its own switch).
         if (!Overlay.IsShown && PlayRequests.Pending is null && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))

@@ -98,6 +98,26 @@ internal sealed class PlayerSession(GameShell shell)
     public int[] SongSelectSides => [.. (JoinedSides.Count == 0 ? [shell.Hosts.PlayerSide] : JoinedSides)
         .Concat(shell.Hosts.PartnerSide is { } partner ? [partner] : []).Distinct()];
 
+    /// <summary>AI-don's whole costume (traced cos_149000).</summary>
+    private const int AiDonCostume = 149;
+
+    /// <summary>The entry's mode select picked the credit's mode: AI battle or the normal song select.</summary>
+    public void ChooseMode(bool aiBattle)
+    {
+        if (shell.Hosts.AiBattle == aiBattle) return;
+        shell.Hosts.AiBattle = aiBattle;
+        // The other drum's Don is AI-don (traced: Don slot p1 in the whole costume cos_149000, from song select on).
+        var other = 1 - shell.Hosts.PlayerSide;
+        if (aiBattle)
+        {
+            shell.Don?.SetLook(other, null);
+            shell.Don?.SetCostume(other, Waddamburo.Game.Don.DonCostume.FromWhole(AiDonCostume));
+        }
+        else
+            shell.Don?.SetLook(other, null);
+        apply();
+    }
+
     private void apply()
     {
         var two = JoinedSides.Count == 2;
@@ -105,13 +125,14 @@ internal sealed class PlayerSession(GameShell shell)
         shell.Hosts.PlayerSide = first;
         shell.Hosts.TwoPlayers = two;
         // Two players start in Waiwai's song select (traced); one player only has the normal one.
-        shell.Hosts.Waiwai = two;
+        shell.Hosts.Waiwai = two && !shell.Hosts.AiBattle;
         if (shell.Indicators is { } indicators)
         {
             indicators.Side = first;
             indicators.TwoPlayers = two;
+            indicators.AiBattle = shell.Hosts.AiBattle;
         }
         if (shell.Don is not null) shell.Don.GameplaySide = first;
-        shell.Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, shell.Hosts.Waiwai));
+        shell.Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, shell.Hosts.Waiwai, shell.Hosts.AiBattle));
     }
 }

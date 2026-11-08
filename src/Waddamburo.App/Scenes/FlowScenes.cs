@@ -143,7 +143,7 @@ internal static class FlowScenes
     // Traced final name-board positions are (-580, 278) for the left drum's player and (308, 278) for
     // the right one's in the cabinet's centered coordinates, or (60, 638) / (948, 638) in our top-left
     // scene coordinates (session8, session9). Board n shows the player on sides[n].
-    public static SceneDefinition SongSelectScene(IReadOnlyList<int> sides, bool waiwai = false)
+    public static SceneDefinition SongSelectScene(IReadOnlyList<int> sides, bool waiwai = false, bool aiBattle = false)
     {
         var movie = waiwai ? "waiwai_song_select" : "song_select";
         // The second board waits on the other drum's side (hidden), so an online partner's name shows there without a reload.
@@ -151,6 +151,20 @@ internal static class FlowScenes
             ? indicatorPart("player_name", sides[index] == 1 ? 948 : 60, 638)
             : index == 1 && sides.Count == 1 ? indicatorPart("player_name", sides[0] == 1 ? 60 : 948, 638)
             : indicatorPart("player_name", 640, 360);
+        // AI battle (traced session-ai-battle-1): its own song select, then its rank, rank-up and tension panels
+        // (depth 70) under the indicator's parts.
+        if (aiBattle)
+            return new(SceneDefinition.CurrentVersion, SongSelect, [
+                new SceneLayerDefinition("ghost/song_select/packeddata.ddp", "ghost_song_select/ghost_song_select.lm",
+                    LumenMatrix.Identity, "song-select"),
+                aiPanel("rank_panel", "ai_rank_panel"),
+                aiPanel("rankup_todo", "ai_rankup_todo"),
+                aiPanel("tension", "tension"),
+                indicatorPart("indicator"),
+                board(0),
+                board(1),
+                indicatorPart("time_counter"),
+            ]);
         return new(SceneDefinition.CurrentVersion, SongSelect, [
             new SceneLayerDefinition($"{movie}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, "song-select"),
             indicatorPart("indicator"),
@@ -164,6 +178,10 @@ internal static class FlowScenes
         new(SceneDefinition.CurrentVersion, id, [
             new SceneLayerDefinition($"attract/{movie}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, host),
         ]);
+
+    // An AI battle panel: set up with the indicator parts (IndicatorParts), from its ghost/ archive.
+    private static SceneLayerDefinition aiPanel(string archive, string movie) =>
+        new($"ghost/{archive}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, IndicatorParts.HostId);
 
     private static SceneLayerDefinition indicatorPart(string movie, float x = 0, float y = 0) => new(
         "indicator/packeddata.ddp",

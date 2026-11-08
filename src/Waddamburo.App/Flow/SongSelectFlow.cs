@@ -359,7 +359,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         // A launch straight into Song Select joined nobody: keep the player's own board.
         Shell.Catalog.Replace(FlowScenes.SongSelectScene(
-            Shell.Players.JoinedSides.Count > 0 ? [.. Shell.Players.JoinedSides] : [Shell.Hosts.PlayerSide], Shell.Hosts.Waiwai));
+            Shell.Players.JoinedSides.Count > 0 ? [.. Shell.Players.JoinedSides] : [Shell.Hosts.PlayerSide], Shell.Hosts.Waiwai, Shell.Hosts.AiBattle));
         Shell.Scenes.Show(FlowScenes.SongSelect);
     }
 

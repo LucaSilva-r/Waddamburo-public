@@ -30,6 +30,12 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     public int MusicNumber { get; init; } = 1;
     public bool FinalStage { get; init; }
 
+    /// <summary>
+    /// AI battle's song select panels (traced AIRankPanelInitialize(2, 9, 8, 2) beside rank 2, 9 points to the next rank,
+    /// 8 wins, 2 wins to the next reward; AIRankupTodoInitialize(rank); AITensionInitialize(2), 調子 フツー).
+    /// </summary>
+    public AiBattlePanels AiPanels { get; init; } = AiBattlePanels.NewPlayer;
+
     /// <summary>The timer (and song select's song number) shows; false hides it (home without the arcade HUD).</summary>
     public bool ShowCounter { get; init; } = true;
 
@@ -225,6 +231,16 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                 if (!ShowCounter)
                     call(player, "SetVisible", LumenHostValue.FromBoolean(false));
                 break;
+            case "ai_rank_panel":
+                call(player, "AIRankPanelInitialize", number(AiPanels.Rank), number(AiPanels.PointsToNextRank),
+                    number(AiPanels.Wins), number(AiPanels.WinsToNextReward));
+                break;
+            case "ai_rankup_todo":
+                call(player, "AIRankupTodoInitialize", number(AiPanels.Rank));
+                break;
+            case "tension":
+                call(player, "AITensionInitialize", number(AiPanels.Tension));
+                break;
             case "over_msg":
                 _overMessage = player;
                 call(player, "TweenVisible", LumenHostValue.FromBoolean(false), number(0), number(0));
@@ -244,4 +260,11 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         if (!player.TryInvokeCallback(name, arguments))
             throw new InvalidDataException($"Indicator movie is missing callback '{name}'.");
     }
+}
+
+/// <summary>What AI battle's song select panels show: rank and its progress, wins, the AI's mood (2 = フツー).</summary>
+public sealed record AiBattlePanels(int Rank, int PointsToNextRank, int Wins, int WinsToNextReward, int Tension)
+{
+    /// <summary>A player who never battled: rank 0, one point to rank 1, the first reward at the first win.</summary>
+    public static AiBattlePanels NewPlayer { get; } = new(0, 1, 0, 1, 2);
 }

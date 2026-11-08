@@ -196,6 +196,7 @@ internal sealed class TextureBake
             .. FlowScenes.Initial([FlowScenes.Results, FlowScenes.WaiwaiResults]),
             FlowScenes.SongSelectScene([0]),
             FlowScenes.SongSelectScene([0, 1], waiwai: true),
+            FlowScenes.SongSelectScene([0], aiBattle: true),
             FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade,
             SystemIndicators.Definition(new SceneId("system-indicators")),
             ResumeCountdown.Definition(new SceneId("resume-countdown")),

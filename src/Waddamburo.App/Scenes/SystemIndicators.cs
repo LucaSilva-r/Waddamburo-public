@@ -70,6 +70,9 @@ internal sealed class SystemIndicators
     /// <summary>Both drums have a player: nobody is left to prompt (traced session9-2p).</summary>
     public bool TwoPlayers { get; set; }
 
+    /// <summary>AI battle: the other drum is AI-don's, nobody is asked to join it (traced SetMsgNum(n, -1) both sides).</summary>
+    public bool AiBattle { get; set; }
+
     /// <summary>An online partner holds the other drum's side in Song Select: nobody is asked to join it.</summary>
     public bool Partner
     {
@@ -116,7 +119,7 @@ internal sealed class SystemIndicators
         // positions it on the available side and runs its fade animation.
         var rejoin = scene == IndicatorScene.Entry && Rejoin;
         var prompt = (scene is IndicatorScene.AttractPrompt or IndicatorScene.Demo or IndicatorScene.Entry
-            || scene == IndicatorScene.SongSelect && !TwoPlayers && !Partner) && !rejoin;
+            || scene == IndicatorScene.SongSelect && !TwoPlayers && !Partner && !AiBattle) && !rejoin;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {
             IndicatorScene.Entry => 1,
@@ -138,6 +141,12 @@ internal sealed class SystemIndicators
         // In Song Select the joined player has no prompt (-1); the unjoined drum uses
         // message 2. The indicator movie positions and animates each side itself.
         var joinedMessage = scene is IndicatorScene.Entry or IndicatorScene.SongSelect ? -1 : 0;
+        if (AiBattle && scene != IndicatorScene.Entry)
+        {
+            setSideNumbers(-1, -1);
+            call(_coins, "SetCoinType", LumenHostValue.FromNumber(2));
+            return;
+        }
         // Free play: the other drum needs no coin (0), as the entry shows it. ponytail: the 1P free-play Song
         // Select join message is not traced (session28 was in coin mode); it was 2 ("2 more coins").
         var otherMessage = 0;
