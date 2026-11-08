@@ -99,6 +99,10 @@ public sealed record ArcadeSettings
         # custom_songs beside the game data. nijiiro_folder: a Nijiiro installation, empty = none.
         tja_folder =
         nijiiro_folder =
+        # nijiiro_datatable_key / nijiiro_fumen_key: the AES keys Nijiiro's encrypted data tables and charts open with,
+        # 64 hex digits each. Waddamburo doesn't carry them: find them yourself. Empty = only unencrypted files open.
+        nijiiro_datatable_key =
+        nijiiro_fumen_key =
 
         """,
         """
@@ -566,6 +570,11 @@ public sealed record ArcadeSettings
     /// <summary>Nijiiro installations, separated by | (null: none); see <see cref="Folders"/>.</summary>
     public string? NijiiroFolder { get; init; }
 
+    /// <summary>The player's keys for Nijiiro's encrypted data tables and charts (64 hex digits each; empty = none).</summary>
+    public string NijiiroDatatableKey { get; init; } = "";
+
+    public string NijiiroFumenKey { get; init; } = "";
+
     /// <summary>Other releases' game data folders, separated by | (null: none); see <see cref="Folders"/>.</summary>
     public string? StockFolders { get; init; }
 
@@ -790,6 +799,8 @@ public sealed record ArcadeSettings
                 "layout" => settings with { Layout = value.Length == 0 ? null : value },
                 "layout_2p" => settings with { Layout2P = value.Length == 0 ? null : value },
                 "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
+                "nijiiro_datatable_key" => settings with { NijiiroDatatableKey = value },
+                "nijiiro_fumen_key" => settings with { NijiiroFumenKey = value },
                 "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
                 "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
@@ -903,6 +914,8 @@ public sealed record ArcadeSettings
             ["layout"] = settings.Layout ?? "",
             ["layout_2p"] = settings.Layout2P ?? "",
             ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
+            ["nijiiro_datatable_key"] = settings.NijiiroDatatableKey,
+            ["nijiiro_fumen_key"] = settings.NijiiroFumenKey,
             ["stock_folders"] = settings.StockFolders ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",
             ["cache_folder"] = settings.CacheFolder ?? "",

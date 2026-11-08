@@ -46,7 +46,7 @@
   "section.developer": "開発者",
 
   "library.no_nijiiro": "ニジイロのデータがありません。",
-  "library.no_keys": "このニジイロの Executable/Release/bnusio.dll には、ファイルを開くキーがありません。キーの入ったもの（TaikoArcadeLoader のもの）に入れかえてから、もう一度追加してください。",
+  "library.no_keys": "ニジイロのファイルは暗号化されています。config.cfg のキー（nijiiro_datatable_key、nijiiro_fumen_key）がないか、合っていません。入れてから、もう一度追加してください。",
   "library.no_vgmstream": "音楽の再生にはゲームと同じフォルダに vgmstream-cli が必要です: github.com/vgmstream/vgmstream/releases から入手してください。",
   "library.no_official": "太鼓のゲームデータもニジイロもありません。",
 

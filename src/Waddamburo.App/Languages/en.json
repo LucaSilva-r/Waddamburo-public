@@ -46,7 +46,7 @@
   "section.developer": "Developer",
 
   "library.no_nijiiro": "No Nijiiro data there.",
-  "library.no_keys": "This Nijiiro installation's Executable/Release/bnusio.dll has no key that opens its files. Put in one that carries them (TaikoArcadeLoader's), then add it again.",
+  "library.no_keys": "Nijiiro's files are encrypted and the keys in config.cfg (nijiiro_datatable_key, nijiiro_fumen_key) are missing or don't open them. Add them, then add the installation again.",
   "library.no_vgmstream": "The music needs vgmstream-cli next to the game: get it from github.com/vgmstream/vgmstream/releases.",
   "library.no_official": "No Taiko game data or Nijiiro installation there.",
 

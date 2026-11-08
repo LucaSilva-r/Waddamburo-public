@@ -22,7 +22,8 @@ internal static class ChartExport
         [
             .. new[] { dataRoot }.Concat(ArcadeSettings.Folders(arcade.StockFolders).Select(StockCatalogProvider.FindDataRoot).OfType<string>())
                 .Where(StockCatalogProvider.IsStockData).Distinct().Select(static root => new StockCatalogProvider(root)),
-            .. ArcadeSettings.Folders(arcade.NijiiroFolder).Select(static folder => new NijiiroCatalogProvider(folder))
+            .. ArcadeSettings.Folders(arcade.NijiiroFolder).Select(folder => new NijiiroCatalogProvider(folder,
+                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)))
                 .Where(static installed => installed.Problem is null),
         ];
         var exported = 0;

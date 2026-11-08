@@ -13,9 +13,8 @@ namespace Waddamburo.Providers.Stock;
 /// A user's Nijiiro installation, read in place: <c>datatable/musicinfo</c> and <c>wordlist</c> (JSON
 /// <c>items</c>), charts <c>fumen/&lt;id&gt;/&lt;id&gt;_&lt;e|n|h|m|x&gt;[_1|_2].bin</c> in the arcade fumen
 /// layout (either byte order), music <c>sound/song_&lt;id&gt;.nus3bank</c>. Files are plain, gzip, or
-/// AES-256-CBC (16-byte IV first, PKCS#7, then maybe gzip); keys are the 64-hex-digit literals in the
-/// installation's own <c>Executable/Release/bnusio.dll</c> that decrypt to valid data. The keys are the cabinet's (its
-/// dongle's), the same for every version: a plain dump needs a bnusio.dll that carries them (TaikoArcadeLoader's).
+/// AES-256-CBC (16-byte IV first, PKCS#7, then maybe gzip) with the player's keys (<see cref="NijiiroKeys"/>, from
+/// config.cfg): one for the data tables, one for the charts. The engine carries no key and reads none from the install.
 /// </summary>
 public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
 {
@@ -29,13 +28,15 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     private static readonly string[] Genres = ["J-POP", "Anime", "Kids", "Vocaloid", "Game Music", "Namco Original", "Variety", "Classical"];
 
     private readonly string _root;
-    private byte[][]? _keys;
+    private readonly NijiiroKeys _keys;
     private Dictionary<string, int[]> _stars = [];
 
     /// <param name="folder">The installation, its <c>Data/x64</c>, or its <c>fumen</c> folder.</param>
     /// <param name="id">The provider id (default "nijiiro").</param>
-    public NijiiroCatalogProvider(string folder, CatalogProviderId? id = null)
+    /// <param name="keys">The keys the installation's encrypted files open with (the player's, from config.cfg).</param>
+    public NijiiroCatalogProvider(string folder, CatalogProviderId? id = null, NijiiroKeys? keys = null)
     {
+        _keys = keys ?? NijiiroKeys.None;
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
         if (Path.GetFileName(root) == "fumen")
@@ -56,8 +57,8 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     public SongSourceKind Source => SongSourceKind.Nijiiro;
 
     /// <summary>
-    /// After <see cref="Problem"/>: the files are encrypted and the installation's loader carries no key that opens
-    /// them (a plain dump: the keys are the cabinet's, in TaikoArcadeLoader's bnusio.dll).
+    /// After <see cref="Problem"/>: the files are encrypted and the keys given (config.cfg's nijiiro_datatable_key /
+    /// nijiiro_fumen_key) are missing or don't open them.
     /// </summary>
     public bool KeysMissing { get; private set; }
 
@@ -66,7 +67,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     /// <summary>
     /// Why the installation cannot be played (null: it can): no data there, or its song table does not
-    /// decrypt (the loader's keys are missing or wrong, so no chart or song would either).
+    /// decrypt (config.cfg's keys are missing or wrong, so no chart or song would either).
     /// </summary>
     public string? Problem
     {
@@ -289,36 +290,27 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             return data;
         if (data.Length < 32 || data.Length % 16 != 0)
             throw new InvalidDataException("The Nijiiro file is neither plain, gzip nor AES-encrypted.");
-        foreach (var key in _keys ??= loaderKeys())
+        if ((table ? _keys.Datatable : _keys.Fumen) is { } key)
         {
             using var aes = Aes.Create();
             aes.Key = key;
-            byte[] plain;
             try
             {
-                plain = aes.DecryptCbc(data.AsSpan(16), data.AsSpan(0, 16), PaddingMode.PKCS7);
+                var plain = aes.DecryptCbc(data.AsSpan(16), data.AsSpan(0, 16), PaddingMode.PKCS7);
+                if (isGzip(plain))
+                    return inflate(plain);
+                if (plausible(plain, table))
+                    return plain;
             }
             catch (CryptographicException)
             {
-                continue; // wrong key: the padding does not check out
+                // the wrong key: the padding does not check out
             }
-            if (isGzip(plain))
-                return inflate(plain);
-            if (plausible(plain, table))
-                return plain;
         }
         KeysMissing = true;
-        throw new InvalidDataException("The installation's Executable/Release/bnusio.dll has no key that opens its files: use one that carries them (TaikoArcadeLoader's).");
-    }
-
-    // Key candidates: every 64-hex-digit literal in the installation's loader (never executed).
-    private byte[][] loaderKeys()
-    {
-        var loader = Path.Combine(_root, "..", "..", "Executable", "Release", "bnusio.dll");
-        if (!File.Exists(loader))
-            return [];
-        var text = Encoding.Latin1.GetString(File.ReadAllBytes(loader));
-        return [.. HexKey().Matches(text).Select(static match => match.Value).Distinct().Take(128).Select(Convert.FromHexString)];
+        throw new InvalidDataException(table
+            ? "Nijiiro's data tables are encrypted: put their key in config.cfg's nijiiro_datatable_key (64 hex digits)."
+            : "Nijiiro's charts are encrypted: put their key in config.cfg's nijiiro_fumen_key (64 hex digits).");
     }
 
     private static bool isGzip(byte[] data) => data.Length > 2 && data[0] == 0x1f && data[1] == 0x8b;
@@ -387,7 +379,31 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
     private static partial Regex SongId();
+}
 
-    [GeneratedRegex("[0-9A-Fa-f]{64}")]
-    private static partial Regex HexKey();
+/// <summary>
+/// The AES keys Nijiiro's encrypted files open with: one for the data tables, one for the charts (fumen). The player
+/// puts them in config.cfg (nijiiro_datatable_key, nijiiro_fumen_key); the engine carries none.
+/// </summary>
+public sealed record NijiiroKeys(byte[]? Datatable, byte[]? Fumen)
+{
+    public static NijiiroKeys None { get; } = new(null, null);
+
+    /// <summary>From config.cfg's hex texts; an empty or malformed one is no key.</summary>
+    public static NijiiroKeys Parse(string? datatable, string? fumen) => new(hex(datatable), hex(fumen));
+
+    private static byte[]? hex(string? text)
+    {
+        text = text?.Trim();
+        if (string.IsNullOrEmpty(text) || text.Length != 64)
+            return null;
+        try
+        {
+            return Convert.FromHexString(text);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
 }

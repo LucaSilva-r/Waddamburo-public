@@ -116,7 +116,8 @@ internal sealed class SongLibraries : IDisposable
     private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade, List<(string, string)> problems)
     {
         var installs = ArcadeSettings.Folders(arcade.NijiiroFolder)
-            .Select(static folder => (Folder: folder, Installation: new NijiiroCatalogProvider(folder)))
+            .Select(folder => (Folder: folder, Installation: new NijiiroCatalogProvider(folder,
+                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey))))
             .Where(install => usable(install.Folder, install.Installation, problems))
             .Select(static install => install.Installation)
             .OrderByDescending(static installation => installation.NewestSong)
