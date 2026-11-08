@@ -177,7 +177,7 @@ public sealed class ScoreSavingTests
             var sha = ChartHash.Compute(osu, TaikoCourse.Oni);
             store.Save(new PlayRecord(Guid.NewGuid(), 42, sha, osu.Key, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
-                new TaikoReplay().Encode()) { AudioOffsetMs = 12, InputOffsetMs = -8 }, ChartUpload.From(osu, TaikoCourse.Oni, song));
+                new TaikoReplay().Encode()) { AudioOffsetMs = 12, InputOffsetMs = -8, EngineVersion = "1.0.0+abc" }, ChartUpload.From(osu, TaikoCourse.Oni, song));
             var server = new StubServer(sha);
             using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
             var client = new ScoreClient(http);
@@ -202,6 +202,45 @@ public sealed class ScoreSavingTests
             using var notes = new MemoryStream();
             gzip.CopyTo(notes);
             Assert.Equal(ChartHash.Serialize(chart(), TaikoCourse.Oni), notes.ToArray());
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task DevelopmentBuildPlaysOnlyGoToLocalOrStagingServers()
+    {
+        Assert.True(ScoreClient.AcceptsDevPlays(new Uri("http://localhost:8000/")));
+        Assert.True(ScoreClient.AcceptsDevPlays(new Uri("http://127.0.0.1/")));
+        Assert.True(ScoreClient.AcceptsDevPlays(new Uri("https://staging.taikonline.com/")));
+        Assert.False(ScoreClient.AcceptsDevPlays(new Uri("https://taikonline.com/")));
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new ScoreStore(path);
+            var played = chart();
+            var sha = ChartHash.Compute(played, TaikoCourse.Oni);
+            void save(string version) => store.Save(new PlayRecord(Guid.NewGuid(), 42, sha, played.Key, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
+                new TaikoReplay().Encode()) { EngineVersion = version }, ChartUpload.From(played, TaikoCourse.Oni, null));
+            save("0.0.0-dev+abc");
+            save("1.0.0+abc");
+            var production = new StubServer(sha);
+            using (var http = new HttpClient(production) { BaseAddress = new Uri("https://taikonline.com/") })
+                Assert.Equal(1, await new ScoreClient(http).SyncAsync(store, 42));
+            Assert.Contains("\"1.0.0", production.Plays); // (JSON escapes the +)
+            Assert.DoesNotContain("-dev", production.Plays);
+            // Dropped, not left pending: a later sync (any server) does not send it.
+            Assert.Empty(store.PendingPlays(42, 10));
+
+            save("0.0.0-dev+def");
+            var local = new StubServer(sha);
+            using (var http = new HttpClient(local) { BaseAddress = new Uri("http://localhost:8000/") })
+                Assert.Equal(1, await new ScoreClient(http).SyncAsync(store, 42));
+            Assert.Contains("0.0.0-dev", local.Plays);
         }
         finally
         {

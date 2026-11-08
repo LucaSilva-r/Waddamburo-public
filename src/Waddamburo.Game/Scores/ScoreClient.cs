@@ -255,8 +255,12 @@ public sealed class ScoreClient(HttpClient http)
     {
         ArgumentNullException.ThrowIfNull(store);
         var sent = 0;
-        while (store.PendingPlays(baid, BatchSize) is { Count: > 0 } batch)
+        var devPlays = AcceptsDevPlays(http.BaseAddress);
+        while (store.PendingPlays(baid, BatchSize) is { Count: > 0 } pending)
         {
+            var batch = devPlays ? pending : keep(pending, static play => (play.EngineVersion, play.Id), store.MarkUploaded);
+            if (batch.Count == 0)
+                continue;
             using var response = await http.PostAsJsonAsync("api/wdb/plays", new PlaysRequest(batch), ScoreJson.Default.PlaysRequest, cancellationToken)
                 .ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
@@ -277,12 +281,39 @@ public sealed class ScoreClient(HttpClient http)
         return sent + await syncDanAsync(store, baid, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Whether <paramref name="server"/> takes plays made by development builds (engine version "-dev"): only a
+    /// local or staging server. Elsewhere they are marked uploaded without being sent: a dev build's chart or scoring
+    /// code may score plays the server's scorer can't.
+    /// </summary>
+    public static bool AcceptsDevPlays(Uri? server) => server is not null
+        && (server.IsLoopback || server.Host.StartsWith("staging", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Whether a play's engine version is a development build's.</summary>
+    public static bool IsDevVersion(string engineVersion) => engineVersion.Contains("-dev", StringComparison.Ordinal);
+
+    // The plays a server that takes no dev plays gets; the dev ones are marked uploaded (dropped) here.
+    private static List<T> keep<T>(List<T> plays, Func<T, (string Version, Guid Id)> play, Action<IEnumerable<Guid>> markUploaded)
+    {
+        var dev = plays.Where(entry => IsDevVersion(play(entry).Version)).ToList();
+        if (dev.Count > 0)
+        {
+            markUploaded(dev.Select(entry => play(entry).Id));
+            Console.Error.WriteLine($"Warning SCORE_DEV: {dev.Count} play(s) from a development build not sent (not a local or staging server).");
+        }
+        return [.. plays.Except(dev)];
+    }
+
     // Course plays, after the songs' so that a server without them yet costs the songs nothing.
     private async Task<int> syncDanAsync(ScoreStore store, long? baid, CancellationToken cancellationToken)
     {
         var sent = 0;
-        while (store.PendingDanPlays(baid, DanBatchSize) is { Count: > 0 } batch)
+        var devPlays = AcceptsDevPlays(http.BaseAddress);
+        while (store.PendingDanPlays(baid, DanBatchSize) is { Count: > 0 } pending)
         {
+            var batch = devPlays ? pending : keep(pending, static play => (play.EngineVersion, play.Id), store.MarkDanUploaded);
+            if (batch.Count == 0)
+                continue;
             using var response = await http.PostAsJsonAsync("api/wdb/dan/plays", new DanPlaysRequest(batch), ScoreJson.Default.DanPlaysRequest, cancellationToken)
                 .ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
