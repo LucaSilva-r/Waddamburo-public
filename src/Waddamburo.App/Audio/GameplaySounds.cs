@@ -13,6 +13,9 @@ internal sealed class GameplaySounds(SoundBank bank)
     // ponytail: Waiwai song select's tone choice (AssignTone / RequestToneSE) is not offered yet.
     public bool Waiwai { get; set; }
 
+    /// <summary>AI battle: AI-don's lane (1) drums in its own tone (traced SE_GAME_NEIRO_AIDON_R).</summary>
+    public bool AiBattle { get; set; }
+
     /// <summary>
     /// Per player (lane 0/1; one player is 0): Don-chan's roll and balloon shout is off, as on normal
     /// and up (the game's rule; only easy keeps it). Every other voice plays on every course.
@@ -27,7 +30,9 @@ internal sealed class GameplaySounds(SoundBank bank)
 
     // A drum's hit sounds, in its player's tone: centred for one player; in two-player play the left
     // drum's pan left and the right drum's right (traced session9-2p).
-    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100" : $"SE_GAME_NEIRO_{Tones.ElementAtOrDefault(lane ?? 0):000}") + (Panning ? lane : null) switch
+    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100"
+        : AiBattle && lane == 1 ? "SE_GAME_NEIRO_AIDON"
+        : $"SE_GAME_NEIRO_{Tones.ElementAtOrDefault(lane ?? 0):000}") + (Panning ? lane : null) switch
     {
         0 => "_L",
         1 => "_R",

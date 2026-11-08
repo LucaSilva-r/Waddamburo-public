@@ -425,7 +425,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Traced SetEntryType 1 / SetPlaySide 0 for the left player, 2 / 1 for the right one alone,
             // and 3 with each lane's side for two players.
             board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
-            if (stage is not null) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
+            // Waiwai's lanes, and AI battle's AI-don lane (traced SetWaiwai(true) on its bar only).
+            if (stage is not null || donStage is not null && lane == 1) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
             if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
                 || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(dan is null ? courseLabel : "dani")]))
                 throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");

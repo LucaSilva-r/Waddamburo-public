@@ -312,6 +312,17 @@ public sealed record ArcadeSettings
         timer_freeze = false
 
         """,
+        """
+        # dev_autoplay (development builds only, Settings > Developer): the player's lane plays itself live, as if the keys
+        # were pressed (AI battle's AI-don still plays against it); nothing is saved.
+        dev_autoplay = false
+
+        """,
+        """
+        # dev_no_focus_pause (development builds only, Settings > Developer): leaving the window doesn't pause a song.
+        dev_no_focus_pause = false
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -389,6 +400,12 @@ public sealed record ArcadeSettings
 
     /// <summary>Arcade: the menus' timers show frozen (the cabinet's timer freeze setting).</summary>
     public bool TimerFreeze { get; init; }
+
+    /// <summary>Development builds: the player's lane is drummed by the bot, played live (not a replay), never saved.</summary>
+    public bool DevAutoplay { get; init; }
+
+    /// <summary>Development builds: leaving the window doesn't pause a song.</summary>
+    public bool DevNoFocusPause { get; init; }
 
     /// <summary>
     /// The gameplay skin for every song: "auto" (each song's own theme), "original" (the regular gameplay) or
@@ -806,6 +823,8 @@ public sealed record ArcadeSettings
                 "arcade_hud" => settings with { ArcadeHud = boolean(value, index) },
                 "tutorial_seen" => settings with { TutorialSeen = boolean(value, index) },
                 "timer_freeze" => settings with { TimerFreeze = boolean(value, index) },
+                "dev_autoplay" => settings with { DevAutoplay = boolean(value, index) },
+                "dev_no_focus_pause" => settings with { DevNoFocusPause = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
                 "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
@@ -908,6 +927,8 @@ public sealed record ArcadeSettings
             ["arcade_hud"] = settings.ArcadeHud ? "true" : "false",
             ["tutorial_seen"] = settings.TutorialSeen ? "true" : "false",
             ["timer_freeze"] = settings.TimerFreeze ? "true" : "false",
+            ["dev_autoplay"] = settings.DevAutoplay ? "true" : "false",
+            ["dev_no_focus_pause"] = settings.DevNoFocusPause ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
             ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,

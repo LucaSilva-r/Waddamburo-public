@@ -43,6 +43,7 @@
   "section.sound": "Sound",
   "section.display": "Display",
   "section.graphics": "Graphics",
+  "section.developer": "Developer",
 
   "library.no_nijiiro": "No Nijiiro data there.",
   "library.no_keys": "This Nijiiro installation's Executable/Release/bnusio.dll has no key that opens its files. Put in one that carries them (TaikoArcadeLoader's), then add it again.",
@@ -59,6 +60,10 @@
   "settings.random_song_folder.hint": "Song Select gets a spine that flips through song titles and picks a random song each time you open it. Not in the original.",
   "settings.autoplay": "Auto Play",
   "settings.autoplay.hint": "Songs play themselves, as a replay you can pause, seek and speed up. Nothing is saved.",
+  "settings.dev_autoplay": "Autoplay P1 (live)",
+  "settings.dev_autoplay.hint": "Development builds: your lane plays itself live, as if you pressed the keys (not a replay). Nothing is saved.",
+  "settings.dev_no_focus_pause": "Keep playing unfocused",
+  "settings.dev_no_focus_pause.hint": "Development builds: leaving the window doesn't pause a song.",
   "settings.arcade_hud": "Arcade Timer & Song Number",
   "settings.arcade_hud.hint": "Song Select's timer, the song number and the Free Play line, as on a cabinet. They don't count at home.",
   "settings.show_oni.hint": "Song Select shows the Oni course at once. Off: the original, where Oni appears after hitting the right rim repeatedly.",

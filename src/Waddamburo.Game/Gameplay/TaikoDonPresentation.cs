@@ -54,7 +54,8 @@ public sealed class TaikoDonPresentation
         var state = player == 1 ? "don2p" : "don1p";
         layer.Player.SetNativeFill(state, _surface,
             // ponytail: the battle's size read off the recomp (about 60% of the menus' 600); tune against it.
-            stage ? LumenNativeSurfacePlacement.Centered(360, 360) : LumenNativeSurfacePlacement.Centered(448, 256));
+            // and the player's 40 px left (the kusudama view leans it to the centre, into AI-don's side).
+            stage ? LumenNativeSurfacePlacement.Centered(360, 360) with { X = -180 - (player == 0 ? 40 : 0) } : LumenNativeSurfacePlacement.Centered(448, 256));
         if (!stage && !layer.Player.TryGotoLabel("", state))
             throw new InvalidDataException($"Gameplay Don movie is missing its '{state}' state.");
         _controller.SetMotion(new(player, null, idle));

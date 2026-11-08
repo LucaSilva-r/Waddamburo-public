@@ -194,6 +194,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>Home with the arcade HUD off: no timer, song number or free-play line (they don't count there).</summary>
     public bool HideArcadeHud => Arcade.Home && !Arcade.ArcadeHud;
 
+    /// <summary>Development builds: the player's lane is drummed live by the bot (Settings > Developer).</summary>
+    public bool DevAutoplay => BuildInfo.Dev && Arcade.DevAutoplay;
+
     public bool Autoplay => Options.Autoplay || (Arcade.Home && Arcade.Autoplay && Match?.InSong != true);
 
     /// <summary>The accounts stored on this PC (home mode; empty in arcade).</summary>

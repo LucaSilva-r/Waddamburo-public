@@ -43,6 +43,7 @@
   "section.sound": "サウンド",
   "section.display": "画面",
   "section.graphics": "グラフィック",
+  "section.developer": "開発者",
 
   "library.no_nijiiro": "ニジイロのデータがありません。",
   "library.no_keys": "このニジイロの Executable/Release/bnusio.dll には、ファイルを開くキーがありません。キーの入ったもの（TaikoArcadeLoader のもの）に入れかえてから、もう一度追加してください。",
@@ -59,6 +60,10 @@
   "settings.random_song_folder.hint": "曲選択: 曲名がくるくる変わり、開くたびにランダムな曲をえらぶ背表紙を追加します。オリジナルにはありません。",
   "settings.autoplay": "オート演奏",
   "settings.autoplay.hint": "曲が自動で演奏されます。リプレイのように一時停止・シーク・速度変更ができます。スコアは保存されません。",
+  "settings.dev_autoplay": "オートプレイ 1P（ライブ）",
+  "settings.dev_autoplay.hint": "開発ビルドのみ：自分のレーンを自動で演奏します（リプレイではありません）。保存されません。",
+  "settings.dev_no_focus_pause": "非アクティブでも続行",
+  "settings.dev_no_focus_pause.hint": "開発ビルドのみ：ウィンドウを離れても曲を一時停止しません。",
   "settings.arcade_hud": "タイマー・曲数表示",
   "settings.arcade_hud.hint": "曲選択のタイマー、何曲目かの表示、フリープレイの表示。ホームでは使われません。",
   "settings.show_oni.hint": "曲選択: おにコースを最初から表示します。オフ: オリジナルどおり、右のふちを連打するとおにが現れます。",

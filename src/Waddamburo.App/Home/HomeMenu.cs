@@ -237,6 +237,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: new(T("settings.long_titles"), static s => s.SquashTitles ? 1 : 0, static (s, v) => s with { SquashTitles = v != 0 },
             static (value, _) => 1 - value, 0, static value => T(value != 0 ? "settings.long_titles.squash" : "settings.long_titles.shrink"), 1,
             Hint: T("settings.long_titles.hint"))),
+        // Development builds only.
+        .. BuildInfo.Dev ? (Row[])[
+            new(T("section.developer")),
+            new(Setting: toggle("settings.dev_autoplay", static s => s.DevAutoplay, static (s, v) => s with { DevAutoplay = v })),
+            new(Setting: toggle("settings.dev_no_focus_pause", static s => s.DevNoFocusPause, static (s, v) => s with { DevNoFocusPause = v })),
+        ] : [],
         new(),
     ];
 

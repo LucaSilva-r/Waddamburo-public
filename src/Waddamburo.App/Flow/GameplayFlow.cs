@@ -293,12 +293,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.EndBanner = !_demo && !(Shell.Hosts.AiBattle && _charts.Length == 2);
         _training = null;
         // A course saves apart, whole (saveCourse).
-        _voided = request.Review is not null || _demo || _course is not null;
+        _voided = request.Review is not null || _demo || _course is not null || Shell.DevAutoplay;
         if (_review is not null && request.Review?.Player is { } watched)
             Shell.Players.WatchAs(_side, watched);
         // AI battle: the second lane is AI-don's, drummed by the bot on the second drum's keys.
         var aiBattle = Shell.Hosts.AiBattle && _charts.Length == 2 && _course is null;
-        _autoplay = (Shell.Autoplay || _demo) && _review is null ? new GameplayAutoplay(aiBattle ? [_charts[0]] : _charts, _side,
+        _autoplay = (Shell.Autoplay || _demo || Shell.DevAutoplay) && _review is null ? new GameplayAutoplay(aiBattle ? [_charts[0]] : _charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
         _aiBot = null;
@@ -1054,7 +1054,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private void saveCourse(PlayRequest request, DanCourseResult result, DanCourseTimeline course)
     {
         // Failed runs aren't kept, here or on the server.
-        if (result.Level == 0 || Shell.Autoplay || Shell.Sync.Scores is not { } scores
+        if (result.Level == 0 || Shell.Autoplay || Shell.DevAutoplay || Shell.Sync.Scores is not { } scores
             || TaikoGuest.Profiles[(int)request.Players[0].Player] is not { } profile)
             return;
         var replays = course.Split(Shell.Gameplay.Replays[0]);
