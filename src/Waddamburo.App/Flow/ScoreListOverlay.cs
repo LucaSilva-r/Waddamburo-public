@@ -170,6 +170,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 PlayId = replay.Play.LocalOnly ? null : replay.Play.PlayId, // not on the server: nothing to report
             },
         };
+        shell.Hosts.SongSelect!.KeepOptions(); // your options, for when Song Select comes back
         if (!shell.PlayRequests.TryRequestPlay(request))
         {
             _error = T("score_list.replay_failed", "busy");

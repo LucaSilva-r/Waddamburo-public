@@ -91,6 +91,8 @@ public enum SongSelectSoundRequestKind
     SystemEffect,
     PlayerEffect,
     LoopVoice,
+    /// <summary>The tone board's preview: (bank, tone); the bank is the movie's own SoundDef id (7-9 = C/L/R).</summary>
+    TonePreview,
 }
 
 public readonly record struct SongSelectSoundRequest(
@@ -393,7 +395,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 var (player, part) = (slot / 4, slot % 4 >= 2 ? "in_" : "out_");
                 var tone = integer(call, 1);
                 var lumenPlayer = requirePlayer();
-                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone));
+                // The name's clip (ToneNameFillrect) is 360x72, the art 304x48: drawn at its own size, centred.
+                lumenPlayer.SetNativeFill($"tone_name_{part}{player}", ToneSurfaces.Name(tone),
+                    LumenNativeSurfacePlacement.Centered(ToneSurfaces.NameWidth, ToneSurfaces.NameHeight));
                 if (ToneSurfaces.Icon(tone) is { } icon)
                     lumenPlayer.SetNativeFill($"tone_icon_{part}{player}", icon);
                 else
@@ -459,14 +463,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
             lumen.RegisterMethod("RequestPlayerSE", call => requestSound(SongSelectSoundRequestKind.PlayerEffect, call));
             // RequestSE_Save(player, bank, cue): a player's sound on the course boards (traced (0, 5, 51));
-            // the tone board previews its drum sounds with it (SE_SELECT_NEIRO_000_005, cue = tone).
+            // the tone board previews its drum sounds with it (SoundDef's NEIRO_000_005 ids 7-9, cue = tone).
             lumen.RegisterMethod("RequestSE_Save", call =>
             {
                 if (call.Arguments.Length >= 3)
-                    _sounds?.RequestSound(new SongSelectSoundRequest(SongSelectSoundRequestKind.Effect, call.Arguments[1..]));
+                    _sounds?.RequestSound(new SongSelectSoundRequest(
+                        integer(call, 1) is >= 7 and <= 9 ? SongSelectSoundRequestKind.TonePreview : SongSelectSoundRequestKind.Effect,
+                        call.Arguments[1..]));
                 return LumenHostValue.Undefined;
             });
-            // ponytail: RequestSE_Stop(player) cuts the player's last one; previews just overlap.
+            // RequestSE_Stop(player): the movie calls it before each preview; the preview cuts the last one itself.
             lumen.RegisterMethod("RequestSE_Stop", static _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("NotifyPlayLoopVO", call => requestSound(SongSelectSoundRequestKind.LoopVoice, call));
             lumen.RegisterMethod("StopVoice", _ =>
@@ -1164,16 +1170,25 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         return LumenHostValue.Undefined;
     }
 
+    /// <summary>
+    /// Each joined drum's play options (GetSession: the chosen items' bits), kept for its next song and for Song
+    /// Select's next visit. Also before watching a replay: options set without picking a song were lost (reported on Discord).
+    /// </summary>
+    public void KeepOptions()
+    {
+        if (_player is null) return;
+        foreach (var player in _sides)
+            if (_player.TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
+                && bits.Kind == LumenHostValueKind.Number)
+                TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+    }
+
     private LumenHostValue notifySelection(LumenHostCall call)
     {
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
-        // Each joined drum's play options (GetSession: the chosen items' bits), kept for its next song.
-        foreach (var player in _sides)
-            if (requirePlayer().TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
-                && bits.Kind == LumenHostValueKind.Number)
-                TaikoGuest.Options[player] = TaikoPlayOptions.FromSession((int)bits.AsNumber(), selectedSpeed(player));
+        KeepOptions();
         foreach (var player in _sides)
             if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.course.isMania.{player}") is true)
                 TaikoGuest.Mania[player] = true;
@@ -1262,7 +1277,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             var leaving = _speedShown[player];
             _speedShown[player] = index;
             _player.SetInstanceOverlay($"{selector}/in_", SpeedText.Key(index, _speedBox.Value), _speedBox.Value, replace: true);
-            _player.SetInstanceOverlay($"{selector}/out_", leaving < 0 ? null : SpeedText.Key(leaving, _speedBox.Value), _speedBox.Value, replace: true);
+            // A board just opened rests on out_ (SessionSelector.Reset sets only it): it shows the current speed too,
+            // or Green's art for the item stayed (a reopened 1.1x read ふつう; reported on Discord).
+            _player.SetInstanceOverlay($"{selector}/out_", SpeedText.Key(leaving < 0 ? index : leaving, _speedBox.Value), _speedBox.Value, replace: true);
         }
     }
 

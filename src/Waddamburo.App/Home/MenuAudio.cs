@@ -32,18 +32,21 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds)
         _settings = settings;
         if (audio?.Mixer is not { } mixer) return;
         static float level(int percent) => percent * percent / 10000f;
-        mixer.MasterVolume = level(settings.MasterVolume) * _scope switch
+        mixer.MasterVolume = level(settings.MasterVolume);
+        // The menu volume scales everything in the menus but the drums: the player's own hits (and the tone board's
+        // previews) keep the drum volume alone. The attract volume scales it all, the demo play's drums included.
+        var scope = _scope switch
         {
             MenuVolumeScope.Attract => level(settings.AttractVolume),
             MenuVolumeScope.Menus => level(settings.MenuVolume),
             _ => 1,
         };
-        mixer.SetBusGain(AudioBus.Bgm, level(settings.MusicVolume));
-        mixer.SetBusGain(AudioBus.Preview, level(settings.MusicVolume));
-        mixer.SetBusGain(AudioBus.DrumHit, level(settings.DrumVolume));
-        mixer.SetBusGain(AudioBus.MenuSound, level(settings.EffectsVolume));
-        mixer.SetBusGain(AudioBus.Coin, level(settings.EffectsVolume));
-        mixer.SetBusGain(AudioBus.Voice, level(settings.VoiceVolume));
+        mixer.SetBusGain(AudioBus.Bgm, scope * level(settings.MusicVolume));
+        mixer.SetBusGain(AudioBus.Preview, scope * level(settings.MusicVolume));
+        mixer.SetBusGain(AudioBus.DrumHit, (_scope == MenuVolumeScope.Attract ? scope : 1) * level(settings.DrumVolume));
+        mixer.SetBusGain(AudioBus.MenuSound, scope * level(settings.EffectsVolume));
+        mixer.SetBusGain(AudioBus.Coin, scope * level(settings.EffectsVolume));
+        mixer.SetBusGain(AudioBus.Voice, scope * level(settings.VoiceVolume));
         if (sounds is not null)
             sounds.Gameplay.Panning = settings.StereoPanning;
     }

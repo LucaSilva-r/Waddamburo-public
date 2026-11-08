@@ -17,6 +17,7 @@ internal static class FumenChartReader
     private const int HeaderSize = 520;
     private const int MeasureCountOffset = 0x200;
     private const int HasBranchesOffset = 0x1B0;
+    private const int GaugeRatiosOffset = 0x1C8;
     private const int BranchPointsOffset = 0x1D4;
     private const int MeasureSize = 40;
     private const int BranchHeaderSize = 8;
@@ -145,7 +146,7 @@ internal static class FumenChartReader
                 effects.Add(new ChartEffectPoint(time, current.GoGo));
         }
 
-        return new PlayableChart(
+        var chart = new PlayableChart(
             key,
             TimeSpan.FromMilliseconds(shiftMs),
             chartTime(endMs),
@@ -167,6 +168,11 @@ internal static class FumenChartReader
                 chartTime(measures[Math.Max(0, check.Measure - 1)].Time), chartTime(measures[check.Measure].Time),
                 check.Normal, check.Expert, check.Master))], points) { SameNotes = !differ } : null,
         };
+        // Soul gauge ratios (16.16) per route: kept only where they differ from the note-count rule.
+        reader.Position = GaugeRatiosOffset;
+        double[] ratios = [reader.Int32() / 65536d, reader.Int32() / 65536d, reader.Int32() / 65536d];
+        return branched && Enum.GetValues<ChartBranch>().Any(route => Math.Abs(ratios[(int)route] - chart.GaugeRatio(route)) > 1e-4)
+            ? chart with { GaugeRatios = [.. ratios] } : chart;
     }
 
     /// <summary>

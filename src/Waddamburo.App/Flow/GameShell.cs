@@ -73,17 +73,47 @@ internal sealed class GameShell : IDisposable
 
     public bool EffectsEditorOpen => _effectsEditor is not null;
 
+    /// <summary>The effects editor's toggle: the scene's movies don't advance while it's open.</summary>
+    public bool FreezeAnimations { get; set; }
+
     /// <summary>The effects editor on the playing chart, or (<paramref name="layout"/>) on the player's gameplay layout.</summary>
     public void OpenEffectsEditor(bool layout = false)
     {
-        if (_effectsEditor is null && _gameplay.CanEditEffects && _home.CloseForEffectsEditor())
+        if (_effectsEditor is null && (layout ? _gameplay.CanEditLayout : _gameplay.CanEditEffects) && _home.CloseForEffectsEditor())
         {
-            _gameplay.BeginEffectsEditing();
+            _gameplay.BeginEffectsEditing(autoplay: layout);
             _effectsEditor = layout
-                ? new EffectsEditorSession(Application, _gameplay.EditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
-                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, layout: true)
-                : new EffectsEditorSession(Application, _gameplay.EditorChartWithoutLayout, _gameplay.Training!, _gameplay.EditorFiles(),
+                ? new EffectsEditorSession(Application, _gameplay.LayoutEditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
+                    _gameplay.ReplaceEditorEffects, _gameplay.LayoutElements, layout: true, layoutName: _gameplay.ActiveLayout, renameLayout: renameLayout,
+                    twoPlayers: _gameplay.TwoPlayerLayouts)
+                : new EffectsEditorSession(Application, stockLayout(), _gameplay.Training!, _gameplay.EditorFiles(),
                     _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
+        }
+    }
+
+    // The modchart editor works on the stock screen: the song drops the player's layout (and its 4:3) as it opens.
+    private Waddamburo.Catalog.PlayableChart stockLayout()
+    {
+        var chart = _gameplay.EditorChartWithoutLayout;
+        _gameplay.ReplaceEditorEffects(chart.Effects);
+        return chart;
+    }
+
+    // The layout editor's name field: the active layout's file renamed, the settings following it.
+    private EffectEditorFiles? renameLayout(string name)
+    {
+        if (_gameplay.ActiveLayout is not { } from) return null;
+        try
+        {
+            if (Waddamburo.App.Gameplay.PlayerLayouts.Rename(_gameplay.LayoutFolder, from, name) is not { } renamed) return null;
+            Arcade = _gameplay.WithActiveLayout(Arcade, renamed);
+            if (Options.ArcadePath is { } config) ArcadeSettings.SaveMenuSettings(config, Arcade);
+            return _gameplay.LayoutFiles();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Layout not renamed: {exception.Message}");
+            return null;
         }
     }
 
@@ -91,6 +121,7 @@ internal sealed class GameShell : IDisposable
     {
         _effectsEditor?.Dispose();
         _effectsEditor = null;
+        FreezeAnimations = false;
     }
 
     public SdlDonRenderer? DonRenderer { get; }
@@ -188,6 +219,7 @@ internal sealed class GameShell : IDisposable
     private readonly WaiwaiResultTextures _waiwaiResultTextures;
     private readonly TextFieldTextures _textFields;
     private readonly NameTextTextures _nameTexts;
+    private readonly NutData _nutData;
     private readonly ToneArt _toneArt;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
@@ -465,6 +497,13 @@ internal sealed class GameShell : IDisposable
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
             // Next to the settings file (USRDIR/waddamburo), like the favourites; none without one.
             Modcharts = Options.ArcadePath is { } settingsFile ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsFile))!, "modcharts") : null;
+            // The one layout of earlier versions becomes the first of the list, and stays the active one.
+            if (Modcharts is not null && Options.ArcadePath is { } config && Waddamburo.App.Gameplay.PlayerLayouts.Migrate(Modcharts) is { } migrated
+                && Arcade.Layout is null)
+            {
+                Arcade = Arcade with { Layout = migrated };
+                ArcadeSettings.SaveMenuSettings(config, Arcade);
+            }
             ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
             SongCatalog = new SongSelectCatalogView(snapshot);
             // Server crowns need every chart's hash before song select lists it.
@@ -513,7 +552,7 @@ internal sealed class GameShell : IDisposable
             _pill = new PairingPill(Application, options.FontPath);
             _textFields = new TextFieldTextures(Application, options.FontPath);
             _nameTexts = new NameTextTextures(Application, options.FontPath);
-            _toneArt = new ToneArt(Application, dataRoot);
+            _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
                 Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
@@ -545,10 +584,10 @@ internal sealed class GameShell : IDisposable
                 Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
                 Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
                 () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
-            _costumeIcons = new CostumeIconTextures(Application, dataRoot);
-            _danArt = new DanChallengeArt(Application, dataRoot);
-            _copyright = new CopyrightArt(Application, dataRoot);
-            _waiwaiResultTextures = new WaiwaiResultTextures(Application, dataRoot);
+            _costumeIcons = new CostumeIconTextures(Application, _nutData, dataRoot);
+            _danArt = new DanChallengeArt(_nutData);
+            _copyright = new CopyrightArt(_nutData);
+            _waiwaiResultTextures = new WaiwaiResultTextures(_nutData);
             // Other releases' installs (home's stock folders) name skins for the songs Green lacks.
             Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot), GameplaySkinResolver.MusicInfos(
                 [dataRoot, .. Arcade.Home ? ArcadeSettings.Folders(Arcade.StockFolders).Select(Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot).OfType<string>() : []]));
@@ -825,7 +864,7 @@ internal sealed class GameShell : IDisposable
                             editor.RequestClose();
                             keyboard = SdlKeyboardSnapshot.Empty;
                         }
-                        if (editor.CloseRequested || !_gameplay.CanEditEffects)
+                        if (editor.CloseRequested || !_gameplay.CanEditLayout)
                         {
                             closeEffectsEditor();
                             keyboard = SdlKeyboardSnapshot.Empty;
@@ -1185,7 +1224,8 @@ internal sealed class GameShell : IDisposable
             _presenter.Presented(menu, withIntermission: false);
             return menu;
         }
-        var interpolation = _home.Interpolation(interpolationFraction);
+        // Freeze animations (the editors): everything stands on one tick, Don and the overlays too.
+        var interpolation = FreezeAnimations && EffectsEditorOpen ? 1 : _home.Interpolation(interpolationFraction);
         if (_presenter.Held(Tick) is { } held)
         {
             _home.HoldBlack();
@@ -1209,8 +1249,8 @@ internal sealed class GameShell : IDisposable
             _inspected = scene;
         var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
-            : SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
-                "Indicator", Titles.Resolve).Quads;
+            : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
+                "Indicator", Titles.Resolve).Quads);
         // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
         // collection expression's growing list plus RenderFrame's copy of it, every frame.
         var quads = _frameQuads;
@@ -1248,6 +1288,22 @@ internal sealed class GameShell : IDisposable
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);
+    }
+
+    /// <summary>
+    /// A 4:3 layout squeezes the stage to 3/4 of its width: what isn't part of the layout is widened back by 4/3 to keep
+    /// its shape, from its side's edge (the corner indicators: network, coins) or about the centre (the menus).
+    /// </summary>
+    public IEnumerable<RenderQuad> Unsqueezed(IEnumerable<RenderQuad> quads, bool centred = false)
+    {
+        if (!Application.Squeeze43)
+            return quads;
+        RenderVertex v(RenderVertex vertex) => vertex with
+        {
+            X = centred ? .5f + (vertex.X - .5f) * 4 / 3 : vertex.X >= .5f ? 1 - (1 - vertex.X) * 4 / 3 : vertex.X * 4 / 3,
+        };
+        return quads.Select(quad => quad with
+            { TopLeft = v(quad.TopLeft), TopRight = v(quad.TopRight), BottomRight = v(quad.BottomRight), BottomLeft = v(quad.BottomLeft) });
     }
 
     private RenderFrame blackLoadingFrame()

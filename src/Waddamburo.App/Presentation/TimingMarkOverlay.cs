@@ -55,9 +55,14 @@ internal sealed class TimingMarkOverlay : IDisposable
             var progress = (float)(age / Duration);
             var strength = Math.Min(1, (float)(age.TotalMilliseconds / 50)) * Math.Min(1, (1 - progress) / 0.6f);
             float width = mark.Radius * WidthRadii, height = mark.Radius * HeightRadii, bottom = mark.Y + mark.Radius * LaneBottom;
-            quads.Add(RenderQuad.FromRectangles(_glow,
+            var quad = RenderQuad.FromRectangles(_glow,
                 new((mark.X - width / 2) / 1280, (bottom - height) / 720, width / 1280, height / 720),
-                RenderRectangle.Full, (mark.Early ? Early : Late) with { Alpha = strength }, RenderColor.Transparent));
+                RenderRectangle.Full, (mark.Early ? Early : Late) with { Alpha = strength }, RenderColor.Transparent);
+            // On the lane wherever the modchart or layout put it (moved, scaled, turned).
+            RenderVertex placed(RenderVertex vertex) => mark.Placement.Transform(vertex.X * 1280, vertex.Y * 720) is var point
+                ? vertex with { X = point.X / 1280, Y = point.Y / 720 } : vertex;
+            quads.Add(quad with { TopLeft = placed(quad.TopLeft), TopRight = placed(quad.TopRight),
+                BottomRight = placed(quad.BottomRight), BottomLeft = placed(quad.BottomLeft) });
         }
         return quads;
     }

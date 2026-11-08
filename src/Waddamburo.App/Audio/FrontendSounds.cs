@@ -48,9 +48,27 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             case SongSelectSoundRequestKind.PlayerEffect:
                 playPlayerEffect(request.Arguments);
                 break;
+            case SongSelectSoundRequestKind.TonePreview:
+                playTonePreview(request.Arguments);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(request));
         }
+    }
+
+    // The tone board's preview, by name: the game's nuSound2BankStr.bin gives ids 7-9 to SE_SELECT_NEIRO_000_004
+    // (a later tone layout), but song_select's SoundDef means 000_005, whose cue n is tone n (SE_GAME_NEIRO_00n).
+    private static readonly string[] TonePreviewBanks = ["SE_SELECT_NEIRO_000_005_C", "SE_SELECT_NEIRO_000_005_L", "SE_SELECT_NEIRO_000_005_R"];
+
+    private void playTonePreview(ImmutableArray<LumenHostValue> arguments)
+    {
+        if (!SoundBank.TryInteger(arguments, 0, out var bankId) || !SoundBank.TryInteger(arguments, 1, out var tone)
+            || bankId is < 7 or > 9 || tone < 0)
+            return;
+        foreach (var name in TonePreviewBanks)
+            bank.StopBank(name);
+        // A drum sound: on the drum hit bus, as in play (its volume setting), not the menu bus.
+        bank.Play(TonePreviewBanks[bankId - 7], tone, AudioBus.DrumHit);
     }
 
     public void PlayEntryVoice(int cue) => bank.Play("VO_ENTRY", cue);

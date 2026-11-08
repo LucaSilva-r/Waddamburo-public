@@ -48,7 +48,9 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
 
     private bool setUp()
     {
-        if (!call("SetChallengeLevel", course.Rank))
+        // dani_enso shows its challenge plate (challenge_lv_mini) for LEVEL_CHALLENGE (101) and up; the ranks index
+        // its label table (0 初級 ... 24 達人), anything past it leaves the first frame, 初級.
+        if (!call("SetChallengeLevel", course.Rank == Waddamburo.Game.Dan.DanRanks.Challenge ? LevelChallenge : course.Rank))
             return false;
         call("SetConditionNum", _exams.OnPanel.Count);
         setTypes();
@@ -61,6 +63,8 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
         for (var index = 0; index < shown.Count; index++)
             call("SetConditionType", index, DanExams.TypeOf(shown[index].Type), DanExams.Target(shown[index].Red, _song));
     }
+
+    private const int LevelChallenge = 101;
 
     private bool call(string name, params long[] arguments) =>
         movie.TryInvokeCallback(name, [.. arguments.Select(static value => LumenHostValue.FromNumber(value))]);

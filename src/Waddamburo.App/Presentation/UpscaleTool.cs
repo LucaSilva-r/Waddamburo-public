@@ -117,7 +117,7 @@ internal sealed class UpscaleTool : IDisposable
     private readonly Dictionary<(string Archive, string Movie, int Texture), (long Size, long Time, string Key)> _index = new();
     private readonly Dictionary<string, (long Size, long Time)?> _archiveStamps = new(StringComparer.Ordinal);
 
-    /// <summary>The lumendata/packed folder the archive ids in <see cref="ApplyCached"/> are relative to.</summary>
+    /// <summary>The lumendata/packed folder the archive ids in <see cref="ApplyCached(string, LumenMovieContent, bool)"/> are relative to.</summary>
     public string? LumenRoot { get; set; }
 
     private void loadIndex()
@@ -247,7 +247,7 @@ internal sealed class UpscaleTool : IDisposable
         _textures.Write(Key(source), encode(outWidth, outHeight, rgba));
     }
 
-    /// <summary>Whether these pixels are an upscaled copy decoded by <see cref="ApplyCached"/>.</summary>
+    /// <summary>Whether these pixels are an upscaled copy decoded by <see cref="ApplyCached(string, LumenMovieContent, bool)"/>.</summary>
     public bool IsUpscaled(byte[] rgba) => _upscaled.TryGetValue(rgba, out _);
 
     /// <summary>
@@ -278,32 +278,36 @@ internal sealed class UpscaleTool : IDisposable
                 key = Key(new UpscaleSource((uint)texture.Width, (uint)texture.Height, texture.Pixels()));
                 learned.Add((texture.Index, key));
             }
-            if (Load(key) is not { } cached)
-            {
-                replaced[index] = texture with { UpscaleKey = key };
-                return;
-            }
-            if (bc7)
-            {
-                replaced[index] = texture with
-                {
-                    Width = (int)cached.Width, Height = (int)cached.Height, Rgba8 = [], Blocks = default, Bc7 = cached.Bc7, UpscaleKey = key,
-                };
-                return;
-            }
-            var pixels = Bc7.Decode(cached.Bc7.Span, (int)cached.Width, (int)cached.Height);
-            _upscaled.AddOrUpdate(pixels, this);
-            replaced[index] = texture with
-            {
-                Width = (int)cached.Width,
-                Height = (int)cached.Height,
-                Rgba8 = ImmutableCollectionsMarshal.AsImmutableArray(pixels),
-                Blocks = default,
-                UpscaleKey = key,
-            };
+            replaced[index] = ApplyCached(texture, key, bc7);
         });
         remember(archive, content.Name, [.. learned]);
         content.ReplaceTextures((texture, index) => replaced[index] ?? texture);
+    }
+
+    /// <summary>
+    /// One texture swapped for its cached upscale (BC7, or decoded to RGBA without BC7), or left as it is with its
+    /// cache name (<paramref name="key"/>; null: hashed from its pixels) for the upscaler to fill.
+    /// </summary>
+    public LumenTextureContent ApplyCached(LumenTextureContent texture, string? key, bool bc7)
+    {
+        key ??= Key(new UpscaleSource((uint)texture.Width, (uint)texture.Height, texture.Pixels()));
+        if (Load(key) is not { } cached)
+            return texture with { UpscaleKey = key };
+        if (bc7)
+            return texture with
+            {
+                Width = (int)cached.Width, Height = (int)cached.Height, Rgba8 = [], Blocks = default, Bc7 = cached.Bc7, UpscaleKey = key,
+            };
+        var pixels = Bc7.Decode(cached.Bc7.Span, (int)cached.Width, (int)cached.Height);
+        _upscaled.AddOrUpdate(pixels, this);
+        return texture with
+        {
+            Width = (int)cached.Width,
+            Height = (int)cached.Height,
+            Rgba8 = ImmutableCollectionsMarshal.AsImmutableArray(pixels),
+            Blocks = default,
+            UpscaleKey = key,
+        };
     }
 
     public void Dispose()

@@ -14,6 +14,14 @@ internal enum HomeMenuAction
     Restart,
     /// <summary>Review the song played so far (the play is void).</summary>
     InstantReplay,
+    /// <summary>Make <see cref="HomeMenu.LayoutName"/> the active layout (null: the stock screen).</summary>
+    UseLayout,
+    /// <summary>Make <see cref="HomeMenu.LayoutName"/> active and edit it in the layout editor (the play is void).</summary>
+    EditLayout,
+    /// <summary>A new empty layout, made active and opened in the layout editor.</summary>
+    NewLayout,
+    /// <summary>Delete <see cref="HomeMenu.LayoutName"/> (the stock screen if it was active).</summary>
+    RemoveLayout,
     /// <summary>Report the watched replay's player to the moderators (the replay carries on).</summary>
     Report,
     SongSelect,
@@ -60,6 +68,22 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The display's exclusive fullscreen modes, largest first (set once by the host).</summary>
     // ponytail: read once at start; a different monitor plugged in later needs a restart.
     public static IReadOnlyList<(int Width, int Height, int RefreshRate)> DisplayModes { get; set; } = [];
+
+    /// <summary>The saved layouts' names (the Layouts page lists them).</summary>
+    public static Func<IReadOnlyList<string>> LayoutNames { get; set; } = static () => [];
+
+    /// <summary>The active layout for the song's player count, and whether that count is two (the page's title says so).</summary>
+    public static Func<string?> ActiveLayout { get; set; } = static () => null;
+    public static Func<bool> TwoPlayerLayouts { get; set; } = static () => false;
+
+    /// <summary>The layout the picked layout action is for (null: the stock screen).</summary>
+    public string? LayoutName { get; private set; }
+
+    // The Layouts page (stock, each saved layout, new), then a picked layout's actions. Names are shown as they are:
+    // a choice starting with '=' is literal text, not a string key.
+    private bool _layoutsPage;
+    private string? _layoutPick;
+    private bool _removePrompt; // "Remove <layout>?" before it's deleted
 
     // Exclusive fullscreen exists on Windows only (Linux compositors only emulate it).
     private static readonly bool ExclusiveAvailable = OperatingSystem.IsWindows();
@@ -269,7 +293,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
         : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report"
-        : _quitPrompt ? "menu.title.quit" : "menu.title.paused");
+        : _quitPrompt ? "menu.title.quit" : _layoutsPage ? TwoPlayerLayouts() ? "menu.title.layouts_two" : "menu.title.layouts"
+        : "menu.title.paused") is var title
+        && _layoutPick is { } pick ? _removePrompt ? T("menu.title.remove_layout", pick) : pick : title;
 
     /// <summary>The texture bake shown instead of the choices (running or finished).</summary>
     public Presentation.TextureBake? Bake
@@ -333,7 +359,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>
-    public string[] Rows => [.. _choices.Select(static choice => T(choice))];
+    public string[] Rows => [.. _choices.Select(static choice => choice.StartsWith('=') ? choice[1..] : T(choice))];
 
     // The calibration runs on the gameplay lane and ends in Song Select: offered from there only.
     private bool _calibrationOffered;
@@ -344,9 +370,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
     /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
     /// <paramref name="quit"/>: home, outside a song (the demo play counts as the attract): the game can be closed.
+    /// <paramref name="layout"/>: the song can open the layout editor (a local single-player song).
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool layout = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -355,6 +382,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 ? ["menu.resume", restart, "menu.instant_replay", "menu.settings", "menu.song_select"]
                 : ["menu.resume", restart, "menu.settings", "menu.song_select"]
             : attract ? ["menu.resume", "menu.settings"] : ["menu.resume", "menu.settings", "menu.return_to_title"];
+        if (gameplay && layout)
+            _choices = [.. _choices[..^2], "menu.layouts", .. _choices[^2..]];
         if (reportable)
             _choices = [.. _choices[..^1], "menu.report_player", _choices[^1]];
         if (noResume)
@@ -369,7 +398,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices, "menu.quit_game"];
         IsOpen = true;
         Selection = 0;
-        _restartPrompt = _reportPrompt = _quitPrompt = false;
+        _restartPrompt = _reportPrompt = _quitPrompt = _layoutsPage = _removePrompt = false;
+        _layoutPick = null;
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
 
@@ -422,12 +452,49 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         }
         if (_quitPrompt)
             return Selection == 0 ? close(HomeMenuAction.Quit) : Back();
+        if (_removePrompt)
+            return Selection == 0 ? close(HomeMenuAction.RemoveLayout) : Back();
+        if (_layoutPick is { } layout)
+        {
+            LayoutName = layout;
+            if (_choices[Selection] == "layouts.remove")
+            {
+                _removePrompt = true;
+                _choices = ["menu.yes", "menu.no"];
+                Selection = 1;
+                return HomeMenuAction.None;
+            }
+            return _choices[Selection] switch
+            {
+                "layouts.use" => close(HomeMenuAction.UseLayout),
+                "layouts.edit" => close(HomeMenuAction.EditLayout),
+                _ => Back(),
+            };
+        }
+        if (_layoutsPage)
+        {
+            switch (_choices[Selection])
+            {
+                case "layouts.stock": LayoutName = null; return close(HomeMenuAction.UseLayout);
+                case "layouts.new": return close(HomeMenuAction.NewLayout);
+                case "menu.back": return Back();
+            }
+            _layoutPick = _layoutsNames[Selection - 1];
+            _choices = ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
+            Selection = 0;
+            return HomeMenuAction.None;
+        }
         switch (_choices[Selection])
         {
             case "menu.settings":
                 return HomeMenuAction.Settings;
             case "menu.restart_song" or "menu.play_song": return close(HomeMenuAction.Restart);
             case "menu.instant_replay": return close(HomeMenuAction.InstantReplay);
+            case "menu.layouts":
+                _layoutsPage = true;
+                _pauseChoices = _choices;
+                showLayouts();
+                return HomeMenuAction.None;
             case "menu.report_player":
                 _reportPrompt = true;
                 _pauseChoices = _choices;
@@ -448,8 +515,39 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     }
 
     /// <summary>Escape (or the back button) on the pause choices: a prompt goes back to them, else the menu resumes.</summary>
+    // The Layouts page: the stock screen, each saved layout (the active one marked), a new one, back.
+    private string[] _layoutsNames = [];
+    private void showLayouts()
+    {
+        var active = ActiveLayout();
+        _layoutsNames = [.. LayoutNames()];
+        _choices = ["layouts.stock", .. _layoutsNames.Select(name => "=" + (name == active ? "● " : "") + name), "layouts.new", "menu.back"];
+        Selection = active is null ? 0 : Math.Max(0, Array.IndexOf(_layoutsNames, active) + 1);
+    }
+
     public HomeMenuAction Back()
     {
+        if (_removePrompt)
+        {
+            _removePrompt = false;
+            _choices = ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
+            Selection = 2;
+            return HomeMenuAction.None;
+        }
+        if (_layoutPick is { } picked)
+        {
+            _layoutPick = null;
+            showLayouts();
+            Selection = Array.IndexOf(_layoutsNames, picked) + 1;
+            return HomeMenuAction.None;
+        }
+        if (_layoutsPage)
+        {
+            _layoutsPage = false;
+            _choices = _pauseChoices;
+            Selection = Array.IndexOf(_choices, "menu.layouts");
+            return HomeMenuAction.None;
+        }
         if (_restartPrompt)
         {
             _declined = restartState();

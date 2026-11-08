@@ -13,7 +13,10 @@ public sealed class TaikoSoulGauge
     /// <summary>Segments of the authored gauge movies.</summary>
     public const int Segments = 50;
 
-    private int _points;
+    // Fractional: a branch's amounts keep their fractions (W3).
+    private double _points;
+    // Each route's amounts as a share of the normal route's: normal combo ÷ the route's combo.
+    private readonly double[] _routeScale = [1, 1, 1];
     private readonly int _scale = 1;
     private int _great;
     private int _good;
@@ -29,6 +32,18 @@ public sealed class TaikoSoulGauge
             _ => 8000,
         };
         (_great, _good, _miss) = rates(course, Math.Clamp(level ?? 10, 1, 10), noteCount);
+    }
+
+    /// <summary>
+    /// A chart's gauge: rates from its normal route, a branched route's scaled by <see cref="PlayableChart.GaugeRatio"/>.
+    /// osu! charts sit in course slots by star order only: they fill as Oni, as they are judged.
+    /// </summary>
+    public TaikoSoulGauge(TaikoCourse course, PlayableChart chart)
+        : this(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course, chart.Level,
+            chart.OnRoute(ChartBranch.Normal).NoteCount)
+    {
+        foreach (var route in Enum.GetValues<ChartBranch>())
+            _routeScale[(int)route] = chart.GaugeRatio(route);
     }
 
     /// <summary>
@@ -51,7 +66,7 @@ public sealed class TaikoSoulGauge
     }
 
     public int Clear { get; }
-    public int Value => _points / _scale;
+    public int Value => (int)(_points / _scale);
 
     /// <summary>Sets the gauge to a point of a reviewed play.</summary>
     public void Restore(int value) => _points = Math.Clamp(value, 0, Max) * _scale;
@@ -69,12 +84,12 @@ public sealed class TaikoSoulGauge
             if (judgement.HitObject.StartTime >= song.Start)
                 (_great, _good, _miss) = (song.Great, song.Good, song.Miss);
         var previous = Value;
-        _points = Math.Clamp(_points + result switch
+        _points = Math.Clamp(_points + _routeScale[(int)(judgement.HitObject.Branch ?? ChartBranch.Normal)] * (result switch
         {
             TaikoHitResult.Great => _great,
             TaikoHitResult.Good => _good,
             _ => _miss,
-        }, 0, Max * _scale);
+        }), 0, Max * _scale);
         return Value != previous;
     }
 

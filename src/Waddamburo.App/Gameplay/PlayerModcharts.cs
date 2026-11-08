@@ -28,12 +28,9 @@ internal static class PlayerModcharts
         return read(path, course) is { } tracks ? ChartModFile.Apply(chart, tracks) : chart;
     }
 
-    /// <summary>The player's gameplay layout: one file for every chart, beside the per-chart modcharts.</summary>
-    public static string LayoutPath(string folder) => Path.Combine(folder, "layout" + ChartModFile.Extension);
-
-    /// <summary><paramref name="chart"/> with the player's layout, unless it has modchart changes of its own.</summary>
-    public static PlayableChart ApplyLayout(string folder, PlayableChart chart) =>
-        File.Exists(LayoutPath(folder)) && read(LayoutPath(folder), null) is { } layout ? ChartModFile.ApplyLayout(chart, layout) : chart;
+    /// <summary><paramref name="chart"/> with the player's layout (<paramref name="path"/>; null: none), see <see cref="ChartModFile.ApplyLayout"/>.</summary>
+    public static PlayableChart ApplyLayout(string? path, PlayableChart chart) =>
+        path is not null && File.Exists(path) && read(path, null) is { } layout ? ChartModFile.ApplyLayout(chart, layout) : chart;
 
     // A broken file is reported and not used.
     private static System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<ChartModKeyframe>>? read(

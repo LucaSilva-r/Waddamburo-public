@@ -1,3 +1,4 @@
+using Waddamburo.App.Audio;
 using System.Diagnostics;
 using Waddamburo.App.Gameplay;
 using Waddamburo.Catalog;
@@ -27,6 +28,7 @@ internal sealed class ReviewSession : IDisposable
     private TimeSpan _songStart;
     private readonly Stopwatch _frame = new();
     private readonly Task<ScrubAudioSource>? _decode;
+    private readonly Task<float>? _volume;
     private ScrubAudioSource? _audio;
     private AudioPlaybackHandle? _voice;
     private TimeSpan _shownAt;
@@ -59,6 +61,7 @@ internal sealed class ReviewSession : IDisposable
             var stream = shell.Assets.OpenReadAsync(asset).AsTask().GetAwaiter().GetResult();
             var format = audio.Mixer.Format;
             _decode = Task.Run(() => ScrubAudioSource.Decode(stream, format));
+            _volume = Task.Run(() => SongLoudness.Volume(shell.Assets, asset, format));
         }
     }
 
@@ -201,10 +204,11 @@ internal sealed class ReviewSession : IDisposable
 
     private void followMusic(double rate)
     {
-        if (_audio is null && _decode is { IsCompletedSuccessfully: true } decoded && _shell.Audio is { } audio)
+        if (_audio is null && _decode is { IsCompletedSuccessfully: true } decoded && _volume is not { IsCompleted: false }
+            && _shell.Audio is { } audio)
         {
             _audio = decoded.Result;
-            _voice = audio.Mixer.PlayStream(_audio, AudioBus.Bgm);
+            _voice = audio.Mixer.PlayStream(_audio, AudioBus.Bgm, _volume is { IsCompletedSuccessfully: true } volume ? volume.Result : 1f);
         }
         _audio?.Follow(Clock.Position - _songStart, rate);
     }

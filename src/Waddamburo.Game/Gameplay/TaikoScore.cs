@@ -15,10 +15,14 @@ public sealed class TaikoScore
     private readonly (TimeSpan Start, int Base, int Step)[] _songs;
     private int _pendingStrongIndex = -1;
     private long _pendingStrongPoints;
+    private readonly TimeSpan _goodWindow;
 
-    public TaikoScore(PlayableChart chart)
+    /// <param name="chart">The chart played.</param>
+    /// <param name="goodWindow">The chart's Good window: a note hittable while Go-Go is on counts as Go-Go.</param>
+    public TaikoScore(PlayableChart chart, TimeSpan goodWindow = default)
     {
         _chart = chart ?? throw new ArgumentNullException(nameof(chart));
+        _goodWindow = goodWindow;
         if (chart.ScoreInit is null && chart.ScoreDiff is > int.MaxValue / 4)
             throw new ArgumentOutOfRangeException(nameof(chart), "SCOREDIFF is too large to derive SCOREINIT.");
         var estimated = chart.ScoreInit is null && chart.ScoreDiff is null ? estimateRates(chart.OnRoute(ChartBranch.Normal)) : (Init: 0, Diff: 0);
@@ -85,7 +89,7 @@ public sealed class TaikoScore
         var step = Combo >= 100 ? 8 : Combo >= 50 ? 4 : Combo >= 30 ? 2 : Combo >= 10 ? 1 : 0;
         var basic = ((long)_base + (long)_step * step) / 10 * 10;
         var points = result == TaikoHitResult.Good ? basic / 20 * 10 : basic;
-        if (_chart.IsGoGoAt(time, judgement.HitObject.Branch)) points = truncateToTen(points * 6, 5);
+        if (isGoGo(judgement.HitObject)) points = truncateToTen(points * 6, 5);
         Value += points;
         if (judgement.HitObject.IsStrong)
         {
@@ -110,6 +114,11 @@ public sealed class TaikoScore
         Value += goGo && _chart.ShinuchiBase is null ? points * 6 / 5 : points;
         return Value != previous;
     }
+
+    // A note is Go-Go when Go-Go is on anywhere in its Good window, at either end: the hit's timing never
+    // decides it, so two all-Great plays score the same (two Dondafuls scored differently, 2026-11-07).
+    private bool isGoGo(PlayableHitObject note) =>
+        _chart.IsGoGoDuring(note.StartTime - _goodWindow, note.StartTime + _goodWindow, note.Branch);
 
     private static long truncateToTen(long numerator, long denominator) =>
         numerator / (denominator * 10) * 10;

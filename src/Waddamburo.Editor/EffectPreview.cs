@@ -14,6 +14,8 @@ public interface IEffectsEditorTransport
     void MarkLoopStart();
     void MarkLoopEnd();
     void ClearLoop();
+    /// <summary>The scene's movies stand still (their bounds stop moving under the gizmos); chart time goes on.</summary>
+    bool FreezeAnimations { get; set; }
 }
 
 /// <summary>Read-only data shared by timeline, graph, and inspector. No GPU or file access.</summary>
@@ -74,6 +76,11 @@ public sealed class BeatView
     public double Start { get; private set; }
     public double Span { get; private set; } = 64;
     public double BeatAt(double fraction) => Start + fraction * Span;
+
+    /// <summary>The nearest of <paramref name="beats"/> within <paramref name="tolerance"/> of <paramref name="beat"/>, else it.</summary>
+    public static double SnapTo(IEnumerable<double> beats, double beat, double tolerance) =>
+        beats.Select(key => (Key: key, Distance: Math.Abs(key - beat))).Where(k => k.Distance <= tolerance)
+            .OrderBy(static k => k.Distance).Select(static k => (double?)k.Key).FirstOrDefault() ?? beat;
     public double FractionAt(double beat) => (beat - Start) / Span;
     public void Frame(double first, double last)
     {

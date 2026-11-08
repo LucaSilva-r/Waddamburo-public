@@ -277,13 +277,15 @@ internal static class GameplaySceneComposition
     public static int GenreIndex(string category)
     {
         var name = category.ToLowerInvariant();
+        // English folder names, and the Japanese ones (folder names or box.def #GENRE) TJA libraries use.
         return name.Contains("pop") ? 0
-            : name.Contains("anime") ? 1
-            : name.Contains("vocaloid") ? 2
-            : name.Contains("children") || name.Contains("folk") ? 3
-            : name.Contains("classic") ? 5
-            : name.Contains("game") ? 6
-            : name.Contains("namco") ? 7
+            : name.Contains("anime") || name.Contains("アニメ") ? 1
+            : name.Contains("vocaloid") || name.Contains("ボーカロイド") ? 2
+            : name.Contains("children") || name.Contains("folk") || name.Contains("kids")
+                || name.Contains("童謡") || name.Contains("どうよう") || name.Contains("キッズ") ? 3
+            : name.Contains("classic") || name.Contains("クラシック") ? 5
+            : name.Contains("game") || name.Contains("ゲーム") ? 6
+            : name.Contains("namco") || name.Contains("ナムコ") ? 7
             : 4;
     }
 

@@ -23,8 +23,12 @@ internal sealed class TrainingSession : IEffectsEditorTransport
     // Where the live lanes started judging (the attempt so far runs from there).
     private TimeSpan _liveFrom;
 
-    public TrainingSession(GameShell shell, ReviewSession review, PlayableChart chart)
+    /// <summary>Watched, never played (the layout editor on autoplay): the lanes show the review's own play.</summary>
+    private readonly bool _watch;
+
+    public TrainingSession(GameShell shell, ReviewSession review, PlayableChart chart, bool watch = false)
     {
+        _watch = watch;
         _shell = shell;
         _review = review;
         _notes = [.. chart.HitObjects.Select(static note => note.StartTime)
@@ -53,6 +57,12 @@ internal sealed class TrainingSession : IEffectsEditorTransport
     /// </summary>
     public void Begin(TimeSpan? at = null)
     {
+        if (_watch)
+        {
+            Clock.Seek(at ?? Clock.Start);
+            _review.ShowFresh(Clock.Position); // the lanes on the review's own play
+            return;
+        }
         goLive(at ?? Clock.Start);
         if (at is not null)
             Clock.SetPaused(true);
@@ -99,7 +109,7 @@ internal sealed class TrainingSession : IEffectsEditorTransport
         }
         if (scrub != 0)
             showAttempt();
-        else if (!Live && !Clock.Paused)
+        else if (!Live && !Clock.Paused && !_watch)
             goLive(Clock.Position); // let go (or resumed after a move): the drum plays on from here
         // Paused, the live lanes just stand (a hit would be judged at a frozen time).
         _review.Step(scrub, Live && !Clock.Paused ? keys : null);
@@ -135,6 +145,12 @@ internal sealed class TrainingSession : IEffectsEditorTransport
 
     public void ClearLoop() => (LoopStart, LoopEnd) = (null, null);
 
+    public bool FreezeAnimations
+    {
+        get => _shell.FreezeAnimations;
+        set => _shell.FreezeAnimations = value;
+    }
+
     public void RestoreLoop(TrainingSession previous)
     {
         LoopStart = previous.LoopStart is { } a && a >= Clock.Start && a < Clock.End ? a : null;
@@ -154,7 +170,12 @@ internal sealed class TrainingSession : IEffectsEditorTransport
     {
         var result = _shell.Gameplay.Results[0];
         LastAttempt = (result.Great, result.Good, result.Miss);
-        if (PauseAfterAttempt || LoopEnd is null)
+        if (_watch && LoopEnd is not null && !PauseAfterAttempt)
+        {
+            Clock.Seek(LoopStart ?? Clock.Start);
+            return;
+        }
+        if (PauseAfterAttempt || LoopEnd is null || _watch)
         {
             Clock.SetPaused(true);
             showAttempt();

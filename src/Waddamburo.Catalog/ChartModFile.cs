@@ -191,11 +191,18 @@ public static class ChartModFile
         Apply(chart, Compile(tracks));
 
     /// <summary>
-    /// The player's layout (constant tracks) for a chart without modchart changes of its own; a chart with any keeps
-    /// them and ignores the layout (no merge). Scroll gimmicks (#JPOSSCROLL, beat scroll) are not modchart changes.
+    /// The player's layout (constant tracks) for a chart without modchart changes of its own. A chart with any keeps
+    /// them: a 16:9 layout is ignored (no merge), a 4:3 one (camera.aspect below 1) goes under them as
+    /// <see cref="ChartEffects.Layout"/>, so the modchart still fits the 4:3 screen. Scroll gimmicks (#JPOSSCROLL, beat
+    /// scroll) are not modchart changes.
     /// </summary>
-    public static PlayableChart ApplyLayout(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> layout) =>
-        chart.Effects.Mods.IsEmpty && layout.Count > 0 ? Apply(chart, layout) : chart;
+    public static PlayableChart ApplyLayout(PlayableChart chart, IReadOnlyDictionary<string, ImmutableArray<ChartModKeyframe>> layout)
+    {
+        if (layout.Count == 0) return chart;
+        if (chart.Effects.Mods.IsEmpty) return Apply(chart, layout);
+        var fourThree = layout.TryGetValue("camera.aspect", out var aspect) && aspect.Any(static key => key.Value < 1);
+        return fourThree ? chart with { Effects = chart.Effects with { Layout = Apply(chart, layout).Effects.Mods } } : chart;
+    }
 
     /// <summary>Replaces drawing mods while preserving the chart's other effects and identity.</summary>
     public static PlayableChart Apply(PlayableChart chart, IReadOnlyList<ChartModCue> cues)

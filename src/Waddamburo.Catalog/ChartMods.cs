@@ -31,9 +31,13 @@ public static class ChartMods
     /// <summary>Scene elements (Green's gameplay roles, the same for every skin) and what moves them.</summary>
     public static readonly ImmutableArray<string> Elements =
         ["camera", "playfield", "don", "background", "donbg", "renda", "dancers", "stage", "fever", "runners",
-         "gauge", "board", "songinfo", "nameplate", "gogo"];
+         "gauge", "board", "songinfo", "nameplate", "gogo", "banner"];
 
-    public static readonly ImmutableArray<string> ElementProperties = ["x", "y", "rotation", "scale", "scalex", "scaley", "alpha"];
+    /// <summary>
+    /// depth: draw order, in whole steps (default 0): elements are drawn by depth, a higher one in front, the game's own
+    /// order kept among equals; e.g. don 1 puts Don-chan in front of everything. The playfield (lane, notes) is one block.
+    /// </summary>
+    public static readonly ImmutableArray<string> ElementProperties = ["x", "y", "rotation", "scale", "scalex", "scaley", "alpha", "depth"];
 
     /// <summary>Don-chan's model turned in his gameplay view (degrees; not the balloon or kusudama views).</summary>
     public static readonly ImmutableArray<string> DonModelProperties = ["yaw", "pitch", "roll"];
@@ -41,12 +45,35 @@ public static class ChartMods
     /// <summary>Note mods (the "notes" target): 1 = full strength, except zoom and alpha (1 = as drawn).</summary>
     public static readonly ImmutableArray<string> NoteProperties = ["drunk", "tipsy", "wave", "beat", "dizzy", "zoom", "alpha"];
 
-    public static bool IsKnown(string target, string property) =>
-        target == "notes" ? NoteProperties.Contains(property)
-        : Elements.Contains(target) && (ElementProperties.Contains(property) || target == "don" && DonModelProperties.Contains(property));
+    /// <summary>A two-player layout's second lane: its elements are the first lane's names with this suffix (playfield_p2).</summary>
+    public const string SecondLane = "_p2";
+
+    /// <summary>The element a target names, without the second lane's suffix.</summary>
+    public static string BaseTarget(string target) =>
+        target.EndsWith(SecondLane, StringComparison.Ordinal) && target != "camera" + SecondLane ? target[..^SecondLane.Length] : target;
+
+    /// <summary>
+    /// A two-player layout's changes for one lane: the first lane's (and shared camera) as they are; the second lane's
+    /// (*_p2) under the plain names, with the camera.
+    /// </summary>
+    public static IEnumerable<ChartModEase> ForLane(IEnumerable<ChartModEase> changes, int lane) => lane == 0
+        ? changes.Where(static change => !change.Target.EndsWith(SecondLane, StringComparison.Ordinal))
+        : changes.Where(static change => change.Target == "camera" || change.Target.EndsWith(SecondLane, StringComparison.Ordinal))
+            .Select(static change => change with { Target = BaseTarget(change.Target) });
+
+    public static bool IsKnown(string target, string property)
+    {
+        if (target != "camera" && BaseTarget(target) is var lane && lane != target)
+            return lane != "camera" && IsKnown(lane, property);
+        return target == "notes" ? NoteProperties.Contains(property)
+        : Elements.Contains(target) && (ElementProperties.Contains(property) || target == "don" && DonModelProperties.Contains(property)
+            || target == "camera" && property == "aspect");
+    }
 
     /// <summary>A property's value before any change: 1 for scales, zoom and alpha, else 0.</summary>
-    public static double Default(string property) => property is "scale" or "scalex" or "scaley" or "zoom" or "alpha" ? 1 : 0;
+    /// <remarks>camera.aspect: the stage's width on screen, 1 = 16:9, below 1 = a 4:3 screen (the stage squeezed into it,
+    /// read at the chart's start).</remarks>
+    public static double Default(string property) => property is "scale" or "scalex" or "scaley" or "zoom" or "alpha" or "aspect" ? 1 : 0;
 
     /// <summary>
     /// The value at <paramref name="time"/> of one target's property, from its changes in start order: each eases from

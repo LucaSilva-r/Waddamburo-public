@@ -31,13 +31,18 @@ public sealed partial class EffectsEditorSession : IDisposable
     private const string Status = "Double-click: add/edit key | Drag empty space: box select | Shift+drag key: time only | Ctrl+C/V: copy/paste | Right-click: repeat | Alt: bypass snap | Shift+wheel: scroll";
     private static readonly uint Background = Color(.115f, .125f, .14f), Grid = Color(.20f, .22f, .25f),
         Bar = Color(.31f, .34f, .39f), Text = Color(.85f, .87f, .9f), Muted = Color(.52f, .56f, .61f),
-        Playhead = Color(1, .56f, .18f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
+        Playhead = Color(1, .56f, .18f), Guide = Color(.95f, .3f, .85f), Accent = Color(.61f, .76f, .91f), SelectedRow = Color(.26f, .35f, .44f, .65f);
 
     public EffectsEditorSession(SdlApplication application, PlayableChart chart, IEffectsEditorTransport transport, EffectEditorFiles? files = null, Action<ChartEffects>? replaceEffects = null,
         Func<TimeSpan, IReadOnlyList<StageEffectElement>>? elements = null,
-        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null, bool layout = false)
+        Func<string, TaikoCourse?, EffectEditorSource>? openTja = null, string? tjaPath = null, bool layout = false,
+        string? layoutName = null, Func<string, EffectEditorFiles?>? renameLayout = null, bool twoPlayers = false)
     {
         _layout = layout;
+        _layoutTargets = [.. ChartMods.Elements, "notes",
+            .. twoPlayers ? ChartMods.Elements.Where(static t => t != "camera").Append("notes").Select(static t => t + ChartMods.SecondLane) : []];
+        _layoutName = layoutName ?? "";
+        _renameLayout = renameLayout;
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(transport);
         _application = application;
@@ -159,8 +164,11 @@ public sealed partial class EffectsEditorSession : IDisposable
         {
             if (_layout)
             {
-                foreach (var target in ChartMods.Elements.Append("notes"))
-                    if (ImGui.Selectable(target, _viewportTarget == target)) SelectElement(target);
+                foreach (var target in _layoutTargets)
+                    if (ImGui.Selectable(target, SelectedTargets.Contains(target)))
+                    {
+                        if (ImGui.GetIO().KeyCtrl) ToggleElement(target); else SelectElement(target);
+                    }
                 ImGui.End();
                 return;
             }
@@ -170,8 +178,11 @@ public sealed partial class EffectsEditorSession : IDisposable
                 var tracks = _trackNames.Where(k => k.StartsWith(target + ".", StringComparison.Ordinal)).ToArray();
                 ImGui.SetNextItemOpen(tracks.Length > 0, ImGuiCond.Once);
                 var open = ImGui.TreeNodeEx($"{target} ({tracks.Length})", ImGuiTreeNodeFlags.OpenOnArrow
-                    | ImGuiTreeNodeFlags.SpanAvailWidth | (_viewportTarget == target ? ImGuiTreeNodeFlags.Selected : 0));
-                if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen()) SelectElement(target);
+                    | ImGuiTreeNodeFlags.SpanAvailWidth | (SelectedTargets.Contains(target) ? ImGuiTreeNodeFlags.Selected : 0));
+                if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
+                {
+                    if (ImGui.GetIO().KeyCtrl) ToggleElement(target); else SelectElement(target);
+                }
                 if (!open) continue;
                 foreach (var key in tracks)
                     if (ImGui.Selectable(key[(key.IndexOf('.') + 1)..], _selected.Contains(key)))
@@ -320,7 +331,14 @@ public sealed partial class EffectsEditorSession : IDisposable
         Navigate(ruler, width, hovered);
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) _seekDrag = true;
         if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _seekDrag = false;
-        if (_seekDrag) SeekBeat(_view.BeatAt(Math.Clamp((ImGui.GetIO().MousePos.X - ruler.X) / width, 0, 1)));
+        if (_seekDrag)
+        {
+            // The playhead snaps onto keyframes (any track) within 8 px as it's dragged over them; Alt: no snapping.
+            var beat = _view.BeatAt(Math.Clamp((ImGui.GetIO().MousePos.X - ruler.X) / width, 0, 1));
+            if (!ImGui.GetIO().KeyAlt)
+                beat = BeatView.SnapTo(_preview.Tracks.Values.SelectMany(static keys => keys.Select(static key => key.Beat)), beat, 8 / width * _view.Span);
+            SeekBeat(beat);
+        }
         draw.AddRectFilled(ruler, ruler + new Vector2(width, 40), Background);
         ChartRuler(draw, ruler, width, hovered);
         DrawPlayhead(draw, ruler, new(width, 40));

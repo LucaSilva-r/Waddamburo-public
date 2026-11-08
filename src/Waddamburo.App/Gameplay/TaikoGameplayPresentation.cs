@@ -45,7 +45,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
 
     /// <summary>The song's clear / fail banner shows at its end (off in practice; set before <see cref="Start"/>).</summary>
-    public bool EndBanner { get; set; } = true;
+    /// <remarks>Read each frame; lanes rebuilt (a seek back in a review) start without a banner shown.</remarks>
+    public bool EndBanner
+    {
+        get => _endBanner;
+        set { _endBanner = value; foreach (var lane in _lanes) lane.EndBanner = value; }
+    }
+    private bool _endBanner = true;
 
     /// <summary>Each lane's play options (set before <see cref="Start"/>; none when missing).</summary>
     public IReadOnlyList<TaikoPlayOptions> Options { get; set; } = [];
@@ -138,8 +144,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _lanes[lane].ReplaceEffects(effects);
     }
 
-    public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time) =>
-        _lanes.Length == 1 ? _lanes[0].EffectElements(time) : [];
+    /// <remarks><paramref name="allLanes"/>: both lanes' elements, the second lane's named *_p2 (a two-player layout).</remarks>
+    public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time, bool allLanes = false) =>
+        _lanes.Length == 1 ? _lanes[0].EffectElements(time)
+        : !allLanes ? []
+        : [.. _lanes.SelectMany((lane, index) => lane.EffectElements(time).Select(element => index == 0 || element.Target == "camera"
+            ? element : element with { Target = element.Target + Waddamburo.Catalog.ChartMods.SecondLane }))];
 
     /// <summary>A balloon/kusudama result is still animating; the song should not end under it.</summary>
     public bool OverlayActive => _lanes.Any(lane => lane.OverlayActive);
@@ -262,6 +272,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
     private sealed class Lane
     {
+        /// <summary>The end banner shows when the song reaches it (read each frame: the editor turns it off mid-song).</summary>
+        public bool EndBanner { get; set; }
+
         private static readonly string[] NoteMovieNames = ["onp_don", "onp_katsu", "onp_don_dai",
             "onp_katsu_dai", "onp_tetunagidon_1p", "onp_tetunagikatsu_1p", "onp_synchro_don_1p", "onp_synchro_katsu_1p",
             "onp_synchro_daidon_1p", "onp_synchro_daikatsu_1p", "onp_rare_0_w_00", "onp_kadon"];
@@ -292,6 +305,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly Func<int> _combo;
         private readonly LumenSceneLayer[] _fixedLayers;
         private readonly Action<TimeSpan> _onChartTime; // end-of-song banner check
+        private readonly Action<bool> _setMissed = static _ => { }; // a reviewed play's full combo, from its bake
         private readonly Func<TaikoPlayResult> _result;
         private readonly Action<int?, TaikoInputAction>? _playHitSound;
         private bool _stopped;
@@ -402,7 +416,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // The three gauge movies differ in their authored clear line (60/70/80%).
             if (dan is not null)
                 board.TryInvokeCallback("SetDani", []);
-            var gaugeName = dan is not null ? "gage_don_1p_dani" : course switch
+            // osu! charts fill as Oni (TaikoSoulGauge), so they show Oni's clear line.
+            var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course) switch
             {
                 TaikoCourse.Easy => "gage_don_1p_easy",
                 TaikoCourse.Normal or TaikoCourse.Hard => "gage_don_1p_normal",
@@ -412,16 +427,16 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
             if (gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]) == false)
                 throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
-            var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments, dan?.ExactGauge == true) : new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
-            var score = new TaikoScore(chart);
+            var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments, dan?.ExactGauge == true) : new TaikoSoulGauge(course, chart);
+            var score = new TaikoScore(chart, WindowsFor(chart, course).Good);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
             if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
                 throw new InvalidDataException("Gameplay board is missing its score initialization callback.");
-            void updateScore(long award)
+            void updateScore(long award, bool popup = true)
             {
                 if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
                     throw new InvalidDataException("Gameplay board is missing SetScore.");
-                if (scoreAdd is null) return;
+                if (scoreAdd is null || !popup) return;
                 if (!scoreAdd.TryInvokeCallback("Create", []))
                     throw new InvalidDataException("Gameplay score-add movie is missing Create.");
                 if (!scoreAdd.TryInvokeCallback("SetCount", [LumenHostValue.FromNumber(award)]))
@@ -512,13 +527,16 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeFire = skin("gage_fire_1p"); // none in Waiwai
             var goGoSplash = skin("action_gogotime");
             var banner = skin("action_result"); // none in Waiwai
+            // Lanes built again (a seek back in a review or the editors): a banner already shown goes away.
+            banner?.GotoFrame(0, play: false);
             var full = false;
             var missed = false;
+            _setMissed = value => missed = value;
             int great = 0, good = 0, miss = 0, maxCombo = 0;
             // Waiwai: both players share the voltage (clear at its norm).
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
-                (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options };
+                (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options, BalloonHits = score.BalloonHits };
             var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
             if (dan is not null && danArt is { } challengeArt)
                 layers["dani_enso"].Player.SetNativeFill("challenge_lv_mini", challengeArt);
@@ -526,7 +544,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
             var bannerTime = TaikoResultBanner.Time(chart);
-            var bannerShown = !endBanner;
+            EndBanner = endBanner;
+            var bannerShown = false;
             _onChartTime = time =>
             {
                 // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
@@ -545,7 +564,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 DanFailed = danPanel?.Failed == true;
                 if (EndsAt is { } end)
                     bannerTime = end;
-                if (bannerShown || time < bannerTime) return;
+                if (bannerShown || !EndBanner || time < bannerTime) return;
                 bannerShown = true;
                 var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false, danSongEnds)
                     : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
@@ -554,6 +573,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
                 if (cleared && !missed) _character?.React("don_full_combo");
             };
+            var partnerHands = players == 2 && remote is null && relay is null; // as the session below
+            (int Note, long Award)? heldAward = null; // a big hit's first half, shown with its completion
             (float X, float Y) hitPoint = default; // the lane's target (moved by #JPOSSCROLL), once its presentation exists below
             var hitRadius = 0f;
             counted.Judged += judgement =>
@@ -564,11 +585,32 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 {
                     var (x, y) = _presentation?.HitPoint ?? hitPoint;
                     LastTiming = new TimingMark(offset < TimeSpan.Zero, result == TaikoHitResult.Great, x, y, hitRadius,
-                        System.Diagnostics.Stopwatch.GetTimestamp());
+                        System.Diagnostics.Stopwatch.GetTimestamp(),
+                        _presentation?.PlayfieldPlacement(counted.CurrentTime) ?? Waddamburo.Lumen.Runtime.LumenMatrix.Identity);
                 }
                 stage?.Apply(judgement);
                 var previousScore = score.Value;
-                if (score.Apply(judgement, counted.CurrentTime)) updateScore(score.Value - previousScore);
+                if (score.Apply(judgement, counted.CurrentTime))
+                {
+                    var award = score.Value - previousScore;
+                    // A big hit is one popup with both halves (Green: one Create per hit; two "+1090" read as a big
+                    // note scoring single, reported on Discord). Its completion follows at once, except a duet's hand
+                    // note, whose other half is the partner's.
+                    if (!judgement.StrongHitCompleted && judgement.HitObject.IsStrong && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good
+                        && !(judgement.HitObject.IsHand && partnerHands))
+                    {
+                        if (heldAward is { } stale) updateScore(stale.Award); // ponytail: a completion that never came
+                        heldAward = (judgement.NoteIndex, award);
+                        updateScore(award, popup: false);
+                    }
+                    else
+                    {
+                        if (heldAward is { } held && judgement.StrongHitCompleted && held.Note == judgement.NoteIndex) award += held.Award;
+                        else if (heldAward is { } stale) updateScore(stale.Award);
+                        heldAward = null;
+                        updateScore(award);
+                    }
+                }
                 // Combo bonus popup at every 100 combo (the movie picks its label from the count).
                 if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
                     comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
@@ -739,8 +781,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _flights.Advance();
             _longNotes.AdvanceAnimations(note => TaikoNoteFaces.LongNoteSteps(note, combo, beat));
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
-            // Balloon one-shots follow their authored real-time overlay.
-            return _longNotes.BalloonVisible ? 1 : delta;
+            // Balloon one-shots follow their authored real-time overlay. Otherwise Don plays BPM / 120 frames a tick
+            // (traced: don_combo's 45 frames take 29 ticks at 185 BPM), not the Lumen movies' BPM / 89: he ran
+            // 120 / 89 too fast (reported on Discord).
+            return _longNotes.BalloonVisible ? 1 : delta * 89 / 120;
         }
 
         public void ReportDiagnostics()
@@ -772,6 +816,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _restore(review.Timeline.StateAt(time));
             _presentation.Update(time);
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
+            // The end banner, as in play (seeking back rebuilds the lanes, which takes it down).
+            // ponytail: a pass over the bake each frame; keep a cursor if long charts show it.
+            _setMissed(review.Timeline.Events.Any(e => e.Time <= time && e.Judgement?.Result == TaikoHitResult.Miss));
+            _onChartTime(time);
         }
 
         public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default, double clockSpeed = 1)
@@ -867,5 +915,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 /// <summary>
 /// A judged hit, early or late (<paramref name="Great"/>: within the Great window), at a lane's hit
 /// target (X, Y and Radius on the 1280x720 stage); <paramref name="At"/> is a Stopwatch timestamp.
+/// <paramref name="Placement"/> is the playfield's placement at the hit (modchart, layout): the glow is drawn through it.
 /// </summary>
-internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At);
+internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At,
+    Waddamburo.Lumen.Runtime.LumenMatrix Placement);

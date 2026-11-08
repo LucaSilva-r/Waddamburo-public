@@ -59,13 +59,13 @@ public sealed class AudioEngine : IDisposable
     public AudioPerformanceCounters GetPerformanceCounters() =>
         new(Interlocked.Read(ref _performanceBlocks), Interlocked.Read(ref _performanceWorkTicks));
 
-    public AudioStreamTransport PlayTransport(ScheduledAudioSource source, AudioBus bus = AudioBus.Bgm)
+    public AudioStreamTransport PlayTransport(ScheduledAudioSource source, AudioBus bus = AudioBus.Bgm, float volume = 1f)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_outputGate)
         {
             var transport = new AudioStreamTransport(source, () => _device.SubmittedFrames);
-            transport.Handle = Mixer.PlayStream(transport, bus);
+            transport.Handle = Mixer.PlayStream(transport, bus, volume);
             return transport;
         }
     }

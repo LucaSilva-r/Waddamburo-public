@@ -138,16 +138,17 @@ internal sealed class DanCourses
         return new DaniSelectSong(_uids.Count - 1, genre(song), status.Song.Course, chart?.Level ?? 0);
     }
 
-    // The song's folder among the game's genres, for its colour.
+    /// <summary>
+    /// The song's genre as dani_select, dani_result and song_info number it (GENRE_JPOP 0 … GENRE_ORIGINAL 7): its
+    /// folder's genre, a stock one first. It was the stock folder's position, which follows musicinfo's order, so
+    /// the select screen and the songs disagreed (reported on Discord).
+    /// </summary>
     public int Genre(SongDescriptor song) => genre(song);
 
-    private int genre(SongDescriptor? song)
-    {
-        if (song is null)
-            return 0;
-        var stock = _snapshot.Categories.Where(static category => category.Key.Source == SongSourceKind.Stock).ToList();
-        return Math.Max(stock.FindIndex(category => category.Songs.Contains(song.Key)), 0);
-    }
+    private int genre(SongDescriptor? song) => song is null ? 0
+        : _snapshot.Categories.Where(category => category.Songs.Contains(song.Key))
+            .OrderBy(static category => category.Key.Source == SongSourceKind.Stock ? 0 : 1)
+            .Select(static category => (int?)Scenes.GameplaySceneComposition.GenreIndex(category.Genre ?? category.Name)).FirstOrDefault() ?? 0;
 
     /// <summary>Matches the library against the courses again (after the library was hashed again).</summary>
     public void Rematch()

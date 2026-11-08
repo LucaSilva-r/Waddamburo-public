@@ -147,12 +147,14 @@ try
         Console.WriteLine($"Cache: {layout.Cache(arcade.CacheFolder)}");
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.CacheDirectory = layout.AudioCache(arcade.CacheFolder);
         Waddamburo.Platform.Sdl.Media.VgmstreamCli.GameFolder = layout.Root;
+        Waddamburo.App.Audio.SongLoudness.CacheFile = Path.Combine(layout.Cache(arcade.CacheFolder), "loudness.tsv");
         // The online test reports on the console, whatever the settings say.
         if (args.Any(static arg => arg.StartsWith("--online-test", StringComparison.Ordinal)))
             ReleaseConsole.OpenForTool();
         else
             ReleaseConsole.Show(arcade.ShowConsole);
         Strings.Use(arcade.Language);
+        Waddamburo.Game.SongSelect.SongSelectCatalogView.Japanese = Strings.Language.StartsWith("ja", StringComparison.Ordinal);
         Console.WriteLine($"Language: {Strings.Language}");
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
         if (arcade.Renderer is not null && Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER") is null)

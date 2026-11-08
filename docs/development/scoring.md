@@ -120,9 +120,10 @@ Notes in Go-Go Time score ×1.2, ones digit dropped (W1): 330 → 390, Good 160 
 
 **Status: implemented for the multiplier.** `TaikoScore` truncates after applying ×1.2
 (330 → 390).
-It also tests Go-Go at the input timestamp; a note struck across a Go-Go boundary may therefore
-receive a different factor than a note whose authored position is inside that section. The latter
-boundary rule needs a controlled Green check for regular notes. Balloons have an explicit rule below.
+A note counts as Go-Go when Go-Go is on anywhere in its Good window (`note ± Good`), at either end
+of the section. The hit's own timing never decides it, so two all-Great plays score the same (two
+Dondafuls were scored differently when the hit time decided). Not yet checked on Green. Balloons
+have an explicit rule below.
 
 ### Big notes (特良 / 特可)
 
@@ -208,7 +209,8 @@ note's second 16-bit field is taken as step × 4).
   branches. Example (F, a J-POP song): Easy 397 / 298 / −198, Normal 238 / 179 / −119,
   Hard 106 / 80 / −106 with ratios 1 / 0.878 / 0.828, Oni 69 / 34 / −110.
 - **Branches:** each branch scales the three amounts by `normal combo ÷ branch combo`, keeping
-  fractions (W3).
+  fractions (W3), **never above 1** (F: 89 of Green's 101 branched fumens store exactly this, 4 more
+  differ only by the cap; the other 8 store 1/1/1 and have no branch thresholds).
 - **Dan dojo (Green, observed on the game):** each song's own amounts divided by 3, rounded towards
   zero, so 114 / 86 / −57 becomes 38 / 28 / −19. Score uses each song's normal rates with no 真打, and
   combo carries from song to song.
@@ -223,7 +225,9 @@ note's second 16-bit field is taken as step × 4).
 **Status: partial.** Scale, segments and clear lines are implemented (`TaikoSoulGauge`). The
 amounts come from tja2fumen's table (T) for every chart, stock included. For stock charts they
 should be read from the header (exact, including the hand-set exceptions); the table stays for TJA.
-Branch ratios are unused (only the normal branch is played).
+Branch ratios follow the rule above (`PlayableChart.GaugeRatio`); a fumen's header ratios (0x1C8,
+three 16.16) are kept, and hashed, only where they break it, which no Green chart we play does.
+osu! charts fill as Oni whatever their course slot (they are judged as Oni).
 
 ## Combo presentation (W2)
 

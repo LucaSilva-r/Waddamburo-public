@@ -42,5 +42,27 @@ restricted mode of that editor plus a fallback file.
 - [x] 1. Layout file + apply fallback (no chart effects, not arcade) + test that a chart with effects ignores it.
 - [x] 2. Editor layout mode: panels stripped to viewport/inspector/scrubber, constant keys, Save, Reset
   (`EffectsEditorSession.Layout.cs`; F7 in a song opens it until milestone 4; F8 ignores the layout).
-- [ ] 3. Layering: `depth` property, single sorted draw list (Don and the notes block included), order list + buttons.
-- [ ] 4. Gameplay options entry key; manual check (user drives): move the lane, rotate Don, 4:3 framing, Reset.
+- [x] 3. Layering: `depth` element property (whole steps, default 0), stable sort by depth in
+  `TaikoLumenPresentation.CreateLayers` (stock order untouched when no depth is set); Send back / Bring forward in layout mode.
+- [x] 4. Pause menu "Edit layout" (F7 removed); user-checked: move, rotate Don, 4:3, Reset.
+
+## Added after the milestones (2026-11-07, user-driven)
+
+- **4:3 screen** is part of the layout (`camera.aspect` 0.75): songs draw the stage squeezed into 4:3 (renderer
+  `Squeeze43`, eased over 0.35 s), the editor previews the same. The toggle sets every element but the backgrounds to
+  0.75 height (the player stretches the backgrounds). Under a chart's own modchart a 4:3 layout is kept as
+  `ChartEffects.Layout`, applied after the modchart (its motion is relative to the layout); 16:9 layouts are still
+  replaced. System indicators and the timing glow are drawn to match.
+- Editor: corner and side scale handles (opposite edge fixed, Shift keeps shape), snapping to other elements and the
+  stage (Alt off) with guides, click-through selection (a click inside the selection selects what's behind), Freeze
+  animations, autoplay while editing a layout, `banner` element (the clear banner now shows in reviews and the editors;
+  rebuilt lanes reset it).
+- **Several layouts** (`modcharts/layouts/<name>.wddmod`, active one = config `layout`; the old single
+  `modcharts/layout.wddmod` moves in as "My layout"). Pause menu › Layouts: stock, each layout (Use / Edit / Remove with
+  a confirmation), New layout; Use applies to the running song at once. Rename in the layout editor's name field.
+  Menus and corner indicators are widened back by 4/3 on a 4:3 screen.
+- **Two-player layouts** are their own list (`modcharts/layouts-2p`, config `layout_2p`): plain element names are the
+  first lane's, `*_p2` the second's (`ChartMods.ForLane` splits them), camera and 4:3 shared. Waiwai, arcade and the
+  attract's demo play always use the stock screen.
+- Element pivots are taken once at the song's start and kept per movie, so rebuilt lanes and the editors place a
+  layout exactly as the song does.

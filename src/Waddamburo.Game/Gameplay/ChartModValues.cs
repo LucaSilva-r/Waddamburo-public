@@ -16,6 +16,9 @@ public sealed class ChartModValues
     /// <summary>Whether the chart changes anything of <paramref name="target"/>.</summary>
     public bool Touches(string target) => _changes.Keys.Any(key => key.Target == target);
 
+    /// <summary>Whether the chart changes <paramref name="property"/> of any target.</summary>
+    public bool TouchesProperty(string property) => _changes.Keys.Any(key => key.Property == property);
+
     /// <summary>The value at <paramref name="time"/> (its default when the chart never changes it).</summary>
     public double Value(string target, string property, TimeSpan time) =>
         _changes.TryGetValue((target, property), out var changes)

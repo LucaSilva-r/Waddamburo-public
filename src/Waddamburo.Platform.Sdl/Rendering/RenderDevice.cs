@@ -291,10 +291,10 @@ internal sealed unsafe class RenderDevice : IDisposable
             var y = (int)Math.Clamp(region.Y * height, 0, height - 1);
             var w = (uint)Math.Clamp(region.Width * width, 1, width - x);
             var h = (uint)Math.Clamp(region.Height * height, 1, height - y);
-            var fitted = frame.ResolveViewport(w, h);
+            var fitted = stage169(frame) ? RenderViewport.AspectFit(w, h, stageAspect()) : frame.ResolveViewport(w, h);
             viewport = fitted with { X = fitted.X + x, Y = fitted.Y + y };
         }
-        else viewport = letterbox(frame.ResolveViewport(width, height), width, height);
+        else viewport = letterbox(stage169(frame) ? RenderViewport.AspectFit(width, height, stageAspect()) : frame.ResolveViewport(width, height), width, height);
         StageViewport = viewport;
         // Below the window's own resolution (RenderHeight), the stage draws into a target of that size, scaled up at
         // the end (needs the blur program, which also copies); the Don prepasses then draw at that size too.
@@ -395,8 +395,30 @@ internal sealed unsafe class RenderDevice : IDisposable
         public void Dispose() => bgfx.destroy_frame_buffer(Buffer);
     }
 
+    /// <summary>The whole 16:9 stage squeezed into a 4:3 viewport (a 4:3 layout's songs, and the editor previewing one).</summary>
+    public bool Squeeze43 { get; set; }
+
+    // How far the stage is into its 4:3 shape (0 16:9, 1 4:3), eased towards Squeeze43 so a switch slides, not jumps.
+    private float _squeezed;
+    private long _squeezedAt;
+    private const float SqueezeSeconds = .35f;
+
+    // The 16:9 stage's shape this frame, in the slide between 16:9 and 4:3.
+    private double stageAspect()
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var step = _squeezedAt == 0 ? 1 : (float)System.Diagnostics.Stopwatch.GetElapsedTime(_squeezedAt, now).TotalSeconds / SqueezeSeconds;
+        _squeezedAt = now;
+        _squeezed = Squeeze43 ? Math.Min(1, _squeezed + step) : Math.Max(0, _squeezed - step);
+        var eased = _squeezed * _squeezed * (3 - 2 * _squeezed); // smoothstep
+        return 16d / 9 + (4d / 3 - 16d / 9) * eased;
+    }
+
     /// <summary>osu!-style letterbox: the stage at this fraction of its size, placed in the free space (0-1, 0.5 = centred).</summary>
     public (float Size, float X, float Y) Letterbox { get; set; } = (1, .5f, .5f);
+
+    // Only the 16:9 stage is squeezed (frames without an aspect, such as tools, draw as they are).
+    private static bool stage169(RenderFrame frame) => frame.ContentAspectRatio is { } aspect && Math.Abs(aspect - 16d / 9) < .01;
 
     private RenderViewport letterbox(RenderViewport fitted, uint width, uint height)
     {

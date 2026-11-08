@@ -287,12 +287,12 @@ public sealed class SongSelectCatalogView
                 SongCategoryPresentation.FolderEnd, boardStyle(""), []));
         if (online)
             // Drawn like a library's folder, with the two-player mode folder's picture.
-            categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "online"), "Online",
+            categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "online"), OnlineName,
                 FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [],
                 Control: SongBrowseControl.Online)
             {
                 Tint = (40, 130, 230),
-                Art = new FolderArt(FolderArtStyle.Online, "Online", "Play\ntogether\nonline!!"),
+                Art = new FolderArt(FolderArtStyle.Online, OnlineName, Japanese ? "オンラインで\nいっしょに\nあそぼう!!" : "Play\ntogether\nonline!!"),
             });
         Categories = [.. categories];
         // An online guest picks a course on the host's song: it alone, in a folder of its own.
@@ -459,11 +459,16 @@ public sealed class SongSelectCatalogView
     // The library folders' slogans: one column per line, short enough for a column (about 9 characters).
     private static FolderArt? libraryArt(SongCatalogSnapshot snapshot, SongSourceKind library) => library switch
     {
-        SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library), "Play the\noriginal\nsongs!!"),
-        SongSourceKind.OsuLazer => new FolderArt(FolderArtStyle.Osu, LibraryName(library), "Play your\nosu!taiko\nmaps!!"),
-        SongSourceKind.Nijiiro => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library), "Play Taiko\nNijiiro\ncharts!!"),
-        SongSourceKind.RhythmFestival => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library), "Play Rhythm\nFestival\ncharts!!"),
-        SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library), "Play your\ncustom\ncharts!!"),
+        SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library),
+            Japanese ? "オリジナル\n曲で\nあそぼう!!" : "Play the\noriginal\nsongs!!"),
+        SongSourceKind.OsuLazer => new FolderArt(FolderArtStyle.Osu, LibraryName(library),
+            Japanese ? "osu!taiko\nの譜面で\nあそぼう!!" : "Play your\nosu!taiko\nmaps!!"),
+        SongSourceKind.Nijiiro => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library),
+            Japanese ? "ニジイロの\n譜面で\nあそぼう!!" : "Play Taiko\nNijiiro\ncharts!!"),
+        SongSourceKind.RhythmFestival => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library),
+            Japanese ? "ドンダフルの\n譜面で\nあそぼう!!" : "Play Rhythm\nFestival\ncharts!!"),
+        SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library),
+            Japanese ? "じぶんの\n譜面で\nあそぼう!!" : "Play your\ncustom\ncharts!!"),
         _ => null,
     };
 
@@ -474,13 +479,19 @@ public sealed class SongSelectCatalogView
         return songs(found.Length);
     }
 
+    /// <summary>The root folders (libraries, Online) in Japanese; the app sets it from the language setting.</summary>
+    // ponytail: a static flag, set once at start like the app's Strings; the Game layer has no string table.
+    public static bool Japanese { get; set; }
+
+    private static string OnlineName => Japanese ? "オンライン" : "Online";
+
     public static string LibraryName(SongSourceKind library) => library switch
     {
-        SongSourceKind.Stock => "ORIGINAL",
-        SongSourceKind.Nijiiro => "NIJIIRO",
-        SongSourceKind.RhythmFestival => "RHYTHM FESTIVAL",
-        SongSourceKind.Tja => "CUSTOM TJA",
-        SongSourceKind.OsuLazer => "OSU! LAZER",
+        SongSourceKind.Stock => Japanese ? "オリジナル" : "ORIGINAL",
+        SongSourceKind.Nijiiro => Japanese ? "ニジイロ" : "NIJIIRO",
+        SongSourceKind.RhythmFestival => Japanese ? "ドンダフルフェスティバル" : "RHYTHM FESTIVAL",
+        SongSourceKind.Tja => Japanese ? "創作譜面" : "CUSTOM TJA",
+        SongSourceKind.OsuLazer => Japanese ? "osu!lazer" : "OSU! LAZER",
         _ => library.ToString(),
     };
 

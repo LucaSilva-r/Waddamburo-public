@@ -72,6 +72,30 @@ public sealed class LiveEffectsTests
         Assert.False(session.IsMissed(0));
     }
 
+    [Fact]
+    public void DepthDrawsElementsInFrontAndKeepsTheGameOrderAmongEquals()
+    {
+        var chart = new PlayableChart(new(new(SongSourceKind.Tja, "synthetic"), "oni"), TimeSpan.Zero, TimeSpan.FromSeconds(20),
+            [], [new(TimeSpan.Zero, 120, 4, 4)], [new(TimeSpan.Zero, 1)], [new(TimeSpan.Zero, false)], []);
+        var session = new TaikoJudgementSession(chart, new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)));
+        var (background, dancers, board, don, lane) = (Marker(), Marker(), Marker(), Marker(), Marker());
+        var presentation = new TaikoLumenPresentation(chart, session, [background, dancers], [board],
+            new Dictionary<PlayableNoteKind, LumenSceneLayer>(), lane, lane, lane.Player, lane.Player,
+            roles: new Dictionary<LumenPlayer, string> { [background.Player] = "bg_nomal", [dancers.Player] = "dance", [board.Player] = "lane_obi" });
+        LumenPlayer[] order(params ChartModEase[] mods)
+        {
+            presentation.ReplaceEffects(new() { Mods = [.. mods] });
+            var (back, front) = presentation.CreateLayers(TimeSpan.Zero, don, characterSlot: 1);
+            return [.. back.Concat(front).Select(layer => layer.Player)];
+        }
+        ChartModEase depth(string target, double value) => new(TimeSpan.Zero, TimeSpan.Zero, target, "depth", value, ChartEase.Linear);
+
+        Assert.Equal([background.Player, don.Player, dancers.Player, board.Player], order());
+        Assert.Equal([background.Player, don.Player, dancers.Player, board.Player], order(depth("dancers", 0)));
+        Assert.Equal([background.Player, dancers.Player, board.Player, don.Player], order(depth("don", 1)));
+        Assert.Equal([dancers.Player, board.Player, background.Player, don.Player], order(depth("don", 2), depth("background", 1)));
+    }
+
     private static LumenSceneLayer Marker()
     {
         var shape = new LmbShapeDefinition(2, 1, [], [new LmbShapeGeometry(

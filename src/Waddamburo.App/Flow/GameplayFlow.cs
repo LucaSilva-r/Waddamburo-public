@@ -1,3 +1,4 @@
+using Waddamburo.App.Audio;
 using System.Diagnostics;
 using Waddamburo.App.Gameplay;
 using Waddamburo.App.Presentation;
@@ -81,6 +82,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _courseSong = 0;
         _courseHold = TimeSpan.Zero;
         _courseEndsAt = null;
+        _courseCardTick = null;
         _restartCourse = (course, Shell.Gameplay.Dan!);
     }
 
@@ -171,6 +173,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public override void Exit(SceneId scene)
     {
+        Shell.Application.Squeeze43 = false; // menus stay 16:9
         Playing = false;
         PlayingChart = null;
         Presence = null;
@@ -230,11 +233,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var player = players.ElementAtOrDefault(lane);
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
-            // The player's layout where neither gave modchart changes; arcade is always the stock screen.
-            if (player is not null && Shell.Arcade.Home)
+            // The player's layout where neither gave modchart changes; arcade, the attract's demo play and dan courses
+            // (a chart of several songs) are always the stock screen.
+            if (player is not null && Shell.Arcade.Home && _waiwai is null && !_demo && chart.Segments.IsEmpty)
             {
-                var laid = PlayerModcharts.ApplyLayout(EditorModchartFolder, authored);
-                if (lane == 0) _layoutShown = !ReferenceEquals(laid, authored);
+                var laid = forLane(authored, PlayerModcharts.ApplyLayout(ActiveLayoutPath, authored), lane);
+                if (lane == 0) _layoutShown = authored.Effects.Mods.IsEmpty && !ReferenceEquals(laid, authored); // as the chart's mods
                 authored = laid;
             }
             return (player?.Options ?? default).Apply(authored, _seed + (lane < request.Players.Length ? lane : 0));
@@ -277,8 +281,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             : Shell.Options.Autoplay
                 ? reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset)
             : null;
-        // A replay or autoplay review is scrubbed back and forth: the end banner would stay up once reached.
-        Shell.Gameplay.EndBanner = _review is null && !_demo;
+        // Reviews show it too: seeking back rebuilds the lanes, which takes a shown banner down.
+        Shell.Gameplay.EndBanner = !_demo;
         _training = null;
         // A course saves apart, whole (saveCourse).
         _voided = request.Review is not null || _demo || _course is not null;
@@ -290,6 +294,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _echo = _demo || _review is not null || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
         if (Shell.Match.InSong)
             Shell.Match.Start(Shell.Gameplay, request.Players.ToList().FindIndex(player => player.Player != localSlot()));
+        // A 4:3 layout (camera.aspect below 1): the stage drawn squeezed into a 4:3 picture.
+        Shell.Application.Squeeze43 = !Shell.Headless && _charts.Length > 0 && fourThree(_charts[0].Effects);
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         if (Shell.Sounds is { } sounds)
             sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
@@ -334,7 +340,6 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Players.StopWatching();
         _voided = true;
         _review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
-        Shell.Gameplay.EndBanner = false;
         _training = new TrainingSession(Shell, _review, _charts[0]);
         _training.Begin(at);
         showMode(Strings.T("mode.practice"));
@@ -364,6 +369,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     private TimeSpan _courseHold;
+    // Traced session31: between's nextsong starts 61 ticks after the rainbow's out (163861 -> 164878 ms); the card
+    // started with the reveal, so its doors closed (and their Close sound played) under the rainbow. Reported on Discord.
+    private const int CourseCardDelayTicks = 61;
+    private int? _courseCardTick;
     private TimeSpan? _courseEndsAt;
 
     private TimeSpan songTime() => _review is { } review ? revealed ? review.Clock.Position : review.Clock.Start : -_audioOffset + _timeline?.ChartTime(
@@ -428,9 +437,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     // The player's layout is showing (the chart has no modchart of its own).
     private bool _layoutShown;
 
-    /// <summary>The chart for the effects editor: without the player's layout, which is not the chart's own effects.</summary>
-    public PlayableChart EditorChartWithoutLayout => _layoutShown
-        ? _charts[0] with { Effects = _charts[0].Effects with { Mods = [] } } : _charts[0];
+    /// <summary>
+    /// The chart for the modchart editor: the stock screen, without the player's layout (in its place, or under a
+    /// modchart), which is not the chart's own effects.
+    /// </summary>
+    public PlayableChart EditorChartWithoutLayout => _charts[0] with
+        { Effects = _charts[0].Effects with { Mods = _layoutShown ? [] : _charts[0].Effects.Mods, Layout = [] } };
+
+    /// <summary>The chart for the layout editor: the layout it edits takes the place of one carried under a modchart.</summary>
+    public PlayableChart LayoutEditorChart => _charts[0] with { Effects = _charts[0].Effects with { Layout = [] } };
 
     public EffectEditorFiles EditorFiles()
     {
@@ -442,21 +457,100 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         return new(PlayerModcharts.PathFor(EditorModchartFolder, _sourceCharts[0], player.Course), player.Course, songPath);
     }
 
-    public EffectEditorFiles LayoutFiles() => new(PlayerModcharts.LayoutPath(EditorModchartFolder), _lastRequest!.Players[0].Course);
+    public EffectEditorFiles LayoutFiles() => new(ActiveLayoutPath!, _lastRequest!.Players[0].Course);
 
-    public void ReplaceEditorEffects(ChartEffects effects) => _review!.ReplaceEffects(0, effects);
+    /// <summary>The layout editor's elements: both lanes' as one (a two-player layout moves them alike).</summary>
+    public IReadOnlyList<StageEffectElement> LayoutElements(TimeSpan time) => Shell.Gameplay.EffectElements(time, allLanes: true);
+
+    /// <summary>Two lanes: the song takes the two-player layouts (applied alike to both lanes).</summary>
+    public bool TwoPlayerLayouts => _sourceCharts.Length == 2;
+
+    // A two-player layout's own changes for one lane (its *_p2 elements are the second lane's); a chart's own modchart is
+    // left as it is.
+    private PlayableChart forLane(PlayableChart authored, PlayableChart laid, int lane) => !TwoPlayerLayouts ? laid
+        : laid with
+        {
+            Effects = laid.Effects with
+            {
+                Mods = authored.Effects.Mods.IsEmpty ? [.. ChartMods.ForLane(laid.Effects.Mods, lane)] : laid.Effects.Mods,
+                Layout = [.. ChartMods.ForLane(laid.Effects.Layout, lane)],
+            },
+        };
+
+    /// <summary>The folder of the layouts for this song's player count.</summary>
+    public string LayoutFolder => PlayerLayouts.Folder(EditorModchartFolder, TwoPlayerLayouts);
+
+    /// <summary>The active layout for this song's player count (null: the stock screen).</summary>
+    public string? ActiveLayout => TwoPlayerLayouts ? Shell.Arcade.Layout2P : Shell.Arcade.Layout;
+
+    /// <summary><paramref name="settings"/> with <paramref name="name"/> as the active layout for this song's player count.</summary>
+    public ArcadeSettings WithActiveLayout(ArcadeSettings settings, string? name) =>
+        TwoPlayerLayouts ? settings with { Layout2P = name } : settings with { Layout = name };
+
+    // The active layout's file; null: the stock screen.
+    private string? ActiveLayoutPath => ActiveLayout is { } name ? PlayerLayouts.PathOf(LayoutFolder, name) : null;
+
+    /// <summary>
+    /// The active layout changed (picked in the pause menu): the song on screen takes it at once, as a song start would.
+    /// </summary>
+    public void ReapplyLayout()
+    {
+        if (_lastRequest is not { } request || _charts.Length == 0 || _sourceCharts.Length < _charts.Length) return;
+        for (var lane = 0; lane < _charts.Length; lane++)
+        {
+            var course = request.Players.ElementAtOrDefault(lane)?.Course ?? request.Players[0].Course;
+            var own = PlayerModcharts.Apply(EditorModchartFolder, _sourceCharts[lane], course);
+            var authored = forLane(own, PlayerModcharts.ApplyLayout(ActiveLayoutPath, own), lane);
+            if (lane == 0) _layoutShown = _sourceCharts[0].Effects.Mods.IsEmpty && authored.Effects.Mods.Length > 0;
+            _charts[lane] = _charts[lane] with { Effects = authored.Effects };
+            if (_review is { } review) review.ReplaceEffects(lane, authored.Effects);
+            else Shell.Gameplay.ReplaceEffects(lane, authored.Effects);
+        }
+        Shell.Application.Squeeze43 = !Shell.Headless && fourThree(_charts[0].Effects);
+    }
+
+    public void ReplaceEditorEffects(ChartEffects effects)
+    {
+        // Two players (the layout editor): each lane takes its own part of the layout (the second lane's are *_p2).
+        if (_charts.Length == 2)
+            for (var lane = 0; lane < 2; lane++)
+                _review!.ReplaceEffects(lane, _charts[lane].Effects with { Mods = [.. ChartMods.ForLane(effects.Mods, lane)], Layout = [] });
+        else
+            _review!.ReplaceEffects(0, effects);
+        Shell.Application.Squeeze43 = fourThree(effects); // the editor's 4:3 toggle shows at once
+    }
+
+    private static bool fourThree(ChartEffects effects) =>
+        new Waddamburo.Game.Gameplay.ChartModValues(effects.Mods).Value("camera", "aspect", TimeSpan.Zero) < 1
+        || new Waddamburo.Game.Gameplay.ChartModValues(effects.Layout).Value("camera", "aspect", TimeSpan.Zero) < 1;
 
     public IReadOnlyList<StageEffectElement> EditorElements(TimeSpan time) => Shell.Gameplay.EffectElements(time);
 
     /// <summary>F8 can turn a local play into an unranked authoring session, without a replay prerequisite.</summary>
-    public bool CanEditEffects => Shell.Arcade.Home && !Shell.Headless && revealed && _charts.Length == 1
+    public bool CanEditEffects => CanEditLayout && _charts.Length == 1;
+
+    /// <summary>The layout editor and the Layouts menu: a local song for one or two players (not Waiwai, dan, online).</summary>
+    public bool CanEditLayout => Shell.Arcade.Home && !Shell.Headless && revealed && _charts.Length is 1 or 2
         && _waiwai is null && _course is null && !_demo && !Shell.Match.InSong && Shell.Active.Id == FlowScenes.Gameplay;
 
-    public void BeginEffectsEditing()
+    /// <remarks><paramref name="autoplay"/>: the layout editor watches the song on autoplay, so every part of the
+    /// screen shows up (combo, Go-Go, balloons, the gauge filling) to be placed.</remarks>
+    public void BeginEffectsEditing(bool autoplay = false)
     {
-        if (!CanEditEffects || _lastRequest is not { } request) return;
+        if (!(autoplay ? CanEditLayout : CanEditEffects) || _lastRequest is not { } request) return;
         _voided = true; Playing = false; PlayingChart = null; Presence = null;
-        if (_training is null)
+        if (autoplay)
+        {
+            var at = _training?.Clock.Position ?? chartTime();
+            if (_music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
+            _music = null; _autoplay = null;
+            _review?.Dispose();
+            Shell.Players.StopWatching();
+            _review = reviewOf(request, [.. _charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _inputOffset);
+            _training = new TrainingSession(Shell, _review, _charts[0], watch: true);
+            _training.Begin(at);
+        }
+        else if (_training is null)
         {
             var at = chartTime();
             if (_music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
@@ -467,7 +561,6 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _training = new TrainingSession(Shell, _review, _charts[0]);
             _training.Begin(at);
         }
-        Shell.Gameplay.EndBanner = false;
         showMode("Effects editor - unranked");
         if (_paused) SetPaused(false);
         Console.WriteLine("Effects editor: this play is unranked and will not save a score.");
@@ -523,6 +616,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (_lastRequest is not { } last || _charts.Length == 0) return false;
         var request = last with { Review = null, Seed = null };
+        // Playing a watched replay's chart: with your own options, not the replay's (they stayed on; reported on Discord).
+        if (last.Review is not null)
+            request = new PlayRequest(last.CatalogRevision, last.Song, last.AudioAsset,
+                last.Players.Select(static player => player with { Options = TaikoGuest.Options[(int)player.Player] }));
         Shell.Players.StopWatching();
         if (_paused) SetPaused(false);
         if (_music is { } music)
@@ -540,6 +637,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _courseSong = 0;
             _courseHold = TimeSpan.Zero;
             _courseEndsAt = null;
+            _courseCardTick = null;
         }
         Shell.PlayRequests.ClearActive();
         if (!Shell.PlayRequests.TryRequestPlay(request))
@@ -567,20 +665,21 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public override void Advance(LumenInputSnapshot input)
     {
-        if (_paused) return;
+        if (_paused || Shell.FreezeAnimations && Shell.EffectsEditorOpen) return;
         var animationFrames = Shell.Gameplay.AdvanceAnimations(chartTime(), input);
         Shell.DonRenderer?.Advance(animationFrames);
     }
 
+    // Paused or frozen (the editors' Freeze animations), the movies stand on one tick: no blending between ticks.
     public override LumenRenderSnapshot CreateSnapshot(float interpolation) =>
-        Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation : interpolation);
+        Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation
+            : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
 
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
         if (CanEditEffects && !Shell.EffectsEditorOpen
-            && keys.Presses.FirstOrDefault(static press => press.Key is SdlKeyboardKey.F8 or SdlKeyboardKey.F7) is { Key: not 0 } press)
-            Shell.OpenEffectsEditor(layout: press.Key == SdlKeyboardKey.F7); // ponytail: F7 until the options entry
+            && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8)) Shell.OpenEffectsEditor();
         if (_review is { } review)
         {
             if (revealed && !_paused && _training is { } training)
@@ -676,9 +775,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             var request = Shell.PlayRequests.Active
                 ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
             _startTick = Shell.Tick;
-            _music = _review is null ? startAudio(request) : null; // a review plays its own music
-            _clock.Restart();
-            showCourseSong();
+            // A dan course's first card (and its music) waits under the opening rainbow, as Green's does; the rest start now.
+            if (_course is not null && _review is null)
+                _courseCardTick = Shell.Tick + CourseCardDelayTicks;
+            else
+            {
+                _music = _review is null ? startAudio(request) : null; // a review plays its own music
+                _clock.Restart();
+                showCourseSong();
+            }
             rainbow.GotoLabel(_course is null ? RainbowTransitionComposition.RevealLabel
                 : RainbowTransitionComposition.PlainRevealLabel, play: true);
             Rainbow.StartReveal();
@@ -689,6 +794,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             overlay.Clear();
             Console.WriteLine($"Rainbow reveal completed at tick {Shell.Tick}.");
+        }
+        if (_courseCardTick is { } cardAt && Shell.Tick >= cardAt)
+        {
+            _courseCardTick = null;
+            _music = startAudio(Shell.PlayRequests.Active!);
+            _clock.Restart();
+            showCourseSong();
         }
         if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it
             return;
@@ -810,9 +922,24 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             if (!between.TryGotoLabel("nextsong", "start"))
                 Console.Error.WriteLine("between has no nextsong clip to start.");
         }
-        Shell.SongInfo = Shell.SongInfo with { Stage = _courseSong + 1 };
+        // Each song's own genre, as the select screen shows it (the genre Song Select had set stayed for the whole
+        // course; reported on Discord).
+        Shell.SongInfo = Shell.SongInfo with
+        {
+            Genre = Shell.Hosts.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
+            Stage = _courseSong + 1,
+        };
+        // song_info asks LumenSongInfo only as the song starts (main.genre.gotoAndStop(genreArray[GetGenrNumber()]),
+        // main.stage.gotoAndStop(GetPlayCount())), so a course's next songs set its clips the same way here.
+        if (sceneLayer("song_info") is { } info
+            && !(info.TryGotoLabel("main/genre", GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)], play: false)
+                && info.TryGotoFrame("main/stage", Shell.SongInfo.StageFrame - 1, play: false)))
+            Console.Error.WriteLine("song_info has no main.genre / main.stage clip to set.");
         showSongTitle(song);
     }
+
+    // song_info's genreArray: TaikoSongInfo.Genre's labels.
+    private static readonly string[] GenreLabels = ["jpop", "anime", "vocaloid", "doyo", "variety", "classic", "game", "namco"];
 
     // A movie of the active scene by name (song_info, between); null when the scene has none.
     private LumenPlayer? sceneLayer(string movie)
@@ -1028,6 +1155,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _ = Shell.Titles.Resolve(Shell.Titles.GetGameplayTitle(next));
         _nextAudio = Task.Run(async () =>
         {
+            SongLoudness.Volume(Shell.Assets, asset, audio.Mixer.Format); // measured now, read back when it starts
             var stream = await Shell.Assets.OpenReadAsync(asset).ConfigureAwait(false);
             BufferedAudioSource source;
             try
@@ -1061,7 +1189,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             _nextAudio = null;
             return ready.PlayTransport(new ScheduledAudioSource(prepared.GetAwaiter().GetResult(),
-                _timeline!.AudioStart, _timeline.LeadIn + playing!.Chart.Duration + TimeSpan.FromSeconds(1)));
+                _timeline!.AudioStart, _timeline.LeadIn + playing!.Chart.Duration + TimeSpan.FromSeconds(1)),
+                volume: SongLoudness.Volume(Shell.Assets, _courseSongs[_courseSong].Descriptor.AudioAsset!, ready.Mixer.Format));
         }
         var asset = playing is null ? request.AudioAsset : _courseSongs[_courseSong].Descriptor.AudioAsset;
         if (Shell.Audio is not { } audio || asset is not { } audioAsset)
@@ -1091,7 +1220,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
             source.Ready.GetAwaiter().GetResult();
             var playback = audio.PlayTransport(new ScheduledAudioSource(source,
-                _timeline!.AudioStart, _timeline.LeadIn + (playing?.Chart ?? _charts[0]).Duration + TimeSpan.FromSeconds(1)));
+                _timeline!.AudioStart, _timeline.LeadIn + (playing?.Chart ?? _charts[0]).Duration + TimeSpan.FromSeconds(1)),
+                volume: SongLoudness.Volume(Shell.Assets, audioAsset, audio.Mixer.Format));
             source = null;
             return playback;
         }

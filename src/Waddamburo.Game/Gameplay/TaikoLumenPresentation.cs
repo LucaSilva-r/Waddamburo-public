@@ -87,7 +87,9 @@ public sealed class TaikoLumenPresentation
         _hitRadius = _hitY - target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y).Y;
         _mods = new ChartModValues(chart.Effects.Mods);
         _geometry = new NoteGeometry(chart, _hitX, _hitY, _mods);
-        _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty);
+        _layout = new ChartModValues(chart.Effects.Layout);
+        _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty, _layout);
+        StageEffects.Prime(_background.Concat(_foreground));
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
         // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.
@@ -101,7 +103,8 @@ public sealed class TaikoLumenPresentation
         var chart = _chart with { Effects = effects };
         var mods = new ChartModValues(effects.Mods);
         var geometry = new NoteGeometry(chart, _hitX, _hitY, mods);
-        var stage = new StageEffects(mods, geometry, targetMoves: !effects.JudgeMoves.IsEmpty);
+        _layout = new ChartModValues(effects.Layout);
+        var stage = new StageEffects(mods, geometry, targetMoves: !effects.JudgeMoves.IsEmpty, _layout);
         _chart = chart;
         _mods = mods;
         _geometry = geometry;
@@ -169,12 +172,16 @@ public sealed class TaikoLumenPresentation
     /// <summary>Half the hit target's height on the stage.</summary>
     public float HitRadius => _hitRadius;
 
+    /// <summary>Where the playfield is drawn at <paramref name="time"/> (effects, layout): for parts the host draws on it.</summary>
+    public LumenMatrix PlayfieldPlacement(TimeSpan time) => _stage.Matrix("playfield", _geometry.Origin(time), time);
+
     public void Update(TimeSpan time)
     {
         _longNotes?.Update(time);
         _gogo.Update(time);
         moveTarget(time);
-        DonTurn?.Invoke(_mods.Value("don", "yaw", time), _mods.Value("don", "pitch", time), _mods.Value("don", "roll", time));
+        double turn(string axis) => _mods.Value("don", axis, time) + _layout.Value("don", axis, time);
+        DonTurn?.Invoke(turn("yaw"), turn("pitch"), turn("roll"));
         // The lane takes the route a check picked at once (lane_hit plays its normal_kurouto etc. transition),
         // and Don-chan's bubble says which way it went (traced: same tick; the movie stops itself after).
         if (_judgement.Branch != _shownBranch)
@@ -300,6 +307,14 @@ public sealed class TaikoLumenPresentation
         front.AddRange(_foreground.Skip(_flightsAt));
         if (!_stage.IsActive)
             return (layers, front);
+        if (_mods.TouchesProperty("depth") || _layout.TouchesProperty("depth"))
+        {
+            // Elements by depth (a stable sort: the game's order among equals), all in one list: front is left empty.
+            // ponytail: with two lanes, a lane with depths no longer interleaves its front behind the other lane's.
+            var all = layers.Concat(front).ToArray();
+            var depths = all.Select(layer => targetOf(layer, character) is { } target ? Math.Round(_mods.Value(target, "depth", time) + _layout.Value(target, "depth", time)) : 0).ToArray();
+            return ([.. Enumerable.Range(0, all.Length).OrderBy(i => depths[i]).Select(i => place(all[i], character, time))], []);
+        }
         return ([.. layers.Select(layer => place(layer, character, time))], [.. front.Select(layer => place(layer, character, time))]);
     }
 
@@ -384,6 +399,7 @@ public sealed class TaikoLumenPresentation
 
     // The chart's effects (ChartEffects): note placement, and the scene's movies under modcharts and target moves.
     private ChartModValues _mods;
+    private ChartModValues _layout = new([]); // the player's 4:3 layout under the chart's modchart
     private NoteGeometry _geometry;
     private StageEffects _stage;
     private readonly IReadOnlyDictionary<LumenPlayer, string>? _roles;

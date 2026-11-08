@@ -81,8 +81,8 @@ public sealed class ReviewTimeline
         var session = new TaikoJudgementSession(chart, windows);
         if (from is { } start)
             session.SkipTo(start);
-        var score = new TaikoScore(chart);
-        var gauge = new TaikoSoulGauge(course, chart.Level, chart.OnRoute(ChartBranch.Normal).NoteCount);
+        var score = new TaikoScore(chart, windows.Good);
+        var gauge = new TaikoSoulGauge(course, chart);
         var events = new List<ReviewEvent>();
         var branches = new List<(ChartBranchCheck, ChartBranch)>();
         session.BranchChecked += (check, route) => branches.Add((check, route));

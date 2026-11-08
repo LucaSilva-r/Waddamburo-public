@@ -87,7 +87,6 @@ internal sealed partial class GameplayFlow
         while (_training.Clock.Speed < speed) _training.Clock.Faster();
         while (_training.Clock.Speed > speed) _training.Clock.Slower();
         _voided = true; Playing = false; PlayingChart = null;
-        Shell.Gameplay.EndBanner = false;
         showMode("Effects editor - unranked");
     }
 }

@@ -123,6 +123,32 @@ public sealed class TaikoBranchingTests
     }
 
     [Fact]
+    public void FumenGaugeRatiosAreHashedOnlyWhenSetAndReadBack()
+    {
+        var branched = chart();
+        var withRatios = branched with { GaugeRatios = [1, 0.5, 0.25] };
+        var bytes = ChartHash.Serialize(withRatios, TaikoCourse.Oni);
+        Assert.Equal(ChartHash.Serialize(branched, TaikoCourse.Oni).Length + 4 + 24, bytes.Length);
+        var (read, _) = ChartHash.Deserialize(bytes, SongSourceKind.Tja);
+        Assert.Equal(0.25, read.GaugeRatio(ChartBranch.Master));
+        Assert.Equal(bytes, ChartHash.Serialize(read, TaikoCourse.Oni));
+    }
+
+    [Fact]
+    public void GaugeRatioIsNormalOverRouteComboCappedAtOne()
+    {
+        // Normal 4 notes; expert's own Ka moves to master: expert 3 (4 / 3 caps at 1), master 5 (4 / 5).
+        var notes = chart().HitObjects.ToList();
+        notes[3] = new PlayableHitObject(s(4.5), PlayableNoteKind.Ka) { Branch = ChartBranch.Master };
+        var custom = chart().WithHitObjects(notes);
+        Assert.Equal(4, custom.OnRoute(ChartBranch.Normal).NoteCount);
+        Assert.Equal(3, custom.OnRoute(ChartBranch.Expert).NoteCount);
+        Assert.Equal(5, custom.OnRoute(ChartBranch.Master).NoteCount);
+        Assert.Equal(1, custom.GaugeRatio(ChartBranch.Expert));
+        Assert.Equal(0.8, custom.GaugeRatio(ChartBranch.Master));
+    }
+
+    [Fact]
     public void BranchingIsPartOfTheChartHashAndReadsBack()
     {
         var branched = chart();

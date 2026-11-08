@@ -126,6 +126,8 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
             }
             else
             {
+                var volume = SongLoudness.Volume(_resolver, operation.Request.Audio, _audio.Mixer.Format,
+                    operation.Cancellation.Token);
                 var input = await _resolver
                     .OpenReadAsync(operation.Request.Audio, operation.Cancellation.Token)
                     .ConfigureAwait(false);
@@ -144,7 +146,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
                     if (!isCurrent(operation))
                         return;
                     _audio.Mixer.SetBusVolume(AudioBus.Preview, 0f);
-                    operation.Handle = _audio.Mixer.PlayStream(source, AudioBus.Preview);
+                    operation.Handle = _audio.Mixer.PlayStream(source, AudioBus.Preview, volume);
                     _audio.Mixer.FadeBusVolume(AudioBus.Preview, 1f, PreviewFadeIn);
                     source = null;
                 }

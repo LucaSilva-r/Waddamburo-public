@@ -103,7 +103,7 @@ public sealed record PlayRecord(
     /// The judgement and scoring rules a play was scored under. Bump when they change; older plays
     /// are rescored from their replays (leaderboards may then show only the current version).
     /// </summary>
-    public const int CurrentScoringVersion = 8; // 5: a big note hit is always a big hit; 6: the other hand's press right after is part of it; 7: ka popped balloons (reverted); 8: don only again
+    public const int CurrentScoringVersion = 9; // 5: a big note hit is always a big hit; 6: the other hand's press right after is part of it; 7: ka popped balloons (reverted); 8: don only again; 9: Go-Go by the note's window, branch and osu! gauge scaling
 
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 

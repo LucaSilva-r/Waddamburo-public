@@ -41,6 +41,8 @@ internal static class GameMovieContent
             upscale.LumenRoot = lumenRoot;
             source.Loaded = upscale.RecordUsed;
             SceneTextures.Upscaler = new TextureUpscaler(upscale, settings);
+            NutData.Cached = texture => settings().UpscaleTextures && application.ShowUpscaled
+                ? upscale.ApplyCached(texture, null, application.SupportsBc7) : texture;
             FolderArtPainter.Upscaled = (width, height, rgba) =>
                 settings().UpscaleTextures && application.ShowUpscaled
                 && upscale.Load(UpscaleTool.Key(new UpscaleSource(width, height, rgba))) is { } cached

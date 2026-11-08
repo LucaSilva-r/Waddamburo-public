@@ -25,8 +25,8 @@ public static class PlayRescore
         // at the session's time, the counts skip a big note's second hit.
         // ponytail: a duet's hand notes take their bonus from the partner, whose inputs a solo replay lacks.
         var session = new TaikoJudgementSession(played, windows);
-        var score = new TaikoScore(played);
-        var gauge = new TaikoSoulGauge(course, played.Level, played.OnRoute(ChartBranch.Normal).NoteCount);
+        var score = new TaikoScore(played, windows.Good);
+        var gauge = new TaikoSoulGauge(course, played);
         int great = 0, good = 0, miss = 0, maxCombo = 0;
         session.Judged += judgement =>
         {
@@ -69,7 +69,7 @@ public static class PlayRescore
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(replays);
         var session = new TaikoJudgementSession(timeline.Chart, windows);
-        var score = new TaikoScore(timeline.Chart);
+        var score = new TaikoScore(timeline.Chart, windows.Good);
         var gauge = new TaikoSoulGauge(timeline.Chart.Segments, course.ExactGauge);
         int great = 0, good = 0, miss = 0, maxCombo = 0;
         var playing = 0;
