@@ -124,7 +124,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // The other player's drum isn't heard: only this player's own drum sounds under their hands.
             lane == RemoteLaneIndex && RemoteLane is not null ? null : playHitSound, don, playEventSound, stage, reviews?[lane],
             Options.ElementAtOrDefault(lane), EndBanner, remote: lane == RemoteLaneIndex ? RemoteLane : null,
-            relay: lane != RemoteLaneIndex ? Relay : null))];
+            relay: lane != RemoteLaneIndex ? Relay : null,
+            donStage: layers.FirstOrDefault(entry => role(entry.Definition) == "ai_hit_effect").Layer))];
         // Online, each lane has its own notes: nothing links hand notes across the network.
         if (RemoteLane is not null)
             return;
@@ -371,7 +372,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
             TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null,
-            RemoteLaneFeed? remote = null, HitRelay? relay = null)
+            RemoteLaneFeed? remote = null, HitRelay? relay = null, LumenSceneLayer? donStage = null)
         {
             _relay = relay;
             _side = side;
@@ -513,7 +514,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
                     return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
                 });
-            _character = don is null ? null : new(don, layers["don3d"], lane);
+            // AI battle: both Dons stand in its hit-effect movie (no don3d of their own).
+            _character = don is null ? null : donStage is not null && !layers.ContainsKey("don3d")
+                ? new(don, donStage, lane, stage: true) : new(don, layers["don3d"], lane);
             if (stage is not null) stage.StateChanged += state => _character?.SetGauge(state);
             _animationClock = new(chart.TimingPoints);
             // Traced (session21): the game steps the dancers, the chibi runners, the fever crowd and

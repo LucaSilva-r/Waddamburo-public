@@ -104,8 +104,10 @@ internal sealed class PlayerSession(GameShell shell)
     /// <summary>The entry's mode select picked the credit's mode: AI battle or the normal song select.</summary>
     public void ChooseMode(bool aiBattle)
     {
-        if (shell.Hosts.AiBattle == aiBattle) return;
+        var changed = shell.Hosts.AiBattle != aiBattle;
         shell.Hosts.AiBattle = aiBattle;
+        // A new credit in the same mode: the other drum's look may have been reset since (a new entry).
+        if (!changed && !aiBattle) return;
         // The other drum's Don is AI-don (traced: Don slot p1 in the whole costume cos_149000, from song select on).
         var other = 1 - shell.Hosts.PlayerSide;
         if (aiBattle)
@@ -115,7 +117,8 @@ internal sealed class PlayerSession(GameShell shell)
         }
         else
             shell.Don?.SetLook(other, null);
-        apply();
+        if (changed)
+            apply();
     }
 
     private void apply()

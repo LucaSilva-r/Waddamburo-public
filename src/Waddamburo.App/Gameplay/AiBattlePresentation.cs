@@ -7,7 +7,7 @@ namespace Waddamburo.App.Gameplay;
 
 /// <summary>
 /// Drives AI battle's own movies through a song (traced session-ai-battle-3): the section timer (SetProgress, percent of
-/// the section), the score board (each side's 良 / 可 this section), the backdrops' territory needle
+/// the section), the score board (each side's 良 / 可 / 不可 / 連打 this section; side 1 is AI-don's box in its plate), the backdrops' territory needle
 /// (UpdateTargetGaugeNum: the player's territory less AI-don's, ±9), the 1/3 and 2/3 cues, and at each section's end the
 /// win icon, the board and timer moving on, and the backdrops' win or lose; after the last, the battle's result.
 /// Lane 0 is the player's, lane 1 AI-don's.
@@ -21,7 +21,7 @@ internal sealed class AiBattlePresentation
     private readonly TimeSpan[] _ends;
     private readonly TaikoCourse _course;
     private readonly Action<string, int>? _cue;
-    private readonly (int Great, int Good)[] _base = new (int, int)[2], _shown = new (int, int)[2];
+    private readonly (int Great, int Good, int Miss, int Rolls)[] _base = new (int, int, int, int)[2], _shown = new (int, int, int, int)[2];
     private readonly List<bool> _won = [];
     private bool _ready, _started, _middle, _closing, _resultShown;
     private int _section, _progress = -1, _needle;
@@ -37,7 +37,7 @@ internal sealed class AiBattlePresentation
         _course = course;
         _cue = cue;
         for (var lane = 0; lane < 2; lane++)
-            _shown[lane] = (-1, -1);
+            _shown[lane] = (-1, -1, -1, -1);
     }
 
     /// <summary>Each finished section: the player took it.</summary>
@@ -89,12 +89,13 @@ internal sealed class AiBattlePresentation
         // Each side's 良 and 可 this section.
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
         {
-            var counts = (lanes[lane].Great - _base[lane].Great, lanes[lane].Good - _base[lane].Good);
+            var now = countsOf(lanes[lane]);
+            var counts = (now.Great - _base[lane].Great, now.Good - _base[lane].Good, now.Miss - _base[lane].Miss, now.Rolls - _base[lane].Rolls);
             if (counts == _shown[lane])
                 continue;
             _shown[lane] = counts;
             call(_board, "SetPlayerSide", number(lane));
-            call(_board, "UpdateValue", number(counts.Item1), number(counts.Item2), number(0), number(0));
+            call(_board, "UpdateValue", number(counts.Item1), number(counts.Item2), number(counts.Item3), number(counts.Item4));
             var needle = Math.Clamp(territory(0) - territory(1), -MaxNeedle, MaxNeedle);
             if (needle != _needle)
                 both("UpdateTargetGaugeNum", number(_needle = needle));
@@ -114,11 +115,14 @@ internal sealed class AiBattlePresentation
         // Traced: VO_AIBTL_ENSO 3 with a section won, 8 with one lost.
         _cue?.Invoke("VO_AIBTL_ENSO", won ? 3 : 8);
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
-            (_base[lane], _shown[lane]) = ((lanes[lane].Great, lanes[lane].Good), (-1, -1));
+            (_base[lane], _shown[lane]) = (countsOf(lanes[lane]), (-1, -1, -1, -1));
         (_section, _progress, _middle, _closing, _needle, _endedAt) = (_section + 1, -1, false, false, 0, time);
     }
 
-    private int territory(int lane) => _shown[lane] is var (great, good) && great >= 0 ? AiBattleRules.Territory(_course, great, good) : 0;
+    private int territory(int lane) => _shown[lane] is var (great, good, _, _) && great >= 0 ? AiBattleRules.Territory(_course, great, good) : 0;
+
+    // A side's 良, 可, 不可 and 連打 (rolls and balloon hits) so far.
+    private static (int Great, int Good, int Miss, int Rolls) countsOf(TaikoPlayResult play) => (play.Great, play.Good, play.Miss, play.Rolls + play.BalloonHits);
 
     private void both(string name, params LumenHostValue[] arguments)
     {

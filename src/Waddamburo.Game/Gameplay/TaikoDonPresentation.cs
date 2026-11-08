@@ -24,7 +24,7 @@ public sealed class TaikoDonPresentation
 
     private readonly IDonPresentationController _controller;
     private readonly int _player;
-    private readonly LumenSceneLayer _layer;
+    private readonly LumenSceneLayer? _layer;
     private readonly LumenNativeSurfaceKey _surface;
     // Composite filters (reference frames). Full gauge: additive gold
     // (0.430 + 0.352t, 0.391 + 0.234t, 0.117t) with a pulse t in 0..1; it replaces the darkening.
@@ -41,17 +41,21 @@ public sealed class TaikoDonPresentation
     /// <param name="controller">The Don motion and render target controller.</param>
     /// <param name="layer">The gameplay movie layer receiving the native fill.</param>
     /// <param name="player">The lane: 0 top (don3d's don1p state), 1 the second player's lower lane (don2p).</param>
-    public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer, int player = 0)
+    /// <param name="stage">The Don stands in a movie the scene draws itself (AI battle's ai_hit_effect, its don1p / don2p
+    /// fills by the territory needle): no state to pick, nothing for the lane to draw.</param>
+    public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer, int player = 0, bool stage = false)
     {
         _controller = controller;
         _player = player;
-        _layer = layer;
+        _layer = stage ? null : layer;
         _surface = controller.GetSurface(player);
-        controller.SetCameraLayout(player, DonPresentationLayout.Gameplay);
+        // AI battle's Dons face each other (the kusudama view turns both to the centre), scaled into their slots.
+        controller.SetCameraLayout(player, stage ? DonPresentationLayout.Kusudama : DonPresentationLayout.Gameplay);
         var state = player == 1 ? "don2p" : "don1p";
         layer.Player.SetNativeFill(state, _surface,
-            LumenNativeSurfacePlacement.Centered(448, 256));
-        if (!layer.Player.TryGotoLabel("", state))
+            // ponytail: the battle's size read off the recomp (about 60% of the menus' 600); tune against it.
+            stage ? LumenNativeSurfacePlacement.Centered(360, 360) : LumenNativeSurfacePlacement.Centered(448, 256));
+        if (!stage && !layer.Player.TryGotoLabel("", state))
             throw new InvalidDataException($"Gameplay Don movie is missing its '{state}' state.");
         _controller.SetMotion(new(player, null, idle));
     }

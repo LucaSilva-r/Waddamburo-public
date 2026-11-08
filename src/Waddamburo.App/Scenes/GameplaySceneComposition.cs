@@ -19,7 +19,9 @@ internal static class GameplaySceneComposition
     // Movies both players share in two-player gameplay (one instance, drawn over both lanes; the
     // kusudama counts for both). Waiwai adds its effect overlays.
     public static readonly string[] SharedRoles = ["song_info", "action_kusudama", "cut_in", "title_waiwai",
-        "action_synchro_start", "action_solo_above_lane", "clear_effects"];
+        "action_synchro_start", "action_solo_above_lane", "clear_effects",
+        // AI battle's: over both lanes (the score board's AI-don box sits on the second lane's plate).
+        "score_board", "section_win_icon", "time", "battle_result"];
 
     // Waiwai gameplay (traced session11-waiwai): one voltage gauge and backdrop for both, the effect
     // overlays, and per lane the common movies with Waiwai's roll art, flights and synchro notes.
@@ -114,7 +116,8 @@ internal static class GameplaySceneComposition
         ("ghost/enso_system/hit_effect", "ai_hit_effect", 0, 3006),
         ("ghost/enso_system/common", "time", 0, 2002),
         ("ghost/enso_system/common", "ai_song_info", 0, 505),
-        ("ghost/enso_system/common", "score_board", 0, 505),
+        // In front of the name boards: AI-don's counter box sits on its plate (side 1).
+        ("ghost/enso_system/common", "score_board", 0, 503),
         ("ghost/enso_system/common", "section_win_icon", 0, 505),
         ("ghost/enso_system/common", "battle_result", 0, 501),
         ("enso_system/common", "action_kusudama", 0, 500),
@@ -123,12 +126,10 @@ internal static class GameplaySceneComposition
     // Per lane; index is the player's lane's (the AI's takes the pair's next). Lane-only movies list their lane.
     private static readonly (string Archive, string Movie, int? Index, int Depth, int? Lane)[] AiBattleLane =
     [
-        // ponytail: the Dons at the two-player places (ensolayout 22/23); AI battle's own are untraced (no lookup).
-        ("enso_system/common", "don3d", 22, 3001, null),
         ("ghost/enso_system/common", "ai_lane", 14, 2003, null),
-        ("ghost/enso_system/player", "gage_don_1p_easy", 14, 2002, 0),
-        ("ghost/enso_system/player", "gage_don_1p_normal", 14, 2002, 0),
-        ("ghost/enso_system/player", "gage_don_1p_hard", 14, 2002, 0),
+        ("ghost/enso_system/player", "gage_don_1p_easy", 0, 2002, 0), // traced at (0, 0)
+        ("ghost/enso_system/player", "gage_don_1p_normal", 0, 2002, 0), // traced at (0, 0)
+        ("ghost/enso_system/player", "gage_don_1p_hard", 0, 2002, 0), // traced at (0, 0)
         ("enso_system/common", "lane_hit", 14, 2001, null),
         ("enso_system/common", "lane_syousetsu", null, 2000, null),
         ("enso_system/common", "onp_don", null, 1002, null),
@@ -146,7 +147,8 @@ internal static class GameplaySceneComposition
         ("ghost/enso_system/common", "ai_lane_obi", 14, 507, null),
         // Traced: a name board on both lanes (11 / 12), AI-don's own plate over the second.
         ("indicator", "player_name", 11, 505, null),
-        ("ghost/enso_system/common", "ai_player_name", 12, 505, 1),
+        // AI-don's plate over its lane's (empty) name board (traced: the board gets no name).
+        ("ghost/enso_system/common", "ai_player_name", 12, 504, 1),
         ("ghost/enso_system/player", "score_add_don_1p", 24, 502, 0),
         // ponytail: AI-don's lane takes the player's combo bonus art too (only the first lane's was traced).
         ("ghost/enso_system/player", "combo_bonus_don_1p", 20, 502, null),
@@ -162,7 +164,7 @@ internal static class GameplaySceneComposition
 
     /// <summary>
     /// AI battle: the player's lane on top, AI-don's below (host <see cref="PlayerTwoHostId"/>), on the battle's own
-    /// backdrop (no skin).
+    /// backdrop (no skin); the Dons face off in ai_hit_effect's don1p / don2p fills.
     /// </summary>
     public static SceneDefinition CreateAiBattle(SceneId id, EnsoLayout layout)
     {
@@ -267,6 +269,7 @@ internal static class GameplaySceneComposition
         : WaiwaiShared.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } shared ? shared.Depth
         : WaiwaiLane.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } waiwai ? waiwai.Depth
         : AiBattleShared.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } ai ? ai.Depth
+        : AiBattleLane.FirstOrDefault(entry => entry.Movie == role) is { Movie: not null } aiLane ? aiLane.Depth
         : null;
 
     /// <summary>
