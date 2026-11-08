@@ -1,6 +1,7 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Game.Lumen;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.App.Gameplay;
@@ -23,8 +24,9 @@ internal sealed class AiBattlePresentation
     private readonly Action<string, int>? _cue;
     private readonly (int Great, int Good, int Miss, int Rolls)[] _base = new (int, int, int, int)[2], _shown = new (int, int, int, int)[2];
     private readonly List<bool> _won = [];
+    private readonly List<AiBattleSection> _sections = [];
     private bool _ready, _started, _middle, _closing, _resultShown;
-    private int _section, _progress = -1, _needle;
+    private int _section, _progress = -1;
     private TimeSpan _endedAt;
 
     public AiBattlePresentation(LumenGameSceneInstance scene, PlayableChart chart, TaikoCourse course, Action<string, int>? cue)
@@ -42,6 +44,9 @@ internal sealed class AiBattlePresentation
 
     /// <summary>Each finished section: the player took it.</summary>
     public IReadOnlyList<bool> SectionsWon => _won;
+
+    /// <summary>The finished sections, for the results.</summary>
+    public AiBattleOutcome Outcome => new([.. _sections]);
 
     public int Sections => _ends.Length;
 
@@ -67,6 +72,7 @@ internal sealed class AiBattlePresentation
             both("StartReadyAction");
             _cue?.Invoke("VO_AIBTL_ENSO", 0);
         }
+        traceDons();
         if (_section >= _ends.Length)
         {
             if (!_resultShown && time - _endedAt >= ResultDelay)
@@ -96,14 +102,17 @@ internal sealed class AiBattlePresentation
             _shown[lane] = counts;
             call(_board, "SetPlayerSide", number(lane));
             call(_board, "UpdateValue", number(counts.Item1), number(counts.Item2), number(counts.Item3), number(counts.Item4));
-            var needle = Math.Clamp(territory(0) - territory(1), -MaxNeedle, MaxNeedle);
-            if (needle != _needle)
-                both("UpdateTargetGaugeNum", number(_needle = needle));
+            // Traced: sent with every counted hit, the same value too (the movie's Dons move on each call, and a call
+            // ends a section win's attack).
+            both("UpdateTargetGaugeNum", number(Math.Clamp(territory(0) - territory(1), -MaxNeedle, MaxNeedle)));
         }
         if (time < end)
             return;
         var won = territory(0) >= territory(1);
         _won.Add(won);
+        AiSectionCounts section(int lane) => _shown[lane] is var (great, good, miss, rolls) && great >= 0
+            ? new(great, good, miss, rolls) : default;
+        _sections.Add(new(won, section(0), section(1)));
         call(_icons, "AIEnsoWinIconMove", LumenHostValue.FromBoolean(won));
         var last = _section == _ends.Length - 1;
         if (!last)
@@ -116,7 +125,8 @@ internal sealed class AiBattlePresentation
         _cue?.Invoke("VO_AIBTL_ENSO", won ? 3 : 8);
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
             (_base[lane], _shown[lane]) = (countsOf(lanes[lane]), (-1, -1, -1, -1));
-        (_section, _progress, _middle, _closing, _needle, _endedAt) = (_section + 1, -1, false, false, 0, time);
+        (_section, _progress, _middle, _closing, _endedAt) = (_section + 1, -1, false, false, time);
+        _traceTicks = 0;
     }
 
     private int territory(int lane) => _shown[lane] is var (great, good, _, _) && great >= 0 ? AiBattleRules.Territory(_course, great, good) : 0;
@@ -130,8 +140,29 @@ internal sealed class AiBattlePresentation
         call(_hitEffect, name, arguments);
     }
 
-    private static bool call(LumenPlayer? player, string name, params LumenHostValue[] arguments) =>
-        player?.TryInvokeCallback(name, arguments) == true;
+    // Diagnostic: WADDAMBURO_AI_TRACE=1 logs each call to the battle movies, and the hit effect's Don clips for 4 s after
+    // each section's end.
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("WADDAMBURO_AI_TRACE") == "1";
+    private static int _traceTicks;
+
+    private static bool call(LumenPlayer? player, string name, params LumenHostValue[] arguments)
+    {
+        if (Trace && name is not ("SetProgress" or "SetPlayerSide" or "UpdateValue"))
+            Console.WriteLine($"[ai] {name}({string.Join(", ", arguments.Select(static argument => argument.Kind == LumenHostValueKind.Number ? argument.AsNumber().ToString() : argument.Kind.ToString()))})");
+        return player?.TryInvokeCallback(name, arguments) == true;
+    }
+
+    private void traceDons()
+    {
+        if (!Trace || _hitEffect is null) return;
+        _traceTicks++;
+        if (_traceTicks % 4 == 0 && _section > 0 && _traceTicks <= 240)
+            foreach (var line in _hitEffect.DescribeDisplayList().Where(static line => line.Contains("don", StringComparison.Ordinal)))
+                Console.WriteLine($"[ai tree {_traceTicks}] {line}");
+        if (_traceTicks % 4 == 0 && _section > 0 && _traceTicks <= 240)
+            foreach (var quad in _hitEffect.CreateRenderSnapshot().Quads.Where(static quad => quad.NativeSurface is not null))
+                Console.WriteLine($"[ai quad {_traceTicks}] {quad.NativeSurface} tl=({quad.TopLeft.X:0},{quad.TopLeft.Y:0}) br=({quad.BottomRight.X:0},{quad.BottomRight.Y:0})");
+    }
 
     private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
 }

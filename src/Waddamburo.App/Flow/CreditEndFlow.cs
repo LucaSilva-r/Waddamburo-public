@@ -99,13 +99,19 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 Shell.Overlay.Clear();
             if (Shell.Hosts.DanResult is not null)
                 Shell.Hosts.DaniResult?.Poll();
+            Shell.Hosts.AiSectionResult?.Poll();
             // ponytail: a course's results take a song's delay until a trace times theirs.
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
-                Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null);
+                Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null, aiBattle: Shell.Hosts.AiOutcome is not null);
             if (Shell.Scenes.FinishFade()) return;
             // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message; Waiwai's
             // reports AllFinish).
-            if (input.Escape || (Shell.Hosts.WaiwaiResult is { } waiwai
+            // AI battle's end with its section results (their movie calls Start).
+            // (result_normal, the second layer, sets _global.isAllEnd once its 面でおわり exit runs.)
+            if (input.Escape || (Shell.Hosts.AiOutcome is not null
+                    ? Shell.Hosts.AiSectionResult is { } sections && (sections.Ended
+                        || sections.Played && RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player))
+                    : Shell.Hosts.WaiwaiResult is { } waiwai
                     ? waiwai.Ended
                     : RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player)))
                 // A course ends the credit however many songs it had left (the coins inserted stay); at home,

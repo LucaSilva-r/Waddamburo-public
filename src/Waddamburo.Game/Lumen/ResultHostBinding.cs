@@ -47,6 +47,19 @@ public sealed class ResultHostBinding(
     /// <summary>The play's place on the chart's online top three, by play index (null: none, nothing sent).</summary>
     public Func<int, RankingPlacement?>? Placement { get; init; }
 
+    /// <summary>
+    /// AI battle's normal results (ghost/result's result_normal, traced): no run mode, SetFullComboType and
+    /// SetSupportFlag after the numbers, its counting sounds (SE_REQUEST(1, n)) from SE_AIBTL_RSLT (cue n + 7), and
+    /// NotifyCloseNormalResult when it closes.
+    /// </summary>
+    public bool AiBattle { get; init; }
+
+    /// <summary>AI battle: a named bank's cue (the counting sounds).</summary>
+    public Action<string, int>? PlayCue { get; init; }
+
+    /// <summary>AI battle: the normal results closed (the section results come next).</summary>
+    public Action? NormalResultClosed { get; init; }
+
     private LumenHostContext? _context;
 
     public void Install(LumenHostContext context)
@@ -62,7 +75,20 @@ public sealed class ResultHostBinding(
         });
         context.RegisterObject("LumenMethod", method =>
         {
-            method.RegisterMethod("SE_REQUEST", call => requestSound(ResultSoundRequestKind.Effect, call));
+            method.RegisterMethod("SE_REQUEST", call =>
+            {
+                if (AiBattle && tryInteger(call.Arguments, 0, out var bank) && bank == 1 && tryInteger(call.Arguments, 1, out var cue))
+                {
+                    PlayCue?.Invoke("SE_AIBTL_RSLT", cue + 7);
+                    return LumenHostValue.Undefined;
+                }
+                return requestSound(ResultSoundRequestKind.Effect, call);
+            });
+            method.RegisterMethod("NotifyCloseNormalResult", _ =>
+            {
+                NormalResultClosed?.Invoke();
+                return LumenHostValue.Undefined;
+            });
             method.RegisterMethod("VOICE_REQUEST", call => requestSound(ResultSoundRequestKind.Voice, call));
         });
     }
@@ -109,13 +135,19 @@ public sealed class ResultHostBinding(
             DonLumenBinding.Attach(player, don, DonPresentationLayout.OpposedPlayers);
         var plays = results();
         var two = plays.Count == 2;
-        call(player, "SetRunMode", number(0));
+        if (!AiBattle)
+            call(player, "SetRunMode", number(0));
         call(player, "SetSongPlayCount", number(stage));
         call(player, "SetPlayerStatus", LumenHostValue.FromBoolean(two || side == 0), LumenHostValue.FromBoolean(two || side == 1));
         call(player, "SetEndMessage", number(endMessage));
         for (var index = 0; index < plays.Count; index++)
         {
             sendPlay(player, plays[index], two ? index : side, Best?.Invoke(index));
+            if (AiBattle)
+            {
+                call(player, "SetFullComboType", number(0));
+                call(player, "SetSupportFlag", LumenHostValue.FromBoolean(false));
+            }
             if (Placement?.Invoke(index) is { } placement)
                 sendRanking(player, two ? index : side, placement);
         }
@@ -200,9 +232,12 @@ public sealed class ResultHostBinding(
         _ => null,
     };
 
+    // AI battle's result_normal has no SetEndMessage (the game's call does nothing there, traced) nor SetRunMode.
+    private static readonly string[] Optional = ["SetEndMessage", "SetRunMode"];
+
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
-        if (!player.TryInvokeCallback(name, arguments))
+        if (!player.TryInvokeCallback(name, arguments) && !Optional.Contains(name))
             throw new InvalidDataException($"Result movie is missing callback '{name}'.");
     }
 }

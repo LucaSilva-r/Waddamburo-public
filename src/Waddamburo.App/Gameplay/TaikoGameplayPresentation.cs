@@ -514,7 +514,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 {
                     var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
                     return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-                });
+                }) { KeepCamera = donStage is not null && !layers.ContainsKey("don3d") };
             // AI battle: both Dons stand in its hit-effect movie (no don3d of their own).
             _character = don is null ? null : donStage is not null && !layers.ContainsKey("don3d")
                 ? new(don, donStage, lane, stage: true) : new(don, layers["don3d"], lane);

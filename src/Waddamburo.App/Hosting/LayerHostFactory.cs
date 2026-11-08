@@ -341,6 +341,10 @@ internal sealed class LayerHostFactory(
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
+            "ai-result" => aiResultHost(),
+            "ai-result-section" => aiSectionResultHost(),
+            // Traced SetWinTotalFlag(false) after a lost battle.
+            "ai-result-bg" => aiResultBackgroundHost(),
             "waiwai-result" => waiwaiResultHost(),
             "dani-result" => daniResultHost(),
             "waiwai-result-board-0" => new LumenLayerHost(null, static board => GuestNameBoard.Show(board, 0)),
@@ -463,6 +467,46 @@ internal sealed class LayerHostFactory(
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,
             AiBattle = AiBattle,
+        };
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    /// <summary>The AI battle song the next results show; null: not a battle.</summary>
+    public AiBattleOutcome? AiOutcome { get; set; }
+
+    /// <summary>AI battle's section results, while they are on stage.</summary>
+    public AiSectionResultBinding? AiSectionResult { get; private set; }
+
+    // AI battle's normal results: the player's play only (AI-don's lane is not shown); closing them starts the sections'.
+    private LumenLayerHost aiResultHost()
+    {
+        WaiwaiResult = null;
+        var plays = playResults();
+        if (plays.Count == 0)
+            throw new InvalidOperationException("Results loaded without a finished play.");
+        IReadOnlyList<TaikoPlayResult> own = [plays[0]];
+        var binding = new ResultHostBinding(() => own, songInfo().Stage, endMessage, don, sounds?.Results, 0)
+        {
+            Best = Best,
+            AiBattle = true,
+            PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
+            NormalResultClosed = () => AiSectionResult?.Start(),
+        };
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    // Traced SetWinTotalFlag(false) after a lost battle; sent with the section results' setup (once callbacks exist).
+    private LumenLayerHost aiResultBackgroundHost() => new(null, player => AiResultBackground = player);
+
+    /// <summary>AI battle's results backdrop (result_bg), while it is on stage.</summary>
+    public LumenPlayer? AiResultBackground { get; private set; }
+
+    private LumenLayerHost aiSectionResultHost()
+    {
+        var outcome = AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
+        var binding = AiSectionResult = new AiSectionResultBinding(outcome, sounds is null ? null : sounds.Frontend.PlayCue)
+        {
+            Backdrop = () => AiResultBackground,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }

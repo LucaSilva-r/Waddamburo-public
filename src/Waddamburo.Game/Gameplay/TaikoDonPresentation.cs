@@ -25,6 +25,8 @@ public sealed class TaikoDonPresentation
     private readonly IDonPresentationController _controller;
     private readonly int _player;
     private readonly LumenSceneLayer? _layer;
+    // The camera the Don goes back to after a balloon or kusudama.
+    private readonly DonPresentationLayout _view;
     private readonly LumenNativeSurfaceKey _surface;
     // Composite filters (reference frames). Full gauge: additive gold
     // (0.430 + 0.352t, 0.391 + 0.234t, 0.117t) with a pulse t in 0..1; it replaces the darkening.
@@ -50,7 +52,8 @@ public sealed class TaikoDonPresentation
         _layer = stage ? null : layer;
         _surface = controller.GetSurface(player);
         // AI battle's Dons face each other (the kusudama view turns both to the centre), scaled into their slots.
-        controller.SetCameraLayout(player, stage ? DonPresentationLayout.Kusudama : DonPresentationLayout.Gameplay);
+        _view = stage ? DonPresentationLayout.Kusudama : DonPresentationLayout.Gameplay;
+        controller.SetCameraLayout(player, _view);
         var state = player == 1 ? "don2p" : "don1p";
         layer.Player.SetNativeFill(state, _surface,
             // ponytail: the battle's size read off the recomp (about 60% of the menus' 600); tune against it.
@@ -93,7 +96,7 @@ public sealed class TaikoDonPresentation
     public void ResetPose()
     {
         _balloonVisible = false;
-        _controller.SetCameraLayout(_player, DonPresentationLayout.Gameplay);
+        _controller.SetCameraLayout(_player, _view);
         _controller.SetMotion(new(_player, null, idle));
     }
 
@@ -103,7 +106,7 @@ public sealed class TaikoDonPresentation
         _balloonVisible = visible;
         if (wasVisible && !visible)
         {
-            _controller.SetCameraLayout(_player, DonPresentationLayout.Gameplay);
+            _controller.SetCameraLayout(_player, _view);
             _controller.SetMotion(new(_player, null, idle));
         }
     }

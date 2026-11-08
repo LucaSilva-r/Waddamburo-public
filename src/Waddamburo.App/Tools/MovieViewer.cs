@@ -4,6 +4,7 @@ using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Diagnostics;
 using Waddamburo.Game;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
@@ -55,6 +56,20 @@ internal static class MovieViewer
                 texture.Rgba8.AsSpan()))
             .ToArray();
         var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
+        // Diagnostic: WADDAMBURO_FILL_PLACEHOLDERS=don1p,don2p draws those native fills as solid boxes (red, blue, green,
+        // ...), 360 px square, so movies that hold host-drawn art (the Dons) show where it goes.
+        var placeholders = new Dictionary<LumenNativeSurfaceKey, RenderTextureId>();
+        uint[] colours = [0xFF3030FF, 0xFFFF6040, 0xFF40D040, 0xFF20D0F0];
+        foreach (var (name, index) in (Environment.GetEnvironmentVariable("WADDAMBURO_FILL_PLACEHOLDERS") ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries).Select((name, index) => (name, index)))
+        {
+            var rgba = new byte[8 * 8 * 4];
+            for (var pixel = 0; pixel < 64; pixel++)
+                BitConverter.TryWriteBytes(rgba.AsSpan(pixel * 4), colours[index % colours.Length]);
+            var key = new LumenNativeSurfaceKey($"placeholder:{name}");
+            placeholders[key] = application.UploadRgba8(8, 8, rgba);
+            player.SetNativeFill(name, key, LumenNativeSurfacePlacement.Centered(360, 360));
+        }
         if (seekFrame is int requestedFrame)
             player.Seek(requestedFrame);
         void invoke(CallbackInvocation invocation)
@@ -75,8 +90,11 @@ internal static class MovieViewer
                 RenderColor.Black,
                 index => index < textureIds.Length
                     ? textureIds[index]
-                    : throw new InvalidDataException($"Render snapshot references missing texture {index}."));
+                    : throw new InvalidDataException($"Render snapshot references missing texture {index}."),
+                surface => placeholders.TryGetValue(surface, out var placeholder) ? placeholder : null);
         var simulationTick = 0;
+        var treeEvery = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_TREE_EVERY"), out var every) ? every : 0;
+        var treeFilter = Environment.GetEnvironmentVariable("WADDAMBURO_TREE_FILTER")?.Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];
         var result = application.Run(
             createFrame,
             keyboard =>
@@ -88,6 +106,11 @@ internal static class MovieViewer
                 if (debugger is null)
                 {
                     player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
+                    // Diagnostic: WADDAMBURO_TREE_EVERY=N prints the display list every N ticks (lines containing
+                    // WADDAMBURO_TREE_FILTER, '|'-separated, when set).
+                    if (treeEvery > 0 && simulationTick % treeEvery == 0)
+                        foreach (var line in player.DescribeDisplayList().Where(line => treeFilter.Length == 0 || treeFilter.Any(line.Contains)))
+                            Console.WriteLine($"[tree {simulationTick}] {line}");
                     // Diagnostic: WADDAMBURO_READ=main.isAllEnd prints that script value when it changes.
                     if (readPath is not null && player.ReadScriptValue(readPath) is var read && !Equals(read, lastRead))
                     {

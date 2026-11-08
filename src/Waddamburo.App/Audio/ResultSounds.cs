@@ -9,10 +9,10 @@ internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
     private AudioPlaybackHandle? _music;
 
     /// <summary>The results music: JINGLE_SEISEKI, or JINGLE_WAIRSLT after a Waiwai song.</summary>
-    public void StartMusic(bool waiwai = false)
+    public void StartMusic(bool waiwai = false, bool aiBattle = false)
     {
         if (!bank.IsPlaying(_music))
-            _music = bank.PlayMusic("Result", waiwai ? "JINGLE_WAIRSLT" : "JINGLE_SEISEKI", loop: true);
+            _music = bank.PlayMusic("Result", aiBattle ? "JINGLE_AIBTL_RSLT" : waiwai ? "JINGLE_WAIRSLT" : "JINGLE_SEISEKI", loop: true);
     }
 
     public void StopMusic()

@@ -1028,7 +1028,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _autoplay = null; _aiBot = null; _battle = null;
             return;
         }
+        Shell.Hosts.AiOutcome = _battle?.Outcome;
         Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
+            : Shell.Hosts.AiOutcome is not null ? FlowScenes.AiResults
             : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _charts = [];
         _autoplay = null; _aiBot = null; _battle = null;

@@ -45,6 +45,13 @@ internal static class FlowScenes
         new SceneLayerDefinition("waitinput/packeddata.ddp", "waitinput/waitinput.lm", LumenMatrix.Identity, "waitinput"),
     ]);
 
+    // AI battle's results (traced session-ai-battle-3): the backdrop, the normal results, then the section results over them.
+    public static SceneDefinition AiResults { get; } = new(SceneDefinition.CurrentVersion, Result, [
+        new SceneLayerDefinition("ghost/result/packeddata.ddp", "result_bg/result_bg.lm", LumenMatrix.Identity, "ai-result-bg"),
+        new SceneLayerDefinition("ghost/result/packeddata.ddp", "result_normal/result_normal.lm", LumenMatrix.Identity, "ai-result"),
+        new SceneLayerDefinition("ghost/result/packeddata.ddp", "result_section/result_section.lm", LumenMatrix.Identity, "ai-result-section"),
+    ]);
+
     // A dan course's results (traced sessions 30 and 31), and the shutter closing over its last song.
     public static SceneDefinition DaniResults { get; } = new(SceneDefinition.CurrentVersion, Result, [
         new SceneLayerDefinition("dani_result/packeddata.ddp", "dani_result/dani_result.lm", LumenMatrix.Identity, "dani-result"),

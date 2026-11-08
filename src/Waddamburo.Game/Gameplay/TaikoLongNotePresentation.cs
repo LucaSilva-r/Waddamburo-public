@@ -66,6 +66,9 @@ public sealed class TaikoLongNotePresentation
     private readonly int _player; // Don slot; the second player's kusudama motions are don_kusu2P_*
     private readonly string _kusu;
 
+    /// <summary>AI battle: the Dons stay in their face-off view through balloons and kusudama (no close-up).</summary>
+    public bool KeepCamera { get; init; }
+
     public TaikoLongNotePresentation(PlayableChart chart, ITaikoJudgementSource session,
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
@@ -250,7 +253,7 @@ public sealed class TaikoLongNotePresentation
         var note = _chart.LongNotes[index];
         if (note.Kind == PlayableLongNoteKind.Kusudama && _kusudama is not null)
         {
-            _don?.SetCameraLayout(_player, DonPresentationLayout.Kusudama);
+            if (!KeepCamera) _don?.SetCameraLayout(_player, DonPresentationLayout.Kusudama);
             _overlay = _kusudama;
             // Kusudama overlay (reference trace): the quota, then whether Go-Go is on.
             _sharedKusudama?.Enter(note.RequiredHits);
@@ -261,7 +264,7 @@ public sealed class TaikoLongNotePresentation
         }
         else if (note.IsBalloon)
         {
-            _don?.SetCameraLayout(_player, DonPresentationLayout.Balloon);
+            if (!KeepCamera) _don?.SetCameraLayout(_player, DonPresentationLayout.Balloon);
             _overlay = _balloon;
             invoke(_balloon.Player, "Reset");
             // The opening timeline creates the balloon child two ticks after 'start'.
