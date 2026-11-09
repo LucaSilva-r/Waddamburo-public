@@ -50,6 +50,12 @@ internal sealed class AiBattlePresentation
 
     public int Sections => _ends.Length;
 
+    /// <summary>When battle_result's StartAction went out (chart time); null before.</summary>
+    public TimeSpan? ResultShownAt { get; private set; }
+
+    /// <summary>Traced (sessions 3 and 4, 11.3 s both): StartAction to the results; no shutter closes in AI battle.</summary>
+    public static readonly TimeSpan ResultsDelay = TimeSpan.FromSeconds(11.3);
+
     /// <summary>This section's territory so far: the player's and AI-don's.</summary>
     public (int Player, int Ai) Territory => (territory(0), territory(1));
 
@@ -81,6 +87,7 @@ internal sealed class AiBattlePresentation
             if (!_resultShown && time - _endedAt >= ResultDelay)
             {
                 _resultShown = true;
+                ResultShownAt = time;
                 // ponytail: StartAction(won, false) read from two lost battles (traced (false, false)).
                 call(_result, "StartAction", LumenHostValue.FromBoolean(_won.Count(static won => won) * 2 > _won.Count), LumenHostValue.FromBoolean(false));
             }

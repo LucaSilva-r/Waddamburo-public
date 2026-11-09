@@ -905,16 +905,18 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _musicEndPosition = Shell.Audio!.GetPosition(finished);
             _afterMusic.Restart();
         }
-        var chartFinished = _charts.Length != 0
-            && elapsed >= (_courseEndsAt ?? _charts.Max(TaikoResultBanner.Time)) + TaikoResultBanner.ShutterDelay;
+        // AI battle: by its battle result, which comes after the last section (traced, no end banner nor shutter).
+        var chartFinished = _battle is { } battle
+            ? battle.ResultShownAt is { } shown && elapsed - _inputOffset >= shown + AiBattlePresentation.ResultsDelay
+            : _charts.Length != 0 && elapsed >= (_courseEndsAt ?? _charts.Max(TaikoResultBanner.Time)) + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _shutterStartTick < 0
             && (_skipToShutter || chartFinished && !Shell.Gameplay.OverlayActive))
         {
             overlay.Clear();
             if (!musicFinished && _music is { } outro)
                 Shell.Audio?.Mixer.Stop(outro.Handle, TimeSpan.FromSeconds(1));
-            // Traced (5 Waiwai runs): Waiwai never closes the shutter; its results cut in.
-            if (Shell.Gameplay.WaiwaiOutcome is null)
+            // Traced (5 Waiwai runs, every AI battle): Waiwai and AI battle never close the shutter; their results cut in.
+            if (Shell.Gameplay.WaiwaiOutcome is null && _battle is null)
                 overlay.Show(_course is null ? FlowScenes.Shutter : FlowScenes.DanShutter);
             // Traced sessions 30 and 31, as the course's shutter closes.
             if (_course is not null && Shell.Sounds is { } sounds)
@@ -932,7 +934,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _shutterClosing = shutter.TryInvokeCallback("Close",
                 [LumenHostValue.FromNumber(Shell.Hosts.TwoPlayers ? 2 : Shell.Hosts.PlayerSide)]);
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
-        if (input.Escape && !Shell.Arcade.Home || _shutterStartTick >= 0 && Shell.Tick - _shutterStartTick >= 70)
+        // (AI battle: no shutter; its delay already ends at the results.)
+        if (input.Escape && !Shell.Arcade.Home || _shutterStartTick >= 0 && (Shell.Tick - _shutterStartTick >= 70 || _battle is not null))
         {
             // An abandoned song gives its stage back: Song Select counts it again when the next one starts (#21).
             if (input.Escape && !Shell.Arcade.Home && Shell.Players.SongsPlayed > 0)
