@@ -1863,7 +1863,10 @@ public sealed class LumenPlayer
         {
             instance.Playing = true;
             var outer = _gotoBorn;
-            var born = _gotoBorn = [];
+            // Only a rewind: on a forward goto song_select's courseStar_ (Startup("course")) and the course boards
+            // would run theirs and back-out from the courses then hangs; the game never runs those.
+            List<DisplayInstance> born = [];
+            _gotoBorn = frame > instance.Frame ? null : born;
             try
             {
                 if (frame > instance.Frame)
@@ -1880,7 +1883,7 @@ public sealed class LumenPlayer
             {
                 _gotoBorn = outer;
             }
-            // Flash: a clip the goto creates on a frame it passes through still runs its first frame's script when it
+            // A clip a rewind creates on a frame it passes through still runs its first frame's script when it
             // survives to the target frame (ai_hit_effect's mc_don_position, placed at frame 0 of mc_don_move: its
             // stop() keeps it from playing on into don_clash after a section win).
             foreach (var child in born)
