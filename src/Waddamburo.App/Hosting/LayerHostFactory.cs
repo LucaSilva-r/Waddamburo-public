@@ -90,7 +90,9 @@ internal sealed class LayerHostFactory(
     public bool EntryCardRejected { get; set; }
 
     /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
-    public bool EntryCardPending => _entry?.Card is not null;
+    public bool EntryCardPending => _entry?.CardBusy == true;
+
+    public bool RefuseEntryCard() => _entry?.RefuseCardInUse() == true;
 
     /// <summary>The name of an account chosen for a drum before the entry (its board shows it at the join).</summary>
     public Func<int, string?>? PlayerName { get; init; }

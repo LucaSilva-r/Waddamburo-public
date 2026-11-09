@@ -1413,8 +1413,17 @@ internal sealed class GameShell : IDisposable
             || entry && !Hosts.EntryCardPending;
         if (entry && pairing.TakeCardFailure())
             Hosts.RejectEntryCard();
-        if (entry && pairing.TakeCard() is { } card && !Hosts.InsertEntryCard(card))
-            Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
+        if (entry && pairing.TakeCard() is { } card)
+        {
+            // A card already on a drum: the game reads it and refuses it (このデータはすでに読みこんでいます).
+            if (TaikoGuest.Profiles.Any(profile => profile?.Baid == card.Baid))
+            {
+                Console.WriteLine($"Pairing: {card.Name} (baid {card.Baid}) is already playing; the card was refused.");
+                Hosts.RefuseEntryCard();
+            }
+            else if (!Hosts.InsertEntryCard(card))
+                Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
+        }
         pairing.UpdatePill(_pill);
         return _pill.Quads();
     }

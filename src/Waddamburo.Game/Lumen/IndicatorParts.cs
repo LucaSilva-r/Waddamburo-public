@@ -98,7 +98,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     private LumenPlayer? _overMessage;
 
     /// <summary>over_msg messages (its LABEL table): the card band while reading, then its result.</summary>
-    public enum CardBand { Reading = 0, ReadOk = 2, ReadNg = 7 }
+    // AlreadyRead: このデータはすでに読みこんでいます, a card already playing (traced session-samecard2).
+    public enum CardBand { Reading = 0, ReadOk = 2, ReadNg = 7, AlreadyRead = 11 }
 
     /// <summary>
     /// The card band (traced session15-card-band): over_msg SetType(clear_reading) and TweenVisible(true,

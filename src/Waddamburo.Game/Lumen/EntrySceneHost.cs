@@ -86,6 +86,28 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     private bool _rejectOnLoad;
     private int _rejectUntil = -1;
 
+    /// <summary>
+    /// The card of a player already in (traced session-samecard2): InputCardReader with the already-read band
+    /// (over_msg type 11) and the card error sound, the movie's Wait_AccessServer, then ReplyServer(false) 2.5 s
+    /// later; the movie fades the band and carries on. False while another card is being read.
+    /// </summary>
+    public bool RefuseCardInUse()
+    {
+        if (Card is not null || _refuseAt >= 0 || _entry is not { } entry)
+            return false;
+        _refuseAt = _ticks;
+        call(entry, "InputCardReader");
+        Parts.ShowCardBand(IndicatorParts.CardBand.AlreadyRead);
+        PlayCue?.Invoke("SE_COM", 12);
+        return true;
+    }
+
+    private const int RefuseReplyTicks = 151;
+    private int _refuseAt = -1;
+
+    /// <summary>A card is being read or refused: the reader takes no other meanwhile.</summary>
+    public bool CardBusy => Card is not null || _refuseAt >= 0;
+
     /// <summary>A card being read or waiting for a drum (from the attract loop or read during entry).</summary>
     public ScoreProfile? Card { get; set; }
 
@@ -278,6 +300,13 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             play(_timerCues.Advance(RemainingSeconds));
         if (_dialogAt >= 0)
             play(_dialogCues.Advance((int)Math.Ceiling(Math.Max(0, CardDialogSeconds - (_ticks - _dialogAt) / 60d))));
+        if (_refuseAt >= 0 && _ticks - _refuseAt == RefuseReplyTicks)
+        {
+            _refuseAt = -1;
+            call(_entry, "ReplyServer", LumenHostValue.FromBoolean(false));
+            Parts.HideCardBand();
+            CardDialog?.Invoke(false);
+        }
         if (_cardReadAt >= 0)
         {
             var since = _ticks - _cardReadAt;
@@ -481,6 +510,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         // joined as a guest takes the card as it is (the movie offers it; the replace is untraced).
         lumen.RegisterMethod("Wait_AccessServer", _ =>
         {
+            // A refused card: the coin message goes while the band is up (traced SetVisibieMsg(false)).
+            if (_refuseAt >= 0)
+                CardDialog?.Invoke(true);
             if (Card is { } card && _entry is { } entry)
             {
                 var no = LumenHostValue.FromBoolean(false);
