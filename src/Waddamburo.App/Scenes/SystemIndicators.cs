@@ -70,6 +70,9 @@ internal sealed class SystemIndicators
     /// <summary>Both drums have a player: nobody is left to prompt (traced session9-2p).</summary>
     public bool TwoPlayers { get; set; }
 
+    /// <summary>A drum has a player (a drum start joins before the entry shows; a card start nobody yet).</summary>
+    public bool AnyJoined { get; set; }
+
     /// <summary>AI battle: the other drum is AI-don's, nobody is asked to join it (traced SetMsgNum(n, -1) both sides).</summary>
     public bool AiBattle { get; set; }
 
@@ -105,6 +108,7 @@ internal sealed class SystemIndicators
     public void SetScene(IndicatorScene scene)
     {
         _setupPanels = null;
+        _splitSide = null;
         var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt or IndicatorScene.Demo;
         _scene = scene;
         if (scene != IndicatorScene.Entry)
@@ -151,7 +155,9 @@ internal sealed class SystemIndicators
         // Select join message is not traced (session28 was in coin mode); it was 2 ("2 more coins").
         var otherMessage = 0;
         setSideNumbers(joinedMessage, otherMessage);
-        if (scene == IndicatorScene.Entry && !rejoin)
+        // A card start: nobody has joined, so no split panel until a drum takes the card (traced
+        // session-freeplay-pill: SetScene 1 only, the panel with EntryCoin).
+        if (scene == IndicatorScene.Entry && !rejoin && AnyJoined)
         {
             // The entry then switches the panel to its split (per-player) scene, open on the other side.
             splitPanel();
@@ -201,7 +207,20 @@ internal sealed class SystemIndicators
             _messageDelay = 51;
             return;
         }
-        // Free play, or the second player: the panel closes on both sides.
+        // Free play's first player: the panel opens on the other drum, its message after Don-chan's entry
+        // motion (traced session-freeplay-pill: SetScene 4, SetVisibleSplitPanel, SetVisibieMsg 0.87 s later).
+        // A drum start opened it with the entry already.
+        if (Coins is null && !TwoPlayers && !Rejoin)
+        {
+            if (_splitSide == Side)
+                return;
+            _splitSide = Side;
+            splitPanel();
+            freePlayNumbers();
+            _messageDelay = 51;
+            return;
+        }
+        // The second player: the panel closes on both sides.
         Rejoin = false;
         _messageDelay = -1;
         call(_coins, "SetScene", LumenHostValue.FromNumber(4));
@@ -246,8 +265,11 @@ internal sealed class SystemIndicators
 
     // SetScene(4) + SetVisibleSplitPanel(left, right): the panel opens on the drum without a player
     // (traced (false, true) for a left player, (true, false) for a right one).
+    private int? _splitSide; // the joined drum the split panel was last opened for
+
     private void splitPanel()
     {
+        _splitSide = Side;
         call(_coins, "SetScene", LumenHostValue.FromNumber(4));
         call(_coins, "SetVisibleSplitPanel", LumenHostValue.FromBoolean(Side == 1), LumenHostValue.FromBoolean(Side == 0));
     }
@@ -263,6 +285,14 @@ internal sealed class SystemIndicators
         else setMessageNumbers(own, other);
     }
 
+    // Free play after a join: the coin type, then the other drum's "hit the drum" message (traced
+    // session-freeplay-pill, with the split panel and again with the message).
+    private void freePlayNumbers()
+    {
+        call(_coins, "SetCoinType", LumenHostValue.FromNumber(2));
+        setSideNumbers(-1, 0);
+    }
+
     private void setMessageNumbers(int player1, int player2 = 0)
     {
         // SetMsgNum(player, coins still needed); -1 = enough.
@@ -276,7 +306,10 @@ internal sealed class SystemIndicators
         if (_messageDelay >= 0 && _messageDelay-- == 0 && !_cardDialog)
         {
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(true));
-            CoinsChanged();
+            if (Coins is null)
+                freePlayNumbers();
+            else
+                CoinsChanged();
         }
         // The tutorial, and an entry a second player is joining from Song Select, keep the join messages
         // off (traced SetVisibieMsg(false) every frame).

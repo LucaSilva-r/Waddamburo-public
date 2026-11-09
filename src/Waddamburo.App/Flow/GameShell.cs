@@ -907,7 +907,8 @@ internal sealed class GameShell : IDisposable
             Hosts.EntryJoined = side =>
             {
                 Players.Join(side);
-                if (Coins is not null || _indicators.Rejoin)
+                // Home: the player setup drives the panels itself (SetupPanels).
+                if (Coins is not null || _indicators.Rejoin || !Arcade.Home)
                     _indicators.EntryJoined();
             };
             _indicatorTextures = SceneTextures.Upload(Application, _indicators.Scene);

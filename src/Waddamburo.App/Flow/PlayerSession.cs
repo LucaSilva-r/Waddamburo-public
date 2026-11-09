@@ -133,6 +133,7 @@ internal sealed class PlayerSession(GameShell shell)
         {
             indicators.Side = first;
             indicators.TwoPlayers = two;
+            indicators.AnyJoined = JoinedSides.Count > 0;
             indicators.AiBattle = shell.Hosts.AiBattle;
         }
         if (shell.Don is not null) shell.Don.GameplaySide = first;
