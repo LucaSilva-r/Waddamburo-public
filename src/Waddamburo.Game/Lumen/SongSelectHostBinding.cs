@@ -506,7 +506,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 // CourseSelectSong; meanwhile the scroll keeps the wheel's steps for then.
                 // ponytail: if another cancel on the boards (an option panel) turns out to play it, track that.
                 if (CourseSelectSong is not null && integer(call, 0) == 5 && integer(call, 1) == 32)
+                {
                     LeavingCourseSelect = true;
+                    // It is VO_SELECT's SELECT_SONG voice, which the game plays on backing out (traced
+                    // session-courseback2); played directly, past the filter that drops the movie's init request.
+                    PlayCue?.Invoke("VO_SELECT", 32);
+                    return LumenHostValue.Undefined;
+                }
                 return requestSound(SongSelectSoundRequestKind.Effect, call);
             });
             lumen.RegisterMethod("RequestSystemSE", call => requestSound(SongSelectSoundRequestKind.SystemEffect, call));
