@@ -345,11 +345,56 @@ public sealed class ScoreSavingTests
             {
                 connection.Open();
                 using var command = connection.CreateCommand();
-                command.CommandText = "PRAGMA user_version = 8";
+                // Back to version 8: the later steps run again (the AI battle columns go first, ADD COLUMN can't repeat).
+                command.CommandText = """
+                    ALTER TABLE plays DROP COLUMN ai_won; ALTER TABLE plays DROP COLUMN ai_sections;
+                    ALTER TABLE plays DROP COLUMN ai_support; ALTER TABLE plays DROP COLUMN ai_points;
+                    ALTER TABLE plays DROP COLUMN hit_median; ALTER TABLE plays DROP COLUMN hit_variance;
+                    DROP TABLE remote_ai_plays;
+                    PRAGMA user_version = 8;
+                    """;
                 command.ExecuteNonQuery();
             }
             using var updated = new ScoreStore(path);
             Assert.True(Assert.Single(updated.PendingPlays(42, 50)).Cleared);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void AiBattleStandingDerivesFromLocalAndServerBattles()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new ScoreStore(path);
+            var key = chart().Key;
+            var id = Guid.NewGuid();
+            var at = DateTimeOffset.UtcNow;
+            // A failed battle can still be a win: it uploads (an AI battle) and counts.
+            store.Save(new PlayRecord(id, 42, "sha", key, "ai_battle",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 10, false), at, new TaikoReplay().Encode())
+            {
+                Battle = new AiBattlePlay(true, "WLWWL", 0, 3),
+                Timing = (12, 400),
+            }, ChartUpload.From(chart(), TaikoCourse.Oni, null));
+            var pending = Assert.Single(store.PendingPlays(42, 50));
+            Assert.Equal(("ai_battle", true, "WLWWL", 3, 12d), (pending.Mode, pending.AiWon, pending.AiSections, pending.AiPoints, pending.HitMedianMs));
+            Assert.True(store.HasAiWin(42, "sha"));
+            Assert.False(store.HasAiWin(42, "other"));
+            // The server's battles add up once each: this PC's play (by id) is not counted twice.
+            store.ReplaceRemoteAiPlays(42, [
+                new RemoteAiPlay(id, "sha", true, 3, 12, 400, at),
+                new RemoteAiPlay(Guid.NewGuid(), "other", true, 2, -5, 900, at.AddDays(-1)),
+                new RemoteAiPlay(Guid.NewGuid(), "other", false, 0, null, null, at.AddDays(-2)),
+            ]);
+            Assert.Equal(new AiProgress(5, 2, (12, 400)), store.AiProgress(42));
+            Assert.True(store.HasAiWin(42, "other"));
+            Assert.Equal(AiProgress.None with { }, store.AiProgress(7));
         }
         finally
         {

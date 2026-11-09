@@ -8,6 +8,17 @@ public readonly record struct AiSectionCounts(int Great, int Good, int Miss, int
 /// <summary>One AI battle section: whether the player took it, and both sides' counts.</summary>
 public readonly record struct AiBattleSection(bool Won, AiSectionCounts Player, AiSectionCounts Ai);
 
+/// <summary>
+/// The section results' standing (traced session-ai-battle-3): rank before and after, the points earned within the rank
+/// before the battle and by it (with its first-win and high-level bonuses), the rank's step, the wins before it and the
+/// next reward's win count (0: every reward had).
+/// </summary>
+public sealed record AiResultNumbers(int RankBefore, int RankAfter, int PointsIntoRank, int Gained, bool FirstWinBonus,
+    bool HighLevelBonus, int RankStep, int WinsBefore, int NextRewardWins)
+{
+    public static AiResultNumbers NewPlayer { get; } = new(0, 0, 0, 0, false, false, 1, 0, 1);
+}
+
 /// <summary>An AI battle song's sections, for its results.</summary>
 public sealed record AiBattleOutcome(IReadOnlyList<AiBattleSection> Sections)
 {
@@ -23,8 +34,7 @@ public sealed record AiBattleOutcome(IReadOnlyList<AiBattleSection> Sections)
 /// once the normal results close (NotifyCloseNormalResult), and the movie calls the host's Start when it is done.
 /// Its sounds: PlaySound(421, cue) = VO_AIBTL_SEL.
 /// </summary>
-/// <remarks>ponytail: rank, tokens and reward numbers are a new player's until AI battle progress is kept.</remarks>
-public sealed class AiSectionResultBinding(AiBattleOutcome outcome, Action<string, int>? playCue) : ILumenHostBinding
+public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumbers numbers, Action<string, int>? playCue) : ILumenHostBinding
 {
     private LumenPlayer? _movie;
     private bool _started;
@@ -76,11 +86,13 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, Action<strin
         call("SetPlayerJoin", LumenHostValue.FromBoolean(true), no);
         for (var section = 0; section < outcome.Sections.Count; section++)
             call("SetWinOrLoseSection", number(section + 1), LumenHostValue.FromBoolean(outcome.Sections[section].Won));
-        call("SetWinTokenNumber", number(0), number(0), no);
-        call("SetBonusNumberFlag", no, no);
-        call("SetRankNumber", number(0), number(0));
-        call("SetNextRankNumber", number(1));
-        call("SetNextRewardNumber", number(1), no);
+        // Traced (6, 3, true) for a 3-point win at 6 points into rank 2; (rank before, after); the rank's step (15 at rank 2);
+        // the next reward's win count (10 with 9 wins), true once there is none.
+        call("SetWinTokenNumber", number(numbers.PointsIntoRank), number(numbers.Gained), LumenHostValue.FromBoolean(numbers.Gained > 0));
+        call("SetBonusNumberFlag", LumenHostValue.FromBoolean(numbers.FirstWinBonus), LumenHostValue.FromBoolean(numbers.HighLevelBonus));
+        call("SetRankNumber", number(numbers.RankBefore), number(numbers.RankAfter));
+        call("SetNextRankNumber", number(numbers.RankStep));
+        call("SetNextRewardNumber", number(numbers.NextRewardWins), LumenHostValue.FromBoolean(numbers.NextRewardWins == 0));
         void rows(string name, Func<AiSectionCounts, int> value)
         {
             for (var section = 0; section < outcome.Sections.Count; section++)
@@ -91,7 +103,7 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, Action<strin
         rows("SetFukaNoteNumber", static counts => counts.Miss);
         rows("SetRendaNoteNumber", static counts => counts.Rolls);
         // SetWinNumber(wins before, wins gained): any gained means the battle was won (the movie's is_win_total).
-        call("SetWinNumber", number(0), number(outcome.Won ? 1 : 0));
+        call("SetWinNumber", number(numbers.WinsBefore), number(outcome.Won ? 1 : 0));
         Backdrop?.Invoke()?.TryInvokeCallback("SetWinTotalFlag", [LumenHostValue.FromBoolean(outcome.Won)]);
     }
 

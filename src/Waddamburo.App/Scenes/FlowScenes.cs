@@ -23,6 +23,7 @@ internal static class FlowScenes
     public static readonly SceneId Result = new("result");
     public static readonly SceneId Retry = new("retry");
     public static readonly SceneId GameOver = new("gameover");
+    public static readonly SceneId AiRemind = new("ai-remind");
     public static readonly SceneId Tutorial = new("tutorial");
     public static readonly SceneId DaniSelect = new("dani-select");
 
@@ -123,6 +124,11 @@ internal static class FlowScenes
         ]),
         DaniSelectScene(0),
         NormalGameOver,
+        // AI battle's farewell as a credit ends (traced session-ai-battle-3: remind, and its backdrop common_bg under it).
+        new SceneDefinition(SceneDefinition.CurrentVersion, AiRemind, [
+            new SceneLayerDefinition("ghost/common_bg/packeddata.ddp", "common_bg/common_bg.lm", LumenMatrix.Identity, "ai-remind-bg"),
+            new SceneLayerDefinition("ghost/remind/packeddata.ddp", "remind/remind.lm", LumenMatrix.Identity, "ai-remind"),
+        ]),
     ];
 
     /// <summary>

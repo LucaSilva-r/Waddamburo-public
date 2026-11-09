@@ -31,6 +31,35 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
 
     /// <summary>The random options' seed (null: none drawn).</summary>
     public int? Seed { get; init; }
+
+    /// <summary>AI battle: won, sections ('W'/'L' each), support level, rank points earned.</summary>
+    public bool? AiWon { get; init; }
+
+    public string? AiSections { get; init; }
+
+    public int? AiSupport { get; init; }
+
+    public int? AiPoints { get; init; }
+
+    /// <summary>The player's hit timing in the play: median offset (ms, late positive) and variance (ms²).</summary>
+    public double? HitMedianMs { get; init; }
+
+    public double? HitVariance { get; init; }
+}
+
+/// <summary>
+/// An AI battle play's battle (mode "ai_battle"): won by most sections, each section's outcome ('W'/'L'), the support level
+/// (0 = いつもの) and the rank points it earned. Rank, wins and points are derived from these, never kept apart.
+/// </summary>
+public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, int Points);
+
+/// <summary>One of the player's AI battles on the server (any machine).</summary>
+public sealed record RemoteAiPlay(Guid Id, string Sha256, bool Won, int Points, double? HitMedianMs, double? HitVariance, DateTimeOffset PlayedAt);
+
+/// <summary>A player's AI battle standing: rank points, wins, and their latest hit timing (median ms, variance ms²).</summary>
+public sealed record AiProgress(int Points, int Wins, (double Median, double Variance)? Timing)
+{
+    public static AiProgress None { get; } = new(0, 0, null);
 }
 
 /// <summary>A stored play to rescore: its chart's gzipped canonical notes and source, options, seed and replay.</summary>
@@ -119,6 +148,12 @@ public sealed record PlayRecord(
 
     /// <summary>The seed the random options were drawn with (its replay needs the same notes).</summary>
     public int? Seed { get; init; }
+
+    /// <summary>AI battle plays only.</summary>
+    public AiBattlePlay? Battle { get; init; }
+
+    /// <summary>The player's hit timing in the play (median ms, variance ms²); null without hits.</summary>
+    public (double Median, double Variance)? Timing { get; init; }
 }
 
 /// <summary>A course play as the server takes it: each song's chart hash and replay (base64).</summary>
@@ -272,6 +307,27 @@ public sealed class ScoreStore : IDisposable
         CREATE TABLE IF NOT EXISTS remote_plays (baid INTEGER NOT NULL, sha256 TEXT NOT NULL, played_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS remote_plays_player ON remote_plays (baid);
         """,
+        // AI battle plays' battles (rank and wins derive from them) and every play's hit timing (AI-don learns it),
+        // plus the player's AI battles from the server (any machine).
+        """
+        ALTER TABLE plays ADD COLUMN ai_won INTEGER;
+        ALTER TABLE plays ADD COLUMN ai_sections TEXT;
+        ALTER TABLE plays ADD COLUMN ai_support INTEGER;
+        ALTER TABLE plays ADD COLUMN ai_points INTEGER;
+        ALTER TABLE plays ADD COLUMN hit_median REAL;
+        ALTER TABLE plays ADD COLUMN hit_variance REAL;
+        CREATE TABLE remote_ai_plays (
+            id TEXT PRIMARY KEY,
+            baid INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            won INTEGER NOT NULL,
+            points INTEGER NOT NULL,
+            hit_median REAL,
+            hit_variance REAL,
+            played_at TEXT NOT NULL
+        );
+        CREATE INDEX remote_ai_plays_player ON remote_ai_plays (baid);
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -308,7 +364,7 @@ public sealed class ScoreStore : IDisposable
 
     /// <summary>
     /// Plays not yet on the server, oldest first: one player's, or everyone's (null: a cabinet). Local
-    /// guest plays (baid 0) and failed plays never leave the PC.
+    /// guest plays (baid 0) and failed plays never leave the PC, except AI battles (a failed one can still be a win).
     /// </summary>
     public List<UploadPlay> PendingPlays(long? baid, int limit)
     {
@@ -318,8 +374,9 @@ public sealed class ScoreStore : IDisposable
             command.CommandText = """
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
                     cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms,
-                    options, seed
-                FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND cleared = 1 AND uploaded_at IS NULL
+                    options, seed, ai_won, ai_sections, ai_support, ai_points, hit_median, hit_variance
+                FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND (cleared = 1 OR mode = 'ai_battle')
+                    AND uploaded_at IS NULL
                 ORDER BY played_at LIMIT $limit
                 """;
             command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
@@ -338,6 +395,12 @@ public sealed class ScoreStore : IDisposable
                     InputOffsetMs = reader.IsDBNull(18) ? null : reader.GetInt32(18),
                     Options = reader.GetInt32(19),
                     Seed = reader.IsDBNull(20) ? null : reader.GetInt32(20),
+                    AiWon = reader.IsDBNull(21) ? null : reader.GetBoolean(21),
+                    AiSections = reader.IsDBNull(22) ? null : reader.GetString(22),
+                    AiSupport = reader.IsDBNull(23) ? null : reader.GetInt32(23),
+                    AiPoints = reader.IsDBNull(24) ? null : reader.GetInt32(24),
+                    HitMedianMs = reader.IsDBNull(25) ? null : reader.GetDouble(25),
+                    HitVariance = reader.IsDBNull(26) ? null : reader.GetDouble(26),
                 });
             return plays;
         }
@@ -517,10 +580,11 @@ public sealed class ScoreStore : IDisposable
         command.CommandText = """
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
-                audio_offset_ms, input_offset_ms, options, seed)
+                audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
+                hit_median, hit_variance)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance)
             """;
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -544,7 +608,105 @@ public sealed class ScoreStore : IDisposable
         command.Parameters.AddWithValue("$input_offset", play.InputOffsetMs);
         command.Parameters.AddWithValue("$options", result.Options.Bits);
         command.Parameters.AddWithValue("$seed", (object?)play.Seed ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_won", (object?)play.Battle?.Won ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_sections", (object?)play.Battle?.Sections ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_support", (object?)play.Battle?.SupportLevel ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_points", (object?)play.Battle?.Points ?? DBNull.Value);
+        command.Parameters.AddWithValue("$hit_median", (object?)play.Timing?.Median ?? DBNull.Value);
+        command.Parameters.AddWithValue("$hit_variance", (object?)play.Timing?.Variance ?? DBNull.Value);
         command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// A player's AI battle standing, from their AI battles on this PC and on the server (each counted once, by id): rank
+    /// points, wins, and the hit timing of the latest that has one.
+    /// </summary>
+    public AiProgress AiProgress(long baid)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT won, points, median, variance FROM (
+                    SELECT ai_won AS won, ai_points AS points, hit_median AS median, hit_variance AS variance, played_at
+                    FROM plays WHERE baid = $baid AND mode = 'ai_battle'
+                    UNION ALL
+                    SELECT won, points, hit_median, hit_variance, played_at FROM remote_ai_plays
+                    WHERE baid = $baid AND id NOT IN (SELECT id FROM plays WHERE baid = $baid))
+                ORDER BY played_at DESC
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            using var reader = command.ExecuteReader();
+            int points = 0, wins = 0;
+            (double, double)? timing = null;
+            while (reader.Read())
+            {
+                wins += !reader.IsDBNull(0) && reader.GetBoolean(0) ? 1 : 0;
+                points += reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                if (timing is null && !reader.IsDBNull(2) && !reader.IsDBNull(3))
+                    timing = (reader.GetDouble(2), reader.GetDouble(3));
+            }
+            return new(points, wins, timing);
+        }
+    }
+
+    /// <summary>The player has won an AI battle on this chart before (here or on the server).</summary>
+    public bool HasAiWin(long baid, string sha256)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT EXISTS (SELECT 1 FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND mode = 'ai_battle' AND ai_won = 1)
+                    OR EXISTS (SELECT 1 FROM remote_ai_plays WHERE baid = $baid AND sha256 = $sha AND won = 1)
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$sha", sha256);
+            return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 0;
+        }
+    }
+
+    /// <summary>Replaces a player's AI battles from the server with a fresh download.</summary>
+    public void ReplaceRemoteAiPlays(long baid, IEnumerable<RemoteAiPlay> plays)
+    {
+        ArgumentNullException.ThrowIfNull(plays);
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            using (var clear = _connection.CreateCommand())
+            {
+                clear.Transaction = transaction;
+                clear.CommandText = "DELETE FROM remote_ai_plays WHERE baid = $baid";
+                clear.Parameters.AddWithValue("$baid", baid);
+                clear.ExecuteNonQuery();
+            }
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT OR REPLACE INTO remote_ai_plays (id, baid, sha256, won, points, hit_median, hit_variance, played_at)
+                VALUES ($id, $baid, $sha, $won, $points, $median, $variance, $at)
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            var id = command.Parameters.Add("$id", SqliteType.Text);
+            var sha = command.Parameters.Add("$sha", SqliteType.Text);
+            var won = command.Parameters.Add("$won", SqliteType.Integer);
+            var points = command.Parameters.Add("$points", SqliteType.Integer);
+            var median = command.Parameters.Add("$median", SqliteType.Real);
+            var variance = command.Parameters.Add("$variance", SqliteType.Real);
+            var at = command.Parameters.Add("$at", SqliteType.Text);
+            foreach (var play in plays)
+            {
+                id.Value = play.Id.ToString();
+                sha.Value = play.Sha256;
+                won.Value = play.Won;
+                points.Value = play.Points;
+                median.Value = (object?)play.HitMedianMs ?? DBNull.Value;
+                variance.Value = (object?)play.HitVariance ?? DBNull.Value;
+                at.Value = play.PlayedAt.ToString("O", CultureInfo.InvariantCulture);
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
     }
 
     /// <summary>

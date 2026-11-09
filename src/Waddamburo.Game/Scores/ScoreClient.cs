@@ -181,14 +181,15 @@ public sealed class ScoreClient(HttpClient http)
     }
 
     /// <summary>A player's bests per chart hash (home: the token's player; cabinet: <paramref name="baid"/>).</summary>
-    public async Task<(List<RemoteBest> Bests, List<RemotePlay> Recent)> BestsAsync(long? baid = null, CancellationToken cancellationToken = default)
+    /// <remarks>Also the player's AI battles (rank and wins derive from them).</remarks>
+    public async Task<(List<RemoteBest> Bests, List<RemotePlay> Recent, List<RemoteAiPlay> AiPlays)> BestsAsync(long? baid = null, CancellationToken cancellationToken = default)
     {
         var path = baid is { } cabinetBaid ? $"api/wdb/bests?baid={cabinetBaid}" : "api/wdb/bests";
         using var response = await http.GetAsync(path, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.BestsResult, cancellationToken).ConfigureAwait(false))!;
-        // An older server sends no recent plays.
-        return (result.Bests, result.Recent ?? []);
+        // An older server sends no recent plays or AI battles.
+        return (result.Bests, result.Recent ?? [], result.AiPlays ?? []);
     }
 
     /// <summary>
@@ -376,7 +377,7 @@ public sealed class ScoreClient(HttpClient http)
 
     internal sealed record DanPlaysResult(List<Guid> Accepted);
 
-    internal sealed record BestsResult(List<RemoteBest> Bests, List<RemotePlay>? Recent);
+    internal sealed record BestsResult(List<RemoteBest> Bests, List<RemotePlay>? Recent, List<RemoteAiPlay>? AiPlays);
 
     internal sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
 

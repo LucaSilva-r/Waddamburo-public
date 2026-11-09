@@ -30,6 +30,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private PlayableChart[] _sourceCharts = [];
     // AI battle on a level below いつもの (a simplified chart).
     private bool _intermediate;
+
+    // Each lane's chart as played, before the player's modchart and options: an AI battle's intermediate level is its own
+    // simplified chart (saved under its own hash, so it never takes the official chart's crown).
+    private PlayableChart[] _playedSources = [];
+
+    // The player's hit offsets this play (ms, late positive): the play keeps their median and variance for AI-don.
+    private readonly List<double> _hitOffsets = [];
     private int _seed;
     private SongSelectSong? _song;
 
@@ -241,9 +248,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (_intermediate)
             Console.WriteLine($"AI battle: level {supportLevel} (pick {pick} of {offered}).");
         // A player's own modchart for their chart (by its hash) goes over the chart's effects, before the options.
-        _charts = [.. _sourceCharts.Select((source, lane) =>
+        _playedSources = [.. _sourceCharts.Select(source => _intermediate ? ChartSimplifier.Simplify(source, supportLevel) : source)];
+        _charts = [.. _playedSources.Select((chart, lane) =>
         {
-            var chart = _intermediate ? ChartSimplifier.Simplify(source, supportLevel) : source;
             var player = players.ElementAtOrDefault(lane);
             var authored = player is null ? chart : PlayerModcharts.Apply(EditorModchartFolder, chart, player.Course);
             // The player's layout where neither gave modchart changes; arcade, the attract's demo play and dan courses
@@ -318,13 +325,20 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A 4:3 layout (camera.aspect below 1): the stage drawn squeezed into a 4:3 picture.
         Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Hosts.AiBattle && _charts.Length > 0 && fourThree(_charts[0].Effects);
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
+        _hitOffsets.Clear();
+        if (_review is null && _charts.Length > 0)
+            Shell.Gameplay.OnJudged(0, judgement =>
+            {
+                if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is not null)
+                    _hitOffsets.Add(offset.TotalMilliseconds);
+            });
         _battle = aiBattle ? new AiBattlePresentation(active, _charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
         if (_battle is { } battle && _review is null)
         {
             // ponytail: always the first level until AI ranks are kept (each rank its own level, ghostinfo.xml).
             var aiLevel = Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0]
                 : new GhostLevel(1024, 256, [new(0, 0, 5), new(0, 0, -50), new(0, 0, 40)], [], 100, 5, 3, 0);
-            var bot = _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, new GhostTimingModel(aiLevel), () => battle.Territory,
+            var bot = _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, new GhostTimingModel(aiLevel) { Prior = aiProgress(players[0].Player).Timing }, () => battle.Territory,
                 () => Shell.Gameplay.Results is [var player, ..] ? player.Rolls + player.BalloonHits : 0, () => battle.Emotion);
             Shell.Gameplay.OnJudged(0, bot.Observe);
         }
@@ -1031,6 +1045,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // Results show the last saved play's bests and rankings otherwise.
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
+        Shell.Hosts.AiNumbers = null;
         if (finished && Shell.PlayRequests.Active is { } played)
         {
             saveScore(played, remoteLane);
@@ -1118,14 +1133,20 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
     }
 
+    /// <summary>A drum's player's AI battle standing (rank points, wins, last timing); none without a profile or store.</summary>
+    private AiProgress aiProgress(LocalPlayerSlot slot) =>
+        (TaikoGuest.Profiles[(int)slot] ?? (Shell.Arcade.Home ? ScoreProfile.LocalGuest : null)) is { } profile
+            && Shell.Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : AiProgress.None;
+
     // Each lane whose drum has a profile saves its play. ponytail: Waiwai (shared voltage, its own
     // results) is not saved until its mode is worked out.
     private void saveScore(PlayRequest request, int remoteLane)
     {
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
-        // Intermediate levels keep no records (Green: crowns only on levels 1/5/9/13/裏).
-        if (Shell.Autoplay || Shell.DevAutoplay || _voided || _intermediate || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
+        // An AI battle's intermediate level saves on its own simplified chart (Green: crowns only on levels 1/5/9/13/裏, but
+        // its wins count).
+        if (Shell.Autoplay || Shell.DevAutoplay || _voided || Shell.Sync.Scores is not { } scores || Shell.Gameplay.WaiwaiOutcome is not null)
             return;
         var saved = new List<ScoreProfile>();
         for (var lane = 0; lane < _charts.Length && lane < request.Players.Length; lane++)
@@ -1138,7 +1159,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 continue;
             try
             {
-                var sha = ChartHash.Compute(_sourceCharts[lane], player.Course);
+                var played = _playedSources[lane];
+                var sha = ChartHash.Compute(played, player.Course);
                 var id = Guid.NewGuid();
                 var shinuchi = player.Options.Shinuchi;
                 if (lane < Shell.Bests.Length)
@@ -1157,15 +1179,32 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                     if (placement.RankIn >= 0)
                         Shell.Hosts.Rankings.Record(_song, (int)player.Course, placement.Top);
                 }
+                // AI battle (the player's lane): its battle, and the rank points it earned on the standing before it.
+                AiBattlePlay? battle = null;
+                if (lane == 0 && _battle?.Outcome is { Sections.Count: > 0 } outcome)
+                {
+                    var ranks = Shell.AiRanks;
+                    var before = scores.AiProgress(profile.Baid);
+                    var award = ranks.Award(before.Points, player.Course, played.Level ?? 0, outcome.Won, cleared,
+                        usual: !_intermediate, firstWin: !scores.HasAiWin(profile.Baid, sha));
+                    battle = new AiBattlePlay(outcome.Won, string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')),
+                        _intermediate ? 1 : 0, award.Points);
+                    var rank = ranks.RankOf(before.Points);
+                    Shell.Hosts.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
+                        award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins));
+                    Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");
+                }
                 scores.Save(new PlayRecord(id, profile.Baid, sha,
-                    player.Chart, "normal", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
+                    player.Chart, battle is null ? "normal" : "ai_battle", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
                     Shell.Gameplay.Replays[lane].Encode())
                     {
                         AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
                         InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
                         Seed = player.Options.Random == TaikoRandom.None ? null : _seed + lane,
+                        Battle = battle,
+                        Timing = lane == 0 ? GhostTimingModel.TimingOf(_hitOffsets) : null,
                     },
-                    ChartUpload.From(_sourceCharts[lane], player.Course, _song?.Descriptor));
+                    ChartUpload.From(played, player.Course, _song?.Descriptor));
                 saved.Add(profile);
             }
             catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)

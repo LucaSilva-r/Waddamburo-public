@@ -96,19 +96,25 @@ public sealed class GhostTimingModel(GhostLevel level)
             _samples.Dequeue();
     }
 
+    /// <summary>
+    /// The player's timing from their earlier plays (Green's GhostPerfData: median ms, variance ms²), used until this play
+    /// has enough hits of its own; null: the level's own spread.
+    /// </summary>
+    public (double Median, double Variance)? Prior { get; init; }
+
     /// <summary>The player's median offset and variance (ms, ms²) as AI-don uses them.</summary>
-    public (double Median, double Variance) Statistics
+    public (double Median, double Variance) Statistics =>
+        _samples.Count < MinimumSamples ? Prior ?? (0, Level.VarianceFirst) : TimingOf(_samples)!.Value;
+
+    /// <summary>Hit offsets' median and variance (ms, ms²); null without any.</summary>
+    public static (double Median, double Variance)? TimingOf(IEnumerable<double> offsets)
     {
-        get
-        {
-            if (_samples.Count < MinimumSamples)
-                return (0, Level.VarianceFirst);
-            var sorted = _samples.Order().ToArray();
-            var median = sorted.Length % 2 == 1 ? sorted[sorted.Length / 2] : (sorted[sorted.Length / 2 - 1] + sorted[sorted.Length / 2]) / 2;
-            var mean = sorted.Average();
-            var variance = sorted.Sum(value => (value - mean) * (value - mean)) / sorted.Length;
-            return (median, variance);
-        }
+        var sorted = offsets.Order().ToArray();
+        if (sorted.Length == 0)
+            return null;
+        var median = sorted.Length % 2 == 1 ? sorted[sorted.Length / 2] : (sorted[sorted.Length / 2 - 1] + sorted[sorted.Length / 2]) / 2;
+        var mean = sorted.Average();
+        return (median, sorted.Sum(value => (value - mean) * (value - mean)) / sorted.Length);
     }
 
     /// <summary>AI-don's mood, as ai_hit_effect's ChangeAIEmotion takes it: 0 more passive .. 2 neutral .. 4 more aggressive.</summary>

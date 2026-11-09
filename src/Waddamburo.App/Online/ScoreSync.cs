@@ -180,8 +180,9 @@ internal sealed class ScoreSync : IDisposable
         {
             try
             {
-                var (bests, recent) = await client.BestsAsync(baid).ConfigureAwait(false);
+                var (bests, recent, aiPlays) = await client.BestsAsync(baid).ConfigureAwait(false);
                 scores.ReplaceRemoteBests(profile.Baid, bests, recent);
+                scores.ReplaceRemoteAiPlays(profile.Baid, aiPlays);
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
                 or System.Text.Json.JsonException)

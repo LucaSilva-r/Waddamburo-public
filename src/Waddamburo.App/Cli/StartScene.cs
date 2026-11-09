@@ -18,6 +18,7 @@ internal enum StartScene
     Retry,
     GameOver,
     WaiwaiResult,
+    AiRemind,
 }
 
 internal static class StartSceneParser
@@ -38,7 +39,8 @@ internal static class StartSceneParser
         "retry" => StartScene.Retry,
         "gameover" => StartScene.GameOver,
         "waiwai-result" => StartScene.WaiwaiResult,
+        "ai-remind" => StartScene.AiRemind,
         _ => throw new ArgumentException(
-            "--start-scene must be boot, attract, entry, song-select, ai-song-select, dani-select, result-fail, dani-result-fail, dani-result-clear, dani-gameover, result-clear, retry, gameover, or waiwai-result."),
+            "--start-scene must be boot, attract, entry, song-select, ai-song-select, dani-select, result-fail, dani-result-fail, dani-result-clear, dani-gameover, result-clear, retry, gameover, waiwai-result, or ai-remind."),
     };
 }

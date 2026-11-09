@@ -19,11 +19,16 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
     private int _gameOverEndTick = -1;
     private const int GameOverHoldTicks = 240;
 
+    // ponytail: 30 s for the farewell (the traced player hit the drum after 33 s; no timer was seen).
+    private const int RemindTimeoutTicks = 30 * 60;
+    private long _remindStartTick;
+
     public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Result;
 
     public override void Enter(SceneId scene)
     {
         _gameOverEndTick = -1;
+        _remindStartTick = Shell.Tick;
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
@@ -127,8 +132,20 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 {
                     TaikoCreditNext.Revival => FlowScenes.Retry,
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,
+                    // An AI battle credit says goodbye with the player's rank and progress first (traced remind).
+                    _ when Shell.Hosts.AiOutcome is not null && !Shell.Arcade.Home => FlowScenes.AiRemind,
                     _ => FlowScenes.GameOver,
                 });
+        }
+        else if (scene == FlowScenes.AiRemind)
+        {
+            if (Shell.Scenes.FinishFade()) return;
+            Shell.Hosts.AiRemind?.Poll();
+            // The movie waits for a don; the cabinet doesn't wait forever.
+            if (Shell.Tick - _remindStartTick == RemindTimeoutTicks)
+                Shell.Hosts.AiRemind?.Exit();
+            if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player)) // remind, over its backdrop
+                Shell.Scenes.FadeTo(FlowScenes.GameOver);
         }
         else if (scene == FlowScenes.Retry)
         {

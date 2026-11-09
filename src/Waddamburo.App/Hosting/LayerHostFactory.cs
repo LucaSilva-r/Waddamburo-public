@@ -59,6 +59,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Songs started this credit (song select shows the next one's number).</summary>
     public Func<int>? SongsStarted { get; init; }
 
+    /// <summary>AI battle's song select panels: the player's rank, points to the next, wins, wins to the next reward.</summary>
+    public Func<AiBattlePanels>? AiPanels { get; init; }
+
     /// <summary>Song select's score windows from the server (null offline).</summary>
     public Online.SongRankings? Rankings { get; init; }
 
@@ -327,6 +330,7 @@ internal sealed class LayerHostFactory(
             _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, counting)
             {
                 MusicNumber = Math.Min(next, 4),
+                AiPanels = AiBattle ? AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer : AiBattlePanels.NewPlayer,
                 FinalStage = !arcade.Home && next >= arcade.SongsPerSession,
                 ShowCounter = HideArcadeHud?.Invoke() != true,
             };
@@ -345,6 +349,8 @@ internal sealed class LayerHostFactory(
             "result" => resultHost(),
             "ai-result" => aiResultHost(),
             "ai-result-section" => aiSectionResultHost(),
+            "ai-remind" => aiRemindHost(),
+            "ai-remind-bg" => new LumenLayerHost(null),
             // Traced SetWinTotalFlag(false) after a lost battle.
             "ai-result-bg" => aiResultBackgroundHost(),
             "waiwai-result" => waiwaiResultHost(),
@@ -480,6 +486,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The AI battle song the next results show; null: not a battle.</summary>
     public AiBattleOutcome? AiOutcome { get; set; }
 
+    /// <summary>The AI battle results' standing (rank, points, wins before and after the battle).</summary>
+    public AiResultNumbers? AiNumbers { get; set; }
+
     /// <summary>AI battle's section results, while they are on stage.</summary>
     public AiSectionResultBinding? AiSectionResult { get; private set; }
 
@@ -501,6 +510,15 @@ internal sealed class LayerHostFactory(
         return new LumenLayerHost(binding, binding.Attach);
     }
 
+    private LumenLayerHost aiRemindHost()
+    {
+        var binding = AiRemind = new AiRemindBinding(AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer, sounds is null ? null : sounds.Frontend.PlayCue);
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    /// <summary>AI battle's farewell, while it is on stage.</summary>
+    public AiRemindBinding? AiRemind { get; private set; }
+
     // Traced SetWinTotalFlag(false) after a lost battle; sent with the section results' setup (once callbacks exist).
     private LumenLayerHost aiResultBackgroundHost() => new(null, player => AiResultBackground = player);
 
@@ -510,7 +528,8 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost aiSectionResultHost()
     {
         var outcome = AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
-        var binding = AiSectionResult = new AiSectionResultBinding(outcome, sounds is null ? null : sounds.Frontend.PlayCue)
+        var binding = AiSectionResult = new AiSectionResultBinding(outcome, AiNumbers ?? AiResultNumbers.NewPlayer,
+            sounds is null ? null : sounds.Frontend.PlayCue)
         {
             Backdrop = () => AiResultBackground,
         };

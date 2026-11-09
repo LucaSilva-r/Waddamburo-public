@@ -273,6 +273,14 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>AI battle's AI-don levels (ghosttuning.xml; empty when the data has none).</summary>
     public IReadOnlyList<Waddamburo.Game.Gameplay.GhostLevel> GhostLevels { get; } = [];
+
+    /// <summary>The AI battle player's standing (the playing drum's player; at home a guest is this PC's).</summary>
+    public Waddamburo.Game.Scores.AiProgress AiStanding() =>
+        (TaikoGuest.Profiles[Hosts.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
+            && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Game.Scores.AiProgress.None;
+
+    /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
+    public Waddamburo.Game.Gameplay.AiBattleRanks AiRanks { get; } = Waddamburo.Game.Gameplay.AiBattleRanks.Green;
     private readonly ToneArt _toneArt;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
@@ -608,6 +616,7 @@ internal sealed class GameShell : IDisposable
             _nameTexts = new NameTextTextures(Application, options.FontPath);
             _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
             GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
+            AiRanks = Waddamburo.Game.Gameplay.AiBattleRanks.Load(dataRoot);
             var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
@@ -771,6 +780,9 @@ internal sealed class GameShell : IDisposable
                 ? diagnosticDan(Options.StartScene == StartScene.DaniResultClear) : null,
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => Players.SongsPlayed,
+            AiPanels = () => AiStanding() is var (points, wins, _)
+                ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer.Tension)
+                : Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer,
             ShowOni = () => Arcade.ShowOni,
             RandomSongFolder = () => Arcade.RandomSongFolder,
             HideArcadeHud = () => HideArcadeHud,
@@ -823,6 +835,7 @@ internal sealed class GameShell : IDisposable
         [FlowScenes.Result] = ending,
         [FlowScenes.Retry] = ending,
         [FlowScenes.GameOver] = ending,
+        [FlowScenes.AiRemind] = ending,
     };
 
     public string? FindJingle(string fileName)
@@ -867,6 +880,7 @@ internal sealed class GameShell : IDisposable
                 or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
             StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,
+            StartScene.AiRemind => FlowScenes.AiRemind,
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
         };
         if (Options.StartScene == StartScene.DaniGameOver)
