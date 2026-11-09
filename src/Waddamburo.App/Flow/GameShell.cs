@@ -801,7 +801,7 @@ internal sealed class GameShell : IDisposable
             InOnlineRoom = () => Room.Session is not null,
             Received = ReceivedSongs.Find,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
-            PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.Name,
+            PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.DisplayName,
         };
 
     // Which flow runs each scene.

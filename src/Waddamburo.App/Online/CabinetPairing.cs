@@ -72,7 +72,7 @@ internal sealed class CabinetPairing : IDisposable
         {
             var now = DateTime.UtcNow;
             if (_card is { } card && now < _cardDeadline)
-                pill.Show(card.Name.Length > 0 ? card.Name : $"#{card.Baid}", null);
+                pill.Show(card.DisplayName.Length > 0 ? card.DisplayName : $"#{card.Baid}", null);
             else if (_accepting && _code is { } code && now < _codeDeadline)
                 pill.Show($"{code[..3]}-{code[3..]}", ((int)Math.Ceiling((_codeDeadline - now).TotalSeconds)).ToString(
                     System.Globalization.CultureInfo.InvariantCulture));

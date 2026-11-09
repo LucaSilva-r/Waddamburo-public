@@ -463,9 +463,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 _dialogAt = _ticks;
                 _dialogCues.Reset();
             }
-            else
+            // 0: no card choice is open. The movie also sends it right after ReplyServer, before the dialog opens
+            // (traced session-freeplay-card, free play); the card is only given up when an open dialog closes
+            // without a drum taking it (つかわない or its countdown).
+            else if (_dialogAt >= 0 || Card is null)
             {
-                // The dialog closed without a drum taking the card (つかわない or its countdown): it leaves.
                 if (Card is not null)
                     closeCardDialog();
                 Card = null;
@@ -601,7 +603,8 @@ public sealed class EntrySceneHost(IndicatorParts parts)
 
     private bool canPay() => Coins is null || Coins.Missing(_joined.Count) == 0;
 
-    private static string TaikoPlayerName(ScoreProfile card) => card.Name.Length > 0 ? card.Name : $"#{card.Baid}";
+    // The account name: Don-chan names are not used by Waddamburo (DisplayName falls back to the card's).
+    private static string TaikoPlayerName(ScoreProfile card) => card.DisplayName.Length > 0 ? card.DisplayName : $"#{card.Baid}";
 
     /// <summary>
     /// The costume lists and slots of a drum's player; the movie then puts on slot 0. The game does it
