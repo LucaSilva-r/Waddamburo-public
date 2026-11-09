@@ -39,7 +39,7 @@ internal sealed class AiDrummer
     {
         chart = chart.OnRoute(ChartBranch.Master);
         _notes = [.. chart.HitObjects];
-        _windows = TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course);
+        _windows = TaikoJudgementWindows.ForCourse(chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course);
         _model = model;
         _territory = territory;
         _playerRolls = playerRolls;

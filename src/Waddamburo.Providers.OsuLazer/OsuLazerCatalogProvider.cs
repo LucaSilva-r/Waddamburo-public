@@ -5,28 +5,33 @@ namespace Waddamburo.Providers.OsuLazer;
 /// <summary>
 /// Publishes the native osu!taiko beatmaps of an osu!lazer install. A set's charts are grouped per
 /// audio file (a set may hold unrelated songs) and dealt into Taiko courses by <see cref="OsuCourseLayout"/>;
-/// the player's lazer collections become categories after "All Songs".
+/// the player's lazer collections become categories after "All Songs". An osu!stable install (osu!.db) is read the
+/// same way through <see cref="OsuStableReader"/>.
 /// </summary>
 public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
 {
     private readonly string _root;
+    private readonly bool _stable;
+    // osu!stable: where each file id lives (lazer's store is laid out by id instead).
+    private IReadOnlyDictionary<string, string> _stableFiles = new Dictionary<string, string>();
 
     /// <summary>Reads lazer's data folder (with client.realm and files/), see <see cref="FindDataFolder"/>.</summary>
     public OsuLazerCatalogProvider(string dataFolder, CatalogProviderId? id = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataFolder);
         _root = Path.GetFullPath(dataFolder);
-        Id = id ?? new CatalogProviderId("osu-lazer");
+        _stable = OsuStableReader.IsInstall(_root);
+        Id = id ?? new CatalogProviderId(_stable ? "osu-stable" : "osu-lazer");
     }
 
     public CatalogProviderId Id { get; }
 
-    public SongSourceKind Source => SongSourceKind.OsuLazer;
+    public SongSourceKind Source => _stable ? SongSourceKind.OsuStable : SongSourceKind.OsuLazer;
 
     /// <summary>
     /// The lazer data folder <paramref name="configured"/> points at (the folder, its client.realm, or
     /// a folder whose storage.ini moved the data elsewhere), or the default install's when null; null
-    /// when there is none.
+    /// when there is none. osu!stable: <see cref="FindStableFolder"/>.
     /// </summary>
     public static string? FindDataFolder(string? configured)
     {
@@ -59,22 +64,45 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         return null;
     }
 
+    /// <summary>
+    /// The osu!stable install <paramref name="configured"/> points at (the folder or its osu!.db), or the default
+    /// install's when null (Windows' %LOCALAPPDATA%\osu!, osu-winello's Wine folder); null when there is none.
+    /// </summary>
+    public static string? FindStableFolder(string? configured)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var xdg = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+        string[] candidates = configured is not null ? [configured] :
+        [
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "osu!"),
+            // ponytail: osu-winello's default; other Wine setups pick the folder in the settings.
+            Path.Combine(string.IsNullOrEmpty(xdg) ? Path.Combine(home, ".local", "share") : xdg, "osu-wine", "osu!"),
+        ];
+        return candidates.Select(static candidate => Path.GetFileName(candidate) == "osu!.db" ? Path.GetDirectoryName(candidate)! : candidate)
+            .FirstOrDefault(OsuStableReader.IsInstall);
+    }
+
     public ValueTask<SongCatalogContribution> ScanAsync(
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        progress?.Report(new CatalogScanProgress(Id, "realm", 0, null));
-        var snapshot = OsuLazerRealmReader.Read(Path.Combine(_root, "client.realm"));
+        progress?.Report(new CatalogScanProgress(Id, _stable ? "osu!.db" : "realm", 0, null));
+        OsuLazerSnapshot snapshot;
+        if (_stable)
+            (snapshot, _stableFiles) = OsuStableReader.Read(_root);
+        else
+            snapshot = OsuLazerRealmReader.Read(Path.Combine(_root, "client.realm"));
         cancellationToken.ThrowIfCancellationRequested();
-        var contribution = CreateContribution(snapshot, Id);
+        var contribution = CreateContribution(snapshot, Id, Source);
         progress?.Report(new CatalogScanProgress(Id, "complete", contribution.Songs.Length, contribution.Songs.Length));
         return ValueTask.FromResult(contribution);
     }
 
     public static SongCatalogContribution CreateContribution(
         OsuLazerSnapshot snapshot,
-        CatalogProviderId? id = null)
+        CatalogProviderId? id = null,
+        SongSourceKind source = SongSourceKind.OsuLazer)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var provider = id ?? new CatalogProviderId("osu-lazer");
@@ -103,7 +131,7 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                     var first = entry.Values.First();
                     // ponytail: keyed by set, audio and entry number; adding a chart in lazer can reshuffle
                     // entries (and their scores). Key by the lowest chart's hash if that matters.
-                    var songKey = new SongKey(SongSourceKind.OsuLazer, $"{set.Id:N}:{audioHash[..8]}:{index}");
+                    var songKey = new SongKey(source, $"{set.Id:N}:{audioHash[..8]}:{index}");
                     var charts = entry.Select(pair => new SongChartDescriptor(
                         new ChartKey(songKey, pair.Value.FileHash),
                         pair.Value.DifficultyName.Length == 0 ? "Taiko" : pair.Value.DifficultyName,
@@ -144,7 +172,7 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
             .ToArray();
         var categories = new List<SongCategoryDescriptor>
         {
-            new(new CategoryKey(SongSourceKind.OsuLazer, "all"), "All Songs", 0, orderedSongs.Select(static song => song.Key)),
+            new(new CategoryKey(source, "all"), "All Songs", 0, orderedSongs.Select(static song => song.Key)),
         };
         var order = orderedSongs.Select(static (song, index) => (song.Key, index)).ToDictionary(static pair => pair.Key, static pair => pair.index);
         foreach (var collection in snapshot.Collections.OrderBy(static collection => collection.Name, StringComparer.OrdinalIgnoreCase))
@@ -153,10 +181,10 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
                 .Select(md5 => songByMd5.TryGetValue(md5, out var key) ? key : null)
                 .OfType<SongKey>().Distinct().OrderBy(key => order[key]).ToArray();
             if (members.Length != 0 && !string.IsNullOrWhiteSpace(collection.Name))
-                categories.Add(new SongCategoryDescriptor(new CategoryKey(SongSourceKind.OsuLazer, $"collection:{collection.Id:N}"),
+                categories.Add(new SongCategoryDescriptor(new CategoryKey(source, $"collection:{collection.Id:N}"),
                     collection.Name, categories.Count, members));
         }
-        return new SongCatalogContribution(provider, SongSourceKind.OsuLazer, orderedSongs, categories, diagnostics);
+        return new SongCatalogContribution(provider, source, orderedSongs, categories, diagnostics);
     }
 
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default)
@@ -182,10 +210,10 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         return OsuTaikoChartReader.Read(text, chart, level);
     }
 
-    // lazer's file store: files/<h>/<hh>/<sha-256>.
-    private string storePath(string hash) => isHash(hash)
-        ? Path.Combine(_root, "files", hash[..1], hash[..2], hash)
-        : throw new ArgumentException("Not an osu!lazer file hash.", nameof(hash));
+    // lazer's file store: files/<h>/<hh>/<sha-256>; stable's files by the ids its scan gave them.
+    private string storePath(string hash) => !isHash(hash) ? throw new ArgumentException("Not an osu! file hash.", nameof(hash))
+        : !_stable ? Path.Combine(_root, "files", hash[..1], hash[..2], hash)
+        : _stableFiles.TryGetValue(hash, out var path) ? path : throw new FileNotFoundException("Not in the osu!stable library.", hash);
 
     private static bool isHash(string hash) => hash.Length == 64 && hash.All(char.IsAsciiHexDigit);
 

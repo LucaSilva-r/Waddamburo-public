@@ -62,7 +62,8 @@ public sealed record ChartUpload(string Notes, string? Title, string? Subtitle, 
         using var output = new MemoryStream();
         using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal))
             gzip.Write(ChartHash.Serialize(chart, course));
-        var source = chart.Key.Song.Source;
+        // osu!stable uploads as OsuLazer (see ServerSource): same chart id, same rules, one leaderboard.
+        var source = chart.Key.Song.Source.ServerSource();
         var descriptor = song?.Charts.FirstOrDefault(candidate => candidate.Key == chart.Key);
         var osu = source == SongSourceKind.OsuLazer;
         return new ChartUpload(Convert.ToBase64String(output.ToArray()), song?.Title.Primary, song?.Subtitle,

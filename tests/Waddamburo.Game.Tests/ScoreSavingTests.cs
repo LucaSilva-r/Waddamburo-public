@@ -26,6 +26,15 @@ public sealed class ScoreSavingTests
         [new ChartBarLine(TimeSpan.Zero, true)]);
 
     [Fact]
+    public void AnOsuStablePlayUploadsAsAnOsuChart()
+    {
+        // Same chart id and rules as lazer's: the server rescores and ranks it as OsuLazer.
+        var upload = ChartUpload.From(chart(source: SongSourceKind.OsuStable), TaikoCourse.Oni, null);
+        Assert.Equal(("OsuLazer", "local:song"), (upload.Source, upload.SongKey));
+        Assert.Equal(ChartUpload.From(chart(source: SongSourceKind.OsuLazer), TaikoCourse.Oni, null).Notes, upload.Notes);
+    }
+
+    [Fact]
     public void ChartHashIsPinnedAndFollowsOnlyPlayableContent()
     {
         var hash = ChartHash.Compute(chart(), TaikoCourse.Oni);

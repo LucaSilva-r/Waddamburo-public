@@ -6,6 +6,20 @@ public enum SongSourceKind
     Nijiiro,
     Tja,
     OsuLazer,
+    OsuStable,
+}
+
+public static class SongSourceKinds
+{
+    /// <summary>An osu!taiko chart, from lazer or stable (the same chart reader and rules).</summary>
+    public static bool IsOsu(this SongSourceKind source) => source is SongSourceKind.OsuLazer or SongSourceKind.OsuStable;
+
+    /// <summary>
+    /// The source the score server knows: osu!stable's charts are osu! charts like lazer's (same id, same rules), so
+    /// uploads name them OsuLazer and its rescoring and leaderboards treat both alike.
+    /// </summary>
+    public static SongSourceKind ServerSource(this SongSourceKind source) =>
+        source == SongSourceKind.OsuStable ? SongSourceKind.OsuLazer : source;
 }
 
 public sealed record CatalogProviderId

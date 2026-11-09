@@ -77,7 +77,7 @@ public sealed record SongSelectCategory(
 public sealed record SongSearchResults(string Query, IReadOnlyList<SongKey> Songs);
 
 /// <summary>The host-drawn look of a built-in folder (a library or the search results).</summary>
-public enum FolderArtStyle { Original, Osu, Nijiiro, Tja, Search, Online }
+public enum FolderArtStyle { Original, Osu, Nijiiro, Tja, Search, Online, OsuStable }
 
 /// <summary>A drawn part of a built-in folder: its open-folder emblem, or its front's pattern.</summary>
 public enum FolderArtPart { Box, Pattern }
@@ -173,8 +173,8 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "tutorial"), "How to Play", TutorialLabel,
                 SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), []),
         };
-        var listed = library == SongSourceKind.OsuLazer && browse is not null
-            ? browsed(snapshot, browse)
+        var listed = library is { } osu && osu.IsOsu() && browse is not null
+            ? browsed(snapshot, browse, osu)
             : snapshot.Categories
                 .Where(category => library is null || category.Key.Source == library)
                 .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key]),
@@ -206,7 +206,7 @@ public sealed class SongSelectCatalogView
                         .Where(song => mode == SongSelectMode.Normal || song.WaiwaiComposition is not null)
                         .Select(CreateSong)])
                 {
-                    Tint = library == SongSourceKind.OsuLazer && browse is not null ? LibraryTint(SongSourceKind.OsuLazer)
+                    Tint = library is { } tinted && tinted.IsOsu() && browse is not null ? LibraryTint(tinted)
                         : category.Descriptor?.Colour is { } rgb ? ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) : null,
                     Outline = category.Descriptor?.OutlineColour,
                     Images = (category.Descriptor?.SpineImage, category.Descriptor?.HeaderImage, category.Descriptor?.BoxImage),
@@ -269,10 +269,10 @@ public sealed class SongSelectCatalogView
                     danSeries is { Count: > 0 } ? SongCategoryPresentation.AlwaysVisible : SongCategoryPresentation.FolderEnd,
                     boardStyle(""), [.. (danSeries ?? []).Select(static series => danSeriesSong(series.Id, series.Name))]),
             } : [])
-            .Concat(library == SongSourceKind.OsuLazer && browse is not null ? new[]
+            .Concat(library is { } browsing && browsing.IsOsu() && browse is not null ? new[]
             {
-                control(SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}"),
-                control(SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}"),
+                control(browsing, SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}"),
+                control(browsing, SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}"),
             } : [])
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
@@ -309,7 +309,7 @@ public sealed class SongSelectCatalogView
     public static (byte R, byte G, byte B) LibraryTint(SongSourceKind library) => library switch
     {
         SongSourceKind.Tja => (130, 210, 60),
-        SongSourceKind.OsuLazer => (255, 102, 171),
+        SongSourceKind.OsuLazer or SongSourceKind.OsuStable => (255, 102, 171),
         SongSourceKind.Nijiiro => (170, 110, 255),
         _ => (60, 170, 240),
     };
@@ -317,20 +317,20 @@ public sealed class SongSelectCatalogView
     /// <summary>The search results folder's key (see the constructor's search).</summary>
     public static readonly CategoryKey SearchKey = new(SongSourceKind.Stock, "search");
 
-    // The osu!lazer library's folders by the browse's grouping; its collections come from the provider's
+    // An osu! library's folders (lazer or stable) by the browse's grouping; its collections come from the provider's
     // collection categories. A grouping with no folder (no collections) lists every song.
     private static IEnumerable<(CategoryKey Key, string Name, IEnumerable<SongDescriptor> Songs, SongCategoryDescriptor? Descriptor)> browsed(
-        SongCatalogSnapshot snapshot, SongBrowse browse)
+        SongCatalogSnapshot snapshot, SongBrowse browse, SongSourceKind library)
     {
-        var songs = snapshot.Songs.Values.Where(static song => song.Key.Source == SongSourceKind.OsuLazer).ToArray();
+        var songs = snapshot.Songs.Values.Where(song => song.Key.Source == library).ToArray();
         var collections = snapshot.Categories
-            .Where(static category => category.Key.Source == SongSourceKind.OsuLazer
+            .Where(category => category.Key.Source == library
                 && category.Key.StableId.StartsWith("collection:", StringComparison.Ordinal))
             .Select(category => (category.Name, (IReadOnlyList<SongDescriptor>)[.. category.Songs.Select(key => snapshot.Songs[key])]));
         var folders = browse.Folders(songs, collections, DateTimeOffset.UtcNow);
         if (folders.Count == 0)
             folders = (browse with { Group = SongGroupMode.All }).Folders(songs, [], DateTimeOffset.UtcNow);
-        return folders.Select(folder => (new CategoryKey(SongSourceKind.OsuLazer, $"{browse.Group}:{folder.Name}"),
+        return folders.Select(folder => (new CategoryKey(library, $"{browse.Group}:{folder.Name}"),
             folder.Name, folder.Songs.AsEnumerable(), (SongCategoryDescriptor?)null));
     }
 
@@ -341,7 +341,7 @@ public sealed class SongSelectCatalogView
     public static string SourceLabel(SongSourceKind source) => source switch
     {
         SongSourceKind.Tja => "バラエティ",
-        SongSourceKind.OsuLazer => "童謡",
+        SongSourceKind.OsuLazer or SongSourceKind.OsuStable => "童謡",
         SongSourceKind.Nijiiro => "おすすめ",
         _ => "J-POP",
     };
@@ -352,13 +352,13 @@ public sealed class SongSelectCatalogView
         : Categories[category].Key == SearchKey ? boardStyle(song.Descriptor.Key.Source switch
         {
             SongSourceKind.Tja => "Variety",
-            SongSourceKind.OsuLazer => "Kids",
+            SongSourceKind.OsuLazer or SongSourceKind.OsuStable => "Kids",
             SongSourceKind.Nijiiro => "",
             _ => "J-POP",
         }) : Categories[category].BoardStyle;
 
-    private static SongSelectCategory control(SongBrowseControl control, string name) =>
-        new(new CategoryKey(SongSourceKind.OsuLazer, $"control:{control}"), name, FeatureLabel,
+    private static SongSelectCategory control(SongSourceKind library, SongBrowseControl control, string name) =>
+        new(new CategoryKey(library, $"control:{control}"), name, FeatureLabel,
             SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control);
 
     private readonly SongCatalogSnapshot _snapshot;
@@ -448,7 +448,8 @@ public sealed class SongSelectCatalogView
     {
         SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library),
             Japanese ? "オリジナル\n曲で\nあそぼう!!" : "Play the\noriginal\nsongs!!"),
-        SongSourceKind.OsuLazer => new FolderArt(FolderArtStyle.Osu, LibraryName(library),
+        SongSourceKind.OsuLazer or SongSourceKind.OsuStable => new FolderArt(
+            library == SongSourceKind.OsuStable ? FolderArtStyle.OsuStable : FolderArtStyle.Osu, LibraryName(library),
             Japanese ? "osu!taiko\nの譜面で\nあそぼう!!" : "Play your\nosu!taiko\nmaps!!"),
         SongSourceKind.Nijiiro => new FolderArt(FolderArtStyle.Nijiiro, LibraryName(library),
             Japanese ? "ニジイロの\n譜面で\nあそぼう!!" : "Play Taiko\nNijiiro\ncharts!!"),
@@ -476,6 +477,7 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Nijiiro => Japanese ? "ニジイロ" : "NIJIIRO",
         SongSourceKind.Tja => Japanese ? "創作譜面" : "CUSTOM TJA",
         SongSourceKind.OsuLazer => Japanese ? "osu!lazer" : "OSU! LAZER",
+        SongSourceKind.OsuStable => Japanese ? "osu!stable" : "OSU! STABLE",
         _ => library.ToString(),
     };
 

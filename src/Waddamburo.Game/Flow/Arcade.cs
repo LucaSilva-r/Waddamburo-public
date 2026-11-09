@@ -618,6 +618,9 @@ public sealed record ArcadeSettings
     /// <summary>An osu!lazer data folder (null: the default install's, when there is one).</summary>
     public string? OsuFolder { get; init; }
 
+    /// <summary>An osu!stable install, its own library beside lazer's (null: the default install's, when there is one).</summary>
+    public string? OsuStableFolder { get; init; }
+
     /// <summary>The osu!lazer library's folder grouping and song order (its Group and Sort spines change them).</summary>
     public SongSelect.SongBrowse OsuBrowse { get; init; } = new();
 
@@ -803,6 +806,7 @@ public sealed record ArcadeSettings
                 "nijiiro_fumen_key" => settings with { NijiiroFumenKey = value },
                 "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
                 "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
+                "osu_stable_folder" => settings with { OsuStableFolder = value.Length == 0 ? null : value },
                 "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
                 "osu_group" => settings with { OsuBrowse = settings.OsuBrowse with
                 {
@@ -918,6 +922,7 @@ public sealed record ArcadeSettings
             ["nijiiro_fumen_key"] = settings.NijiiroFumenKey,
             ["stock_folders"] = settings.StockFolders ?? "",
             ["osu_folder"] = settings.OsuFolder ?? "",
+            ["osu_stable_folder"] = settings.OsuStableFolder ?? "",
             ["cache_folder"] = settings.CacheFolder ?? "",
             ["osu_group"] = settings.OsuBrowse.Group.ToString().ToLowerInvariant(),
             ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),

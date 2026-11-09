@@ -43,7 +43,7 @@ opens.
 The built-in folders (OSU! LAZER, NIJIIRO, CUSTOM TJA, search results) draw their art at runtime
 (`FolderArtPainter`): the pattern and the emblem in the mascot slot are PNG files built into the app,
 `src/Waddamburo.App/Resources/folders/<style>/{pattern,box}.png` (edit and rebuild; patterns are
-stretched to 460x448 stage units, emblems fitted into 192x360; `osu/box.png` is the osu! logo, unaltered
+stretched to 460x448 stage units, emblems fitted into 192x360; `osu/box.png` and `osustable/box.png` are the osu!lazer and osu!stable logos, only scaled, unaltered
 per osu!'s brand guidelines), and the description columns (slogans, the search query) are drawn in
 black-outlined text.
 

@@ -377,7 +377,7 @@ internal sealed class OnlineMatch(GameShell shell)
         _chooserSong = null;
         if (shell.FindSong(host.Song) is not null)
             return host;
-        var custom = host.Song.Source is SongSourceKind.Tja or SongSourceKind.OsuLazer;
+        var custom = host.Song.Source is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable;
         if (custom && host.Chart is { } chart && shell.SongCatalog.Categories.SelectMany(static category => category.Songs)
                 .FirstOrDefault(entry => entry.Descriptor.Key.Source == host.Song.Source
                     && entry.Descriptor.Charts.Any(own => own.Key.StableId == chart)) is { } copy)

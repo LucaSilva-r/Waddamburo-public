@@ -131,7 +131,7 @@ public sealed record SongPackage(SongKey Song, SongTitle Title, string? Artist, 
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(song);
-        if (song.Key.Source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer) || song.AudioAsset is not { } audioAsset)
+        if (song.Key.Source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable) || song.AudioAsset is not { } audioAsset)
             return null;
         var packaged = new List<PackagedChart>();
         foreach (var course in Enum.GetValues<TaikoCourse>())

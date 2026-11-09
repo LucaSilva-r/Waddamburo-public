@@ -267,7 +267,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
     /// <summary>A course's judgement windows (osu! charts are judged as Oni).</summary>
     public static TaikoJudgementWindows WindowsFor(PlayableChart chart, TaikoCourse course) =>
-        TaikoJudgementWindows.ForCourse(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course);
+        TaikoJudgementWindows.ForCourse(chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course);
 
 
     /// <summary>Each lane's latest judged hit, early or late, for the timing glow.</summary>
@@ -448,7 +448,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             if (dan is not null)
                 board.TryInvokeCallback("SetDani", []);
             // osu! charts fill as Oni (TaikoSoulGauge), so they show Oni's clear line.
-            var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course) switch
+            var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course) switch
             {
                 TaikoCourse.Easy => "gage_don_1p_easy",
                 TaikoCourse.Normal or TaikoCourse.Hard => "gage_don_1p_normal",

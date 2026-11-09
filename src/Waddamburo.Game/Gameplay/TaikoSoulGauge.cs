@@ -39,7 +39,7 @@ public sealed class TaikoSoulGauge
     /// osu! charts sit in course slots by star order only: they fill as Oni, as they are judged.
     /// </summary>
     public TaikoSoulGauge(TaikoCourse course, PlayableChart chart)
-        : this(chart.Key.Song.Source == SongSourceKind.OsuLazer ? TaikoCourse.Oni : course, chart.Level,
+        : this(chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course, chart.Level,
             chart.OnRoute(ChartBranch.Normal).NoteCount)
     {
         foreach (var route in Enum.GetValues<ChartBranch>())

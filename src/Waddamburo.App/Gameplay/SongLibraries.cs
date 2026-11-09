@@ -62,6 +62,8 @@ internal sealed class SongLibraries : IDisposable
             problems.Add((tja, "Folder not found"));
         if (arcade.Home && !string.IsNullOrEmpty(arcade.OsuFolder) && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is null)
             problems.Add((arcade.OsuFolder, "No osu!lazer data in this folder"));
+        if (arcade.Home && !string.IsNullOrEmpty(arcade.OsuStableFolder) && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is null)
+            problems.Add((arcade.OsuStableFolder, "No osu!stable install (osu!.db) in this folder"));
         var libraries = new SongLibraries([
             .. stock(dataRoot, arcade, problems),
             // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
@@ -73,6 +75,9 @@ internal sealed class SongLibraries : IDisposable
             // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
             .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
                 ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
+            // osu!stable's (home mode), a library of its own: the folder set in the settings, else the default install.
+            .. arcade.Home && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is { } stable
+                ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
         ], percent);
         libraries.Problems.AddRange(problems);
         var snapshot = libraries.Snapshot;

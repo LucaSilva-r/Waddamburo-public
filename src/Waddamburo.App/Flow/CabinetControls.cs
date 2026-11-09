@@ -94,7 +94,7 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
             }
         shell.Book.Save();
         if (settings.Language != before.Language || settings.EnglishTitles != before.EnglishTitles
-            || settings.TjaFolder != before.TjaFolder || settings.OsuFolder != before.OsuFolder
+            || settings.TjaFolder != before.TjaFolder || settings.OsuFolder != before.OsuFolder || settings.OsuStableFolder != before.OsuStableFolder
             || settings.NijiiroFolder != before.NijiiroFolder || settings.StockFolders != before.StockFolders
             || settings.CacheFolder != before.CacheFolder || settings.AudioBufferFrames != before.AudioBufferFrames
             || settings.AudioExclusive != before.AudioExclusive)

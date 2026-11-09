@@ -117,6 +117,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             {
                 "tja" => s with { TjaFolder = folder },
                 "osu" => s with { OsuFolder = folder },
+                "osu-stable" => s with { OsuStableFolder = folder },
                 _ => HomeControls.AddOfficialFolder(s, folder, problem => _message = problem),
             });
         }
@@ -271,6 +272,15 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             : s with { Buttons = s.Buttons.With(buttons[target - 4], kept(s.Buttons[buttons[target - 4]])) });
         _drum?.Invoke(false);
         return true;
+    }
+
+    // An osu! library's row: the folder set, or (green, its path as the hint) the install found without one.
+    private Row osuRow(string label, string library, string? folder, Func<string?, string?> find)
+    {
+        var found = folder is null ? find(null) : null;
+        return new(label, 400, () => folderName(folder ?? found), 640, Enter: () => pick(library, folder ?? found),
+            Hint: problemOf(folder) ?? (found is null ? S("service.folder.hint") : S("service.folder.found", found)),
+            Colour: found is null ? folderColour(folder) : static () => OverlayMenu.Green);
     }
 
     private static string folderName(string? path) =>
@@ -429,9 +439,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.tja_songs"), 400, () => folderName(_settings.TjaFolder ?? _defaultTja), 640,
                 Enter: () => pick("tja", _settings.TjaFolder ?? _defaultTja),
                 Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? S("service.folder.hint"), Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
-            new(S("service.osu_songs"), 400, () => folderName(_settings.OsuFolder), 640,
-                Enter: () => pick("osu", _settings.OsuFolder),
-                Hint: problemOf(_settings.OsuFolder) ?? S("service.folder.hint"), Colour: folderColour(_settings.OsuFolder)),
+            osuRow(S("service.osu_songs"), "osu", _settings.OsuFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder),
+            osuRow(S("service.osu_stable_songs"), "osu-stable", _settings.OsuStableFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindStableFolder),
             new(S("service.official_songs"), 400, Gap: true),
             .. ArcadeSettings.Folders(_settings.StockFolders).Select(folder => new Row(S("service.release"), 400, () => folderName(folder), 640,
                 Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),

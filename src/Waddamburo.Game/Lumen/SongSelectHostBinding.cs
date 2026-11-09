@@ -66,7 +66,7 @@ public readonly record struct SongSelectCoursePresentation(
     {
         var complete = song.HasCourse(TaikoCourse.Easy) && song.HasCourse(TaikoCourse.Normal)
             && song.HasCourse(TaikoCourse.Hard) && song.HasCourse(TaikoCourse.Oni);
-        if (song.Descriptor.Key.Source != SongSourceKind.OsuLazer
+        if (!song.Descriptor.Key.Source.IsOsu()
             && (complete || song.HasCourse(TaikoCourse.Oni) && song.HasCourse(TaikoCourse.Ura)))
             return AuthoredSongCourseBits.None;
         var available = AuthoredSongCourseBits.None;

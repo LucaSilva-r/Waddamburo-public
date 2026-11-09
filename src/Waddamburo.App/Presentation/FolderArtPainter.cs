@@ -19,7 +19,12 @@ internal static class FolderArtPainter
     private static readonly ConcurrentDictionary<string, RgbaTextSurface> Images = new();
 
     /// <summary>The folder front's pattern (any size: drawn over the open front, revealed as it opens).</summary>
-    public static RgbaTextSurface Pattern(FolderArt art) => image(art.Style == FolderArtStyle.Online ? FolderArtStyle.Original : art.Style, "pattern");
+    public static RgbaTextSurface Pattern(FolderArt art) => image(art.Style switch
+    {
+        FolderArtStyle.Online => FolderArtStyle.Original,
+        FolderArtStyle.OsuStable => FolderArtStyle.Osu, // one osu! pattern; only the logo differs
+        _ => art.Style,
+    }, "pattern");
 
     /// <summary>The open folder's emblem (any size: drawn into the 192x360 mascot slot).</summary>
     public static RgbaTextSurface Box(FolderArt art) => image(art.Style is FolderArtStyle.Nijiiro or FolderArtStyle.Online ? FolderArtStyle.Original : art.Style, "box");
