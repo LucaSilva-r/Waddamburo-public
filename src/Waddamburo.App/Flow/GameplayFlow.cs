@@ -329,7 +329,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Gameplay.OnJudged(0, bot.Observe);
         }
         if (Shell.Sounds is { } sounds)
-            sounds.Gameplay.RollVoicesOff = [.. request.Players.Select(static player => player.Course >= TaikoCourse.Normal)];
+            // Per lane: AI-don's lane 1 is padded with the player, so it follows the player's course.
+            sounds.Gameplay.RollVoicesOff = [.. players.Select(static player => player.Course >= TaikoCourse.Normal)];
         if (_directStart)
         {
             _music = _review is null ? startAudio(request) : null;
