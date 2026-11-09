@@ -150,6 +150,10 @@ public sealed class NoteGeometry
     private (double X, double Y) noteMods(double x, double y, double distance, TimeSpan noteTime, TimeSpan time)
     {
         var seconds = time.TotalSeconds;
+        // Every offset fades out over the last 200 px, so a note always arrives on the target (a wobble that
+        // carries it over or under the judgement circle would make it unreadable).
+        var fade = Math.Min(1, Math.Abs(distance) / 200);
+        var (x0, y0) = (x, y);
         var drunk = _mods.Value("notes", "drunk", time);
         if (drunk != 0) y += drunk * 30 * Math.Cos(seconds * 2.5 + distance / 120);
         var tipsy = _mods.Value("notes", "tipsy", time);
@@ -165,6 +169,6 @@ public sealed class NoteGeometry
             if (phase < 0.2)
                 y += beat * 20 * (1 - phase / 0.2) * Math.Sin(distance / 15 + Math.PI / 2);
         }
-        return (x, y);
+        return (x0 + (x - x0) * fade, y0 + (y - y0) * fade);
     }
 }

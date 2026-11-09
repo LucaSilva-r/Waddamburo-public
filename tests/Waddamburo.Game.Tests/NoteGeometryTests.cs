@@ -95,6 +95,20 @@ public sealed class NoteGeometryTests
     }
 
     [Fact]
+    public void NoteWobblesFadeOutSoTheNoteArrivesOnTheTarget()
+    {
+        var wobbly = geometry(chart(effects: new ChartEffects
+        {
+            Mods = [.. new[] { "drunk", "tipsy", "wave", "beat" }.Select(static mod =>
+                new ChartModEase(TimeSpan.Zero, TimeSpan.Zero, "notes", mod, 3, ChartEase.Linear))],
+        }));
+
+        Assert.Equal((HitX, HitY), wobbly.Point(Note, Note, Note, null, hitNote: true));
+        // Further out the wobble is in full.
+        Assert.NotEqual((HitX + 474, HitY), wobbly.Point(Note, Note - TimeSpan.FromSeconds(1), Note, null, hitNote: true));
+    }
+
+    [Fact]
     public void AnElementTurnsAboutItsPivotAndRolesMapToUniversalTargets()
     {
         // 90 degrees about (100, 100): the pivot stays, a point right of it goes below it.
