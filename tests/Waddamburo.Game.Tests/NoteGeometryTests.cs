@@ -94,12 +94,14 @@ public sealed class NoteGeometryTests
         Assert.Equal(1, modded.Place(Note, Note - TimeSpan.FromSeconds(0.5), null, barLine: true)!.Value.Transform.M11);
     }
 
+    private static readonly string[] Wobbles = ["drunk", "tipsy", "wave", "beat"];
+
     [Fact]
     public void NoteWobblesFadeOutSoTheNoteArrivesOnTheTarget()
     {
         var wobbly = geometry(chart(effects: new ChartEffects
         {
-            Mods = [.. new[] { "drunk", "tipsy", "wave", "beat" }.Select(static mod =>
+            Mods = [.. Wobbles.Select(static mod =>
                 new ChartModEase(TimeSpan.Zero, TimeSpan.Zero, "notes", mod, 3, ChartEase.Linear))],
         }));
 
