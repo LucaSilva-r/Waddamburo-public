@@ -190,7 +190,8 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         [
             painter.Rect(0, 0, OverlayPainter.StageWidth, OverlayPainter.StageHeight, new RenderColor(0, 0, 0, 0.55f)),
             .. painter.Panel(Left, Top, Width, Height, (30, 31, 38), (90, 92, 104), radius: 16),
-            painter.Text(_song.Descriptor.Title.English ?? _song.Descriptor.Title.Primary, Left + 30, Top + 34, Width - 60, 36, anchor: 0),
+            painter.Text((shell.Arcade.EnglishTitles ? _song.Descriptor.Title.English : _song.Descriptor.Title.Japanese)
+                ?? _song.Descriptor.Title.Primary, Left + 30, Top + 34, Width - 60, 36, anchor: 0),
         ];
         // Difficulties, then leaderboard / own plays.
         var tabWidth = (Width - 60) / _charts.Length;
