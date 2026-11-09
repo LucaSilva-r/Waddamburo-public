@@ -608,7 +608,33 @@ public sealed unsafe partial class SdlApplication : IDisposable
     // What an input is to the game: its pad or button when bound; else a key is itself (but a pad's or a
     // button's own key, unbound, is nothing), a controller's Start is Escape and its Back Space (a practice
     // attempt's pause).
-    private SdlKeyboardKey? translate(SdlInput input) => _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
+    private SdlKeyboardKey? translate(SdlInput input)
+    {
+        var key = translateInput(input);
+        if (_soleDrum is not { } sole || key is not { } pressed || SdlInputBindings.Pads.IndexOf(pressed) is not (var pad and >= 0))
+            return key;
+        return sole == 0 ? pad < 4 ? pressed : null : pad >= 4 ? SdlInputBindings.Pads[pad - 4] : null;
+    }
+
+    /// <summary>
+    /// One drum plays (AI battle): 0 the left drum alone, 1 the right drum alone, as the left drum (the game puts a
+    /// lone right-drum player on player 1's side). Null: both drums.
+    /// </summary>
+    public int? SoleDrum
+    {
+        get => _soleDrum;
+        set
+        {
+            if (_soleDrum == value)
+                return;
+            _soleDrum = value;
+            refreshPressedKeys();
+        }
+    }
+
+    private int? _soleDrum;
+
+    private SdlKeyboardKey? translateInput(SdlInput input) => _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
         // In songs a controller is its drum only (its buttons are the keyboard's there).
         : _bindings.Pad(input) ?? (input.Device == 0 ? _bindings.Button(input) : null) ?? input.Kind switch
     {

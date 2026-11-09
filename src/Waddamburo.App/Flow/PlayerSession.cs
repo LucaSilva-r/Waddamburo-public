@@ -58,6 +58,8 @@ internal sealed class PlayerSession(GameShell shell)
         for (var slot = 0; slot < 3; slot++)
             shell.Don?.SetLook(slot, null);
         JoinedSides.Clear();
+        _rightAsLeft = false;
+        shell.Application.SoleDrum = null;
         apply();
     }
 
@@ -106,10 +108,20 @@ internal sealed class PlayerSession(GameShell shell)
     {
         var changed = shell.Hosts.AiBattle != aiBattle;
         shell.Hosts.AiBattle = aiBattle;
+        // AI battle is one drum's: a lone right-drum player plays as player 1 (the recomp: movie player 0, the top
+        // lane, the left drum's sounds), their drum read as the left one; the other drum is AI-don's and does nothing.
+        var move = aiBattle && JoinedSides is { Count: 1, Min: 1 };
+        if (move || !aiBattle && _rightAsLeft)
+        {
+            swapSides();
+            _rightAsLeft = move;
+            changed = true;
+        }
+        shell.Application.SoleDrum = aiBattle ? _rightAsLeft ? 1 : 0 : null;
         // A new credit in the same mode: the other drum's look may have been reset since (a new entry).
         if (!changed && !aiBattle) return;
         // The other drum's Don is AI-don (traced: Don slot p1 in the whole costume cos_149000, from song select on).
-        var other = 1 - shell.Hosts.PlayerSide;
+        var other = 1 - (JoinedSides.Count > 0 ? JoinedSides.Min : shell.Hosts.PlayerSide); // apply() sets PlayerSide below
         if (aiBattle)
         {
             shell.Don?.SetLook(other, null);
@@ -119,6 +131,25 @@ internal sealed class PlayerSession(GameShell shell)
             shell.Don?.SetLook(other, null);
         if (changed)
             apply();
+    }
+
+    // A lone right-drum player playing AI battle as player 1 (their data moved to the left drum's slot).
+    private bool _rightAsLeft;
+
+    private void swapSides()
+    {
+        static void swap<T>(T[] sides) => (sides[0], sides[1]) = (sides[1], sides[0]);
+        swap(TaikoGuest.Profiles);
+        swap(TaikoGuest.Options);
+        swap(TaikoGuest.Tones);
+        swap(TaikoGuest.Mania);
+        swap(TaikoGuest.LastCourseStar);
+        swap(TaikoGuest.LastCourse);
+        var side = JoinedSides.Min;
+        JoinedSides.Clear();
+        JoinedSides.Add(1 - side);
+        for (var slot = 0; slot < 2; slot++)
+            shell.Don?.SetLook(slot, TaikoGuest.Profiles[slot]?.Look);
     }
 
     private void apply()
