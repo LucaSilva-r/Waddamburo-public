@@ -1,4 +1,4 @@
-<p align="center"><img src="eng/packaging/waddamburo.svg" alt="Waddamburo logo" width="128"></p>
+<p align="center"><img src="docs/assets/waddamburo-logo.png" alt="Waddamburo logo" width="800"></p>
 <h1 align="center">Waddamburo</h1>
 <p align="center"><i>Relive the Gen3 Taiko experience on Windows and Linux.<br>WindowsとLinuxで、AC15時代の太鼓体験をもう一度。</i></p>
 <h2 align="center"><a href="#japanese-guide">日本語ガイド</a></h2>
