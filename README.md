@@ -1,5 +1,4 @@
 <p align="center"><img src="docs/assets/waddamburo-logo.png" alt="Waddamburo logo" width="800"></p>
-<h1 align="center">Waddamburo</h1>
 <p align="center"><i>Relive the Gen3 Taiko experience on Windows and Linux.<br>WindowsとLinuxで、AC15時代の太鼓体験をもう一度。</i></p>
 <h2 align="center"><a href="#japanese-guide">日本語ガイド</a></h2>
 <p align="center"><a href="https://github.com/LucaSilva-r/Waddamburo-public/releases">Download</a> · <a href="#getting-started">Setup</a> · <a href="#basic-controls">Controls</a> · <a href="#play-online-with-taikonline">Online</a> · <a href="BUILDING.md">Build from source</a></p>
