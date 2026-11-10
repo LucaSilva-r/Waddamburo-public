@@ -35,7 +35,7 @@ public sealed record AiBattleOutcome(IReadOnlyList<AiBattleSection> Sections)
 /// AI battle's section results (ghost/result's result_section, traced session-ai-battle-3): at load the sections' win or
 /// loss, both sides' counts per section (section 1-5, player, AI-don), the rank and reward numbers; the game calls Start
 /// once the normal results close (NotifyCloseNormalResult), and the movie calls the host's Start when it is done.
-/// Its sounds: PlaySound(421, cue) = VO_AIBTL_SEL.
+/// Its sounds: PlaySound(call type, cue), see <see cref="Bank"/>.
 /// </summary>
 public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumbers numbers, Action<string, int>? playCue) : ILumenHostBinding
 {
@@ -62,13 +62,32 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
                 });
                 method.RegisterMethod("PlaySound", call =>
                 {
-                    if (call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
-                        && call.Arguments[0].AsNumber() == 421 && call.Arguments[1].Kind == LumenHostValueKind.Number)
-                        playCue?.Invoke("VO_AIBTL_SEL", (int)call.Arguments[1].AsNumber());
+                    PlaySound(call, playCue);
                     return LumenHostValue.Undefined;
                 });
                 method.RegisterMethod("SelectCommonSound", static _ => LumenHostValue.Undefined);
             });
+    }
+
+    /// <summary>
+    /// The AI results movies' sound call types (their own SoundConstants: Call_Type_*), traced in session-ai-battle-3
+    /// (421 → SE_AIBTL_RSLT 0/1/4/8/11/12, 420 → VO_AIBTL_RSLT 5).
+    /// </summary>
+    public static string? Bank(int callType) => callType switch
+    {
+        0 => "VO_COM",
+        1 => "SE_COM",
+        420 => "VO_AIBTL_RSLT",
+        421 => "SE_AIBTL_RSLT",
+        _ => null,
+    };
+
+    /// <summary>LumenMethod.PlaySound(call type, cue) as the AI results movies make it.</summary>
+    public static void PlaySound(LumenHostCall call, Action<string, int>? playCue)
+    {
+        if (call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
+            && call.Arguments[1].Kind == LumenHostValueKind.Number && Bank((int)call.Arguments[0].AsNumber()) is { } bank)
+            playCue?.Invoke(bank, (int)call.Arguments[1].AsNumber());
     }
 
     public void Attach(LumenPlayer player)

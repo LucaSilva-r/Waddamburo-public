@@ -29,6 +29,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
     {
         _gameOverEndTick = -1;
         _remindStartTick = Shell.Tick;
+        if (scene == FlowScenes.AiRemind)
+            Shell.Sounds?.Results.StartRemindMusic();
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
@@ -60,7 +62,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
 
     public override void Exit(SceneId scene)
     {
-        if (scene == FlowScenes.Result)
+        if (scene == FlowScenes.Result || scene == FlowScenes.AiRemind)
         {
             Shell.Sounds?.Results.StopMusic();
             Shell.Hosts.DanResult = null;

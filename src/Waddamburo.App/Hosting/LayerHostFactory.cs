@@ -33,9 +33,12 @@ internal sealed class LayerHostFactory(
     Func<TaikoSongInfo> songInfo,
     bool countdown,
     Func<IReadOnlyList<TaikoPlayResult>> playResults,
-    ArcadeSettings arcade,
+    Func<ArcadeSettings> arcadeSettings,
     CoinBank? coins) : ILumenLayerHostFactory
 {
+    // Live: the service menu changes settings (e.g. songs per session) while the game runs.
+    private ArcadeSettings arcade => arcadeSettings();
+
     private EntrySceneHost? _entry;
     private int _entryPrevious;
 
@@ -180,7 +183,7 @@ internal sealed class LayerHostFactory(
     private SongSourceKind? _library, _libraryLeft;
 
     /// <summary>The osu!lazer library's grouping and order (from the settings; its spines cycle them).</summary>
-    public SongBrowse OsuBrowse { get; set; } = arcade.OsuBrowse;
+    public SongBrowse OsuBrowse { get; set; } = arcadeSettings().OsuBrowse;
 
     /// <summary>Cycles the grouping or order a spine names; the reloaded Song Select starts on that spine.</summary>
     public SongBrowse CycleBrowse(SongBrowseControl control)

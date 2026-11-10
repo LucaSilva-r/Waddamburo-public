@@ -38,6 +38,14 @@ public sealed class AiSectionResultBindingTests
         Assert.Single(player.CreateRenderSnapshot().Quads);
     }
 
+    [Theory]
+    [InlineData(0, "VO_COM")]
+    [InlineData(1, "SE_COM")]
+    [InlineData(420, "VO_AIBTL_RSLT")]
+    [InlineData(421, "SE_AIBTL_RSLT")] // traced: PlaySound(421, 0/1/4) → SE_AIBTL_RSLT 0/1/4
+    public void SoundCallTypesFollowTheMoviesSoundConstants(int callType, string bank) =>
+        Assert.Equal(bank, AiSectionResultBinding.Bank(callType));
+
     private static readonly (string Name, int Parameters)[] Methods =
         [("SetRankNumber", 3), ("SetNextRankNumber", 1), ("SetNextRewardNumber", 2), ("Start", 0), ("SetWinNumber", 2)];
 

@@ -770,7 +770,7 @@ internal sealed class GameShell : IDisposable
             Options.Countdown,
             () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
                 : diagnosticResult is { } diagnostic ? [diagnostic] : [],
-            Arcade,
+            () => Arcade,
             Coins)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,

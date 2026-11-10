@@ -22,12 +22,10 @@ public sealed class AiRemindBinding(AiBattlePanels standing, Action<string, int>
         foreach (var name in new[] { "LumenMethod", "Lumen" })
             context.RegisterObject(name, method =>
             {
-                // ponytail: only the traced call type (1 = SE_COM); the movie's others (VO_COM, AI result banks) unseen.
+                // The movie's SoundConstants are result_section's (it only plays SE_COM 0, traced).
                 method.RegisterMethod("PlaySound", call =>
                 {
-                    if (call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
-                        && call.Arguments[0].AsNumber() == 1 && call.Arguments[1].Kind == LumenHostValueKind.Number)
-                        playCue?.Invoke("SE_COM", (int)call.Arguments[1].AsNumber());
+                    AiSectionResultBinding.PlaySound(call, playCue);
                     return LumenHostValue.Undefined;
                 });
                 method.RegisterMethod("SetPlayerBasicData", static _ => LumenHostValue.Undefined);
