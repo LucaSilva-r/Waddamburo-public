@@ -69,12 +69,18 @@ public sealed class AiBattleSimulationTests
     }
 
     [Fact]
-    public void VersionOneKeepsTheSameAiReplayForStoredServerSessions()
+    public void TheModelsAiPressesArePinned()
     {
+        // Changing them changes every stored battle's verdict on rescore: bump AiBattleSimulation.Version after release.
         var source = chart();
         var simulation = new AiBattleSimulation(source, TaikoCourse.Oni, 1234, (8, 500));
         var presses = simulation.Advance(replay(source).Inputs, simulation.End + TimeSpan.FromTicks(1));
-        // Pin the uncompressed stream, independent of gzip's runtime implementation.
+        Assert.Equal("9455d7101a4e7a0e3c988f05eb20c8dc4af83dc650a2907c9035a4c3915f74a3", digest(presses));
+    }
+
+    // Pin the uncompressed stream, independent of gzip's runtime implementation.
+    private static string digest(IEnumerable<TaikoReplayInput> presses)
+    {
         using var stream = new MemoryStream();
         using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
             foreach (var press in presses)
@@ -82,8 +88,26 @@ public sealed class AiBattleSimulationTests
                 writer.Write(press.Time.Ticks);
                 writer.Write((byte)press.Action);
             }
-        var digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream.ToArray()));
-        Assert.Equal("9fffe25afdca88fca8ad97956fcc4212b309d34187dbdbf5ac3ba1fed09c8e70", digest);
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream.ToArray()));
+    }
+
+    [Fact]
+    public void AiIsPerfectUntilThePlayersFirstGood()
+    {
+        var source = chart();
+        var notes = source.HitObjects;
+        // The player hits everything dead on except note 20, a 可 (+50 ms on oni's windows).
+        var inputs = notes.Select((note, index) => new TaikoReplayInput(
+            note.Kind == PlayableNoteKind.Don ? TaikoInputAction.LeftDon : TaikoInputAction.LeftKa,
+            note.StartTime + TimeSpan.FromMilliseconds(index == 20 ? 50 : 0))).ToArray();
+        // A sloppy prior: without the rule AI-don would drop 可s and 不可s from the start.
+        var simulation = new AiBattleSimulation(source, TaikoCourse.Oni, 1234, (40, 3000));
+        var presses = simulation.Advance(inputs, simulation.End + TimeSpan.FromTicks(1));
+        var slip = notes[20].StartTime;
+        // Decisions are made 200 ms ahead: notes up to the slip plus that lead are still perfect.
+        var perfect = notes.Where(note => note.StartTime <= slip + TimeSpan.FromMilliseconds(200)).ToArray();
+        Assert.All(perfect, note => Assert.Contains(presses, press => press.Time == note.StartTime));
+        Assert.All(simulation.Outcome.Sections.Take(2), section => Assert.Equal(0, section.Ai.Good + section.Ai.Miss));
     }
 
     [Fact]
@@ -122,5 +146,67 @@ public sealed class AiBattleSimulationTests
         var generated = simulation.Advance(replay.Inputs, simulation.End + TimeSpan.FromTicks(1));
         Assert.Contains(generated, input => input.Time == TimeSpan.FromSeconds(4.5) && input.Action is TaikoInputAction.LeftKa or TaikoInputAction.RightKa);
         Assert.Equal(2, simulation.Outcome.Sections.Sum(section => section.Ai.Great + section.Ai.Good + section.Ai.Miss));
+    }
+
+    private static PlayableChart boundaryChart(double firstNote = 0.9) => new(
+        new ChartKey(new SongKey(SongSourceKind.Tja, "boundaries"), "hard"), TimeSpan.Zero, TimeSpan.FromSeconds(4),
+        [.. new[] { firstNote, 1, 1.1, 1.9, 2, 2.1, 3 }.Select(time => new PlayableHitObject(TimeSpan.FromSeconds(time), PlayableNoteKind.Don))],
+        [new(TimeSpan.Zero, 120, 4, 4)], [new(TimeSpan.Zero, 1)], [new(TimeSpan.Zero, false)],
+        [new(TimeSpan.FromSeconds(1), true), new(TimeSpan.FromSeconds(2), true)]);
+
+    [Theory]
+    [InlineData(-20, 20)]
+    [InlineData(20, -20)]
+    public void DonderfulComboWinsEverySectionEvenWhenTheAiHitsAcrossTheBoundary(int playerMs, int aiMs)
+    {
+        var source = boundaryChart();
+        var inputs = source.HitObjects.Select(note => new TaikoReplayInput(TaikoInputAction.LeftDon,
+            note.StartTime + TimeSpan.FromMilliseconds(playerMs))).ToArray();
+        var simulation = new AiBattleSimulation(source, TaikoCourse.Hard, 1234, (aiMs, 0));
+
+        simulation.Advance(inputs, simulation.End + TimeSpan.FromTicks(1));
+
+        Assert.Equal([1, 3, 3], simulation.Outcome.Sections.Select(section => section.Player.Great));
+        Assert.All(simulation.Outcome.Sections, section =>
+        {
+            Assert.Equal(section.Player, section.Ai);
+            Assert.Equal(0, section.Player.Good + section.Player.Miss);
+            Assert.True(section.Won); // Identical perfect play is always the player's win.
+        });
+    }
+
+    [Fact]
+    public void FinishedSectionCountsStayFrozenWhenAFrameContainsHitsOnBothSidesOfTheBoundary()
+    {
+        var source = boundaryChart();
+        var inputs = source.HitObjects.Select(note => new TaikoReplayInput(TaikoInputAction.LeftDon, note.StartTime)).ToArray();
+        var simulation = new AiBattleSimulation(source, TaikoCourse.Hard, 1234, (0, 0));
+        simulation.Advance([.. inputs.Where(input => input.Time <= TimeSpan.FromSeconds(1.15))], TimeSpan.FromSeconds(1.15));
+
+        Assert.Equal(1, simulation.CompletedSections);
+        var finished = simulation.GetSection(0);
+        Assert.Equal(new(1, 0, 0, 0), finished.Player);
+        Assert.Equal(new(2, 0, 0, 0), simulation.GetSection(1).Player);
+
+        simulation.Advance(inputs, simulation.End + TimeSpan.FromTicks(1));
+
+        Assert.Equal(finished, simulation.GetSection(0));
+        Assert.True(finished.Won);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SectionWaitsForLateHitsAndTimeoutsOnItsOwnNotes(bool hit)
+    {
+        var source = boundaryChart(0.99);
+        var simulation = new AiBattleSimulation(source, TaikoCourse.Hard, 1234, (0, 0));
+        // The first section's last note is at 0.99 s. Its late Good arrives after the boundary.
+        TaikoReplayInput[] inputs = hit ? [new(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.05))] : [];
+        simulation.Advance(inputs, TimeSpan.FromSeconds(1.02));
+        Assert.Equal(0, simulation.CompletedSections);
+        simulation.Advance(inputs, TimeSpan.FromSeconds(1.15));
+        Assert.Equal(new(0, hit ? 1 : 0, hit ? 0 : 1, 0), simulation.GetSection(0).Player);
+        Assert.False(simulation.GetSection(0).Won);
     }
 }

@@ -13,7 +13,7 @@ public sealed record AiBattleSession(Guid Id, int Seed, int Version, string Char
 
 /// <summary>
 /// The battle model shared by live play and the score server. Decisions, timeouts and sections run on an event
-/// timeline, never on render frames. At a boundary the old section closes before inputs at that exact time.
+/// timeline, never on render frames. Section comparisons use the same chart notes on both sides.
 /// This is Waddamburo's versioned model, not a claim about the original game's random algorithm.
 /// </summary>
 public sealed class AiBattleSimulation
@@ -32,15 +32,15 @@ public sealed class AiBattleSimulation
     private readonly TaikoJudgementSession _player, _ai;
     private readonly GhostTimingModel _model;
     private readonly Random _random;
-    private readonly TimeSpan[] _events, _ends;
+    private readonly TimeSpan[] _events, _ends, _boundaries;
+    private readonly int[,,] _sectionCounts;
     private readonly PriorityQueue<TaikoReplayInput, (long Time, long Order)> _pending = new();
     private readonly List<AiBattleSection> _sections = [];
     private readonly List<double> _offsets = [];
-    private readonly int[,] _counts = new int[2, 4];
     private readonly int[] _rollHits;
     private int _input, _event, _note, _section, _emotion = 2;
     private long _order;
-    private bool _right, _rollRight;
+    private bool _right, _rollRight, _playerSlipped;
     private TimeSpan _lastRoll = TimeSpan.MinValue / 2;
     private TimeSpan _through = TimeSpan.MinValue;
 
@@ -60,7 +60,13 @@ public sealed class AiBattleSimulation
         _ai = new(chart, _windows) { FollowBranch = _player.BranchAt };
         _model = new(level ?? OnlineLevel) { Prior = prior };
         _random = new BattleRandom(seed);
-        _ends = AiBattleRules.SectionEnds(chart);
+        var boundaries = AiBattleRules.SectionEnds(chart);
+        _sectionCounts = new int[boundaries.Length, 2, 4];
+        _boundaries = boundaries;
+        // Notes belong to their chart section, even when hit early or late. Let both sides'
+        // judgement windows finish before comparing; a perfect player can never lose a section.
+        _ends = [.. boundaries.Select((end, index) =>
+            index == boundaries.Length - 1 ? end : end + _windows.Miss + TimeSpan.FromTicks(1))];
         _rollHits = new int[chart.LongNotes.Length];
         _events = [.. chart.HitObjects.Select(static note => note.StartTime - Lead)
             .Concat(chart.HitObjects.Select(note => note.StartTime + _windows.Miss + TimeSpan.FromTicks(1)))
@@ -73,7 +79,7 @@ public sealed class AiBattleSimulation
         {
             var gained = hit.Hits - _rollHits[hit.NoteIndex];
             _rollHits[hit.NoteIndex] = hit.Hits;
-            _counts[0, 3] += gained;
+            _sectionCounts[sectionOf(_player.CurrentTime), 0, 3] += gained;
             for (var index = 0; index < gained; index++)
             {
                 _lastRoll = _player.CurrentTime > _lastRoll + RollFrame ? _player.CurrentTime : _lastRoll + RollFrame;
@@ -83,6 +89,17 @@ public sealed class AiBattleSimulation
     }
 
     public AiBattleOutcome Outcome => new([.. _sections]);
+
+    public int CompletedSections => _sections.Count;
+
+    /// <summary>A finished section's frozen counts, or the current section's counts at the simulation watermark.</summary>
+    public AiBattleSection GetSection(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        if (index < _sections.Count) return _sections[index];
+        if (index == _section && index < _ends.Length) return currentSection();
+        throw new ArgumentOutOfRangeException(nameof(index));
+    }
     public int Emotion => _emotion;
     public (double Median, double Variance)? Timing => GhostTimingModel.TimingOf(_offsets);
     public TimeSpan End => _ends[^1];
@@ -104,7 +121,7 @@ public sealed class AiBattleSimulation
             if (_input < inputs.Count && inputs[_input].Time < next) next = inputs[_input].Time;
             if (_pending.TryPeek(out var pending, out _) && pending.Time < next) next = pending.Time;
             if (next >= through || next > End || next == TimeSpan.MaxValue) break;
-            if (_section < _ends.Length && next == _ends[_section]) closeSection();
+            var closes = _section < _ends.Length && next == _ends[_section];
             _player.AdvanceTo(next);
             _ai.AdvanceTo(next);
             while (_input < inputs.Count && inputs[_input].Time == next)
@@ -120,6 +137,7 @@ public sealed class AiBattleSimulation
                 _ai.SubmitInput(pending.Action, pending.Time);
                 generated.Add(pending);
             }
+            if (closes) closeSection();
             while (_event < _events.Length && _events[_event] == next) _event++;
         }
         _through = through;
@@ -129,7 +147,9 @@ public sealed class AiBattleSimulation
     private void judged(int side, TaikoNoteJudgement judgement)
     {
         if (judgement.StrongHitCompleted || judgement.Result is not { } result) return;
-        _counts[side, result == TaikoHitResult.Great ? 0 : result == TaikoHitResult.Good ? 1 : 2]++;
+        var kind = result == TaikoHitResult.Great ? 0 : result == TaikoHitResult.Good ? 1 : 2;
+        if (side == 0 && kind != 0) _playerSlipped = true;
+        _sectionCounts[sectionOf(judgement.HitObject.StartTime), side, kind]++;
         if (side == 0 && !judgement.TimedOut && judgement.Offset is { } offset)
         {
             _offsets.Add(offset.TotalMilliseconds);
@@ -140,10 +160,16 @@ public sealed class AiBattleSimulation
     private void decide(PlayableHitObject note)
     {
         if (!PlayableChart.IsOn(note.Branch, _player.BranchAt(note.StartTime))) return;
-        var player = AiBattleRules.Territory(_course, _counts[0, 0], _counts[0, 1]);
-        var ai = AiBattleRules.Territory(_course, _counts[1, 0], _counts[1, 1]);
+        var section = sectionOf(note.StartTime);
+        var playerCounts = counts(section, 0);
+        var aiCounts = counts(section, 1);
+        var player = AiBattleRules.Territory(_course, playerCounts.Great, playerCounts.Good);
+        var ai = AiBattleRules.Territory(_course, aiCounts.Great, aiCounts.Good);
         _model.Emotion = _emotion;
         var offset = _model.NextOffset(Math.Clamp(ai - player, -9, 9), _random);
+        // Every hit a 良 until the player's first 可 or 不可 (user rule): a perfect player ties every section,
+        // and ties are theirs. ponytail: decided 200 ms ahead, so a slip shows a note or two late.
+        if (!_playerSlipped) offset = TimeSpan.Zero;
         if (offset.Duration() > _windows.Miss) return;
         // Quantize the random offset to microseconds, the canonical chart's time precision.
         var time = note.StartTime + TimeSpan.FromTicks((long)Math.Round(offset.Ticks / 10d) * 10);
@@ -163,14 +189,28 @@ public sealed class AiBattleSimulation
 
     private void closeSection()
     {
-        var won = AiBattleRules.Territory(_course, _counts[0, 0], _counts[0, 1])
-            >= AiBattleRules.Territory(_course, _counts[1, 0], _counts[1, 1]);
-        AiSectionCounts counts(int side) => new(_counts[side, 0], _counts[side, 1], _counts[side, 2], _counts[0, 3]);
-        _sections.Add(new(won, counts(0), counts(1)));
+        _sections.Add(currentSection());
         var lead = _sections.Count(static section => section.Won) * 2 - _sections.Count;
         _emotion = lead >= 2 ? 4 : lead <= -2 ? 0 : _emotion;
-        Array.Clear(_counts);
         _section++;
+    }
+
+    private int sectionOf(TimeSpan time)
+    {
+        var section = Array.FindIndex(_boundaries, end => time < end);
+        return section < 0 ? _boundaries.Length - 1 : section;
+    }
+
+    private AiSectionCounts counts(int section, int side) =>
+        new(_sectionCounts[section, side, 0], _sectionCounts[section, side, 1], _sectionCounts[section, side, 2], _sectionCounts[section, 0, 3]);
+
+    private AiBattleSection currentSection() => compare(counts(_section, 0), counts(_section, 1));
+
+    private AiBattleSection compare(AiSectionCounts player, AiSectionCounts ai)
+    {
+        var won = AiBattleRules.Territory(_course, player.Great, player.Good)
+            >= AiBattleRules.Territory(_course, ai.Great, ai.Good);
+        return new(won, player, ai);
     }
 
     /// <summary>A pinned xorshift32 stream; independent of System.Random's runtime-specific implementation.</summary>

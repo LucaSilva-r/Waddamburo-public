@@ -104,11 +104,18 @@ internal sealed class AiBattlePresentation
             (_middle, _) = (true, call(_backdrop, "OnSectionMiddle"));
         if (!_closing && fraction >= 2 / 3d)
             (_closing, _) = (true, call(_backdrop, "OnSectionClosing"));
-        // Each side's 良 and 可 this section.
+        // Use the same per-note section counts as the verdict. Subtracting lane totals at a render
+        // frame can move hits across a boundary and show a player leading in a section they lost.
+        var simulated = Simulation?.GetSection(_section);
         for (var lane = 0; lane < Math.Min(2, lanes.Count); lane++)
         {
             var now = countsOf(lanes, lane);
             var counts = (now.Great - _base[lane].Great, now.Good - _base[lane].Good, now.Miss - _base[lane].Miss, now.Rolls - _base[lane].Rolls);
+            if (simulated is { } snapshot)
+            {
+                var shown = lane == 0 ? snapshot.Player : snapshot.Ai;
+                counts = (shown.Great, shown.Good, shown.Miss, shown.Rolls);
+            }
             if (counts == _shown[lane])
                 continue;
             _shown[lane] = counts;
@@ -118,9 +125,9 @@ internal sealed class AiBattlePresentation
             // ends a section win's attack).
             both("UpdateTargetGaugeNum", number(Math.Clamp(territory(0) - territory(1), -MaxNeedle, MaxNeedle)));
         }
-        if (time < end || Simulation is { } simulation && simulation.Outcome.Sections.Count <= _section)
+        if (time < end || Simulation is { } simulation && simulation.CompletedSections <= _section)
             return;
-        var verified = Simulation?.Outcome.Sections[_section];
+        var verified = simulated;
         var won = verified?.Won ?? territory(0) >= territory(1);
         _won.Add(won);
         AiSectionCounts section(int lane) => _shown[lane] is var (great, good, miss, rolls) && great >= 0

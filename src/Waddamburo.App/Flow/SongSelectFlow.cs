@@ -346,7 +346,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             if (session?.Ranked != true)
                 Shell.Sync.Notices.Add(new Waddamburo.Game.Online.Notice("ai-unranked", Waddamburo.Game.Online.NoticeSource.Local,
                     Waddamburo.Game.Online.NoticeSeverity.Info,
-                    "This AI battle will not earn online rank points or reward wins.", DateTimeOffset.UtcNow));
+                    Strings.T("notice.ai_unranked"), DateTimeOffset.UtcNow));
             return session;
         }
         catch (Exception exception) when (exception is InvalidDataException or NotSupportedException or IOException

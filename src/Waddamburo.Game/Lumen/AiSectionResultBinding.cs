@@ -17,6 +17,9 @@ public sealed record AiResultNumbers(int RankBefore, int RankAfter, int PointsIn
     bool HighLevelBonus, int RankStep, int WinsBefore, int NextRewardWins)
 {
     public static AiResultNumbers NewPlayer { get; } = new(0, 0, 0, 0, false, false, 1, 0, 1);
+
+    /// <summary>False: an unranked battle (no server setup); it shows no win gained.</summary>
+    public bool ShowProgress { get; init; } = true;
 }
 
 /// <summary>An AI battle song's sections, for its results.</summary>
@@ -38,6 +41,7 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
 {
     private LumenPlayer? _movie;
     private bool _started;
+    private bool _startRequested;
 
     /// <summary>The results backdrop (result_bg): SetWinTotalFlag with the setup.</summary>
     public Func<LumenPlayer?>? Backdrop { get; init; }
@@ -79,7 +83,12 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
     /// <summary>Each tick: the setup goes out once the movie has registered its callbacks (after its first frame).</summary>
     public void Poll()
     {
-        if (_sent || _movie is not { CallbackNames.Length: > 0 })
+        if (_sent)
+        {
+            begin();
+            return;
+        }
+        if (_movie is null || !_movie.CallbackNames.Contains("SetWinNumber"))
             return;
         _sent = true;
         var no = LumenHostValue.FromBoolean(false);
@@ -90,7 +99,7 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
         // the next reward's win count (10 with 9 wins), true once there is none.
         call("SetWinTokenNumber", number(numbers.PointsIntoRank), number(numbers.Gained), LumenHostValue.FromBoolean(numbers.Gained > 0));
         call("SetBonusNumberFlag", LumenHostValue.FromBoolean(numbers.FirstWinBonus), LumenHostValue.FromBoolean(numbers.HighLevelBonus));
-        call("SetRankNumber", number(numbers.RankBefore), number(numbers.RankAfter));
+        call("SetRankNumber", number(numbers.RankBefore), number(numbers.RankAfter), LumenHostValue.FromBoolean(numbers.RankAfter >= 10));
         call("SetNextRankNumber", number(numbers.RankStep));
         call("SetNextRewardNumber", number(numbers.NextRewardWins), LumenHostValue.FromBoolean(numbers.NextRewardWins == 0));
         void rows(string name, Func<AiSectionCounts, int> value)
@@ -103,8 +112,9 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
         rows("SetFukaNoteNumber", static counts => counts.Miss);
         rows("SetRendaNoteNumber", static counts => counts.Rolls);
         // SetWinNumber(wins before, wins gained): any gained means the battle was won (the movie's is_win_total).
-        call("SetWinNumber", number(numbers.WinsBefore), number(outcome.Won ? 1 : 0));
+        call("SetWinNumber", number(numbers.WinsBefore), number(numbers.ShowProgress && outcome.Won ? 1 : 0));
         Backdrop?.Invoke()?.TryInvokeCallback("SetWinTotalFlag", [LumenHostValue.FromBoolean(outcome.Won)]);
+        begin();
     }
 
     // Traced: the section results run about 13 s from their Start to the game moving on.
@@ -117,8 +127,13 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
     /// <summary>The normal results closed: the section results play (traced result_section.Start).</summary>
     public void Start()
     {
+        _startRequested = true;
         Poll();
-        if (_started || !_sent) return;
+    }
+
+    private void begin()
+    {
+        if (!_startRequested || _started || !_sent) return;
         _started = true;
         _since.Restart();
         call("Start");

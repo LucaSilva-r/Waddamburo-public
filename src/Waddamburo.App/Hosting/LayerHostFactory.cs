@@ -528,7 +528,7 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost aiSectionResultHost()
     {
         var outcome = AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
-        var binding = AiSectionResult = new AiSectionResultBinding(outcome, AiNumbers ?? AiResultNumbers.NewPlayer,
+        var binding = AiSectionResult = new AiSectionResultBinding(outcome, AiNumbers ?? AiResultNumbers.NewPlayer with { ShowProgress = false },
             sounds is null ? null : sounds.Frontend.PlayCue)
         {
             Backdrop = () => AiResultBackground,

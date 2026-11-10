@@ -676,6 +676,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (_lastRequest is not { } last || _charts.Length == 0) return false;
         var request = last with { Review = null, Seed = null };
+        // A server setup binds one play: a second upload under it is refused (422) and blocks the upload queue.
+        AiSession = null;
         // Playing a watched replay's chart: with your own options, not the replay's (they stayed on; reported on Discord).
         if (last.Review is not null)
             request = new PlayRequest(last.CatalogRevision, last.Song, last.AudioAsset,
@@ -1204,7 +1206,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                         _supportLevel, award.Points) { SessionId = AiSession?.Id, Ranked = AiSession?.Ranked == true };
                     var rank = ranks.RankOf(before.Points);
                     Shell.Hosts.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
-                        award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins));
+                        award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins))
+                        { ShowProgress = AiSession?.Ranked == true };
                     Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");
                 }
                 scores.Save(new PlayRecord(id, profile.Baid, sha,

@@ -45,18 +45,30 @@ The existing Green ladder supplies the base point and first-win/high-level
 bonuses. The server recalculates points in setup order after delayed uploads,
 rescoring, and moderation. Synced server results replace provisional local awards.
 
-## Model version 1
+## The model
 
 This is a Waddamburo implementation choice, not an assertion about the original
 game's random algorithm. Online tuning freezes the project's fallback ghost
 parameters; local play can use installation tuning. The random stream is pinned
 xorshift32. Both sides normalize notes to canonical chart bytes, and generated
-offsets use whole microseconds. Decisions and section
-boundaries follow chart events rather than rendering frames. The AI follows the
-player's branch. Copied roll totals do not influence the section winner.
+offsets use whole microseconds. Decisions and section boundaries follow chart
+events rather than rendering frames. The AI follows the player's branch. Copied
+roll totals do not influence the section winner.
 
-Changing this model requires a new version while retaining support for stored
-older setups. A synthetic fixed replay test pins version 1's generated AI inputs.
+AI-don hits every note dead on (a 良) until the player's first 可 or 不可; from then
+on the ghost model plays. Its random draw still happens for each note, so the stream
+stays aligned. Decisions are made 200 ms ahead, so notes inside that lead after the
+slip are still perfect.
+
+Both sides compare the same chart notes in each section: a note belongs to the
+section containing its scheduled time, including when it is hit early or late. Each
+section waits until its notes' judgement windows finish. Ties go to the player, so a
+Donderful Combo wins every section. The live counters and territory needle read the
+simulator's section counts.
+
+The model is version 1 (unreleased: changed freely). After release, any change to
+the AI's presses or verdicts needs a new version, keeping older versions so stored
+setups rescore the same; a test pins the generated presses.
 
 ## Remaining progression work
 

@@ -162,7 +162,8 @@ internal static class Rescore
 
     private static void writeBattle(ChartCache charts, StoredPlay play, JsonElement setup, Utf8JsonWriter writer)
     {
-        if (setup.GetProperty("version").GetInt32() != AiBattleSimulation.Version || play.Seed is null)
+        var version = setup.GetProperty("version").GetInt32();
+        if (version != AiBattleSimulation.Version || play.Seed is null)
             throw new InvalidDataException("Unsupported AI battle version or missing seed.");
         var (chart, course) = Chart(charts, play.Notes, play.Source);
         var support = setup.GetProperty("support_level").GetInt32();
@@ -181,7 +182,7 @@ internal static class Rescore
         simulation.Advance(TaikoReplay.Decode(play.Replay).Inputs, simulation.End + TimeSpan.FromTicks(1));
         var outcome = simulation.Outcome;
         writer.WriteStartObject("ai_battle");
-        writer.WriteNumber("version", AiBattleSimulation.Version);
+        writer.WriteNumber("version", version);
         writer.WriteString("sections", string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')));
         writer.WriteNumber("level", chart.Level ?? 0);
         if (simulation.Timing is { } timing)

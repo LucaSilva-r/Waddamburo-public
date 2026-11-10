@@ -221,6 +221,7 @@
   "job.hash_library": "オンラインスコアのために曲を準備中",
   "job.rescore_scores": "新しい採点ルールでスコアを更新中",
   "job.upload_scores": "スコアを送信中",
+  "notice.ai_unranked": "このAIバトルではオンラインのランクポイントと勝利数は加算されません。",
   "job.failed": "{0}：失敗（{1}）",
 
   "settings.timing_indicator": "タイミング表示",
