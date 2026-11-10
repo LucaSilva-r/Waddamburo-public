@@ -2,12 +2,31 @@ using System.Net;
 using System.Text;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scores;
+using Waddamburo.Catalog;
 
 namespace Waddamburo.Game.Tests;
 
 public sealed class ScoreListTests
 {
     private const string Sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    [Fact]
+    public async Task AServerBattleSetupMustMatchTheRequestedPlay()
+    {
+        const string setup = """
+            {"id":"10000000-0000-0000-0000-000000000001","seed":1234,"version":1,
+             "chart_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+             "course":3,"options":64,"support_level":0,"ranked":true,"points":15,"wins":9,
+             "hit_median_ms":12.5,"hit_variance":400}
+            """;
+        var server = new StubServer(_ => setup);
+        using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
+        var session = await new ScoreClient(http).BeginAiBattleAsync(Sha, Sha, TaikoCourse.Oni, 64, 0);
+        Assert.Equal((1234, 15, 9, (12.5, 400d)), (session.Seed, session.Points, session.Wins, session.Timing!.Value));
+        Assert.Contains("\"base_sha256\"", server.LastBody);
+        Assert.Contains("\"version\":1", server.LastBody);
+        await Assert.ThrowsAsync<InvalidDataException>(() => new ScoreClient(http).BeginAiBattleAsync(Sha, Sha, TaikoCourse.Hard, 64, 0));
+    }
 
     [Fact]
     public async Task ReadsTheLeaderboardTheOwnPlaysAndAReplay()

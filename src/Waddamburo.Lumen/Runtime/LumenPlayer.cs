@@ -25,6 +25,10 @@ public sealed class LumenPlayer
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
     private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
     private readonly List<PendingFrameAction> _pendingActions = [];
+    private readonly List<(DisplayInstance Instance, Avm1FunctionValue Class)> _pendingConstructions = [];
+    private int _frameDepth;
+    private int _actionDepth;
+    private bool _constructing;
     // Clips a goto creates on the frames it passes through (their scripts are not queued there).
     private List<DisplayInstance>? _gotoBorn;
     private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
@@ -978,7 +982,42 @@ public sealed class LumenPlayer
         if ((uint)frame >= (uint)timeline.Frames.Length)
             return;
         instance.Frame = frame;
-        applyCommands(instance, timeline.Frames[frame], queueActions);
+        _frameDepth++;
+        try
+        {
+            applyCommands(instance, timeline.Frames[frame], queueActions);
+        }
+        finally
+        {
+            _frameDepth--;
+            drainConstructions();
+        }
+    }
+
+    // Build the display tree first, then initialize parent state before child constructors read it.
+    // Prototypes are available immediately, so a parent's constructor can still find child methods.
+    private void queueConstruction(DisplayInstance instance, Avm1FunctionValue function)
+    {
+        instance.ScriptPrototype = function.GetProperty("prototype").Value as Avm1Object;
+        _pendingConstructions.Add((instance, function));
+    }
+
+    private void drainConstructions()
+    {
+        if (_frameDepth != 0 || _actionDepth != 0 || _constructing) return;
+        _constructing = true;
+        try
+        {
+            while (_pendingConstructions.Count > 0)
+            {
+                var pending = _pendingConstructions.OrderBy(static entry => entry.Instance.HierarchyDepth).ToArray();
+                _pendingConstructions.Clear();
+                foreach (var (instance, function) in pending)
+                    if (!instance.Removed && !ReferenceEquals(instance.ConstructedClass, function))
+                        constructInstance(instance, function);
+            }
+        }
+        finally { _constructing = false; }
     }
 
     private void applyCommands(
@@ -1002,7 +1041,7 @@ public sealed class LumenPlayer
                     }
                     break;
                 case LmbDoActionCommand action when queueActions:
-                    enqueueAction(instance, action.ActionIndex);
+                    enqueueAction(instance, action);
                     break;
             }
         }
@@ -1015,7 +1054,7 @@ public sealed class LumenPlayer
         var timeline = _sprites[instance.CharacterId];
         foreach (var action in timeline.Frames[instance.Frame].OfType<LmbDoActionCommand>())
         {
-            enqueueAction(instance, action.ActionIndex);
+            enqueueAction(instance, action);
         }
         foreach (var child in instance.Children.Values)
         {
@@ -1027,6 +1066,23 @@ public sealed class LumenPlayer
     private void drainActions()
     {
         var processed = 0;
+        do
+        {
+            _actionDepth++;
+            try { processed = drainActionBatch(processed); }
+            finally
+            {
+                _actionDepth--;
+                drainConstructions();
+            }
+        }
+        // Constructors can seek timelines and enqueue the scripts that export host callbacks.
+        // Finish those scripts before returning to the host, sharing the same action budget.
+        while (_pendingActions.Count > 0);
+    }
+
+    private int drainActionBatch(int processed)
+    {
         while (_pendingActions.Count > 0 && processed < _limits.MaxPendingActions)
         {
             var remaining = _limits.MaxPendingActions - processed;
@@ -1042,6 +1098,14 @@ public sealed class LumenPlayer
                 processed++;
                 if (pending.Instance.Removed)
                     continue;
+                if (!pending.IsInitialization)
+                {
+                    // Class initialization records form a block. Construct the registered clips
+                    // before the following ordinary frame script starts using their state.
+                    _actionDepth--;
+                    try { drainConstructions(); }
+                    finally { _actionDepth++; }
+                }
                 if (pending.ActionIndex >= (uint)_movie.Actions.Length)
                 {
                     reportOnce(
@@ -1086,6 +1150,7 @@ public sealed class LumenPlayer
                 _root.Frame,
                 $"Pending AVM action limit {_limits.MaxPendingActions} was reached; {dropped} actions were dropped.");
         }
+        return processed;
     }
 
     private void dispatchEnterFrameHandlers(DisplayInstance? subtree = null)
@@ -1111,7 +1176,7 @@ public sealed class LumenPlayer
         }
     }
 
-    private void enqueueAction(DisplayInstance instance, uint actionIndex)
+    private void enqueueAction(DisplayInstance instance, LmbDoActionCommand action)
     {
         if (_pendingActions.Count >= _limits.MaxPendingActions)
         {
@@ -1122,7 +1187,8 @@ public sealed class LumenPlayer
                 $"Pending AVM action limit {_limits.MaxPendingActions} was reached.");
             return;
         }
-        _pendingActions.Add(new PendingFrameAction(instance, actionIndex, _nextActionSequence++));
+        _pendingActions.Add(new PendingFrameAction(instance, action.ActionIndex, _nextActionSequence++,
+            (action.Unknown & 0x01000000) != 0));
     }
 
     private Avm1ExecutionStatus executeAction(
@@ -1819,7 +1885,7 @@ public sealed class LumenPlayer
             && timeline.ExportName == exportName
             && !ReferenceEquals(instance.ConstructedClass, function))
         {
-            constructInstance(instance, function);
+            queueConstruction(instance, function);
         }
         foreach (var child in instance.Children.Values)
             bindClass(child, exportName, function);
@@ -1894,7 +1960,7 @@ public sealed class LumenPlayer
                 if (!alive || child.Frame < 0 || !_sprites.TryGetValue(child.CharacterId, out var childTimeline))
                     continue;
                 foreach (var action in childTimeline.Frames[child.Frame].OfType<LmbDoActionCommand>())
-                    enqueueAction(child, action.ActionIndex);
+                    enqueueAction(child, action);
             }
             resetInterpolation(instance);
         }
@@ -2316,7 +2382,7 @@ public sealed class LumenPlayer
                     enterFrame(instance, 0, queueActions);
                     var exportName = childTimeline.ExportName;
                     if (exportName is not null && _classes.TryGetValue(exportName, out var registeredClass))
-                        constructInstance(instance, registeredClass);
+                        queueConstruction(instance, registeredClass);
                 }
                 else if (!_shapes.ContainsKey(instance.CharacterId))
                     reportOnce("LUM_CHARACTER_NOT_FOUND", instance.CharacterId, parent.Frame, "Placed character has no shape or sprite definition.");
@@ -2844,7 +2910,8 @@ public sealed class LumenPlayer
     private readonly record struct PendingFrameAction(
         DisplayInstance Instance,
         uint ActionIndex,
-        long Sequence);
+        long Sequence,
+        bool IsInitialization);
 
     private readonly record struct CallbackRegistration(
         DisplayInstance Instance,

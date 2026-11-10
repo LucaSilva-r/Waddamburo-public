@@ -50,6 +50,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     private Prefetched? _prefetch;
     private Task<Prefetched>? _composing;
     private int? _coveredAt;
+    private Task<AiBattleSession?>? _aiSetup;
     // Covered this long without the prefetch ready: load the rest the slow way.
     private const int CoverHoldLimitTicks = 600;
 
@@ -237,6 +238,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         _coveredAt = null;
         _prefetch = null;
         _musicUnderCover = false;
+        _aiSetup = null;
     }
 
     private bool _musicUnderCover;
@@ -268,6 +270,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             rainbow.Begin(Shell.Tick, Shell.Hosts.Waiwai ? RainbowTransitionSequence.WaiwaiLeadInTicks : null);
             _titleReported = false;
             composeGameplay(request);
+            _aiSetup = null;
             Console.WriteLine($"Queued rainbow cover for '{request.Song}' at tick {Shell.Tick}.");
         }
         if (rainbow.ShouldStartCover(Shell.Tick))
@@ -308,6 +311,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             if (Shell.Match.Together(request) is not { } together)
                 return;
             request = together;
+            if (Shell.Hosts.AiBattle)
+            {
+                _aiSetup ??= prepareBattle(request, Shell.Hosts.SongSelect?.SupportLevel ?? 0,
+                    Shell.Hosts.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)request.Players[0].Course) ?? 0);
+                if (!_aiSetup.IsCompleted) return;
+            }
         }
         // Held on the song title (shown) until the song's scene is decoded and uploaded (then its switch is quick).
         if (_coveredAt is { } coveredAt && ((titleReady && _prefetch is not null && _composing is null && Shell.Scenes.PrefetchReady)
@@ -318,6 +327,33 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Console.WriteLine($"Rainbow held covered {Shell.Tick - coveredAt} tick(s) for the song's scene.");
             _coveredAt = null;
             startSong(request);
+        }
+    }
+
+    private async Task<AiBattleSession?> prepareBattle(PlayRequest request, int pick, int offered)
+    {
+        if (Shell.Autoplay || Shell.DevAutoplay || request.Review is not null) return null;
+        var player = request.Players[0];
+        try
+        {
+            var source = await Shell.Assets.LoadChartAsync(player.Chart, player.ChartAsset).ConfigureAwait(false);
+            var level = Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(ChartSimplifier.LevelOf(player.Course), offered, pick);
+            var support = pick > 0 && ChartSimplifier.SourceCourse(level) == player.Course ? level : 0;
+            var chart = support == 0 ? source : ChartSimplifier.Simplify(source, support);
+            var session = await Shell.Sync.BeginAiBattleAsync(TaikoGuest.Profiles[(int)player.Player],
+                ChartHash.Compute(chart, player.Course), ChartHash.Compute(source, player.Course), player.Course,
+                player.Options.Bits, support).ConfigureAwait(false);
+            if (session?.Ranked != true)
+                Shell.Sync.Notices.Add(new Waddamburo.Game.Online.Notice("ai-unranked", Waddamburo.Game.Online.NoticeSource.Local,
+                    Waddamburo.Game.Online.NoticeSeverity.Info,
+                    "This AI battle will not earn online rank points or reward wins.", DateTimeOffset.UtcNow));
+            return session;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or NotSupportedException or IOException
+            or OverflowException or ArgumentException)
+        {
+            Console.Error.WriteLine($"AI battle setup unavailable: {exception.Message}");
+            return null;
         }
     }
 
@@ -470,6 +506,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
                 twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
         gameplay.Prepare(charts, song, side, waiwai);
+        gameplay.AiSession = _aiSetup is { IsCompletedSuccessfully: true } setup ? setup.Result : null;
+        _aiSetup = null;
         if (timeline is not null)
             gameplay.PrepareCourse(timeline, courseSongs, courseStatus!);
         Shell.Scenes.Show(FlowScenes.Gameplay);

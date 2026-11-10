@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.Game.Scores;
@@ -192,6 +193,22 @@ public sealed class ScoreClient(HttpClient http)
         return (result.Bests, result.Recent ?? [], result.AiPlays ?? []);
     }
 
+    public async Task<AiBattleSession> BeginAiBattleAsync(string chartSha256, string baseSha256, TaikoCourse course,
+        int options, int supportLevel, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/ai/battles",
+            new AiBattleRequest(chartSha256, baseSha256, (int)course, options, supportLevel, AiBattleSimulation.Version, baid),
+            ScoreJson.Default.AiBattleRequest, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var session = await response.Content.ReadFromJsonAsync(ScoreJson.Default.AiBattleSession, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidDataException("The server returned no battle setup.");
+        if (session.Id == Guid.Empty || session.Version != AiBattleSimulation.Version || session.ChartSha256 != chartSha256
+            || session.Course != (int)course || session.Options != options || session.SupportLevel != supportLevel
+            || session.Timing is { } timing && (!double.IsFinite(timing.Median) || !double.IsFinite(timing.Variance) || timing.Variance < 0))
+            throw new InvalidDataException("The server returned an incompatible battle setup.");
+        return session;
+    }
+
     /// <summary>
     /// A chart's leaderboard: each player's best play, best first, and the asking player's own best with
     /// its place (null when they have none). A cabinet names the player with <paramref name="baid"/>.
@@ -334,7 +351,7 @@ public sealed class ScoreClient(HttpClient http)
     /// Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.
     /// <paramref name="job"/> reports it on the notice sidebar.
     /// </summary>
-    public void SyncInBackground(ScoreStore store, long? baid, Flow.JobBoard.Job? job = null)
+    public void SyncInBackground(ScoreStore store, long? baid, Flow.JobBoard.Job? job = null, Action? completed = null)
     {
         if (Interlocked.Exchange(ref _syncing, 1) == 1)
         {
@@ -347,6 +364,7 @@ public sealed class ScoreClient(HttpClient http)
             {
                 var sent = await SyncAsync(store, baid).ConfigureAwait(false);
                 job?.Complete();
+                completed?.Invoke();
                 if (sent > 0)
                     Console.WriteLine($"Uploaded {sent} play(s).");
             }
@@ -364,6 +382,8 @@ public sealed class ScoreClient(HttpClient http)
     }
 
     internal sealed record LoginRequest(string Login, string Password, string? Code, string Device);
+
+    internal sealed record AiBattleRequest(string ChartSha256, string BaseSha256, int Course, int Options, int SupportLevel, int Version, long? Baid);
 
     internal sealed record DeviceRequest(string Device);
 

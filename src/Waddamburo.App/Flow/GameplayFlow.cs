@@ -49,6 +49,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private GameplayAutoplay? _autoplay;
     // AI battle: AI-don's lane, and the battle's own movies.
     private AiDrummer? _aiBot;
+    public AiBattleSession? AiSession { get; set; }
+    private int _supportLevel;
     private AiBattlePresentation? _battle;
     // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
     private ReviewSession? _review;
@@ -108,6 +110,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public void Prepare(PlayableChart[] charts, SongSelectSong song, int side, WaiwaiComposition? waiwai)
     {
+        AiSession = null;
         _course = null;
         _restartCourse = null;
         _directStart = false;
@@ -237,7 +240,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 + (_sourceCharts.ElementAtOrDefault(0)?.Level is { } level ? $" ★{level}" : ""), DateTimeOffset.UtcNow)
             : null;
         // Each player's options on their chart; the random ones from the play's seed (a replay's own).
-        _seed = request.Seed ?? Random.Shared.Next();
+        _seed = AiSession?.Seed ?? request.Seed ?? Random.Shared.Next();
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
         // AI battle's support menu: a level below いつもの is the course's chart simplified (both lanes play it).
@@ -249,6 +252,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Console.WriteLine($"AI battle: level {supportLevel} (pick {pick} of {offered}).");
         // A player's own modchart for their chart (by its hash) goes over the chart's effects, before the options.
         _playedSources = [.. _sourceCharts.Select(source => _intermediate ? ChartSimplifier.Simplify(source, supportLevel) : source)];
+        _supportLevel = _intermediate ? supportLevel : 0;
+        if (AiSession is { } setup && (setup.ChartSha256 != ChartHash.Compute(_playedSources[0], players[0].Course)
+            || setup.Course != (int)players[0].Course || setup.Options != players[0].Options.Bits || setup.SupportLevel != _supportLevel))
+        {
+            AiSession = null;
+            _seed = request.Seed ?? Random.Shared.Next();
+        }
         _charts = [.. _playedSources.Select((chart, lane) =>
         {
             var player = players.ElementAtOrDefault(lane);
@@ -335,12 +345,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _battle = aiBattle ? new AiBattlePresentation(active, _charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
         if (_battle is { } battle && _review is null)
         {
-            // ponytail: always the first level until AI ranks are kept (each rank its own level, ghostinfo.xml).
-            var aiLevel = Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0]
-                : new GhostLevel(1024, 256, [new(0, 0, 5), new(0, 0, -50), new(0, 0, 40)], [], 100, 5, 3, 0);
-            var bot = _aiBot = new AiDrummer(_charts[1], players[0].Course, _seed, new GhostTimingModel(aiLevel) { Prior = aiProgress(players[0].Player).Timing }, () => battle.Territory,
-                () => Shell.Gameplay.Results is [var player, ..] ? player.Rolls + player.BalloonHits : 0, () => battle.Emotion);
-            Shell.Gameplay.OnJudged(0, bot.Observe);
+            var simulation = new AiBattleSimulation(_charts[0], players[0].Course, _seed,
+                AiSession is { } session ? session.Timing : aiProgress(players[0].Player).Timing,
+                AiSession is not null ? AiBattleSimulation.OnlineLevel : Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0] : null);
+            _aiBot = new AiDrummer(simulation, () => Shell.Gameplay.Replays[0].Inputs);
+            battle.Simulation = simulation;
+            Shell.Gameplay.FollowBranch(1, 0);
         }
         if (Shell.Sounds is { } sounds)
             // Per lane: AI-don's lane 1 is padded with the player, so it follows the player's course.
@@ -747,7 +757,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var time = chartTime() - _inputOffset;
             var played = _autoplay?.Apply(drums(keys), time) ?? keys;
-            Shell.Gameplay.Advance(_aiBot?.Apply(played, time) ?? played, time);
+            Shell.Gameplay.Advance(played, time, aiInput: _aiBot is { } bot ? bot.Apply : null);
             _battle?.Advance(time, Shell.Gameplay.Results);
         }
         _echo?.Pump();
@@ -874,7 +884,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (Shell.Headless)
         {
             var played = _autoplay?.Apply(drums(input.Keys), elapsed - _inputOffset) ?? input.Keys;
-            Shell.Gameplay.Advance(_aiBot?.Apply(played, elapsed - _inputOffset) ?? played, elapsed - _inputOffset);
+            Shell.Gameplay.Advance(played, elapsed - _inputOffset, aiInput: _aiBot is { } bot ? bot.Apply : null);
             _battle?.Advance(elapsed - _inputOffset, Shell.Gameplay.Results);
             _echo?.Pump();
         }
@@ -1186,12 +1196,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 AiBattlePlay? battle = null;
                 if (lane == 0 && _battle?.Outcome is { Sections.Count: > 0 } outcome)
                 {
-                    var ranks = Shell.AiRanks;
-                    var before = scores.AiProgress(profile.Baid);
+                    var ranks = AiSession is null ? Shell.AiRanks : AiBattleRanks.Green;
+                    var before = AiSession is { } setup ? new AiProgress(setup.Points, setup.Wins, setup.Timing) : scores.AiProgress(profile.Baid);
                     var award = ranks.Award(before.Points, player.Course, played.Level ?? 0, outcome.Won, cleared,
-                        usual: !_intermediate, firstWin: !scores.HasAiWin(profile.Baid, sha));
+                        usual: !_intermediate && AiSession?.Ranked == true, firstWin: !scores.HasAiWin(profile.Baid, sha));
                     battle = new AiBattlePlay(outcome.Won, string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')),
-                        _intermediate ? 1 : 0, award.Points);
+                        _supportLevel, award.Points) { SessionId = AiSession?.Id, Ranked = AiSession?.Ranked == true };
                     var rank = ranks.RankOf(before.Points);
                     Shell.Hosts.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
                         award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins));

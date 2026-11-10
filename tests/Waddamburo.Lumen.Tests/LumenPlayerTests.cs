@@ -1071,6 +1071,118 @@ public sealed class LumenPlayerTests
         Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
     }
 
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    public void ConstructorQueuedCallbacksAreReadyOnLoadWithinTheSharedActionBudget(int budget, bool exported)
+    {
+        var movie = createMovie(rootExportStringIndex: 5,
+            actionBytecode: [
+                // Register a class whose constructor seeks the callback registration frame.
+                0x8E, 9, 0, 16, 0, 0, 0, 2, 1, 0, 7, 0,
+                    0x81, 2, 0, 2, 0, 0x07, 0,
+                0x96, 3, 0, 9, 5, 0,
+                0x96, 5, 0, 7, 2, 0, 0, 0,
+                0x96, 3, 0, 9, 4, 0, 0x1C,
+                0x96, 3, 0, 9, 6, 0, 0x52, 0x17, 0,
+            ],
+            targetActionBytecode: [
+                // Export a callback that changes this._visible.
+                0x8E, 12, 0, 16, 0, 1, 0, 3, 1, 0, 2, 0, 0, 15, 0,
+                    0x96, 2, 0, 4, 1,
+                    0x96, 5, 0, 9, 2, 0, 4, 2, 0x4F, 0,
+                0x96, 3, 0, 9, 9, 0, 0x1C,
+                0x96, 8, 0, 9, 15, 0, 7, 3, 0, 0, 0,
+                0x96, 3, 0, 9, 11, 0, 0x1C,
+                0x96, 3, 0, 9, 12, 0, 0x4E,
+                0x96, 3, 0, 9, 13, 0, 0x4E,
+                0x96, 3, 0, 9, 14, 0, 0x52, 0x17, 0,
+            ]);
+        var root = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        movie = movie with { Sprites = [root with { Timeline = [
+            new LmbShowFrameCommand(0, 1, [], null!), new LmbDoActionCommand(0, 0, [], null!),
+            new LmbShowFrameCommand(1, 0, [], null!),
+            new LmbShowFrameCommand(2, 1, [], null!), new LmbDoActionCommand(1, 0, [], null!),
+        ] }, .. movie.Sprites.Where(sprite => sprite.CharacterId != 7)] };
+
+        var player = new LumenPlayer(movie, 1280, 720, limits: new(maxPendingActions: budget));
+
+        Assert.Equal(exported, player.CallbackNames.Contains("SetVisible"));
+        Assert.Equal(!exported, player.Diagnostics.Any(diagnostic => diagnostic.Code == "LUM_ACTION_QUEUE_LIMIT"));
+        if (exported)
+        {
+            Assert.True(player.TryInvokeCallback("SetVisible", [LumenHostValue.FromBoolean(false)]));
+            Assert.Empty(player.Diagnostics);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ChildConstructorCanReadParentStateWhenClassesRegisterInEitherOrder(bool beforePlacement)
+    {
+        var template = createMovie();
+        var childExport = (ushort)template.Strings.Length;
+        var childName = (ushort)(childExport + 1);
+        var parentMember = (ushort)(childExport + 2);
+        ushort name(string value) => (ushort)template.Strings.Single(item => item.Value == value).Index;
+        static void constant(List<byte> code, ushort index) => code.AddRange([0x96, 3, 0, 9, (byte)index, (byte)(index >> 8)]);
+        static void integer(List<byte> code, int value) { code.AddRange([0x96, 5, 0, 7]); code.AddRange(BitConverter.GetBytes(value)); }
+        static void self(List<byte> code) => code.AddRange([0x96, 2, 0, 4, 1]);
+        var parentBody = new List<byte>();
+        self(parentBody); constant(parentBody, name("value")); integer(parentBody, 37); parentBody.AddRange([0x4F, 0]);
+        var childBody = new List<byte>();
+        self(childBody); constant(childBody, name("copy")); self(childBody); constant(childBody, parentMember);
+        childBody.Add(0x4E); constant(childBody, name("value")); childBody.AddRange([0x4E, 0x4F, 0]);
+        var registration = new List<byte>();
+        void register(ushort export, List<byte> body)
+        {
+            var anonymous = name("");
+            registration.AddRange([0x8E, 9, 0, (byte)anonymous, (byte)(anonymous >> 8), 0, 0, 2, 1, 0, (byte)body.Count, (byte)(body.Count >> 8)]);
+            registration.AddRange(body);
+            constant(registration, export); integer(registration, 2); constant(registration, name("Object"));
+            registration.Add(0x1C); constant(registration, name("registerClass")); registration.AddRange([0x52, 0x17]);
+        }
+        // Register the child first; both classes must be ready before constructing the display tree.
+        register(childExport, childBody); register(name("RootExport"), parentBody); registration.Add(0);
+        var readState = new List<byte>();
+        constant(readState, name("placed")); readState.Add(0x1C);
+        constant(readState, childName); readState.Add(0x4E);
+        constant(readState, name("copy")); readState.Add(0x4E);
+        integer(readState, 1); constant(readState, name("resource")); readState.Add(0x1C);
+        constant(readState, name("ResolveVisible")); readState.AddRange([0x52, 0x17, 0]);
+        var movie = createMovie(actionBytecode: beforePlacement ? [0] : [.. registration],
+            packageActionBytecode: beforePlacement ? [.. registration] : null,
+            targetActionBytecode: [.. readState]);
+        var original = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
+        var place = original.Timeline.OfType<LmbPlaceObjectCommand>().First();
+        var root = original with { Timeline = [new LmbShowFrameCommand(0, 1, [], null!),
+            place with { CharacterId = 100, NameStringIndex = name("placed") },
+            new LmbShowFrameCommand(1, 2, [], null!),
+            new LmbDoActionCommand(0, 0x01000000, [], null!), new LmbDoActionCommand(1, 0, [], null!)] };
+        var parent = new LmbSpriteDefinition(100, 0, 1, 0, 0, [0, name("RootExport")],
+            [new LmbShowFrameCommand(0, 1, [], null!), place with { CharacterId = 101, NameStringIndex = childName }], null!);
+        var child = new LmbSpriteDefinition(101, 0, 1, 0, 0, [0, childExport], [new LmbShowFrameCommand(0, 0, [], null!)], null!);
+        movie = movie with { Strings = movie.Strings.AddRange(new LmbString[] { new(childExport, "ChildExport", 0), new(childName, "child", 0), new(parentMember, "_parent", 0) }),
+            Sprites = [root, parent, child, .. movie.Sprites.Where(sprite => sprite.CharacterId != 7)] };
+        var observed = false;
+        var player = new LumenPlayer(movie, 1280, 720,
+            hostBinding: new DelegateHostBinding(context => context.RegisterObject("resource", resource =>
+                resource.RegisterMethod("ResolveVisible", call =>
+                {
+                    observed = true;
+                    Assert.Equal(37d, call.Arguments[0].AsNumber());
+                    return LumenHostValue.Undefined;
+                }))));
+
+        player.Advance();
+
+        Assert.Equal(37d, player.ReadScriptValue("placed.value"));
+        Assert.Equal(37d, player.ReadScriptValue("placed.child.copy"));
+        Assert.True(observed);
+        Assert.Empty(player.Diagnostics);
+    }
+
     [Fact]
     public void PackageTimelineBootstrapsBeforeRootTimeline()
     {

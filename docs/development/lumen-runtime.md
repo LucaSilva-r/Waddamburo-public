@@ -17,6 +17,15 @@ The implemented transaction is intentionally small:
 - a render call creates a new immutable logical-stage snapshot without exposing or
   mutating display state.
 
+Class constructors run parent before child after display-tree placement. Prototypes
+are installed as soon as a class is bound. Asset-derived observation identifies
+`DoAction.Unknown & 0x01000000` as a class-initialization marker in the inspected
+front-end movies; other bits remain uninterpreted. The runtime defers constructors
+across those initialization records, then completes construction before the next
+ordinary frame script reads instance state. Constructor-generated frame actions
+drain before control returns to the host and share the existing action-count limit.
+Synthetic tests cover parent state, callback readiness, and that shared limit.
+
 `Advance` captures the set of existing sprite instances before stepping them, so a
 child created during a tick does not advance twice. Ordinary timelines loop to
 frame zero. This initial loop rebuilds timeline children; identity-preserving loop

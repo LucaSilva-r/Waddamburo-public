@@ -350,6 +350,7 @@ public sealed class ScoreSavingTests
                     ALTER TABLE plays DROP COLUMN ai_won; ALTER TABLE plays DROP COLUMN ai_sections;
                     ALTER TABLE plays DROP COLUMN ai_support; ALTER TABLE plays DROP COLUMN ai_points;
                     ALTER TABLE plays DROP COLUMN hit_median; ALTER TABLE plays DROP COLUMN hit_variance;
+                    ALTER TABLE plays DROP COLUMN ai_session_id; ALTER TABLE plays DROP COLUMN ai_ranked;
                     DROP TABLE remote_ai_plays;
                     PRAGMA user_version = 8;
                     """;
@@ -379,13 +380,14 @@ public sealed class ScoreSavingTests
             store.Save(new PlayRecord(id, 42, "sha", key, "ai_battle",
                 new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 10, false), at, new TaikoReplay().Encode())
             {
-                Battle = new AiBattlePlay(true, "WLWWL", 0, 3),
+                Battle = new AiBattlePlay(true, "WLWWL", 0, 3) { Ranked = true, SessionId = id },
                 Timing = (12, 400),
                 Seed = 1234,
             }, ChartUpload.From(chart(), TaikoCourse.Oni, null));
             var pending = Assert.Single(store.PendingPlays(42, 50));
             Assert.Equal(("ai_battle", true, "WLWWL", 3, 12d), (pending.Mode, pending.AiWon, pending.AiSections, pending.AiPoints, pending.HitMedianMs));
             Assert.Equal(1234, pending.Seed);
+            Assert.Equal(id, pending.AiSessionId);
             Assert.True(store.HasAiWin(42, "sha"));
             Assert.False(store.HasAiWin(42, "other"));
             // The server's battles add up once each: this PC's play (by id) is not counted twice.
@@ -397,6 +399,13 @@ public sealed class ScoreSavingTests
             Assert.Equal(new AiProgress(5, 2, (12, 400)), store.AiProgress(42));
             Assert.True(store.HasAiWin(42, "other"));
             Assert.Equal(AiProgress.None with { }, store.AiProgress(7));
+            // The server's verified outcome replaces a provisional local claim for the same id.
+            store.ReplaceRemoteAiPlays(42, [new RemoteAiPlay(id, "sha", false, 0, 5, 100, at)]);
+            Assert.Equal(new AiProgress(0, 0, (5, 100)), store.AiProgress(42));
+            Assert.False(store.HasAiWin(42, "sha"));
+            store.MarkUploaded([id]);
+            store.ReplaceRemoteAiPlays(42, []);
+            Assert.Equal(new AiProgress(0, 0, (12, 400)), store.AiProgress(42));
         }
         finally
         {

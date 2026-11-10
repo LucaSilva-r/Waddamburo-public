@@ -18,6 +18,8 @@ namespace Waddamburo.Game.Scores;
 [JsonSerializable(typeof(ScoreClient.DeviceTokenRequest))]
 [JsonSerializable(typeof(ScoreClient.RankingsRequest))]
 [JsonSerializable(typeof(ScoreClient.PlaysRequest))]
+[JsonSerializable(typeof(ScoreClient.AiBattleRequest))]
+[JsonSerializable(typeof(Gameplay.AiBattleSession))]
 [JsonSerializable(typeof(ScoreClient.BestsResult))]
 [JsonSerializable(typeof(ScoreClient.RankingsResult))]
 [JsonSerializable(typeof(ScoreClient.PlaysResult))]

@@ -301,4 +301,5 @@ rare-note flags; no ranked score or crown is shown.
 ## Not covered here
 
 - Branch conditions (only the normal branch is played).
-- Dan dojo rules other than the gauge and scoring above; AI battle rules.
+- Dan dojo rules other than the gauge and scoring above. AI battle verification
+  and progression are described in [Online AI battles](ai-battle.md).

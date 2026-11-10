@@ -46,7 +46,9 @@ internal sealed class AiBattlePresentation
     public IReadOnlyList<bool> SectionsWon => _won;
 
     /// <summary>The finished sections, for the results.</summary>
-    public AiBattleOutcome Outcome => new([.. _sections]);
+    public AiBattleOutcome Outcome => Simulation?.Outcome ?? new([.. _sections]);
+
+    public AiBattleSimulation? Simulation { get; set; }
 
     public int Sections => _ends.Length;
 
@@ -116,13 +118,14 @@ internal sealed class AiBattlePresentation
             // ends a section win's attack).
             both("UpdateTargetGaugeNum", number(Math.Clamp(territory(0) - territory(1), -MaxNeedle, MaxNeedle)));
         }
-        if (time < end)
+        if (time < end || Simulation is { } simulation && simulation.Outcome.Sections.Count <= _section)
             return;
-        var won = territory(0) >= territory(1);
+        var verified = Simulation?.Outcome.Sections[_section];
+        var won = verified?.Won ?? territory(0) >= territory(1);
         _won.Add(won);
         AiSectionCounts section(int lane) => _shown[lane] is var (great, good, miss, rolls) && great >= 0
             ? new(great, good, miss, rolls) : default;
-        _sections.Add(new(won, section(0), section(1)));
+        _sections.Add(verified ?? new(won, section(0), section(1)));
         call(_icons, "AIEnsoWinIconMove", LumenHostValue.FromBoolean(won));
         var last = _section == _ends.Length - 1;
         if (!last)

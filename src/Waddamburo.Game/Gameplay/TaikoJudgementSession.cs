@@ -195,6 +195,9 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
     /// <summary>A 譜面分岐 check picked its route (raised at the check, also when the route stays).</summary>
     public event Action<ChartBranchCheck, ChartBranch>? BranchChecked;
 
+    /// <summary>AI battle: use the player's route at each check instead of choosing independently.</summary>
+    public Func<TimeSpan, ChartBranch>? FollowBranch { get; set; }
+
     /// <summary>The route being played now (the last check's pick).</summary>
     public ChartBranch Branch => _routes.Count == 0 ? ChartBranch.Normal : _routes[^1].Route;
 
@@ -288,7 +291,7 @@ public sealed class TaikoJudgementSession : ITaikoJudgementSource
         for (; _nextCheck < _checks.Length && _checks[_nextCheck].Time <= time; _nextCheck++)
         {
             var check = _checks[_nextCheck];
-            var route = check.For(Branch).Next(Branch, _branchPoints);
+            var route = FollowBranch?.Invoke(check.Start) ?? check.For(Branch).Next(Branch, _branchPoints);
             _routes.Add((check.Start, route));
             _branchPoints = 0;
             _pointsSince = check.Time;

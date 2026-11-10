@@ -33,6 +33,14 @@ internal static class Rescore
         writer.WriteNumber("gauge", result.GaugeSegments);
         writer.WriteBoolean("cleared", result.Cleared);
         writer.WriteNumber("scoring_version", PlayRecord.CurrentScoringVersion);
+        if (play.AiBattle is { } battle)
+        {
+            try { writeBattle(charts, play, battle, writer); }
+            catch (Exception exception) when (IsBadPlay(exception) || exception is JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                writer.WriteString("ai_error", exception.Message);
+            }
+        }
         // ponytail: the timeline judges the play a second time; one pass if rescoring gets slow.
         writer.WriteStartObject("timeline");
         PlayTimeline.Write(charts, play, writer);
@@ -147,7 +155,60 @@ internal static class Rescore
     }
 
     /// <summary>One stored play as TaikOnline sends it.</summary>
-    public readonly record struct StoredPlay(byte[] Notes, string? Source, int Options, int? Seed, byte[] Replay);
+    public readonly record struct StoredPlay(byte[] Notes, string? Source, int Options, int? Seed, byte[] Replay)
+    {
+        public JsonElement? AiBattle { get; init; }
+    }
+
+    private static void writeBattle(ChartCache charts, StoredPlay play, JsonElement setup, Utf8JsonWriter writer)
+    {
+        if (setup.GetProperty("version").GetInt32() != AiBattleSimulation.Version || play.Seed is null)
+            throw new InvalidDataException("Unsupported AI battle version or missing seed.");
+        var (chart, course) = Chart(charts, play.Notes, play.Source);
+        var support = setup.GetProperty("support_level").GetInt32();
+        if (support != 0)
+        {
+            if (support < 1 || support >= ChartSimplifier.LevelOf(course) || ChartSimplifier.SourceCourse(support) != course)
+                throw new InvalidDataException("Invalid AI support level for this course.");
+            var original = Chart(charts, Convert.FromBase64String(setup.GetProperty("base_notes").GetString() ?? ""),
+                setup.GetProperty("base_source").GetString());
+            if (original.Course != course || ChartHash.Compute(ChartSimplifier.Simplify(original.Chart, support), course) != ChartHash.Compute(chart, course))
+                throw new InvalidDataException("The intermediate chart does not match its approved base chart.");
+        }
+        double? value(string name) => setup.TryGetProperty(name, out var number) && number.ValueKind == JsonValueKind.Number ? number.GetDouble() : null;
+        (double, double)? prior = value("hit_median_ms") is { } median && value("hit_variance") is { } variance ? (median, variance) : null;
+        var simulation = new AiBattleSimulation(TaikoPlayOptions.FromBits(play.Options).Apply(chart, play.Seed.Value), course, play.Seed.Value, prior);
+        simulation.Advance(TaikoReplay.Decode(play.Replay).Inputs, simulation.End + TimeSpan.FromTicks(1));
+        var outcome = simulation.Outcome;
+        writer.WriteStartObject("ai_battle");
+        writer.WriteNumber("version", AiBattleSimulation.Version);
+        writer.WriteString("sections", string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')));
+        writer.WriteNumber("level", chart.Level ?? 0);
+        if (simulation.Timing is { } timing)
+        {
+            writer.WriteNumber("hit_median_ms", timing.Median);
+            writer.WriteNumber("hit_variance", timing.Variance);
+        }
+        writer.WriteStartArray("counts");
+        foreach (var section in outcome.Sections)
+        {
+            writer.WriteStartObject();
+            counts("player", section.Player);
+            counts("ai", section.Ai);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        void counts(string name, Waddamburo.Game.Lumen.AiSectionCounts counts)
+        {
+            writer.WriteStartObject(name);
+            writer.WriteNumber("great", counts.Great);
+            writer.WriteNumber("good", counts.Good);
+            writer.WriteNumber("miss", counts.Miss);
+            writer.WriteNumber("rolls", counts.Rolls);
+            writer.WriteEndObject();
+        }
+    }
 
     /// <summary>
     /// The JSON-lines loop: each line's play handed to <paramref name="write"/>
@@ -175,7 +236,10 @@ internal static class Rescore
                 var options = play.TryGetProperty("options", out var bits) && bits.ValueKind == JsonValueKind.Number ? bits.GetInt32() : 0;
                 int? seed = play.TryGetProperty("seed", out var drawn) && drawn.ValueKind == JsonValueKind.Number ? drawn.GetInt32() : null;
                 var replay = Convert.FromBase64String(play.GetProperty("replay").GetString() ?? "");
-                write(charts, new StoredPlay(notes, source, options, seed, replay), writer);
+                write(charts, new StoredPlay(notes, source, options, seed, replay)
+                {
+                    AiBattle = play.TryGetProperty("ai_battle", out var battle) && battle.ValueKind == JsonValueKind.Object ? battle : null,
+                }, writer);
             }
             catch (Exception exception) when (IsBadPlay(exception) || exception is JsonException or KeyNotFoundException
                 or InvalidOperationException)

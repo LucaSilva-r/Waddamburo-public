@@ -41,6 +41,8 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
 
     public int? AiPoints { get; init; }
 
+    public Guid? AiSessionId { get; init; }
+
     /// <summary>The player's hit timing in the play: median offset (ms, late positive) and variance (ms²).</summary>
     public double? HitMedianMs { get; init; }
 
@@ -51,7 +53,11 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
 /// An AI battle play's battle (mode "ai_battle"): won by most sections, each section's outcome ('W'/'L'), the support level
 /// (0 = いつもの) and the rank points it earned. Rank, wins and points are derived from these, never kept apart.
 /// </summary>
-public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, int Points);
+public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, int Points)
+{
+    public Guid? SessionId { get; init; }
+    public bool Ranked { get; init; }
+}
 
 /// <summary>One of the player's AI battles on the server (any machine).</summary>
 public sealed record RemoteAiPlay(Guid Id, string Sha256, bool Won, int Points, double? HitMedianMs, double? HitVariance, DateTimeOffset PlayedAt);
@@ -137,8 +143,10 @@ public sealed record PlayRecord(
 
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 
-    public string EngineVersion { get; init; } =
+    public static string CurrentEngineVersion { get; } =
         typeof(PlayRecord).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+
+    public string EngineVersion { get; init; } = CurrentEngineVersion;
 
     /// <summary>The audio offset setting the play was made with (context for its replay; judgement does not use it).</summary>
     public int AudioOffsetMs { get; init; }
@@ -328,6 +336,10 @@ public sealed class ScoreStore : IDisposable
         );
         CREATE INDEX remote_ai_plays_player ON remote_ai_plays (baid);
         """,
+        """
+        ALTER TABLE plays ADD COLUMN ai_session_id TEXT;
+        ALTER TABLE plays ADD COLUMN ai_ranked INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -374,7 +386,7 @@ public sealed class ScoreStore : IDisposable
             command.CommandText = """
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
                     cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms,
-                    options, seed, ai_won, ai_sections, ai_support, ai_points, hit_median, hit_variance
+                    options, seed, ai_won, ai_sections, ai_support, ai_points, hit_median, hit_variance, ai_session_id
                 FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND (cleared = 1 OR mode = 'ai_battle')
                     AND uploaded_at IS NULL
                 ORDER BY played_at LIMIT $limit
@@ -401,6 +413,7 @@ public sealed class ScoreStore : IDisposable
                     AiPoints = reader.IsDBNull(24) ? null : reader.GetInt32(24),
                     HitMedianMs = reader.IsDBNull(25) ? null : reader.GetDouble(25),
                     HitVariance = reader.IsDBNull(26) ? null : reader.GetDouble(26),
+                    AiSessionId = reader.IsDBNull(27) ? null : Guid.Parse(reader.GetString(27)),
                 });
             return plays;
         }
@@ -581,10 +594,10 @@ public sealed class ScoreStore : IDisposable
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
                 audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
-                hit_median, hit_variance)
+                hit_median, hit_variance, ai_session_id, ai_ranked)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked)
             """;
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -612,6 +625,8 @@ public sealed class ScoreStore : IDisposable
         command.Parameters.AddWithValue("$ai_sections", (object?)play.Battle?.Sections ?? DBNull.Value);
         command.Parameters.AddWithValue("$ai_support", (object?)play.Battle?.SupportLevel ?? DBNull.Value);
         command.Parameters.AddWithValue("$ai_points", (object?)play.Battle?.Points ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_session_id", (object?)play.Battle?.SessionId?.ToString() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_ranked", play.Battle?.Ranked == true);
         command.Parameters.AddWithValue("$hit_median", (object?)play.Timing?.Median ?? DBNull.Value);
         command.Parameters.AddWithValue("$hit_variance", (object?)play.Timing?.Variance ?? DBNull.Value);
         command.ExecuteNonQuery();
@@ -628,11 +643,14 @@ public sealed class ScoreStore : IDisposable
             using var command = _connection.CreateCommand();
             command.CommandText = """
                 SELECT won, points, median, variance FROM (
-                    SELECT ai_won AS won, ai_points AS points, hit_median AS median, hit_variance AS variance, played_at
+                    SELECT CASE WHEN ai_ranked = 1 AND uploaded_at IS NULL THEN ai_won ELSE 0 END AS won,
+                        CASE WHEN ai_ranked = 1 AND uploaded_at IS NULL THEN ai_points ELSE 0 END AS points,
+                        hit_median AS median, hit_variance AS variance, played_at
                     FROM plays WHERE baid = $baid AND mode = 'ai_battle'
+                        AND id NOT IN (SELECT id FROM remote_ai_plays WHERE baid = $baid)
                     UNION ALL
                     SELECT won, points, hit_median, hit_variance, played_at FROM remote_ai_plays
-                    WHERE baid = $baid AND id NOT IN (SELECT id FROM plays WHERE baid = $baid))
+                    WHERE baid = $baid)
                 ORDER BY played_at DESC
                 """;
             command.Parameters.AddWithValue("$baid", baid);
@@ -657,7 +675,9 @@ public sealed class ScoreStore : IDisposable
         {
             using var command = _connection.CreateCommand();
             command.CommandText = """
-                SELECT EXISTS (SELECT 1 FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND mode = 'ai_battle' AND ai_won = 1)
+                SELECT EXISTS (SELECT 1 FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND mode = 'ai_battle' AND ai_won = 1
+                    AND ai_ranked = 1 AND uploaded_at IS NULL
+                    AND id NOT IN (SELECT id FROM remote_ai_plays WHERE baid = $baid))
                     OR EXISTS (SELECT 1 FROM remote_ai_plays WHERE baid = $baid AND sha256 = $sha AND won = 1)
                 """;
             command.Parameters.AddWithValue("$baid", baid);

@@ -86,6 +86,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Calls <paramref name="handler"/> with each of a lane's judgements in this play.</summary>
     public void OnJudged(int lane, Action<TaikoNoteJudgement> handler) => _lanes[lane].Judged += handler;
 
+    public void FollowBranch(int lane, int leader) => _lanes[lane].FollowBranch(_lanes[leader]);
+
     /// <summary>Every lane's drum inputs, in lane order.</summary>
     public IReadOnlyList<TaikoReplay> Replays => [.. _lanes.Select(lane => lane.Replay)];
 
@@ -136,7 +138,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         if (aiStage is not null)
             _lanes[1].LongNotes.ShownHits = index => _lanes[0].Session.GetLongNoteProgress(index).Hits;
         // Online, each lane has its own notes: nothing links hand notes across the network.
-        if (RemoteLane is not null)
+        if (RemoteLane is not null || aiStage is not null)
             return;
         var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
@@ -257,11 +259,14 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <param name="keyboard">The frame's input, its presses with their timestamps.</param>
     /// <param name="chartTime">The chart time the lanes are at now.</param>
     /// <param name="clockSpeed">Chart time per real second (training's speed): a hit's time within the frame is scaled to chart time.</param>
-    public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, double clockSpeed = 1)
+    /// <param name="aiInput">AI battle's generated presses, after the player's inputs have been accepted.</param>
+    public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, double clockSpeed = 1,
+        Func<SdlKeyboardSnapshot, TimeSpan, SdlKeyboardSnapshot>? aiInput = null)
     {
         var debounce = drumDebounce?.Invoke() ?? TimeSpan.Zero;
-        foreach (var lane in _lanes)
-            lane.Advance(keyboard, chartTime, debounce, clockSpeed);
+        for (var index = 0; index < _lanes.Length; index++)
+            _lanes[index].Advance(index == 1 && aiInput is not null ? aiInput(keyboard, chartTime) : keyboard,
+                chartTime, index == 1 && aiInput is not null ? TimeSpan.Zero : debounce, clockSpeed);
         _stage?.Update(chartTime);
     }
 
@@ -481,7 +486,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
             // Online lanes play alone, as each player's own game plays them.
             _session = new TaikoJudgementSession(chart, WindowsFor(chart, course),
-                partnerHandNotes: players == 2 && remote is null && relay is null);
+                partnerHandNotes: players == 2 && remote is null && relay is null && donStage is null);
             if (review is null && remote is not null)
             {
                 // Online: the lane shows in time with this player's song; its numbers are the shadow's (their own play).
@@ -855,6 +860,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _setMissed(review.Timeline.Events.Any(e => e.Time <= time && e.Judgement?.Result == TaikoHitResult.Miss));
             _onChartTime(time);
         }
+
+        public void FollowBranch(Lane leader) => _session.FollowBranch = leader._session.BranchAt;
 
         public void Advance(SdlKeyboardSnapshot keyboard, TimeSpan chartTime, TimeSpan debounce = default, double clockSpeed = 1)
         {

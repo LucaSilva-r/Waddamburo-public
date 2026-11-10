@@ -156,11 +156,34 @@ internal sealed class ScoreSync : IDisposable
             return;
         if (CabinetServer is { } cabinet)
         {
-            cabinet.SyncInBackground(Scores, null, Jobs.Start(Strings.T("job.upload_scores")));
+            cabinet.SyncInBackground(Scores, null, Jobs.Start(Strings.T("job.upload_scores")), () => RefreshBests(profile));
             return;
         }
         if (profile.Token is { } token && ClientFor(token) is { } uploader)
-            uploader.SyncInBackground(Scores, profile.Baid, Jobs.Start(Strings.T("job.upload_scores")));
+            uploader.SyncInBackground(Scores, profile.Baid, Jobs.Start(Strings.T("job.upload_scores")), () => RefreshBests(profile));
+    }
+
+    public async Task<AiBattleSession?> BeginAiBattleAsync(ScoreProfile? profile, string chartSha256, string baseSha256,
+        Waddamburo.Catalog.TaikoCourse course, int options, int supportLevel)
+    {
+        if (profile is null || profile.Baid == ScoreProfile.LocalGuestBaid || _server is null
+            || !ScoreClient.AcceptsDevPlays(_server) && ScoreClient.IsDevVersion(PlayRecord.CurrentEngineVersion))
+            return null;
+        var client = CabinetServer ?? (profile.Token is { } token ? ClientFor(token) : null);
+        if (client is null) return null;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(4));
+        try
+        {
+            return await client.BeginAiBattleAsync(chartSha256, baseSha256, course, options, supportLevel,
+                CabinetServer is null ? null : profile.Baid, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException
+            or System.Text.Json.JsonException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"AI battle is unranked: {exception.Message}");
+            return null;
+        }
     }
 
     /// <summary>
