@@ -381,9 +381,11 @@ public sealed class ScoreSavingTests
             {
                 Battle = new AiBattlePlay(true, "WLWWL", 0, 3),
                 Timing = (12, 400),
+                Seed = 1234,
             }, ChartUpload.From(chart(), TaikoCourse.Oni, null));
             var pending = Assert.Single(store.PendingPlays(42, 50));
             Assert.Equal(("ai_battle", true, "WLWWL", 3, 12d), (pending.Mode, pending.AiWon, pending.AiSections, pending.AiPoints, pending.HitMedianMs));
+            Assert.Equal(1234, pending.Seed);
             Assert.True(store.HasAiWin(42, "sha"));
             Assert.False(store.HasAiWin(42, "other"));
             // The server's battles add up once each: this PC's play (by id) is not counted twice.

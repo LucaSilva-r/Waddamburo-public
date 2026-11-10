@@ -1203,7 +1203,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                     {
                         AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
                         InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
-                        Seed = player.Options.Random == TaikoRandom.None ? null : _seed + lane,
+                        // AI-don's decisions use the seed even without random chart options.
+                        Seed = battle is not null || player.Options.Random != TaikoRandom.None ? _seed + lane : null,
                         Battle = battle,
                         Timing = lane == 0 ? GhostTimingModel.TimingOf(_hitOffsets) : null,
                     },

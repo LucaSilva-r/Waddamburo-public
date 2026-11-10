@@ -209,6 +209,8 @@
   "setup.no_account": "That card has no TaikOnline account.",
   "setup.pairing_failed": "Pairing failed: {0}",
 
+  "nightly.banner": "Nightly builds DO NOT save your scores online!!",
+
   "notices.title": "Notices",
   "notices.close_hint": "{0} to close",
   "notices.empty": "Nothing new.",

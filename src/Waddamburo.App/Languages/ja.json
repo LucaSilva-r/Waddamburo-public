@@ -209,6 +209,8 @@
   "setup.no_account": "そのカードにはTaikOnlineアカウントがありません。",
   "setup.pairing_failed": "ペアリングに失敗しました: {0}",
 
+  "nightly.banner": "ナイトリー版はスコアをオンラインに保存しません！！",
+
   "notices.title": "お知らせ",
   "notices.close_hint": "{0}で閉じる",
   "notices.empty": "新しいお知らせはありません。",

@@ -933,7 +933,7 @@ internal sealed class GameShell : IDisposable
 
             ApplyRecording();
             var result = Application.Run(
-                createFrame,
+                interpolation => onTop(createFrame(interpolation)),
                 tick,
                 Options.FrameLimit,
                 Options.TickLimit,
@@ -1368,7 +1368,6 @@ internal sealed class GameShell : IDisposable
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
             quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
-        quads.AddRange(_performance.Quads());
         var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio)
         {
             BlurredQuads = frosted,
@@ -1393,6 +1392,26 @@ internal sealed class GameShell : IDisposable
         };
         return quads.Select(quad => quad with
             { TopLeft = v(quad.TopLeft), TopRight = v(quad.TopRight), BottomRight = v(quad.BottomRight), BottomLeft = v(quad.BottomLeft) });
+    }
+
+    // Drawn last over every frame (the pause menu, the service menu, a held frame), never frosted with it.
+    private RenderFrame onTop(RenderFrame frame)
+    {
+        var top = new List<RenderQuad>();
+        if (BuildInfo.Nightly)
+        {
+            // A song too: a nightly's plays never reach TaikOnline (ScoreClient.IsDevVersion).
+            top.Add(Painter.Rect(400, 0, 480, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
+            top.Add(Painter.Text(Strings.T("nightly.banner"), 640, 13, 468, 22));
+        }
+        top.AddRange(_performance.Quads());
+        if (top.Count == 0)
+            return frame;
+        return new RenderFrame(frame.ClearColor, frame.Quads.AddRange(top), frame.ContentAspectRatio)
+        {
+            BlurredQuads = frame.BlurredQuads,
+            BackdropBrightness = frame.BackdropBrightness,
+        };
     }
 
     private RenderFrame blackLoadingFrame()
