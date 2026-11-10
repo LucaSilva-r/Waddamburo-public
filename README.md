@@ -11,7 +11,7 @@
 **Waddamburo uses a completely new, independently developed engine. No Bandai
 Namco source code or compiled game code is included in Waddamburo.**
 
-It brings the **Gen3 arcade experience (2011–2019)** to your PC, with:
+It brings the **Gen3 arcade experience (Taiko Green version)** to your PC, with:
 
 - **Online scores and rankings** through [TaikOnline](https://taikonline.com).
 - Uncapped FPS and upscaled graphics.
@@ -124,7 +124,7 @@ contributions, see the [Build and development guide](BUILDING.md).
 **Waddamburoは、独自に新規開発した、まったく新しいエンジンを使用しています。
 バンダイナムコのソースコードやコンパイル済みのゲームコードは一切含まれていません。**
 
-WindowsとLinuxで、**AC15時代（2011〜2019年）**のアーケード体験を楽しめます。
+WindowsとLinuxで、**AC15時代（2019年）**のアーケード体験を楽しめます。
 FPS制限の解除、グラフィックのアップスケーリング、2人プレイ、
 カスタム操作設定、TaikOnlineでのスコア保存とランキングに対応しています。
 
