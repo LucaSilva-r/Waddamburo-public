@@ -43,6 +43,13 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
 
     public Guid? AiSessionId { get; init; }
 
+    /// <summary>A battle played without a server setup (offline): what AI-don started from, for the server to replay it.</summary>
+    public string? AiBaseSha256 { get; init; }
+
+    public double? AiPriorMedianMs { get; init; }
+
+    public double? AiPriorVariance { get; init; }
+
     /// <summary>The player's hit timing in the play: median offset (ms, late positive) and variance (ms²).</summary>
     public double? HitMedianMs { get; init; }
 
@@ -57,6 +64,12 @@ public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, i
 {
     public Guid? SessionId { get; init; }
     public bool Ranked { get; init; }
+
+    /// <summary>The unsimplified chart's hash (a support level's base; the played chart's own at いつもの).</summary>
+    public string? BaseSha256 { get; init; }
+
+    /// <summary>AI-don's starting timing (median ms, variance ms²); null: the model's own.</summary>
+    public (double Median, double Variance)? Prior { get; init; }
 }
 
 /// <summary>One of the player's AI battles on the server (any machine).</summary>
@@ -340,6 +353,11 @@ public sealed class ScoreStore : IDisposable
         ALTER TABLE plays ADD COLUMN ai_session_id TEXT;
         ALTER TABLE plays ADD COLUMN ai_ranked INTEGER NOT NULL DEFAULT 0;
         """,
+        """
+        ALTER TABLE plays ADD COLUMN ai_base_sha256 TEXT;
+        ALTER TABLE plays ADD COLUMN ai_prior_median REAL;
+        ALTER TABLE plays ADD COLUMN ai_prior_variance REAL;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -386,7 +404,8 @@ public sealed class ScoreStore : IDisposable
             command.CommandText = """
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
                     cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms,
-                    options, seed, ai_won, ai_sections, ai_support, ai_points, hit_median, hit_variance, ai_session_id
+                    options, seed, ai_won, ai_sections, ai_support, ai_points, hit_median, hit_variance, ai_session_id,
+                    ai_base_sha256, ai_prior_median, ai_prior_variance
                 FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND (cleared = 1 OR mode = 'ai_battle')
                     AND uploaded_at IS NULL
                 ORDER BY played_at LIMIT $limit
@@ -414,6 +433,9 @@ public sealed class ScoreStore : IDisposable
                     HitMedianMs = reader.IsDBNull(25) ? null : reader.GetDouble(25),
                     HitVariance = reader.IsDBNull(26) ? null : reader.GetDouble(26),
                     AiSessionId = reader.IsDBNull(27) ? null : Guid.Parse(reader.GetString(27)),
+                    AiBaseSha256 = reader.IsDBNull(28) ? null : reader.GetString(28),
+                    AiPriorMedianMs = reader.IsDBNull(29) ? null : reader.GetDouble(29),
+                    AiPriorVariance = reader.IsDBNull(30) ? null : reader.GetDouble(30),
                 });
             return plays;
         }
@@ -594,10 +616,10 @@ public sealed class ScoreStore : IDisposable
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
                 audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
-                hit_median, hit_variance, ai_session_id, ai_ranked)
+                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance)
             """;
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -627,6 +649,9 @@ public sealed class ScoreStore : IDisposable
         command.Parameters.AddWithValue("$ai_points", (object?)play.Battle?.Points ?? DBNull.Value);
         command.Parameters.AddWithValue("$ai_session_id", (object?)play.Battle?.SessionId?.ToString() ?? DBNull.Value);
         command.Parameters.AddWithValue("$ai_ranked", play.Battle?.Ranked == true);
+        command.Parameters.AddWithValue("$ai_base", (object?)play.Battle?.BaseSha256 ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_prior_median", (object?)play.Battle?.Prior?.Median ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ai_prior_variance", (object?)play.Battle?.Prior?.Variance ?? DBNull.Value);
         command.Parameters.AddWithValue("$hit_median", (object?)play.Timing?.Median ?? DBNull.Value);
         command.Parameters.AddWithValue("$hit_variance", (object?)play.Timing?.Variance ?? DBNull.Value);
         command.ExecuteNonQuery();

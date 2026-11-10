@@ -51,6 +51,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private AiDrummer? _aiBot;
     public AiBattleSession? AiSession { get; set; }
     private int _supportLevel;
+    // The battle as the server replays it: AI-don's starting timing, and whether the play uploads (a signed-in player).
+    private (double Median, double Variance)? _aiPrior;
+    private bool _aiUploads;
     private AiBattlePresentation? _battle;
     // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
     private ReviewSession? _review;
@@ -345,9 +348,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _battle = aiBattle ? new AiBattlePresentation(active, _charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
         if (_battle is { } battle && _review is null)
         {
-            var simulation = new AiBattleSimulation(_charts[0], players[0].Course, _seed,
-                AiSession is { } session ? session.Timing : aiProgress(players[0].Player).Timing,
-                AiSession is not null ? AiBattleSimulation.OnlineLevel : Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0] : null);
+            // A signed-in player's battle uploads, with or without a server setup (offline): the server replays it, so
+            // it plays the frozen online tuning. Local guests may use the installation's.
+            _aiUploads = AiSession is not null
+                || TaikoGuest.Profiles[(int)players[0].Player] is { } signedIn && signedIn.Baid != ScoreProfile.LocalGuestBaid;
+            _aiPrior = AiSession is { } session ? session.Timing : aiProgress(players[0].Player).Timing;
+            var simulation = new AiBattleSimulation(_charts[0], players[0].Course, _seed, _aiPrior,
+                _aiUploads ? AiBattleSimulation.OnlineLevel : Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0] : null);
             _aiBot = new AiDrummer(simulation, () => Shell.Gameplay.Replays[0].Inputs);
             battle.Simulation = simulation;
             Shell.Gameplay.FollowBranch(1, 0);
@@ -1198,16 +1205,22 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 AiBattlePlay? battle = null;
                 if (lane == 0 && _battle?.Outcome is { Sections.Count: > 0 } outcome)
                 {
-                    var ranks = AiSession is null ? Shell.AiRanks : AiBattleRanks.Green;
+                    var ranks = _aiUploads ? AiBattleRanks.Green : Shell.AiRanks;
                     var before = AiSession is { } setup ? new AiProgress(setup.Points, setup.Wins, setup.Timing) : scores.AiProgress(profile.Baid);
+                    // Offline, a signed-in player's battle counts provisionally; the server verifies it on upload.
+                    var ranked = AiSession?.Ranked ?? _aiUploads;
                     var award = ranks.Award(before.Points, player.Course, played.Level ?? 0, outcome.Won, cleared,
-                        usual: !_intermediate && AiSession?.Ranked == true, firstWin: !scores.HasAiWin(profile.Baid, sha));
+                        usual: !_intermediate && ranked, firstWin: !scores.HasAiWin(profile.Baid, sha));
                     battle = new AiBattlePlay(outcome.Won, string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')),
-                        _supportLevel, award.Points) { SessionId = AiSession?.Id, Ranked = AiSession?.Ranked == true };
+                        _supportLevel, award.Points)
+                    {
+                        SessionId = AiSession?.Id, Ranked = ranked,
+                        BaseSha256 = ChartHash.Compute(_sourceCharts[lane], player.Course), Prior = _aiPrior,
+                    };
                     var rank = ranks.RankOf(before.Points);
                     Shell.Hosts.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
                         award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins))
-                        { ShowProgress = AiSession?.Ranked == true };
+                        { ShowProgress = ranked };
                     Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");
                 }
                 scores.Save(new PlayRecord(id, profile.Baid, sha,

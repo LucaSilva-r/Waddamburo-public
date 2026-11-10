@@ -343,7 +343,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             var session = await Shell.Sync.BeginAiBattleAsync(TaikoGuest.Profiles[(int)player.Player],
                 ChartHash.Compute(chart, player.Course), ChartHash.Compute(source, player.Course), player.Course,
                 player.Options.Bits, support).ConfigureAwait(false);
-            if (session?.Ranked != true)
+            // No answer (offline): the battle uploads later and the server verifies it then.
+            if (session is { Ranked: false })
                 Shell.Sync.Notices.Add(new Waddamburo.Game.Online.Notice("ai-unranked", Waddamburo.Game.Online.NoticeSource.Local,
                     Waddamburo.Game.Online.NoticeSeverity.Info,
                     Strings.T("notice.ai_unranked"), DateTimeOffset.UtcNow));

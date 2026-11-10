@@ -19,9 +19,12 @@ The response is an `AiBattleSession`: `id`, `seed`, `version`, `chart_sha256`,
 and `hit_variance`. The timing pair may be null. Repeating an unplayed setup
 returns the same session and seed. A setup binds to one player's one play ID.
 
-A missing setup permits local, unranked play. An unapproved chart can receive an
-unranked setup. Neither case earns online points or reward wins. Development and
-nightly clients retain their existing upload restrictions.
+Without a connection, a signed-in player's battle still counts: it plays with a
+local seed and the frozen online tuning, and uploads later with its seed, base chart
+hash and AI-don's starting timing; the server creates the setup from them and
+verifies it the same way. A local guest's battle never uploads (installation tuning).
+An unapproved chart gets an unranked setup, which earns no online points or reward
+wins. Development and nightly clients retain their existing upload restrictions.
 
 ## Replaying and awarding
 
@@ -42,7 +45,7 @@ Only verified battles on approved bases count toward online progress. A battle
 win can count without a gauge clear, including on a support chart. Rank points
 require a win, a gauge clear, the standard chart, and the rank's star threshold.
 The existing Green ladder supplies the base point and first-win/high-level
-bonuses. The server recalculates points in setup order after delayed uploads,
+bonuses. The server recalculates points in play order after delayed uploads,
 rescoring, and moderation. Synced server results replace provisional local awards.
 
 ## The model
