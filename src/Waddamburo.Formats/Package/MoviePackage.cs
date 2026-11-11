@@ -24,13 +24,18 @@ public static class MoviePackage
     /// <param name="json">The text of movie.json.</param>
     /// <param name="readScript">Reads a script file of the package by its relative path (movies without scripts need none).</param>
     /// <exception cref="FormatException">The text is not a valid movie, or a script has an error; the message says where.</exception>
-    public static Assembled Assemble(string json, Func<string, string>? readScript = null)
+    /// <param name="scriptErrors">
+    /// Given: a script that does not compile (or cannot be read) is left out of the movie and reported here, so the
+    /// rest of the movie still plays (the editor). Null: the first such error is thrown.
+    /// </param>
+    public static Assembled Assemble(string json, Func<string, string>? readScript = null,
+        ICollection<ActionScriptException>? scriptErrors = null)
     {
         ArgumentNullException.ThrowIfNull(json);
         try
         {
             using var document = JsonDocument.Parse(json, Options);
-            return new Assembler(readScript).Run(document.RootElement);
+            return new Assembler(readScript, scriptErrors).Run(document.RootElement);
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or OverflowException)
         {
@@ -53,7 +58,7 @@ public static class MoviePackage
     /// <summary>The parsing options of movie.json (comments and trailing commas allowed).</summary>
     public static JsonDocumentOptions ReadOptions => Options;
 
-    private sealed class Assembler(Func<string, string>? readScript)
+    private sealed class Assembler(Func<string, string>? readScript, ICollection<ActionScriptException>? scriptErrors)
     {
         private readonly List<byte[]> _actions = [];
         private readonly List<float[]> _bounds = [];
@@ -282,7 +287,15 @@ public static class MoviePackage
         {
             if (readScript is null)
                 throw new FormatException($"{FileName}: the movie has scripts but no script files were given.");
-            _actions.Add(ActionScript.Compile(readScript(path), path, value => checked((ushort)text(value))));
+            try
+            {
+                _actions.Add(ActionScript.Compile(readScript(path), path, value => checked((ushort)text(value))));
+            }
+            catch (Exception exception) when (scriptErrors is not null && exception is ActionScriptException or IOException)
+            {
+                scriptErrors.Add(exception as ActionScriptException ?? new ActionScriptException(path, 1, 1, "The file could not be read."));
+                _actions.Add([0x00]); // An empty script: End.
+            }
             return (uint)_actions.Count - 1;
         }
 

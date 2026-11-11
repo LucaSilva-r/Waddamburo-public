@@ -60,6 +60,9 @@ public sealed unsafe class ImGuiLayer : IDisposable
     public Func<ImGuiKey, bool>? CaptureKey { get; set; }
     public bool CaptureControlShortcuts { get; set; }
 
+    /// <summary>A file dragged from the desktop was dropped on the window (its path).</summary>
+    public Action<string>? FileDropped { get; set; }
+
     internal void BeginFrame(float deltaSeconds, Vector2 windowSize, Vector2 pixelSize)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -90,6 +93,10 @@ public sealed unsafe class ImGuiLayer : IDisposable
         var io = ImGui.GetIO();
         switch ((SDL_EventType)e.type)
         {
+            case SDL_EventType.SDL_EVENT_DROP_FILE:
+                if (System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)e.drop.data) is { Length: > 0 } dropped)
+                    FileDropped?.Invoke(dropped);
+                return true;
             case SDL_EventType.SDL_EVENT_MOUSE_MOTION:
                 io.AddMousePosEvent(e.motion.x, e.motion.y);
                 return io.WantCaptureMouse;

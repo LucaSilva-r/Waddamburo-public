@@ -53,6 +53,34 @@ public sealed partial class MovieInspectorSession : IDisposable
         EditorTheme.Apply();
         _layer.CaptureKey = static key => key is ImGuiKey.Space or ImGuiKey.RightArrow;
         _layer.CaptureControlShortcuts = true;
+        // A PNG or SVG dropped on the window becomes a texture of the package.
+        if (document is not null)
+            _layer.FileDropped = path => attempt(() => document.ImportTexture(path));
+    }
+
+    /// <summary>The scripts left out of the running movie because they do not compile (set by the host on each load).</summary>
+    public IReadOnlyList<Waddamburo.Formats.Package.ActionScriptException> ScriptErrors { get; set; } = [];
+
+    /// <summary>A package texture by its name in movie.json, for ImGui.Image thumbnails (set by the host).</summary>
+    public Func<string, (nint Texture, int Width, int Height)?>? TextureOf { get; set; }
+
+    // What the last refused operation said (a name taken, an asset in use...).
+    private string? _notice;
+
+    /// <summary>Runs a document operation; one it refuses becomes the notice in the toolbar instead of an error.</summary>
+    private bool attempt(Action operation)
+    {
+        try
+        {
+            edited(operation);
+            _notice = null;
+            return true;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            _notice = exception.Message;
+            return false;
+        }
     }
 
     /// <summary>The movie is held on its current frame.</summary>
@@ -78,6 +106,13 @@ public sealed partial class MovieInspectorSession : IDisposable
             | ImGuiWindowFlags.NoSavedSettings | extra);
     }
 
+    private void selectClip(string? path)
+    {
+        _selected = path;
+        _selectedAsset = null;
+        _assetGesture = false;
+    }
+
     private void draw()
     {
         var io = ImGui.GetIO();
@@ -90,10 +125,16 @@ public sealed partial class MovieInspectorSession : IDisposable
                 Paused = !Paused;
             if (ImGui.IsKeyPressed(ImGuiKey.RightArrow))
                 (Paused, _step) = (true, true);
-            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
-                edited(() => { if (io.KeyShift) _document?.Redo(); else _document?.Undo(); });
-            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
-                edited(() => _document?.Redo());
+        }
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+        {
+            _assetGesture = _gesture = false;
+            edited(() => { if (io.KeyShift) _document?.Redo(); else _document?.Undo(); });
+        }
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
+        {
+            _assetGesture = _gesture = false;
+            edited(() => _document?.Redo());
         }
         var player = _player();
         var clips = player.InspectDisplayList();
@@ -115,6 +156,11 @@ public sealed partial class MovieInspectorSession : IDisposable
         if (panel("##movie toolbar", rect, ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar))
         {
             ImGui.TextUnformatted(_title);
+            if (_notice is not null || ScriptErrors.Count > 0)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(new(1, .45f, .35f, 1), _notice ?? $"{ScriptErrors.Count} script error(s): {ScriptErrors[0].Message}");
+            }
             ImGui.SameLine();
             ImGui.TextColored(new(.52f, .56f, .61f, 1), _gameData ? "game data: reference only, nothing here is saved"
                 : _document is null ? "movie package" : "movie package: changes are written to movie.json as you make them");
@@ -191,7 +237,7 @@ public sealed partial class MovieInspectorSession : IDisposable
                         closed = clip.Path + "/";
                 }
                 if (ImGui.Selectable($"{name}{state}##{clip.Path}", clip.Path == _selected))
-                    _selected = clip.Path;
+                    selectClip(clip.Path);
                 if (clip.Path == _selected && _scrollToSelected)
                 {
                     ImGui.SetScrollHereY();
@@ -267,10 +313,12 @@ public sealed partial class MovieInspectorSession : IDisposable
 
     private void inspector(EditorPanel rect, LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo? clip)
     {
-        if (panel("Clip", rect))
+        if (panel("Inspector", rect))
         {
-            if (clip is null)
-                ImGui.TextColored(new(.52f, .56f, .61f, 1), "Select a clip.");
+            if (_selectedAsset is not null)
+                assetInspector();
+            else if (clip is null)
+                ImGui.TextColored(new(.52f, .56f, .61f, 1), "Select a clip or asset.");
             else
             {
                 void row(string label, string value)
@@ -308,7 +356,7 @@ public sealed partial class MovieInspectorSession : IDisposable
                     var frame = clip.Frame;
                     ImGui.SetNextItemWidth(-1);
                     if (ImGui.SliderInt("##frame", ref frame, 0, clip.FrameCount - 1))
-                        player.InspectGoto(clip.Path, frame, play: false);
+                        player.InspectGoto(clip.Path, frame, clip.Playing);
                     if (ImGui.Button(clip.Playing ? "Stop" : "Play"))
                         player.InspectSetPlaying(clip.Path, !clip.Playing);
                     foreach (var (label, at) in player.InspectLabels(clip.Path))
@@ -342,6 +390,11 @@ public sealed partial class MovieInspectorSession : IDisposable
                 if (_document is not null && ImGui.BeginTabItem("Timeline"))
                 {
                     timeline(player, clips);
+                    ImGui.EndTabItem();
+                }
+                if (_document is not null && ImGui.BeginTabItem("Assets"))
+                {
+                    assets();
                     ImGui.EndTabItem();
                 }
                 if (ImGui.BeginTabItem("Callbacks"))
@@ -480,7 +533,7 @@ public sealed partial class MovieInspectorSession : IDisposable
 
     private void pick(LumenPlayer player, Vector2 point)
     {
-        _selected = player.InspectPick(point.X, point.Y);
+        selectClip(player.InspectPick(point.X, point.Y));
         _scrollToSelected = _selected is not null;
         // Its parents open in the tree so it can be seen there.
         for (var path = _selected; path?.LastIndexOf('/') is > 0 and var cut; path = path[..cut])

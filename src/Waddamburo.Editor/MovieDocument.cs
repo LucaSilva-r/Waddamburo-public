@@ -11,9 +11,9 @@ namespace Waddamburo.Editor;
 /// and later texts of the file. ponytail: a file the editor has written loses the comments it had (the JSON
 /// tree does not keep them) and is formatted the editor's way.
 /// </summary>
-public sealed class MovieDocument
+public sealed partial class MovieDocument
 {
-    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static readonly JsonSerializerOptions ValueOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     private readonly List<string> _undo = [], _redo = [];
     private string _text;
 
@@ -48,7 +48,7 @@ public sealed class MovieDocument
         ArgumentNullException.ThrowIfNull(change);
         var before = _text;
         change(Root);
-        var after = Root.ToJsonString(WriteOptions);
+        var after = Format(Root);
         if (after == normalised(before))
             return;
         if (!continues || _undo.Count == 0)
@@ -57,7 +57,52 @@ public sealed class MovieDocument
         write(after);
     }
 
-    private static string normalised(string text) => parse(text).ToJsonString(WriteOptions);
+    private static string normalised(string text) => Format(parse(text));
+
+    /// <summary>
+    /// The file's layout: a line per entry, with anything small (a key, a rect, a text field) on one line, so the
+    /// file reads like a hand-written one and a change is a short diff.
+    /// </summary>
+    public static string Format(JsonNode? node)
+    {
+        var text = new System.Text.StringBuilder();
+        write(text, node, 0);
+        return text.ToString();
+
+        static bool flat(JsonNode? value) => value is null or JsonValue
+            || (value is JsonArray array && array.All(static each => each is null or JsonValue));
+        static string inline(JsonNode? value) => value switch
+        {
+            null => "null",
+            JsonArray array => $"[{string.Join(", ", array.Select(inline))}]",
+            JsonObject entries => entries.Count == 0 ? "{}"
+                : $"{{ {string.Join(", ", entries.Select(static entry => $"{name(entry.Key)}: {inline(entry.Value)}"))} }}",
+            _ => value.ToJsonString(ValueOptions),
+        };
+        static string name(string key) => JsonValue.Create(key).ToJsonString(ValueOptions);
+        static void write(System.Text.StringBuilder text, JsonNode? value, int level)
+        {
+            var small = flat(value) || (value is JsonObject leaf && leaf.All(static entry => flat(entry.Value)));
+            if (small && inline(value) is { Length: <= 110 } line)
+            {
+                text.Append(line);
+                return;
+            }
+            var indent = new string(' ', 2 * level + 2);
+            var entries = value is JsonObject map ? map.Select(entry => (Key: (string?)entry.Key, entry.Value)).ToList()
+                : ((JsonArray)value!).Select(static each => (Key: (string?)null, Value: each)).ToList();
+            text.Append(value is JsonObject ? '{' : '[').Append('\n');
+            for (var index = 0; index < entries.Count; index++)
+            {
+                text.Append(indent);
+                if (entries[index].Key is { } key)
+                    text.Append(name(key)).Append(": ");
+                write(text, entries[index].Value, level + 1);
+                text.Append(index + 1 < entries.Count ? ",\n" : "\n");
+            }
+            text.Append(' ', 2 * level).Append(value is JsonObject ? '}' : ']');
+        }
+    }
 
     public void Undo() => step(_undo, _redo);
 

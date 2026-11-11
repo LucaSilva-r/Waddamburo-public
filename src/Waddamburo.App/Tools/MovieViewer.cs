@@ -15,7 +15,8 @@ internal static class MovieViewer
     /// <summary>The viewer on a movie package folder (movie.json + textures) instead of an archive movie.</summary>
     public static int RunPackage(string directory, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
         int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline) =>
-        run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodeImage), windowWidth, windowHeight, seekFrame,
+        // Script errors are tolerated here (the movie plays without those scripts): the load below reports them.
+        run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodeImage, scriptErrors: []), windowWidth, windowHeight, seekFrame,
             frameLimit, tickLimit, screenshotPath, callbackInvocations, inputTimeline, directory);
 
     public static int Run(
@@ -63,6 +64,8 @@ internal static class MovieViewer
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"Renderer: {application.GpuDriver}");
+        var document = package is null || plain ? null : new Waddamburo.Editor.MovieDocument(package);
+        var scriptErrors = new List<Waddamburo.Formats.Package.ActionScriptException>();
         // Reloads happen on every step of a drag in the editor: a texture file is decoded once, and uploaded once.
         var decoded = new Dictionary<string, (int Width, int Height, byte[] Rgba)?>(StringComparer.Ordinal);
         var uploaded = new Dictionary<byte[], RenderTextureId>(ReferenceEqualityComparer.Instance);
@@ -78,8 +81,19 @@ internal static class MovieViewer
                 : uploaded[pixels] = application.UploadRgba8(checked((uint)texture.Width), checked((uint)texture.Height), pixels);
         }
         if (package is not null)
-            content = LumenMovieContent.LoadPackage(package, decodeOnce); // Through the cache, so a reload reuses everything.
+            content = LumenMovieContent.LoadPackage(package, decodeOnce, scriptErrors: scriptErrors); // Through the cache, so a reload reuses everything.
         var textureIds = content.Textures.Select(upload).ToArray();
+        foreach (var error in scriptErrors)
+            Console.Error.WriteLine(error.Message);
+        // Textures by their movie.json name (same order as the movie's), for the editor's thumbnails.
+        var named = new Dictionary<string, (nint, int, int)>(StringComparer.Ordinal);
+        void nameTextures(LumenMovieContent loadedContent, RenderTextureId[] ids)
+        {
+            named.Clear();
+            if (document?.Root["textures"] is System.Text.Json.Nodes.JsonObject list && list.Count == ids.Length)
+                foreach (var (entry, index) in list.Select(static (entry, index) => (entry, index)))
+                    named[entry.Key] = ((nint)ids[index].Value, loadedContent.Textures[index].Width, loadedContent.Textures[index].Height);
+        }
         var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
         // Diagnostic: WADDAMBURO_FILL_PLACEHOLDERS=don1p,don2p draws those native fills as solid boxes (red, blue, green,
         // ...), 360 px square, so movies that hold host-drawn art (the Dons) show where it goes.
@@ -116,7 +130,6 @@ internal static class MovieViewer
         // The movie inspector (tree, clip state, callbacks) over an interactive window; --plain leaves the bare movie.
         // --inspect[=clip] shows it in a --ticks / --screenshot run too, with that clip selected.
         var inspect = Environment.GetCommandLineArgs().FirstOrDefault(static each => each.StartsWith("--inspect", StringComparison.Ordinal));
-        var document = package is null || plain ? null : new Waddamburo.Editor.MovieDocument(package);
         using var inspector = plain || (debugger is null && inspect is null) ? null
             : new Waddamburo.Editor.MovieInspectorSession(application, () => player, content.Name, gameData: package is null,
                 select: inspect?.Split('=', 2) is [_, var clip] ? clip : null, document: document);
@@ -132,12 +145,18 @@ internal static class MovieViewer
             loaded = now;
             try
             {
-                var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce);
+                var errors = new List<Waddamburo.Formats.Package.ActionScriptException>();
+                var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce, scriptErrors: errors);
                 if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
                     throw new InvalidDataException($"{problem.Code}: {problem.Message}");
                 var freshPlayer = fresh.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
                 // ponytail: textures no longer used stay on the GPU until the viewer closes.
                 textureIds = [.. fresh.Textures.Select(upload)];
+                nameTextures(fresh, textureIds);
+                foreach (var error in errors)
+                    Console.Error.WriteLine(error.Message);
+                if (inspector is not null)
+                    inspector.ScriptErrors = errors;
                 player = freshPlayer;
                 if (debugger is not null)
                     debugger.Player = player;
@@ -146,6 +165,12 @@ internal static class MovieViewer
             {
                 Console.Error.WriteLine($"Not reloaded: {exception.Message}");
             }
+        }
+        nameTextures(content, textureIds);
+        if (inspector is not null)
+        {
+            inspector.ScriptErrors = scriptErrors;
+            inspector.TextureOf = name => named.TryGetValue(name, out var texture) ? texture : null;
         }
         if (document is not null)
             document.Changed += reload; // An edit shows at once, not at the next check for saved files.

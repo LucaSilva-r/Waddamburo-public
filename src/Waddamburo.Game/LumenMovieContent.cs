@@ -76,15 +76,17 @@ public sealed class LumenMovieContent
     /// <param name="directory">The package folder; its name is the movie's.</param>
     /// <param name="decodeImage">Decodes a PNG file's bytes to straight RGBA rows; null when it cannot.</param>
     /// <param name="limits">Parser limits (the defaults when null).</param>
+    /// <param name="scriptErrors">Given: scripts with errors are left out and reported here (see MoviePackage.Assemble).</param>
     public static LumenMovieContent LoadPackage(string directory,
-        Func<byte[], (int Width, int Height, byte[] Rgba)?> decodeImage, ParserLimits? limits = null)
+        Func<byte[], (int Width, int Height, byte[] Rgba)?> decodeImage, ParserLimits? limits = null,
+        ICollection<Formats.Package.ActionScriptException>? scriptErrors = null)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(decodeImage);
         var parserLimits = limits ?? ParserLimits.Default;
         var root = Path.GetFullPath(directory);
         var assembled = Formats.Package.MoviePackage.Assemble(
-            File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)), script => File.ReadAllText(inside(script)));
+            File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)), script => File.ReadAllText(inside(script)), scriptErrors);
         // A shared package is untrusted: its files stay inside its folder.
         string inside(string file)
         {

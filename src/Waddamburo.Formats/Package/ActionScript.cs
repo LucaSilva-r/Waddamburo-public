@@ -8,6 +8,11 @@ namespace Waddamburo.Formats.Package;
 public sealed class ActionScriptException(string file, int line, int column, string message)
     : FormatException($"{file}({line},{column}): {message}")
 {
+    public string File { get; } = file;
+
+    /// <summary>The message without the place.</summary>
+    public string Problem { get; } = message;
+
     public int Line { get; } = line;
 
     public int Column { get; } = column;

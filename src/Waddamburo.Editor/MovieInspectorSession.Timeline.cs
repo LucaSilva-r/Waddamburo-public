@@ -119,7 +119,7 @@ public sealed partial class MovieInspectorSession
         ImGui.InvisibleButton("##ruler", new(width, RowHeight));
         if (ImGui.IsItemActive())
         {
-            player.InspectGoto(clip.Path, frameAt(ImGui.GetIO().MousePos.X), play: false);
+            player.InspectGoto(clip.Path, frameAt(ImGui.GetIO().MousePos.X), clip.Playing);
             Paused = true;
         }
         if (ImGui.BeginPopupContextItem("##ruler menu"))
@@ -154,7 +154,7 @@ public sealed partial class MovieInspectorSession
             ImGui.SameLine();
             var title = (string?)layer["name"] is { Length: > 0 } instance ? $"{instance}  ({(string?)layer["character"]})" : (string?)layer["character"] ?? "?";
             if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.None, new(NameColumn - 34, RowHeight - 4)))
-                _selected = path;
+                selectClip(path);
 
             // The row: a click on a key selects it, a drag moves it, a double click on empty space makes one.
             ImGui.SetCursorScreenPos(new(origin.X + NameColumn, top));
@@ -162,12 +162,12 @@ public sealed partial class MovieInspectorSession
             var under = frameAt(ImGui.GetIO().MousePos.X);
             if (ImGui.IsItemActivated())
             {
-                _selected = path;
+                selectClip(path);
                 // The nearest key within a few pixels, so thin frames can still be grabbed.
                 var near = keys.OrderBy(key => Math.Abs(x(key) + step / 2 - ImGui.GetIO().MousePos.X)).Cast<int?>().FirstOrDefault();
                 _key = near is { } hit && Math.Abs(x(hit) + step / 2 - ImGui.GetIO().MousePos.X) <= Math.Max(step / 2, 6) ? (name, index, hit) : null;
                 _keyDrag = false;
-                player.InspectGoto(clip.Path, _key?.Frame ?? under, play: false);
+                player.InspectGoto(clip.Path, _key?.Frame ?? under, clip.Playing);
                 Paused = true;
             }
             if (ImGui.IsItemActive() && _key is { } held && held.Layer == index && held.Sprite == name && under != held.Frame && !keys.Contains(under))
@@ -176,7 +176,7 @@ public sealed partial class MovieInspectorSession
                 _keyDrag = true;
                 edited(() => _document!.Edit(_ => layer["keys"]!.AsArray().OfType<JsonObject>().First(key => (int)key["frame"]! == held.Frame)["frame"] = under, continues));
                 _key = (name, index, under);
-                player.InspectGoto(clip.Path, under, play: false);
+                player.InspectGoto(clip.Path, under, clip.Playing);
             }
             if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !keys.Contains(under))
             {

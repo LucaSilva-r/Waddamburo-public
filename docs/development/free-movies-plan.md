@@ -154,6 +154,30 @@ Write side, to build (packages only):
 - Save writes the package. A game-data movie stays reference only: no save, and no copying of its shapes, textures
   or scripts into a package.
 
+#### What the panels are built on
+
+The UI (ImGui, `MovieInspectorSession.*.cs`) only draws and calls these; rules and file handling live below it.
+
+- `MovieDocument` (tests: `MovieDocumentTests`, `MovieDocumentAssetsTests`): `Root` (the JSON tree), `Edit(change,
+  continues)`, `Undo` / `Redo`, `Changed`; `Layer`, `KeyAt`, `Value`, `Set` for keys.
+  - Assets: `ImportTexture(path)`, `ReplaceTexture(name, path)`, `AddShape(name, texture, width, height, uv)`,
+    `AddSprite(name, frames)`, `Rename(group, from, to)` (follows every reference), `Delete(group, name)` (refused
+    while used), `Uses(group, name)`, `Unused()`, `Exists(group, name)`. Groups: `textures`, `shapes`, `texts`,
+    `sprites`. A refused operation throws `InvalidOperationException` with the sentence to show.
+  - Scripts: `Scripts()` (file, sprite, frame; classes have no sprite), `AttachScript(sprite, frame, file)`,
+    `DetachScript`, `AddClass`, `RemoveClass` (a missing file is created with a comment), `OpenOutside(file)` (the
+    system's program for it), `FilePath(relative)`.
+  - `Format(node)`: the file's layout (small entries on one line), so an edited file stays readable and diffs short.
+- In the session: `attempt(operation)` runs a document operation, reloads the stage and turns a refusal into the
+  toolbar notice; `edited(change)` the same without the catch; `ScriptErrors` (file, line, column, `Problem`) are
+  the scripts left out of the running movie because they do not compile (`MoviePackage.Assemble(scriptErrors:)`: the
+  movie plays without them); `TextureOf(name)` gives a texture's id and size for `ImGui.Image` thumbnails; a PNG or
+  SVG dropped on the window is imported (`ImGuiLayer.FileDropped`).
+- On the player: the `Inspect…` calls (`LumenPlayer.Inspect.cs`).
+
+Still without UI: texture thumbnails and import / replace / rename / delete buttons, new shape from a texture,
+new sprite, the script list with attach / detach / open, the error list (the toolbar shows the first only).
+
 ### Contract per movie
 
 What a replacement must match is everything that crosses the movie's edge:
@@ -212,7 +236,9 @@ used by several scenes, and other movies' developer branches load it.
   rotation, alpha and name, a change making a key on the current frame; user-tried, works); (b) timeline rows
   and keys, stage gizmos (built 2026-11-11: a row per layer with its keys, click / drag / double-click / Delete on
   keys, ruler with playhead and labels, frame count, add and remove layers, drag on the stage moves the selected clip;
-  scale and rotate by the fields only, no handles yet; curves are straight lines); (c) assets panel; (d) code panel with the error list. Done when the timer can be rebuilt
+  scale and rotate by the fields only, no handles yet; curves are straight lines); (c) assets panel (text fields built by hand in the UI; the document operations for textures, shapes,
+  sprites and renames are built and tested, their UI is not); (d) code panel with the error list (operations and the
+  error list built, UI not). Done when the timer can be rebuilt
   in it from an empty package.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.
 - [ ] 7. Remaining screens by flow order (song select last: the largest script).
@@ -230,3 +256,5 @@ stock one). The editor comes after so it has something to save.
 - Don-chan is a 3D model (`don-rendering.md`), sounds are NUB banks: both need free replacements too, outside this plan.
 - Text: movies use device fonts through `LmbTextDefinition`; a free font to ship.
 - Whether artists want SWF import (author in an old Flash, convert quads + AS2 to a package). Only if asked for.
+
+Editor interaction (2026-11-11): assets are selected in the bottom browser and edited in the shared top-right Inspector. Selecting a stage clip, hierarchy entry or timeline layer returns the Inspector to that clip. Asset property gestures use one document undo step; Ctrl+Z / Ctrl+Y also work while a property input has focus.
