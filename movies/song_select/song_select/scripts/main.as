@@ -184,8 +184,10 @@ this.onEnterFrame = function() {
         move(-1);
     } else if (pressed[1]) {
         move(1);
-    } else if ((pressed[2] && !blocked) || Lumen.IsTimeup()) {
-        // Out of time: one step further each frame, until a song and its first course are picked.
+    } else if (pressed[2] && !blocked) {
+        decide();
+    } else if (Lumen.IsTimeup()) {
+        // Out of time: one step further each frame, off the lines that go back, until a song and a course are picked.
         if (mode == SONGS && song < 0) {
             song = 0;
         }
