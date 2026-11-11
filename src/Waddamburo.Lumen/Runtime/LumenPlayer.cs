@@ -1957,7 +1957,12 @@ public sealed class LumenPlayer
                 var alive = true;
                 for (var node = child; node is not null && node != instance; node = node.Parent)
                     alive &= !node.Removed;
-                if (!alive || child.Frame < 0 || !_sprites.TryGetValue(child.CharacterId, out var childTimeline))
+                // A class-bound clip is set up by its constructor: song_select's courseStar_ and modeTitle_, re-created
+                // when backing out of the courses rewinds main, would rerun Startup("course") and hang the menu.
+                // ponytail: class-bound vs plain is the observed split, not a known rule of the game's player.
+                if (!alive || child.Frame < 0 || child.ConstructedClass is not null
+                    || _pendingConstructions.Exists(pending => pending.Instance == child)
+                    || !_sprites.TryGetValue(child.CharacterId, out var childTimeline))
                     continue;
                 foreach (var action in childTimeline.Frames[child.Frame].OfType<LmbDoActionCommand>())
                     enqueueAction(child, action);
