@@ -6,6 +6,53 @@ namespace Waddamburo.Editor;
 
 public sealed partial class MovieInspectorSession
 {
+    private bool _scrollToSelected;
+    private string? _selected;
+    private void selectClip(string? path)
+    {
+        _selection.Clear();
+        if (path is not null) _selection.Add(path);
+        _selectionAnchor = path;
+        _selected = path;
+        _selectedAsset = null;
+        _assetGesture = false;
+    }
+
+    private Vector2? _lastPickPoint;
+    private string[] _pickCycle = [];
+    private int _pickIndex;
+
+    private void pick(LumenPlayer player, Vector2 point)
+    {
+        var clips = player.InspectDisplayList();
+        var hits = clips.Reverse().Where(clip => clip.Level > 0 && clip.Visible && !clip.HiddenByHost && clip.Multiply.Alpha > 0
+            && player.TryInspectBounds(clip.Path, out var box) && point.X >= box.X && point.X <= box.X + box.Width
+            && point.Y >= box.Y && point.Y <= box.Y + box.Height).ToArray();
+        var paths = hits.Select(clip => clip.Path).ToArray();
+        if (hits.FirstOrDefault() is { } first && first.Path.LastIndexOf('/') is >= 0 and var parentCut)
+        {
+            var parentPath = first.Path[..parentCut];
+            if (paths.Contains(parentPath))
+                paths = [parentPath, .. paths.Where(path => path != parentPath)];
+        }
+        if (_lastPickPoint is { } last && Vector2.Distance(last, point) < 6 && paths.SequenceEqual(_pickCycle))
+            _pickIndex = (_pickIndex + 1) % Math.Max(1, paths.Length);
+        else
+        {
+            _pickCycle = paths;
+            _pickIndex = 0;
+        }
+        _lastPickPoint = point;
+        selectClip(paths.Length == 0 ? null : paths[_pickIndex]);
+        _scrollToSelected = _selected is not null;
+        for (var path = _selected; path?.LastIndexOf('/') is > 0 and var cut; path = path[..cut])
+        {
+            _open.Add(path[..cut]);
+            _collapsed.Remove(path[..cut]);
+        }
+    }
+
+
     private readonly HashSet<string> _selection = new(StringComparer.Ordinal);
     private string? _selectionAnchor;
     private Vector2? _selectionBox;

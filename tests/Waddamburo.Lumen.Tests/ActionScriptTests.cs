@@ -57,6 +57,18 @@ public sealed class ActionScriptTests
         Assert.True(art.InspectDisplayList().Single(clip => clip.Name == "clip").Visible);
     }
 
+    [Fact]
+    public void EnterFrameRunsRepeatedlyEvenWhenTimelineIsStopped()
+    {
+        var (player, reports) = run("this.onEnterFrame = function() { report('tick'); }; stop();");
+        Assert.Empty(reports);
+        player.Advance();
+        player.Advance();
+        player.Advance();
+        Assert.Equal(new[] { "tick", "tick", "tick" }, reports);
+        Assert.Equal(0, player.CurrentFrame);
+    }
+
     [Theory]
     [InlineData("report(1 + 2 * 3, (1 + 2) * 3, 7 % 4, 10 / 4, -3, 2 - 5);", "7,9,3,2.5,-3,-3")]
     [InlineData("report('a' + 1 + 2, 1 + 2 + 'a', \"x\\ty\", 0x10, 1e3, .5);", "a12,3a,x\ty,16,1000,0.5")]
