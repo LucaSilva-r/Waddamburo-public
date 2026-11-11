@@ -6,7 +6,7 @@ namespace Waddamburo.Editor;
 public sealed partial class MovieInspectorSession
 {
     private int _stageTool;
-    private void stageTools()
+    private void stageTools(EditorPanel area)
     {
         if (ImGui.IsWindowHovered() && !ImGui.GetIO().WantTextInput && _move is null)
         {
@@ -44,6 +44,24 @@ public sealed partial class MovieInspectorSession
         ImGui.SameLine();
         tool(2, "Scale (R): drag handles. Shift preserves proportions; Alt scales around the pivot.");
         ImGui.EndDisabled();
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Drag selected artwork. Shift: uniform scale. Rotate: drag horizontally, Shift snaps to 15 degrees. Move: Shift constrains the axis.");
+        // Transport in the middle, as the timeline may be out of sight; the view's zoom on the right.
+        var style = ImGui.GetStyle();
+        var width = ImGui.GetWindowWidth();
+        ImGui.SameLine(Math.Max(120, width / 2 - 150));
+        transportButtons();
+        var percent = $"{MathF.Round(EffectViewport.Fit(area).Rectangle.Width / 1280 * _zoom * 100)}%";
+        var right = ImGui.CalcTextSize("Fit").X + ImGui.CalcTextSize("1:1").X + ImGui.CalcTextSize(percent).X + style.FramePadding.X * 4 + style.ItemSpacing.X * 2 + 8;
+        ImGui.SameLine(Math.Max(ImGui.GetCursorPosX(), width - right));
+        ImGui.AlignTextToFramePadding();
+        ImGui.PushStyleColor(ImGuiCol.Text, Muted);
+        ImGui.TextUnformatted(percent); // not TextDisabled: it reads the % as a format
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Wheel: zoom at the pointer. Middle or right drag: move the view.\nF: frame the selection. Home: fit the stage.");
+        ImGui.SameLine();
+        if (ImGui.Button("Fit")) (_zoom, _pan) = (1, Vector2.Zero);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Fit the stage in the view (Home)");
+        ImGui.SameLine();
+        if (ImGui.Button("1:1")) (_zoom, _pan) = (1280 / EffectViewport.Fit(area).Rectangle.Width, Vector2.Zero);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("One stage unit per pixel");
     }
 }

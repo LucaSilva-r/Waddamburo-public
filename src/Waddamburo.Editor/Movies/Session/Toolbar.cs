@@ -73,7 +73,8 @@ public sealed partial class MovieInspectorSession
         if (frame is { } at) seekTimeline(at);
     }
 
-    private void timelineTransport()
+    // In the bar over the stage: always in reach, whatever the bottom panel shows.
+    private void transportButtons()
     {
         var target = transportTarget();
         void button(string text, string hint, Action action)
@@ -98,8 +99,8 @@ public sealed partial class MovieInspectorSession
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restarts the preview with scripts enabled or disabled.");
             ImGui.SameLine();
         }
-        ImGui.SetNextItemWidth(Math.Max(100, ImGui.GetContentRegionAvail().X - 70));
-        var frame = target.Frame;
-        if (ImGui.SliderInt(target.Path.Length == 0 ? "Root frame" : "Frame", ref frame, 0, Math.Max(0, target.Count - 1))) seekTimeline(frame);
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextDisabled(target.Count == 0 ? "" : $"{target.Frame} / {Math.Max(0, target.Count - 1)}");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("The frame of the timeline being edited, and its last frame.");
     }
 }

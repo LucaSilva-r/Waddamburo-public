@@ -19,9 +19,9 @@ public readonly record struct EditorLayout(EditorPanel Toolbar, EditorPanel Targ
     {
         if (!float.IsFinite(width) || !float.IsFinite(height) || width < 32 || height < 32)
             throw new ArgumentOutOfRangeException(nameof(width));
-        left = Math.Clamp(left, .1f, .3f);
-        right = Math.Clamp(right, .12f, .32f);
-        bottom = Math.Clamp(bottom, .22f, .6f);
+        left = Math.Clamp(left, .08f, .45f);
+        right = Math.Clamp(right, .1f, .45f);
+        bottom = Math.Clamp(bottom, .12f, .75f);
         var top = Math.Min(topHeight ?? 94, height * .25f);
         var y = height * (1 - bottom);
         var x1 = width * left;

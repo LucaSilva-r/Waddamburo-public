@@ -133,13 +133,14 @@ public sealed partial class MovieInspectorSession : IDisposable
         _selection.RemoveWhere(path => clips.All(clip => clip.Path != path));
         if (_selected is not null && clips.All(clip => clip.Path != _selected))
             _selected = null;
-        var layout = EditorLayout.Calculate(size.X, size.Y, .24f, .26f, .3f, topHeight: menuHeight);
+        var layout = EditorLayout.Calculate(size.X, size.Y, _left, _right, _bottom, topHeight: menuHeight);
         _application.StageRegion = EditorLayout.Preview(layout.Stage).Normalized(size.X, size.Y);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
         tree(layout.Targets, clips);
         inspector(layout.Inspector, player, clips, clips.FirstOrDefault(clip => clip.Path == _selected));
         bottom(layout.Tracks, player, clips);
         stage(layout.Stage, player, clips);
+        dividers(layout, size);
         ImGui.PopStyleVar();
     }
 
@@ -149,6 +150,7 @@ public sealed partial class MovieInspectorSession : IDisposable
             return;
         _application.ConfirmClose = _previousClose;
         _layer.Dispose();
+        _application.StageBox = null;
         _application.StageRegion = _previousRegion;
         _disposed = true;
     }

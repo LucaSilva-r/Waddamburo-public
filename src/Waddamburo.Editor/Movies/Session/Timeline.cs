@@ -15,6 +15,7 @@ public sealed partial class MovieInspectorSession
     private bool _keyDrag;
     private int? _length; // The frame count being typed.
     private string _newLabel = "";
+    private float _frameWidth; // pixels per frame; 0: the whole timeline fitted to the panel
     private static readonly uint KeyColour = color(.61f, .76f, .91f), KeySelected = color(1, .56f, .18f), Life = color(.26f, .35f, .44f, .8f),
         Row = color(.16f, .175f, .2f), RowOdd = color(.14f, .15f, .17f), Ruler = color(.2f, .22f, .25f);
 
@@ -40,7 +41,6 @@ public sealed partial class MovieInspectorSession
             }
             return;
         }
-        timelineTransport();
         var layers = sprite["layers"] as JsonArray ?? [];
         var frames = Math.Max(1, (int?)sprite["frames"] ?? 1);
         var labels = sprite["labels"] as JsonObject;
@@ -109,16 +109,35 @@ public sealed partial class MovieInspectorSession
                 removeKey(layers, chosen);
         }
 
+        ImGui.SameLine();
+        if (ImGui.Button(_frameWidth > 0 ? "Fit" : "Fitted"))
+            _frameWidth = 0;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show the whole timeline.\nCtrl+wheel over the rows: zoom at the pointer. Shift+wheel: scroll sideways.");
+
         ImGui.BeginChild("##timeline rows", Vector2.Zero, ImGuiChildFlags.None, ImGuiWindowFlags.HorizontalScrollbar);
         var draw = ImGui.GetWindowDrawList();
         var origin = ImGui.GetCursorScreenPos();
-        var width = Math.Max(ImGui.GetContentRegionAvail().X - NameColumn, frames * 4f);
-        var step = width / frames;
+        var available = ImGui.GetContentRegionAvail().X - NameColumn;
+        // Fitted: the whole timeline in view, but a frame is never wider than a key is clear (a one-frame sprite is one frame).
+        var step = _frameWidth > 0 ? _frameWidth : Math.Clamp(available / frames, 4f, 24f);
+        var width = Math.Max(available, frames * step);
+        if (ImGui.IsWindowHovered() && ImGui.GetIO().KeyCtrl && ImGui.GetIO().MouseWheel != 0)
+        {
+            var next = Math.Clamp(step * MathF.Pow(1.2f, ImGui.GetIO().MouseWheel), 2f, 64f);
+            // The frame under the pointer stays under it.
+            ImGui.SetScrollX(Math.Max(0, ImGui.GetScrollX() + (ImGui.GetIO().MousePos.X - origin.X - NameColumn) / step * (next - step)));
+            _frameWidth = next;
+        }
+        // The names stay in view when the rows are scrolled sideways; the tracks are cut off at their edge.
+        var names = origin.X + ImGui.GetScrollX();
+        var trackMin = new Vector2(names + NameColumn, ImGui.GetWindowPos().Y);
+        var trackMax = ImGui.GetWindowPos() + ImGui.GetWindowSize();
         float x(int frame) => origin.X + NameColumn + frame * step;
         int frameAt(float screenX) => Math.Clamp((int)MathF.Floor((screenX - origin.X - NameColumn) / step), 0, frames - 1);
 
         // Ruler: frame numbers only; label flags have their own track below it.
-        draw.AddRectFilled(origin with { X = origin.X + NameColumn }, new(origin.X + NameColumn + width, origin.Y + RowHeight), Ruler);
+        ImGui.PushClipRect(trackMin, trackMax, true);
+        draw.AddRectFilled(origin with { X = origin.X + NameColumn }, new(origin.X + NameColumn + frames * step, origin.Y + RowHeight), Ruler);
         var every = Math.Max(1, (int)MathF.Ceiling(40 / step / 5) * 5);
         for (var frame = 0; frame < frames; frame += every)
             draw.AddText(new(x(frame) + 2, origin.Y + 3), Muted, frame.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -130,6 +149,7 @@ public sealed partial class MovieInspectorSession
             Paused = true;
         }
         var labelHeight = timelineLabels(player, clip.Path, labels, origin, width, step);
+        ImGui.PopClipRect();
         var headerHeight = RowHeight + labelHeight;
 
         for (var index = 0; index < layers.Count; index++)
@@ -142,11 +162,20 @@ public sealed partial class MovieInspectorSession
             var depth = (int?)layer["depth"] ?? index + 1;
             var path = clip.Path.Length == 0 ? $"{LumenPlayer.TimelineDepthBase + depth}" : $"{clip.Path}/{LumenPlayer.TimelineDepthBase + depth}";
             draw.AddRectFilled(new(origin.X, top), new(origin.X + NameColumn + width, top + RowHeight), index % 2 == 0 ? Row : RowOdd);
+            ImGui.PushClipRect(trackMin, trackMax, true);
             if (keys.Length > 0)
                 draw.AddRectFilled(new(x(keys[0]), top + 7), new(x(until), top + RowHeight - 7), Life);
+            foreach (var key in keys)
+            {
+                var centre = new Vector2(x(key) + step / 2, top + RowHeight / 2);
+                var chosenKey = _key == (name, index, key);
+                draw.AddQuadFilled(centre + new Vector2(0, -6), centre + new Vector2(5, 0), centre + new Vector2(0, 6), centre + new Vector2(-5, 0),
+                    chosenKey ? KeySelected : KeyColour);
+            }
+            ImGui.PopClipRect();
 
             // The name selects the layer's clip; the x removes the layer.
-            ImGui.SetCursorScreenPos(new(origin.X + 2, top + 1));
+            ImGui.SetCursorScreenPos(new(names + 2, top + 1));
             if (ImGui.SmallButton($"x##remove layer {index}"))
             {
                 var at = index;
@@ -191,17 +220,12 @@ public sealed partial class MovieInspectorSession
                 edited(() => _document!.Edit(_ => MovieDocument.KeyAt(layer, under)));
                 _key = (name, index, under);
             }
-            foreach (var key in keys)
-            {
-                var centre = new Vector2(x(key) + step / 2, top + RowHeight / 2);
-                var chosenKey = _key == (name, index, key);
-                draw.AddQuadFilled(centre + new Vector2(0, -6), centre + new Vector2(5, 0), centre + new Vector2(0, 6), centre + new Vector2(-5, 0),
-                    chosenKey ? KeySelected : KeyColour);
-            }
         }
-        // The playhead, over everything.
+        // The playhead, over the tracks.
         var head = x(clip.Frame) + step / 2;
+        ImGui.PushClipRect(trackMin, trackMax, true);
         draw.AddLine(new(head, origin.Y), new(head, origin.Y + headerHeight + RowHeight * layers.Count), KeySelected, 2);
+        ImGui.PopClipRect();
         ImGui.SetCursorScreenPos(new(origin.X, origin.Y + headerHeight + RowHeight * layers.Count));
         ImGui.Dummy(new(NameColumn + width, 4));
         ImGui.EndChild();
