@@ -181,6 +181,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The list's fast scrolling (see <see cref="SongSelectScroll"/>), once the movie is attached.</summary>
     public SongSelectScroll? Scroll { get; private set; }
     private bool _assigned;
+    // The movie is one of the engine's (it answered WdInit): it asks for what it lists (the Wd… methods below) and
+    // nothing here reaches into it. The game's movie is fed and patched as before.
+    private bool _own;
     private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
@@ -367,6 +370,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("IsInitWait", _ =>
                 LumenHostValue.FromBoolean((_parts?.PollReady() ?? true) && assignInitialData()));
             lumen.RegisterMethod("NotifyTimeSec", static _ => LumenHostValue.Undefined);
+            registerOwn(lumen);
             lumen.RegisterMethod("GetMusicInfo_Basic", publishMusicInfo);
             lumen.RegisterMethod("RequestSongBoardTexture_Short", call => publishBoard(call, SongBoardTextureKind.Compact));
             lumen.RegisterMethod("RequestSongBoardTexture_Long", call => publishBoard(call, SongBoardTextureKind.Expanded));
@@ -467,7 +471,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LeavingCourseSelect = false;
                 // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.
                 foreach (var player in _sides)
-                    if (_speedRow[player] is null)
+                    if (!_own && _speedRow[player] is null)
                         extendSpeedRow(player, TaikoGuest.Options[player].SpeedIndex);
                 return LumenHostValue.Undefined;
             });
@@ -554,6 +558,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         if (_player is null)
             return false;
         _assigned = true;
+        if (_own = _player.TryInvokeCallback("WdInit", [LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(StartSong)]))
+        {
+            foreach (var player in new[] { 0, 1 })
+                invoke("SetPlayer", LumenHostValue.FromNumber(player), LumenHostValue.FromBoolean(_sides.Contains(player)),
+                    LumenHostValue.FromBoolean(false), LumenHostValue.FromNumber(-1));
+            Scroll = null; // the page jump drives the game's movie through its script objects
+            _parts?.ShowGuestNames(_shown);
+            _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
+            return true;
+        }
         installFavouriteIcon();
         _featureFolders.Clear();
         var genres = registerCustomGenres();
@@ -736,6 +750,32 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         foreach (var (label, bit) in labels)
             if (!requirePlayer().TryWriteScriptValue($"_global.MusicInfo.LABEL_M_ICON.{bit}", label))
                 Console.Error.WriteLine("Song Select has no MusicInfo.LABEL_M_ICON; favourites show no icon.");
+    }
+
+    // What an engine movie asks instead of being handed everything at start: it lists what it shows, as it shows it.
+    // Folders and songs are the catalog's indices, as in the game's own calls (NotifyOpenFolder, NotifyEndCourseSelect…).
+    private void registerOwn(LumenHostObject lumen)
+    {
+        lumen.RegisterMethod("WdFolderCount", _ => LumenHostValue.FromNumber(_session.Catalog.Categories.Length));
+        lumen.RegisterMethod("WdFolderName", call => LumenHostValue.FromString(
+            (uint)integer(call, 0) < (uint)_session.Catalog.Categories.Length ? _session.Catalog.Categories[integer(call, 0)].Name : ""));
+        // Songs in a folder; -1 for one that decides at once (a library, a mode: the movie then calls SetSelectedMusic(folder, -1)).
+        lumen.RegisterMethod("WdFolderSongs", call => LumenHostValue.FromNumber(
+            (uint)integer(call, 0) >= (uint)_session.Catalog.Categories.Length ? 0
+            : (_session.Catalog.Categories[integer(call, 0)].Presentation & SongCategoryPresentation.FolderEnd) != 0 ? -1
+            : _session.Catalog.Categories[integer(call, 0)].Songs.Length));
+        lumen.RegisterMethod("WdSongTitle", call => LumenHostValue.FromString(
+            _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song.Descriptor.Title.Primary : ""));
+        // (folder, song, course 0 easy … 3 oni, 4 ura): its ★, 0 when the song has no such course.
+        lumen.RegisterMethod("WdSongStars", call => LumenHostValue.FromNumber(
+            _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) && integer(call, 2) is >= 0 and <= 4
+            && song.HasCourse((TaikoCourse)integer(call, 2)) ? song.Level((TaikoCourse)integer(call, 2)) ?? 1 : 0));
+        // Back out of the courses (the game's movie has no call for it).
+        lumen.RegisterMethod("WdLeaveCourseSelect", _ =>
+        {
+            CourseSelectSong = null;
+            return LumenHostValue.Undefined;
+        });
     }
 
     private int musicBits(int songIndex, SongSelectSong song)
@@ -1074,6 +1114,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void Poll()
     {
+        if (_own)
+            return;
         restoreOptions();
         showPartnerDon();
         hideSongPartsOnSeries();
@@ -1237,7 +1279,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// </summary>
     public void KeepOptions()
     {
-        if (_player is null) return;
+        if (_player is null || _own) return;
         foreach (var player in _sides)
             if (_player.TryInvokeCallback("GetSession", [LumenHostValue.FromNumber(player)], out var bits)
                 && bits.Kind == LumenHostValueKind.Number)

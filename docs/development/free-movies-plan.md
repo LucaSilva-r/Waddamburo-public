@@ -411,7 +411,20 @@ plays; the movie goes on). `EntrySceneHost` uses them when `WdSetupOpen` answers
 `--start-scene=entry --press=F@120` reaches Song Select. Not yet tried by hand: the home player setup over it.
 Indicator parts without a movie count as ready (`IndicatorParts.PollReady`), or the entry would wait forever.
 
-Next: song select (flat list, the game's protocol for songs and courses, `Wd…` callbacks for folders).
+**Song select** (`movies/song_select/song_select`, 2026-11-11): a list of folders, a folder's songs, a song's
+courses; rims move, DON decides, the timer running out picks. It is not handed the list: `SongSelectHostBinding`
+calls its `WdInit(folder, song)` (the cursor's start; a movie that answers is ours, and none of the host's reaching
+into the game's movie runs), and the movie asks for each line as it shows it: `Lumen.WdFolderCount()`,
+`WdFolderName(folder)`, `WdFolderSongs(folder)` (-1: a folder that is a choice by itself, a library or a mode),
+`WdSongTitle(folder, song)`, `WdSongStars(folder, song, course)`, `WdLeaveCourseSelect()`. What it tells the game are
+the game's own calls (`NotifyGenreFolder`, `NotifyOpenFolder`, `NotifyStopBGM` for the preview,
+`NotifyBeginCourseSelect`, `NotifyEndCourseSelect`, `SetSelectedMusic`), so the flow behind (previews, libraries,
+the handoff to the song) is the same for both movies. Tried headless on a full installation: folder, song, course,
+the chart loads. Not there: folder colours and art (a script cannot colour a clip yet), crowns and scores, play
+options, favourites, search, a course per drum (both play the one picked), Don-chan, sounds of its own.
+
+Next: the intermissions (rainbow, fade, shutter) and the boot movies, then a run from boot to a song on an empty
+data directory.
 
 ## Open
 

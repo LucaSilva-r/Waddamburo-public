@@ -1,0 +1,82 @@
+// song_select: a plain list, bare minimum (placeholder look). Folders, then a folder's songs, then the song's courses.
+// It asks the game for what it lists (the Wd… methods of SongSelectHostBinding); the rest are the game's own calls.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg",
+    "bar": "textures/bar.svg",
+    "board": "textures/board.svg"
+  },
+  "shapes": {
+    "bg": { "texture": "bg", "rect": [0, 0, 1280, 720] },
+    "bar": { "texture": "bar", "rect": [0, 0, 1000, 56] },
+    "board": { "texture": "board", "rect": [-300, -250, 600, 460] }
+  },
+  "texts": {
+    "heading": { "rect": [-500, -32, 1000, 64], "size": 48, "align": "center", "color": "#ffffff" },
+    "row_dim": { "rect": [24, 6, 800, 44], "size": 34, "align": "left", "color": "#ffffff" },
+    "row_lit": { "rect": [24, 6, 800, 44], "size": 34, "align": "left", "color": "#1b2a7a" },
+    "row_note_dim": { "rect": [830, 6, 150, 44], "size": 30, "align": "right", "color": "#ffffff" },
+    "row_note_lit": { "rect": [830, 6, 150, 44], "size": 30, "align": "right", "color": "#1b2a7a" },
+    "board_title": { "rect": [-280, -230, 560, 50], "size": 36, "align": "center", "color": "#1b2a7a" },
+    "course_dim": { "rect": [0, 6, 500, 44], "size": 34, "align": "center", "color": "#1b2a7a" },
+    "course_lit": { "rect": [0, 6, 500, 44], "size": 34, "align": "center", "color": "#e6312d" },
+    "hint": { "rect": [-600, -20, 1200, 40], "size": 28, "align": "center", "color": "#ffffff" }
+  },
+  "sprites": {
+    // One line of the list: its text twice, for the line under the cursor and the others.
+    "row": {
+      "frames": 1,
+      "layers": [
+        { "character": "bar", "name": "bar", "keys": [ { "frame": 0 } ] },
+        { "character": "row_dim", "name": "dim", "keys": [ { "frame": 0 } ] },
+        { "character": "row_lit", "name": "lit", "keys": [ { "frame": 0 } ] },
+        { "character": "row_note_dim", "name": "noteDim", "keys": [ { "frame": 0 } ] },
+        { "character": "row_note_lit", "name": "noteLit", "keys": [ { "frame": 0 } ] }
+      ]
+    },
+    "course": {
+      "frames": 1,
+      "layers": [
+        { "character": "course_dim", "name": "dim", "keys": [ { "frame": 0 } ] },
+        { "character": "course_lit", "name": "lit", "keys": [ { "frame": 0 } ] }
+      ]
+    },
+    "courses": {
+      "frames": 1,
+      "layers": [
+        { "character": "board", "keys": [ { "frame": 0 } ] },
+        { "character": "board_title", "name": "title", "keys": [ { "frame": 0 } ] },
+        { "character": "course", "name": "course0", "keys": [ { "frame": 0, "x": -250, "y": -160 } ] },
+        { "character": "course", "name": "course1", "keys": [ { "frame": 0, "x": -250, "y": -104 } ] },
+        { "character": "course", "name": "course2", "keys": [ { "frame": 0, "x": -250, "y": -48 } ] },
+        { "character": "course", "name": "course3", "keys": [ { "frame": 0, "x": -250, "y": 8 } ] },
+        { "character": "course", "name": "course4", "keys": [ { "frame": 0, "x": -250, "y": 64 } ] },
+        { "character": "course", "name": "course5", "keys": [ { "frame": 0, "x": -250, "y": 120 } ] }
+      ]
+    },
+    "main": {
+      "frames": 1,
+      "layers": [
+        { "character": "bg", "keys": [ { "frame": 0 } ] },
+        { "character": "heading", "name": "heading", "keys": [ { "frame": 0, "x": 640, "y": 48 } ] },
+        { "character": "row", "name": "row0", "keys": [ { "frame": 0, "x": 140, "y": 124 } ] },
+        { "character": "row", "name": "row1", "keys": [ { "frame": 0, "x": 140, "y": 180 } ] },
+        { "character": "row", "name": "row2", "keys": [ { "frame": 0, "x": 140, "y": 236 } ] },
+        { "character": "row", "name": "row3", "keys": [ { "frame": 0, "x": 140, "y": 292 } ] },
+        { "character": "row", "name": "row4", "keys": [ { "frame": 0, "x": 140, "y": 348 } ] },
+        { "character": "row", "name": "row5", "keys": [ { "frame": 0, "x": 140, "y": 404 } ] },
+        { "character": "row", "name": "row6", "keys": [ { "frame": 0, "x": 140, "y": 460 } ] },
+        { "character": "row", "name": "row7", "keys": [ { "frame": 0, "x": 140, "y": 516 } ] },
+        { "character": "row", "name": "row8", "keys": [ { "frame": 0, "x": 140, "y": 572 } ] },
+        { "character": "hint", "name": "hint", "keys": [ { "frame": 0, "x": 640, "y": 100 } ] },
+        { "character": "courses", "name": "courses", "keys": [ { "frame": 0, "x": 640, "y": 330 } ] }
+      ],
+      "scripts": {
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}
