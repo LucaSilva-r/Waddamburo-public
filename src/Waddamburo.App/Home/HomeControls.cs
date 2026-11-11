@@ -568,7 +568,8 @@ internal sealed class HomeControls : IDisposable
     {
         if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null)
             return arcade with { StockFolders = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.StockFolders), folder]) };
-        if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder) is { Exists: true } installation)
+        if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder,
+            keys: Waddamburo.Providers.Stock.NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) is { Exists: true } installation)
         {
             // One it can't read (a plain dump's loader has no keys) is said, and not added.
             if (HomeMenu.NijiiroProblemText(installation) is { } problem)
