@@ -29,6 +29,11 @@
                       LogicalName="Waddamburo.Upscale.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- Waddamburo's own movies (movies/<archive>/<movie>: docs/development/free-movies-plan.md), beside the executable. -->
+  <ItemGroup>
+    <Content Include="../../movies/**/*" LinkBase="movies" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Bundled fonts (SIL OFL 1.1; BundledFonts.cs, THIRD_PARTY_NOTICES.md), gzipped. -->
   <ItemGroup>
     <EmbeddedResource Include="Resources/fonts/*.gz" LogicalName="Waddamburo.Fonts.%(Filename)%(Extension)" />

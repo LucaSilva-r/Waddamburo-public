@@ -257,10 +257,42 @@ used by several scenes, and other movies' developer branches load it.
   error list built, UI not). Done when the timer can be rebuilt
   in it from an empty package.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.
+  Groundwork done 2026-11-11 (see "Milestone 6" below): the movie overview, bundling, the `free_movies` setting.
 - [ ] 7. Remaining screens by flow order (song select last: the largest script).
 
 Milestones 1 to 3 need no editor and carry the risk (does a package movie written from a contract behave like the
 stock one). The editor comes after so it has something to save.
+
+## Milestone 6: the gameplay screen
+
+**Where free movies come from** (`DirectoryLumenMovieContentSource`), first hit wins:
+
+1. the user's `USRDIR/waddamburo/movies/<archive folder>/<movie>/`;
+2. the engine's own, `movies/` beside the executable (the repository's `movies/`, copied by the build), when
+   `free_movies = true` in config.cfg;
+3. the game data's archive;
+4. the engine's own again when the game data has no such archive. This is what lets the engine run on any part of the
+   game data down to none: every movie that has a free version plays, the rest are reported by name.
+
+**How much there is** (the lab's `research/contracts/overview.md`, from `tools/contract/contract.py --overview`: every
+movie's script size, callbacks, host calls, and what the recorded sessions touched): the game has 700 movies, most of
+them the same few parts drawn again for each gameplay theme. The solo gameplay screen is 38 system parts (about 5,000
+script instructions and 52 callbacks together; two thirds of them have next to no script: a note, a lane, a label)
+plus one each of 9 themed kinds (background, stand, dancers, Don-chan's backdrop, Go-Go layers, roll character). The
+timer alone was 800 instructions, so the gameplay screen's scripts are about six timers; its work is mostly drawing
+and animation, which is the editor's job, and the clip names the engine addresses inside these movies (frames it
+jumps to, fill slots), which each contract page lists under "what the host addresses".
+
+**Order**:
+
+1. Notes and lane (no scripts, the engine draws through them): the smallest proof that a song plays on free movies.
+2. Gauge, score, combo, roll counter, hit effects: small scripts, each with a contract page from the recorded
+   sessions.
+3. The lane's banner (the largest gameplay script) and the balloon and kusudama actions.
+4. One themed set of our own: background, dancers, Go-Go.
+5. Outside the movies: Don-chan's model, sounds, the font (see Open).
+6. A run with an empty data directory: the engine has to start without the game data it reads besides movies (song
+   lists, sound banks, models), each with a free stand-in or a clean "not there".
 
 ## Open
 

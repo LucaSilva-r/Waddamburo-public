@@ -678,6 +678,8 @@ internal sealed class GameShell : IDisposable
             // Movie packages (USRDIR/waddamburo/movies/<archive>/<movie>) replace the game's movies one by one.
             MovieContent.PackageRoot = options.ArcadePath is { } home ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(home))!, "movies") : null;
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
+            MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
+            MovieContent.PreferBundled = () => Arcade.FreeMovies;
             _presenter = new ScenePresenter(Application, MovieContent);
             Scenes = new SceneSwitcher(this, _presenter, flowOf, () => _home?.Covering == true, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;

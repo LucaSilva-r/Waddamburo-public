@@ -42,14 +42,37 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// <summary>Decodes a package's PNG textures (see <see cref="LumenMovieContent.LoadPackage"/>).</summary>
     public Func<byte[], (int Width, int Height, byte[] Rgba)?>? DecodeImage { get; set; }
 
-    private string? packageDirectory(string archiveId, string movieId)
+    /// <summary>
+    /// The movie packages that come with the engine (same layout as <see cref="PackageRoot"/>). One is played when
+    /// <see cref="PreferBundled"/> says so, and always when the game data has no such movie, so the engine runs
+    /// on whatever part of the game data is there, down to none. The user's own packages come first.
+    /// </summary>
+    public string? BundledRoot { get; set; }
+
+    /// <summary>Whether a bundled package replaces a movie the game data has (the free_movies setting, read live).</summary>
+    public Func<bool>? PreferBundled { get; set; }
+
+    private string? packageDirectory(string archiveId, string movieId, bool archiveMissing = false)
     {
-        if (PackageRoot is null || DecodeImage is null)
+        if (DecodeImage is null)
             return null;
-        // "indicator/packeddata.ddp" + "time_counter/time_counter.lm" -> <root>/indicator/time_counter.
-        var directory = Path.Combine(PackageRoot, Path.GetDirectoryName(archiveId) ?? "", Path.GetFileNameWithoutExtension(movieId));
-        return File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)) ? directory : null;
+        string?[] roots = archiveMissing ? [BundledRoot] : [PackageRoot, PreferBundled?.Invoke() == true ? BundledRoot : null];
+        foreach (var root in roots)
+        {
+            if (root is null)
+                continue;
+            // "indicator/packeddata.ddp" + "time_counter/time_counter.lm" -> <root>/indicator/time_counter.
+            var directory = Path.Combine(root, Path.GetDirectoryName(archiveId) ?? "", Path.GetFileNameWithoutExtension(movieId));
+            if (File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)))
+                return directory;
+        }
+        return null;
     }
+
+    /// <summary>Whether a movie can be loaded: from a package, or from its archive in the game data.</summary>
+    public bool Has(string archiveId, string movieId) =>
+        packageDirectory(archiveId, movieId) is not null || packageDirectory(archiveId, movieId, archiveMissing: true) is not null
+        || File.Exists(Path.GetFullPath(archiveId, _assetRoot));
 
     /// <summary>Called with each movie once decoded (archive, movie), before any upload, on the decoding thread.</summary>
     public Action<string, LumenMovieContent>? Decoded { get; set; }
@@ -135,6 +158,10 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             }
             if (owner.Reuse?.Invoke(archiveId, movieId) is { } kept)
                 return kept;
+            // No such archive in the game data: the engine's own movie, when it has one.
+            if (!File.Exists(Path.GetFullPath(archiveId, owner._assetRoot))
+                && owner.packageDirectory(archiveId, movieId, archiveMissing: true) is { } bundled)
+                return LumenMovieContent.LoadPackage(bundled, owner.DecodeImage!, owner._limits);
             var archivePath = owner.resolveArchivePath(archiveId, movieId);
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)

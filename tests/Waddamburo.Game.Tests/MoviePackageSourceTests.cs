@@ -40,6 +40,23 @@ public sealed class MoviePackageSourceTests
                 await source.LoadAsync("indicator/packeddata.ddp", "player_name/player_name.lm", CancellationToken.None));
             Assert.Contains("Movie 'player_name/player_name.lm' is missing", missing.Message);
 
+            // The engine's own movies: only where the game data has none, unless they are preferred.
+            var bundled = Path.Combine(root, "bundled", "indicator", "player_name");
+            Directory.CreateDirectory(Path.Combine(bundled, "textures"));
+            File.WriteAllText(Path.Combine(bundled, "movie.json"), Movie);
+            File.WriteAllBytes(Path.Combine(bundled, "textures", "dot.png"), [1, 2, 3]);
+            Assert.False(source.Has("indicator/packeddata.ddp", "player_name/player_name.lm"));
+            source.BundledRoot = Path.Combine(root, "bundled");
+            Assert.True(source.Has("indicator/packeddata.ddp", "player_name/player_name.lm"));
+            Assert.Equal("player_name/player_name.lm",
+                (await source.LoadAsync("indicator/packeddata.ddp", "player_name/player_name.lm", CancellationToken.None)).Name);
+            Directory.CreateDirectory(Path.Combine(root, "indicator"));
+            File.WriteAllBytes(Path.Combine(root, "indicator", "packeddata.ddp"), [0]); // The game data has the archive (a broken one here).
+            await Assert.ThrowsAnyAsync<Exception>(async () =>
+                await source.LoadAsync("indicator/packeddata.ddp", "player_name/player_name.lm", CancellationToken.None));
+            source.PreferBundled = static () => true;
+            Assert.Single((await source.LoadAsync("indicator/packeddata.ddp", "player_name/player_name.lm", CancellationToken.None)).Textures);
+
             File.WriteAllText(Path.Combine(package, "movie.json"), Movie.Replace("textures/dot.png", "../../dot.png"));
             await Assert.ThrowsAsync<InvalidDataException>(async () =>
                 await source.LoadAsync("indicator/packeddata.ddp", "time_counter/time_counter.lm", CancellationToken.None));

@@ -45,6 +45,8 @@ public sealed record ArcadeSettings
         console = false
         # Check for a new Waddamburo release at start, install it and restart into it.
         auto_update = true
+        # Play Waddamburo's own movies in place of the game's wherever one exists (work in progress).
+        free_movies = false
 
         """,
         """
@@ -486,6 +488,12 @@ public sealed record ArcadeSettings
 
     public bool AutoUpdate { get; init; } = true;
 
+    /// <summary>
+    /// free_movies: play Waddamburo's own movies in place of the game's wherever one exists
+    /// (docs/development/free-movies-plan.md). Off: the game's movies, ours only where the game data has none.
+    /// </summary>
+    public bool FreeMovies { get; init; }
+
     /// <summary>Home mode (a PC): free play, endless songs, no countdowns. False: arcade (the cabinet rules).</summary>
     public bool Home { get; init; }
 
@@ -764,6 +772,7 @@ public sealed record ArcadeSettings
                 "letterbox_y" => settings with { LetterboxY = integer(value, index, 0, 100) },
                 "console" => settings with { ShowConsole = boolean(value, index) },
                 "auto_update" => settings with { AutoUpdate = boolean(value, index) },
+                "free_movies" => settings with { FreeMovies = boolean(value, index) },
                 "title_language" => settings with { EnglishTitles = value.ToLowerInvariant() switch
                 {
                     "english" => true,
