@@ -1803,6 +1803,9 @@ public sealed class LumenPlayerTests
     [Fact]
     public void ExternalInterfaceCallbacksAreRegisteredAndInvokedSynchronously()
     {
+        // The edge log records the same session (other test classes may write to it too: only this movie's lines count).
+        var edges = new StringWriter();
+        LumenEdgeLog.Writer = edges;
         var player = new LumenPlayer(createMovie(actionBytecode: [
             0x8E, 0x0C, 0x00,
                 0x10, 0x00,
@@ -1832,6 +1835,7 @@ public sealed class LumenPlayerTests
             0x00,
         ]), 1280, 720);
 
+        player.Name = "probe";
         Assert.Empty(player.CallbackNames);
         player.Advance();
 
@@ -1846,6 +1850,17 @@ public sealed class LumenPlayerTests
             [LumenHostValue.FromBoolean(false)]));
         Assert.Empty(player.CreateRenderSnapshot().Quads);
         Assert.False(player.TryInvokeCallback("Missing", []));
+        Assert.False(player.TryGotoLabel("nowhere", "label"));
+        LumenEdgeLog.Writer = null;
+        Assert.Equal(
+            [
+                "1\tprobe\texport\tSetVisible(middle)",
+                "1\tprobe\tin\tSetVisible(false) -> undefined",
+                "1\tprobe\tin\tMissing() -> (no such callback)",
+                "1\tprobe\tgoto\tnowhere 'label' -> (missing)",
+            ],
+            edges.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(static line => line.Contains("\tprobe\t", StringComparison.Ordinal)));
     }
 
     [Fact]

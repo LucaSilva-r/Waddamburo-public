@@ -36,6 +36,7 @@ try
     }
     var archivePath = parseOption(args, "--archive=");
     var movieName = parseOption(args, "--movie=");
+    var packagePath = parseOption(args, "--package=");
     var scenePath = parseOption(args, "--scene=");
     var gameDataRoot = parseOption(args, "--game-data=");
     var assetRoot = parseOption(args, "--asset-root=");
@@ -77,6 +78,7 @@ try
     var entrySongSelect = args.Contains("--entry-song-select", StringComparer.Ordinal);
     var hasDiagnosticContent = entrySongSelect
         || archivePath is not null
+        || packagePath is not null
         || movieName is not null
         || scenePath is not null
         || assetRoot is not null
@@ -285,6 +287,14 @@ try
             tickLimit,
             screenshotPath,
             inputTimeline);
+        return 0;
+    }
+    if (packagePath is not null)
+    {
+        if (archivePath is not null || movieName is not null)
+            throw new ArgumentException("--package cannot be combined with --archive/--movie.");
+        MovieViewer.RunPackage(packagePath, windowSize.Width, windowSize.Height, seekFrame, frameLimit, tickLimit, screenshotPath,
+            callbackInvocations, inputTimeline);
         return 0;
     }
     if (archivePath is not null || movieName is not null)

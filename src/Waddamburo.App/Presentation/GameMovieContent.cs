@@ -54,6 +54,10 @@ internal static class GameMovieContent
         return (source, upscale);
     }
 
+    /// <summary>A movie package's PNG texture as straight RGBA (see <see cref="LumenMovieContent.LoadPackage"/>).</summary>
+    public static (int Width, int Height, byte[] Rgba)? DecodePng(byte[] png) =>
+        Waddamburo.Platform.Sdl.Text.SdlPng.Decode(png) is { } image ? ((int)image.Width, (int)image.Height, image.Pixels) : null;
+
     private static void patch(string archive, LumenMovieContent content, (UpscaleTool Tool, bool Bc7)? upscale)
     {
         // Pixel art: whole pixels, never the upscaler's guesses (cached ones included).

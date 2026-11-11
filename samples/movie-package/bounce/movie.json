@@ -1,0 +1,46 @@
+{
+  // A movie package: see docs/development/free-movies-plan.md. View it with
+  //   dotnet run --project src/Waddamburo.App -- --package=samples/movie-package/bounce
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": { "ball": "textures/ball.png" },
+  "shapes": {
+    "ball": { "texture": "ball", "rect": [-32, -32, 64, 64] }
+  },
+  "sprites": {
+    // A clip of its own: the ball squashes when it lands. Its 60 frames loop while "main" moves it.
+    "bouncer": {
+      "frames": 60,
+      "layers": [
+        { "character": "ball",
+          "keys": [
+            { "frame": 0, "y": -300 },
+            { "frame": 26, "y": 0 },
+            { "frame": 30, "y": 12, "scaleX": 1.3, "scaleY": 0.7 },
+            { "frame": 34, "y": 0 },
+            { "frame": 59, "y": -295 }
+          ] }
+      ]
+    },
+    "main": {
+      "frames": 240,
+      "labels": { "in": 0, "across": 30, "out": 210 },
+      "layers": [
+        { "character": "bouncer", "name": "bouncer",
+          "keys": [
+            { "frame": 0, "x": 140, "y": 560, "alpha": 0 },
+            { "frame": 30, "x": 140, "y": 560 },
+            { "frame": 210, "x": 1140, "y": 560, "rotation": 360, "tint": [1, 0.6, 1] },
+            { "frame": 239, "x": 1140, "y": 560, "rotation": 360, "alpha": 0 }
+          ] },
+        { "character": "ball", "name": "glow", "blend": "add", "until": 210,
+          "keys": [
+            { "frame": 30, "x": 640, "y": 200, "scale": 0, "alpha": 0 },
+            { "frame": 120, "x": 640, "y": 200, "scale": 4, "alpha": 0.5 },
+            { "frame": 209, "x": 640, "y": 200, "scale": 0, "alpha": 0 }
+          ] }
+      ]
+    }
+  }
+}

@@ -152,6 +152,7 @@ public sealed class LumenPlayer
     public void SetNativeFill(string instanceName, LumenNativeSurfaceKey surface)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
+        used(true, "fill", instanceName);
         if (_nativeFills.TryAdd(instanceName, new NativeFillBinding(surface, null)))
             _scopedFills += instanceName.Contains('/') ? 1 : 0;
         else
@@ -170,6 +171,7 @@ public sealed class LumenPlayer
         {
             throw new ArgumentOutOfRangeException(nameof(placement));
         }
+        used(true, "fill", instanceName);
         _nativeFills[instanceName] = new NativeFillBinding(surface, placement);
     }
 
@@ -180,7 +182,71 @@ public sealed class LumenPlayer
     public static bool Inspect { get; set; }
 
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
-    public string? Name { get; set; }
+    public string? Name
+    {
+        get;
+        set
+        {
+            field = value;
+            flushEdges();
+        }
+    }
+
+    private long _tick;
+    // Crossings made before the host named the movie (its first frame runs in the constructor).
+    private List<(long Tick, string Kind, string Text)>? _unnamedEdges;
+    private Dictionary<string, string>? _edgeResults;
+
+    private void edge(string kind, string text)
+    {
+        if (!LumenEdgeLog.Enabled)
+            return;
+        if (Name is null && _tick == 0)
+            (_unnamedEdges ??= []).Add((_tick, kind, text));
+        else
+            LumenEdgeLog.Write(_tick, Name ?? "movie", kind, text);
+    }
+
+    private void flushEdges()
+    {
+        if (_unnamedEdges is not { } pending)
+            return;
+        _unnamedEdges = null;
+        foreach (var (tick, kind, text) in pending)
+            LumenEdgeLog.Write(tick, Name ?? "movie", kind, text);
+    }
+
+    // Something the host addresses inside the movie by name: written when its result changes only.
+    // (The name is put together here, so nothing is built while recording is off.)
+    private T used<T>(T result, string operation, string name, string? member = null)
+    {
+        if (!LumenEdgeLog.Enabled)
+            return result;
+        var what = member is null ? $"{operation} {name}" : $"{operation} {name}{member}";
+        var text = result switch
+        {
+            null => "null",
+            LumenHostValue value => describe(value),
+            DisplayInstance => "clip",
+            Avm1Object or Dictionary<string, object?> => "object",
+            _ => Convert.ToString(result, CultureInfo.InvariantCulture) ?? "",
+        };
+        if (!(_edgeResults ??= new(StringComparer.Ordinal)).TryGetValue(what, out var last) || last != text)
+        {
+            _edgeResults[what] = text;
+            edge("use", $"{what} -> {text}");
+        }
+        return result;
+    }
+
+    private DisplayInstance? hostFind(string path, string what)
+    {
+        var instance = findInstance(path);
+        used(instance is not null, what, path);
+        return instance;
+    }
+
+    private static string describe(IEnumerable<LumenHostValue> arguments) => string.Join(", ", arguments.Select(describe));
 
     // "movie: texture 259 — character 694 in 696 'icon' frame 3 < 744 < root".
     private string describe(DisplayInstance instance, string what)
@@ -232,7 +298,11 @@ public sealed class LumenPlayer
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(arguments);
         if (!_callbacks.TryGetValue(name, out var callback))
+        {
+            if (LumenEdgeLog.Enabled)
+                edge("in", $"{name}({describe(arguments)}) -> (no such callback)");
             return false;
+        }
         var converted = arguments.Select(fromHostValue).ToArray();
         var call = invokeFunction(
             callback.Instance,
@@ -243,6 +313,8 @@ public sealed class LumenPlayer
         if (!call.Found)
             return false;
         result = toHostValue(call.Value);
+        if (LumenEdgeLog.Enabled)
+            edge("in", $"{name}({describe(arguments)}) -> {describe(result)}");
         drainActions();
         return true;
     }
@@ -257,13 +329,15 @@ public sealed class LumenPlayer
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(arguments);
         // A script object, or a clip (a class registered on it gives its methods through its prototype).
-        var target = ReadScriptValue(targetPath);
+        var target = readScriptValue(targetPath);
         var function = target switch
         {
             Avm1Object script => script.GetProperty(method).Value,
             DisplayInstance clip => clip.ScriptPrototype?.GetProperty(method).Value,
             _ => null,
         };
+        if (LumenEdgeLog.Enabled)
+            edge("call", $"{targetPath}.{method}({describe(arguments)}){(function is Avm1FunctionValue ? "" : " -> (missing)")}");
         if (target is null || function is not Avm1FunctionValue callable)
             return false;
         var invoked = invokeFunction(_root, callable, target, arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
@@ -284,9 +358,10 @@ public sealed class LumenPlayer
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(host);
-        if (ReadScriptValue(targetPath) is not Avm1Object target
+        if (readScriptValue(targetPath) is not Avm1Object target
             || target.GetProperty(method).Value is not Avm1FunctionValue original)
-            return false;
+            return used(false, "wrap", targetPath, "." + method);
+        used(true, "wrap", targetPath, "." + method);
         target.Properties[method] = new Avm1MethodWrapper((self, arguments) => new Avm1Lookup(true, fromHostValue(host(
             new LumenHostCall([.. arguments.Select(toHostValue)]),
             () => toHostValue(invokeFunction(_root, original, self, arguments, _activeContext).Value)))));
@@ -302,13 +377,14 @@ public sealed class LumenPlayer
     {
         ArgumentNullException.ThrowIfNull(targetPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
-        if (ReadScriptValue(targetPath) is not Avm1Object target
+        var what = LumenEdgeLog.Enabled ? $".{method}({string.Join(", ", arguments)}){(member is null ? "" : "." + member)}" : "";
+        if (readScriptValue(targetPath) is not Avm1Object target
             || target.GetProperty(method).Value is not Avm1FunctionValue function)
-            return null;
+            return used((double?)null, "call", targetPath, what);
         var result = invokeFunction(_root, function, target, [.. arguments.Select(static argument => (object?)argument)], _activeContext).Value;
         if (member is not null)
             result = result is Avm1Object returned ? returned.GetProperty(member).Value : null;
-        return result is double number ? number : null;
+        return used(result is double number ? number : (double?)null, "call", targetPath, what);
     }
 
     public void Advance()
@@ -321,6 +397,8 @@ public sealed class LumenPlayer
     {
         ArgumentNullException.ThrowIfNull(inputSnapshot);
         _inputSnapshot = inputSnapshot;
+        flushEdges();
+        _tick++;
         // A clip run ahead for this tick already recorded where the tick's motion starts.
         if (!_tickSnapshotTaken)
             snapshotInstances(_root);
@@ -356,6 +434,8 @@ public sealed class LumenPlayer
         var converted = arguments.Select(toHostValue).ToArray();
         if (child._root.Variables.GetValueOrDefault(name) is Avm1FunctionValue function)
         {
+            if (LumenEdgeLog.Enabled)
+                child.edge("in", $"{name}({describe(converted)}) (root function, from the loading movie)");
             var result = child.invokeFunction(child._root, function, child._root,
                 [.. converted.Select(fromHostValue)], child._activeContext);
             child.drainActions();
@@ -375,6 +455,8 @@ public sealed class LumenPlayer
 
     public void GotoFrame(int frame, bool play)
     {
+        if (LumenEdgeLog.Enabled)
+            edge("root", $"GotoFrame({frame}, {play})");
         var timeline = _sprites[_root.CharacterId];
         if ((uint)frame >= (uint)timeline.Frames.Length)
             throw new ArgumentOutOfRangeException(nameof(frame));
@@ -387,6 +469,8 @@ public sealed class LumenPlayer
 
     public void GotoLabel(string label, bool play)
     {
+        if (LumenEdgeLog.Enabled)
+            edge("root", $"GotoLabel({label}, {play})");
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         var timeline = _sprites[_root.CharacterId];
         if (!timeline.Labels.TryGetValue(label, out var frame))
@@ -406,7 +490,13 @@ public sealed class LumenPlayer
         var instance = findInstance(instancePath);
         if (instance is null || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
             || !timeline.Labels.TryGetValue(label, out var frame))
+        {
+            if (LumenEdgeLog.Enabled)
+                edge("goto", $"{instancePath} '{label}' -> (missing)");
             return false;
+        }
+        if (LumenEdgeLog.Enabled)
+            edge("goto", $"{instancePath} '{label}'{(play ? "" : " stop")}");
         jumpInstance(instance, frame, play);
         drainActions();
         resetInterpolation(instance);
@@ -417,7 +507,7 @@ public sealed class LumenPlayer
     public bool TryGotoFrame(string instancePath, int frame, bool play = true)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
-        var instance = findInstance(instancePath);
+        var instance = hostFind(instancePath, "frame");
         if (instance is null || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
             || frame < 0 || frame >= timeline.Frames.Length)
             return false;
@@ -431,7 +521,7 @@ public sealed class LumenPlayer
     public (int Frame, bool Playing)? InstanceFrame(string instancePath)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
-        return findInstance(instancePath) is { } instance ? (instance.Frame, instance.Playing) : null;
+        return hostFind(instancePath, "frame") is { } instance ? (instance.Frame, instance.Playing) : null;
     }
 
     /// <summary>The frame a label names on a named clip's timeline.</summary>
@@ -440,7 +530,7 @@ public sealed class LumenPlayer
         ArgumentNullException.ThrowIfNull(instancePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         frame = 0;
-        return findInstance(instancePath) is { } instance && _sprites.TryGetValue(instance.CharacterId, out var timeline)
+        return hostFind(instancePath, "label") is { } instance && _sprites.TryGetValue(instance.CharacterId, out var timeline)
             && timeline.Labels.TryGetValue(label, out frame);
     }
 
@@ -455,7 +545,7 @@ public sealed class LumenPlayer
     public bool TryFastForward(string instancePath, int frame)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
-        var instance = findInstance(instancePath);
+        var instance = hostFind(instancePath, "frame");
         if (instance is null || !instance.Playing || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
             || frame <= instance.Frame || frame >= timeline.Frames.Length)
             return false;
@@ -481,7 +571,7 @@ public sealed class LumenPlayer
         ArgumentNullException.ThrowIfNull(instancePath);
         if (!float.IsFinite(alpha) || alpha is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(alpha));
-        var instance = findInstance(instancePath);
+        var instance = hostFind(instancePath, "alpha");
         if (instance is null)
             return false;
         instance.Color = instance.Color with
@@ -503,7 +593,7 @@ public sealed class LumenPlayer
     public bool SetInstanceOffset(string instancePath, float x, float y)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
-        if (findInstance(instancePath) is not { } instance)
+        if (hostFind(instancePath, "offset") is not { } instance)
             return false;
         if (x == 0 && y == 0)
         {
@@ -526,7 +616,9 @@ public sealed class LumenPlayer
     /// Reads a script variable or named clip by dotted path from the root (e.g. "main.isAllEnd"), as the game
     /// polls movie state. Null when any step is missing.
     /// </summary>
-    public object? ReadScriptValue(string path)
+    public object? ReadScriptValue(string path) => used(readScriptValue(path), "read", path);
+
+    private object? readScriptValue(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
         var parts = path.Split('.');
@@ -561,7 +653,8 @@ public sealed class LumenPlayer
         if (split <= 0)
             return false;
         var name = path[(split + 1)..];
-        switch (ReadScriptValue(path[..split]))
+        used(value, "write", path);
+        switch (readScriptValue(path[..split]))
         {
             case DisplayInstance instance:
                 instance.Variables[name] = value;
@@ -583,7 +676,7 @@ public sealed class LumenPlayer
     public bool IsInstancePlaying(string instancePath)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
-        return findInstance(instancePath)?.Playing == true;
+        return hostFind(instancePath, "playing")?.Playing == true;
     }
 
     /// <summary>Diagnostic dump of the display list (name, character, frame/label, playing, visible).</summary>
@@ -609,7 +702,7 @@ public sealed class LumenPlayer
     public bool SetInstanceHidden(string instancePath, bool hidden)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
-        if (findInstance(instancePath) is not { } instance)
+        if (hostFind(instancePath, "hidden") is not { } instance)
             return false;
         instance.HiddenByHost = hidden;
         return true;
@@ -660,7 +753,7 @@ public sealed class LumenPlayer
     public bool TryGetInstanceTransform(string instancePath, out LumenMatrix transform)
     {
         transform = LumenMatrix.Identity;
-        if (findInstance(instancePath) is not { } instance)
+        if (hostFind(instancePath, "transform") is not { } instance)
             return false;
         for (var node = instance; node is not null; node = node.Parent)
             transform = transform.Then(node.Transform);
@@ -670,7 +763,7 @@ public sealed class LumenPlayer
     /// <summary>Returns the rendered bounds of a named clip in movie coordinates.</summary>
     public bool TryGetInstanceBounds(string instancePath, out LumenNativeSurfacePlacement bounds)
     {
-        var instance = findInstance(instancePath);
+        var instance = hostFind(instancePath, "bounds");
         bounds = default;
         if (instance is null)
             return false;
@@ -734,6 +827,7 @@ public sealed class LumenPlayer
     public bool TryWriteClipMember(string clipPath, string member, double value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(clipPath);
+        used(value, "write", clipPath, ":" + member);
         if (findInstance(clipPath) is not { } instance)
             return false;
         instance.Variables[member] = value;
@@ -743,7 +837,8 @@ public sealed class LumenPlayer
     public LumenHostValue ReadClipMember(string clipPath, string member)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(clipPath);
-        return findInstance(clipPath)?.Variables.GetValueOrDefault(member) is { } value ? toHostValue(value) : LumenHostValue.Undefined;
+        return used(findInstance(clipPath)?.Variables.GetValueOrDefault(member) is { } value ? toHostValue(value) : LumenHostValue.Undefined,
+            "read", clipPath, LumenEdgeLog.Enabled ? ":" + member : null);
     }
 
     private void bootstrapPackageClasses()
@@ -1300,10 +1395,12 @@ public sealed class LumenPlayer
                         && arguments[0] is string callbackName
                         && arguments[2] is Avm1FunctionValue callbackFunction)
                     {
-                        context!.OnCommit(() => _callbacks[callbackName] = new CallbackRegistration(
-                            instance,
-                            arguments[1],
-                            callbackFunction));
+                        context!.OnCommit(() =>
+                        {
+                            _callbacks[callbackName] = new CallbackRegistration(instance, arguments[1], callbackFunction);
+                            if (LumenEdgeLog.Enabled)
+                                edge("export", $"{callbackName}({string.Join(", ", Callbacks.First(each => each.Name == callbackName).Parameters)})");
+                        });
                         return new Avm1Lookup(true, true);
                     }
                     return new Avm1Lookup(true, false);
@@ -1379,6 +1476,8 @@ public sealed class LumenPlayer
                 if (target is MovieClipLoaderObject clipLoader && name == "loadClip" && arguments.Count >= 2
                     && arguments[0] is string url && arguments[1] is DisplayInstance loadTarget)
                 {
+                    if (LumenEdgeLog.Enabled)
+                        edge("load", url);
                     if (MovieLoader?.Invoke(url) is not { } loaded)
                     {
                         reportOnce("LUM_AVM_LOADCLIP_UNRESOLVED", instance.CharacterId, instance.Frame,
@@ -1639,7 +1738,12 @@ public sealed class LumenPlayer
                     jumpInstance(target, frame + bias, play);
                 }
             },
-            (command, argument) => HostCommand?.Invoke(command, argument),
+            (command, argument) =>
+            {
+                if (LumenEdgeLog.Enabled)
+                    edge("command", $"{command} {argument}");
+                HostCommand?.Invoke(command, argument);
+            },
             (target, name, arguments) =>
             {
                 var candidate = string.IsNullOrEmpty(name) ? new Avm1Lookup(true, target) : context!.GetMember(target, name);
@@ -1756,6 +1860,8 @@ public sealed class LumenPlayer
         {
             var converted = arguments.Select(toHostValue).ToImmutableArray();
             var result = function.Callback(new LumenHostCall(converted));
+            if (function.Host && LumenEdgeLog.Enabled)
+                edge("out", $"{function.Name}({describe(converted)}) -> {describe(result)}");
             if (TraceHostCalls)
                 Console.Error.WriteLine($"[host] {function.Name}({string.Join(", ", converted.Select(describe))}) -> {describe(result)}");
             return new Avm1Lookup(true, fromHostValue(result));
@@ -2177,6 +2283,9 @@ public sealed class LumenPlayer
         return constructor;
     }
 
+    // While recording, every run draws the same numbers so two runs of a session compare line by line.
+    private static readonly Random EdgeRandom = LumenEdgeLog.Enabled ? new Random(1) : Random.Shared;
+
     private sealed record ClipTransform(DisplayInstance Instance);
     private sealed class ColorTransformConstructor;
     private sealed class MovieClipLoaderConstructor;
@@ -2236,7 +2345,7 @@ public sealed class LumenPlayer
     {
         var math = new Avm1Object();
         math.Properties["random"] = new Avm1NativeFunction(
-            "Math.random", _ => LumenHostValue.FromNumber(Random.Shared.NextDouble()));
+            "Math.random", _ => LumenHostValue.FromNumber(EdgeRandom.NextDouble()));
         math.Properties["floor"] = new Avm1NativeFunction(
             "Math.floor",
             call => LumenHostValue.FromNumber(

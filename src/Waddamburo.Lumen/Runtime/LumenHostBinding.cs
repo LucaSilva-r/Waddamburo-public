@@ -99,7 +99,7 @@ public sealed class LumenHostContext
     {
         validateName(name);
         ArgumentNullException.ThrowIfNull(callback);
-        addGlobal(name, new Avm1NativeFunction(name, callback));
+        addGlobal(name, new Avm1NativeFunction(name, callback, host: true));
     }
 
     public bool IsRegistered(string name) => _globals.ContainsKey(name);
@@ -112,7 +112,7 @@ public sealed class LumenHostContext
         configure(builder);
         var value = new Avm1Object();
         foreach (var (methodName, callback) in builder.Methods)
-            value.Properties.Add(methodName, new Avm1NativeFunction($"{name}.{methodName}", callback));
+            value.Properties.Add(methodName, new Avm1NativeFunction($"{name}.{methodName}", callback, host: true));
         addGlobal(name, value);
     }
 
@@ -141,7 +141,7 @@ public sealed class LumenHostContext
         ArgumentNullException.ThrowIfNull(callback);
         if (_externalInterfaceCallRegistered)
             throw new ArgumentException("The ExternalInterface call endpoint is already registered.", nameof(callback));
-        _externalInterface.Properties["call"] = new Avm1NativeFunction("ExternalInterface.call", callback);
+        _externalInterface.Properties["call"] = new Avm1NativeFunction("ExternalInterface.call", callback, host: true);
         _externalInterfaceCallRegistered = true;
     }
 

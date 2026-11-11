@@ -32,6 +32,25 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// <summary>Called with every movie a scene loads (archive, movie); any thread.</summary>
     public Action<string, string>? Loaded { get; set; }
 
+    /// <summary>
+    /// Where movie packages are looked up before the archives (docs/development/free-movies-plan.md):
+    /// <c>&lt;root&gt;/&lt;archive folder&gt;/&lt;movie&gt;/movie.json</c> replaces that archive's movie. Needs
+    /// <see cref="DecodeImage"/>. Null (the default): archives only.
+    /// </summary>
+    public string? PackageRoot { get; set; }
+
+    /// <summary>Decodes a package's PNG textures (see <see cref="LumenMovieContent.LoadPackage"/>).</summary>
+    public Func<byte[], (int Width, int Height, byte[] Rgba)?>? DecodeImage { get; set; }
+
+    private string? packageDirectory(string archiveId, string movieId)
+    {
+        if (PackageRoot is null || DecodeImage is null)
+            return null;
+        // "indicator/packeddata.ddp" + "time_counter/time_counter.lm" -> <root>/indicator/time_counter.
+        var directory = Path.Combine(PackageRoot, Path.GetDirectoryName(archiveId) ?? "", Path.GetFileNameWithoutExtension(movieId));
+        return File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)) ? directory : null;
+    }
+
     /// <summary>Called with each movie once decoded (archive, movie), before any upload, on the decoding thread.</summary>
     public Action<string, LumenMovieContent>? Decoded { get; set; }
 
@@ -98,6 +117,10 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             ArgumentException.ThrowIfNullOrWhiteSpace(archiveId);
             ArgumentException.ThrowIfNullOrWhiteSpace(movieId);
             cancellationToken.ThrowIfCancellationRequested();
+            // A package is the user's or our own work: no patches, no upscaling, no archive needed.
+            // ponytail: read and decoded here on every load; cache with the prefetches if a package gets heavy.
+            if (owner.packageDirectory(archiveId, movieId) is { } package)
+                return LumenMovieContent.LoadPackage(package, owner.DecodeImage!, owner._limits);
             owner.Loaded?.Invoke(archiveId, movieId);
             if (owner._prefetched.TryRemove((archiveId, movieId), out var ready))
             {
@@ -112,7 +135,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             }
             if (owner.Reuse?.Invoke(archiveId, movieId) is { } kept)
                 return kept;
-            var archivePath = owner.resolveArchivePath(archiveId);
+            var archivePath = owner.resolveArchivePath(archiveId, movieId);
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)
                 throw new InvalidDataException($"Archive '{archiveId}' exceeds the configured {owner._limits.MaxFileBytes}-byte limit.");
@@ -144,7 +167,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         public void Dispose() => _archives.Clear();
     }
 
-    private string resolveArchivePath(string archiveId)
+    private string resolveArchivePath(string archiveId, string? movieId = null)
     {
         if (Path.IsPathFullyQualified(archiveId))
             throw new InvalidDataException($"Archive ID must be relative: {archiveId}");
@@ -153,7 +176,8 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         if (relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             throw new InvalidDataException($"Archive ID escapes the asset root: {archiveId}");
         if (!File.Exists(candidate))
-            throw new FileNotFoundException($"Archive was not found: {archiveId}", candidate);
+            throw new FileNotFoundException(movieId is null ? $"Archive was not found: {archiveId}"
+                : $"Movie '{movieId}' is missing: no archive '{archiveId}' in the game data and no movie package for it.", candidate);
         return candidate;
     }
 }

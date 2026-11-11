@@ -126,8 +126,11 @@ internal sealed class Avm1FunctionValue : Avm1Object
     public object? DefinitionTarget { get; set; }
 }
 
-internal sealed class Avm1NativeFunction(string name, LumenHostCallback callback) : Avm1Object
+internal sealed class Avm1NativeFunction(string name, LumenHostCallback callback, bool host = false) : Avm1Object
 {
+    /// <summary>Registered by the game's host binding (not a built-in of the Flash library).</summary>
+    public bool Host { get; } = host;
+
     public string Name { get; } = name;
 
     public LumenHostCallback Callback { get; } = callback;

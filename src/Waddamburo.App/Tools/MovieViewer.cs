@@ -12,6 +12,12 @@ namespace Waddamburo.App.Tools;
 
 internal static class MovieViewer
 {
+    /// <summary>The viewer on a movie package folder (movie.json + textures) instead of an archive movie.</summary>
+    public static int RunPackage(string directory, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
+        int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline) =>
+        run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodePng), windowWidth, windowHeight, seekFrame,
+            frameLimit, tickLimit, screenshotPath, callbackInvocations, inputTimeline);
+
     public static int Run(
         string archivePath,
         string movieName,
@@ -32,7 +38,13 @@ internal static class MovieViewer
         }
         var archiveBytes = File.ReadAllBytes(archivePath);
         var archive = DdpArchive.Open(archiveBytes);
-        var content = LumenMovieContent.Load(archive.OpenMovie(movieName));
+        return run(LumenMovieContent.Load(archive.OpenMovie(movieName)), windowWidth, windowHeight, seekFrame, frameLimit, tickLimit,
+            screenshotPath, callbackInvocations, inputTimeline);
+    }
+
+    private static int run(LumenMovieContent content, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
+        int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline)
+    {
         foreach (var diagnostic in content.Diagnostics)
         {
             var output = diagnostic.Severity is DiagnosticSeverity.Error ? Console.Error : Console.Out;

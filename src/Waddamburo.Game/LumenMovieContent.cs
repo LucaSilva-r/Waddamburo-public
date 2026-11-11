@@ -69,6 +69,41 @@ public sealed class LumenMovieContent
             semantic.Diagnostics);
     }
 
+    /// <summary>
+    /// A movie package (a folder with movie.json and its PNG textures; docs/development/free-movies-plan.md),
+    /// loaded into the same content an archive movie gives.
+    /// </summary>
+    /// <param name="directory">The package folder; its name is the movie's.</param>
+    /// <param name="decodeImage">Decodes a PNG file's bytes to straight RGBA rows; null when it cannot.</param>
+    /// <param name="limits">Parser limits (the defaults when null).</param>
+    public static LumenMovieContent LoadPackage(string directory,
+        Func<byte[], (int Width, int Height, byte[] Rgba)?> decodeImage, ParserLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(decodeImage);
+        var parserLimits = limits ?? ParserLimits.Default;
+        var root = Path.GetFullPath(directory);
+        var assembled = Formats.Package.MoviePackage.Assemble(File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)));
+        var textures = ImmutableArray.CreateBuilder<LumenTextureContent>(assembled.TextureFiles.Length);
+        foreach (var file in assembled.TextureFiles)
+        {
+            // A shared package is untrusted: its files stay inside its folder.
+            var path = Path.GetFullPath(file, root);
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                throw new InvalidDataException($"Movie package '{root}': texture path leaves the package: {file}");
+            if (new FileInfo(path).Length > parserLimits.MaxFileBytes)
+                throw new InvalidDataException($"Movie package '{root}': texture is too large: {file}");
+            var image = decodeImage(File.ReadAllBytes(path))
+                ?? throw new InvalidDataException($"Movie package '{root}': texture is not a readable PNG: {file}");
+            textures.Add(new LumenTextureContent(textures.Count, image.Width, image.Height,
+                ImmutableCollectionsMarshal.AsImmutableArray(image.Rgba)));
+        }
+        var semantic = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb, parserLimits), parserLimits,
+            new LmbSemanticValidationContext(textures.Count));
+        var name = Path.GetFileName(root);
+        return new LumenMovieContent($"{name}/{name}.lm", semantic.Value, textures.MoveToImmutable(), semantic.Diagnostics);
+    }
+
     /// <summary>Whether the movie has semantic errors (it would not load), without decoding its textures.</summary>
     public static bool HasErrors(DdpMovieView movie, ParserLimits? limits = null)
     {
@@ -84,7 +119,7 @@ public sealed class LumenMovieContent
         float stageHeight = 720,
         ILumenHostBinding? hostBinding = null,
         Func<string, LumenLoadedMovie?>? movieLoader = null) =>
-        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader);
+        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader) { Name = Name };
 
     /// <summary>Replaces textures before upload (upscaled copies; UVs are normalised, so any size fits).</summary>
     public void ReplaceTextures(Func<LumenTextureContent, int, LumenTextureContent> replace)
