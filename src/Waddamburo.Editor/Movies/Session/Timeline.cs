@@ -174,18 +174,33 @@ public sealed partial class MovieInspectorSession
             }
             ImGui.PopClipRect();
 
-            // The name selects the layer's clip; the x removes the layer.
-            ImGui.SetCursorScreenPos(new(names + 2, top + 1));
-            if (ImGui.SmallButton($"x##remove layer {index}"))
-            {
-                var at = index;
-                edited(() => _document!.Edit(_ => layers.RemoveAt(at)));
-                break;
-            }
-            ImGui.SameLine();
-            var title = (string?)layer["name"] is { Length: > 0 } instance ? $"{instance}  ({(string?)layer["character"]})" : (string?)layer["character"] ?? "?";
-            if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.AllowDoubleClick, new(NameColumn - 34, RowHeight - 4)))
+            // The name selects the layer's clip; right-click for what can be done with the layer.
+            draw.AddRectFilled(new(names, top), new(names + NameColumn, top + RowHeight), index % 2 == 0 ? Row : RowOdd);
+            ImGui.SetCursorScreenPos(new(names + 6, top + 1));
+            var character = (string?)layer["character"] ?? "?";
+            var title = (string?)layer["name"] is { Length: > 0 } instance && instance != character ? $"{instance}  ({character})" : character;
+            if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.AllowDoubleClick, new(NameColumn - 12, RowHeight - 4)))
                 selectClip(path);
+            if (ImGui.BeginPopupContextItem($"##layer menu {index}"))
+            {
+                selectClip(path);
+                var at = index;
+                var removed = false;
+                if (ImGui.MenuItem("Key on this frame", "double-click the row", false, !_document!.ReadOnly && !keys.Contains(clip.Frame)))
+                    edited(() => _document.Edit(_ => MovieDocument.KeyAt(layer, clip.Frame)));
+                if (ImGui.MenuItem("Rename", "F2", false, !_document.ReadOnly))
+                    _focusName = true;
+                if (ImGui.MenuItem("Duplicate layer", "", false, !_document.ReadOnly))
+                    removed = attempt(() => _document.DuplicateLayer(name, at));
+                ImGui.Separator();
+                if (ImGui.MenuItem("Delete layer", "", false, !_document.ReadOnly))
+                {
+                    edited(() => _document.Edit(_ => layers.RemoveAt(at)));
+                    removed = true;
+                }
+                ImGui.EndPopup();
+                if (removed) break;
+            }
             var child = clips.FirstOrDefault(each => each.Path == path && each.Kind == LumenInstanceKind.Sprite);
             if (child is not null && ImGui.IsItemHovered())
             {

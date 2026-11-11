@@ -13,44 +13,59 @@ public sealed partial class MovieInspectorSession
     {
         var tint = MovieDocument.Tint(current);
         var rgb = new Vector3((float)tint.Red, (float)tint.Green, (float)tint.Blue);
-        if (ImGui.ColorEdit3("Tint", ref rgb))
+        fieldLabel("Tint", "Multiplies the artwork's colour: white leaves it as drawn.");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.ColorEdit3("##tint", ref rgb))
         {
             var continues = _tintGesture && !ImGui.IsItemActivated();
             attempt(() => _document!.Edit(_ => MovieDocument.SetTint(MovieDocument.KeyAt(layer, frame), rgb.X, rgb.Y, rgb.Z), continues));
             _tintGesture = true;
         }
         if (ImGui.IsItemDeactivated()) _tintGesture = false;
-        ImGui.TextDisabled("Tint multiplies the artwork colour.");
+        if (spriteOf(layer) is not var (spriteName, _, index)) return;
+        var blend = (string?)layer["blend"] ?? "normal";
+        fieldLabel("Blend", "How it mixes with what is under it. For the whole layer, not per key.");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##blend", blend))
+        {
+            foreach (var option in MovieDocument.Blends)
+                if (ImGui.Selectable(option, option == blend))
+                    attempt(() => _document!.SetBlend(spriteName, index, option));
+            ImGui.EndCombo();
+        }
+    }
 
+    private (string Sprite, JsonArray Layers, int Index)? spriteOf(JsonObject layer) =>
+        layer.Parent is JsonArray layers && layers.Parent is JsonObject sprite
+            ? (_document!.Root["sprites"]!.AsObject().First(pair => ReferenceEquals(pair.Value, sprite)).Key, layers, layers.IndexOf(layer)) : null;
+
+    private void interpolationField(JsonObject layer, int frame)
+    {
         var keys = layer["keys"]!.AsArray().OfType<JsonObject>().OrderBy(key => (int)key["frame"]!).ToArray();
         var key = keys.LastOrDefault(key => (int)key["frame"]! <= frame);
         var ease = key is null ? "linear" : MovieDocument.Ease(key);
-        if (ImGui.BeginCombo("Interpolation", ease))
+        fieldLabel("Easing", "How the values run from this key to the next: linear, hold (jump at the next key), or eased in / out.");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##ease", ease))
         {
             foreach (var option in Interpolations)
                 if (ImGui.Selectable(option, option == ease))
                     attempt(() => _document!.Edit(_ => MovieDocument.SetEase(MovieDocument.KeyAt(layer, frame), option)));
             ImGui.EndCombo();
         }
-        ImGui.TextWrapped("Interpolation runs from this key to the next. Editing between keys creates a key here.");
+    }
 
-        if (layer.Parent is not JsonArray layers || layers.Parent is not JsonObject sprite) return;
-        var spriteName = _document!.Root["sprites"]!.AsObject().First(pair => ReferenceEquals(pair.Value, sprite)).Key;
-        var index = layers.IndexOf(layer);
-        ImGui.SeparatorText("Layer appearance and lifetime");
-        var blend = (string?)layer["blend"] ?? "normal";
-        if (ImGui.BeginCombo("Blend", blend))
-        {
-            foreach (var option in MovieDocument.Blends)
-                if (ImGui.Selectable(option, option == blend))
-                    attempt(() => _document.SetBlend(spriteName, index, option));
-            ImGui.EndCombo();
-        }
+    private void layerLifetimeFields(JsonObject layer, int frame)
+    {
+        if (spriteOf(layer) is not var (spriteName, layers, index) || layers.Parent is not JsonObject sprite) return;
+        var keys = layer["keys"]!.AsArray().OfType<JsonObject>().ToArray();
         var mask = (int?)layer["masks"] ?? 0;
-        if (ImGui.SliderInt("Mask layers", ref mask, 0, layers.Count - index - 1))
+        fieldLabel("Masks", "0: ordinary artwork. Otherwise this layer is not drawn: it clips that many layers above it to its shape.");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.SliderInt("##masks", ref mask, 0, layers.Count - index - 1))
         {
             var path = _selected;
-            if (attempt(() => _document.SetMask(spriteName, index, mask)) && path is not null)
+            if (attempt(() => _document!.SetMask(spriteName, index, mask)) && path is not null)
             {
                 // SetMask normalizes depths; follow this layer to its new display-list path.
                 var cut = path.LastIndexOf('/');
@@ -58,20 +73,21 @@ public sealed partial class MovieInspectorSession
                 _selected = cut < 0 ? $"{depth}" : $"{path[..cut]}/{depth}";
             }
         }
-        ImGui.TextWrapped("0: ordinary artwork. Otherwise this layer clips the next N layers above it and is not drawn itself.");
         var length = (int?)sprite["frames"] ?? 1;
         var last = keys.Max(key => (int)key["frame"]!);
         var until = (int?)layer["until"];
         var stays = until is null;
+        fieldLabel("Stays", "On: the layer is there to the timeline's end. Off: it is taken away on a frame you choose.");
         ImGui.BeginDisabled(last + 1 >= length && stays);
-        if (ImGui.Checkbox("Keep to end", ref stays))
-            attempt(() => _document.SetUntil(spriteName, index, stays ? null : Math.Clamp(frame + 1, last + 1, length - 1)));
+        if (ImGui.Checkbox("##stays", ref stays))
+            attempt(() => _document!.SetUntil(spriteName, index, stays ? null : Math.Clamp(frame + 1, last + 1, length - 1)));
         ImGui.EndDisabled();
         if (until is { } end)
         {
-            if (ImGui.InputInt("Remove on frame", ref end, 1, 10))
-                attempt(() => _document.SetUntil(spriteName, index, end));
-            ImGui.TextWrapped($"Valid removal frames: {last + 1}–{length - 1}. The layer is absent starting on this frame.");
+            fieldLabel("Removed on", $"The first frame without it: {last + 1} to {length - 1}.");
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputInt("##until", ref end, 1, 10))
+                attempt(() => _document!.SetUntil(spriteName, index, end));
         }
     }
 }

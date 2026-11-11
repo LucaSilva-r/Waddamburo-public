@@ -14,6 +14,8 @@ public sealed partial class MovieInspectorSession
     // Where the stage is on screen: fitted to the panel, then zoomed about its centre and moved.
     private EffectViewport stageView(EditorPanel area)
     {
+        // Fitted beside the rulers, not under them.
+        area = new(area.X + RulerSize, area.Y + RulerSize, Math.Max(1, area.Width - RulerSize), Math.Max(1, area.Height - RulerSize));
         var fit = EffectViewport.Fit(area).Rectangle;
         var size = fit.Size * _zoom;
         var centre = area.Position + area.Size / 2 + _pan;
@@ -47,11 +49,11 @@ public sealed partial class MovieInspectorSession
         var hovered = inside && !overTools && ImGui.IsWindowHovered();
         if (hovered && io.MouseWheel != 0 && _move is null)
             zoomStage(area, mouse, MathF.Pow(1.15f, io.MouseWheel));
-        if (hovered && (ImGui.IsMouseClicked(ImGuiMouseButton.Middle) || ImGui.IsMouseClicked(ImGuiMouseButton.Right)))
+        if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Middle))
             _panning = true;
         if (_panning)
         {
-            if (!ImGui.IsMouseDown(ImGuiMouseButton.Middle) && !ImGui.IsMouseDown(ImGuiMouseButton.Right))
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Middle))
                 _panning = false;
             else
             {
@@ -66,6 +68,50 @@ public sealed partial class MovieInspectorSession
             if (ImGui.IsKeyPressed(ImGuiKey.F, false) && selectionBounds(player, out var chosen))
                 frameStage(area, chosen.X, chosen.Y, chosen.Width, chosen.Height);
         }
+        // Asked for from a menu elsewhere (the Clips list).
+        if (_frameRequest is { } wanted)
+        {
+            if (player.TryInspectBounds(wanted, out var box))
+                frameStage(area, box.X, box.Y, box.Width, box.Height);
+            _frameRequest = null;
+        }
+    }
+
+    private string? _frameRequest;
+    private const float RulerSize = 18;
+
+    // Stage units along the top and left edges, with the pointer's place marked on both.
+    private static void stageRulers(ImDrawListPtr draw, EditorPanel area, EffectViewport view, Vector2 mouse)
+    {
+        var scale = view.Rectangle.Width / 1280; // pixels per stage unit
+        float[] steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+        var major = steps.FirstOrDefault(step => step * scale >= 60, 5000);
+        var minor = major / 5;
+        var end = area.Position + area.Size;
+        var first = view.ToStage(area.Position);
+        var last = view.ToStage(end);
+        draw.AddRectFilled(area.Position, new(end.X, area.Y + RulerSize), Ruler);
+        draw.AddRectFilled(area.Position, new(area.X + RulerSize, end.Y), Ruler);
+        for (var index = (int)MathF.Floor(first.X / minor); index * minor <= last.X; index++)
+        {
+            var x = view.ToScreen(new(index * minor, 0)).X;
+            if (x < area.X + RulerSize) continue;
+            draw.AddLine(new(x, area.Y + (index % 5 == 0 ? 3 : 12)), new(x, area.Y + RulerSize), Muted);
+            if (index % 5 == 0) draw.AddText(new(x + 3, area.Y), Muted, number(index * minor));
+        }
+        for (var index = (int)MathF.Floor(first.Y / minor); index * minor <= last.Y; index++)
+        {
+            var y = view.ToScreen(new(0, index * minor)).Y;
+            if (y < area.Y + RulerSize) continue;
+            draw.AddLine(new(area.X + (index % 5 == 0 ? 3 : 12), y), new(area.X + RulerSize, y), Muted);
+            if (index % 5 == 0) draw.AddText(new(area.X + 1, y), Muted, number(index * minor));
+        }
+        if (inArea(area, mouse))
+        {
+            draw.AddLine(new(mouse.X, area.Y), new(mouse.X, area.Y + RulerSize), Outline, 2);
+            draw.AddLine(new(area.X, mouse.Y), new(area.X + RulerSize, mouse.Y), Outline, 2);
+        }
+        draw.AddRectFilled(area.Position, area.Position + new Vector2(RulerSize), Ruler);
     }
 
     // Stage composition delegates gestures, tool controls and handle drawing to their feature files.
@@ -115,6 +161,13 @@ public sealed partial class MovieInspectorSession
             updateStageGesture(player, selected, view, point);
             if (selectionBounds(player, out box))
                 draw.AddRect(view.ToScreen(new(box.X, box.Y)), view.ToScreen(new(box.X + box.Width, box.Y + box.Height)), Outline, 0, ImDrawFlags.None, 2);
+            // What the move snapped to: a line across the view.
+            if (_move is null) _guides = (null, null);
+            if (_guides.X is { } guideX)
+                draw.AddLine(new(view.ToScreen(new(guideX, 0)).X, area.Y), new(view.ToScreen(new(guideX, 0)).X, area.Y + area.Height), Guide);
+            if (_guides.Y is { } guideY)
+                draw.AddLine(new(area.X, view.ToScreen(new(0, guideY)).Y), new(area.X + area.Width, view.ToScreen(new(0, guideY)).Y), Guide);
+            stageRulers(draw, area, view, mouse);
             ImGui.PopClipRect();
         }
         ImGui.End();

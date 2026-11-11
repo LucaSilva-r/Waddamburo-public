@@ -32,13 +32,16 @@ public sealed partial class MovieInspectorSession
                     closed = null;
                 }
                 var parent = index + 1 < clips.Count && clips[index + 1].Level > clip.Level;
-                var open = !_collapsed.Contains(clip.Path) && (clip.Level < 2 || _open.Contains(clip.Path));
-                var name = clip.Level == 0 ? "root" : clip.Name.Length > 0 ? clip.Name : $"#{clip.CharacterId}";
+                // Only the root is open at first: nine copies of one sprite are nine lines, not fifty.
+                var open = !_collapsed.Contains(clip.Path) && (clip.Level < 1 || _open.Contains(clip.Path));
+                var source = clip.Level == 0 ? null : _document?.CharacterName(clip.CharacterId);
+                var name = clip.Level == 0 ? "root" : clip.Name.Length > 0 ? clip.Name : source ?? $"#{clip.CharacterId}";
+                // An instance named differently from its asset says which asset it is a copy of.
+                if (source is not null && clip.Name.Length > 0 && source != clip.Name && clip.Kind == LumenInstanceKind.Sprite)
+                    name += $"  ({source})";
                 var state = clip.Kind switch
                 {
                     LumenInstanceKind.Sprite when clip.FrameCount > 1 => $"  {clip.Frame}/{clip.FrameCount - 1}{(clip.Label is null ? "" : $" {clip.Label}")}{(clip.Playing ? "" : " (stopped)")}",
-                    LumenInstanceKind.Shape => "  shape",
-                    LumenInstanceKind.Text => "  text",
                     _ => "",
                 };
                 var shown = clip.Visible && !clip.HiddenByHost && clip.Multiply.Alpha > 0;
@@ -68,14 +71,23 @@ public sealed partial class MovieInspectorSession
                         closed = clip.Level;
                 }
                 var icon = clip.Kind switch { LumenInstanceKind.Sprite => "S", LumenInstanceKind.Shape => "[]", LumenInstanceKind.Text => "T", _ => "?" };
-                if (ImGui.Selectable($"{icon}  {name}{state}##{clip.Path}", _selection.Contains(clip.Path), ImGuiSelectableFlags.AllowDoubleClick, new Vector2(0, ImGui.GetFrameHeight())))
+                if (ImGui.Selectable($"{icon}  {name}{state}##{clip.Path}", _selection.Contains(clip.Path),
+                        ImGuiSelectableFlags.AllowDoubleClick | ImGuiSelectableFlags.AllowOverlap, new Vector2(0, ImGui.GetFrameHeight())))
                     hierarchySelection(clips, clip.Path);
-                if (clip.Kind == LumenInstanceKind.Sprite && ImGui.IsItemHovered())
-                {
-                    ImGui.SetTooltip("Single-click: inspect placement. Double-click: open this timeline.");
-                    if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) openInstanceTimeline(clip.Path);
-                }
+                if (clip.Kind == LumenInstanceKind.Sprite && ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    openInstanceTimeline(clip.Path);
+                var changed = hierarchyMenu(clips, clip);
                 hierarchyReorder(clips, clip);
+                if (clip.Level > 0)
+                {
+                    // The eye: out of the way while working (not saved).
+                    ImGui.SameLine(ImGui.GetWindowWidth() - 44);
+                    ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+                    if (ImGui.SmallButton((clip.HiddenByHost ? "-" : "o") + $"##eye{clip.Path}"))
+                        _player().InspectSetHidden(clip.Path, !clip.HiddenByHost);
+                    ImGui.PopStyleColor();
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip(clip.HiddenByHost ? "Hidden in the editor: click to show" : "Hide in the editor (not saved)");
+                }
                 if (clip.Path == _selected && _scrollToSelected)
                 {
                     ImGui.SetScrollHereY();
@@ -84,6 +96,17 @@ public sealed partial class MovieInspectorSession
                 if (_filter.Length == 0)
                     ImGui.Unindent(clip.Level * 12f + .01f);
                 ImGui.PopStyleColor();
+                if (changed)
+                    break; // The list is of the movie before the change: drawn again next frame.
+            }
+            if (clips.Count <= 1 && _document is { ReadOnly: false })
+                ImGui.TextWrapped("Nothing on stage yet. Drag an asset from the Assets tab below, or use Add layer in the Timeline.");
+            if (ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows) && !ImGui.GetIO().WantTextInput && _selected is not null
+                && clips.FirstOrDefault(each => each.Path == _selected) is { } active && _document is { ReadOnly: false })
+            {
+                if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _key is null) removeLayer(clips, active);
+                else if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.D, false)) duplicateLayer(clips, active);
+                else if (ImGui.IsKeyPressed(ImGuiKey.F2, false)) _focusName = true;
             }
             if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _hierarchyDrag = null;
             ImGui.EndChild();
@@ -91,6 +114,47 @@ public sealed partial class MovieInspectorSession
         ImGui.End();
     }
 
+
+    // Right-click on a clip: what can be done with it. True when the movie was changed.
+    private bool hierarchyMenu(IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo clip)
+    {
+        if (!ImGui.BeginPopupContextItem($"##menu{clip.Path}"))
+            return false;
+        if (!_selection.Contains(clip.Path))
+            selectClip(clip.Path);
+        var changed = false;
+        var editable = _document is { ReadOnly: false } && clip.Level > 0 && layerOf(clips, clip) is not null;
+        if (clip.Kind == LumenInstanceKind.Sprite && ImGui.MenuItem("Open timeline", "double-click"))
+            openInstanceTimeline(clip.Path);
+        if (ImGui.MenuItem("Frame in view", "F"))
+            _frameRequest = clip.Path;
+        if (clip.Level > 0 && ImGui.MenuItem(clip.HiddenByHost ? "Show in editor" : "Hide in editor"))
+            _player().InspectSetHidden(clip.Path, !clip.HiddenByHost);
+        if (clip.Level > 0 && _document?.CharacterName(clip.CharacterId) is { } asset && ImGui.MenuItem("Edit source asset"))
+            selectAsset(clip.Kind switch { LumenInstanceKind.Shape => "shapes", LumenInstanceKind.Text => "texts", _ => "sprites" }, asset);
+        ImGui.Separator();
+        if (ImGui.MenuItem("Rename", "F2", false, editable))
+            _focusName = true;
+        if (ImGui.MenuItem("Duplicate", "Ctrl+D", false, editable))
+            changed = duplicateLayer(clips, clip);
+        if (ImGui.MenuItem("Delete", "Del", false, editable))
+            changed = removeLayer(clips, clip);
+        ImGui.EndPopup();
+        return changed;
+    }
+
+    private bool duplicateLayer(IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo clip) =>
+        layerOf(clips, clip) is { } source && spriteOf(source.Layer) is var (sprite, _, index)
+            && attempt(() => _document!.DuplicateLayer(sprite, index));
+
+    private bool removeLayer(IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo clip)
+    {
+        if (layerOf(clips, clip) is not { } source || spriteOf(source.Layer) is not var (_, layers, index))
+            return false;
+        var done = attempt(() => _document!.Edit(_ => layers.RemoveAt(index)));
+        if (done) selectClip(null);
+        return done;
+    }
 
     private void hierarchyReorder(IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo clip)
     {
