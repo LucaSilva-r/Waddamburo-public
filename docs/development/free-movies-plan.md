@@ -154,6 +154,17 @@ Write side, to build (packages only):
 - Save writes the package. A game-data movie stays reference only: no save, and no copying of its shapes, textures
   or scripts into a package.
 
+#### Looking at a game movie
+
+A movie from the game data opens in the same panels, to look at only. `MovieReference.Describe` reads it into the
+shape of a movie.json (in memory, never written; `MovieDocument.ReadOnly` ignores every edit and refuses every file
+operation): sprites as layers with keys (a tween stored as a placement per frame becomes its end keys, a held value is
+marked), labels, script markers (`action 12`, no code), shapes, textures. Characters are named by id and where they
+are used (`sprite_1205_GenreFolderTab`). The **Library** tab lists every sprite the movie defines (frames, layers,
+scripts, labels, used in); choosing one plays it alone in the middle of the stage (`ShowSprite`, a player rooted at
+that sprite) with its timeline below. Approximate where the package format is simpler: a shape's first quad only, no
+skew, no colour add. `--inspect=sprite:<part of name>` starts on a sprite.
+
 #### What the panels are built on
 
 The UI (ImGui, `MovieInspectorSession.*.cs`) only draws and calls these; rules and file handling live below it.

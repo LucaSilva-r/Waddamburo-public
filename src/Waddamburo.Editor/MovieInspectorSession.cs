@@ -54,7 +54,7 @@ public sealed partial class MovieInspectorSession : IDisposable
         _layer.CaptureKey = static key => key is ImGuiKey.Space or ImGuiKey.RightArrow;
         _layer.CaptureControlShortcuts = true;
         // A PNG or SVG dropped on the window becomes a texture of the package.
-        if (document is not null)
+        if (document is { ReadOnly: false })
             _layer.FileDropped = path => attempt(() => document.ImportTexture(path));
     }
 
@@ -63,6 +63,9 @@ public sealed partial class MovieInspectorSession : IDisposable
 
     /// <summary>A package texture by its name in movie.json, for ImGui.Image thumbnails (set by the host).</summary>
     public Func<string, (nint Texture, int Width, int Height)?>? TextureOf { get; set; }
+
+    /// <summary>Shows one sprite of the movie alone on stage, by its name in the document; null: the whole movie (set by the host).</summary>
+    public Action<string?>? ShowSprite { get; set; }
 
     // What the last refused operation said (a name taken, an asset in use...).
     private string? _notice;
@@ -395,6 +398,11 @@ public sealed partial class MovieInspectorSession : IDisposable
                 if (_document is not null && ImGui.BeginTabItem("Assets"))
                 {
                     assets();
+                    ImGui.EndTabItem();
+                }
+                if (_document is not null && ShowSprite is not null && ImGui.BeginTabItem("Library"))
+                {
+                    library();
                     ImGui.EndTabItem();
                 }
                 if (ImGui.BeginTabItem("Callbacks"))

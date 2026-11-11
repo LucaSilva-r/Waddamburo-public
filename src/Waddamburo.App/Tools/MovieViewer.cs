@@ -5,6 +5,7 @@ using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Diagnostics;
 using Waddamburo.Game;
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
@@ -64,7 +65,19 @@ internal static class MovieViewer
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"Renderer: {application.GpuDriver}");
-        var document = package is null || plain ? null : new Waddamburo.Editor.MovieDocument(package);
+        var interactive = frameLimit is null && tickLimit is null;
+        var inspect = Environment.GetCommandLineArgs().FirstOrDefault(static each => each.StartsWith("--inspect", StringComparison.Ordinal));
+        var inspecting = !plain && (interactive || inspect is not null);
+        // A package is edited; a game movie is described in the same shape, to look at only (never written).
+        Waddamburo.Editor.MovieDocument? document = null;
+        if (package is not null && !plain)
+            document = new Waddamburo.Editor.MovieDocument(package);
+        else if (inspecting)
+        {
+            var (description, names) = Waddamburo.Formats.Package.MovieReference.Describe(content.Definition,
+                [.. content.Textures.Select(static texture => (texture.Width, texture.Height))]);
+            document = new Waddamburo.Editor.MovieDocument(description, names);
+        }
         var scriptErrors = new List<Waddamburo.Formats.Package.ActionScriptException>();
         // Reloads happen on every step of a drag in the editor: a texture file is decoded once, and uploaded once.
         var decoded = new Dictionary<string, (int Width, int Height, byte[] Rgba)?>(StringComparer.Ordinal);
@@ -124,15 +137,12 @@ internal static class MovieViewer
             BundledFonts.Extract(Path.Combine(Path.GetDirectoryName(ReleaseConsole.CrashFolder)!, "fonts")).Title);
         var readPath = Environment.GetEnvironmentVariable("WADDAMBURO_READ");
         object? lastRead = null;
-        var debugger = frameLimit is null && tickLimit is null
-            ? new InteractiveMovieDebugger(player)
-            : null;
+        var debugger = interactive ? new InteractiveMovieDebugger(player) : null;
         // The movie inspector (tree, clip state, callbacks) over an interactive window; --plain leaves the bare movie.
         // --inspect[=clip] shows it in a --ticks / --screenshot run too, with that clip selected.
-        var inspect = Environment.GetCommandLineArgs().FirstOrDefault(static each => each.StartsWith("--inspect", StringComparison.Ordinal));
-        using var inspector = plain || (debugger is null && inspect is null) ? null
+        using var inspector = !inspecting ? null
             : new Waddamburo.Editor.MovieInspectorSession(application, () => player, content.Name, gameData: package is null,
-                select: inspect?.Split('=', 2) is [_, var clip] ? clip : null, document: document);
+                select: inspect?.Split('=', 2) is [_, var clip] && !clip.StartsWith("sprite:", StringComparison.Ordinal) ? clip : null, document: document);
         // A package open in a window is reloaded when one of its files is saved (scripts, movie.json, textures): the
         // movie starts again from its first frame. A mistake is printed and the last good version keeps playing.
         DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
@@ -158,6 +168,7 @@ internal static class MovieViewer
                 if (inspector is not null)
                     inspector.ScriptErrors = errors;
                 player = freshPlayer;
+                content = fresh;
                 if (debugger is not null)
                     debugger.Player = player;
             }
@@ -169,9 +180,23 @@ internal static class MovieViewer
         nameTextures(content, textureIds);
         if (inspector is not null)
         {
+            // One sprite alone on stage, its origin in the middle (null: the whole movie again).
+            inspector.ShowSprite = name =>
+            {
+                var id = name is null ? null : document?.CharacterId(name);
+                var alone = new LumenPlayer(content.Definition, 1280, 720, rootCharacterId: id, hostBinding: ViewerHostBinding.Instance) { Name = content.Name };
+                if (id is not null)
+                    alone.SetInstanceOffset("", 640, 360);
+                player = alone;
+                if (debugger is not null)
+                    debugger.Player = player;
+            };
             inspector.ScriptErrors = scriptErrors;
             inspector.TextureOf = name => named.TryGetValue(name, out var texture) ? texture : null;
         }
+        // --inspect=sprite:<part of its name> starts on that sprite alone.
+        if (inspect?.Split('=', 2) is [_, var wanted] && wanted.StartsWith("sprite:", StringComparison.Ordinal))
+            inspector?.ShowSpriteNamed(wanted[7..]);
         if (document is not null)
             document.Changed += reload; // An edit shows at once, not at the next check for saved files.
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(

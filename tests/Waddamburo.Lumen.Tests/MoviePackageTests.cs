@@ -63,6 +63,25 @@ public sealed class MoviePackageTests
     }
 
     [Fact]
+    public void AMovieIsDescribedBackAsLayersAndKeys()
+    {
+        // Assembled, a tween is a placement on every frame; described, it is its two keys again.
+        var json = Movie.Replace("\"x\": 300, \"y\": 50 }", "\"x\": 300, \"y\": 50 }, { \"frame\": 5, \"x\": 300, \"y\": 90 }")
+            .Replace("\"until\": 5,", "").Replace("\"x\": 100, \"y\": 50, \"alpha\": 0 }", "\"x\": 100, \"y\": 50, \"alpha\": 0 }, { \"frame\": 2, \"x\": 200, \"y\": 50, \"alpha\": 0.5, \"hold\": true }");
+        var read = LmbSemanticReader.Read(LmbFile.Parse(MoviePackage.Assemble(json).Lmb), validationContext: new LmbSemanticValidationContext(1));
+        var (document, names) = MovieReference.Describe(read.Value, [(64, 32)]);
+        Assert.Equal(["shape_1_ball", "sprite_2"], names.OrderBy(static pair => pair.Key).Select(static pair => pair.Value));
+        Assert.Equal(("sprite_2", "64 x 32", "texture_0"), ((string?)document["root"], (string?)document["textures"]!["texture_0"],
+            (string?)document["shapes"]!["shape_1_ball"]!["texture"]));
+        var sprite = document["sprites"]!["sprite_2"]!;
+        Assert.Equal((6, 0, 4), ((int)sprite["frames"]!, (int)sprite["labels"]!["in"]!, (int)sprite["labels"]!["out"]!));
+        var layer = Assert.Single(sprite["layers"]!.AsArray())!;
+        Assert.Equal(("shape_1_ball", "ball", 1), ((string?)layer["character"], (string?)layer["name"], (int)layer["depth"]!));
+        Assert.Equal("""[{"frame":0,"x":100,"y":50,"alpha":0},{"frame":2,"x":200,"y":50,"alpha":0.5,"hold":true},{"frame":4,"x":300,"y":50},{"frame":5,"x":300,"y":90}]""",
+            layer["keys"]!.ToJsonString());
+    }
+
+    [Fact]
     public void TheInspectorSeesPicksAndMovesClipsWithoutTouchingTheEdgeLog()
     {
         var edges = new StringWriter();

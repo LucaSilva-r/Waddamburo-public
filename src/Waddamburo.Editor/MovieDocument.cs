@@ -17,6 +17,23 @@ public sealed partial class MovieDocument
     private readonly List<string> _undo = [], _redo = [];
     private string _text;
 
+    private readonly IReadOnlyDictionary<uint, string>? _names;
+
+    /// <summary>
+    /// A movie to look at, not to change (the game's own: see MovieReference): every edit is ignored and
+    /// nothing is ever written.
+    /// </summary>
+    public MovieDocument(JsonObject description, IReadOnlyDictionary<uint, string> names)
+    {
+        Path = "";
+        _text = "";
+        Root = description;
+        _names = names;
+    }
+
+    /// <summary>Reference only: edits are ignored.</summary>
+    public bool ReadOnly => _names is not null;
+
     public MovieDocument(string packageDirectory)
     {
         Path = System.IO.Path.Combine(packageDirectory, MoviePackage.FileName);
@@ -46,6 +63,8 @@ public sealed partial class MovieDocument
     public void Edit(Action<JsonObject> change, bool continues = false)
     {
         ArgumentNullException.ThrowIfNull(change);
+        if (ReadOnly)
+            return;
         var before = _text;
         change(Root);
         var after = Format(Root);
@@ -110,7 +129,7 @@ public sealed partial class MovieDocument
 
     private void step(List<string> from, List<string> to)
     {
-        if (from.Count == 0)
+        if (from.Count == 0 || ReadOnly)
             return;
         to.Add(_text);
         var text = from[^1];
@@ -129,9 +148,20 @@ public sealed partial class MovieDocument
     /// <summary>A character's name by its id in the assembled movie (see <see cref="MoviePackage.CharacterNames"/>).</summary>
     public string? CharacterName(uint id)
     {
+        if (_names is not null)
+            return _names.GetValueOrDefault(id);
         using var document = JsonDocument.Parse(_text, MoviePackage.ReadOptions);
         var names = MoviePackage.CharacterNames(document.RootElement);
         return id >= 1 && id <= names.Count ? names[(int)id - 1] : null;
+    }
+
+    /// <summary>A character's id in the assembled movie by its name.</summary>
+    public uint? CharacterId(string name)
+    {
+        if (_names is not null)
+            return _names.FirstOrDefault(pair => pair.Value == name) is { Value: not null } found ? found.Key : null;
+        string[] all = [.. CharacterGroups.SelectMany(each => group(each).Select(static entry => entry.Key))];
+        return Array.IndexOf(all, name) is >= 0 and var index ? (uint)index + 1 : null;
     }
 
     /// <summary>The layer of sprite <paramref name="sprite"/> at timeline depth <paramref name="depth"/> placing <paramref name="character"/>.</summary>

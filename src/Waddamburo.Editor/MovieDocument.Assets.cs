@@ -48,6 +48,8 @@ public sealed partial class MovieDocument
     /// <summary>A package file's full path; refuses paths that leave the package.</summary>
     public string FilePath(string relative)
     {
+        if (ReadOnly)
+            throw new InvalidOperationException("This movie is reference only: nothing of it can be changed or saved.");
         var root = System.IO.Path.GetFullPath(Directory);
         var path = System.IO.Path.GetFullPath(relative, root);
         return path.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal) ? path
