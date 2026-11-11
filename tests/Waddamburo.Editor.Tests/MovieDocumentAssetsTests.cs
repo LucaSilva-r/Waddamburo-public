@@ -76,6 +76,85 @@ public sealed class MovieDocumentAssetsTests : IDisposable
     }
 
     [Fact]
+    public void ReplacingArtworkPreservesNamesAndRestoresFilesThroughHistory()
+    {
+        var document = open();
+        Directory.CreateDirectory(Path.Combine(_directory, "textures"));
+        File.WriteAllText(document.FilePath("textures/ball.png"), "original");
+        var replacement = Path.Combine(_directory, "new.png");
+        File.WriteAllText(replacement, "replacement");
+        var original = File.ReadAllText(document.Path);
+        document.ReplaceTexture("ball", replacement);
+        var replacedPath = (string)document.Root["textures"]!["ball"]!;
+        Assert.NotEqual("textures/ball.png", replacedPath);
+        Assert.Equal("replacement", File.ReadAllText(document.FilePath(replacedPath)));
+        Assert.Equal("original", File.ReadAllText(document.FilePath("textures/ball.png")));
+        Assert.Equal("ball", (string?)document.Root["shapes"]!["ball"]!["texture"]);
+        Assert.Equal("b", (string?)document.Root["sprites"]!["main"]!["layers"]![0]!["name"]);
+        document.Undo();
+        Assert.Equal(original.TrimEnd(), File.ReadAllText(document.Path).TrimEnd());
+        Assert.Equal("original", File.ReadAllText(document.FilePath((string)document.Root["textures"]!["ball"]!)));
+        document.Redo();
+        Assert.Equal("replacement", File.ReadAllText(document.FilePath((string)document.Root["textures"]!["ball"]!)));
+
+        // Replacing from the current artwork itself is safe, too (no overwrite of history).
+        document.ReplaceTexture("ball", document.FilePath(replacedPath));
+        Assert.NotEqual(replacedPath, (string?)document.Root["textures"]!["ball"]);
+        document.Undo();
+        Assert.Equal(replacedPath, (string?)document.Root["textures"]!["ball"]);
+        assemble();
+    }
+
+    [Fact]
+    public void UndoneImportsNeverOverwriteFilesStillNeededByHistory()
+    {
+        var document = open();
+        var source = Path.Combine(_directory, "star.svg");
+        File.WriteAllText(source, "first artwork");
+        var name = document.ImportTexture(source);
+        var first = (string)document.Root["textures"]![name]!;
+        document.Undo();
+        File.WriteAllText(source, "second artwork");
+        Assert.Equal(name, document.ImportTexture(source));
+        var second = (string)document.Root["textures"]![name]!;
+        Assert.NotEqual(first, second);
+        Assert.Equal("first artwork", File.ReadAllText(document.FilePath(first)));
+        Assert.Equal("second artwork", File.ReadAllText(document.FilePath(second)));
+        document.Undo();
+        document.Redo();
+        Assert.Equal(second, (string?)document.Root["textures"]![name]);
+    }
+
+    [Fact]
+    public void ShapeArtworkEditsKeepTheSkeletonAndAssembleAfterUndoRedo()
+    {
+        var document = open();
+        var skeleton = document.Root["sprites"]!.ToJsonString();
+        document.SetShapeRect("ball", -16, -12, 32, 24);
+        document.SetShapeUv("ball", [.25, 0, .75, 1]);
+        document.SetShapeTexture("ball", null);
+        Assert.Empty(document.Uses("textures", "ball"));
+        Assert.Equal(skeleton, document.Root["sprites"]!.ToJsonString());
+        assemble();
+        document.Undo();
+        Assert.Equal("ball", (string?)document.Root["shapes"]!["ball"]!["texture"]);
+        document.Redo();
+        Assert.Null(document.Root["shapes"]!["ball"]!["texture"]);
+        document.SetShapeUv("ball", null);
+        Assert.Null(document.Root["shapes"]!["ball"]!["uv"]);
+        var before = File.ReadAllText(document.Path);
+        Assert.Throws<InvalidOperationException>(() => document.SetShapeTexture("ball", "missing"));
+        Assert.Throws<InvalidOperationException>(() => document.SetShapeRect("ball", 0, 0, double.PositiveInfinity, 2));
+        Assert.Throws<InvalidOperationException>(() => document.SetShapeRect("ball", 0, 0, -1, 2));
+        Assert.Throws<InvalidOperationException>(() => document.SetShapeUv("ball", [0, 0, 0, 1]));
+        Assert.Throws<InvalidOperationException>(() => document.SetShapeUv("ball", [0, 0, double.NaN, 1]));
+        Assert.Throws<InvalidOperationException>(() => document.SetShapeUv("ball", [-1, 0, 1, 1]));
+        Assert.Equal(before, File.ReadAllText(document.Path));
+        Assert.Equal(skeleton, document.Root["sprites"]!.ToJsonString());
+        assemble();
+    }
+
+    [Fact]
     public void LayersAndKeysTakeTheirSettings()
     {
         var document = open();

@@ -89,6 +89,16 @@ public sealed unsafe partial class SdlApplication : IDisposable
         }
     }
 
+    /// <summary>Updates the desktop window's title on its creating thread.</summary>
+    public void SetWindowTitle(string title)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        if (!SDL_SetWindowTitle(_window, title))
+            throw sdlFailure("set the window title");
+    }
+
     // Windows takes the icon from the .exe; Linux windows have none of their own (desktops showed a letter).
     private static void setIcon(SDL_Window* window)
     {

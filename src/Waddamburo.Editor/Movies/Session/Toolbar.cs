@@ -18,7 +18,7 @@ public sealed partial class MovieInspectorSession
             }
             ImGui.SameLine();
             ImGui.TextColored(new(.52f, .56f, .61f, 1), _gameData ? "game data: reference only, nothing here is saved"
-                : _document is null ? "movie package" : "movie package: changes are written to movie.json as you make them");
+                : _document is null ? "movie package" : "movie package: changes are saved as you make them");
             if (_document is not null)
             {
                 ImGui.SameLine();

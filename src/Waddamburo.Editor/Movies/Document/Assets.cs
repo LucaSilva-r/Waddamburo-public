@@ -65,49 +65,97 @@ public sealed partial class MovieDocument
 
     /// <summary>
     /// Copies a PNG or SVG into the package's textures folder and lists it; returns the texture's name.
-    /// ponytail: undo takes the entry back but leaves the copied file.
+    /// Undo takes the entry back but leaves the copied file so redo can restore it.
     /// </summary>
-    public string ImportTexture(string sourcePath)
+    public string ImportTexture(string sourcePath, string folder = "")
     {
+        requireFolder(folder);
         var extension = System.IO.Path.GetExtension(sourcePath).ToLowerInvariant();
         if (extension is not (".png" or ".svg"))
             throw new InvalidOperationException("A texture is a PNG or an SVG file.");
         var name = free("textures", tidy(System.IO.Path.GetFileNameWithoutExtension(sourcePath)));
-        var relative = $"textures/{name}{extension}";
-        var target = FilePath(relative);
-        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
-        if (System.IO.Path.GetFullPath(sourcePath) != target)
-            File.Copy(sourcePath, target, overwrite: true);
-        Edit(root => (root["textures"] as JsonObject ?? (JsonObject)(root["textures"] = new JsonObject()))[name] = relative);
+        var relative = copyTexture(sourcePath, name, extension);
+        Edit(root =>
+        {
+            (root["textures"] as JsonObject ?? (JsonObject)(root["textures"] = new JsonObject()))[name] = relative;
+            assignAssetFolder("textures", name, folder);
+        });
         return name;
     }
 
-    /// <summary>Puts another file's content in a texture's place (same name, so every shape using it follows).</summary>
+    /// <summary>Replaces artwork under the same texture name. Keeps earlier files intact for undo and redo.</summary>
     public void ReplaceTexture(string name, string sourcePath)
     {
-        if ((string?)group("textures")[name] is not { } relative)
+        if ((string?)group("textures")[name] is null)
             throw new InvalidOperationException($"There is no texture '{name}'.");
         var extension = System.IO.Path.GetExtension(sourcePath).ToLowerInvariant();
         if (extension is not (".png" or ".svg"))
             throw new InvalidOperationException("A texture is a PNG or an SVG file.");
-        var target = System.IO.Path.ChangeExtension(relative, extension);
-        File.Copy(sourcePath, FilePath(target), overwrite: true);
-        if (target != relative)
-            Edit(root => root["textures"]![name] = target);
-        else
-            Changed?.Invoke(); // Only the file changed: the movie still has to load it.
+        var target = copyTexture(sourcePath, tidy(name), extension);
+        Edit(root => root["textures"]![name] = target);
+    }
+
+    private string copyTexture(string sourcePath, string name, string extension)
+    {
+        // JSON history refers to these files: never overwrite one, including files left by undone imports.
+        var relative = $"textures/{name}{extension}";
+        for (var number = 2; File.Exists(FilePath(relative)); number++)
+            relative = $"textures/{name}_{number}{extension}";
+        var target = FilePath(relative);
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
+        File.Copy(sourcePath, target);
+        return relative;
+    }
+
+    /// <summary>Changes the artwork of a shape without changing its character or any child instance names.</summary>
+    public void SetShapeTexture(string name, string? texture)
+    {
+        var shape = shapeNamed(name);
+        if (texture is not null && !Exists("textures", texture))
+            throw new InvalidOperationException($"There is no texture '{texture}'.");
+        Edit(_ => { if (texture is null) shape.Remove("texture"); else shape["texture"] = texture; });
+    }
+
+    /// <summary>Sets the shape's local bounds. Layers and their animation stay in place.</summary>
+    public void SetShapeRect(string name, double x, double y, double width, double height, bool continues = false)
+    {
+        var shape = shapeNamed(name);
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(width) || !double.IsFinite(height)
+            || width <= 0 || height <= 0)
+            throw new InvalidOperationException("A shape needs finite bounds with positive width and height.");
+        Edit(_ => shape["rect"] = new JsonArray(x, y, width, height), continues);
+    }
+
+    /// <summary>Sets an atlas region (left, top, right, bottom in 0..1); null uses the whole texture.</summary>
+    public void SetShapeUv(string name, double[]? uv, bool continues = false)
+    {
+        var shape = shapeNamed(name);
+        validateUv(uv);
+        Edit(_ => { if (uv is null) shape.Remove("uv"); else shape["uv"] = new JsonArray(uv[0], uv[1], uv[2], uv[3]); }, continues);
+    }
+
+    private JsonObject shapeNamed(string name) => group("shapes")[name] as JsonObject
+        ?? throw new InvalidOperationException($"There is no shape '{name}'.");
+
+    private static void validateUv(double[]? uv)
+    {
+        if (uv is not null && (uv.Length != 4 || uv.Any(static value => !double.IsFinite(value) || value < 0 || value > 1)
+            || uv[0] == uv[2] || uv[1] == uv[3]))
+            throw new InvalidOperationException("A texture region needs four numbers in 0..1 and a nonzero width and height.");
     }
 
     /// <summary>
     /// A new shape: one quad of a texture (or a host-drawn slot without one), centred on its own origin.
     /// <paramref name="uv"/>: the part of the texture as left, top, right, bottom in 0..1 (all of it when null).
     /// </summary>
-    public string AddShape(string name, string? texture, double width, double height, double[]? uv = null)
+    public string AddShape(string name, string? texture, double width, double height, double[]? uv = null, string folder = "")
     {
+        requireFolder(folder);
         if (texture is not null && !Exists("textures", texture))
             throw new InvalidOperationException($"There is no texture '{texture}'.");
-        if (!(width > 0) || !(height > 0) || uv is { Length: not 4 })
-            throw new InvalidOperationException("A shape needs a size, and four numbers for a region.");
+        if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
+            throw new InvalidOperationException("A shape needs a finite, positive size.");
+        validateUv(uv);
         name = free("shapes", tidy(name));
         Edit(root =>
         {
@@ -117,20 +165,40 @@ public sealed partial class MovieDocument
             if (uv is not null)
                 shape["uv"] = new JsonArray(uv[0], uv[1], uv[2], uv[3]);
             (root["shapes"] as JsonObject ?? (JsonObject)(root["shapes"] = new JsonObject()))[name] = shape;
+            assignAssetFolder("shapes", name, folder);
+        });
+        return name;
+    }
+
+    /// <summary>A new text field with default bounds and appearance.</summary>
+    public string AddText(string name, string folder = "")
+    {
+        requireFolder(folder);
+        name = free("texts", tidy(name));
+        Edit(root =>
+        {
+            (root["texts"] as JsonObject ?? (JsonObject)(root["texts"] = new JsonObject()))[name] = new JsonObject
+                { ["rect"] = new JsonArray(0, 0, 200, 48), ["size"] = 32, ["align"] = "left", ["color"] = "#ffffff" };
+            assignAssetFolder("texts", name, folder);
         });
         return name;
     }
 
     /// <summary>A new, empty sprite of <paramref name="frames"/> frames.</summary>
-    public string AddSprite(string name, int frames = 1)
+    public string AddSprite(string name, int frames = 1, string folder = "")
     {
+        requireFolder(folder);
         name = free("sprites", tidy(name));
-        Edit(root => (root["sprites"] as JsonObject ?? (JsonObject)(root["sprites"] = new JsonObject()))[name] =
-            new JsonObject { ["frames"] = Math.Clamp(frames, 1, ushort.MaxValue), ["layers"] = new JsonArray() });
+        Edit(root =>
+        {
+            (root["sprites"] as JsonObject ?? (JsonObject)(root["sprites"] = new JsonObject()))[name] =
+                new JsonObject { ["frames"] = Math.Clamp(frames, 1, ushort.MaxValue), ["layers"] = new JsonArray() };
+            assignAssetFolder("sprites", name, folder);
+        });
         return name;
     }
 
-    /// <summary>Renames an entry and everything that names it. The entry keeps its place in the file.</summary>
+    /// <summary>Renames an entry and its structural package references. Keeps its identity, order, child names and script linkage.</summary>
     public void Rename(string group, string from, string to)
     {
         if (from == to)
@@ -143,6 +211,8 @@ public sealed partial class MovieDocument
             throw new InvalidOperationException($"The name '{to}' is taken.");
         Edit(root =>
         {
+            if (AssetId(group, from) is { } identity)
+                assetMetadata[identity]!["name"] = to;
             var entries = (JsonObject)root[group]!;
             var pairs = entries.ToList();
             entries.Clear();

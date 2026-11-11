@@ -90,6 +90,13 @@ public sealed partial class MovieInspectorSession
                         else if (_document is not null && clip.Level > 0)
                             ImGui.TextColored(new(.52f, .56f, .61f, 1), "Made by a script: nothing of it is in movie.json.");
 
+                        if (_document?.CharacterName(clip.CharacterId) is { } assetName)
+                        {
+                            var assetGroup = clip.Kind switch { LumenInstanceKind.Shape => "shapes", LumenInstanceKind.Text => "texts", _ => "sprites" };
+                            if (ImGui.Button("Edit source asset")) selectAsset(assetGroup, assetName);
+                            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Artwork and geometry shared by all instances. Child instance names are preserved.");
+                        }
+
                         if (clip is { Kind: LumenInstanceKind.Sprite, FrameCount: > 1 })
                         {
                             ImGui.SeparatorText("timeline");

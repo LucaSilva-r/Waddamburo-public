@@ -7,6 +7,17 @@ namespace Waddamburo.Platform.Sdl;
 
 public sealed unsafe partial class SdlApplication
 {
+    /// <summary>Asynchronous system folder picker; completion returns through the same SDL dialog callback.</summary>
+    public Task<string?> PickFolderAsync(string? start = null)
+    {
+        ensureOwnerThread();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var request = new FileDialogRequest("Folder", "*", start);
+        var handle = GCHandle.Alloc(request);
+        SDL_ShowOpenFolderDialog(&filePicked, GCHandle.ToIntPtr(handle), _window, (byte*)request.Start, false);
+        return request.Completion.Task;
+    }
+
     /// <summary>System file picker. SDL may complete it on another thread; native filter data lives until then.</summary>
     public Task<string?> PickFileAsync(bool save, string description, string extension, string? start = null)
     {

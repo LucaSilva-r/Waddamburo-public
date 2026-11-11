@@ -15,6 +15,7 @@ public sealed partial class MovieInspectorSession
         _selectionAnchor = path;
         _selected = path;
         _selectedAsset = null;
+        _selectedAssetId = null;
         _assetGesture = false;
     }
 

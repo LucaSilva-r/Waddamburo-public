@@ -49,7 +49,7 @@ public sealed partial class MovieInspectorSession : IDisposable
         _layer.CaptureControlShortcuts = true;
         // A PNG or SVG dropped on the window becomes a texture of the package.
         if (document is { ReadOnly: false })
-            _layer.FileDropped = path => attempt(() => document.ImportTexture(path));
+            _layer.FileDropped = path => importTexture(path);
     }
 
     /// <summary>The scripts left out of the running movie because they do not compile (set by the host on each load).</summary>
@@ -57,6 +57,7 @@ public sealed partial class MovieInspectorSession : IDisposable
 
     /// <summary>A package texture by its name in movie.json, for ImGui.Image thumbnails (set by the host).</summary>
     public Func<string, (nint Texture, int Width, int Height)?>? TextureOf { get; set; }
+    public Func<string, nint?>? IconOf { get; set; }
 
     /// <summary>Shows one sprite of the movie alone on stage, by its name in the document; null: the whole movie (set by the host).</summary>
     public Action<string?>? ShowSprite { get; set; }
@@ -90,6 +91,8 @@ public sealed partial class MovieInspectorSession : IDisposable
         var size = io.DisplaySize;
         if (size.X < 32 || size.Y < 32)
             return;
+        pollAssetFile();
+        refreshAssetSelection();
         if (!io.WantTextInput)
         {
             if (ImGui.IsKeyPressed(ImGuiKey.Space, false))

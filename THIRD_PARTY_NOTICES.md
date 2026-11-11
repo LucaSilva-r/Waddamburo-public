@@ -86,3 +86,17 @@ vgmstream-cli is the user's own use of that program, not a representation that i
 grants any particular patent, copyright, or redistribution rights.
 
 Inter Regular 4.0, copyright The Inter Project Authors, SIL Open Font License 1.1. Source: https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip (`extras/ttf/Inter-Regular.ttf`), gzip-compressed without font modifications into `src/Waddamburo.App/Resources/fonts/Inter-Regular.ttf.gz` for the editor UI. License: `eng/packaging/licenses/Inter.txt`.
+
+## Lucide editor icons
+
+The movie editor embeds `folder`, `image`, `shapes`, `clapperboard` and `type` SVGs from [Lucide](https://github.com/lucide-icons/lucide/tree/03eae6069edfc373673bd05d723491f05ba936e3/icons), revision `03eae6069edfc373673bd05d723491f05ba936e3`. Copyright (c) 2026 Lucide Icons and Contributors, ISC License; inherited Feather icons also carry the MIT notice, copyright (c) 2013-present Cole Bemis. The complete upstream license is shipped as `eng/packaging/licenses/Lucide.txt`.
+
+Original SVGs are stored unchanged in `src/Waddamburo.Editor/Resources/Lucide/`. SHA-256:
+
+| File | SHA-256 |
+| --- | --- |
+| `clapperboard.svg` | `e4d78946cda7812f13c431c68b6d4d0077a92217c7f468667a203f237e247d7e` |
+| `folder.svg` | `f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39` |
+| `image.svg` | `619c9db58c879dce6250376ba67d9c9102ca6dbb3b1efb9294c9f180e22273a5` |
+| `shapes.svg` | `480e2301a977f7f2fc7133c330f48d8318b5fd3761b27a9c582997eb5aa47f1f` |
+| `type.svg` | `82c514732330f9c36c0f1f7fd1034634fa6ad21ba2016ffa76cf5d9608c3d6b1` |

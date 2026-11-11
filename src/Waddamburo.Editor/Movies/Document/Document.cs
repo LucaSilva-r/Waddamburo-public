@@ -14,8 +14,11 @@ namespace Waddamburo.Editor;
 public sealed partial class MovieDocument
 {
     private static readonly JsonSerializerOptions ValueOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-    private readonly List<string> _undo = [], _redo = [];
+    private sealed record Snapshot(string Movie, string Metadata);
+    private readonly List<Snapshot> _undo = [], _redo = [];
     private string _text;
+    private string _metadataText = "{}";
+    private JsonObject _metadata = new();
 
     private readonly IReadOnlyDictionary<uint, string>? _names;
 
@@ -39,6 +42,10 @@ public sealed partial class MovieDocument
         Path = System.IO.Path.Combine(packageDirectory, MoviePackage.FileName);
         _text = File.ReadAllText(Path);
         Root = parse(_text);
+        var metadataPath = System.IO.Path.Combine(packageDirectory, MetadataFileName);
+        _metadata = File.Exists(metadataPath) ? parse(File.ReadAllText(metadataPath)) : new JsonObject();
+        syncAssetIds();
+        _metadataText = Format(_metadata);
     }
 
     public string Path { get; }
@@ -67,15 +74,26 @@ public sealed partial class MovieDocument
         ArgumentNullException.ThrowIfNull(change);
         if (ReadOnly)
             return;
-        var before = _text;
-        change(Root);
+        var before = new Snapshot(_text, _metadataText);
+        try
+        {
+            change(Root);
+            syncAssetIds();
+        }
+        catch
+        {
+            Root = parse(before.Movie);
+            _metadata = parse(before.Metadata);
+            throw;
+        }
         var after = Format(Root);
-        if (after == normalised(before))
+        var metadata = Format(_metadata);
+        if (after == normalised(before.Movie) && metadata == before.Metadata)
             return;
         if (!continues || _undo.Count == 0)
             _undo.Add(before);
         _redo.Clear();
-        write(after);
+        write(new Snapshot(after, metadata));
     }
 
     private static string normalised(string text) => Format(parse(text));
@@ -129,21 +147,24 @@ public sealed partial class MovieDocument
 
     public void Redo() => step(_redo, _undo);
 
-    private void step(List<string> from, List<string> to)
+    private void step(List<Snapshot> from, List<Snapshot> to)
     {
         if (from.Count == 0 || ReadOnly)
             return;
-        to.Add(_text);
+        to.Add(new Snapshot(_text, _metadataText));
         var text = from[^1];
         from.RemoveAt(from.Count - 1);
-        Root = parse(text);
+        Root = parse(text.Movie);
+        _metadata = parse(text.Metadata);
         write(text);
     }
 
-    private void write(string text)
+    private void write(Snapshot text)
     {
-        _text = text;
-        File.WriteAllText(Path, text + (text.EndsWith('\n') ? "" : "\n"));
+        _text = text.Movie;
+        _metadataText = text.Metadata;
+        File.WriteAllText(Path, _text + (_text.EndsWith('\n') ? "" : "\n"));
+        File.WriteAllText(System.IO.Path.Combine(Directory, MetadataFileName), _metadataText + "\n");
         Revision++;
         Changed?.Invoke();
     }

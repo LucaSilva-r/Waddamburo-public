@@ -148,6 +148,18 @@ internal static class MovieViewer
         DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
         var loaded = package is null || (debugger is null && inspector is null) ? default : stamp();
         var scriptsEnabled = true;
+        string? shownSprite = null;
+        string? shownSpriteId = null;
+        LumenPlayer previewPlayer(LumenMovieContent movie)
+        {
+            var spriteName = shownSpriteId is null ? shownSprite : document?.Assets().FirstOrDefault(asset => asset.Id == shownSpriteId)?.Name;
+            var id = spriteName is null ? null : document?.CharacterId(spriteName);
+            var preview = new LumenPlayer(movie.Definition, 1280, 720, rootCharacterId: id,
+                hostBinding: ViewerHostBinding.Instance, scriptsEnabled: scriptsEnabled) { Name = movie.Name };
+            if (id is not null)
+                preview.SetInstanceOffset("", 640, 360);
+            return preview;
+        }
         void reload()
         {
             var now = stamp();
@@ -160,7 +172,7 @@ internal static class MovieViewer
                 var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce, scriptErrors: errors);
                 if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
                     throw new InvalidDataException($"{problem.Code}: {problem.Message}");
-                var freshPlayer = new LumenPlayer(fresh.Definition, 1280, 720, hostBinding: ViewerHostBinding.Instance, scriptsEnabled: scriptsEnabled);
+                var freshPlayer = previewPlayer(fresh);
                 // ponytail: textures no longer used stay on the GPU until the viewer closes.
                 textureIds = [.. fresh.Textures.Select(upload)];
                 nameTextures(fresh, textureIds);
@@ -181,14 +193,17 @@ internal static class MovieViewer
         nameTextures(content, textureIds);
         if (inspector is not null)
         {
+            var icons = new Dictionary<string, nint>(StringComparer.Ordinal);
+            foreach (var icon in Waddamburo.Editor.EditorIcons.Names)
+                if (Presentation.GameMovieContent.DecodeImage(Waddamburo.Editor.EditorIcons.Svg(icon)) is { } image)
+                    icons[icon] = (nint)application.UploadRgba8((uint)image.Width, (uint)image.Height, image.Rgba).Value;
+            inspector.IconOf = name => icons.TryGetValue(name, out var texture) ? texture : null;
             // One sprite alone on stage, its origin in the middle (null: the whole movie again).
             inspector.ShowSprite = name =>
             {
-                var id = name is null ? null : document?.CharacterId(name);
-                var alone = new LumenPlayer(content.Definition, 1280, 720, rootCharacterId: id, hostBinding: ViewerHostBinding.Instance, scriptsEnabled: scriptsEnabled) { Name = content.Name };
-                if (id is not null)
-                    alone.SetInstanceOffset("", 640, 360);
-                player = alone;
+                shownSprite = name;
+                shownSpriteId = name is null ? null : document?.AssetId("sprites", name);
+                player = previewPlayer(content);
                 if (debugger is not null)
                     debugger.Player = player;
             };
@@ -203,6 +218,8 @@ internal static class MovieViewer
         // --inspect=sprite:<part of its name> starts on that sprite alone.
         if (inspect?.Split('=', 2) is [_, var wanted] && wanted.StartsWith("sprite:", StringComparison.Ordinal))
             inspector?.ShowSpriteNamed(wanted[7..]);
+        if (inspect?.Split('=', 2) is [_, var asset] && asset.Split(':', 3) is ["asset", var group, var assetName])
+            inspector?.SelectAsset(group, assetName);
         if (document is not null)
             document.Changed += reload; // An edit shows at once, not at the next check for saved files.
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(

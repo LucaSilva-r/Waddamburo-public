@@ -64,6 +64,7 @@ internal sealed class SceneSwitcher(
         Active = shell.Coordinator.ActiveScene as LumenGameSceneInstance
             ?? throw new InvalidOperationException("The active scene is not a Lumen scene instance.");
         PerformanceRecorder.Scene = Active.Id.ToString();
+        shell.Application.SetWindowTitle($"{Waddamburo.App.Hosting.SelfUpdate.WindowTitle} — {Active.Id}");
         presenter.Activate(Active);
         flowOf(Active.Id).Enter(Active.Id);
     }

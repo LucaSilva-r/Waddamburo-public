@@ -191,8 +191,40 @@ The UI (ImGui, `Movies/Session/*.cs`) only draws and calls these; rules and file
   SVG dropped on the window is imported (`ImGuiLayer.FileDropped`).
 - On the player: the `Inspect…` calls (`LumenPlayer.Inspect.cs`).
 
-Still without UI: texture thumbnails and import / replace / rename / delete buttons, new shape from a texture,
-new sprite, the script list with attach / detach / open, the error list (the toolbar shows the first only).
+Asset editing now available (2026-11-11): the Assets tab includes textures alongside shapes, text fields and sprites.
+Import PNG / SVG opens the system picker; dropping a file imports and selects it too. Select a texture to preview it,
+see its users and replace its artwork. Replacement keeps the texture name and all shape references; earlier files
+are retained so Undo and Redo restore artwork as well as JSON. Files retained for history are not cleaned up yet.
+New shape uses the selected texture (or a native fill); New sprite creates an empty timeline. Place either through
+Timeline > Add layer. A shape's Inspector edits its texture, local bounds and UV region, with positive finite sizes
+and nonempty regions in 0..1. These changes affect all instances without renaming any child clips. Select a stage
+clip and use Edit source asset to reach its shared artwork. Unused assets can be deleted; references remain read-only.
+The viewer can start on an asset with `--inspect=asset:textures:note` (group and exact name), including in a screenshot
+run; the Inspector starts on that asset. The Assets tab lists the rest of the package.
+
+The asset browser now supports right-click menus on assets, folders and empty space. Create / Import is also
+available from the toolbar. Asset menus rename, replace artwork, move to a folder, open the physical containing
+folder and delete an unused asset. F2 renames the selected asset while the browser has focus. Folders open on
+double-click; breadcrumbs navigate back and accept asset drags. Folders can be renamed, moved or deleted when
+empty; moving one beneath itself or a descendant is refused. Search finds assets and folders across the package.
+Dropping a PNG/SVG imports into the current browser folder. Dropping a directory, or Import folder, imports its
+artwork recursively with its directory structure, as one undo step. Files retained for history stay on disk.
+
+`movie.editor.json` is the package's companion metadata, version 1: `assets` maps stable GUIDs to `group`, `name`
+and browser `folder`; `folders` maps GUIDs to `name` and `parent` (empty means root). Legacy packages get identities
+in memory when opened, and the first edit persists them. Keep this companion with the package when moving or
+sharing it. Browser folders are logical, so shapes and sprites can be organized with artwork; physical texture
+files stay beneath `textures/`. The runtime's existing named references stay compatible: rename updates shape
+texture references, layer character references and the root while preserving child instance names and sprite
+linkage/export names. It does not rewrite arbitrary script text or external packages. These identities currently
+cover assets within one package; cross-package scene references are future work. Undo/Redo snapshots include both
+movie and metadata, and the isolated-sprite preview follows the stable asset identity through rename.
+
+The browser's five Lucide SVG icons are embedded and rendered through the existing SVG pipeline. Exact upstream
+revision, hashes and licensing are in the public provenance and third-party notices.
+
+Still without UI: the script list with attach / detach / open, the error list (the toolbar shows the first only).
+Whole-scene composition and checks of required callbacks, child paths and labels remain future work.
 
 ### Contract per movie
 

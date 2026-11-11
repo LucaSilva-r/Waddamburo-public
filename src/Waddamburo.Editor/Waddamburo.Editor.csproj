@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <EmbeddedResource Include="Resources/Lucide/*.svg" LogicalName="Waddamburo.Editor.Lucide.%(Filename).svg" />
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
