@@ -313,6 +313,27 @@ numbers), twelve free movies of which the logo and title are ours to design rath
 screens after the title. Not probed yet: song select and a song without the game data (their movies need the rest of
 this milestone first).
 
+### Running without game data, as built (2026-11-11)
+
+Nothing of the game data is required to start. Missing Don-chan data: he is not drawn. Missing sound data: silence.
+Missing `ensolayout.bin`: every gameplay part at the stage's origin. With no movie folder at all, a movie without a
+free version is shown empty and named once in the log, and its stand-in takes any callback (`LumenPlayer.StandIn`);
+the boot screen's stand-in ends at once, and the home setup draws no arrows when the entry movie lacks the sprite it
+borrows them from.
+
+How far that goes: boot, logo, then the entry with a key press, where it stays, because the menus' behaviour is in
+their movies' scripts (entry and song select are the two largest in the game). A stand-in cannot be a menu.
+
+**The test for this milestone**: `WADDAMBURO_BENCHMARK_ATTRACT=2 Waddamburo <empty folder> --benchmark` goes through
+the menus by itself and into a song. Today it stops at "Gameplay note movie is missing its initial state": the engine
+draws notes through the note movies' own clips. Each free gameplay movie moves that stop further; the milestone is
+done when the benchmark song plays to its results.
+
+**Contract pages** for the 38 gameplay parts and the 15 boot and indicator movies are generated in the lab
+(`research/contracts/gameplay`, `research/contracts/boot`): callbacks with the arguments seen, calls back, and what
+the engine addresses inside each (clip names, labels, frames, fill slots). They are the list of what a free version
+must have.
+
 ## Open
 
 - Free movies live in `movies/<archive folder>/<movie>/` in the repository; the game only looks in

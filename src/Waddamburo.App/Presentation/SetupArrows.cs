@@ -13,8 +13,10 @@ internal sealed class SetupArrows
     public const uint ArrowSprite = 142;
     private readonly LumenPlayer[] _players;
 
+    // An entry movie without that sprite (one of our own, or none at all): no arrows.
     public SetupArrows(LmbMovieDefinition entry) =>
-        _players = [new(entry, 1280, 720, ArrowSprite), new(entry, 1280, 720, ArrowSprite)];
+        _players = entry.Sprites.Any(static sprite => sprite.CharacterId == ArrowSprite)
+            ? [new(entry, 1280, 720, ArrowSprite), new(entry, 1280, 720, ArrowSprite)] : [];
 
     public void Advance()
     {
@@ -28,6 +30,8 @@ internal sealed class SetupArrows
     /// </summary>
     public LumenRenderSnapshot Snapshot(int side, float centreX, float centreY, float gap, float scale, float interpolation)
     {
+        if (_players.Length == 0)
+            return new LumenRenderSnapshot(1280, 720, []);
         var snapshot = _players[side].CreateRenderSnapshot(interpolation);
         _rest ??= restCentres(snapshot);
         var (left, right, restY) = _rest.Value;

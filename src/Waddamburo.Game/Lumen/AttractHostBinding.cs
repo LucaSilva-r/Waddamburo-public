@@ -79,5 +79,6 @@ public sealed class AttractHostBinding(IAttractSoundController? sounds = null) :
     }
 
     /// <summary>kidou (boot notice, logos) sets _global.is_end after its last screen.</summary>
-    public static bool IsBootEnd(LumenPlayer player) => player.ReadScriptValue("_global.is_end") is true;
+    // (A stand-in for a boot movie that exists nowhere has nothing to show: over at once.)
+    public static bool IsBootEnd(LumenPlayer player) => player.StandIn || player.ReadScriptValue("_global.is_end") is true;
 }
