@@ -21,7 +21,8 @@
     "main": {
       "frames": 10,
       "labels": {
-        "fever_start": 0
+        "fever_start": 0,
+        "fever_end": 5
       },
       "layers": []
     }

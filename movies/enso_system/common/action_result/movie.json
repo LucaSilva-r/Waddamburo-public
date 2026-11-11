@@ -21,7 +21,9 @@
     "main": {
       "frames": 10,
       "labels": {
-        "fullcombo": 0
+        "fullcombo": 0,
+        "success": 3,
+        "fail": 6
       },
       "layers": []
     }
