@@ -209,8 +209,10 @@ used by several scenes, and other movies' developer branches load it.
   (tried on the timer and on song_select); `Inspect…` calls on the player with a test. Not yet user-tried by hand.
 - [ ] 5. Editor, write side, in this order: (a) document + undo + save, inspector fields editable (built 2026-11-11:
   `MovieDocument`, every edit written to movie.json at once, undo / redo; a selected clip's layer shows x, y, scales,
-  rotation, alpha and name, a change making a key on the current frame; not yet user-tried); (b) timeline rows
-  and keys, stage gizmos; (c) assets panel; (d) code panel with the error list. Done when the timer can be rebuilt
+  rotation, alpha and name, a change making a key on the current frame; user-tried, works); (b) timeline rows
+  and keys, stage gizmos (built 2026-11-11: a row per layer with its keys, click / drag / double-click / Delete on
+  keys, ruler with playhead and labels, frame count, add and remove layers, drag on the stage moves the selected clip;
+  scale and rotate by the fields only, no handles yet; curves are straight lines); (c) assets panel; (d) code panel with the error list. Done when the timer can be rebuilt
   in it from an empty package.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.
 - [ ] 7. Remaining screens by flow order (song select last: the largest script).

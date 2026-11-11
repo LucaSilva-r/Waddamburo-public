@@ -12,7 +12,7 @@ namespace Waddamburo.Editor;
 /// a tree, the selected clip's state and timeline, the stage with click selection, and the movie's callbacks to
 /// call by hand. It looks and pokes; it changes no file, so it opens the game's own movies as well as packages.
 /// </summary>
-public sealed class MovieInspectorSession : IDisposable
+public sealed partial class MovieInspectorSession : IDisposable
 {
     private readonly SdlApplication _application;
     private readonly ImGuiLayer _layer;
@@ -105,8 +105,8 @@ public sealed class MovieInspectorSession : IDisposable
         toolbar(layout.Toolbar, player);
         tree(layout.Targets, clips);
         inspector(layout.Inspector, player, clips, clips.FirstOrDefault(clip => clip.Path == _selected));
-        host(layout.Tracks, player);
-        stage(layout.Stage, player);
+        bottom(layout.Tracks, player, clips);
+        stage(layout.Stage, player, clips);
         ImGui.PopStyleVar();
     }
 
@@ -333,9 +333,30 @@ public sealed class MovieInspectorSession : IDisposable
     }
 
     // The host side: every callback the movie registered, with a box per parameter.
+    private void bottom(EditorPanel rect, LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips)
+    {
+        if (panel("##movie bottom", rect, ImGuiWindowFlags.NoTitleBar))
+        {
+            if (ImGui.BeginTabBar("##bottom tabs"))
+            {
+                if (_document is not null && ImGui.BeginTabItem("Timeline"))
+                {
+                    timeline(player, clips);
+                    ImGui.EndTabItem();
+                }
+                if (ImGui.BeginTabItem("Callbacks"))
+                {
+                    host(new(rect.X, rect.Y, rect.Width, rect.Height), player);
+                    ImGui.EndTabItem();
+                }
+                ImGui.EndTabBar();
+            }
+        }
+        ImGui.End();
+    }
+
     private void host(EditorPanel rect, LumenPlayer player)
     {
-        if (panel("Callbacks (what the game calls on this movie)", rect))
         {
             var callbacks = player.Callbacks;
             if (callbacks.IsEmpty)
@@ -370,7 +391,6 @@ public sealed class MovieInspectorSession : IDisposable
                 ImGui.TextUnformatted(line);
             ImGui.EndChild();
         }
-        ImGui.End();
     }
 
     private static LumenHostValue parse(string text) => text.Trim() switch
@@ -393,7 +413,9 @@ public sealed class MovieInspectorSession : IDisposable
     };
 
     // Over the stage: the selected clip's outline, and a click selects the smallest clip under the pointer.
-    private void stage(EditorPanel rect, LumenPlayer player)
+    // Over the stage: the selected clip's outline; a click selects the smallest clip under the pointer, and a drag
+    // that starts on the selected clip moves it (a key on the current frame of its layer).
+    private void stage(EditorPanel rect, LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips)
     {
         var view = EffectViewport.Fit(EditorLayout.Preview(rect));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -403,20 +425,66 @@ public sealed class MovieInspectorSession : IDisposable
             var draw = ImGui.GetWindowDrawList();
             draw.AddRect(view.Rectangle.Position, view.Rectangle.Position + view.Rectangle.Size, Muted);
             var mouse = ImGui.GetIO().MousePos;
+            var point = view.ToStage(mouse);
+            var selected = clips.FirstOrDefault(clip => clip.Path == _selected);
+            var hasBox = player.TryInspectBounds(_selected ?? "?", out var box);
             if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && view.Contains(mouse))
             {
-                var point = view.ToStage(mouse);
-                _selected = player.InspectPick(point.X, point.Y);
-                _scrollToSelected = _selected is not null;
-                // Its parents open in the tree so it can be seen there.
-                for (var path = _selected; path?.LastIndexOf('/') is > 0 and var cut; path = path[..cut])
-                    _open.Add(path[..cut]);
+                var onSelected = hasBox && point.X >= box.X && point.Y >= box.Y && point.X <= box.X + box.Width && point.Y <= box.Y + box.Height;
+                if (onSelected && selected is not null && layerOf(clips, selected) is not null)
+                    _move = new(point, selected.Transform.X, selected.Transform.Y, false);
+                else
+                    pick(player, point);
             }
-            if (_selected is not null && player.TryInspectBounds(_selected, out var box))
+            if (_move is { } move)
+            {
+                if (ImGui.IsMouseDown(ImGuiMouseButton.Left) && selected is not null && layerOf(clips, selected) is { } source
+                    && player.TryInspectParentTransform(selected.Path, out var parent))
+                {
+                    var delta = point - move.Start;
+                    if (move.Moved || delta.Length() * view.Rectangle.Width / 1280 > 3)
+                    {
+                        // The pointer's move, taken into the space the clip is placed in.
+                        var determinant = parent.M11 * parent.M22 - parent.M12 * parent.M21;
+                        if (MathF.Abs(determinant) > 1e-6f)
+                        {
+                            var x = move.X + (delta.X * parent.M22 - delta.Y * parent.M21) / determinant;
+                            var y = move.Y + (delta.Y * parent.M11 - delta.X * parent.M12) / determinant;
+                            var continues = move.Moved;
+                            _move = move with { Moved = true };
+                            edited(() => _document!.Edit(_ =>
+                            {
+                                var key = MovieDocument.KeyAt(source.Layer, source.Frame);
+                                MovieDocument.Set(key, "x", MathF.Round(x));
+                                MovieDocument.Set(key, "y", MathF.Round(y));
+                            }, continues));
+                        }
+                    }
+                }
+                else
+                {
+                    if (!move.Moved)
+                        pick(player, move.Start); // A plain click on the selected clip reaches what is inside it.
+                    _move = null;
+                }
+            }
+            if (_selected is not null && player.TryInspectBounds(_selected, out box))
                 draw.AddRect(view.ToScreen(new(box.X, box.Y)), view.ToScreen(new(box.X + box.Width, box.Y + box.Height)), Outline, 0, ImDrawFlags.None, 2);
         }
         ImGui.End();
         ImGui.PopStyleVar();
+    }
+
+    private sealed record StageMove(Vector2 Start, float X, float Y, bool Moved);
+    private StageMove? _move;
+
+    private void pick(LumenPlayer player, Vector2 point)
+    {
+        _selected = player.InspectPick(point.X, point.Y);
+        _scrollToSelected = _selected is not null;
+        // Its parents open in the tree so it can be seen there.
+        for (var path = _selected; path?.LastIndexOf('/') is > 0 and var cut; path = path[..cut])
+            _open.Add(path[..cut]);
     }
 
     public void Dispose()

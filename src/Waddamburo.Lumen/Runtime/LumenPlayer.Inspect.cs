@@ -107,6 +107,17 @@ public sealed partial class LumenPlayer
         return true;
     }
 
+    /// <summary>The transform from the space a clip is placed in (its parent's) to movie coordinates.</summary>
+    public bool TryInspectParentTransform(string path, out LumenMatrix transform)
+    {
+        transform = LumenMatrix.Identity;
+        if (inspected(path) is not { } instance)
+            return false;
+        for (var parent = instance.Parent; parent is not null; parent = parent.Parent)
+            transform = transform.Then(parent.Transform);
+        return true;
+    }
+
     /// <summary>
     /// The clip under a stage point: the smallest one that draws there, so a click reaches the part and not the
     /// screen-sized clip that holds it. Null when nothing is there.
