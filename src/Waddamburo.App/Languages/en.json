@@ -465,6 +465,8 @@
   "service.crash.occurred": "An error has occurred.",
   "service.crash.log": "Log: {0}",
   "service.crash.quit": "Close the window or press Escape to quit.",
+  "service.error.title": "Error",
+  "service.ok": "OK",
   "service.update.title": "SOFTWARE UPDATE",
   "service.update.downloading": "Downloading {0}",
   "service.update.restarts": "The game restarts by itself when it is done."

@@ -27,12 +27,13 @@ internal sealed record OverlayRow(string Label, float X = 480, Func<string>? Val
 /// rows stay where they say (a menu's main list, at its left edge), else the page's block of labels and values is
 /// centred, the values a few cells after the longest label (as the cabinet lays out its option pages);
 /// <paramref name="Body"/>: a centred page's message as coloured lines (the boot's error screen), in place of
-/// <paramref name="Message"/>; <paramref name="Footer"/>: coloured lines at the bottom, in place of the legend.
+/// <paramref name="Message"/>; <paramref name="Footer"/>: coloured lines at the bottom, in place of the legend;
+/// <paramref name="Modal"/>: alone over the darkened game (an error the player has to acknowledge).
 /// </summary>
 internal sealed record OverlayPage(Func<string> Title, Func<OverlayRow[]> Rows, bool Defaults = false, bool Centred = false,
     bool DrumTest = false, Func<string?>? Message = null, Action? Back = null, object? Tag = null, bool Legend = true,
     bool Fixed = false, Func<(string Text, RenderColor Colour)[]>? Body = null,
-    Func<(string Text, RenderColor Colour)[]>? Footer = null);
+    Func<(string Text, RenderColor Colour)[]>? Footer = null, bool Modal = false);
 
 /// <summary>
 /// The menus' one look and feel, after the arcade cabinet's service menu: plain text (Kosugi Maru) over black on a
@@ -115,6 +116,14 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
     }
 
     public void Close() => _pages.Clear();
+
+    /// <summary>
+    /// An error the player has to see: the crash screen's look (the red "an error has occurred", then
+    /// <paramref name="message"/>) over the darkened game, until OK (or Escape) takes it away.
+    /// </summary>
+    public void Alert(string message) => Push(new OverlayPage(static () => Strings.T("service.error.title"),
+        () => [new OverlayRow(Strings.T("service.ok"), Enter: Pop)], Centred: true, Modal: true,
+        Body: () => [(Strings.T("service.crash.occurred"), Red), (message, White)]));
 
     /// <summary>
     /// One tick: <paramref name="pulses"/> the keys that went down, <paramref name="held"/> those held; <paramref name="escape"/>
@@ -203,11 +212,14 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
         if (viewport.Height / 720f != _scale)
             releaseGlyphs(); // the window was resized: rasterize again at the new size
         (_scaleX, _scale) = (viewport.Width / 1280f, viewport.Height / 720f);
-        if (Home && !application.BlursBackdrop)
+        // Home: the game behind is frosted and darkened a little (an error alone over it, darker, for its message to
+        // read); where the renderer can't frost it, a dark veil.
+        if (Home || page.Modal)
         {
             _white ??= application.UploadRgba8(1, 1, [255, 255, 255, 255]);
+            var dark = !application.BlursBackdrop ? 0.92f : page.Modal ? 0.8f : 0.4f;
             quads.Add(RenderQuad.FromRectangles(_white.Value, new(0, 0, 1, 1), RenderRectangle.Full,
-                new RenderColor(0, 0, 0, 0.92f), RenderColor.Transparent));
+                new RenderColor(0, 0, 0, dark), RenderColor.Transparent));
         }
         var red = (_tick - _movedAt) % BlinkTicks < BlinkTicks / 2;
         var rows = page.Rows();

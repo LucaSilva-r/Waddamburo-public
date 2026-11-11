@@ -465,6 +465,8 @@
   "service.crash.occurred": "エラーが発生しています。",
   "service.crash.log": "ログ: {0}",
   "service.crash.quit": "ウィンドウを閉じるか、Escapeで終了します。",
+  "service.error.title": "エラー",
+  "service.ok": "OK",
   "service.update.title": "ソフトウェア更新",
   "service.update.downloading": "ダウンロード中: {0}",
   "service.update.restarts": "完了すると自動で再起動します。"

@@ -30,9 +30,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // ALL PADS, the waiting one included).
     private int _player, _device, _guided;
     private bool _listening;
-    // SONG LIBRARIES: the folder picker is open for this library (tja, osu, official); a problem with the last pick.
+    // SONG LIBRARIES: the folder picker is open for this library (tja, osu, official).
     private string? _picking;
-    private string? _message;
     private Action<ArcadeSettings>? _apply;
     private Action? _rehash;
 
@@ -94,7 +93,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         _canCalibrate = canCalibrate;
         (_settings, _credits, _drum, _exit, _apply, _rehash, _defaultTja) = (settings, credits, drum, exit, apply, rehash, defaultTja);
         (_home, _command) = (settings.Home, command);
-        (_listening, _picking, _message) = (false, null, null);
+        (_listening, _picking) = (false, null);
         Array.Clear(_hits);
         // Home: the menus' ka and don as the cursor moves and picks.
         _menu.Sound = _home ? drum : null;
@@ -112,13 +111,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         if (_picking is { } library && SdlApplication.TryTakePickedFolder(out var folder))
         {
             _picking = null;
-            _message = null;
             set(s => library switch
             {
                 "tja" => s with { TjaFolder = folder },
                 "osu" => s with { OsuFolder = folder },
                 "osu-stable" => s with { OsuStableFolder = folder },
-                _ => HomeControls.AddOfficialFolder(s, folder, problem => _message = problem),
+                _ => HomeControls.AddOfficialFolder(s, folder, _menu.Alert),
             });
         }
         if (_listening)
@@ -449,7 +447,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
                 Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
             new(S("service.add_official"), 400, Enter: () => pick("official", null),
-                Hint: _message ?? S("service.add_official.hint")),
+                Hint: S("service.add_official.hint")),
             new(S("service.rehash"), 400, Gap: true, Enter: () => _rehash?.Invoke(),
                 Hint: S("service.rehash.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
