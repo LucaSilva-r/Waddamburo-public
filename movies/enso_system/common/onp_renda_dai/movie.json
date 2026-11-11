@@ -19,14 +19,20 @@
   },
   "sprites": {
     "main": {
-      "frames": 20,
+      "frames": 50,
       "labels": {
         "level01": 0,
-        "level02": 10
+        "level02": 10,
+        "level00": 20,
+        "level03": 30,
+        "level04": 40
       },
       "layers": [],
       "scripts": {
-        "0": "scripts/main.as"
+        "0": "scripts/main.as",
+        "29": "scripts/stop.as",
+        "39": "scripts/stop.as",
+        "49": "scripts/stop.as"
       }
     }
   }

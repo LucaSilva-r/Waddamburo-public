@@ -1,0 +1,309 @@
+// result: the song's results, bare minimum (placeholder look): the numbers the game sets, a column per drum.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg"
+  },
+  "shapes": {
+    "bg": {
+      "texture": "bg",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    }
+  },
+  "texts": {
+    "heading": {
+      "rect": [
+        -500,
+        -36,
+        1000,
+        72
+      ],
+      "size": 56,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "name": {
+      "rect": [
+        0,
+        0,
+        260,
+        46
+      ],
+      "size": 32,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "value": {
+      "rect": [
+        200,
+        0,
+        260,
+        46
+      ],
+      "size": 36,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "hint": {
+      "rect": [
+        -500,
+        -22,
+        1000,
+        44
+      ],
+      "size": 32,
+      "align": "center",
+      "color": "#ffffff"
+    }
+  },
+  "sprites": {
+    "column": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "name",
+          "name": "name0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 52
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 52
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 104
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 104
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name3",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 156
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value3",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 156
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name4",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 208
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value4",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 208
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name5",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 260
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value5",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 260
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name6",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 312
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value6",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 312
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name7",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 364
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value7",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 364
+            }
+          ]
+        }
+      ]
+    },
+    "main": {
+      "frames": 1,
+      "scripts": {
+        "0": "scripts/main.as"
+      },
+      "layers": [
+        {
+          "character": "bg",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "heading",
+          "name": "heading",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 70
+            }
+          ]
+        },
+        {
+          "character": "column",
+          "name": "p1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 130,
+              "y": 150
+            }
+          ]
+        },
+        {
+          "character": "column",
+          "name": "p2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 690,
+              "y": 150
+            }
+          ]
+        },
+        {
+          "character": "hint",
+          "name": "hint",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 650
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

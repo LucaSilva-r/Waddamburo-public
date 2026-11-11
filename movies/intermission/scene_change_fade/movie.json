@@ -19,14 +19,16 @@
   },
   "sprites": {
     "main": {
-      "frames": 72,
+      "frames": 82,
       "labels": {
         "wait": 0,
-        "in": 10
+        "in": 10,
+        "out": 72
       },
       "scripts": {
         "0": "scripts/stop.as",
-        "70": "scripts/stop.as"
+        "70": "scripts/stop.as",
+        "81": "scripts/stop.as"
       },
       "layers": [
         {

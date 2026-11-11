@@ -1,0 +1,87 @@
+// keikoku: The notice between the title and the logo in the attract loop. Placeholder look.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg"
+  },
+  "shapes": {
+    "bg": {
+      "texture": "bg",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    }
+  },
+  "texts": {
+    "line0": {
+      "rect": [
+        -600,
+        -30.799999999999997,
+        1200,
+        61.599999999999994
+      ],
+      "size": 44,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "line1": {
+      "rect": [
+        -600,
+        -22.4,
+        1200,
+        44.8
+      ],
+      "size": 32,
+      "align": "center",
+      "color": "#9aa0b4"
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 1,
+      "labels": {
+        "end": 0
+      },
+      "scripts": {
+        "0": "scripts/main.as"
+      },
+      "layers": [
+        {
+          "character": "bg",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "line0",
+          "name": "line0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 320
+            }
+          ]
+        },
+        {
+          "character": "line1",
+          "name": "line1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 400
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

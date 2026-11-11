@@ -19,10 +19,24 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
+      "frames": 61,
       "layers": [],
       "scripts": {
-        "0": "scripts/main.as"
+        "0": "scripts/main.as",
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as",
+        "30": "scripts/stop.as",
+        "40": "scripts/stop.as",
+        "50": "scripts/stop.as",
+        "60": "scripts/stop.as"
+      },
+      "labels": {
+        "normal": 1,
+        "in": 11,
+        "fever": 21,
+        "out": 31,
+        "tokkun_auto_off": 41,
+        "tokkun_auto_on": 51
       }
     }
   }

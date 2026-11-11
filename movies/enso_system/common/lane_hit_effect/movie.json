@@ -40,13 +40,19 @@
   },
   "sprites": {
     "main": {
-      "frames": 160,
+      "frames": 220,
       "labels": {
         "hit_ryo": 10,
         "hit_ka": 40,
         "hit_huka": 70,
         "hit_ryo_big": 100,
-        "hit_ka_big": 130
+        "hit_ka_big": 130,
+        "no_onp": 160,
+        "hit_no": 170,
+        "hit_ka_wai": 180,
+        "hit_ryo_wai": 190,
+        "hit_ryo_big_wai": 200,
+        "hit_ka_big_wai": 210
       },
       "scripts": {
         "0": "scripts/rest.as",
@@ -59,7 +65,13 @@
         "69": "scripts/rest.as",
         "99": "scripts/rest.as",
         "129": "scripts/rest.as",
-        "159": "scripts/rest.as"
+        "159": "scripts/rest.as",
+        "169": "scripts/stop.as",
+        "179": "scripts/stop.as",
+        "189": "scripts/stop.as",
+        "199": "scripts/stop.as",
+        "209": "scripts/stop.as",
+        "219": "scripts/stop.as"
       },
       "layers": [
         {

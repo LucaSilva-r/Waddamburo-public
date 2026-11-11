@@ -19,16 +19,44 @@
   },
   "sprites": {
     "main": {
-      "frames": 436,
+      "frames": 566,
       "labels": {
         "don_d_hit": 0,
         "don_hit": 10,
         "don_renda_d_hit": 20,
         "katsu_d_hit": 30,
         "katsu_hit": 40,
-        "katsu_renda_d_hit": 50
+        "katsu_renda_d_hit": 50,
+        "no_hit": 436,
+        "don_hit_add": 446,
+        "katsu_hit_add": 456,
+        "don_d_hit_add": 466,
+        "katsu_d_hit_add": 476,
+        "geki_hit": 486,
+        "geki_hit_add": 496,
+        "don_w_hit": 506,
+        "don_w_hit_add": 516,
+        "katsu_w_hit": 526,
+        "katsu_w_hit_add": 536,
+        "don_renda_d_hit_add": 546,
+        "katsu_renda_d_hit_add": 556
       },
-      "layers": []
+      "layers": [],
+      "scripts": {
+        "445": "scripts/stop.as",
+        "455": "scripts/stop.as",
+        "465": "scripts/stop.as",
+        "475": "scripts/stop.as",
+        "485": "scripts/stop.as",
+        "495": "scripts/stop.as",
+        "505": "scripts/stop.as",
+        "515": "scripts/stop.as",
+        "525": "scripts/stop.as",
+        "535": "scripts/stop.as",
+        "545": "scripts/stop.as",
+        "555": "scripts/stop.as",
+        "565": "scripts/stop.as"
+      }
     }
   }
 }

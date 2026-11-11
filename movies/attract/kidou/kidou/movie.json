@@ -1,0 +1,91 @@
+// kidou: The boot notice: shown a moment, then the game goes on to the logo. Placeholder look.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg"
+  },
+  "shapes": {
+    "bg": {
+      "texture": "bg",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    }
+  },
+  "texts": {
+    "line0": {
+      "rect": [
+        -600,
+        -50.4,
+        1200,
+        100.8
+      ],
+      "size": 72,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "line1": {
+      "rect": [
+        -600,
+        -21.0,
+        1200,
+        42.0
+      ],
+      "size": 30,
+      "align": "center",
+      "color": "#9aa0b4"
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 5,
+      "labels": {
+        "start": 0,
+        "notice": 1,
+        "bng": 2,
+        "kenri": 3,
+        "end": 4
+      },
+      "scripts": {
+        "0": "scripts/main.as"
+      },
+      "layers": [
+        {
+          "character": "bg",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "line0",
+          "name": "line0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 300
+            }
+          ]
+        },
+        {
+          "character": "line1",
+          "name": "line1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 400
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

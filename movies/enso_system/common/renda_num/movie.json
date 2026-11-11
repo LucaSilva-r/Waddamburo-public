@@ -19,10 +19,18 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
+      "frames": 31,
       "layers": [],
       "scripts": {
-        "0": "scripts/main.as"
+        "0": "scripts/main.as",
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as",
+        "30": "scripts/stop.as"
+      },
+      "labels": {
+        "idle": 1,
+        "hit": 11,
+        "out": 21
       }
     }
   }

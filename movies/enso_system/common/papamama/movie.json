@@ -19,8 +19,14 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
-      "layers": []
+      "frames": 11,
+      "layers": [],
+      "labels": {
+        "loop": 1
+      },
+      "scripts": {
+        "10": "scripts/stop.as"
+      }
     }
   }
 }

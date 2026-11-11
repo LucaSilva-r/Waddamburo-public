@@ -19,10 +19,24 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
+      "frames": 61,
       "layers": [],
       "scripts": {
-        "0": "scripts/main.as"
+        "0": "scripts/main.as",
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as",
+        "30": "scripts/stop.as",
+        "40": "scripts/stop.as",
+        "50": "scripts/stop.as",
+        "60": "scripts/stop.as"
+      },
+      "labels": {
+        "wait": 1,
+        "start": 11,
+        "geki_hit": 21,
+        "geki_miss": 31,
+        "geki_break_high": 41,
+        "geki_break_low": 51
       }
     }
   }

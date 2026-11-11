@@ -37,20 +37,26 @@
   },
   "sprites": {
     "main": {
-      "frames": 170,
+      "frames": 200,
       "labels": {
         "wait": 0,
         "in": 10,
         "out": 50,
         "in_extra": 90,
-        "out_extra": 130
+        "out_extra": 130,
+        "in_intrusion1p": 170,
+        "in_intrusion2p": 180,
+        "out_intrusion2p": 190
       },
       "scripts": {
         "0": "scripts/stop.as",
         "40": "scripts/stop.as",
         "81": "scripts/stop.as",
         "120": "scripts/stop.as",
-        "161": "scripts/stop.as"
+        "161": "scripts/stop.as",
+        "179": "scripts/stop.as",
+        "189": "scripts/stop.as",
+        "199": "scripts/stop.as"
       },
       "layers": [
         {

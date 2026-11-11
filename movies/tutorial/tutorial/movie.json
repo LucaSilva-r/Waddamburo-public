@@ -1,0 +1,117 @@
+// tutorial: how to play, bare minimum (placeholder look): four lines, a DON to leave. The game's labels are kept as names.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 140,
+      "labels": {
+        "init": 0,
+        "fadeIn": 10,
+        "scene_1": 20,
+        "scene_2": 30,
+        "scene_3": 40,
+        "scene_4": 50,
+        "scene_5": 60,
+        "scene_6": 70,
+        "scene_7": 80,
+        "scene_8": 90,
+        "scene_9": 100,
+        "scene_10": 110,
+        "fadeOut": 120,
+        "end": 130
+      },
+      "layers": [
+        {
+          "character": "line",
+          "name": "line0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 240
+            }
+          ]
+        },
+        {
+          "character": "line",
+          "name": "line1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 320
+            }
+          ]
+        },
+        {
+          "character": "line",
+          "name": "line2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 400
+            }
+          ]
+        },
+        {
+          "character": "line",
+          "name": "line3",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 480
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "9": "scripts/stop.as",
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as",
+        "39": "scripts/stop.as",
+        "49": "scripts/stop.as",
+        "59": "scripts/stop.as",
+        "69": "scripts/stop.as",
+        "79": "scripts/stop.as",
+        "89": "scripts/stop.as",
+        "99": "scripts/stop.as",
+        "109": "scripts/stop.as",
+        "119": "scripts/stop.as",
+        "129": "scripts/stop.as",
+        "139": "scripts/stop.as",
+        "0": "scripts/main.as"
+      }
+    }
+  },
+  "texts": {
+    "line": {
+      "rect": [
+        -560,
+        -28,
+        1120,
+        56
+      ],
+      "size": 40,
+      "align": "center",
+      "color": "#ffffff"
+    }
+  }
+}

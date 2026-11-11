@@ -19,10 +19,16 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
+      "frames": 21,
       "layers": [],
       "scripts": {
-        "0": "scripts/main.as"
+        "0": "scripts/main.as",
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as"
+      },
+      "labels": {
+        "wait": 1,
+        "start": 11
       }
     }
   }

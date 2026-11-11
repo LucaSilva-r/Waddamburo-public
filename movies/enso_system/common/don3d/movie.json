@@ -19,11 +19,17 @@
   },
   "sprites": {
     "main": {
-      "frames": 10,
+      "frames": 30,
       "labels": {
-        "don1p": 0
+        "don1p": 0,
+        "nodion": 10,
+        "don2p": 20
       },
-      "layers": []
+      "layers": [],
+      "scripts": {
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as"
+      }
     }
   }
 }

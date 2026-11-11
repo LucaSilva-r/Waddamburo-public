@@ -19,8 +19,22 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
-      "layers": []
+      "frames": 51,
+      "layers": [],
+      "labels": {
+        "level01": 1,
+        "level02": 11,
+        "level03": 21,
+        "level04": 31,
+        "onp_douji_miss": 41
+      },
+      "scripts": {
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as",
+        "30": "scripts/stop.as",
+        "40": "scripts/stop.as",
+        "50": "scripts/stop.as"
+      }
     }
   }
 }

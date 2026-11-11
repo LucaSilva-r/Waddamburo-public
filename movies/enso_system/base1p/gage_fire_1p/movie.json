@@ -19,12 +19,18 @@
   },
   "sprites": {
     "main": {
-      "frames": 10,
+      "frames": 30,
       "labels": {
         "fever_start": 0,
-        "fever_end": 5
+        "fever_end": 5,
+        "fever_no": 10,
+        "fever": 20
       },
-      "layers": []
+      "layers": [],
+      "scripts": {
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as"
+      }
     }
   }
 }

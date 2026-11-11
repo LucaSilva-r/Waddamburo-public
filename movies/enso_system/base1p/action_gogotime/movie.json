@@ -19,11 +19,15 @@
   },
   "sprites": {
     "main": {
-      "frames": 10,
+      "frames": 20,
       "labels": {
-        "splash": 0
+        "splash": 0,
+        "wait": 10
       },
-      "layers": []
+      "layers": [],
+      "scripts": {
+        "19": "scripts/stop.as"
+      }
     }
   }
 }

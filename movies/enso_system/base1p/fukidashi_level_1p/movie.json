@@ -19,8 +19,22 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
-      "layers": []
+      "frames": 51,
+      "layers": [],
+      "labels": {
+        "wait": 1,
+        "level_up": 11,
+        "level_up_end": 21,
+        "level_down": 31,
+        "level_down_end": 41
+      },
+      "scripts": {
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as",
+        "30": "scripts/stop.as",
+        "40": "scripts/stop.as",
+        "50": "scripts/stop.as"
+      }
     }
   }
 }

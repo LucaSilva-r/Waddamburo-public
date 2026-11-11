@@ -19,8 +19,24 @@
   },
   "sprites": {
     "main": {
-      "frames": 1,
-      "layers": []
+      "frames": 61,
+      "layers": [],
+      "labels": {
+        "normal": 1,
+        "neiro_1": 11,
+        "neiro_2": 21,
+        "neiro_3": 31,
+        "neiro_4": 41,
+        "neiro_5": 51
+      },
+      "scripts": {
+        "10": "scripts/stop.as",
+        "20": "scripts/stop.as",
+        "30": "scripts/stop.as",
+        "40": "scripts/stop.as",
+        "50": "scripts/stop.as",
+        "60": "scripts/stop.as"
+      }
     }
   }
 }

@@ -438,7 +438,30 @@ and `fail` were added by hand after a song stopped on the first.
 Blank or missing on that loop, in the order a player meets them: boot, logo and title; the results; score, combo
 and gauge during the song (milestone 6); the tutorial (no way out of its stand-in); song select's "Difficulty" folder.
 
-Next: results, then the title screen, then the board and gauge of the gameplay screen.
+**Skeletons for the remaining screens of the main path** (2026-11-11), each with the one thing the flow needs from
+it so the game never waits on a blank movie:
+
+| Movie | What it does | How it tells the game it is over |
+| --- | --- | --- |
+| `attract/kidou` | the boot notice, 2.5 s | `_global.is_end = true` |
+| `attract/logo_namco`, `title`, `keikoku` | logo, title (10 s), notice | `ExternalInterface.call("Command", "End")` |
+| `enso_result/result` | the numbers the game sets, a column per drum | `_global.isAllEnd` on a DON or after 15 s |
+| `enso_result/retry_game` | nothing yet (no revival challenge), 2 s | `_global.isAllEnd`, not succeeded |
+| `reward_shop/shop_gameover` | 3 s | `Lumen.LumenTerminate_Gameover()` |
+| `tutorial/tutorial` | the rules in four lines | `_global.isAllEnd` on a DON |
+
+Pure skeletons (callbacks and labels, nothing drawn): the indicator parts (`indicator`, `player_name`, `over_msg`,
+`network_icon`, `msg_banapass`, `msg_coins`), `waitinput`, `attract/movie`, the dan covers (`scene_change_dani1`,
+`scene_change_dani2`, `dani_shutter`). On an empty data directory the attract loop now turns by itself and no movie of
+the main path is reported missing; only the themed gameplay parts (backgrounds, dancers) are stand-ins.
+
+The lab's skeleton generator now takes every label from the movie's structure (`tools/describe`), not only the ones
+a recorded session jumped to, and rests at each label's last frame; the 27 earlier packages got their missing labels
+the same way. Still without a skeleton: the dan screens (`dani_select`, `dani_result`), AI battle, Waiwai, the
+themed gameplay sets.
+
+Next (user, 2026-11-11): the editor, to make authoring these as easy as possible. Later: Waddamburo in a folder of
+its own (same layout), and a skin menu in the settings where the user points at a Taiko Green USRDIR.
 
 ## Open
 

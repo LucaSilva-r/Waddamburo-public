@@ -19,13 +19,17 @@
   },
   "sprites": {
     "main": {
-      "frames": 10,
+      "frames": 20,
       "labels": {
         "fullcombo": 0,
         "success": 3,
-        "fail": 6
+        "fail": 6,
+        "wait": 10
       },
-      "layers": []
+      "layers": [],
+      "scripts": {
+        "19": "scripts/stop.as"
+      }
     }
   }
 }

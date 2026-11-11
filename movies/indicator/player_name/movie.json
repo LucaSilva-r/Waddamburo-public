@@ -1,0 +1,37 @@
+// player_name: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 30,
+      "labels": {
+        "init": 0,
+        "fadeout": 10,
+        "fadein": 20
+      },
+      "layers": [],
+      "scripts": {
+        "9": "scripts/stop.as",
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as",
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}
