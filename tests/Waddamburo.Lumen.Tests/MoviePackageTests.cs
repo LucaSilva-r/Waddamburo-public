@@ -63,6 +63,21 @@ public sealed class MoviePackageTests
     }
 
     [Fact]
+    public void KeysEaseAndALayerMasksTheOnesAboveIt()
+    {
+        var eased = play(Movie.Replace("\"alpha\": 0 }", "\"alpha\": 0, \"ease\": \"in\" }"));
+        eased.Advance();
+        eased.Advance();
+        Assert.Equal(140f, Assert.Single(eased.CreateRenderSnapshot().Quads).TopLeft.X); // A quarter of the way, not half.
+        Assert.Contains("unknown ease", Assert.Throws<FormatException>(() => MoviePackage.Assemble(Movie.Replace("\"alpha\": 0 }", "\"ease\": \"bounce\" }"))).Message);
+
+        var masked = play(Movie.Replace("\"layers\": [", "\"layers\": [ { \"character\": \"ball\", \"masks\": 1, \"keys\": [ { \"frame\": 0 } ] },"));
+        var quads = masked.CreateRenderSnapshot().Quads;
+        Assert.Contains(quads, static quad => quad.MaskOperation != Rendering.LumenRenderMaskOperation.Draw);
+        Assert.Contains(quads, static quad => quad.MaskOperation == Rendering.LumenRenderMaskOperation.Draw && quad.MaskDepth > 0);
+    }
+
+    [Fact]
     public void AMovieIsDescribedBackAsLayersAndKeys()
     {
         // Assembled, a tween is a placement on every frame; described, it is its two keys again.

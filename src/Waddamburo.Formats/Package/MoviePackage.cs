@@ -55,6 +55,22 @@ public static class MoviePackage
 
     private static readonly string[] CharacterGroups = ["shapes", "texts", "sprites"];
 
+    /// <summary>The ways a key's values can run to the next key ("ease"; "linear" when left out).</summary>
+    public static readonly string[] Eases = ["linear", "in", "out", "inOut"];
+
+    /// <summary>
+    /// How far along the values are at fraction <paramref name="t"/> (0..1) of the way from a key to the next:
+    /// "in" starts slowly, "out" ends slowly, "inOut" both.
+    /// </summary>
+    public static double Ease(string? ease, double t) => ease switch
+    {
+        null or "linear" => t,
+        "in" => t * t,
+        "out" => 1 - (1 - t) * (1 - t),
+        "inOut" => t < .5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t),
+        _ => throw new FormatException($"{FileName}: unknown ease \"{ease}\" (linear, in, out, inOut)."),
+    };
+
     /// <summary>The parsing options of movie.json (comments and trailing commas allowed).</summary>
     public static JsonDocumentOptions ReadOptions => Options;
 
@@ -198,6 +214,8 @@ public static class MoviePackage
                 var blend = (layer.TryGetProperty("blend", out var blendValue) ? blendValue.GetString() : "normal") switch
                 {
                     "normal" => 0u,
+                    "multiply" => 3u,
+                    "screen" => 4u,
                     "add" => 8u,
                     var other => throw new FormatException($"{FileName}: {where} has an unknown blend: \"{other}\"."),
                 };
@@ -205,6 +223,10 @@ public static class MoviePackage
                 if (keys.Length == 0 || keys[^1].Frame >= frameCount)
                     throw new FormatException($"{FileName}: {where} needs keys inside the sprite's {frameCount} frames.");
                 var until = (int)number(layer, "until", frameCount);
+                // "masks": n: this layer is not drawn; its shape clips the n layers above it (the next n depths).
+                var clip = (uint)number(layer, "masks", 0) is > 0 and var masked ? depth + masked : 0;
+                if (clip > ushort.MaxValue)
+                    throw new FormatException($"{FileName}: {where} masks too many layers.");
                 (uint Matrix, uint Colour)? last = null;
                 for (var frame = keys[0].Frame; frame < Math.Min(until, frameCount); frame++)
                 {
@@ -215,7 +237,7 @@ public static class MoviePackage
                     // Mode 1 places, 2 moves what is there; position kind 0 is a matrix-pool index.
                     frames[frame].Add((LmbTags.PlaceObject,
                     [
-                        character, layerIndex + 1, 0, last is null ? name : 0, (last is null ? 1u : 2u) << 16 | blend, depth << 16,
+                        character, layerIndex + 1, 0, last is null ? name : 0, (last is null ? 1u : 2u) << 16 | blend, depth << 16 | clip,
                         (uint)keys[0].Frame << 16, now.Item1, now.Item2, uint.MaxValue, 0, 0,
                     ]));
                     last = now;
@@ -369,7 +391,7 @@ public static class MoviePackage
 
     /// <summary>One keyframe of a layer; values run straight to the next key unless <see cref="Hold"/>.</summary>
     private readonly record struct Key(int Frame, float X, float Y, float ScaleX, float ScaleY, float Rotation,
-        float Alpha, float Red, float Green, float Blue, bool Hold)
+        float Alpha, float Red, float Green, float Blue, bool Hold, string? Ease)
     {
         public static Key Read(JsonElement key)
         {
@@ -380,7 +402,8 @@ public static class MoviePackage
                 throw new FormatException($"{FileName}: a key's tint needs 3 numbers.");
             return new Key(key.GetProperty("frame").GetInt32(), get("x", 0), get("y", 0), get("scaleX", scale), get("scaleY", scale),
                 get("rotation", 0), get("alpha", 1), tint[0], tint[1], tint[2],
-                key.TryGetProperty("hold", out var hold) && hold.GetBoolean());
+                key.TryGetProperty("hold", out var hold) && hold.GetBoolean(),
+                key.TryGetProperty("ease", out var ease) ? ease.GetString() : null);
         }
 
         public static Key At(Key[] keys, int frame)
@@ -392,7 +415,7 @@ public static class MoviePackage
             var end = keys[next];
             if (start.Hold)
                 return start;
-            var t = (frame - start.Frame) / (float)(end.Frame - start.Frame);
+            var t = (float)MoviePackage.Ease(start.Ease, (frame - start.Frame) / (double)(end.Frame - start.Frame));
             float mix(float a, float b) => a + (b - a) * t;
             return start with
             {

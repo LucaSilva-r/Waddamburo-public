@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using ImGuiNET;
+using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Editor;
 
@@ -12,8 +13,56 @@ public sealed partial class MovieInspectorSession
     private string _libraryFilter = "";
     private string? _shown;
 
-    private void show(string? sprite)
+    // The sprites entered one inside the other (Flash's "edit in place" trail); empty: the whole movie.
+    private readonly List<string> _trail = [];
+
+    /// <summary>Goes into the sprite a clip is an instance of: it plays alone, and Back returns to where it was entered from.</summary>
+    private bool enter(LumenInstanceInfo clip)
     {
+        if (ShowSprite is null || clip.Kind != LumenInstanceKind.Sprite || clip.Level == 0
+            || _document?.CharacterName(clip.CharacterId) is not { } name)
+            return false;
+        show(name, keepTrail: true);
+        _trail.Add(name);
+        return true;
+    }
+
+    /// <summary>Back to trail entry <paramref name="count"/> (0: the whole movie).</summary>
+    private void leaveTo(int count)
+    {
+        var target = count <= 0 ? null : _trail[count - 1];
+        _trail.RemoveRange(Math.Max(count, 0), _trail.Count - Math.Max(count, 0));
+        show(target, keepTrail: true);
+    }
+
+    // The trail as buttons: movie > sprite > sprite.
+    private void breadcrumb()
+    {
+        if (_trail.Count == 0)
+            return;
+        if (ImGui.SmallButton("movie"))
+            leaveTo(0);
+        for (var index = 0; index < _trail.Count; index++)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(">");
+            ImGui.SameLine();
+            if (ImGui.SmallButton($"{_trail[index]}##trail{index}") && index + 1 < _trail.Count)
+            {
+                leaveTo(index + 1);
+                break;
+            }
+        }
+    }
+
+    private void show(string? sprite, bool keepTrail = false)
+    {
+        if (!keepTrail)
+        {
+            _trail.Clear();
+            if (sprite is not null)
+                _trail.Add(sprite);
+        }
         _shown = sprite;
         selectClip(null);
         _open.Clear();

@@ -76,6 +76,35 @@ public sealed class MovieDocumentAssetsTests : IDisposable
     }
 
     [Fact]
+    public void LayersAndKeysTakeTheirSettings()
+    {
+        var document = open();
+        Assert.Equal(1, document.DuplicateLayer("main", 0));
+        document.Edit(root => root["sprites"]!["main"]!["layers"]![1]!["name"] = "copy");
+        document.MoveLayer("main", 1, 0);
+        Assert.Equal(["copy", "b"], document.Root["sprites"]!["main"]!["layers"]!.AsArray().Select(static each => (string?)each!["name"]));
+        document.SetBlend("main", 1, "add");
+        document.SetMask("main", 0, 1);
+        Assert.Throws<InvalidOperationException>(() => document.SetMask("main", 1, 1)); // Nothing above the top layer.
+        Assert.Throws<InvalidOperationException>(() => document.SetBlend("main", 0, "glow"));
+        Assert.Throws<InvalidOperationException>(() => document.SetUntil("main", 0, 3)); // On its last key.
+        document.Edit(root => root["sprites"]!["main"]!["frames"] = 8);
+        document.SetUntil("main", 0, 5);
+
+        var layer = (System.Text.Json.Nodes.JsonObject)document.Root["sprites"]!["main"]!["layers"]![1]!;
+        var first = MovieDocument.KeyAt(layer, 0);
+        MovieDocument.SetTint(first, 1, 0, 0);
+        MovieDocument.SetEase(first, "out");
+        Assert.Equal("out", MovieDocument.Ease(first));
+        var middle = MovieDocument.KeyAt(layer, 1); // A third of the way in time, 5/9 of the way eased out.
+        Assert.Equal((15.556, (1d, .556, .556)), (MovieDocument.Value(middle, "x"), MovieDocument.Tint(middle)));
+        MovieDocument.SetEase(first, "hold");
+        Assert.Equal(("hold", null), (MovieDocument.Ease(first), (string?)first["ease"]));
+        document.Edit(root => root["frameRate"] = 60); // Written with the key changes made on the tree above.
+        assemble();
+    }
+
+    [Fact]
     public void ScriptsAreAttachedListedAndTheirErrorsCollected()
     {
         var document = open();

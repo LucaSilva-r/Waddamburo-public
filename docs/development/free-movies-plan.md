@@ -60,6 +60,8 @@ A directory per movie, found before the archive movie of the same id:
   `depth` (its order in the list when left out), with an instance `name`, a `blend` (`normal`, `add`), `keys` and
   `until` (the frame it is removed on; never when left out).
 - A key: `frame`, `x`, `y`, `scale` or `scaleX` / `scaleY`, `rotation` (degrees), `alpha`, `tint` [r, g, b], `hold`.
+  `ease` (`in`, `out`, `inOut`; linear when left out) shapes the run to the next key. A layer's `blend` is `normal`,
+  `add`, `multiply` or `screen`; `masks`: n makes it a mask for the n layers above it (not drawn itself).
   Values run straight from one key to the next unless `hold`. This is the model the editor edits (layers and
   keyframes); curves other than straight lines are the editor's to add.
 - Not yet: text outlines, masks (`ClipDepth`), colour add, several quads per shape, seek snapshots (a seek replays the
@@ -175,6 +177,9 @@ The UI (ImGui, `MovieInspectorSession.*.cs`) only draws and calls these; rules a
     `AddSprite(name, frames)`, `Rename(group, from, to)` (follows every reference), `Delete(group, name)` (refused
     while used), `Uses(group, name)`, `Unused()`, `Exists(group, name)`. Groups: `textures`, `shapes`, `texts`,
     `sprites`. A refused operation throws `InvalidOperationException` with the sentence to show.
+  - Layers (by sprite and place in its list; later is on top): `MoveLayer`, `DuplicateLayer`, `SetBlend` (`Blends`),
+    `SetUntil`, `SetMask(sprite, index, count)`. Keys: `Tint` / `SetTint`, `Ease` / `SetEase` (`linear`, `in`,
+    `out`, `inOut`, `hold`); change a key inside `Edit`.
   - Scripts: `Scripts()` (file, sprite, frame; classes have no sprite), `AttachScript(sprite, frame, file)`,
     `DetachScript`, `AddClass`, `RemoveClass` (a missing file is created with a comment), `OpenOutside(file)` (the
     system's program for it), `FilePath(relative)`.

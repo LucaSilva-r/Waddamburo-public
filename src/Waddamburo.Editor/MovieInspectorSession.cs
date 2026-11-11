@@ -180,6 +180,7 @@ public sealed partial class MovieInspectorSession : IDisposable
                     edited(_document.Redo);
                 ImGui.EndDisabled();
             }
+            breadcrumb();
             if (ImGui.Button(Paused ? "Play" : "Pause"))
                 Paused = !Paused;
             ImGui.SameLine();
@@ -489,7 +490,11 @@ public sealed partial class MovieInspectorSession : IDisposable
             var point = view.ToStage(mouse);
             var selected = clips.FirstOrDefault(clip => clip.Path == _selected);
             var hasBox = player.TryInspectBounds(_selected ?? "?", out var box);
-            if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && view.Contains(mouse))
+            // A double click goes into the selected clip's sprite.
+            if (ImGui.IsWindowHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && view.Contains(mouse)
+                && selected is not null && enter(selected))
+                _move = null;
+            else if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && view.Contains(mouse))
             {
                 var onSelected = hasBox && point.X >= box.X && point.Y >= box.Y && point.X <= box.X + box.Width && point.Y <= box.Y + box.Height;
                 if (onSelected && selected is not null && layerOf(clips, selected) is not null)
