@@ -117,6 +117,24 @@ public sealed class ActionScriptTests
         Assert.Equal(0, player.CurrentFrame);
     }
 
+    [Fact]
+    public void ATextFieldShowsWhatAScriptSetsInIt()
+    {
+        var movie = Movie.Replace("CLASSES", "").Replace("\"shapes\":", "\"texts\": { \"label\": { \"rect\": [0, 0, 200, 40], \"size\": 32, "
+            + "\"align\": \"center\", \"color\": \"#ff8800\" } }, \"shapes\":")
+            .Replace("\"layers\": [ { \"character\": \"clip\"", "\"layers\": [ { \"character\": \"label\", \"name\": \"label\", "
+            + "\"keys\": [ { \"frame\": 0, \"x\": 50, \"y\": 60 } ] }, { \"character\": \"clip\"");
+        var read = LmbSemanticReader.Read(LmbFile.Parse(MoviePackage.Assemble(movie, _ => "this.label.text = 'Time ' + 42; stop();").Lmb),
+            validationContext: new LmbSemanticValidationContext(0));
+        Assert.Empty(read.Diagnostics);
+        var player = new LumenPlayer(read.Value, 1280, 720);
+        Assert.True(player.Diagnostics.IsEmpty, string.Join(" | ", player.Diagnostics.Select(static each => $"{each.Code}: {each.Message}")));
+        var text = Assert.Single(player.CreateRenderSnapshot().Quads, static quad => quad.NativeSurface is not null);
+        Assert.True(Rendering.LumenTextSurface.TryParse(text.NativeSurface!.Value, out var shown, out var width, out _, out var size, out var align, out var rgb));
+        Assert.Equal(("Time 42", 200f, 32f, 'c', 0xFF8800u), (shown, width, size, align, rgb));
+        Assert.Equal((50f, 60f), (text.TopLeft.X, text.TopLeft.Y));
+    }
+
     [Theory]
     [InlineData("var a = ;", "main.as(1,9): Unexpected ';'.")]
     [InlineData("\n  foo(1;", "main.as(2,8): Expected ',' but found ';'.")]

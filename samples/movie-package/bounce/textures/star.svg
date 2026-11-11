@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Drawn for this sample. An SVG texture is rasterised when the package loads. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="45%" r="60%">
+      <stop offset="0" stop-color="#fff7c2"/>
+      <stop offset="1" stop-color="#ffb300"/>
+    </radialGradient>
+  </defs>
+  <path d="M64 6 L79 46 L122 48 L88 75 L100 117 L64 93 L28 117 L40 75 L6 48 L49 46 Z"
+        fill="url(#glow)" stroke="#7a3b00" stroke-width="5" stroke-linejoin="round"/>
+</svg>

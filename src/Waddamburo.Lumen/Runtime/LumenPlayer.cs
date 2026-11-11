@@ -2498,7 +2498,7 @@ public sealed class LumenPlayer
                     if (exportName is not null && _classes.TryGetValue(exportName, out var registeredClass))
                         queueConstruction(instance, registeredClass);
                 }
-                else if (!_shapes.ContainsKey(instance.CharacterId))
+                else if (!_shapes.ContainsKey(instance.CharacterId) && !_texts.ContainsKey(instance.CharacterId))
                     reportOnce("LUM_CHARACTER_NOT_FOUND", instance.CharacterId, parent.Frame, "Placed character has no shape or sprite definition.");
                 break;
             case 2 when instance is not null:

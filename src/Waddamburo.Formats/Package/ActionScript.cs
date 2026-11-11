@@ -669,7 +669,7 @@ public static class ActionScript
         private const byte End = 0x00, Play = 0x06, Stop = 0x07, GotoFrame2 = 0x9F, Subtract = 0x0B, Multiply = 0x0C, Divide = 0x0D, Not = 0x12, Pop = 0x17, GetVariable = 0x1C,
             SetVariable = 0x1D, Trace = 0x26, Delete = 0x3A, DefineLocal = 0x3C, CallFunction = 0x3D, ReturnValue = 0x3E,
             Modulo = 0x3F, NewObject = 0x40, DefineLocal2 = 0x41, InitArray = 0x42, InitObject = 0x43, Add = 0x47, Less = 0x48,
-            Equals = 0x49, ToNumber = 0x4A, Duplicate = 0x4C, GetMember = 0x4E, SetMember = 0x4F, Increment = 0x50,
+            EqualsLoose = 0x49, ToNumber = 0x4A, Duplicate = 0x4C, GetMember = 0x4E, SetMember = 0x4F, Increment = 0x50,
             Decrement = 0x51, CallMethod = 0x52, NewMethod = 0x53, BitAnd = 0x60, BitOr = 0x61, BitXor = 0x62, ShiftLeft = 0x63,
             ShiftRight = 0x64, ShiftRightUnsigned = 0x65, StrictEquals = 0x66, Greater = 0x67, Extends = 0x69,
             DefineFunction2 = 0x8E, PushValues = 0x96, JumpAlways = 0x99, JumpIf = 0x9D;
@@ -1126,7 +1126,7 @@ public static class ActionScript
         {
             "+" => Add, "-" => Subtract, "*" => Multiply, "/" => Divide, "%" => Modulo, "&" => BitAnd, "|" => BitOr, "^" => BitXor,
             "<<" => ShiftLeft, ">>" => ShiftRight, ">>>" => ShiftRightUnsigned, "<" or ">=" => Less, ">" or "<=" => Greater,
-            "==" or "!=" => Equals, _ => StrictEquals,
+            "==" or "!=" => EqualsLoose, _ => StrictEquals,
         };
 
         private void expression(Node node)

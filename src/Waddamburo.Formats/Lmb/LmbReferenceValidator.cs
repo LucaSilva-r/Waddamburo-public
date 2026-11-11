@@ -11,6 +11,9 @@ internal static class LmbReferenceValidator
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
         var characterIds = new HashSet<uint>();
+        // Text fields are characters too (placed like shapes).
+        foreach (var text in movie.Texts)
+            addCharacterId(characterIds, text.CharacterId, text.RawRecord, diagnostics);
         foreach (var shape in movie.Shapes)
         {
             addCharacterId(characterIds, shape.CharacterId, shape.RawRecord, diagnostics);

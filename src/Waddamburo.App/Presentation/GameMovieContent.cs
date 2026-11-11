@@ -54,9 +54,14 @@ internal static class GameMovieContent
         return (source, upscale);
     }
 
-    /// <summary>A movie package's PNG texture as straight RGBA (see <see cref="LumenMovieContent.LoadPackage"/>).</summary>
-    public static (int Width, int Height, byte[] Rgba)? DecodePng(byte[] png) =>
-        Waddamburo.Platform.Sdl.Text.SdlPng.Decode(png) is { } image ? ((int)image.Width, (int)image.Height, image.Pixels) : null;
+    /// <summary>
+    /// A movie package's texture as straight RGBA: a PNG, or an SVG drawn at its own size
+    /// (see <see cref="LumenMovieContent.LoadPackage"/>).
+    /// </summary>
+    public static (int Width, int Height, byte[] Rgba)? DecodeImage(byte[] file) =>
+        file is [0x89, (byte)'P', (byte)'N', (byte)'G', ..]
+            ? Waddamburo.Platform.Sdl.Text.SdlPng.Decode(file) is { } image ? ((int)image.Width, (int)image.Height, image.Pixels) : null
+            : SvgTextures.Decode(file);
 
     private static void patch(string archive, LumenMovieContent content, (UpscaleTool Tool, bool Bc7)? upscale)
     {

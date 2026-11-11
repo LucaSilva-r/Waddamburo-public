@@ -16,4 +16,5 @@ ExternalInterface.addCallback("GetTurns", this, function(): Number {
 // Runs every frame, on top of the timeline's own motion.
 this.onEnterFrame = function() {
     turns++;
+    self.counter.text = "frame " + turns;
 };

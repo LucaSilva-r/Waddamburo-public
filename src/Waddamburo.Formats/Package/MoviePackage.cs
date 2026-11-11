@@ -41,6 +41,7 @@ public static class MoviePackage
     private sealed class Assembler(Func<string, string>? readScript)
     {
         private readonly List<byte[]> _actions = [];
+        private readonly List<float[]> _bounds = [];
         private readonly List<string> _strings = [""]; // Index 0 is "no name".
         private readonly List<(float A, float B, float C, float D, float X, float Y)> _matrices = [];
         private readonly List<(short R, short G, short B, short A)> _colours = [];
@@ -55,9 +56,11 @@ public static class MoviePackage
                 ? textureMap.EnumerateObject().Select(static entry => (entry.Name, File: entry.Value.GetString() ?? "")).ToArray()
                 : [];
             var shapes = root.TryGetProperty("shapes", out var shapeMap) ? shapeMap.EnumerateObject().ToArray() : [];
+            var texts = root.TryGetProperty("texts", out var textMap) ? textMap.EnumerateObject().ToArray() : [];
             var sprites = root.GetProperty("sprites").EnumerateObject().ToArray();
             // Every character gets its id first: a sprite may place one defined after it.
-            foreach (var name in shapes.Select(static shape => shape.Name).Concat(sprites.Select(static sprite => sprite.Name)))
+            foreach (var name in shapes.Select(static shape => shape.Name).Concat(texts.Select(static field => field.Name))
+                .Concat(sprites.Select(static sprite => sprite.Name)))
                 if (!_characters.TryAdd(name, (uint)_characters.Count + 1))
                     throw new FormatException($"{FileName}: two characters are named \"{name}\".");
 
@@ -74,6 +77,24 @@ public static class MoviePackage
             }
             foreach (var shape in shapes)
                 addShape(body, shape, textures);
+            // A text field: a box a script fills through its "text" member (clip.field.text = "12"), drawn by the
+            // engine's own text renderer in the game's font. "size" in pixels, "align" left / center / right,
+            // "color" "#rrggbb".
+            foreach (var field in texts)
+            {
+                var rect = floats(field.Value.GetProperty("rect"), 4, $"text \"{field.Name}\" rect");
+                var align = field.Value.TryGetProperty("align", out var alignValue) ? alignValue.GetString() : "left";
+                var colour = field.Value.TryGetProperty("color", out var colourValue) ? colourValue.GetString() ?? "" : "#000000";
+                if (align is not ("left" or "center" or "right") || colour.Length != 7 || colour[0] != '#' || !colour[1..].All(Uri.IsHexDigit))
+                    throw new FormatException($"{FileName}: text \"{field.Name}\" needs align left, center or right and a color like \"#ffcc00\".");
+                var words = new uint[16];
+                words[0] = _characters[field.Name];
+                words[2] = text($"<p align=\"{align}\"><font color=\"{colour}\"></font></p>");
+                words[5] = (uint)_bounds.Count;
+                words[11] = bits((float)number(field.Value, "size", 24));
+                _bounds.Add([rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]]);
+                body.Add((LmbTags.DefineText, words));
+            }
             foreach (var sprite in sprites)
                 addSprite(body, sprite);
 
@@ -92,6 +113,8 @@ public static class MoviePackage
             })]));
             if (_actions.Count > 0)
                 _actionPool = actionPool();
+            if (_bounds.Count > 0)
+                _records.Add((LmbTags.BoundsPool, [(uint)_bounds.Count, .. _bounds.SelectMany(static box => box.Select(bits))]));
             _records.AddRange(body);
 
             using var stream = new MemoryStream();

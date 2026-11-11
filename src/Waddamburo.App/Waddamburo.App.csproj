@@ -58,6 +58,9 @@
   <ItemGroup>
     <!-- QR codes for the home setup's sign-in and friend codes (MIT). -->
     <PackageReference Include="QRCoder" />
+    <!-- SVG textures of movie packages (MIT), drawn by Skia; the Linux library without fontconfig. -->
+    <PackageReference Include="Svg.Skia" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>
 
   <!-- NuGet runtime assets must enter the single-file bundle (not a loose cimgui.dll). -->

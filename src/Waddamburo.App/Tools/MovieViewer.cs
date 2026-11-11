@@ -15,7 +15,7 @@ internal static class MovieViewer
     /// <summary>The viewer on a movie package folder (movie.json + textures) instead of an archive movie.</summary>
     public static int RunPackage(string directory, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
         int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline) =>
-        run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodePng), windowWidth, windowHeight, seekFrame,
+        run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodeImage), windowWidth, windowHeight, seekFrame,
             frameLimit, tickLimit, screenshotPath, callbackInvocations, inputTimeline, directory);
 
     public static int Run(
@@ -93,6 +93,9 @@ internal static class MovieViewer
         }
         foreach (var invocation in callbackInvocations.Where(static invocation => invocation.Tick is null))
             invoke(invocation);
+        // Dynamic text fields, in the bundled title font (the game uses the player's font).
+        using var textFields = new Presentation.TextFieldTextures(application,
+            BundledFonts.Extract(Path.Combine(Path.GetDirectoryName(ReleaseConsole.CrashFolder)!, "fonts")).Title);
         var readPath = Environment.GetEnvironmentVariable("WADDAMBURO_READ");
         object? lastRead = null;
         var debugger = frameLimit is null && tickLimit is null
@@ -110,7 +113,7 @@ internal static class MovieViewer
             loaded = now;
             try
             {
-                var fresh = LumenMovieContent.LoadPackage(package!, Presentation.GameMovieContent.DecodePng);
+                var fresh = LumenMovieContent.LoadPackage(package!, Presentation.GameMovieContent.DecodeImage);
                 if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
                     throw new InvalidDataException($"{problem.Code}: {problem.Message}");
                 var freshPlayer = fresh.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
@@ -131,7 +134,7 @@ internal static class MovieViewer
                 index => index < textureIds.Length
                     ? textureIds[index]
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."),
-                surface => placeholders.TryGetValue(surface, out var placeholder) ? placeholder : null);
+                surface => placeholders.TryGetValue(surface, out var placeholder) ? placeholder : textFields.Resolve(surface));
         var simulationTick = 0;
         var treeEvery = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_TREE_EVERY"), out var every) ? every : 0;
         var treeFilter = Environment.GetEnvironmentVariable("WADDAMBURO_TREE_FILTER")?.Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];

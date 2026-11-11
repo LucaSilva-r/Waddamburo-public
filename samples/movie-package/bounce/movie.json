@@ -4,9 +4,14 @@
   "format": 1,
   "frameRate": 60,
   "root": "main",
-  "textures": { "ball": "textures/ball.png" },
+  "textures": { "ball": "textures/ball.png", "star": "textures/star.svg" },
   "shapes": {
-    "ball": { "texture": "ball", "rect": [-32, -32, 64, 64] }
+    "ball": { "texture": "ball", "rect": [-32, -32, 64, 64] },
+    "star": { "texture": "star", "rect": [-64, -64, 128, 128] }
+  },
+  // Text fields: a script sets their "text"; the engine draws it in the game's font.
+  "texts": {
+    "counter": { "rect": [0, 0, 300, 56], "size": 44, "align": "right", "color": "#ffe38a" }
   },
   "sprites": {
     // A clip of its own: the ball squashes when it lands. Its 60 frames loop while "main" moves it.
@@ -41,6 +46,12 @@
             { "frame": 30, "x": 640, "y": 200, "scale": 0, "alpha": 0 },
             { "frame": 120, "x": 640, "y": 200, "scale": 4, "alpha": 0.5 },
             { "frame": 209, "x": 640, "y": 200, "scale": 0, "alpha": 0 }
+          ] },
+        { "character": "counter", "name": "counter", "keys": [ { "frame": 0, "x": 940, "y": 640 } ] },
+        { "character": "star", "name": "star",
+          "keys": [
+            { "frame": 0, "x": 1100, "y": 140, "rotation": 0 },
+            { "frame": 239, "x": 1100, "y": 140, "rotation": 358.5 }
           ] }
       ]
     }

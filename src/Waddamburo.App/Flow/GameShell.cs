@@ -677,7 +677,7 @@ internal sealed class GameShell : IDisposable
             (MovieContent, Upscale) = GameMovieContent.Create(Application, Path.GetFullPath(assetRoot), cacheRoot, () => Arcade);
             // Movie packages (USRDIR/waddamburo/movies/<archive>/<movie>) replace the game's movies one by one.
             MovieContent.PackageRoot = options.ArcadePath is { } home ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(home))!, "movies") : null;
-            MovieContent.DecodeImage = GameMovieContent.DecodePng;
+            MovieContent.DecodeImage = GameMovieContent.DecodeImage;
             _presenter = new ScenePresenter(Application, MovieContent);
             Scenes = new SceneSwitcher(this, _presenter, flowOf, () => _home?.Covering == true, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
