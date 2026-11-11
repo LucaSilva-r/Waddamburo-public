@@ -7,7 +7,37 @@ namespace Waddamburo.Editor;
 public sealed partial class MovieInspectorSession
 {
     private int _lockedAxis;
-    private sealed record StageMove(Vector2 Start, bool Moved, int Handle, Vector2 Pivot, Vector2 Min, Vector2 Max);
+    private sealed record StageMove(Vector2 Start, bool Moved, int Handle, Vector2 Pivot, Vector2 Min, Vector2 Max)
+    {
+        /// <summary>What the drag does: 0 move, 1 rotate, 2 scale. The free transform tool decides by the handle taken.</summary>
+        public int Op { get; init; }
+    }
+
+    private const int RotateHandle = 11;
+    private bool _autoKey = true;
+
+    /// <summary>
+    /// Sets a layer's values as they should be on <paramref name="frame"/> (inside a document edit). Auto key on: in a
+    /// key on that frame, made when there is none. Off: every key changes by the same amount, so the whole animation
+    /// moves and no key is added.
+    /// </summary>
+    private void setValues(System.Text.Json.Nodes.JsonObject layer, int frame, params (string Property, double Value)[] values)
+    {
+        if (_autoKey)
+        {
+            var key = MovieDocument.KeyAt(layer, frame);
+            foreach (var (property, value) in values) MovieDocument.Set(key, property, value);
+            return;
+        }
+        var now = MovieDocument.KeyAt((System.Text.Json.Nodes.JsonObject)layer.DeepClone(), frame);
+        foreach (var (property, value) in values)
+        {
+            var delta = value - MovieDocument.Value(now, property)!.Value;
+            if (delta == 0) continue;
+            foreach (var key in layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
+                MovieDocument.Set(key, property, MovieDocument.Value(key, property)!.Value + delta);
+        }
+    }
     private StageMove? _move;
     private (float? X, float? Y) _guides; // The stage lines the move in progress snapped to.
     private static readonly uint Guide = color(1, .2f, .75f);
@@ -41,7 +71,7 @@ public sealed partial class MovieInspectorSession
             if (ImGui.IsMouseDown(ImGuiMouseButton.Left) && selected is not null && _groupDrag.Count > 0)
             {
                 var delta = point - move.Start;
-                if (_stageTool == 0)
+                if (move.Op == 0)
                 {
                     delta = MovieTransform.ConstrainMove(delta, move.Handle, ImGui.GetIO().KeyShift, ref _lockedAxis);
                     _guides = (null, null);
@@ -50,7 +80,7 @@ public sealed partial class MovieInspectorSession
                 }
                 if (move.Moved || delta.Length() * view.Rectangle.Width / 1280 > 3)
                 {
-                    var anchor = _stageTool == 2
+                    var anchor = move.Op == 2
                         ? MovieTransform.ScaleAnchor(move.Handle, move.Min, move.Max, move.Pivot, ImGui.GetIO().KeyAlt)
                         : move.Pivot;
                     _move = move with { Moved = true };

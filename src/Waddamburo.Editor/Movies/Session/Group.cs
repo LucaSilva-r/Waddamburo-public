@@ -44,9 +44,9 @@ public sealed partial class MovieInspectorSession
     private void transformGroup(StageMove move, Vector2 point, Vector2 delta, Vector2 anchor)
     {
         var change = Matrix3x2.Identity;
-        if (_stageTool == 0)
+        if (move.Op == 0)
             change = Matrix3x2.CreateTranslation(delta);
-        else if (_stageTool == 1)
+        else if (move.Op == 1)
         {
             var angle = (float)EffectGizmo.Rotation(move.Start - move.Pivot, point - move.Pivot);
             if (ImGuiNET.ImGui.GetIO().KeyShift) angle = MathF.Round(angle / 15) * 15;
@@ -73,12 +73,12 @@ public sealed partial class MovieInspectorSession
         {
             foreach (var (member, position, angle, scale) in updates)
             {
-                var key = MovieDocument.KeyAt(member.Layer, member.Frame);
-                MovieDocument.Set(key, "x", position.X);
-                MovieDocument.Set(key, "y", position.Y);
-                MovieDocument.Set(key, "rotation", angle);
-                MovieDocument.Set(key, "scaleX", scale.X);
-                MovieDocument.Set(key, "scaleY", scale.Y);
+                // Only what this kind of drag changes: a move leaves rotation and scale alone.
+                if (move.Op == 0)
+                    setValues(member.Layer, member.Frame, ("x", position.X), ("y", position.Y));
+                else
+                    setValues(member.Layer, member.Frame, ("x", position.X), ("y", position.Y), ("rotation", angle),
+                        ("scaleX", scale.X), ("scaleY", scale.Y));
             }
         }, _groupEdited));
         _groupEdited |= _document.Revision != revision;

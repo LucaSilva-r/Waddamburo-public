@@ -196,11 +196,14 @@ public sealed partial class MovieInspectorSession
             if (_selectionBox is null && (!ImGui.GetIO().KeyShift || handle >= 0) && !overTools && ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && inArea(area, mouse))
             {
                 var onSelected = hasBox && point.X >= box.X && point.Y >= box.Y && point.X <= box.X + box.Width && point.Y <= box.Y + box.Height;
-                if ((handle >= 0 || onSelected && _stageTool == 0) && selected is not null && _document is { ReadOnly: false } && layerOf(clips, selected) is not null)
+                if ((handle >= 0 || onSelected && _stageTool is 0 or 3) && selected is not null && _document is { ReadOnly: false } && layerOf(clips, selected) is not null)
                 {
                     _lockedAxis = 0;
                     captureGroup(player, clips);
-                    _move = new(point, false, handle, view.ToStage(centre), new(box.X, box.Y), new(box.X + box.Width, box.Y + box.Height));
+                    _move = new(point, false, handle, view.ToStage(centre), new(box.X, box.Y), new(box.X + box.Width, box.Y + box.Height))
+                    {
+                        Op = _stageTool != 3 ? _stageTool : handle == RotateHandle ? 1 : handle >= 3 ? 2 : 0,
+                    };
                 }
                 else
                     pick(player, point);

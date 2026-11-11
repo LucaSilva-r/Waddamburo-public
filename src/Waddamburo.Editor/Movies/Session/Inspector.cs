@@ -36,7 +36,7 @@ public sealed partial class MovieInspectorSession
             {
                 var continues = _gesture && !ImGui.IsItemActivated();
                 _gesture = true;
-                edited(() => _document.Edit(_ => MovieDocument.Set(MovieDocument.KeyAt(layer, frame), property, value), continues));
+                edited(() => _document.Edit(_ => setValues(layer, frame, (property, value)), continues));
             }
             if (ImGui.IsItemDeactivated()) _gesture = false;
         }

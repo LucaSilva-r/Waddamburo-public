@@ -5,11 +5,12 @@ namespace Waddamburo.Editor;
 
 public sealed partial class MovieInspectorSession
 {
-    private int _stageTool;
+    private int _stageTool = 3;
     private void stageTools(EditorPanel area)
     {
         if (ImGui.IsWindowHovered() && !ImGui.GetIO().WantTextInput && _move is null)
         {
+            if (ImGui.IsKeyPressed(ImGuiKey.Q)) _stageTool = 3;
             if (ImGui.IsKeyPressed(ImGuiKey.W)) _stageTool = 0;
             if (ImGui.IsKeyPressed(ImGuiKey.E)) _stageTool = 1;
             if (ImGui.IsKeyPressed(ImGuiKey.R)) _stageTool = 2;
@@ -20,11 +21,18 @@ public sealed partial class MovieInspectorSession
         {
             if (iconButton(icon, label, active: _stageTool == mode)) _stageTool = mode;
         }
+        tool(3, "square-dashed-mouse-pointer", "Free transform (Q): drag inside to move, the squares to scale, the knob on top to turn.\nShift: one axis / keep proportions / 15 degree steps. Alt: scale about the pivot. Ctrl: no snapping.");
+        ImGui.SameLine();
         tool(0, "move", "Move (W): drag artwork. Shift keeps to one axis, Ctrl turns snapping off.");
         ImGui.SameLine();
         tool(1, "rotate-cw", "Rotate (E): drag the ring. Shift snaps to 15 degrees.");
         ImGui.SameLine();
         tool(2, "scaling", "Scale (R): drag handles. Shift preserves proportions; Alt scales around the pivot.");
+        ImGui.SameLine(0, 14);
+        if (iconButton("circle-dot", _autoKey
+                ? "Auto key is on: changing something makes a key on the current frame.\nMove the playhead, move the thing, and it animates."
+                : "Auto key is off: changing something moves its whole animation; no key is added.", active: _autoKey))
+            _autoKey = !_autoKey;
         ImGui.EndDisabled();
         // Transport in the middle, as the timeline may be out of sight; the view's zoom on the right.
         var style = ImGui.GetStyle();

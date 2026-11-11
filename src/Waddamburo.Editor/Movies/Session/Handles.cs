@@ -21,7 +21,24 @@ public sealed partial class MovieInspectorSession
             draw.AddRectFilled(at - new Vector2(4), at + new Vector2(4), hovered ? Text : Outline);
             if (hovered) hit = id;
         }
-        if (_stageTool == 0)
+        if (_stageTool == 3)
+        {
+            // Free transform: everything at once. Squares scale, the knob over the top turns, inside the box moves.
+            var knob = new Vector2(centre.X, min.Y - 28);
+            draw.AddLine(new(centre.X, min.Y), knob, Outline, 1.5f);
+            var over = Vector2.Distance(knob, mouse) < 10;
+            draw.AddCircleFilled(knob, 6, over ? Text : Outline);
+            if (over) hit = RotateHandle;
+            square(min, 3); square(new(centre.X, min.Y), 4); square(new(max.X, min.Y), 5);
+            square(new(max.X, centre.Y), 6); square(max, 7); square(new(centre.X, max.Y), 8);
+            square(new(min.X, max.Y), 9); square(new(min.X, centre.Y), 10);
+            if (hit == RotateHandle) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            else if (hit is 4 or 8) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNS);
+            else if (hit is 6 or 10) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEW);
+            else if (hit is 3 or 7) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
+            else if (hit is 5 or 9) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNESW);
+        }
+        else if (_stageTool == 0)
         {
             var right = centre + new Vector2(48, 0);
             var up = centre - new Vector2(0, 48);
