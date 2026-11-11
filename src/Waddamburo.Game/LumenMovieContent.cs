@@ -111,6 +111,14 @@ public sealed class LumenMovieContent
         return new LumenMovieContent($"{name}/{name}.lm", semantic.Value, textures.MoveToImmutable(), semantic.Diagnostics);
     }
 
+    /// <summary>A movie that shows nothing and answers nothing: the stand-in for one that exists nowhere.</summary>
+    public static LumenMovieContent Empty(string name)
+    {
+        var assembled = Formats.Package.MoviePackage.Assemble("""{ "format": 1, "root": "main", "sprites": { "main": { "frames": 1 } } }""");
+        var semantic = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb), validationContext: new LmbSemanticValidationContext(0));
+        return new LumenMovieContent(name, semantic.Value, [], semantic.Diagnostics) { IsStandIn = true };
+    }
+
     /// <summary>Whether the movie has semantic errors (it would not load), without decoding its textures.</summary>
     public static bool HasErrors(DdpMovieView movie, ParserLimits? limits = null)
     {
@@ -126,7 +134,10 @@ public sealed class LumenMovieContent
         float stageHeight = 720,
         ILumenHostBinding? hostBinding = null,
         Func<string, LumenLoadedMovie?>? movieLoader = null) =>
-        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader) { Name = Name };
+        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader) { Name = Name, StandIn = IsStandIn };
+
+    /// <summary>Made by <see cref="Empty"/>: its players accept any callback.</summary>
+    public bool IsStandIn { get; private init; }
 
     /// <summary>Replaces textures before upload (upscaled copies; UVs are normalised, so any size fits).</summary>
     public void ReplaceTextures(Func<LumenTextureContent, int, LumenTextureContent> replace)

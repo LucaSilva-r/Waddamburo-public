@@ -13,9 +13,9 @@ internal sealed record GameDataLayout(
     string Root,
     string Home,
     string LumenRoot,
-    string DonRoot,
+    string? DonRoot,
     string TjaRoot,
-    string SoundRoot,
+    string? SoundRoot,
     string FontPath,
     IReadOnlyList<string> FallbackFonts,
     string ServiceFontPath)
@@ -34,9 +34,15 @@ internal sealed record GameDataLayout(
         var don = Path.Combine(fullRoot, "data", "don3d");
         var tja = Path.Combine(fullRoot, "custom_songs");
         var sound = Path.Combine(fullRoot, "data", "sound");
-        requireDirectory(lumen, "Lumen asset root");
-        requireDirectory(don, "Don asset root");
-        requireDirectory(sound, "sound root");
+        // None of the game data has to be there (docs/development/free-movies-plan.md): without Don-chan's data
+        // he is not drawn, without the sound data the game is silent, and a movie the data lacks is the engine's
+        // own or reported by name when a scene needs it.
+        string? donRoot = File.Exists(Path.Combine(don, "ani", "don_bind.bin")) ? don : null;
+        string? soundRoot = Directory.Exists(Path.Combine(sound, "config")) ? sound : null;
+        foreach (var (missing, what) in new[] { (donRoot is null, "Don-chan's data (data/don3d): he is not drawn"),
+            (soundRoot is null, "the sound data (data/sound): no sounds"), (!Directory.Exists(lumen), "the movies (data/lumendata/packed)") })
+            if (missing)
+                Console.WriteLine($"Game data: without {what}.");
 
         var stableHome = Path.Combine(fullRoot, "waddamburo");
         moveIntoHome(fullRoot, stableHome);
@@ -49,7 +55,7 @@ internal sealed record GameDataLayout(
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
         string[] fallbacks = font == bundled.Title ? [bundled.Fallback] : [bundled.Title, bundled.Fallback];
-        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service) { CacheHome = stableHome };
+        return new GameDataLayout(fullRoot, home, lumen, donRoot, tja, soundRoot, font, fallbacks, bundled.Service) { CacheHome = stableHome };
     }
 
     // Not copied into a nightly's home: what it makes for itself, and the shared cache.

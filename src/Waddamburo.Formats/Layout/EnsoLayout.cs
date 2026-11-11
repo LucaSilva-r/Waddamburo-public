@@ -22,7 +22,13 @@ public sealed class EnsoLayout
     /// <summary>Offsets by layout index.</summary>
     public ImmutableArray<Vector2> Points { get; }
 
-    public Vector2 this[int index] => (uint)index < (uint)Points.Length
+    /// <summary>
+    /// The layout without the game's file: every part at the stage's origin, so the movies played then (the
+    /// engine's own) are drawn in stage coordinates.
+    /// </summary>
+    public static EnsoLayout None { get; } = new([]);
+
+    public Vector2 this[int index] => Points.IsEmpty ? Vector2.Zero : (uint)index < (uint)Points.Length
         ? Points[index]
         : throw new InvalidDataException($"ensolayout has no entry {index} ({Points.Length} entries).");
 

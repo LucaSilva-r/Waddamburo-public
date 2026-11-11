@@ -182,6 +182,9 @@ public sealed partial class LumenPlayer
     /// </summary>
     public static bool Inspect { get; set; }
 
+    /// <summary>This player stands in for a movie that exists nowhere: empty, and it accepts any callback.</summary>
+    public bool StandIn { get; init; }
+
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
     public string? Name
     {
@@ -298,6 +301,9 @@ public sealed partial class LumenPlayer
         result = LumenHostValue.Undefined;
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(arguments);
+        // A stand-in for a movie that does not exist takes every call and answers undefined.
+        if (StandIn && !_callbacks.ContainsKey(name))
+            return true;
         if (!_callbacks.TryGetValue(name, out var callback))
         {
             if (LumenEdgeLog.Enabled)

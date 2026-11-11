@@ -17,8 +17,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         if (!Path.IsPathFullyQualified(assetRoot))
             throw new ArgumentException("Asset root must be an absolute path.", nameof(assetRoot));
         _assetRoot = Path.GetFullPath(assetRoot);
-        if (!Directory.Exists(_assetRoot))
-            throw new DirectoryNotFoundException($"Asset root does not exist: {_assetRoot}");
+        // The folder need not exist: every movie is then a package, or reported missing by name when asked for.
         _limits = limits ?? ParserLimits.Default;
     }
 
@@ -51,6 +50,14 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
 
     /// <summary>Whether a bundled package replaces a movie the game data has (the free_movies setting, read live).</summary>
     public Func<bool>? PreferBundled { get; set; }
+
+    /// <summary>
+    /// Without any game movies (no asset root folder): a movie that has no package either is shown empty instead
+    /// of failing its scene, so the game runs on the engine's own movies as far as they go. Each is named once.
+    /// </summary>
+    public bool EmptyWhenMissing => !Directory.Exists(_assetRoot);
+
+    private readonly ConcurrentDictionary<string, bool> _reportedMissing = new(StringComparer.Ordinal);
 
     private string? packageDirectory(string archiveId, string movieId, bool archiveMissing = false)
     {
@@ -162,6 +169,12 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             if (!File.Exists(Path.GetFullPath(archiveId, owner._assetRoot))
                 && owner.packageDirectory(archiveId, movieId, archiveMissing: true) is { } bundled)
                 return LumenMovieContent.LoadPackage(bundled, owner.DecodeImage!, owner._limits);
+            if (owner.EmptyWhenMissing)
+            {
+                if (owner._reportedMissing.TryAdd(movieId, true))
+                    Console.WriteLine($"Movie '{movieId}' ({Path.GetDirectoryName(archiveId)}): no free version yet, shown empty.");
+                return LumenMovieContent.Empty(movieId);
+            }
             var archivePath = owner.resolveArchivePath(archiveId, movieId);
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)
