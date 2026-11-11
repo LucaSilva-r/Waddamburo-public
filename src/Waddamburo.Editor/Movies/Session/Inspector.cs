@@ -39,8 +39,14 @@ public sealed partial class MovieInspectorSession
         vector("Angle / alpha", "rotation", "alpha", .01f);
         var pivot = layer["editorPivot"] as System.Text.Json.Nodes.JsonArray;
         var pivotValue = pivot is { Count: 2 } ? new Vector2((float)pivot[0]!, (float)pivot[1]!) : new Vector2(.5f);
-        if (ImGui.InputFloat2("Transform centre (0–1)", ref pivotValue, "%.2f"))
-            attempt(() => _document.Edit(_ => layer["editorPivot"] = new System.Text.Json.Nodes.JsonArray(pivotValue.X, pivotValue.Y)));
+        ImGui.SetNextItemWidth(-90);
+        if (ImGui.DragFloat2("Transform centre (0–1)", ref pivotValue, .01f, 0, 0, "%.2f"))
+        {
+            var continues = _gesture && !ImGui.IsItemActivated();
+            _gesture = true;
+            attempt(() => _document.Edit(_ => layer["editorPivot"] = new System.Text.Json.Nodes.JsonArray(pivotValue.X, pivotValue.Y), continues));
+        }
+        if (ImGui.IsItemDeactivated()) _gesture = false;
         appearanceFields(layer, current, frame);
         var name = (string?)layer["name"] ?? "";
         ImGui.SetNextItemWidth(-90);

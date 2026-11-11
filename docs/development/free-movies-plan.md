@@ -169,7 +169,7 @@ skew, no colour add. `--inspect=sprite:<part of name>` starts on a sprite.
 
 #### What the panels are built on
 
-The UI (ImGui, `MovieInspectorSession.*.cs`) only draws and calls these; rules and file handling live below it.
+The UI (ImGui, `Movies/Session/*.cs`) only draws and calls these; rules and file handling live below it.
 
 - `MovieDocument` (tests: `MovieDocumentTests`, `MovieDocumentAssetsTests`): `Root` (the JSON tree), `Edit(change,
   continues)`, `Undo` / `Redo`, `Changed`; `Layer`, `KeyAt`, `Value`, `Set` for keys.
@@ -332,4 +332,10 @@ Movie Inspector appearance controls: selected package layers expose blend (norma
 
 Editor viewport update: Inter UI font; hierarchy disclosure and sibling reordering; range/toggle selection and viewport marquee; move/rotate/scale handles with Shift constraints, Alt pivot scaling and opposite-edge anchors; combined selection bounds and group transforms (skew-requiring operations are refused). Inspector Properties/Info tabs separate editing from diagnostics. Transform centres are stored as editorPivot metadata. Run scripts can be disabled for timeline-only art preview. Multi-selection Inspector fields still edit the active object; zoom/pan and draggable pivots remain outstanding.
 
-Editor code layout: `MovieInspectorSession.cs` owns lifecycle, host hooks and frame orchestration. Partial files own their feature state and methods: Toolbar (transport), Panels (bottom tabs), Hierarchy (tree/reorder), Selection (range/toggle/marquee/picking), Inspector and Appearance (properties), Editing (document changes and frame restoration), Viewport and Handles (stage gestures/drawing), Group (group transform math), Assets, Timeline, Library and Code. Keep new feature code with its owning partial rather than growing the coordinator.
+Editor code layout: `Movies/Session/Session.cs` owns lifecycle, host hooks and frame orchestration. Partial files own their feature state and methods: Toolbar (transport), Panels (bottom tabs), Hierarchy (tree/reorder), Selection (range/toggle/marquee/picking), Inspector and Appearance (properties), Editing (document changes and frame restoration), Viewport (stage composition), Gestures (active drags), Tools (tool controls) and Handles (handle drawing), Group (group transform math), Assets (browser), AssetPreview (thumbnails), AssetInspector (asset properties), Timeline, Library and Code. Keep new feature code with its owning partial rather than growing the coordinator.
+
+`Movies/Document/Document.cs` owns JSON loading, formatting, persistence and history plus character lookup. Its partials separate Assets (resource operations), Layers (layer lookup/order/appearance/lifetime), Keyframes (sampling and key properties) and Scripts (attachments and external editor launching).
+
+Transform hardening: single and multi-selection gestures share stage-space matrix operations through `MovieTransform` (`Movies/Viewport/Transform.cs`). Synthetic tests cover all opposite anchors, Alt switching, Shift axis/proportion constraints, rotated/scaled parents, reflection, invalid transforms, ancestor filtering and one-step group undo/redo. A document revision counter prevents a no-op at the start of a drag from merging into the previous undo operation. Skew and collapsed-axis transformations are rejected before document changes.
+
+Editor source folders: `Movies/Session/` contains the movie UI partials, `Movies/Document/` the package model and edit operations, and `Movies/Viewport/` the transform helper. `Effects/Session/` contains the effects UI partials, with effects models/helpers in `Effects/`. Reusable layout, theme, readout and timeline-row code lives in `Shared/`. Filenames within each partial-class folder use their responsibility (for example `Inspector.cs`, `Selection.cs`, `Keyframes.cs`) without repeating the class name. Public type names and namespaces are unchanged.
