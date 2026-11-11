@@ -302,11 +302,10 @@ the existing SDL binding/native dependency and notices are unchanged.
 
 Inter Regular 4.0, copyright The Inter Project Authors, SIL Open Font License 1.1. Source: https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip (`extras/ttf/Inter-Regular.ttf`), gzip-compressed without font modifications into `src/Waddamburo.App/Resources/fonts/Inter-Regular.ttf.gz` for the editor UI. License: `eng/packaging/licenses/Inter.txt`.
 
-The asset browser uses five Lucide SVG icons, vendored unchanged from the official
+The movie editor uses twenty Lucide SVG icons (asset kinds, transport, tools, eye; fifteen added 2026-11-12 from the same revision), vendored unchanged from the official
 repository at revision `03eae6069edfc373673bd05d723491f05ba936e3`
 (<https://github.com/lucide-icons/lucide/tree/03eae6069edfc373673bd05d723491f05ba936e3/icons>, accessed 2026-11-11),
-in `src/Waddamburo.Editor/Resources/Lucide/`. The subset is `folder`, `image`, `shapes`,
-`clapperboard`, and `type`; exact file hashes and ISC/Feather MIT attribution are in
+in `src/Waddamburo.Editor/Resources/Lucide/`. The subset is listed with its exact file hashes in THIRD_PARTY_NOTICES.md; the hashes and ISC/Feather MIT attribution are in
 THIRD_PARTY_NOTICES.md, with the complete upstream license at
 `eng/packaging/licenses/Lucide.txt`. At runtime the editor changes currentColor to
 white for tinting and rasterizes at 64 pixels through the existing SVG renderer.

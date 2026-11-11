@@ -70,23 +70,54 @@ public sealed partial class MovieInspectorSession
                     if (parent && !open)
                         closed = clip.Level;
                 }
-                var icon = clip.Kind switch { LumenInstanceKind.Sprite => "S", LumenInstanceKind.Shape => "[]", LumenInstanceKind.Text => "T", _ => "?" };
-                if (ImGui.Selectable($"{icon}  {name}{state}##{clip.Path}", _selection.Contains(clip.Path),
-                        ImGuiSelectableFlags.AllowDoubleClick | ImGuiSelectableFlags.AllowOverlap, new Vector2(0, ImGui.GetFrameHeight())))
-                    hierarchySelection(clips, clip.Path);
-                if (clip.Kind == LumenInstanceKind.Sprite && ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                    openInstanceTimeline(clip.Path);
-                var changed = hierarchyMenu(clips, clip);
-                hierarchyReorder(clips, clip);
+                var icon = clip.Kind switch { LumenInstanceKind.Sprite => "clapperboard", LumenInstanceKind.Text => "type", _ => "shapes" };
+                var changed = false;
+                var iconAt = ImGui.GetCursorScreenPos() + new Vector2(2, (ImGui.GetFrameHeight() - 15) / 2);
+                if (_renaming == clip.Path)
+                {
+                    // The name is typed where it stands. Enter or a click elsewhere keeps it, Escape does not.
+                    ImGui.Dummy(new(20, 0));
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(-48);
+                    if (_renameFocus)
+                    {
+                        ImGui.SetKeyboardFocusHere();
+                        _renameFocus = false;
+                    }
+                    var entered = ImGui.InputText("##rename", ref _renameText, 64, ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll);
+                    if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+                        _renaming = null;
+                    else if (entered || ImGui.IsItemDeactivatedAfterEdit())
+                    {
+                        var typed = _renameText.Trim();
+                        if (layerOf(clips, clip) is { } renamed && typed != clip.Name)
+                            changed = attempt(() => _document!.Edit(_ =>
+                            {
+                                if (typed.Length == 0) renamed.Layer.Remove("name"); else renamed.Layer["name"] = typed;
+                            }));
+                        _renaming = null;
+                    }
+                    else if (ImGui.IsItemDeactivated())
+                        _renaming = null;
+                }
+                else
+                {
+                    if (ImGui.Selectable($"      {name}{state}##{clip.Path}", _selection.Contains(clip.Path),
+                            ImGuiSelectableFlags.AllowDoubleClick | ImGuiSelectableFlags.AllowOverlap, new Vector2(0, ImGui.GetFrameHeight())))
+                        hierarchySelection(clips, clip.Path);
+                    if (clip.Kind == LumenInstanceKind.Sprite && ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                        openInstanceTimeline(clip.Path);
+                    changed = hierarchyMenu(clips, clip);
+                    hierarchyReorder(clips, clip);
+                }
+                drawAssetIcon(icon, iconAt, 15, shown ? Text : Muted);
                 if (clip.Level > 0)
                 {
                     // The eye: out of the way while working (not saved).
-                    ImGui.SameLine(ImGui.GetWindowWidth() - 44);
-                    ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-                    if (ImGui.SmallButton((clip.HiddenByHost ? "-" : "o") + $"##eye{clip.Path}"))
+                    ImGui.SameLine(ImGui.GetWindowWidth() - 46);
+                    if (iconButton(clip.HiddenByHost ? "eye-off" : "eye", clip.HiddenByHost ? "Hidden in the editor: click to show" : "Hide in the editor (not saved)",
+                            id: "eye" + clip.Path, size: ImGui.GetFrameHeight() - 2, plain: true))
                         _player().InspectSetHidden(clip.Path, !clip.HiddenByHost);
-                    ImGui.PopStyleColor();
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip(clip.HiddenByHost ? "Hidden in the editor: click to show" : "Hide in the editor (not saved)");
                 }
                 if (clip.Path == _selected && _scrollToSelected)
                 {
@@ -106,7 +137,7 @@ public sealed partial class MovieInspectorSession
             {
                 if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _key is null) removeLayer(clips, active);
                 else if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.D, false)) duplicateLayer(clips, active);
-                else if (ImGui.IsKeyPressed(ImGuiKey.F2, false)) _focusName = true;
+                else if (ImGui.IsKeyPressed(ImGuiKey.F2, false)) startRename(active);
             }
             if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _hierarchyDrag = null;
             ImGui.EndChild();
@@ -134,13 +165,23 @@ public sealed partial class MovieInspectorSession
             selectAsset(clip.Kind switch { LumenInstanceKind.Shape => "shapes", LumenInstanceKind.Text => "texts", _ => "sprites" }, asset);
         ImGui.Separator();
         if (ImGui.MenuItem("Rename", "F2", false, editable))
-            _focusName = true;
+            startRename(clip);
         if (ImGui.MenuItem("Duplicate", "Ctrl+D", false, editable))
             changed = duplicateLayer(clips, clip);
         if (ImGui.MenuItem("Delete", "Del", false, editable))
             changed = removeLayer(clips, clip);
         ImGui.EndPopup();
         return changed;
+    }
+
+    private string? _renaming; // The clip whose name is being typed in the list.
+    private string _renameText = "";
+    private bool _renameFocus;
+
+    private void startRename(LumenInstanceInfo clip)
+    {
+        if (clip.Level == 0 || _document is not { ReadOnly: false }) return;
+        (_renaming, _renameText, _renameFocus) = (clip.Path, clip.Name, true);
     }
 
     private bool duplicateLayer(IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo clip) =>

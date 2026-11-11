@@ -89,14 +89,29 @@ Inter Regular 4.0, copyright The Inter Project Authors, SIL Open Font License 1.
 
 ## Lucide editor icons
 
-The movie editor embeds `folder`, `image`, `shapes`, `clapperboard` and `type` SVGs from [Lucide](https://github.com/lucide-icons/lucide/tree/03eae6069edfc373673bd05d723491f05ba936e3/icons), revision `03eae6069edfc373673bd05d723491f05ba936e3`. Copyright (c) 2026 Lucide Icons and Contributors, ISC License; inherited Feather icons also carry the MIT notice, copyright (c) 2013-present Cole Bemis. The complete upstream license is shipped as `eng/packaging/licenses/Lucide.txt`.
+The movie editor embeds these SVGs (`clapperboard`, `eye-off`, `eye`, `file-code`, `folder`, `image`, `maximize`, `move`, `pause`, `play`, `plus`, `rotate-cw`, `scaling`, `search`, `shapes`, `skip-back`, `skip-forward`, `step-back`, `step-forward`, `type`) from [Lucide](https://github.com/lucide-icons/lucide/tree/03eae6069edfc373673bd05d723491f05ba936e3/icons), revision `03eae6069edfc373673bd05d723491f05ba936e3`. Copyright (c) 2026 Lucide Icons and Contributors, ISC License; inherited Feather icons also carry the MIT notice, copyright (c) 2013-present Cole Bemis. The complete upstream license is shipped as `eng/packaging/licenses/Lucide.txt`.
 
 Original SVGs are stored unchanged in `src/Waddamburo.Editor/Resources/Lucide/`. SHA-256:
 
 | File | SHA-256 |
 | --- | --- |
 | `clapperboard.svg` | `e4d78946cda7812f13c431c68b6d4d0077a92217c7f468667a203f237e247d7e` |
+| `eye-off.svg` | `774bcd975c5de781a4ee778c76e5591bcdeb409955f7054847e7e6003da0a520` |
+| `eye.svg` | `5bf90197dd7629cad64a2e48d1186a71559deb6121207d10e3dc5b19ebaffdcf` |
+| `file-code.svg` | `8ac619671f53653a483c2d5e2e6afe6d009c3198918cf76632e2cb4abf0d6721` |
 | `folder.svg` | `f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39` |
 | `image.svg` | `619c9db58c879dce6250376ba67d9c9102ca6dbb3b1efb9294c9f180e22273a5` |
+| `maximize.svg` | `1f790856b0de805ab62e871609f1990b89d227d472022e57a11fde015aad4826` |
+| `move.svg` | `915074a1292f72d59165339b8b93f8d440c8d55b7116b52fca240b9ded5af74d` |
+| `pause.svg` | `f122ec4ea7f5693a0b1baafa9c708b53980dc87b4aacb297c6e6f71c1a4c115c` |
+| `play.svg` | `d7c34786135922a92b6896f6c2384ceeb0346afbf6041dc79982011411409833` |
+| `plus.svg` | `7f6af73bf1ff6c4bca3f18351c8d1bdec6749c0c2530c4de5da85d520c21df17` |
+| `rotate-cw.svg` | `ddcfe6d87240475946935e77411cd4d15a06f3d28a9b921bafed224ebe953668` |
+| `scaling.svg` | `587b5758bfbf2df54bc4701819a58fc63278682760bfb05213f093840ff1cfd5` |
+| `search.svg` | `283d371c2e433817bb9c0c8310caa6c77fa4177c0f4f1168d9c83b97af7389dc` |
 | `shapes.svg` | `480e2301a977f7f2fc7133c330f48d8318b5fd3761b27a9c582997eb5aa47f1f` |
+| `skip-back.svg` | `901579624a7d28036a39b3b8bd9e6da0e8cf771a79c67836d8a52b3e2287c031` |
+| `skip-forward.svg` | `f6bdc4b8d453332bafcf1366a48d5ece4bd4f15eced97c85c3676bd22c5cadf9` |
+| `step-back.svg` | `aaeb883bd737e64a3c46651d2a9610bfe78d658415fa56bdfcc6f026303aaaf7` |
+| `step-forward.svg` | `9253ad46e005b2b4a011e9bbeb66aadab56306e4b3674e7da3008af2274a0bb7` |
 | `type.svg` | `82c514732330f9c36c0f1f7fd1034634fa6ad21ba2016ffa76cf5d9608c3d6b1` |

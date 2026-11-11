@@ -78,6 +78,48 @@ public sealed partial class MovieInspectorSession
     }
 
     private string? _frameRequest;
+
+    // An asset let go over the stage: a new layer of the open timeline, on its current frame, where the pointer is.
+    // A texture is placed through its shape (made when there is none yet).
+    private void placeAsset(LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips, string assetId, Vector2 point)
+    {
+        if (_document is not { ReadOnly: false } document || document.Assets().FirstOrDefault(each => each.Id == assetId) is not { } asset)
+            return;
+        if (timelineOf(clips) is not var (clip, name, sprite))
+        {
+            _notice = "Open a timeline to place this into.";
+            return;
+        }
+        // Into the timeline's own coordinates when it is not the root's.
+        if (clip.Path.Length > 0 && player.TryInspectParentTransform(clip.Path, out var parent))
+        {
+            var world = clip.Transform.Then(parent);
+            if (Matrix3x2.Invert(new(world.M11, world.M12, world.M21, world.M22, world.X, world.Y), out var inverse))
+                point = Vector2.Transform(point, inverse);
+        }
+        attempt(() =>
+        {
+            var character = asset.Name;
+            if (asset.Group == "textures")
+                character = (document.Root["shapes"] as System.Text.Json.Nodes.JsonObject)?.FirstOrDefault(shape => (string?)shape.Value?["texture"] == asset.Name).Key
+                    ?? document.AddShape(asset.Name, asset.Name, TextureOf?.Invoke(asset.Name)?.Width ?? 128, TextureOf?.Invoke(asset.Name)?.Height ?? 128, folder: asset.Folder);
+            if (character == name)
+                throw new InvalidOperationException("A sprite cannot be placed inside itself.");
+            var frame = clip.Frame;
+            document.Edit(_ =>
+            {
+                if (sprite["layers"] is not System.Text.Json.Nodes.JsonArray list)
+                    sprite["layers"] = list = [];
+                var depth = list.OfType<System.Text.Json.Nodes.JsonObject>().Select((layer, index) => (int?)layer["depth"] ?? index + 1).DefaultIfEmpty(0).Max() + 1;
+                list.Add((System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
+                {
+                    ["character"] = character, ["name"] = character, ["depth"] = depth,
+                    ["keys"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
+                        { ["frame"] = frame, ["x"] = MathF.Round(point.X), ["y"] = MathF.Round(point.Y) }),
+                });
+            });
+        });
+    }
     private const float RulerSize = 18;
 
     // Stage units along the top and left edges, with the pointer's place marked on both.
@@ -128,6 +170,11 @@ public sealed partial class MovieInspectorSession
             stageTools(area);
             var overTools = ImGui.IsAnyItemHovered() || ImGui.IsAnyItemActive();
             stageNavigation(area, player, ImGui.GetIO().MousePos, overTools);
+            if (_dragAsset is { } dropped && inArea(area, ImGui.GetIO().MousePos) && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+            {
+                placeAsset(player, clips, dropped, view.ToStage(ImGui.GetIO().MousePos));
+                _dragAsset = null;
+            }
             ImGui.PushClipRect(area.Position, area.Position + area.Size, true);
             var draw = ImGui.GetWindowDrawList();
             draw.AddRect(view.Rectangle.Position, view.Rectangle.Position + view.Rectangle.Size, Muted);

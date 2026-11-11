@@ -79,7 +79,8 @@ public sealed partial class MovieInspectorSession
     private void assetActions()
     {
         ImGui.BeginDisabled(_document!.ReadOnly);
-        if (ImGui.Button("Create / Import")) ImGui.OpenPopup("##asset create menu");
+        if (iconButton("plus", "New shape, text field, sprite or folder; import PNG / SVG artwork.\nFiles dropped on the window are imported too.", id: "new asset"))
+            ImGui.OpenPopup("##asset create menu");
         if (ImGui.BeginPopup("##asset create menu"))
         {
             assetCreateMenu();

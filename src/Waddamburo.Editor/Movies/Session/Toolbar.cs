@@ -77,28 +77,26 @@ public sealed partial class MovieInspectorSession
     private void transportButtons()
     {
         var target = transportTarget();
-        void button(string text, string hint, Action action)
+        void button(string icon, string hint, Action action, bool active = false)
         {
-            if (ImGui.Button(text)) action();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip(hint);
+            if (iconButton(icon, hint, active)) action();
             ImGui.SameLine();
         }
-        button("|<", "Previous label (Ctrl+Left)", () => navigateTimeline(-1, true));
-        button("<", "Previous frame (Left)", () => navigateTimeline(-1, false));
-        button(Paused ? "Play" : "Pause", "Play / pause (Space)", togglePlayback);
-        button(">", "Next frame (Right)", () => navigateTimeline(1, false));
-        button(">|", "Next label (Ctrl+Right)", () => navigateTimeline(1, true));
+        button("skip-back", "Previous label (Ctrl+Left)", () => navigateTimeline(-1, true));
+        button("step-back", "Previous frame (Left)", () => navigateTimeline(-1, false));
+        button(Paused ? "play" : "pause", "Play / pause (Space)", togglePlayback, active: !Paused);
+        button("step-forward", "Next frame (Right)", () => navigateTimeline(1, false));
+        button("skip-forward", "Next label (Ctrl+Right)", () => navigateTimeline(1, true));
         if (SetScriptsEnabled is not null)
-        {
-            if (ImGui.Checkbox("Run scripts", ref _scriptsEnabled))
+            button("file-code", _scriptsEnabled
+                ? "Scripts run: the movie behaves (and may move things itself). Click for the timelines alone.\nRestarts the preview."
+                : "Scripts off: only what the timelines draw. Click to run the scripts.\nRestarts the preview.", () =>
             {
+                _scriptsEnabled = !_scriptsEnabled;
                 SetScriptsEnabled(_scriptsEnabled);
                 ShowSprite?.Invoke(_shown);
                 Paused = true;
-            }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restarts the preview with scripts enabled or disabled.");
-            ImGui.SameLine();
-        }
+            }, active: _scriptsEnabled);
         ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled(target.Count == 0 ? "" : $"{target.Frame} / {Math.Max(0, target.Count - 1)}");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("The frame of the timeline being edited, and its last frame.");

@@ -4,7 +4,7 @@ namespace Waddamburo.Editor;
 
 public sealed partial class MovieInspectorSession
 {
-    private enum AssetDialog { Shape, Sprite, Folder, RenameAsset, RenameFolder }
+    private enum AssetDialog { Shape, Sprite, Text, Folder, RenameAsset, RenameFolder }
     private AssetDialog _assetDialog;
     private bool _openAssetDialog;
     private string _dialogTarget = "", _dialogFolder = "";
@@ -37,6 +37,7 @@ public sealed partial class MovieInspectorSession
         ImGui.Separator();
         if (ImGui.MenuItem("New folder...")) requestAssetDialog(AssetDialog.Folder, "New folder");
         if (ImGui.MenuItem("New shape...")) requestAssetDialog(AssetDialog.Shape, "artwork");
+        if (ImGui.MenuItem("New text field...")) requestAssetDialog(AssetDialog.Text, "text");
         if (ImGui.MenuItem("New sprite...")) requestAssetDialog(AssetDialog.Sprite, "sprite");
     }
 
@@ -135,6 +136,9 @@ public sealed partial class MovieInspectorSession
                 break;
             case AssetDialog.Shape:
                 selectAsset("shapes", document.AddShape(name, _newShapeTexture, _newShapeSize.X, _newShapeSize.Y, folder: _dialogFolder));
+                break;
+            case AssetDialog.Text:
+                selectAsset("texts", document.AddText(name, _dialogFolder));
                 break;
             case AssetDialog.Sprite:
                 selectAsset("sprites", document.AddSprite(name, folder: _dialogFolder));

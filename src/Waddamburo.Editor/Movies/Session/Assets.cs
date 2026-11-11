@@ -13,7 +13,6 @@ public sealed partial class MovieInspectorSession
     private string? _navigateAssetFolder, _dragAsset;
     private static readonly string[] AssetCharacterGroups = ["texts", "shapes", "sprites"];
     private static readonly string[] AssetGroups = ["textures", .. AssetCharacterGroups];
-    private string _newTextName = "";
     private readonly Dictionary<string, string> _assetNames = new(StringComparer.Ordinal);
 
     private void refreshAssetSelection()
@@ -42,33 +41,30 @@ public sealed partial class MovieInspectorSession
     private void assets()
     {
         var document = _document!;
+        // One row: make things, which kind is listed, find, how they are listed.
         assetActions();
         ImGui.SameLine();
-        if (ImGui.RadioButton("Assets", !_texturesView)) _texturesView = false;
-        ImGui.SameLine();
-        if (ImGui.RadioButton("Textures", _texturesView)) _texturesView = true;
-        ImGui.SameLine();
-        if (ImGui.RadioButton("Grid", _assetGrid)) _assetGrid = true;
-        ImGui.SameLine();
-        if (ImGui.RadioButton("List", !_assetGrid)) _assetGrid = false;
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(200);
-        ImGui.InputTextWithHint("##asset filter", "Search assets", ref _assetFilter, 128);
-        assetBreadcrumb();
-        ImGui.SetNextItemWidth(180);
-        ImGui.InputTextWithHint("##new text", "New field name", ref _newTextName, 128);
-        ImGui.SameLine();
-        var fieldName = _newTextName.Trim();
-        ImGui.BeginDisabled(document.ReadOnly || fieldName.Length == 0 || document.Exists("texts", fieldName));
-        if (ImGui.Button("Create text field"))
+        void view(string label, string hint, bool textures)
         {
-            attempt(() => selectAsset("texts", document.AddText(fieldName, _assetFolder)));
-            _newTextName = "";
+            var chosen = _texturesView == textures;
+            if (chosen) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(.28f, .40f, .54f, 1));
+            if (ImGui.Button(label)) _texturesView = textures;
+            if (chosen) ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(hint);
+            ImGui.SameLine();
         }
-        ImGui.EndDisabled();
+        view("Assets", "What can be placed on a timeline: shapes (artwork), text fields and sprites (things with a timeline of their own).", false);
+        view("Textures", "The image files of the package. A shape shows one; drag a texture onto the stage and its shape is made for you.", true);
+        ImGui.SetNextItemWidth(220);
+        ImGui.InputTextWithHint("##asset filter", "Search", ref _assetFilter, 128);
         ImGui.SameLine();
-        ImGui.TextDisabled("Drop PNG / SVG files or folders here. Right-click for actions.");
+        if (ImGui.Button(_assetGrid ? "List" : "Grid")) _assetGrid = !_assetGrid;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Switch between thumbnails and a plain list.");
+        ImGui.SameLine();
+        assetBreadcrumb();
         ImGui.BeginChild("##asset browser", Vector2.Zero);
+        if (_dragAsset is not null)
+            ImGui.SetTooltip("Drop on the stage to place it in the open timeline, or on a folder to move it.");
         var tileHovered = false;
         var columns = _assetGrid ? Math.Max(1, (int)(ImGui.GetContentRegionAvail().X / 140)) : 1;
         if (ImGui.BeginTable("##asset table", columns))
@@ -108,6 +104,11 @@ public sealed partial class MovieInspectorSession
                 drawAssetTile(origin, size, asset.Name, asset.Group[..^1], icon, asset.Group, document.Root[asset.Group]?[asset.Name]);
                 ImGui.PopID();
             }
+            if (entries.Length == 0 && !document.ReadOnly)
+            {
+                ImGui.TableNextColumn();
+                ImGui.TextWrapped("Nothing here yet. Drop PNG or SVG files on the window, or right-click for New.");
+            }
             ImGui.EndTable();
         }
         if (!document.ReadOnly && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !ImGui.GetIO().WantTextInput
@@ -127,7 +128,8 @@ public sealed partial class MovieInspectorSession
             ImGui.EndPopup();
         }
         ImGui.EndChild();
-        if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _dragAsset = null;
+        // Kept through the frame the button is let go on: the stage, drawn after this panel, takes the drop.
+        if (!ImGui.IsMouseDown(ImGuiMouseButton.Left) && !ImGui.IsMouseReleased(ImGuiMouseButton.Left)) _dragAsset = null;
         if (_navigateAssetFolder is { } destination)
         {
             _assetFolder = destination;
@@ -190,11 +192,25 @@ public sealed partial class MovieInspectorSession
         draw.PopClipRect();
     }
 
-    private void drawAssetIcon(string name, Vector2 position, float size)
+    private void drawAssetIcon(string name, Vector2 position, float size, uint? tint = null)
     {
         var draw = ImGui.GetWindowDrawList();
         if (IconOf?.Invoke(name) is { } texture)
-            draw.AddImage(texture, position, position + new Vector2(size), Vector2.Zero, Vector2.One, Text);
-        else draw.AddText(position, Text, name);
+            draw.AddImage(texture, position, position + new Vector2(size), Vector2.Zero, Vector2.One, tint ?? Text);
+        else draw.AddText(position, tint ?? Text, name);
+    }
+
+    /// <summary>A button showing one of the editor's icons; what it does is said on hover.</summary>
+    private bool iconButton(string icon, string hint, bool active = false, string? id = null, float size = 26, bool plain = false)
+    {
+        var start = ImGui.GetCursorScreenPos();
+        if (active) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(.28f, .40f, .54f, 1));
+        else if (plain) ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        var pressed = ImGui.Button("##icon " + (id ?? icon), new(size + 4, size));
+        if (active || plain) ImGui.PopStyleColor();
+        var glyph = Math.Min(16, size - 4);
+        drawAssetIcon(icon, start + new Vector2((size + 4 - glyph) / 2, (size - glyph) / 2), glyph);
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(hint);
+        return pressed;
     }
 }

@@ -5,7 +5,12 @@ namespace Waddamburo.Editor;
 /// <summary>The editor's embedded Lucide subset. Originals and license are recorded in the provenance notes.</summary>
 public static class EditorIcons
 {
-    public static readonly string[] Names = ["folder", "image", "shapes", "clapperboard", "type"];
+    public static readonly string[] Names = 
+    [
+        "folder", "image", "shapes", "clapperboard", "type",
+        "skip-back", "step-back", "play", "pause", "step-forward", "skip-forward",
+        "eye", "eye-off", "move", "rotate-cw", "scaling", "maximize", "file-code", "plus", "search",
+    ];
 
     public static byte[] Svg(string name)
     {
