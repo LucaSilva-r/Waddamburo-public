@@ -205,17 +205,47 @@ public sealed partial class MovieInspectorSession
         var source = clips.FirstOrDefault(each => each.Path == _hierarchyDrag);
         if (!ImGui.IsMouseDragging(ImGuiMouseButton.Left) && !ImGui.IsMouseReleased(ImGuiMouseButton.Left)) return;
         if (source is null || source.Path == clip.Path || !ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem)) return;
-        if (layerOf(clips, source) is not { } from || layerOf(clips, clip) is not { } target
-            || from.Layer.Parent is not JsonArray layers || !ReferenceEquals(layers, target.Layer.Parent)) return;
+        if (clip.Path.StartsWith(source.Path + "/", StringComparison.Ordinal)) return; // not into itself
+        if (layerOf(clips, source) is not { } from || from.Layer.Parent is not JsonArray layers) return;
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
-        var after = ImGui.GetMousePos().Y > (min.Y + max.Y) / 2;
+        var mouseY = ImGui.GetMousePos().Y;
+        string spriteName(JsonArray list) => _document.Root["sprites"]!.AsObject().First(pair => ReferenceEquals(pair.Value, list.Parent)).Key;
+        // The middle of a sprite's row (or anywhere on the root's): into it, on top of what it holds.
+        var target = clip.Level == 0 ? null : layerOf(clips, clip);
+        var into = clip.Kind == LumenInstanceKind.Sprite && _document.CharacterName(clip.CharacterId) is { } inside
+            && (clip.Level == 0 || mouseY > min.Y + (max.Y - min.Y) * .3f && mouseY < min.Y + (max.Y - min.Y) * .7f) ? inside : null;
+        if (into is not null && !(clip.Level == 0 && source.Level == 1))
+        {
+            ImGui.GetWindowDrawList().AddRect(min, max, KeySelected, 0, ImDrawFlags.None, 2);
+            ImGui.SetTooltip($"Move into {(clip.Level == 0 ? "the root" : clip.Name.Length > 0 ? clip.Name : into)}");
+            if (!ImGui.IsMouseReleased(ImGuiMouseButton.Left)) return;
+            if (attempt(() => _document.MoveLayerTo(spriteName(layers), layers.IndexOf(from.Layer), into, int.MaxValue)))
+            {
+                selectClip(null);
+                _open.Add(clip.Path);
+                _collapsed.Remove(clip.Path);
+            }
+            _hierarchyDrag = null;
+            return;
+        }
+        if (target is null || target.Value.Layer.Parent is not JsonArray targetLayers) return;
+        var after = mouseY > (min.Y + max.Y) / 2;
         var y = after ? max.Y : min.Y;
         ImGui.GetWindowDrawList().AddLine(new(min.X, y), new(max.X, y), KeySelected, 2);
-        ImGui.SetTooltip(after ? "Place after this sibling" : "Place before this sibling");
+        ImGui.SetTooltip(after ? "Place after this" : "Place before this");
         if (!ImGui.IsMouseReleased(ImGuiMouseButton.Left)) return;
+        if (!ReferenceEquals(layers, targetLayers))
+        {
+            // Beside a clip of another timeline: out of its own sprite, into that one's.
+            if (attempt(() => _document.MoveLayerTo(spriteName(layers), layers.IndexOf(from.Layer), spriteName(targetLayers),
+                    targetLayers.IndexOf(target.Value.Layer) + (after ? 1 : 0))))
+                selectClip(null);
+            _hierarchyDrag = null;
+            return;
+        }
         var fromIndex = layers.IndexOf(from.Layer);
-        var insertion = layers.IndexOf(target.Layer) + (after ? 1 : 0);
+        var insertion = layers.IndexOf(target.Value.Layer) + (after ? 1 : 0);
         var toIndex = insertion - (fromIndex < insertion ? 1 : 0);
         if (fromIndex == toIndex) return;
         var sprite = _document.Root["sprites"]!.AsObject().First(pair => ReferenceEquals(pair.Value, layers.Parent)).Key;

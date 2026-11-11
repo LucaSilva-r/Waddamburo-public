@@ -33,6 +33,30 @@ public sealed partial class MovieDocument
         });
     }
 
+    /// <summary>
+    /// Takes a layer out of one sprite and puts it in another's list at <paramref name="to"/> (its keys as they are:
+    /// the same numbers in the new parent's space). Refused when the layer's sprite would end up inside itself.
+    /// </summary>
+    public void MoveLayerTo(string sprite, int from, string target, int to)
+    {
+        var layers = layersOf(sprite);
+        var layer = layerAt(sprite, from);
+        var destination = layersOf(target);
+        var sprites = Root["sprites"]!.AsObject();
+        bool reaches(string name, HashSet<string> seen) => name == target || seen.Add(name) && sprites[name]?["layers"] is JsonArray inner
+            && inner.OfType<JsonObject>().Any(each => (string?)each["character"] is { } child && sprites.ContainsKey(child) && reaches(child, seen));
+        if ((string?)layer["character"] is { } character && sprites.ContainsKey(character) && reaches(character, []))
+            throw new InvalidOperationException($"'{character}' would end up inside itself.");
+        Edit(_ =>
+        {
+            foreach (var each in layers.OfType<JsonObject>().Concat(destination.OfType<JsonObject>()))
+                each.Remove("depth");
+            layers.RemoveAt(from);
+            layer.Remove("until"); // a lifetime counted in the old timeline's frames
+            destination.Insert(Math.Clamp(to, 0, destination.Count), layer);
+        });
+    }
+
     /// <summary>A copy of a layer, right above it; returns its place in the list.</summary>
     public int DuplicateLayer(string sprite, int index)
     {

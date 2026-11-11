@@ -74,7 +74,11 @@ public sealed partial class MovieDocument
 
     /// <summary>A key's value of a property, with "scale" standing for both scales when they are not given.</summary>
     public static double? Value(JsonObject key, string property) =>
-        (double?)key[property] ?? (property is "scaleX" or "scaleY" ? (double?)key["scale"] : null) ?? Default(property);
+        number(key[property]) ?? (property is "scaleX" or "scaleY" ? number(key["scale"]) : null) ?? Default(property);
+
+    // A number however it got into the document (parsed, or set as a float or an int by an edit).
+    private static double? number(JsonNode? node) => node is null ? null
+        : double.Parse(node.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
 
     public static void Set(JsonObject key, string property, double value)
     {

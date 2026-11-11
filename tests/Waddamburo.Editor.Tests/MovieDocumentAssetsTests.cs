@@ -161,6 +161,31 @@ public sealed class MovieDocumentAssetsTests : IDisposable
     }
 
     [Fact]
+    public void ALayerMovesToAnotherSpriteButNeverInsideItself()
+    {
+        var document = open();
+        var box = document.AddSprite("box");
+        var inner = document.AddSprite("inner");
+        var layers = document.Root["sprites"]!["main"]!["layers"]!.AsArray();
+        var count = layers.Count;
+        document.Edit(root =>
+        {
+            layers.Add((System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonNode.Parse($$"""{ "character": "{{box}}", "name": "box", "keys": [ { "frame": 0 } ] }""")!);
+            root["sprites"]![box]!["layers"] = System.Text.Json.Nodes.JsonNode.Parse($$"""[ { "character": "{{inner}}", "name": "inner", "keys": [ { "frame": 0, "x": 5 } ] } ]""");
+        });
+        // A value set as a float by an edit reads back like any other number.
+        document.Edit(root => root["sprites"]![box]!["layers"]![0]!["keys"]![0]!["x"] = 7f);
+        Assert.Equal(7, MovieDocument.Value((System.Text.Json.Nodes.JsonObject)document.Root["sprites"]![box]!["layers"]![0]!["keys"]![0]!, "x"));
+        document.MoveLayerTo(box, 0, "main", 0);
+        Assert.Equal("inner", (string?)layers[0]!["name"]);
+        Assert.Empty(document.Root["sprites"]![box]!["layers"]!.AsArray());
+        Assert.Throws<InvalidOperationException>(() => document.MoveLayerTo("main", count + 1, box, 0)); // box into box
+        document.MoveLayerTo("main", 0, box, 0);
+        Assert.Throws<InvalidOperationException>(() => document.MoveLayerTo("main", count, inner, 0)); // box into what it holds
+        assemble();
+    }
+
+    [Fact]
     public void LayersAndKeysTakeTheirSettings()
     {
         var document = open();

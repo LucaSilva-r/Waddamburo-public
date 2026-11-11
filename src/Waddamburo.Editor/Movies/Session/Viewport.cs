@@ -115,7 +115,7 @@ public sealed partial class MovieInspectorSession
                 {
                     ["character"] = character, ["name"] = character, ["depth"] = depth,
                     ["keys"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
-                        { ["frame"] = frame, ["x"] = MathF.Round(point.X), ["y"] = MathF.Round(point.Y) }),
+                        { ["frame"] = frame, ["x"] = Math.Round((double)point.X), ["y"] = Math.Round((double)point.Y) }),
                 });
             });
         });
