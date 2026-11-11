@@ -7,9 +7,20 @@ namespace Waddamburo.App.Tools;
 
 internal sealed class InteractiveMovieDebugger
 {
-    private readonly LumenPlayer _player;
+    private LumenPlayer _player;
     private readonly ConcurrentQueue<string> _commands = new();
-    private readonly KeyValuePair<string, int>[] _labels;
+    private KeyValuePair<string, int>[] _labels;
+
+    /// <summary>The movie the keys and console lines act on (a reloaded package is a new player).</summary>
+    public LumenPlayer Player
+    {
+        get => _player;
+        set
+        {
+            _player = value;
+            _labels = [.. value.Labels.OrderBy(label => label.Value).ThenBy(label => label.Key, StringComparer.Ordinal)];
+        }
+    }
     private SdlKeyboardSnapshot _previousKeyboard = SdlKeyboardSnapshot.Empty;
 
     public InteractiveMovieDebugger(LumenPlayer player)

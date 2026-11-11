@@ -20,6 +20,8 @@ public sealed class MovieInspectorSession : IDisposable
     private readonly Func<LumenPlayer> _player;
     private readonly string _title;
     private readonly bool _gameData;
+    private readonly MovieDocument? _document;
+    private bool _gesture; // A drag in a field is going on: its edits are one undo step.
     private readonly Dictionary<string, string[]> _arguments = new(StringComparer.Ordinal);
     private readonly List<string> _log = [];
     // Clips opened in the tree beyond the first two levels (a big movie has thousands).
@@ -34,8 +36,11 @@ public sealed class MovieInspectorSession : IDisposable
     /// <param name="title">The movie's name.</param>
     /// <param name="gameData">The movie comes from the user's game data: shown as read-only reference.</param>
     /// <param name="select">A clip to select at once, by instance name (for screenshots).</param>
-    public MovieInspectorSession(SdlApplication application, Func<LumenPlayer> player, string title, bool gameData, string? select = null)
+    /// <param name="document">A package's movie.json, to edit it; null shows the movie without editing.</param>
+    public MovieInspectorSession(SdlApplication application, Func<LumenPlayer> player, string title, bool gameData, string? select = null,
+        MovieDocument? document = null)
     {
+        _document = document;
         _selected = select is null ? null : player().InspectDisplayList().FirstOrDefault(clip => clip.Name == select)?.Path;
         ArgumentNullException.ThrowIfNull(application);
         ArgumentNullException.ThrowIfNull(player);
@@ -47,6 +52,7 @@ public sealed class MovieInspectorSession : IDisposable
         _layer = application.AttachImGui(draw);
         EditorTheme.Apply();
         _layer.CaptureKey = static key => key is ImGuiKey.Space or ImGuiKey.RightArrow;
+        _layer.CaptureControlShortcuts = true;
     }
 
     /// <summary>The movie is held on its current frame.</summary>
@@ -84,6 +90,10 @@ public sealed class MovieInspectorSession : IDisposable
                 Paused = !Paused;
             if (ImGui.IsKeyPressed(ImGuiKey.RightArrow))
                 (Paused, _step) = (true, true);
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+                edited(() => { if (io.KeyShift) _document?.Redo(); else _document?.Undo(); });
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
+                edited(() => _document?.Redo());
         }
         var player = _player();
         var clips = player.InspectDisplayList();
@@ -94,7 +104,7 @@ public sealed class MovieInspectorSession : IDisposable
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
         toolbar(layout.Toolbar, player);
         tree(layout.Targets, clips);
-        inspector(layout.Inspector, player, clips.FirstOrDefault(clip => clip.Path == _selected));
+        inspector(layout.Inspector, player, clips, clips.FirstOrDefault(clip => clip.Path == _selected));
         host(layout.Tracks, player);
         stage(layout.Stage, player);
         ImGui.PopStyleVar();
@@ -106,7 +116,21 @@ public sealed class MovieInspectorSession : IDisposable
         {
             ImGui.TextUnformatted(_title);
             ImGui.SameLine();
-            ImGui.TextColored(new(.52f, .56f, .61f, 1), _gameData ? "game data: reference only, nothing here is saved" : "movie package");
+            ImGui.TextColored(new(.52f, .56f, .61f, 1), _gameData ? "game data: reference only, nothing here is saved"
+                : _document is null ? "movie package" : "movie package: changes are written to movie.json as you make them");
+            if (_document is not null)
+            {
+                ImGui.SameLine();
+                ImGui.BeginDisabled(!_document.CanUndo);
+                if (ImGui.SmallButton("Undo"))
+                    edited(_document.Undo);
+                ImGui.EndDisabled();
+                ImGui.SameLine();
+                ImGui.BeginDisabled(!_document.CanRedo);
+                if (ImGui.SmallButton("Redo"))
+                    edited(_document.Redo);
+                ImGui.EndDisabled();
+            }
             if (ImGui.Button(Paused ? "Play" : "Pause"))
                 Paused = !Paused;
             ImGui.SameLine();
@@ -182,7 +206,66 @@ public sealed class MovieInspectorSession : IDisposable
         ImGui.End();
     }
 
-    private static void inspector(EditorPanel rect, LumenPlayer player, LumenInstanceInfo? clip)
+    // A change to the document reloads the movie: every clip goes back to the frame it was on, held there, so the
+    // stage shows the same moment with the change in it. (What scripts had set is gone: the movie starts over.)
+    private void edited(Action change)
+    {
+        var frames = _player().InspectDisplayList().Where(static clip => clip.Kind == LumenInstanceKind.Sprite)
+            .Select(static clip => (clip.Path, clip.Frame, clip.Playing)).ToArray();
+        change();
+        var fresh = _player();
+        foreach (var (path, frame, playing) in frames)
+            fresh.InspectGoto(path, frame, playing);
+        Paused = true;
+    }
+
+    // The layer of movie.json a clip on stage comes from: its parent's sprite, by depth and character.
+    private (System.Text.Json.Nodes.JsonObject Layer, int Frame)? layerOf(IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo clip)
+    {
+        var cut = clip.Path.LastIndexOf('/');
+        var parent = clips.FirstOrDefault(each => each.Path == (cut < 0 ? "" : clip.Path[..cut]));
+        if (_document is null || clip.Level == 0 || parent is null
+            || _document.CharacterName(parent.CharacterId) is not { } sprite || _document.CharacterName(clip.CharacterId) is not { } character
+            || _document.Layer(sprite, clip.Depth - LumenPlayer.TimelineDepthBase, character) is not { } layer)
+            return null;
+        return (layer, parent.Frame);
+    }
+
+    private void layerFields(System.Text.Json.Nodes.JsonObject layer, int frame)
+    {
+        var keys = layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().OrderBy(static key => (int)key["frame"]!).ToList();
+        var onKey = keys.Any(key => (int)key["frame"]! == frame);
+        ImGui.SeparatorText(onKey ? $"key on frame {frame}" : $"frame {frame}: a change makes a key here");
+        // The values shown are the layer's on this frame, between its keys.
+        var probe = (System.Text.Json.Nodes.JsonObject)layer.DeepClone();
+        var current = MovieDocument.KeyAt(probe, frame);
+        foreach (var property in MovieDocument.Properties)
+        {
+            var value = (float)(MovieDocument.Value(current, property) ?? 0);
+            ImGui.SetNextItemWidth(-90);
+            var speed = property is "x" or "y" or "rotation" ? 1f : .01f;
+            if (ImGui.DragFloat(property, ref value, speed, 0, 0, "%.3g"))
+            {
+                var continues = _gesture;
+                _gesture = true;
+                edited(() => _document!.Edit(_ => MovieDocument.Set(MovieDocument.KeyAt(layer, frame), property, value), continues));
+            }
+            if (ImGui.IsItemDeactivated())
+                _gesture = false;
+        }
+        var name = (string?)layer["name"] ?? "";
+        ImGui.SetNextItemWidth(-90);
+        if (ImGui.InputText("name", ref name, 64, ImGuiInputTextFlags.EnterReturnsTrue))
+            edited(() => _document!.Edit(_ =>
+            {
+                if (name.Length == 0) layer.Remove("name"); else layer["name"] = name;
+            }));
+        if (onKey && keys.Count > 1 && ImGui.Button("Remove this key"))
+            edited(() => _document!.Edit(_ => layer["keys"]!.AsArray().Remove(keys.First(key => (int)key["frame"]! == frame))));
+        ImGui.TextColored(new(.52f, .56f, .61f, 1), $"keys on frames {string.Join(", ", keys.Select(static key => (int)key["frame"]!))}");
+    }
+
+    private void inspector(EditorPanel rect, LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips, LumenInstanceInfo? clip)
     {
         if (panel("Clip", rect))
         {
@@ -214,6 +297,10 @@ public sealed class MovieInspectorSession : IDisposable
                 var hidden = clip.HiddenByHost;
                 if (ImGui.Checkbox("hide", ref hidden))
                     player.InspectSetHidden(clip.Path, hidden);
+                if (layerOf(clips, clip) is { } source)
+                    layerFields(source.Layer, source.Frame);
+                else if (_document is not null && clip.Level > 0)
+                    ImGui.TextColored(new(.52f, .56f, .61f, 1), "Made by a script: nothing of it is in movie.json.");
 
                 if (clip is { Kind: LumenInstanceKind.Sprite, FrameCount: > 1 })
                 {

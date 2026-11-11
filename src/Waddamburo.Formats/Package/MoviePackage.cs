@@ -38,6 +38,21 @@ public static class MoviePackage
         }
     }
 
+    /// <summary>
+    /// The movie's characters in the order of their ids (the first is character 1): shapes, then text fields, then
+    /// sprites, each in file order. The editor uses it to tell which entry a clip on stage comes from.
+    /// </summary>
+    public static IReadOnlyList<string> CharacterNames(JsonElement root) =>
+    [
+        .. CharacterGroups.SelectMany(group => root.TryGetProperty(group, out var map)
+            ? map.EnumerateObject().Select(static entry => entry.Name) : []),
+    ];
+
+    private static readonly string[] CharacterGroups = ["shapes", "texts", "sprites"];
+
+    /// <summary>The parsing options of movie.json (comments and trailing commas allowed).</summary>
+    public static JsonDocumentOptions ReadOptions => Options;
+
     private sealed class Assembler(Func<string, string>? readScript)
     {
         private readonly List<byte[]> _actions = [];
@@ -59,8 +74,7 @@ public static class MoviePackage
             var texts = root.TryGetProperty("texts", out var textMap) ? textMap.EnumerateObject().ToArray() : [];
             var sprites = root.GetProperty("sprites").EnumerateObject().ToArray();
             // Every character gets its id first: a sprite may place one defined after it.
-            foreach (var name in shapes.Select(static shape => shape.Name).Concat(texts.Select(static field => field.Name))
-                .Concat(sprites.Select(static sprite => sprite.Name)))
+            foreach (var name in CharacterNames(root))
                 if (!_characters.TryAdd(name, (uint)_characters.Count + 1))
                     throw new FormatException($"{FileName}: two characters are named \"{name}\".");
 

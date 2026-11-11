@@ -136,8 +136,11 @@ Read side, built (`MovieInspectorSession`, over the player's `Inspect…` calls,
 
 Write side, to build (packages only):
 
-- **Document**: the editor edits `movie.json` as a document (layers and keys, not the assembled records) with undo;
-  every edit reassembles the movie and keeps the playhead, as a script save does now.
+- **Document** (`MovieDocument`): the editor edits `movie.json` as a tree (layers and keys, not the assembled
+  records). There is no Save: every edit is written to the file at once, which reloads the movie on stage with every
+  clip put back on the frame it was on (what scripts had set starts over). Undo and redo are earlier and later texts
+  of the file. A file the editor has written loses its comments. The script text is never edited here (user's call):
+  an outside editor, with reload on save.
 - **Timeline**: the selected sprite's layers as rows, keys as the effects editor draws them (drag, box select, copy),
   labels and script markers on a ruler; the stage gizmos move / scale / rotate the selected layer at the playhead,
   writing a key.
@@ -204,7 +207,9 @@ used by several scenes, and other movies' developer branches load it.
   (plain look, and the host's ten-second tick sound is not in step with the number). Left as is by the user's call.
 - [x] 4. Editor, read side (2026-11-11): `MovieInspectorSession` in the movie viewer, on packages and game movies
   (tried on the timer and on song_select); `Inspect…` calls on the player with a test. Not yet user-tried by hand.
-- [ ] 5. Editor, write side, in this order: (a) document + undo + save, inspector fields editable; (b) timeline rows
+- [ ] 5. Editor, write side, in this order: (a) document + undo + save, inspector fields editable (built 2026-11-11:
+  `MovieDocument`, every edit written to movie.json at once, undo / redo; a selected clip's layer shows x, y, scales,
+  rotation, alpha and name, a change making a key on the current frame; not yet user-tried); (b) timeline rows
   and keys, stage gizmos; (c) assets panel; (d) code panel with the error list. Done when the timer can be rebuilt
   in it from an empty package.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.

@@ -63,12 +63,23 @@ internal static class MovieViewer
             resizable: screenshotPath is null,
             highPixelDensity: screenshotPath is null);
         Console.WriteLine($"Renderer: {application.GpuDriver}");
-        var textureIds = content.Textures
-            .Select(texture => application.UploadRgba8(
-                checked((uint)texture.Width),
-                checked((uint)texture.Height),
-                texture.Rgba8.AsSpan()))
-            .ToArray();
+        // Reloads happen on every step of a drag in the editor: a texture file is decoded once, and uploaded once.
+        var decoded = new Dictionary<string, (int Width, int Height, byte[] Rgba)?>(StringComparer.Ordinal);
+        var uploaded = new Dictionary<byte[], RenderTextureId>(ReferenceEqualityComparer.Instance);
+        (int Width, int Height, byte[] Rgba)? decodeOnce(byte[] file)
+        {
+            var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file));
+            return decoded.TryGetValue(key, out var image) ? image : decoded[key] = Presentation.GameMovieContent.DecodeImage(file);
+        }
+        RenderTextureId upload(LumenTextureContent texture)
+        {
+            var pixels = System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsArray(texture.Rgba8)!;
+            return uploaded.TryGetValue(pixels, out var id) ? id
+                : uploaded[pixels] = application.UploadRgba8(checked((uint)texture.Width), checked((uint)texture.Height), pixels);
+        }
+        if (package is not null)
+            content = LumenMovieContent.LoadPackage(package, decodeOnce); // Through the cache, so a reload reuses everything.
+        var textureIds = content.Textures.Select(upload).ToArray();
         var player = content.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
         // Diagnostic: WADDAMBURO_FILL_PLACEHOLDERS=don1p,don2p draws those native fills as solid boxes (red, blue, green,
         // ...), 360 px square, so movies that hold host-drawn art (the Dons) show where it goes.
@@ -105,13 +116,14 @@ internal static class MovieViewer
         // The movie inspector (tree, clip state, callbacks) over an interactive window; --plain leaves the bare movie.
         // --inspect[=clip] shows it in a --ticks / --screenshot run too, with that clip selected.
         var inspect = Environment.GetCommandLineArgs().FirstOrDefault(static each => each.StartsWith("--inspect", StringComparison.Ordinal));
+        var document = package is null || plain ? null : new Waddamburo.Editor.MovieDocument(package);
         using var inspector = plain || (debugger is null && inspect is null) ? null
             : new Waddamburo.Editor.MovieInspectorSession(application, () => player, content.Name, gameData: package is null,
-                select: inspect?.Split('=', 2) is [_, var clip] ? clip : null);
+                select: inspect?.Split('=', 2) is [_, var clip] ? clip : null, document: document);
         // A package open in a window is reloaded when one of its files is saved (scripts, movie.json, textures): the
         // movie starts again from its first frame. A mistake is printed and the last good version keeps playing.
         DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
-        var loaded = package is null || debugger is null ? default : stamp();
+        var loaded = package is null || (debugger is null && inspector is null) ? default : stamp();
         void reload()
         {
             var now = stamp();
@@ -120,21 +132,23 @@ internal static class MovieViewer
             loaded = now;
             try
             {
-                var fresh = LumenMovieContent.LoadPackage(package!, Presentation.GameMovieContent.DecodeImage);
+                var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce);
                 if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
                     throw new InvalidDataException($"{problem.Code}: {problem.Message}");
                 var freshPlayer = fresh.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
-                // ponytail: the old textures stay on the GPU until the viewer closes.
-                textureIds = [.. fresh.Textures.Select(texture => application.UploadRgba8((uint)texture.Width, (uint)texture.Height, texture.Rgba8.AsSpan()))];
+                // ponytail: textures no longer used stay on the GPU until the viewer closes.
+                textureIds = [.. fresh.Textures.Select(upload)];
                 player = freshPlayer;
-                debugger = new InteractiveMovieDebugger(player);
-                Console.WriteLine($"Reloaded {package}");
+                if (debugger is not null)
+                    debugger.Player = player;
             }
             catch (Exception exception) when (exception is FormatException or IOException or InvalidDataException)
             {
                 Console.Error.WriteLine($"Not reloaded: {exception.Message}");
             }
         }
+        if (document is not null)
+            document.Changed += reload; // An edit shows at once, not at the next check for saved files.
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.Black,

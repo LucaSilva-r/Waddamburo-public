@@ -15,7 +15,8 @@ public sealed partial class LumenPlayer
 {
     private const float TranslationCutThreshold = 200f;
     private const float ColorCutThreshold = 0.3f;
-    private const long TimelineDepthBase = -16384;
+    /// <summary>A clip placed by a timeline at depth d sits at this plus d (script-made clips use depths of their own).</summary>
+    public const long TimelineDepthBase = -16384;
 
     private readonly LmbMovieDefinition _movie;
     private readonly LumenRuntimeLimits _limits;
