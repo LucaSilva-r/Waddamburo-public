@@ -76,17 +76,43 @@ package folder with `--package=<folder>` (with `--invoke`, `--ticks`, `--screens
 
 ### ActionScript 2 compiler
 
-New `Waddamburo.Lumen.Compiler` (no dependency): source text → the Lumen AVM1 variant (string operands are pool
-indices; `Avm1Definition.cs` documents the encoding, `Avm1Interpreter.cs` what each opcode must do).
+`Waddamburo.Formats.Package.ActionScript` (one file, no dependency): source text → the Lumen AVM1 variant (strings as
+pool indices), run by the existing interpreter. Tests compile scripts, run them in the interpreter and compare what
+they report to a host function (`ActionScriptTests`).
 
-- Language: what the Bandai movies' own scripts use, since free movies do the same job: variables, functions and
-  closures, objects and arrays, `class` / `extends` / `super`, `for` / `for..in` / `while` / `switch`, `with`,
-  `try` / `catch`, type annotations parsed and ignored. Classes compile to the prototype code `registerClass` expects.
-- Library: the Flash 8 subset the interpreter already provides. A call to something outside it is a compile warning.
-- Errors carry file, line and column; a package with a script error loads with that script empty and the error on
-  screen (dev builds) so a typo does not take the scene down.
-- Tests: compile → run in the interpreter → assert on traces; plus round trips of constructs against the interpreter.
-  The Bandai scripts are a reference for which features are needed, never a test input that ships.
+- In `movie.json`: a sprite's `scripts` (frame number or label → file, run when the frame is entered), its `export`
+  (the linkage name `Object.registerClass` binds a class to), and the movie's `classes` (files run once before
+  anything is placed: class definitions and `registerClass` calls).
+- Language: variables, functions and closures, objects and arrays, `class` / `extends` / `super` / `static`,
+  `import a.b.C`, `if`, `while`, `do`, `for`, `switch`, `break` / `continue`, the operators, `delete`, `trace`; type
+  annotations are read and ignored. On a timeline `stop()`, `play()`, `gotoAndStop(x)`, `gotoAndPlay(x)` are the
+  player's own instructions.
+- Not yet, reported as errors: `for..in`, `try` / `throw`, `with`, `typeof`, `instanceof`, getters and setters,
+  interfaces. The interpreter has no opcode for the first five (the game's movies never needed them); each is added
+  to both when a free movie needs it.
+- As in Flash: call arguments are evaluated last to first. Unlike Flash's compiler: in a class, only the class's own
+  members can be written bare; inherited ones are `this.name` (or `Class.name`), since the compiler does not know the
+  superclass's members.
+- Library: the Flash 8 subset the interpreter provides; a call to something outside it is reported at run time
+  (`LUM_AVM_CALL_UNRESOLVED`), not when compiling.
+- Errors are `file(line,column): message`. ponytail: a script error fails the whole package load (the game then
+  falls back to nothing: the scene reports it); an on-screen error with the rest of the movie running when the editor
+  needs it.
+- The movie viewer reloads a package when one of its files is saved (the movie starts again); a mistake is printed
+  and the last good version keeps playing.
+- ponytail: no optimisation (locals by name, one push per value, `a.b += 1` evaluates `a` twice); registers when a
+  script shows up in a profile.
+
+### Ideas for our own runtime (user, 2026-11-11)
+
+Since both ends are ours, the package format may grow features Lumen never had, where they speed up making movies:
+
+- **SVG textures**: a texture file may be an `.svg`, rasterised at load at the size the movie needs, so art can be
+  generated or edited as text. Planned for milestone 3 in place of drawn art.
+- **Text**: one text function in the runtime, drawing through the engine's FreeType renderer, for every text a free
+  movie shows (digits included), instead of baked glyph textures. Also milestone 3.
+
+Bandai movies never see these; free movies still answer the same callbacks.
 
 ### Movie editor
 
@@ -146,9 +172,10 @@ used by several scenes, and other movies' developer branches load it.
 - [x] 1. Package format + loader (2026-11-11): `MoviePackage` (tests in `MoviePackageTests`), `LoadPackage`, lookup
   per movie before the archive with a missing-movie error (`MoviePackageSourceTests`), viewer `--package=`, sample.
   Not yet seen in the game itself: that is milestone 3, the first movie with the callbacks a host calls.
-- [ ] 2. Compiler, expressions to classes, with its tests; frame scripts in a package run; hot reload of scripts.
-- [ ] 3. First replacement, by hand: `time_counter` from its contract page; empty log diff against the stock one in
-  every scene that uses it, including loaded by Bandai's song select.
+- [x] 2. Compiler (2026-11-11): `ActionScript` with its tests (27 scripts, classes bound to clips, callbacks), scripts
+  and classes in packages, the sample's script, viewer reload on save (the reload itself not yet tried by hand).
+- [ ] 3. First replacement, by hand: `time_counter` from its contract page, its art as SVG and its digits through the
+  text function (see the ideas above); empty log diff against the stock one in every scene that uses it.
 - [ ] 4. Editor, read side: tree, stage selection, timeline scrubbing, inspector, host panel; works on Bandai movies.
 - [ ] 5. Editor, write side: edit, textures panel, save, undo; the milestone 3 movie rebuilt in it.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.

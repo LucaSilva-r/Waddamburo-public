@@ -25,14 +25,16 @@
     },
     "main": {
       "frames": 240,
+      // Scripts run when their frame is entered ("0", or a label's name).
+      "scripts": { "in": "scripts/main.as" },
       "labels": { "in": 0, "across": 30, "out": 210 },
       "layers": [
         { "character": "bouncer", "name": "bouncer",
           "keys": [
             { "frame": 0, "x": 140, "y": 560, "alpha": 0 },
             { "frame": 30, "x": 140, "y": 560 },
-            { "frame": 210, "x": 1140, "y": 560, "rotation": 360, "tint": [1, 0.6, 1] },
-            { "frame": 239, "x": 1140, "y": 560, "rotation": 360, "alpha": 0 }
+            { "frame": 210, "x": 1140, "y": 560, "tint": [1, 0.6, 1] },
+            { "frame": 239, "x": 1140, "y": 560, "alpha": 0 }
           ] },
         { "character": "ball", "name": "glow", "blend": "add", "until": 210,
           "keys": [

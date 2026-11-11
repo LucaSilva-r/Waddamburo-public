@@ -21,14 +21,16 @@ public static class MoviePackage
 
     private static readonly JsonDocumentOptions Options = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
 
-    /// <exception cref="FormatException">The text is not a valid movie; the message says where.</exception>
-    public static Assembled Assemble(string json)
+    /// <param name="json">The text of movie.json.</param>
+    /// <param name="readScript">Reads a script file of the package by its relative path (movies without scripts need none).</param>
+    /// <exception cref="FormatException">The text is not a valid movie, or a script has an error; the message says where.</exception>
+    public static Assembled Assemble(string json, Func<string, string>? readScript = null)
     {
         ArgumentNullException.ThrowIfNull(json);
         try
         {
             using var document = JsonDocument.Parse(json, Options);
-            return new Assembler().Run(document.RootElement);
+            return new Assembler(readScript).Run(document.RootElement);
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or OverflowException)
         {
@@ -36,8 +38,9 @@ public static class MoviePackage
         }
     }
 
-    private sealed class Assembler
+    private sealed class Assembler(Func<string, string>? readScript)
     {
+        private readonly List<byte[]> _actions = [];
         private readonly List<string> _strings = [""]; // Index 0 is "no name".
         private readonly List<(float A, float B, float C, float D, float X, float Y)> _matrices = [];
         private readonly List<(short R, short G, short B, short A)> _colours = [];
@@ -59,6 +62,16 @@ public static class MoviePackage
                     throw new FormatException($"{FileName}: two characters are named \"{name}\".");
 
             var body = new List<(uint Tag, uint[] Words)>();
+            var nextCharacter = (uint)_characters.Count + 1;
+            // "classes": scripts that run once before anything is placed (class definitions, registerClass), each as
+            // a one-frame "__Packages." sprite, which is how the player finds such code in the game's movies.
+            foreach (var file in root.TryGetProperty("classes", out var classes) ? classes.EnumerateArray() : default)
+            {
+                var path = file.GetString() ?? "";
+                body.Add((LmbTags.DefineSprite, [nextCharacter++, 0, text($"__Packages.{path}"), 0, 1, 0, 0]));
+                body.Add((LmbTags.ShowFrame, [0, 1]));
+                body.Add((LmbTags.DoAction, [script(path), 0]));
+            }
             foreach (var shape in shapes)
                 addShape(body, shape, textures);
             foreach (var sprite in sprites)
@@ -77,12 +90,16 @@ public static class MoviePackage
             {
                 bits(matrix.A), bits(matrix.B), bits(matrix.C), bits(matrix.D), bits(matrix.X), bits(matrix.Y),
             })]));
+            if (_actions.Count > 0)
+                _actionPool = actionPool();
             _records.AddRange(body);
 
             using var stream = new MemoryStream();
             stream.Write("LMB\0"u8);
             stream.Write(new byte[LmbFile.HeaderLength - 4]);
             writeRecord(stream, LmbTags.StringPool, stringPool());
+            if (_actionPool is not null)
+                writeRecord(stream, LmbTags.ActionPool, _actionPool);
             foreach (var (tag, words) in _records)
             {
                 var payload = new byte[words.Length * 4];
@@ -167,7 +184,20 @@ public static class MoviePackage
             }
 
             var labels = sprite.Value.TryGetProperty("labels", out var labelMap) ? labelMap.EnumerateObject().ToArray() : [];
-            body.Add((LmbTags.DefineSprite, [_characters[sprite.Name], 0, 0, (uint)labels.Length, (uint)frameCount, (uint)labels.Length, 0]));
+            // "scripts": frame (a number or one of the labels) -> script file, run when the frame is entered,
+            // after the frame's placements.
+            foreach (var entry in sprite.Value.TryGetProperty("scripts", out var scripts) ? scripts.EnumerateObject() : default)
+            {
+                var frame = int.TryParse(entry.Name, out var number) ? number
+                    : labels.FirstOrDefault(label => label.Name == entry.Name) is { Value.ValueKind: JsonValueKind.Number } named ? named.Value.GetInt32()
+                    : throw new FormatException($"{FileName}: sprite \"{sprite.Name}\" has a script on an unknown label: \"{entry.Name}\".");
+                if (frame < 0 || frame >= frameCount)
+                    throw new FormatException($"{FileName}: sprite \"{sprite.Name}\" has a script outside its {frameCount} frames.");
+                frames[frame].Add((LmbTags.DoAction, [script(entry.Value.GetString() ?? ""), 0]));
+            }
+            // "export": the linkage name Object.registerClass binds a class to.
+            var export = sprite.Value.TryGetProperty("export", out var exportName) ? text(exportName.GetString() ?? "") : 0;
+            body.Add((LmbTags.DefineSprite, [_characters[sprite.Name], 0, export, (uint)labels.Length, (uint)frameCount, (uint)labels.Length, 0]));
             foreach (var label in labels)
                 body.Add((LmbTags.FrameLabel, [text(label.Name), (uint)label.Value.GetInt32(), 0]));
             for (var frame = 0; frame < frameCount; frame++)
@@ -206,6 +236,34 @@ public static class MoviePackage
             return (uint)index;
 
             static short fixed8(float value) => (short)MathF.Round(Math.Clamp(value, -127, 127) * 256);
+        }
+
+        private byte[]? _actionPool;
+
+        // Compiles a script file (once per use: a file on two frames is two actions) and gives its action index.
+        private uint script(string path)
+        {
+            if (readScript is null)
+                throw new FormatException($"{FileName}: the movie has scripts but no script files were given.");
+            _actions.Add(ActionScript.Compile(readScript(path), path, value => checked((ushort)text(value))));
+            return (uint)_actions.Count - 1;
+        }
+
+        private byte[] actionPool()
+        {
+            using var stream = new MemoryStream();
+            Span<byte> word = stackalloc byte[4];
+            BinaryPrimitives.WriteUInt32BigEndian(word, (uint)_actions.Count);
+            stream.Write(word);
+            foreach (var action in _actions)
+            {
+                BinaryPrimitives.WriteUInt32BigEndian(word, (uint)action.Length);
+                stream.Write(word);
+                stream.Write(action);
+                while (stream.Position % 4 != 0)
+                    stream.WriteByte(0);
+            }
+            return stream.ToArray();
         }
 
         private uint text(string value)

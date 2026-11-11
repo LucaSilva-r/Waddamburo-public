@@ -16,7 +16,7 @@ internal static class MovieViewer
     public static int RunPackage(string directory, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
         int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline) =>
         run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodePng), windowWidth, windowHeight, seekFrame,
-            frameLimit, tickLimit, screenshotPath, callbackInvocations, inputTimeline);
+            frameLimit, tickLimit, screenshotPath, callbackInvocations, inputTimeline, directory);
 
     public static int Run(
         string archivePath,
@@ -43,7 +43,8 @@ internal static class MovieViewer
     }
 
     private static int run(LumenMovieContent content, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
-        int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline)
+        int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline,
+        string? package = null)
     {
         foreach (var diagnostic in content.Diagnostics)
         {
@@ -97,6 +98,33 @@ internal static class MovieViewer
         var debugger = frameLimit is null && tickLimit is null
             ? new InteractiveMovieDebugger(player)
             : null;
+        // A package open in a window is reloaded when one of its files is saved (scripts, movie.json, textures): the
+        // movie starts again from its first frame. A mistake is printed and the last good version keeps playing.
+        DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
+        var loaded = package is null || debugger is null ? default : stamp();
+        void reload()
+        {
+            var now = stamp();
+            if (now == loaded)
+                return;
+            loaded = now;
+            try
+            {
+                var fresh = LumenMovieContent.LoadPackage(package!, Presentation.GameMovieContent.DecodePng);
+                if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
+                    throw new InvalidDataException($"{problem.Code}: {problem.Message}");
+                var freshPlayer = fresh.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
+                // ponytail: the old textures stay on the GPU until the viewer closes.
+                textureIds = [.. fresh.Textures.Select(texture => application.UploadRgba8((uint)texture.Width, (uint)texture.Height, texture.Rgba8.AsSpan()))];
+                player = freshPlayer;
+                debugger = new InteractiveMovieDebugger(player);
+                Console.WriteLine($"Reloaded {package}");
+            }
+            catch (Exception exception) when (exception is FormatException or IOException or InvalidDataException)
+            {
+                Console.Error.WriteLine($"Not reloaded: {exception.Message}");
+            }
+        }
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.Black,
@@ -112,6 +140,8 @@ internal static class MovieViewer
             keyboard =>
             {
                 simulationTick++;
+                if (package is not null && debugger is not null && simulationTick % 30 == 0)
+                    reload();
                 keyboard = inputTimeline.Apply(simulationTick, keyboard);
                 foreach (var invocation in callbackInvocations.Where(invocation => invocation.Tick == simulationTick))
                     invoke(invocation);

@@ -83,14 +83,19 @@ public sealed class LumenMovieContent
         ArgumentNullException.ThrowIfNull(decodeImage);
         var parserLimits = limits ?? ParserLimits.Default;
         var root = Path.GetFullPath(directory);
-        var assembled = Formats.Package.MoviePackage.Assemble(File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)));
+        var assembled = Formats.Package.MoviePackage.Assemble(
+            File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)), script => File.ReadAllText(inside(script)));
+        // A shared package is untrusted: its files stay inside its folder.
+        string inside(string file)
+        {
+            var path = Path.GetFullPath(file, root);
+            return path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) ? path
+                : throw new InvalidDataException($"Movie package '{root}': a file path leaves the package: {file}");
+        }
         var textures = ImmutableArray.CreateBuilder<LumenTextureContent>(assembled.TextureFiles.Length);
         foreach (var file in assembled.TextureFiles)
         {
-            // A shared package is untrusted: its files stay inside its folder.
-            var path = Path.GetFullPath(file, root);
-            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-                throw new InvalidDataException($"Movie package '{root}': texture path leaves the package: {file}");
+            var path = inside(file);
             if (new FileInfo(path).Length > parserLimits.MaxFileBytes)
                 throw new InvalidDataException($"Movie package '{root}': texture is too large: {file}");
             var image = decodeImage(File.ReadAllBytes(path))
