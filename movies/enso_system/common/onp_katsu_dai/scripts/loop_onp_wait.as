@@ -1,0 +1,1 @@
+gotoAndPlay("onp_wait");

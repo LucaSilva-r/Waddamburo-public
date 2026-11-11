@@ -1,0 +1,49 @@
+// A note as the engine draws it along the lane: centred on its own origin; its labels are the face states.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "note",
+  "textures": {
+    "note": "textures/note.svg"
+  },
+  "shapes": {
+    "face": {
+      "texture": "note",
+      "rect": [
+        -64,
+        -64,
+        128,
+        128
+      ]
+    }
+  },
+  "sprites": {
+    "note": {
+      "frames": 95,
+      "labels": {
+        "level01": 0,
+        "level02": 10,
+        "level03": 50,
+        "level04": 70,
+        "onp_wait": 90
+      },
+      "scripts": {
+        "9": "scripts/loop_level01.as",
+        "49": "scripts/loop_level02.as",
+        "69": "scripts/loop_level03.as",
+        "89": "scripts/loop_level04.as",
+        "94": "scripts/loop_onp_wait.as"
+      },
+      "layers": [
+        {
+          "character": "face",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

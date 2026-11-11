@@ -23,12 +23,21 @@ public sealed class EnsoLayout
     public ImmutableArray<Vector2> Points { get; }
 
     /// <summary>
-    /// The layout without the game's file: every part at the stage's origin, so the movies played then (the
-    /// engine's own) are drawn in stage coordinates.
+    /// The layout without the game's file: where each part of the gameplay screen is placed (by layout index),
+    /// the same arrangement as the game's own so that its movies and Waddamburo's can be mixed part by part
+    /// (docs/development/free-movies-plan.md). A movie of ours is authored for its part's place here.
     /// </summary>
-    public static EnsoLayout None { get; } = new([]);
+    public static EnsoLayout Standard { get; } = new(
+    [
+        new(0, 0), new(-640, -360), new(0, 0), new(0, 536), new(0, 360), new(0, 360),
+        new(0, 656), new(0, 0), new(0, 536), new(0, 0), new(0, 520), new(320, 20),
+        new(320, 636), new(900, 50), new(248, 271), new(248, 449), new(248, 244), new(248, 422),
+        new(87, 292), new(87, 428), new(88, 252), new(88, 388), new(0, 184), new(0, 360),
+        new(208, 102), new(208, 616), new(386, 105), new(386, 618), new(0, 0), new(0, 512),
+        new(200, 92), new(200, 630), new(23, 193), new(23, 495), new(143, 156), new(143, 531),
+    ]);
 
-    public Vector2 this[int index] => Points.IsEmpty ? Vector2.Zero : (uint)index < (uint)Points.Length
+    public Vector2 this[int index] => (uint)index < (uint)Points.Length
         ? Points[index]
         : throw new InvalidDataException($"ensolayout has no entry {index} ({Points.Length} entries).");
 

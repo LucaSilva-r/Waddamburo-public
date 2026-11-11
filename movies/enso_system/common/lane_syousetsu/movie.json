@@ -1,0 +1,64 @@
+// A bar line, centred on its own origin; "bunki" is the yellow one of a branch check.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "bar",
+  "textures": {
+    "normal": "textures/normal.svg",
+    "branch": "textures/branch.svg"
+  },
+  "shapes": {
+    "normal": {
+      "texture": "normal",
+      "rect": [
+        -4,
+        -68,
+        8,
+        136
+      ]
+    },
+    "branch": {
+      "texture": "branch",
+      "rect": [
+        -4,
+        -68,
+        8,
+        136
+      ]
+    }
+  },
+  "sprites": {
+    "bar": {
+      "frames": 10,
+      "labels": {
+        "normal": 0,
+        "bunki": 5
+      },
+      "scripts": {
+        "4": "scripts/hold_normal.as",
+        "9": "scripts/hold_branch.as"
+      },
+      "layers": [
+        {
+          "character": "normal",
+          "depth": 1,
+          "until": 5,
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "branch",
+          "depth": 1,
+          "keys": [
+            {
+              "frame": 5
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,33 @@
+// onp_renda_dai: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 20,
+      "labels": {
+        "level01": 0,
+        "level02": 10
+      },
+      "layers": [],
+      "scripts": {
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}

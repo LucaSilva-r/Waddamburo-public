@@ -1,0 +1,73 @@
+// The words drawn under the notes: the engine parks one copy on each label it needs.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "words",
+  "texts": {
+    "word": {
+      "rect": [
+        -84,
+        -16,
+        168,
+        32
+      ],
+      "size": 22,
+      "align": "center",
+      "color": "#ffffff"
+    }
+  },
+  "sprites": {
+    "words": {
+      "frames": 85,
+      "labels": {
+        "don": 0,
+        "do": 5,
+        "ko": 10,
+        "katsu": 15,
+        "ka": 20,
+        "don_dai": 25,
+        "katsu_dai": 30,
+        "renda": 35,
+        "nyoro": 40,
+        "geki_renda": 45,
+        "nyoro_10": 50,
+        "imo": 55,
+        "don_te": 60,
+        "katsu_te": 65,
+        "renda_dai": 70,
+        "don_kyodai": 75,
+        "katsu_kyodai": 80
+      },
+      "scripts": {
+        "don": "scripts/word.as",
+        "do": "scripts/word.as",
+        "ko": "scripts/word.as",
+        "katsu": "scripts/word.as",
+        "ka": "scripts/word.as",
+        "don_dai": "scripts/word.as",
+        "katsu_dai": "scripts/word.as",
+        "renda": "scripts/word.as",
+        "nyoro": "scripts/word.as",
+        "geki_renda": "scripts/word.as",
+        "nyoro_10": "scripts/word.as",
+        "imo": "scripts/word.as",
+        "don_te": "scripts/word.as",
+        "katsu_te": "scripts/word.as",
+        "renda_dai": "scripts/word.as",
+        "don_kyodai": "scripts/word.as",
+        "katsu_kyodai": "scripts/word.as"
+      },
+      "layers": [
+        {
+          "character": "word",
+          "name": "word",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

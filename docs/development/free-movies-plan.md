@@ -334,6 +334,27 @@ done when the benchmark song plays to its results.
 the engine addresses inside each (clip names, labels, frames, fill slots). They are the list of what a free version
 must have.
 
+### A song on our own movies (2026-11-11)
+
+The benchmark song now plays on an empty data directory. `movies/enso_system/` holds a package for each of the 38
+gameplay parts:
+
+- **Drawn and behaving** (placeholder art, SVG and text fields): the lane, the four notes, the words under the
+  notes, the bar lines, the hit target with its judged-hit flash and the lane's drum-hit light, the judgement word.
+- **Skeletons** (31): every callback the game calls as an empty function, and the clips and labels the engine
+  addresses as magenta boxes. Made by the lab's `contract.py --skeleton` from the contract pages; each is the
+  starting point for drawing and writing that part in the editor. Among them the board (drum, score, combo), the
+  gauges, the roll and balloon parts, the note flights.
+
+The gameplay layout without the game's file is `EnsoLayout.Standard`: the same arrangement as the game's, so a part
+of ours sits where the game's would and the two sets can be mixed. Our movies are authored in each part's own
+coordinates (the lane group's origin is its top-left), not stage coordinates.
+
+`FreeTimeCounterTests.EveryMovieOfTheEngineLoadsAndRunsItsFirstFrames` loads every package under `movies/`.
+
+Next in this milestone: the board and the gauge (the song is not readable without score and combo), the rolls and
+balloons, the note flights; then one themed set (background, dancers) and the six intermissions.
+
 ## Open
 
 - Free movies live in `movies/<archive folder>/<movie>/` in the repository; the game only looks in

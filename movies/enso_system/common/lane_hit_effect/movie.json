@@ -1,0 +1,237 @@
+// The judgement word over the hit target.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "texts": {
+    "gold": {
+      "rect": [
+        -60,
+        -22,
+        120,
+        44
+      ],
+      "size": 36,
+      "align": "center",
+      "color": "#ffd23c"
+    },
+    "white": {
+      "rect": [
+        -60,
+        -22,
+        120,
+        44
+      ],
+      "size": 36,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "blue": {
+      "rect": [
+        -60,
+        -22,
+        120,
+        44
+      ],
+      "size": 36,
+      "align": "center",
+      "color": "#6fa8ff"
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 160,
+      "labels": {
+        "hit_ryo": 10,
+        "hit_ka": 40,
+        "hit_huka": 70,
+        "hit_ryo_big": 100,
+        "hit_ka_big": 130
+      },
+      "scripts": {
+        "0": "scripts/rest.as",
+        "hit_ryo": "scripts/word.as",
+        "hit_ka": "scripts/word.as",
+        "hit_huka": "scripts/word.as",
+        "hit_ryo_big": "scripts/word.as",
+        "hit_ka_big": "scripts/word.as",
+        "39": "scripts/rest.as",
+        "69": "scripts/rest.as",
+        "99": "scripts/rest.as",
+        "129": "scripts/rest.as",
+        "159": "scripts/rest.as"
+      },
+      "layers": [
+        {
+          "character": "gold",
+          "name": "word0",
+          "depth": 1,
+          "keys": [
+            {
+              "frame": 10,
+              "x": 413,
+              "y": 4,
+              "scale": 1,
+              "ease": "out"
+            },
+            {
+              "frame": 18,
+              "x": 413,
+              "y": -14,
+              "scale": 1
+            },
+            {
+              "frame": 30,
+              "x": 413,
+              "y": -14,
+              "scale": 1
+            },
+            {
+              "frame": 39,
+              "x": 413,
+              "y": -14,
+              "scale": 1,
+              "alpha": 0
+            }
+          ],
+          "until": 40
+        },
+        {
+          "character": "white",
+          "name": "word1",
+          "depth": 2,
+          "keys": [
+            {
+              "frame": 40,
+              "x": 413,
+              "y": 4,
+              "scale": 1,
+              "ease": "out"
+            },
+            {
+              "frame": 48,
+              "x": 413,
+              "y": -14,
+              "scale": 1
+            },
+            {
+              "frame": 60,
+              "x": 413,
+              "y": -14,
+              "scale": 1
+            },
+            {
+              "frame": 69,
+              "x": 413,
+              "y": -14,
+              "scale": 1,
+              "alpha": 0
+            }
+          ],
+          "until": 70
+        },
+        {
+          "character": "blue",
+          "name": "word2",
+          "depth": 3,
+          "keys": [
+            {
+              "frame": 70,
+              "x": 413,
+              "y": 4,
+              "scale": 1,
+              "ease": "out"
+            },
+            {
+              "frame": 78,
+              "x": 413,
+              "y": -14,
+              "scale": 1
+            },
+            {
+              "frame": 90,
+              "x": 413,
+              "y": -14,
+              "scale": 1
+            },
+            {
+              "frame": 99,
+              "x": 413,
+              "y": -14,
+              "scale": 1,
+              "alpha": 0
+            }
+          ],
+          "until": 100
+        },
+        {
+          "character": "gold",
+          "name": "word3",
+          "depth": 4,
+          "keys": [
+            {
+              "frame": 100,
+              "x": 413,
+              "y": 4,
+              "scale": 1.25,
+              "ease": "out"
+            },
+            {
+              "frame": 108,
+              "x": 413,
+              "y": -14,
+              "scale": 1.25
+            },
+            {
+              "frame": 120,
+              "x": 413,
+              "y": -14,
+              "scale": 1.25
+            },
+            {
+              "frame": 129,
+              "x": 413,
+              "y": -14,
+              "scale": 1.25,
+              "alpha": 0
+            }
+          ],
+          "until": 130
+        },
+        {
+          "character": "white",
+          "name": "word4",
+          "depth": 5,
+          "keys": [
+            {
+              "frame": 130,
+              "x": 413,
+              "y": 4,
+              "scale": 1.25,
+              "ease": "out"
+            },
+            {
+              "frame": 138,
+              "x": 413,
+              "y": -14,
+              "scale": 1.25
+            },
+            {
+              "frame": 150,
+              "x": 413,
+              "y": -14,
+              "scale": 1.25
+            },
+            {
+              "frame": 159,
+              "x": 413,
+              "y": -14,
+              "scale": 1.25,
+              "alpha": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

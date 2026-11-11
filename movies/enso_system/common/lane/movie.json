@@ -1,0 +1,35 @@
+// The lane the notes run along.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "lane",
+  "textures": {
+    "strip": "textures/strip.svg"
+  },
+  "shapes": {
+    "strip": {
+      "texture": "strip",
+      "rect": [
+        332,
+        0,
+        948,
+        176
+      ]
+    }
+  },
+  "sprites": {
+    "lane": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "strip",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

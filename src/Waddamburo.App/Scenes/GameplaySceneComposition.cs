@@ -346,9 +346,7 @@ internal static class GameplaySceneComposition
         var data = Path.GetFullPath(Path.Combine(assetRoot, "..", ".."));
         var path = new[] { Path.Combine(data, "config", "common", "ensolayout.bin"), Path.Combine(data, "ensolayout.bin") }
             .FirstOrDefault(File.Exists);
-        if (path is null)
-            Console.WriteLine("Game data: without the gameplay layout (data/ensolayout.bin): every gameplay part at the stage's origin.");
-        return path is null ? EnsoLayout.None : EnsoLayout.Load(path);
+        return path is null ? EnsoLayout.Standard : EnsoLayout.Load(path);
     }
 
     /// <summary>

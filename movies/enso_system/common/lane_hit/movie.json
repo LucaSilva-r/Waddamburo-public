@@ -1,0 +1,377 @@
+// The hit target of the lane: "target" is where notes are hit; "hit_effect" flashes a judged hit, "effect" the lane for a drum hit.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "ring": "textures/ring.svg",
+    "flash_white": "textures/flash_white.svg",
+    "flash_gold": "textures/flash_gold.svg",
+    "flash_blue": "textures/flash_blue.svg",
+    "light_red": "textures/light_red.svg",
+    "light_cyan": "textures/light_cyan.svg"
+  },
+  "shapes": {
+    "ring": {
+      "texture": "ring",
+      "rect": [
+        -72,
+        -72,
+        144,
+        144
+      ]
+    },
+    "flash_white": {
+      "texture": "flash_white",
+      "rect": [
+        -72,
+        -72,
+        144,
+        144
+      ]
+    },
+    "flash_gold": {
+      "texture": "flash_gold",
+      "rect": [
+        -72,
+        -72,
+        144,
+        144
+      ]
+    },
+    "flash_blue": {
+      "texture": "flash_blue",
+      "rect": [
+        -72,
+        -72,
+        144,
+        144
+      ]
+    },
+    "light_red": {
+      "texture": "light_red",
+      "rect": [
+        -476,
+        -65,
+        952,
+        130
+      ]
+    },
+    "light_cyan": {
+      "texture": "light_cyan",
+      "rect": [
+        -476,
+        -65,
+        952,
+        130
+      ]
+    }
+  },
+  "sprites": {
+    "target": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "ring",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "hit_effect": {
+      "frames": 150,
+      "labels": {
+        "no_onp": 0,
+        "hit_no": 10,
+        "hit_ka": 30,
+        "hit_ryo": 50,
+        "hit_huka": 70,
+        "hit_dai_ka": 90,
+        "hit_dai_ryo": 110,
+        "hit_dai_huka": 130
+      },
+      "scripts": {
+        "0": "scripts/rest.as",
+        "29": "scripts/rest.as",
+        "49": "scripts/rest.as",
+        "69": "scripts/rest.as",
+        "89": "scripts/rest.as",
+        "109": "scripts/rest.as",
+        "129": "scripts/rest.as",
+        "149": "scripts/rest.as"
+      },
+      "layers": [
+        {
+          "character": "flash_white",
+          "depth": 1,
+          "until": 44,
+          "keys": [
+            {
+              "frame": 30,
+              "scale": 0.8,
+              "alpha": 0.9,
+              "ease": "out"
+            },
+            {
+              "frame": 43,
+              "scale": 1.3,
+              "alpha": 0
+            }
+          ]
+        },
+        {
+          "character": "flash_gold",
+          "depth": 1,
+          "until": 64,
+          "keys": [
+            {
+              "frame": 50,
+              "scale": 0.8,
+              "alpha": 0.9,
+              "ease": "out"
+            },
+            {
+              "frame": 63,
+              "scale": 1.3,
+              "alpha": 0
+            }
+          ]
+        },
+        {
+          "character": "flash_blue",
+          "depth": 1,
+          "until": 84,
+          "keys": [
+            {
+              "frame": 70,
+              "scale": 0.8,
+              "alpha": 0.9,
+              "ease": "out"
+            },
+            {
+              "frame": 83,
+              "scale": 1.3,
+              "alpha": 0
+            }
+          ]
+        },
+        {
+          "character": "flash_white",
+          "depth": 1,
+          "until": 104,
+          "keys": [
+            {
+              "frame": 90,
+              "scale": 1.2000000000000002,
+              "alpha": 0.9,
+              "ease": "out"
+            },
+            {
+              "frame": 103,
+              "scale": 1.9500000000000002,
+              "alpha": 0
+            }
+          ]
+        },
+        {
+          "character": "flash_gold",
+          "depth": 1,
+          "until": 124,
+          "keys": [
+            {
+              "frame": 110,
+              "scale": 1.2000000000000002,
+              "alpha": 0.9,
+              "ease": "out"
+            },
+            {
+              "frame": 123,
+              "scale": 1.9500000000000002,
+              "alpha": 0
+            }
+          ]
+        },
+        {
+          "character": "flash_blue",
+          "depth": 1,
+          "until": 144,
+          "keys": [
+            {
+              "frame": 130,
+              "scale": 1.2000000000000002,
+              "alpha": 0.9,
+              "ease": "out"
+            },
+            {
+              "frame": 143,
+              "scale": 1.9500000000000002,
+              "alpha": 0
+            }
+          ]
+        }
+      ]
+    },
+    "effect": {
+      "frames": 70,
+      "labels": {
+        "don_s": 10,
+        "don_b": 20,
+        "katsu_s": 30,
+        "katsu_b": 40,
+        "don_hit": 50,
+        "katsu_hit": 60
+      },
+      "scripts": {
+        "0": "scripts/rest.as",
+        "19": "scripts/rest.as",
+        "29": "scripts/rest.as",
+        "39": "scripts/rest.as",
+        "49": "scripts/rest.as",
+        "59": "scripts/rest.as",
+        "69": "scripts/rest.as"
+      },
+      "layers": [
+        {
+          "character": "light_red",
+          "depth": 1,
+          "blend": "add",
+          "keys": [
+            {
+              "frame": 10,
+              "alpha": 0.35
+            },
+            {
+              "frame": 19,
+              "alpha": 0
+            }
+          ],
+          "until": 20
+        },
+        {
+          "character": "light_red",
+          "depth": 1,
+          "blend": "add",
+          "keys": [
+            {
+              "frame": 20,
+              "alpha": 0.5
+            },
+            {
+              "frame": 29,
+              "alpha": 0
+            }
+          ],
+          "until": 30
+        },
+        {
+          "character": "light_cyan",
+          "depth": 1,
+          "blend": "add",
+          "keys": [
+            {
+              "frame": 30,
+              "alpha": 0.35
+            },
+            {
+              "frame": 39,
+              "alpha": 0
+            }
+          ],
+          "until": 40
+        },
+        {
+          "character": "light_cyan",
+          "depth": 1,
+          "blend": "add",
+          "keys": [
+            {
+              "frame": 40,
+              "alpha": 0.5
+            },
+            {
+              "frame": 49,
+              "alpha": 0
+            }
+          ],
+          "until": 50
+        },
+        {
+          "character": "light_red",
+          "depth": 1,
+          "blend": "add",
+          "keys": [
+            {
+              "frame": 50,
+              "alpha": 0.7
+            },
+            {
+              "frame": 59,
+              "alpha": 0
+            }
+          ],
+          "until": 60
+        },
+        {
+          "character": "light_cyan",
+          "depth": 1,
+          "blend": "add",
+          "keys": [
+            {
+              "frame": 60,
+              "alpha": 0.7
+            },
+            {
+              "frame": 69,
+              "alpha": 0
+            }
+          ]
+        }
+      ]
+    },
+    "main": {
+      "frames": 1,
+      "scripts": {
+        "0": "scripts/main.as"
+      },
+      "layers": [
+        {
+          "character": "effect",
+          "name": "effect",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 804,
+              "y": 73
+            }
+          ]
+        },
+        {
+          "character": "target",
+          "name": "target",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 413,
+              "y": 73,
+              "alpha": 0.6
+            }
+          ]
+        },
+        {
+          "character": "hit_effect",
+          "name": "hit_effect",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 413,
+              "y": 73
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

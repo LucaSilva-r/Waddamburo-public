@@ -1,0 +1,34 @@
+// onp_kiseki_don_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 436,
+      "labels": {
+        "don_d_hit": 0,
+        "don_hit": 10,
+        "don_renda_d_hit": 20,
+        "katsu_d_hit": 30,
+        "katsu_hit": 40,
+        "katsu_renda_d_hit": 50
+      },
+      "layers": []
+    }
+  }
+}

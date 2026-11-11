@@ -84,6 +84,27 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void EveryMovieOfTheEngineLoadsAndRunsItsFirstFrames()
+    {
+        var directory = AppContext.BaseDirectory;
+        while (!Directory.Exists(Path.Combine(directory, "movies", "indicator", "time_counter")))
+            directory = Path.GetDirectoryName(directory) ?? throw new DirectoryNotFoundException("movies");
+        var packages = Directory.EnumerateFiles(Path.Combine(directory, "movies"), "movie.json", SearchOption.AllDirectories)
+            .Select(static file => Path.GetDirectoryName(file)!).Order(StringComparer.Ordinal).ToArray();
+        Assert.True(packages.Length >= 30);
+        foreach (var package in packages)
+        {
+            var errors = new List<Waddamburo.Formats.Package.ActionScriptException>();
+            var content = LumenMovieContent.LoadPackage(package, static _ => (1, 1, new byte[4]), scriptErrors: errors);
+            Assert.True(errors.Count == 0, $"{package}: {string.Join("; ", errors.Select(static error => error.Message))}");
+            Assert.True(content.Diagnostics.IsEmpty, $"{package}: {string.Join("; ", content.Diagnostics.Select(static each => each.Message))}");
+            var player = content.CreatePlayer();
+            advance(player, 3);
+            Assert.True(player.Diagnostics.IsEmpty, $"{package}: {string.Join("; ", player.Diagnostics.Select(static each => each.Message))}");
+        }
+    }
+
+    [Fact]
     public void ShowsItsNumberAndSongTab()
     {
         var player = load();
