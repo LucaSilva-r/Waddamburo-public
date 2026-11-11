@@ -45,6 +45,8 @@ public sealed partial class LumenPlayer
     private int _callDepth;
     private Avm1ExecutionContext? _activeContext;
 
+    private readonly bool _scriptsEnabled;
+
     public LumenPlayer(
         LmbMovieDefinition movie,
         float stageWidth,
@@ -52,10 +54,12 @@ public sealed partial class LumenPlayer
         uint? rootCharacterId = null,
         LumenRuntimeLimits? limits = null,
         ILumenHostBinding? hostBinding = null,
-        Func<string, LumenLoadedMovie?>? movieLoader = null)
+        Func<string, LumenLoadedMovie?>? movieLoader = null,
+        bool scriptsEnabled = true)
     {
         ArgumentNullException.ThrowIfNull(movie);
         MovieLoader = movieLoader;
+        _scriptsEnabled = scriptsEnabled;
         if (!float.IsFinite(stageWidth) || stageWidth <= 0)
             throw new ArgumentOutOfRangeException(nameof(stageWidth));
         if (!float.IsFinite(stageHeight) || stageHeight <= 0)
@@ -1298,6 +1302,7 @@ public sealed partial class LumenPlayer
         Avm1CodeBlock code,
         bool captureTimelineTarget = true)
     {
+        if (!_scriptsEnabled) return Avm1ExecutionStatus.Success;
         var startingFrame = instance.Frame;
         var startingPlaying = instance.Playing;
         var parentContext = _activeContext;
@@ -1913,6 +1918,7 @@ public sealed partial class LumenPlayer
         IReadOnlyList<object?> arguments,
         Avm1ExecutionContext? parentContext = null)
     {
+        if (!_scriptsEnabled) return default;
         if (function.DefinitionTarget is DisplayInstance definitionTarget)
             timelineTarget = definitionTarget;
         if (_callDepth >= _limits.MaxCallDepth)

@@ -325,3 +325,9 @@ this milestone first).
 - Whether artists want SWF import (author in an old Flash, convert quads + AS2 to a package). Only if asked for.
 
 Editor interaction (2026-11-11): assets are selected in the bottom browser and edited in the shared top-right Inspector. Selecting a stage clip, hierarchy entry or timeline layer returns the Inspector to that clip. Asset property gestures use one document undo step; Ctrl+Z / Ctrl+Y also work while a property input has focus.
+
+External script editing: the Code tab opens package AS2 scripts in VS Code (`code --reuse-window --goto`); compilation errors open at their line and column. The viewer polls saved files every 30 simulation ticks, including while the inspector is paused, and recompiles/reloads the movie. Script state restarts. Original archive bytecode is reference-only, not editable AS2 source.
+
+Movie Inspector appearance controls: selected package layers expose blend (normal/add/multiply/screen), mask range and removal frame; keys expose RGB tint and linear/hold/in/out/inOut interpolation. Changes use document history; tint drags are grouped. Original movie controls are read-only.
+
+Editor viewport update: Inter UI font; hierarchy disclosure and sibling reordering; range/toggle selection and viewport marquee; move/rotate/scale handles with Shift constraints, Alt pivot scaling and opposite-edge anchors; combined selection bounds and group transforms (skew-requiring operations are refused). Inspector Properties/Info tabs separate editing from diagnostics. Transform centres are stored as editorPivot metadata. Run scripts can be disabled for timeline-only art preview. Multi-selection Inspector fields still edit the active object; zoom/pan and draggable pivots remain outstanding.

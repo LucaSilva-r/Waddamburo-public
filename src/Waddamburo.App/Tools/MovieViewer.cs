@@ -147,6 +147,7 @@ internal static class MovieViewer
         // movie starts again from its first frame. A mistake is printed and the last good version keeps playing.
         DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
         var loaded = package is null || (debugger is null && inspector is null) ? default : stamp();
+        var scriptsEnabled = true;
         void reload()
         {
             var now = stamp();
@@ -159,7 +160,7 @@ internal static class MovieViewer
                 var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce, scriptErrors: errors);
                 if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
                     throw new InvalidDataException($"{problem.Code}: {problem.Message}");
-                var freshPlayer = fresh.CreatePlayer(hostBinding: ViewerHostBinding.Instance);
+                var freshPlayer = new LumenPlayer(fresh.Definition, 1280, 720, hostBinding: ViewerHostBinding.Instance, scriptsEnabled: scriptsEnabled);
                 // ponytail: textures no longer used stay on the GPU until the viewer closes.
                 textureIds = [.. fresh.Textures.Select(upload)];
                 nameTextures(fresh, textureIds);
@@ -184,12 +185,17 @@ internal static class MovieViewer
             inspector.ShowSprite = name =>
             {
                 var id = name is null ? null : document?.CharacterId(name);
-                var alone = new LumenPlayer(content.Definition, 1280, 720, rootCharacterId: id, hostBinding: ViewerHostBinding.Instance) { Name = content.Name };
+                var alone = new LumenPlayer(content.Definition, 1280, 720, rootCharacterId: id, hostBinding: ViewerHostBinding.Instance, scriptsEnabled: scriptsEnabled) { Name = content.Name };
                 if (id is not null)
                     alone.SetInstanceOffset("", 640, 360);
                 player = alone;
                 if (debugger is not null)
                     debugger.Player = player;
+            };
+            inspector.SetScriptsEnabled = enabled =>
+            {
+                scriptsEnabled = enabled;
+
             };
             inspector.ScriptErrors = scriptErrors;
             inspector.TextureOf = name => named.TryGetValue(name, out var texture) ? texture : null;
@@ -214,7 +220,7 @@ internal static class MovieViewer
             keyboard =>
             {
                 simulationTick++;
-                if (package is not null && debugger is not null && simulationTick % 30 == 0)
+                if (package is not null && (debugger is not null || inspector is not null) && simulationTick % 30 == 0)
                     reload();
                 keyboard = inputTimeline.Apply(simulationTick, keyboard);
                 foreach (var invocation in callbackInvocations.Where(invocation => invocation.Tick == simulationTick))

@@ -76,6 +76,8 @@ public sealed partial class MovieInspectorSession
                             var sampleSize = Math.Clamp((float?)text["size"] ?? 32, 12, 44);
                             draw.AddText(ImGui.GetFont(), sampleSize, top + new Vector2(12, 12), tint, "Aa 12");
                         }
+                        else if (group == "shapes" && field.Value is JsonObject shape)
+                            shapePreview(shape, top, end);
                         else
                             draw.AddText(top + new Vector2(12, 20), Text, icon);
                         draw.AddText(origin + new Vector2(8, 82), Text, field.Key);
@@ -93,6 +95,40 @@ public sealed partial class MovieInspectorSession
             ImGui.EndTable();
         }
         ImGui.EndChild();
+    }
+
+    // A package shape is one textured quad. Preserve its authored proportions and atlas region.
+    private void shapePreview(JsonObject shape, Vector2 top, Vector2 end)
+    {
+        var draw = ImGui.GetWindowDrawList();
+        draw.PushClipRect(top, end, true);
+        for (var y = top.Y; y < end.Y; y += 10)
+            for (var x = top.X; x < end.X; x += 10)
+            {
+                var light = ((int)((x - top.X) / 10) + (int)((y - top.Y) / 10)) % 2 == 0;
+                draw.AddRectFilled(new(x, y), Vector2.Min(new(x + 10, y + 10), end),
+                    light ? color(.24f, .25f, .27f) : color(.17f, .18f, .20f));
+            }
+        var textureName = (string?)shape["texture"];
+        var texture = textureName is null ? null : TextureOf?.Invoke(textureName);
+        if (texture is { } image && shape["rect"] is JsonArray bounds && bounds.Count == 4)
+        {
+            var width = Math.Abs((float)bounds[2]!);
+            var height = Math.Abs((float)bounds[3]!);
+            if (width > 0 && height > 0)
+            {
+                var scale = Math.Min(Math.Max(0, end.X - top.X - 8) / width, Math.Max(0, end.Y - top.Y - 8) / height);
+                var size = new Vector2(width, height) * scale;
+                var start = (top + end - size) / 2;
+                var uv = shape["uv"] as JsonArray;
+                var first = uv is { Count: 4 } ? new Vector2((float)uv[0]!, (float)uv[1]!) : Vector2.Zero;
+                var last = uv is { Count: 4 } ? new Vector2((float)uv[2]!, (float)uv[3]!) : Vector2.One;
+                draw.AddImage(image.Texture, start, start + size, first, last);
+            }
+        }
+        else
+            draw.AddText(top + new Vector2(6, 6), Text, textureName is null ? "Native fill" : "Texture unavailable");
+        draw.PopClipRect();
     }
 
     private bool _assetGesture;
@@ -125,6 +161,10 @@ public sealed partial class MovieInspectorSession
             }
             else
             {
+                var previewOrigin = ImGui.GetCursorScreenPos();
+                var previewSize = new Vector2(Math.Max(32, ImGui.GetContentRegionAvail().X), 160);
+                shapePreview(entry, previewOrigin, previewOrigin + previewSize);
+                ImGui.Dummy(previewSize);
                 ImGui.TextUnformatted($"Texture: {(string?)entry["texture"] ?? "Native fill"}");
                 if (entry["rect"] is JsonArray bounds && bounds.Count == 4)
                     ImGui.TextUnformatted($"Size: {bounds[2]} x {bounds[3]}");

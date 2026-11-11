@@ -330,6 +330,15 @@ public sealed partial class MovieDocument
     /// Opens a package file in the program the system uses for it (scripts are edited outside: the editor reloads
     /// the movie when the file is saved). False when the system could not.
     /// </summary>
+    public void OpenInCode(string relative, int line = 1, int column = 1)
+    {
+        var start = new ProcessStartInfo("code") { UseShellExecute = false };
+        start.ArgumentList.Add("--reuse-window");
+        start.ArgumentList.Add("--goto");
+        start.ArgumentList.Add($"{FilePath(relative)}:{Math.Max(1, line)}:{Math.Max(1, column)}");
+        using var process = Process.Start(start);
+    }
+
     public bool OpenOutside(string relative)
     {
         try

@@ -43,6 +43,20 @@ public sealed class ActionScriptTests
         return (player, reports);
     }
 
+    [Fact]
+    public void ArtPreviewSkipsScriptsButAdvancesTimelines()
+    {
+        var assembled = MoviePackage.Assemble(Movie.Replace("CLASSES", ""), _ => "this.clip._visible = false; stop();");
+        var movie = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb), validationContext: new LmbSemanticValidationContext(0)).Value;
+        var normal = new LumenPlayer(movie, 1280, 720);
+        var art = new LumenPlayer(movie, 1280, 720, scriptsEnabled: false);
+        Assert.False(normal.InspectDisplayList().Single(clip => clip.Name == "clip").Visible);
+        Assert.True(art.InspectDisplayList().Single(clip => clip.Name == "clip").Visible);
+        art.Advance();
+        Assert.Equal(1, art.CurrentFrame);
+        Assert.True(art.InspectDisplayList().Single(clip => clip.Name == "clip").Visible);
+    }
+
     [Theory]
     [InlineData("report(1 + 2 * 3, (1 + 2) * 3, 7 % 4, 10 / 4, -3, 2 - 5);", "7,9,3,2.5,-3,-3")]
     [InlineData("report('a' + 1 + 2, 1 + 2 + 'a', \"x\\ty\", 0x10, 1e3, .5);", "a12,3a,x\ty,16,1000,0.5")]

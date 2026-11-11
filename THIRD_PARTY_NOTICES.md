@@ -84,3 +84,5 @@ exact dependency versions. Release packages must include those authoritative tex
 Waddamburo never builds, downloads, or ships G.719 code. Running a user-supplied
 vgmstream-cli is the user's own use of that program, not a representation that it
 grants any particular patent, copyright, or redistribution rights.
+
+Inter Regular 4.0, copyright The Inter Project Authors, SIL Open Font License 1.1. Source: https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip (`extras/ttf/Inter-Regular.ttf`), gzip-compressed without font modifications into `src/Waddamburo.App/Resources/fonts/Inter-Regular.ttf.gz` for the editor UI. License: `eng/packaging/licenses/Inter.txt`.

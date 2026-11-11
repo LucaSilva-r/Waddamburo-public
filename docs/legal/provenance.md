@@ -299,3 +299,5 @@ The editor's asynchronous open/save picker is original Platform.Sdl code against
 <https://wiki.libsdl.org/SDL3/SDL_ShowSaveFileDialog>, accessed 2026-11-07).
 Filter buffers live until SDL's callback completes. No upstream dialog implementation is copied;
 the existing SDL binding/native dependency and notices are unchanged.
+
+Inter Regular 4.0, copyright The Inter Project Authors, SIL Open Font License 1.1. Source: https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip (`extras/ttf/Inter-Regular.ttf`), gzip-compressed without font modifications into `src/Waddamburo.App/Resources/fonts/Inter-Regular.ttf.gz` for the editor UI. License: `eng/packaging/licenses/Inter.txt`.
