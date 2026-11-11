@@ -1,0 +1,87 @@
+// shutter: doors that close when a song ends (Close) and open on the results (Open). Placeholder look.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "door": "textures/door.svg"
+  },
+  "shapes": {
+    "door": {
+      "texture": "door",
+      "rect": [
+        0,
+        0,
+        640,
+        720
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 112,
+      "labels": {
+        "wait": 0,
+        "close": 10,
+        "open": 60
+      },
+      "scripts": {
+        "0": "scripts/main.as",
+        "50": "scripts/stop.as",
+        "101": "scripts/stop.as"
+      },
+      "layers": [
+        {
+          "character": "door",
+          "until": 101,
+          "keys": [
+            {
+              "frame": 10,
+              "x": -640,
+              "ease": "out"
+            },
+            {
+              "frame": 50,
+              "x": 0,
+              "hold": true
+            },
+            {
+              "frame": 60,
+              "x": 0,
+              "ease": "in"
+            },
+            {
+              "frame": 100,
+              "x": -640
+            }
+          ]
+        },
+        {
+          "character": "door",
+          "until": 101,
+          "keys": [
+            {
+              "frame": 10,
+              "x": 1280,
+              "ease": "out"
+            },
+            {
+              "frame": 50,
+              "x": 640,
+              "hold": true
+            },
+            {
+              "frame": 60,
+              "x": 640,
+              "ease": "in"
+            },
+            {
+              "frame": 100,
+              "x": 1280
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

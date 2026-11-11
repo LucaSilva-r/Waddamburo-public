@@ -423,8 +423,17 @@ the handoff to the song) is the same for both movies. Tried headless on a full i
 the chart loads. Not there: folder colours and art (a script cannot colour a clip yet), crowns and scores, play
 options, favourites, search, a course per drum (both play the one picked), Don-chan, sounds of its own.
 
-Next: the intermissions (rainbow, fade, shutter) and the boot movies, then a run from boot to a song on an empty
-data directory.
+**Intermissions** (`movies/intermission/`, 2026-11-11): `scene_change_rainbow` (labels `in`, `out`, `in_extra`,
+`out_extra`, each stopping at its end, which is what the flows wait for; the song's title in the
+`scene_change_song_name` slot), `scene_change_fade` (`wait`, `in`: black in a second), `shutter` (`Close(c)`,
+`Open()`). Without them a stand-in stopped the game at the first cover (it has no labels).
+
+**Boot to a song on an empty data directory** (2026-11-11, headless): boot and logo pass as stand-ins, a DON opens
+the entry, the player setup, song select on the user's own libraries, a course, the rainbow with the title, the song
+on the placeholder gameplay parts. Not yet walked: the song's end (shutter, results as a stand-in, back to song
+select), the dan covers, the title screen (blank).
+
+Next: the end of a song (results, then back), then the boot, logo and title of our own.
 
 ## Open
 

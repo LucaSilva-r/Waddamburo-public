@@ -1,0 +1,48 @@
+// scene_change_fade: to black in one second ("in"); "wait" shows nothing.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "black": "textures/black.svg"
+  },
+  "shapes": {
+    "black": {
+      "texture": "black",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 72,
+      "labels": {
+        "wait": 0,
+        "in": 10
+      },
+      "scripts": {
+        "0": "scripts/stop.as",
+        "70": "scripts/stop.as"
+      },
+      "layers": [
+        {
+          "character": "black",
+          "keys": [
+            {
+              "frame": 10,
+              "alpha": 0
+            },
+            {
+              "frame": 70,
+              "alpha": 1
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

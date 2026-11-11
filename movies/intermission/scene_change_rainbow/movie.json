@@ -1,0 +1,189 @@
+// scene_change_rainbow: the cover between song select and a song (placeholder look). The game plays "in" / "out", or "in_extra" / "out_extra" with the song's title drawn into "scene_change_song_name", and waits for each to stop.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "cover": "textures/cover.svg",
+    "band": "textures/band.svg"
+  },
+  "shapes": {
+    "cover": {
+      "texture": "cover",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    },
+    "band": {
+      "texture": "band",
+      "rect": [
+        0,
+        0,
+        1280,
+        160
+      ]
+    },
+    "title": {
+      "rect": [
+        -560,
+        -60,
+        1120,
+        120
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 170,
+      "labels": {
+        "wait": 0,
+        "in": 10,
+        "out": 50,
+        "in_extra": 90,
+        "out_extra": 130
+      },
+      "scripts": {
+        "0": "scripts/stop.as",
+        "40": "scripts/stop.as",
+        "81": "scripts/stop.as",
+        "120": "scripts/stop.as",
+        "161": "scripts/stop.as"
+      },
+      "layers": [
+        {
+          "character": "cover",
+          "keys": [
+            {
+              "frame": 10,
+              "x": 1280,
+              "ease": "out"
+            },
+            {
+              "frame": 40,
+              "x": 0
+            }
+          ],
+          "until": 50
+        },
+        {
+          "character": "cover",
+          "keys": [
+            {
+              "frame": 90,
+              "x": 1280,
+              "ease": "out"
+            },
+            {
+              "frame": 120,
+              "x": 0
+            }
+          ],
+          "until": 130
+        },
+        {
+          "character": "cover",
+          "keys": [
+            {
+              "frame": 50,
+              "x": 0,
+              "ease": "in"
+            },
+            {
+              "frame": 80,
+              "x": -1280
+            }
+          ],
+          "until": 81
+        },
+        {
+          "character": "cover",
+          "keys": [
+            {
+              "frame": 130,
+              "x": 0,
+              "ease": "in"
+            },
+            {
+              "frame": 160,
+              "x": -1280
+            }
+          ],
+          "until": 161
+        },
+        {
+          "character": "band",
+          "keys": [
+            {
+              "frame": 90,
+              "x": 1280,
+              "ease": "out",
+              "y": 280
+            },
+            {
+              "frame": 120,
+              "x": 0,
+              "y": 280
+            }
+          ],
+          "until": 130
+        },
+        {
+          "character": "band",
+          "keys": [
+            {
+              "frame": 130,
+              "x": 0,
+              "ease": "in",
+              "y": 280
+            },
+            {
+              "frame": 160,
+              "x": -1280,
+              "y": 280
+            }
+          ],
+          "until": 161
+        },
+        {
+          "character": "title",
+          "name": "scene_change_song_name",
+          "until": 130,
+          "keys": [
+            {
+              "frame": 90,
+              "x": 1920,
+              "y": 360,
+              "ease": "out"
+            },
+            {
+              "frame": 120,
+              "x": 640,
+              "y": 360
+            }
+          ]
+        },
+        {
+          "character": "title",
+          "name": "scene_change_song_name",
+          "until": 161,
+          "keys": [
+            {
+              "frame": 130,
+              "x": 640,
+              "y": 360,
+              "ease": "in"
+            },
+            {
+              "frame": 160,
+              "x": -640,
+              "y": 360
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
