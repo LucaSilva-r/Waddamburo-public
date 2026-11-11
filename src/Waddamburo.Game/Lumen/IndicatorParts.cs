@@ -46,7 +46,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     {
         _pending.RemoveAll(part =>
         {
-            if (part.Player.CallbackNames.Length == 0) return false;
+            // A stand-in (no such movie) never registers any and takes every call.
+            if (part.Player.CallbackNames.Length == 0 && !part.Player.StandIn) return false;
             part.Setup();
             return true;
         });

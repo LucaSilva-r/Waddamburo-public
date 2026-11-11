@@ -205,6 +205,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _boardShown[side] = board;
     }
 
+    // The movie has the home player setup of its own (an engine movie: it registered WdSetupOpen), so nothing
+    // below reaches into it; the game's entry is driven through its script objects instead.
+    private bool _ownSetup;
+
     private const int ModeSelectFadeTicks = 15;
     private int _modeSelectFade = -1;
 
@@ -219,6 +223,23 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         if (!SetupMode || _entry is not { } entry)
             return;
         SetupMode = false;
+        if (_ownSetup)
+        {
+            // Told who plays before the movie hears it: it may ask for the next scene inside WdSetupDone.
+            for (var side = 0; side < 2; side++)
+            {
+                if (!playing[side])
+                {
+                    _joined.Remove(side);
+                    Parts.SetIndicator(side, 0);
+                    continue;
+                }
+                PlayerJoined?.Invoke(side);
+            }
+            CoinsChanged();
+            call(entry, "WdSetupDone", LumenHostValue.FromBoolean(playing[0]), LumenHostValue.FromBoolean(playing[1]));
+            return;
+        }
         _modeSelectFade = 0;
         call(entry, "BnCoinSetFree", LumenHostValue.FromBoolean(false));
         for (var side = 0; side < 2; side++)
@@ -417,6 +438,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         foreach (var side in new[] { 0, 1 })
             call(entry, "SetPlayer", number(side), side == PreJoined ? yes : no, side == PreJoined ? yes : no, side == PreJoined ? yes : no);
         call(entry, "BnCoinInit", number(0), no, no, no);
+        _ownSetup = SetupMode && entry.TryInvokeCallback("WdSetupOpen", []);
     }
 
     /// <summary>The entry's IsReady poll; the game answers 0 until its parts are set up.</summary>

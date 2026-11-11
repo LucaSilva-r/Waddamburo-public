@@ -391,6 +391,28 @@ coordinates (the lane group's origin is its top-left), not stage coordinates.
 Next in this milestone: the board and the gauge (the song is not readable without score and combo), the rolls and
 balloons, the note flights; then one themed set (background, dancers) and the six intermissions.
 
+## Menus first (user, 2026-11-11)
+
+The order changed: the bare minimum from boot to a song on the engine's own movies comes before the rest of the
+gameplay screen. Entry, then song select, then the intermissions and the boot movies; results stay a stand-in.
+
+**The host's workarounds stay with the game's movies.** What the engine does to the game's menus from outside
+(Lumen patches, clips addressed by name, the key filter, the home player setup drawn over the entry) is frozen and
+only used on them. A movie of ours gets the feature for real, through callbacks the game's movie does not have
+(named `Wd…`), and the host picks the path by asking: it calls the callback, and a movie that has none is the
+game's. Later, on that footing: a song select that is fed songs as it scrolls instead of the whole list at start,
+touch input.
+
+**Entry** (`movies/entry/entry`, 2026-11-11): each drum joins with its DON, a joined drum's DON or the timer asks
+for Song Select, with the calls and order of the game's entry on that path (contract page in the lab,
+`research/contracts/menus`). No mode select, costumes, cards or coins display. Its own callbacks: `WdSetupOpen()`
+(the home player setup is open: the movie leaves the drums alone) and `WdSetupDone(playing1p, playing2p)` (who
+plays; the movie goes on). `EntrySceneHost` uses them when `WdSetupOpen` answers. Tried on an empty data directory:
+`--start-scene=entry --press=F@120` reaches Song Select. Not yet tried by hand: the home player setup over it.
+Indicator parts without a movie count as ready (`IndicatorParts.PollReady`), or the entry would wait forever.
+
+Next: song select (flat list, the game's protocol for songs and courses, `Wd…` callbacks for folders).
+
 ## Open
 
 - Free movies live in `movies/<archive folder>/<movie>/` in the repository; the game only looks in

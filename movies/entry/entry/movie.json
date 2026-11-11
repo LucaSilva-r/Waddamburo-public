@@ -1,0 +1,44 @@
+// entry: the player join, bare minimum (placeholder look). Each drum joins with its DON; a joined drum's DON starts.
+// No mode select, costumes or cards yet: it always asks for Song Select.
+{
+  "format": 1,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg",
+    "panel": "textures/panel.svg"
+  },
+  "shapes": {
+    "bg": { "texture": "bg", "rect": [0, 0, 1280, 720] },
+    "panel": { "texture": "panel", "rect": [-210, -140, 420, 280] }
+  },
+  "texts": {
+    "heading": { "rect": [-500, -40, 1000, 80], "size": 60, "align": "center", "color": "#ffffff" },
+    "side": { "rect": [-190, -110, 380, 60], "size": 44, "align": "center", "color": "#3a1a10" },
+    "state": { "rect": [-190, -20, 380, 110], "size": 36, "align": "center", "color": "#e6312d" },
+    "hint": { "rect": [-500, -25, 1000, 50], "size": 34, "align": "center", "color": "#ffffff" }
+  },
+  "sprites": {
+    "player": {
+      "frames": 1,
+      "layers": [
+        { "character": "panel", "keys": [ { "frame": 0 } ] },
+        { "character": "side", "name": "side", "keys": [ { "frame": 0 } ] },
+        { "character": "state", "name": "state", "keys": [ { "frame": 0 } ] }
+      ]
+    },
+    "main": {
+      "frames": 1,
+      "layers": [
+        { "character": "bg", "keys": [ { "frame": 0 } ] },
+        { "character": "heading", "name": "heading", "keys": [ { "frame": 0, "x": 640, "y": 110 } ] },
+        { "character": "player", "name": "p1", "keys": [ { "frame": 0, "x": 340, "y": 360 } ] },
+        { "character": "player", "name": "p2", "keys": [ { "frame": 0, "x": 940, "y": 360 } ] },
+        { "character": "hint", "name": "hint", "keys": [ { "frame": 0, "x": 640, "y": 610 } ] }
+      ],
+      "scripts": {
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}
