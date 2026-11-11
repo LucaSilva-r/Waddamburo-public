@@ -12,6 +12,11 @@ public sealed partial class MovieInspectorSession
         {
             if (ImGui.BeginTabBar("##bottom tabs"))
             {
+                if (_document is { ReadOnly: false } && ImGui.BeginTabItem("To do"))
+                {
+                    todo();
+                    ImGui.EndTabItem();
+                }
                 if (_document is not null && ImGui.BeginTabItem("Timeline"))
                 {
                     timeline(player, clips);
@@ -32,7 +37,7 @@ public sealed partial class MovieInspectorSession
                     code();
                     ImGui.EndTabItem();
                 }
-                if (ImGui.BeginTabItem("Callbacks"))
+                if (ImGui.BeginTabItem("Game calls"))
                 {
                     host(new(rect.X, rect.Y, rect.Width, rect.Height), player);
                     ImGui.EndTabItem();

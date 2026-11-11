@@ -186,6 +186,26 @@ public sealed class MovieDocumentAssetsTests : IDisposable
     }
 
     [Fact]
+    public void TheJobListOfEveryEngineMovieReadsItsStatesAndCalls()
+    {
+        var directory = AppContext.BaseDirectory;
+        while (!Directory.Exists(Path.Combine(directory, "movies", "intermission", "shutter")))
+            directory = Path.GetDirectoryName(directory) ?? throw new DirectoryNotFoundException("movies");
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(directory, "movies"), "movie.json", SearchOption.AllDirectories))
+            _ = new MovieDocument(Path.GetDirectoryName(file)!).Todo();
+        // The shutter: its three states are drawn or empty by design, its two calls are written.
+        var shutter = new MovieDocument(Path.Combine(directory, "movies", "intermission", "shutter")).Todo();
+        Assert.Equal(["wait", "close", "open"], shutter.Where(static item => item.Kind == "state").Select(static item => item.Name));
+        Assert.Equal(MovieTodoState.Missing, shutter.First(static item => item.Name == "wait").State);
+        Assert.Equal(MovieTodoState.Done, shutter.First(static item => item.Name == "close").State);
+        Assert.All(shutter.Where(static item => item.Kind == "call"), static item => Assert.Equal(MovieTodoState.Done, item.State));
+        // A skeleton: every call still empty, its states placeholders or empty.
+        var board = new MovieDocument(Path.Combine(directory, "movies", "indicator", "msg_coins")).Todo();
+        Assert.Equal(7, board.Count(static item => item.Kind == "call" && item.State == MovieTodoState.Missing));
+        Assert.DoesNotContain(board, static item => item.Kind == "state" && item.State == MovieTodoState.Done);
+    }
+
+    [Fact]
     public void LayersAndKeysTakeTheirSettings()
     {
         var document = open();
