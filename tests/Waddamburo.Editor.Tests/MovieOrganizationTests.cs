@@ -41,13 +41,15 @@ public sealed class MovieOrganizationTests : IDisposable
         Assert.Equal("contractChild", (string?)document.Root["sprites"]!["new_main"]!["layers"]![0]!["name"]);
         Assert.Equal("ContractSymbol", (string?)document.Root["sprites"]!["new_main"]!["export"]);
         Assert.Equal("new_main", (string?)document.Root["root"]);
+        document.Save();
         var reopened = new MovieDocument(_directory);
         Assert.Equal(ids["sprites"], reopened.AssetId("sprites", "new_main"));
-        MoviePackage.Assemble(File.ReadAllText(document.Path));
+        MoviePackage.Assemble(document.Text);
         document.Undo(); document.Undo(); document.Undo();
-        Assert.Equal(original.TrimEnd(), File.ReadAllText(document.Path).TrimEnd());
-        Assert.Equal(ids["sprites"], new MovieDocument(_directory).AssetId("sprites", "main"));
+        Assert.Equal(original.TrimEnd(), document.Text.TrimEnd());
+        Assert.Equal(ids["sprites"], document.AssetId("sprites", "main"));
         document.Redo(); document.Redo(); document.Redo();
+        document.Save();
         Assert.Equal(ids["sprites"], new MovieDocument(_directory).AssetId("sprites", "new_main"));
     }
 
@@ -61,6 +63,7 @@ public sealed class MovieOrganizationTests : IDisposable
         var id = document.AssetId("sprites", sprite);
         document.RenameFolder(a, "Art");
         Assert.Equal("Art / Notes", document.FolderPath(b));
+        document.Save();
         Assert.Equal(b, new MovieDocument(_directory).Assets().Single(asset => asset.Id == id).Folder);
         Assert.Throws<InvalidOperationException>(() => document.MoveFolder(a, b));
         Assert.Throws<InvalidOperationException>(() => document.DeleteFolder(a));
@@ -98,6 +101,7 @@ public sealed class MovieOrganizationTests : IDisposable
         Assert.Empty(document.Folders());
         Assert.DoesNotContain(document.Assets(), asset => identities.Contains(asset.Id));
         document.Redo();
+        document.Save();
         var reopened = new MovieDocument(_directory);
         Assert.Equal(identities, reopened.Assets().Where(asset => identities.Contains(asset.Id)).Select(asset => asset.Id));
         Assert.All(names, name => Assert.True(File.Exists(document.FilePath((string)document.Root["textures"]![name]!))));

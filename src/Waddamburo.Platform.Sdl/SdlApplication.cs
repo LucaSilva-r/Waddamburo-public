@@ -717,6 +717,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
 
     /// <summary>Ends the running loop after the current frame; callable from any thread.</summary>
     public void RequestQuit() => _quitRequested = true;
+    /// <summary>Optional close guard. False keeps the window open for an unsaved-changes dialog.</summary>
+    public Func<bool>? ConfirmClose { get; set; }
 
     // A controller connected: it takes the first free number (one plugged back in takes its old one).
     private void addPad(SDL_JoystickID which)
@@ -869,7 +871,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_QUIT
                     or (uint)SDL_EventType.SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 {
-                    running = false;
+                    if (ConfirmClose?.Invoke() != false) running = false;
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST)
                 {

@@ -21,20 +21,13 @@ public sealed partial class MovieInspectorSession
     {
         var root = _document!.Root;
         var name = _selectedAsset!;
-        ImGui.BeginDisabled(_document.ReadOnly);
-        try
-        {
-            inspectAsset(root, name);
-        }
-        finally
-        {
-            ImGui.EndDisabled();
-        }
+        inspectAsset(root, name);
     }
 
     private void inspectAsset(JsonObject root, string name)
     {
-        if (_selectedAssetGroup == "textures" && root["textures"]?[name] is JsonValue file)
+        var group = _selectedAssetGroup;
+        if (group == "textures" && root["textures"]?[name] is JsonValue file)
         {
             ImGui.SeparatorText(name + " (Texture)");
             var origin = ImGui.GetCursorScreenPos();
@@ -44,26 +37,26 @@ public sealed partial class MovieInspectorSession
             ImGui.TextWrapped(file.GetValue<string>());
             if (TextureOf?.Invoke(name) is { } image)
                 ImGui.TextUnformatted($"{image.Width} x {image.Height}");
-            ImGui.BeginDisabled(_assetFileDialog is not null);
+            ImGui.BeginDisabled(_document!.ReadOnly || _assetFileDialog is not null);
             if (ImGui.Button("Replace artwork...")) pickTexture(name);
             ImGui.EndDisabled();
             ImGui.TextWrapped("Replacement keeps the texture name and every shape using it. Undo restores the previous artwork.");
-            assetUsers(name);
+            assetUsers(group, name);
             return;
         }
-        if (root[_selectedAssetGroup]?[name] is not JsonObject entry)
+        if (root[group]?[name] is not JsonObject entry)
         {
             ImGui.TextDisabled("This asset no longer exists. Undo to restore it.");
             return;
         }
-        if (_selectedAssetGroup != "texts")
+        if (group != "texts")
         {
-            ImGui.SeparatorText(name + " (" + _selectedAssetGroup[..^1] + ")");
-            if (_selectedAssetGroup == "sprites")
+            ImGui.SeparatorText(name + " (" + group[..^1] + ")");
+            if (group == "sprites")
             {
                 ImGui.TextUnformatted($"Frames: {(int?)entry["frames"] ?? 1}");
                 ImGui.TextUnformatted($"Layers: {(entry["layers"] as JsonArray)?.Count ?? 0}");
-                if (ShowSprite is not null && ImGui.Button("Edit sprite timeline")) show(name);
+                if (ShowSprite is not null && ImGui.Button("Open sprite in isolation")) show(name);
             }
             else
             {
@@ -73,10 +66,11 @@ public sealed partial class MovieInspectorSession
                 ImGui.Dummy(previewSize);
                 shapeFields(name, entry);
             }
-            assetUsers(name);
+            assetUsers(group, name);
             return;
         }
         ImGui.PushID(name);
+        ImGui.BeginDisabled(_document!.ReadOnly);
         ImGui.SeparatorText(name + " (Text)");
         var users = (root["sprites"] as JsonObject ?? []).SelectMany(sprite =>
             (sprite.Value?["layers"] as JsonArray ?? []).OfType<JsonObject>()
@@ -113,23 +107,34 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.Button("Delete unused field"))
                     edited(() => _document!.Edit(_ => root["texts"]!.AsObject().Remove(name)));
                 ImGui.EndDisabled();
+        ImGui.EndDisabled();
         ImGui.PopID();
     }
 
-    private void assetUsers(string name)
+    private void assetUsers(string group, string name)
     {
         ImGui.SeparatorText("Used by");
-        var users = _document!.Uses(_selectedAssetGroup, name);
-        foreach (var user in users) ImGui.TextWrapped(user);
+        var users = _document!.Uses(group, name);
+        if (group == "textures")
+        {
+            foreach (var shape in (_document.Root["shapes"] as JsonObject ?? [])
+                .Where(shape => (string?)shape.Value?["texture"] == name))
+                if (ImGui.SmallButton(shape.Key + "##source shape")) selectAsset("shapes", shape.Key);
+        }
+        else foreach (var user in users) ImGui.TextWrapped(user);
         if (users.Count == 0) ImGui.TextDisabled("Unused. Add a layer or assign this texture to a shape.");
-        ImGui.BeginDisabled(users.Count > 0);
-        if (ImGui.Button("Delete unused asset")) attempt(() => _document.Delete(_selectedAssetGroup, name));
+        ImGui.BeginDisabled(_document.ReadOnly || users.Count > 0);
+        if (ImGui.Button("Delete unused asset")) attempt(() => _document.Delete(group, name));
         ImGui.EndDisabled();
     }
 
     private void shapeFields(string name, JsonObject shape)
     {
+        ImGui.BeginDisabled(_document!.ReadOnly);
         textureChoice("Texture", (string?)shape["texture"], texture => attempt(() => _document!.SetShapeTexture(name, texture)));
+        ImGui.EndDisabled();
+        if ((string?)shape["texture"] is { } source && ImGui.Button("Source texture")) selectAsset("textures", source);
+        ImGui.BeginDisabled(_document.ReadOnly);
         if (shape["rect"] is JsonArray rect && rect.Count == 4)
         {
             var box = new Vector4(assetNumber(rect[0]), assetNumber(rect[1]), assetNumber(rect[2]), assetNumber(rect[3]));
@@ -151,5 +156,6 @@ public sealed partial class MovieInspectorSession
         if (ImGui.Button("Use whole texture")) attempt(() => _document!.SetShapeUv(name, null));
         ImGui.EndDisabled();
         ImGui.TextWrapped("Bounds and artwork affect every instance of this shape. Instance names and animation stay unchanged.");
+        ImGui.EndDisabled();
     }
 }

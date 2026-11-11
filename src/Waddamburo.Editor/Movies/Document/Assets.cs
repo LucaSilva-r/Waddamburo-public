@@ -64,8 +64,8 @@ public sealed partial class MovieDocument
     }
 
     /// <summary>
-    /// Copies a PNG or SVG into the package's textures folder and lists it; returns the texture's name.
-    /// Undo takes the entry back but leaves the copied file so redo can restore it.
+    /// Stages a PNG or SVG for the package and lists it; returns the texture's name.
+    /// Save writes the file; undo/redo retain the working bytes in memory.
     /// </summary>
     public string ImportTexture(string sourcePath, string folder = "")
     {
@@ -74,16 +74,15 @@ public sealed partial class MovieDocument
         if (extension is not (".png" or ".svg"))
             throw new InvalidOperationException("A texture is a PNG or an SVG file.");
         var name = free("textures", tidy(System.IO.Path.GetFileNameWithoutExtension(sourcePath)));
-        var relative = copyTexture(sourcePath, name, extension);
         Edit(root =>
         {
-            (root["textures"] as JsonObject ?? (JsonObject)(root["textures"] = new JsonObject()))[name] = relative;
+            (root["textures"] as JsonObject ?? (JsonObject)(root["textures"] = new JsonObject()))[name] = copyTexture(sourcePath, name, extension);
             assignAssetFolder("textures", name, folder);
         });
         return name;
     }
 
-    /// <summary>Replaces artwork under the same texture name. Keeps earlier files intact for undo and redo.</summary>
+    /// <summary>Stages artwork under the same texture name. Earlier versions remain available for undo and redo.</summary>
     public void ReplaceTexture(string name, string sourcePath)
     {
         if ((string?)group("textures")[name] is null)
@@ -91,19 +90,17 @@ public sealed partial class MovieDocument
         var extension = System.IO.Path.GetExtension(sourcePath).ToLowerInvariant();
         if (extension is not (".png" or ".svg"))
             throw new InvalidOperationException("A texture is a PNG or an SVG file.");
-        var target = copyTexture(sourcePath, tidy(name), extension);
-        Edit(root => root["textures"]![name] = target);
+        Edit(root => root["textures"]![name] = copyTexture(sourcePath, tidy(name), extension));
     }
 
     private string copyTexture(string sourcePath, string name, string extension)
     {
         // JSON history refers to these files: never overwrite one, including files left by undone imports.
         var relative = $"textures/{name}{extension}";
-        for (var number = 2; File.Exists(FilePath(relative)); number++)
+        for (var number = 2; hasFile(relative); number++)
             relative = $"textures/{name}_{number}{extension}";
-        var target = FilePath(relative);
-        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
-        File.Copy(sourcePath, target);
+        FilePath(relative); // Validate the destination before staging bytes.
+        _pendingFiles[relative] = File.ReadAllBytes(sourcePath);
         return relative;
     }
 

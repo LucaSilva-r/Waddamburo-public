@@ -132,16 +132,20 @@ Read side, built (`MovieInspectorSession`, over the player's `Inspect…` calls,
 - **Clip**: the selected clip's transform, colour, blend, bounds, script variables; its timeline (frame slider, play /
   stop, a button per label); a hide switch.
 - **Callbacks**: every callback the movie registered, a box per parameter, a call button, the results.
-- Play / pause, single step (Space, Right).
+- Timeline transport: combined Play/Pause (Space), frame steps (Left/Right), previous/next label
+  (Ctrl+Left/Right), frame slider and Run scripts. Controls follow the timeline being edited; root shows Root frame.
+- A compact File/Edit menu replaces the top toolbar. Open movie package chooses movie.json; Open Lumen archive
+  chooses a DDP and then a movie inside it (read-only). Save is explicit (Ctrl+S). Dirty documents show an asterisk;
+  opening another movie, File > Close and the window close button offer Save, Discard or Cancel.
 - Opened by the movie viewer on any movie: `--package=<folder>` or `--archive=… --movie=…` (`--plain` for the bare
   movie; `--inspect[=clip]` with `--ticks` / `--screenshot`). A movie from the game data is reference only.
 
 Write side, to build (packages only):
 
 - **Document** (`MovieDocument`): the editor edits `movie.json` as a tree (layers and keys, not the assembled
-  records). There is no Save: every edit is written to the file at once, which reloads the movie on stage with every
-  clip put back on the frame it was on (what scripts had set starts over). Undo and redo are earlier and later texts
-  of the file. A file the editor has written loses its comments. The script text is never edited here (user's call):
+  records). Edits update the in-memory preview, with every clip put back on the frame it was on (what scripts had
+  set starts over). File > Save (Ctrl+S) writes the working JSON, companion metadata and staged artwork/scripts;
+  undo and redo are in-memory snapshots of all three. A file the editor has written loses its comments. The script text is never edited here (user's call):
   an outside editor, with reload on save.
 - **Timeline**: the selected sprite's layers as rows, keys as the effects editor draws them (drag, box select, copy),
   labels and script markers on a ruler; the stage gizmos move / scale / rotate the selected layer at the playhead,
@@ -171,8 +175,8 @@ skew, no colour add. `--inspect=sprite:<part of name>` starts on a sprite.
 
 The UI (ImGui, `Movies/Session/*.cs`) only draws and calls these; rules and file handling live below it.
 
-- `MovieDocument` (tests: `MovieDocumentTests`, `MovieDocumentAssetsTests`): `Root` (the JSON tree), `Edit(change,
-  continues)`, `Undo` / `Redo`, `Changed`; `Layer`, `KeyAt`, `Value`, `Set` for keys.
+- `MovieDocument` (tests: `MovieDocumentTests`, `MovieDocumentAssetsTests`, `MovieSaveTests`): `Root` (the JSON tree),
+  working `Text`, `Edit(change, continues)`, `Undo` / `Redo`, `IsDirty`, `Save`, `ReadFile`, `Changed`, `Saved`; `Layer`, `KeyAt`, `Value`, `Set` for keys.
   - Assets: `ImportTexture(path)`, `ReplaceTexture(name, path)`, `AddShape(name, texture, width, height, uv)`,
     `AddSprite(name, frames)`, `Rename(group, from, to)` (follows every reference), `Delete(group, name)` (refused
     while used), `Uses(group, name)`, `Unused()`, `Exists(group, name)`. Groups: `textures`, `shapes`, `texts`,
@@ -208,11 +212,11 @@ folder and delete an unused asset. F2 renames the selected asset while the brows
 double-click; breadcrumbs navigate back and accept asset drags. Folders can be renamed, moved or deleted when
 empty; moving one beneath itself or a descendant is refused. Search finds assets and folders across the package.
 Dropping a PNG/SVG imports into the current browser folder. Dropping a directory, or Import folder, imports its
-artwork recursively with its directory structure, as one undo step. Files retained for history stay on disk.
+artwork recursively with its directory structure, as one undo step. Imports are staged in memory until Save; previously saved files remain available for history.
 
 `movie.editor.json` is the package's companion metadata, version 1: `assets` maps stable GUIDs to `group`, `name`
 and browser `folder`; `folders` maps GUIDs to `name` and `parent` (empty means root). Legacy packages get identities
-in memory when opened, and the first edit persists them. Keep this companion with the package when moving or
+in memory when opened, and an explicit Save persists them. Keep this companion with the package when moving or
 sharing it. Browser folders are logical, so shapes and sprites can be organized with artwork; physical texture
 files stay beneath `textures/`. The runtime's existing named references stay compatible: rename updates shape
 texture references, layer character references and the root while preserving child instance names and sprite
@@ -280,7 +284,7 @@ used by several scenes, and other movies' developer branches load it.
 - [x] 4. Editor, read side (2026-11-11): `MovieInspectorSession` in the movie viewer, on packages and game movies
   (tried on the timer and on song_select); `Inspect…` calls on the player with a test. Not yet user-tried by hand.
 - [ ] 5. Editor, write side, in this order: (a) document + undo + save, inspector fields editable (built 2026-11-11:
-  `MovieDocument`, every edit written to movie.json at once, undo / redo; a selected clip's layer shows x, y, scales,
+  `MovieDocument`, in-memory edits with explicit Save, undo / redo; a selected clip's layer shows x, y, scales,
   rotation, alpha and name, a change making a key on the current frame; user-tried, works); (b) timeline rows
   and keys, stage gizmos (built 2026-11-11: a row per layer with its keys, click / drag / double-click / Delete on
   keys, ruler with playhead and labels, frame count, add and remove layers, drag on the stage moves the selected clip;
@@ -406,10 +410,36 @@ Movie Inspector appearance controls: selected package layers expose blend (norma
 
 Editor viewport update: Inter UI font; hierarchy disclosure and sibling reordering; range/toggle selection and viewport marquee; move/rotate/scale handles with Shift constraints, Alt pivot scaling and opposite-edge anchors; combined selection bounds and group transforms (skew-requiring operations are refused). Inspector Properties/Info tabs separate editing from diagnostics. Transform centres are stored as editorPivot metadata. Run scripts can be disabled for timeline-only art preview. Multi-selection Inspector fields still edit the active object; zoom/pan and draggable pivots remain outstanding.
 
-Editor code layout: `Movies/Session/Session.cs` owns lifecycle, host hooks and frame orchestration. Partial files own their feature state and methods: Toolbar (transport), Panels (bottom tabs), Hierarchy (tree/reorder), Selection (range/toggle/marquee/picking), Inspector and Appearance (properties), Editing (document changes and frame restoration), Viewport (stage composition), Gestures (active drags), Tools (tool controls) and Handles (handle drawing), Group (group transform math), Assets (browser), AssetPreview (thumbnails), AssetInspector (asset properties), Timeline, Library and Code. Keep new feature code with its owning partial rather than growing the coordinator.
+Editor code layout: `Movies/Session/Session.cs` owns lifecycle, host hooks and frame orchestration. Partial files own their feature state and methods: Toolbar (transport), Panels (bottom tabs), Hierarchy (tree/reorder), Selection (range/toggle/marquee/picking), Inspector and Appearance (properties), Editing (document changes and frame restoration), Viewport (stage composition), Gestures (active drags), Tools (tool controls) and Handles (handle drawing), Group (group transform math), Assets (browser), AssetPreview (thumbnails), AssetInspector (asset properties), Timeline, Library and Code. Files owns pickers and unsaved-document dialogs; MovieTransport defines label navigation. Keep new feature code with its owning partial rather than growing the coordinator.
 
 `Movies/Document/Document.cs` owns JSON loading, formatting, persistence and history plus character lookup. Its partials separate Assets (resource operations), Layers (layer lookup/order/appearance/lifetime), Keyframes (sampling and key properties) and Scripts (attachments and external editor launching).
 
 Transform hardening: single and multi-selection gestures share stage-space matrix operations through `MovieTransform` (`Movies/Viewport/Transform.cs`). Synthetic tests cover all opposite anchors, Alt switching, Shift axis/proportion constraints, rotated/scaled parents, reflection, invalid transforms, ancestor filtering and one-step group undo/redo. A document revision counter prevents a no-op at the start of a drag from merging into the previous undo operation. Skew and collapsed-axis transformations are rejected before document changes.
 
 Editor source folders: `Movies/Session/` contains the movie UI partials, `Movies/Document/` the package model and edit operations, and `Movies/Viewport/` the transform helper. `Effects/Session/` contains the effects UI partials, with effects models/helpers in `Effects/`. Reusable layout, theme, readout and timeline-row code lives in `Shared/`. Filenames within each partial-class folder use their responsibility (for example `Inspector.cs`, `Selection.cs`, `Keyframes.cs`) without repeating the class name. Public type names and namespaces are unchanged.
+
+Asset browser presentation (2026-11-11): Assets is the default view and lists shapes, text fields and sprites;
+Textures is a separate view, so a one-image/one-shape pair does not appear twice. Both views retain folder and
+search navigation. A shape's Source texture button opens its source in the Inspector and switches to Textures;
+Used by links navigate back to shapes. These navigation controls also work for read-only archive references.
+Importing artwork selects it in Textures; creating a shape returns to Assets. This changes presentation only,
+without merging records or modifying package references.
+
+Timeline labels (2026-11-11): frame numbers have their own ruler. Label names are clickable flags in a separate
+track, packed into up to three non-overlapping rows; long names have full-name/frame tooltips. Clicking jumps
+to that label and pauses. A Labels button opens a searchable, frame-sorted list and can hide the label track.
+Extra-dense sections retain overflow markers and list access instead of overlapping names or unbounded rows.
+Label flags have a right-click Go to frame/Delete menu; reference movies allow navigation only. Layer positions,
+playhead extent and scroll content account for the label track height. Synthetic layout tests cover dense names,
+same-frame labels, stable ordering, overflow and labels at the right edge of the track.
+
+Timeline ownership (2026-11-11): timeline navigation is independent of selection. Clicking a layer, key, viewport
+object or hierarchy row only selects it; the open timeline stays fixed. Double-click a sprite name in the hierarchy
+or timeline layer list, or use Inspector > Open this timeline, to enter its live instance without isolating it.
+The Editing timeline breadcrumb identifies the movie and ancestor instances with each one's local frame counter;
+click an ancestor to return. Inspector placement fields explicitly use parent frames, while Sprite playback reports
+the selected sprite's local frame. The duplicate Inspector playback/label controls were removed in favor of the
+explicit timeline transport. A frame-script count signals logic; archive references expose compiled-script markers
+without source, while authored package source stays in Code. Library/asset actions explicitly identify isolated
+previews. If an instance disappears or its depth is reused for a different sprite, its context is retained rather
+than silently switching to another timeline. Package contexts follow stable editor asset IDs across reindexing.

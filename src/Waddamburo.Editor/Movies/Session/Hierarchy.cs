@@ -68,8 +68,13 @@ public sealed partial class MovieInspectorSession
                         closed = clip.Level;
                 }
                 var icon = clip.Kind switch { LumenInstanceKind.Sprite => "S", LumenInstanceKind.Shape => "[]", LumenInstanceKind.Text => "T", _ => "?" };
-                if (ImGui.Selectable($"{icon}  {name}{state}##{clip.Path}", _selection.Contains(clip.Path), ImGuiSelectableFlags.None, new Vector2(0, ImGui.GetFrameHeight())))
+                if (ImGui.Selectable($"{icon}  {name}{state}##{clip.Path}", _selection.Contains(clip.Path), ImGuiSelectableFlags.AllowDoubleClick, new Vector2(0, ImGui.GetFrameHeight())))
                     hierarchySelection(clips, clip.Path);
+                if (clip.Kind == LumenInstanceKind.Sprite && ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Single-click: inspect placement. Double-click: open this timeline.");
+                    if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) openInstanceTimeline(clip.Path);
+                }
                 hierarchyReorder(clips, clip);
                 if (clip.Path == _selected && _scrollToSelected)
                 {

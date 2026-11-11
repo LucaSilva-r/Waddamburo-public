@@ -18,11 +18,12 @@ public sealed partial class MovieInspectorSession : IDisposable
     private readonly ImGuiLayer _layer;
     private readonly RenderRectangle? _previousRegion;
     private readonly Func<LumenPlayer> _player;
-    private readonly string _title;
-    private readonly bool _gameData;
-    private readonly MovieDocument? _document;
+    private string _title;
+    private bool _gameData;
+    private MovieDocument? _document;
     public Action<bool>? SetScriptsEnabled { get; set; }
-    private bool _step, _disposed;
+    private bool _disposed;
+    private readonly Func<bool>? _previousClose;
     private static readonly uint Outline = color(1, .56f, .18f), Muted = color(.52f, .56f, .61f), Text = color(.85f, .87f, .9f);
 
     /// <param name="application">The window.</param>
@@ -45,7 +46,9 @@ public sealed partial class MovieInspectorSession : IDisposable
         _previousRegion = application.StageRegion;
         _layer = application.AttachImGui(draw);
         EditorTheme.Apply();
-        _layer.CaptureKey = static key => key is ImGuiKey.Space or ImGuiKey.RightArrow;
+        _layer.CaptureKey = static key => key is ImGuiKey.Space or ImGuiKey.RightArrow or ImGuiKey.LeftArrow;
+        _previousClose = application.ConfirmClose;
+        application.ConfirmClose = confirmWindowClose;
         _layer.CaptureControlShortcuts = true;
         // A PNG or SVG dropped on the window becomes a texture of the package.
         if (document is { ReadOnly: false })
@@ -66,11 +69,25 @@ public sealed partial class MovieInspectorSession : IDisposable
     public bool Paused { get; private set; }
 
     /// <summary>Whether the movie advances this tick: playing, or a single step was asked for.</summary>
-    public bool TakeTick()
+    public bool TakeTick() => !Paused;
+
+    public void SetDocument(MovieDocument? document, string title, bool gameData)
     {
-        var advance = !Paused || _step;
-        _step = false;
-        return advance;
+        _document = document;
+        _title = title;
+        _gameData = gameData;
+        selectClip(null);
+        _shown = null;
+        _timelineContext.Reset();
+        _timelineAssetId = null;
+        _trail.Clear();
+        _assetNames.Clear();
+        _assetFolder = "";
+        _texturesView = false;
+        _key = null;
+        _notice = null;
+        Paused = true;
+        _layer.FileDropped = document is { ReadOnly: false } ? path => importTexture(path) : null;
     }
 
     private static uint color(float r, float g, float b, float a = 1) => ImGui.ColorConvertFloat4ToU32(new(r, g, b, a));
@@ -93,32 +110,32 @@ public sealed partial class MovieInspectorSession : IDisposable
             return;
         pollAssetFile();
         refreshAssetSelection();
+        pollMovieFiles();
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.S, false)) saveDocument();
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.O, false)) pickMovie(false);
         if (!io.WantTextInput)
         {
-            if (ImGui.IsKeyPressed(ImGuiKey.Space, false))
-                Paused = !Paused;
-            if (ImGui.IsKeyPressed(ImGuiKey.RightArrow))
-                (Paused, _step) = (true, true);
+            if (ImGui.IsKeyPressed(ImGuiKey.Space, false)) togglePlayback();
+            if (ImGui.IsKeyPressed(ImGuiKey.RightArrow)) navigateTimeline(1, io.KeyCtrl);
+            if (ImGui.IsKeyPressed(ImGuiKey.LeftArrow)) navigateTimeline(-1, io.KeyCtrl);
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+            {
+                _assetGesture = _gesture = false;
+                edited(() => { if (io.KeyShift) _document?.Redo(); else _document?.Undo(); });
+            }
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
+                edited(() => _document?.Redo());
         }
-        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
-        {
-            _assetGesture = _gesture = false;
-            edited(() => { if (io.KeyShift) _document?.Redo(); else _document?.Undo(); });
-        }
-        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
-        {
-            _assetGesture = _gesture = false;
-            edited(() => _document?.Redo());
-        }
+        var menuHeight = menuBar();
+        movieDialogs();
         var player = _player();
         var clips = player.InspectDisplayList();
         _selection.RemoveWhere(path => clips.All(clip => clip.Path != path));
         if (_selected is not null && clips.All(clip => clip.Path != _selected))
             _selected = null;
-        var layout = EditorLayout.Calculate(size.X, size.Y, .24f, .26f, .3f);
+        var layout = EditorLayout.Calculate(size.X, size.Y, .24f, .26f, .3f, topHeight: menuHeight);
         _application.StageRegion = EditorLayout.Preview(layout.Stage).Normalized(size.X, size.Y);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
-        toolbar(layout.Toolbar, player);
         tree(layout.Targets, clips);
         inspector(layout.Inspector, player, clips, clips.FirstOrDefault(clip => clip.Path == _selected));
         bottom(layout.Tracks, player, clips);
@@ -130,6 +147,7 @@ public sealed partial class MovieInspectorSession : IDisposable
     {
         if (_disposed)
             return;
+        _application.ConfirmClose = _previousClose;
         _layer.Dispose();
         _application.StageRegion = _previousRegion;
         _disposed = true;

@@ -14,7 +14,7 @@ public sealed partial class MovieDocument
     private JsonObject assetMetadata => _metadata["assets"] as JsonObject ?? [];
     private JsonObject folderMetadata => _metadata["folders"] as JsonObject ?? [];
 
-    /// <summary>Stable identities and browser folders. Legacy packages acquire IDs in memory; the first edit saves them.</summary>
+    /// <summary>Stable identities and browser folders. Legacy packages acquire IDs in memory; Save persists them.</summary>
     public IReadOnlyList<MovieAsset> Assets() => [.. assetMetadata.Select(entry => new MovieAsset(entry.Key,
         (string)entry.Value!["group"]!, (string)entry.Value!["name"]!, (string?)entry.Value!["folder"] ?? ""))];
 
@@ -140,7 +140,7 @@ public sealed partial class MovieDocument
             var basis = tidy(System.IO.Path.GetFileNameWithoutExtension(file));
             var name = basis;
             for (var number = 2; !names.Add(name); number++) name = $"{basis}_{number}";
-            imported.Add((name, copyTexture(file, name, System.IO.Path.GetExtension(file).ToLowerInvariant()),
+            imported.Add((name, file,
                 System.IO.Path.GetDirectoryName(System.IO.Path.GetRelativePath(source, file)) ?? ""));
         }
         Edit(root =>
@@ -160,7 +160,7 @@ public sealed partial class MovieDocument
                 var destination = top;
                 foreach (var segment in item.Folder.Split(System.IO.Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
                     destination = folder(segment, destination);
-                root["textures"]![item.Name] = item.File;
+                root["textures"]![item.Name] = copyTexture(item.File, item.Name, System.IO.Path.GetExtension(item.File).ToLowerInvariant());
                 assetMetadata[Guid.NewGuid().ToString("N")] = new JsonObject
                     { ["group"] = "textures", ["name"] = item.Name, ["folder"] = destination };
             }

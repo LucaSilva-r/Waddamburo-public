@@ -8,7 +8,7 @@ public sealed partial class MovieInspectorSession
 {
     private string? _selectedAsset, _selectedAssetId;
     private string _selectedAssetGroup = "texts";
-    private bool _assetGrid = true;
+    private bool _assetGrid = true, _texturesView;
     private string _assetFilter = "", _assetFolder = "";
     private string? _navigateAssetFolder, _dragAsset;
     private static readonly string[] AssetCharacterGroups = ["texts", "shapes", "sprites"];
@@ -43,6 +43,10 @@ public sealed partial class MovieInspectorSession
     {
         var document = _document!;
         assetActions();
+        ImGui.SameLine();
+        if (ImGui.RadioButton("Assets", !_texturesView)) _texturesView = false;
+        ImGui.SameLine();
+        if (ImGui.RadioButton("Textures", _texturesView)) _texturesView = true;
         ImGui.SameLine();
         if (ImGui.RadioButton("Grid", _assetGrid)) _assetGrid = true;
         ImGui.SameLine();
@@ -88,8 +92,8 @@ public sealed partial class MovieInspectorSession
             var entries = document.ReadOnly
                 ? AssetGroups.SelectMany(group => (document.Root[group] as JsonObject ?? []).Select(entry => new MovieAsset(group + "/" + entry.Key, group, entry.Key, ""))).ToArray()
                 : document.Assets().ToArray();
-            foreach (var asset in entries.Where(asset => _assetFilter.Length > 0
-                ? asset.Name.Contains(_assetFilter, StringComparison.OrdinalIgnoreCase) : asset.Folder == _assetFolder))
+            foreach (var asset in entries.Where(asset => (asset.Group == "textures") == _texturesView && (_assetFilter.Length > 0
+                ? asset.Name.Contains(_assetFilter, StringComparison.OrdinalIgnoreCase) : asset.Folder == _assetFolder)))
             {
                 ImGui.TableNextColumn();
                 ImGui.PushID(asset.Id);

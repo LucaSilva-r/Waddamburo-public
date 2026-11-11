@@ -23,11 +23,8 @@ public sealed partial class MovieDocument
     {
         if (!file.EndsWith(".as", StringComparison.Ordinal))
             throw new InvalidOperationException("A script file ends in .as.");
-        var path = FilePath(file);
-        if (File.Exists(path))
-            return;
-        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, $"// {comment}\n");
+        FilePath(file);
+        if (!hasFile(file)) _pendingFiles[file] = System.Text.Encoding.UTF8.GetBytes($"// {comment}\n");
     }
 
     /// <summary>
@@ -41,8 +38,11 @@ public sealed partial class MovieDocument
         if (!(int.TryParse(frame, out var number) ? number >= 0 && number < ((int?)entry["frames"] ?? 1)
             : (entry["labels"] as JsonObject)?.ContainsKey(frame) == true))
             throw new InvalidOperationException($"'{frame}' is no frame or label of '{sprite}'.");
-        ensureScript(file, $"Runs when '{sprite}' enters frame {frame}.");
-        Edit(_ => (entry["scripts"] as JsonObject ?? (JsonObject)(entry["scripts"] = new JsonObject()))[frame] = file);
+        Edit(_ =>
+        {
+            ensureScript(file, $"Runs when '{sprite}' enters frame {frame}.");
+            (entry["scripts"] as JsonObject ?? (JsonObject)(entry["scripts"] = new JsonObject()))[frame] = file;
+        });
     }
 
     /// <summary>Stops running the script on a sprite's frame (the file stays).</summary>
@@ -58,10 +58,13 @@ public sealed partial class MovieDocument
     /// <summary>Adds a class file: run once before anything is placed. Made, with a comment, when it does not exist.</summary>
     public void AddClass(string file)
     {
-        ensureScript(file, "Classes: runs once before the movie's first frame.");
         if (Scripts().Any(script => script.IsClass && script.File == file))
             return;
-        Edit(root => (root["classes"] as JsonArray ?? (JsonArray)(root["classes"] = new JsonArray())).Add((JsonNode)file));
+        Edit(root =>
+        {
+            ensureScript(file, "Classes: runs once before the movie's first frame.");
+            (root["classes"] as JsonArray ?? (JsonArray)(root["classes"] = new JsonArray())).Add((JsonNode)file);
+        });
     }
 
     public void RemoveClass(string file) => Edit(root =>
@@ -80,6 +83,8 @@ public sealed partial class MovieDocument
     /// </summary>
     public void OpenInCode(string relative, int line = 1, int column = 1)
     {
+        if (_pendingFiles.ContainsKey(relative) && !File.Exists(FilePath(relative)))
+            throw new InvalidOperationException("Save the package before opening this new script in an external editor.");
         var start = new ProcessStartInfo("code") { UseShellExecute = false };
         start.ArgumentList.Add("--reuse-window");
         start.ArgumentList.Add("--goto");

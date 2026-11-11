@@ -25,6 +25,7 @@ public sealed partial class MovieInspectorSession
     private void selectAsset(string group, string name)
     {
         _selectedAssetGroup = group;
+        _texturesView = group == "textures";
         _selectedAsset = name;
         _selectedAssetId = _document?.AssetId(group, name);
         _assetGesture = false;

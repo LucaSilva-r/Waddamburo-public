@@ -95,7 +95,7 @@ public sealed partial class MovieDocument
             return null;
         for (var index = 0; index < layers.Count; index++)
             if (layers[index] is JsonObject layer && (string?)layer["character"] == character
-                && ((double?)layer["depth"] ?? index + 1) == depth)
+                && ((int?)layer["depth"] ?? index + 1) == depth)
                 return layer;
         return null;
     }

@@ -6,8 +6,7 @@ using Waddamburo.Lumen.Runtime;
 namespace Waddamburo.Editor;
 
 /// <summary>
-/// The timeline of the sprite being worked on: a row per layer with its keys, a ruler with the labels and the
-/// playhead. The sprite is the selected clip when that is a sprite of the package, else the one it sits in.
+/// The explicitly opened sprite timeline. Selecting a layer or key never changes the timeline being edited.
 /// </summary>
 public sealed partial class MovieInspectorSession
 {
@@ -25,21 +24,23 @@ public sealed partial class MovieInspectorSession
         (LumenInstanceInfo, string, JsonObject)? sprite(LumenInstanceInfo? clip) =>
             clip is { Kind: LumenInstanceKind.Sprite } && _document!.CharacterName(clip.CharacterId) is { } name
                 && _document.Root["sprites"]?[name] is JsonObject entry ? (clip, name, entry) : null;
-        var selected = clips.FirstOrDefault(clip => clip.Path == _selected) ?? clips[0];
-        if (sprite(selected) is { } own && (own.Item3["layers"] as JsonArray)?.Count > 0)
-            return own;
-        var cut = selected.Path.LastIndexOf('/');
-        return sprite(selected) is { } empty && selected.Level == 0 ? empty
-            : sprite(clips.FirstOrDefault(clip => clip.Path == (cut < 0 ? "" : selected.Path[..cut]))) ?? sprite(selected);
+        return sprite(resolveTimeline(clips));
     }
 
     private void timeline(LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips)
     {
+        timelineNavigation(clips);
         if (timelineOf(clips) is not var (clip, name, sprite))
         {
-            ImGui.TextColored(new(.52f, .56f, .61f, 1), "Select a clip of this package.");
+            ImGui.TextWrapped("This instance is absent at the current parent frame. The timeline context has been kept.");
+            if (ImGui.Button("Back to parent timeline"))
+            {
+                _timelineContext.Parent(); _timelineAssetId = null; _key = null; _length = null;
+                openInstanceTimeline(_timelineContext.Path);
+            }
             return;
         }
+        timelineTransport();
         var layers = sprite["layers"] as JsonArray ?? [];
         var frames = Math.Max(1, (int?)sprite["frames"] ?? 1);
         var labels = sprite["labels"] as JsonObject;
@@ -93,6 +94,14 @@ public sealed partial class MovieInspectorSession
                     }
             ImGui.EndPopup();
         }
+        if (sprite["scripts"] is JsonObject { Count: > 0 } frameScripts)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled($"{frameScripts.Count} frame script(s)");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(_document!.ReadOnly
+                ? "Compiled frame scripts are present. They can control child timelines. Readable source is not available in this reference."
+                : "Frame scripts can control child timelines. See Code for their source files.");
+        }
         if (_key is { } chosen && chosen.Sprite == name)
         {
             ImGui.SameLine();
@@ -108,13 +117,11 @@ public sealed partial class MovieInspectorSession
         float x(int frame) => origin.X + NameColumn + frame * step;
         int frameAt(float screenX) => Math.Clamp((int)MathF.Floor((screenX - origin.X - NameColumn) / step), 0, frames - 1);
 
-        // Ruler: frame numbers, labels; a click or drag moves the playhead.
+        // Ruler: frame numbers only; label flags have their own track below it.
         draw.AddRectFilled(origin with { X = origin.X + NameColumn }, new(origin.X + NameColumn + width, origin.Y + RowHeight), Ruler);
         var every = Math.Max(1, (int)MathF.Ceiling(40 / step / 5) * 5);
         for (var frame = 0; frame < frames; frame += every)
             draw.AddText(new(x(frame) + 2, origin.Y + 3), Muted, frame.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        foreach (var label in labels ?? [])
-            draw.AddText(new(x((int)label.Value!) + 2, origin.Y + 3), KeySelected, label.Key);
         ImGui.SetCursorScreenPos(origin with { X = origin.X + NameColumn });
         ImGui.InvisibleButton("##ruler", new(width, RowHeight));
         if (ImGui.IsItemActive())
@@ -122,19 +129,14 @@ public sealed partial class MovieInspectorSession
             player.InspectGoto(clip.Path, frameAt(ImGui.GetIO().MousePos.X), clip.Playing);
             Paused = true;
         }
-        if (ImGui.BeginPopupContextItem("##ruler menu"))
-        {
-            foreach (var label in labels?.ToArray() ?? [])
-                if (ImGui.Selectable($"Remove label '{label.Key}'"))
-                    edited(() => _document!.Edit(_ => labels!.Remove(label.Key)));
-            ImGui.EndPopup();
-        }
+        var labelHeight = timelineLabels(player, clip.Path, labels, origin, width, step);
+        var headerHeight = RowHeight + labelHeight;
 
         for (var index = 0; index < layers.Count; index++)
         {
             if (layers[index] is not JsonObject layer)
                 continue;
-            var top = origin.Y + RowHeight * (index + 1);
+            var top = origin.Y + headerHeight + RowHeight * index;
             var keys = layer["keys"]!.AsArray().OfType<JsonObject>().Select(static key => (int)key["frame"]!).Order().ToArray();
             var until = Math.Min((int?)layer["until"] ?? frames, frames);
             var depth = (int?)layer["depth"] ?? index + 1;
@@ -153,8 +155,14 @@ public sealed partial class MovieInspectorSession
             }
             ImGui.SameLine();
             var title = (string?)layer["name"] is { Length: > 0 } instance ? $"{instance}  ({(string?)layer["character"]})" : (string?)layer["character"] ?? "?";
-            if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.None, new(NameColumn - 34, RowHeight - 4)))
+            if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.AllowDoubleClick, new(NameColumn - 34, RowHeight - 4)))
                 selectClip(path);
+            var child = clips.FirstOrDefault(each => each.Path == path && each.Kind == LumenInstanceKind.Sprite);
+            if (child is not null && ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Select: inspect this layer. Double-click: open its child timeline.");
+                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) openInstanceTimeline(path);
+            }
 
             // The row: a click on a key selects it, a drag moves it, a double click on empty space makes one.
             ImGui.SetCursorScreenPos(new(origin.X + NameColumn, top));
@@ -193,8 +201,8 @@ public sealed partial class MovieInspectorSession
         }
         // The playhead, over everything.
         var head = x(clip.Frame) + step / 2;
-        draw.AddLine(new(head, origin.Y), new(head, origin.Y + RowHeight * (layers.Count + 1)), KeySelected, 2);
-        ImGui.SetCursorScreenPos(new(origin.X, origin.Y + RowHeight * (layers.Count + 1)));
+        draw.AddLine(new(head, origin.Y), new(head, origin.Y + headerHeight + RowHeight * layers.Count), KeySelected, 2);
+        ImGui.SetCursorScreenPos(new(origin.X, origin.Y + headerHeight + RowHeight * layers.Count));
         ImGui.Dummy(new(NameColumn + width, 4));
         ImGui.EndChild();
     }

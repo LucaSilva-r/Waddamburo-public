@@ -73,7 +73,17 @@ public sealed unsafe class ImGuiLayer : IDisposable
         io.DeltaTime = Math.Clamp(deltaSeconds, .000001f, .25f);
         ImGui.NewFrame();
         _inFrame = true;
-        _draw();
+        try { _draw(); }
+        catch (Exception error)
+        {
+            // Preserve the managed cause before native frame recovery can assert about unclosed panels.
+            Console.Error.WriteLine($"Editor draw failed: {error}");
+            var assertOnRecovery = io.ConfigErrorRecoveryEnableAssert;
+            io.ConfigErrorRecoveryEnableAssert = false;
+            try { ImGui.EndFrame(); }
+            finally { _inFrame = false; io.ConfigErrorRecoveryEnableAssert = assertOnRecovery; }
+            throw;
+        }
     }
 
     internal ImDrawDataPtr EndFrame()

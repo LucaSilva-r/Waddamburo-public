@@ -160,16 +160,16 @@ internal static class MovieViewer
                 preview.SetInstanceOffset("", 640, 360);
             return preview;
         }
-        void reload()
+        void reload(bool force = false)
         {
             var now = stamp();
-            if (now == loaded)
+            if (now == loaded && !force)
                 return;
             loaded = now;
             try
             {
                 var errors = new List<Waddamburo.Formats.Package.ActionScriptException>();
-                var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce, scriptErrors: errors);
+                var fresh = LumenMovieContent.LoadPackage(package!, decodeOnce, scriptErrors: errors, movieJson: document?.Text, readFile: document is null ? null : document.ReadFile);
                 if (fresh.Diagnostics.FirstOrDefault(static each => each.Severity is DiagnosticSeverity.Error) is { } problem)
                     throw new InvalidDataException($"{problem.Code}: {problem.Message}");
                 var freshPlayer = previewPlayer(fresh);
@@ -220,8 +220,53 @@ internal static class MovieViewer
             inspector?.ShowSpriteNamed(wanted[7..]);
         if (inspect?.Split('=', 2) is [_, var asset] && asset.Split(':', 3) is ["asset", var group, var assetName])
             inspector?.SelectAsset(group, assetName);
-        if (document is not null)
-            document.Changed += reload; // An edit shows at once, not at the next check for saved files.
+        Action reloadDocument = () => reload(force: true);
+        Action markSaved = () => loaded = package is null ? default : stamp();
+        if (document is not null) { document.Changed += reloadDocument; document.Saved += markSaved; }
+        if (inspector is not null)
+        {
+            DdpArchive readArchive(string path)
+            {
+                if (new FileInfo(path).Length > ParserLimits.Default.MaxFileBytes)
+                    throw new InvalidDataException("The Lumen archive exceeds the file size limit.");
+                return DdpArchive.Open(File.ReadAllBytes(path));
+            }
+            inspector.ArchiveMovies = path => [.. readArchive(path).Index.Movies.Select(movie => movie.Name)];
+            inspector.OpenMovie = (path, movie) =>
+            {
+                if (movie is null && !Path.GetFileName(path).Equals(Waddamburo.Formats.Package.MoviePackage.FileName, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Choose the movie.json file of a movie package.");
+                var nextPackage = movie is null ? Path.GetDirectoryName(Path.GetFullPath(path))! : null;
+                var errors = new List<Waddamburo.Formats.Package.ActionScriptException>();
+                var next = nextPackage is not null ? LumenMovieContent.LoadPackage(nextPackage, decodeOnce, scriptErrors: errors)
+                    : LumenMovieContent.Load(readArchive(path).OpenMovie(movie!));
+                if (next.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error))
+                    throw new InvalidDataException("The movie contains semantic errors and cannot be opened.");
+                Waddamburo.Editor.MovieDocument nextDocument;
+                if (nextPackage is not null) nextDocument = new(nextPackage);
+                else
+                {
+                    var (description, names) = Waddamburo.Formats.Package.MovieReference.Describe(next.Definition,
+                        [.. next.Textures.Select(texture => (texture.Width, texture.Height))]);
+                    nextDocument = new(description, names);
+                }
+                var nextTextures = next.Textures.Select(upload).ToArray();
+                if (document is not null) { document.Changed -= reloadDocument; document.Saved -= markSaved; }
+                document = nextDocument;
+                package = nextPackage;
+                content = next;
+                textureIds = nextTextures;
+                nameTextures(content, textureIds);
+                shownSprite = shownSpriteId = null;
+                player = previewPlayer(content);
+                if (debugger is not null) debugger.Player = player;
+                inspector.SetDocument(document, content.Name, gameData: package is null);
+                inspector.ScriptErrors = errors;
+                document.Changed += reloadDocument;
+                document.Saved += markSaved;
+                loaded = package is null ? default : stamp();
+            };
+        }
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(
                 player.CreateRenderSnapshot((float)interpolationFraction),
                 RenderColor.Black,

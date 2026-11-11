@@ -64,6 +64,9 @@ public sealed partial class MovieInspectorSession
                 _trail.Add(sprite);
         }
         _shown = sprite;
+        _timelineContext.Reset();
+        _timelineAssetId = null;
+        _key = null;
         selectClip(null);
         _open.Clear();
         ShowSprite!(sprite);

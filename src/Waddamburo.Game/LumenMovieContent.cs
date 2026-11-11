@@ -77,16 +77,36 @@ public sealed class LumenMovieContent
     /// <param name="decodeImage">Decodes a PNG file's bytes to straight RGBA rows; null when it cannot.</param>
     /// <param name="limits">Parser limits (the defaults when null).</param>
     /// <param name="scriptErrors">Given: scripts with errors are left out and reported here (see MoviePackage.Assemble).</param>
+    /// <param name="movieJson">Optional working JSON for an unsaved editor preview.</param>
+    /// <param name="readFile">Optional working asset reader; receives validated package-relative paths.</param>
     public static LumenMovieContent LoadPackage(string directory,
         Func<byte[], (int Width, int Height, byte[] Rgba)?> decodeImage, ParserLimits? limits = null,
-        ICollection<Formats.Package.ActionScriptException>? scriptErrors = null)
+        ICollection<Formats.Package.ActionScriptException>? scriptErrors = null, string? movieJson = null,
+        Func<string, byte[]>? readFile = null)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(decodeImage);
         var parserLimits = limits ?? ParserLimits.Default;
         var root = Path.GetFullPath(directory);
         var assembled = Formats.Package.MoviePackage.Assemble(
-            File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)), script => File.ReadAllText(inside(script)), scriptErrors);
+            movieJson ?? File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)),
+            readScript, scriptErrors);
+        string readScript(string file)
+        {
+            using var stream = new MemoryStream(read(file));
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            return reader.ReadToEnd();
+        }
+        byte[] read(string file)
+        {
+            var path = inside(file);
+            if (readFile is null && new FileInfo(path).Length > parserLimits.MaxFileBytes)
+                throw new InvalidDataException($"Movie package '{root}': file is too large: {file}");
+            var bytes = readFile is null ? File.ReadAllBytes(path) : readFile(file);
+            if (bytes.LongLength > parserLimits.MaxFileBytes)
+                throw new InvalidDataException($"Movie package '{root}': file is too large: {file}");
+            return bytes;
+        }
         // A shared package is untrusted: its files stay inside its folder.
         string inside(string file)
         {
@@ -97,10 +117,7 @@ public sealed class LumenMovieContent
         var textures = ImmutableArray.CreateBuilder<LumenTextureContent>(assembled.TextureFiles.Length);
         foreach (var file in assembled.TextureFiles)
         {
-            var path = inside(file);
-            if (new FileInfo(path).Length > parserLimits.MaxFileBytes)
-                throw new InvalidDataException($"Movie package '{root}': texture is too large: {file}");
-            var image = decodeImage(File.ReadAllBytes(path))
+            var image = decodeImage(read(file))
                 ?? throw new InvalidDataException($"Movie package '{root}': texture is not a readable PNG: {file}");
             textures.Add(new LumenTextureContent(textures.Count, image.Width, image.Height,
                 ImmutableCollectionsMarshal.AsImmutableArray(image.Rgba)));

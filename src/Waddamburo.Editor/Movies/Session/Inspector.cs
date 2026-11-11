@@ -13,7 +13,7 @@ public sealed partial class MovieInspectorSession
         ImGui.BeginDisabled(_document!.ReadOnly);
         var keys = layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().OrderBy(static key => (int)key["frame"]!).ToList();
         var onKey = keys.Any(key => (int)key["frame"]! == frame);
-        ImGui.SeparatorText(onKey ? $"key on frame {frame}" : $"frame {frame}: a change makes a key here");
+        ImGui.SeparatorText(onKey ? $"Placement in parent: key at frame {frame}" : $"Placement in parent: frame {frame}");
         // The values shown are the layer's on this frame, between its keys.
         var probe = (System.Text.Json.Nodes.JsonObject)layer.DeepClone();
         var current = MovieDocument.KeyAt(probe, frame);
@@ -97,23 +97,15 @@ public sealed partial class MovieInspectorSession
                             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Artwork and geometry shared by all instances. Child instance names are preserved.");
                         }
 
-                        if (clip is { Kind: LumenInstanceKind.Sprite, FrameCount: > 1 })
+                        if (clip.Kind == LumenInstanceKind.Sprite)
                         {
-                            ImGui.SeparatorText("timeline");
-                            var frame = clip.Frame;
-                            ImGui.SetNextItemWidth(-1);
-                            if (ImGui.SliderInt("##frame", ref frame, 0, clip.FrameCount - 1))
-                                player.InspectGoto(clip.Path, frame, clip.Playing);
-                            if (ImGui.Button(clip.Playing ? "Stop" : "Play"))
-                                player.InspectSetPlaying(clip.Path, !clip.Playing);
-                            foreach (var (label, at) in player.InspectLabels(clip.Path))
-                            {
-                                ImGui.SameLine();
-                                if (ImGui.GetContentRegionAvail().X < ImGui.CalcTextSize(label).X + 20)
-                                    ImGui.NewLine();
-                                if (ImGui.SmallButton($"{label}##{at}"))
-                                    player.InspectGoto(clip.Path, at, play: true);
-                            }
+                            ImGui.SeparatorText("Sprite playback");
+                            ImGui.TextUnformatted($"Local frame {clip.Frame} / {Math.Max(0, clip.FrameCount - 1)}");
+                            if (clip.Label is not null) ImGui.TextUnformatted("Label: " + clip.Label);
+                            ImGui.BeginDisabled(clip.Path == _timelineContext.Path);
+                            if (ImGui.Button("Open this timeline")) openInstanceTimeline(clip.Path);
+                            ImGui.EndDisabled();
+                            ImGui.TextWrapped("Selecting this sprite inspects its placement. Open its timeline to edit its contents.");
                         }
                         ImGui.EndTabItem();
                     }

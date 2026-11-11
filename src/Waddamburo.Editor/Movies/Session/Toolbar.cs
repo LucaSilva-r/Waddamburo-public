@@ -1,62 +1,105 @@
 using ImGuiNET;
-using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Editor;
 
 public sealed partial class MovieInspectorSession
 {
     private bool _scriptsEnabled = true;
-    private void toolbar(EditorPanel rect, LumenPlayer player)
+    private string? _windowTitle;
+
+    private float menuBar()
     {
-        if (panel("##movie toolbar", rect, ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar))
+        var height = ImGui.GetFrameHeight();
+        if (!ImGui.BeginMainMenuBar()) return height;
+        height = ImGui.GetWindowSize().Y;
+        if (ImGui.BeginMenu("File"))
         {
-            ImGui.TextUnformatted(_title);
-            if (_notice is not null || ScriptErrors.Count > 0)
-            {
-                ImGui.SameLine();
-                ImGui.TextColored(new(1, .45f, .35f, 1), _notice ?? $"{ScriptErrors.Count} script error(s): {ScriptErrors[0].Message}");
-            }
-            ImGui.SameLine();
-            ImGui.TextColored(new(.52f, .56f, .61f, 1), _gameData ? "game data: reference only, nothing here is saved"
-                : _document is null ? "movie package" : "movie package: changes are saved as you make them");
-            if (_document is not null)
-            {
-                ImGui.SameLine();
-                ImGui.BeginDisabled(!_document.CanUndo);
-                if (ImGui.SmallButton("Undo"))
-                    edited(_document.Undo);
-                ImGui.EndDisabled();
-                ImGui.SameLine();
-                ImGui.BeginDisabled(!_document.CanRedo);
-                if (ImGui.SmallButton("Redo"))
-                    edited(_document.Redo);
-                ImGui.EndDisabled();
-            }
-            breadcrumb();
-            if (SetScriptsEnabled is not null)
-            {
-                if (ImGui.Checkbox("Run scripts", ref _scriptsEnabled))
-                {
-                    SetScriptsEnabled(_scriptsEnabled);
-                    ShowSprite?.Invoke(_shown);
-                    Paused = !_scriptsEnabled;
-                }
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restarts the preview. Enabling scripts resumes playback; invoke startup callbacks again if needed. Disable for timeline-only art editing.");
-                ImGui.SameLine();
-            }
-            if (ImGui.Button(Paused ? "Play" : "Pause"))
-                Paused = !Paused;
-            ImGui.SameLine();
-            if (ImGui.Button("Step"))
-                (Paused, _step) = (true, true);
-            ImGui.SameLine();
-            ImGui.TextColored(new(.52f, .56f, .61f, 1), "Space: play/pause   Right: one frame   click the stage or the tree to select");
-            ImGui.SameLine();
-            var frame = player.CurrentFrame;
-            ImGui.SetNextItemWidth(Math.Max(120, rect.Width * .25f));
-            if (player.FrameCount > 1 && ImGui.SliderInt("root frame", ref frame, 0, player.FrameCount - 1))
-                player.Seek(frame);
+            if (ImGui.MenuItem("Open movie package...", "Ctrl+O", false, OpenMovie is not null)) pickMovie(false);
+            if (ImGui.MenuItem("Open Lumen archive...", "", false, OpenMovie is not null)) pickMovie(true);
+            ImGui.Separator();
+            if (ImGui.MenuItem("Save", "Ctrl+S", false, _document is { ReadOnly: false })) saveDocument();
+            ImGui.Separator();
+            if (ImGui.MenuItem("Close")) requestOpenOrClose(true);
+            ImGui.EndMenu();
         }
-        ImGui.End();
+        if (ImGui.BeginMenu("Edit"))
+        {
+            if (ImGui.MenuItem("Undo", "Ctrl+Z", false, _document?.CanUndo == true)) edited(_document!.Undo);
+            if (ImGui.MenuItem("Redo", "Ctrl+Shift+Z", false, _document?.CanRedo == true)) edited(_document!.Redo);
+            ImGui.EndMenu();
+        }
+        ImGui.TextDisabled(_title + (_document?.IsDirty == true ? " *" : "") + (_gameData ? " (read-only)" : ""));
+        if (_notice is not null || ScriptErrors.Count > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new(1, .45f, .35f, 1), _notice ?? $"{ScriptErrors.Count} script error(s): {ScriptErrors[0].Message}");
+        }
+        ImGui.EndMainMenuBar();
+        var title = $"Waddamburo — {_title}{(_document?.IsDirty == true ? " *" : "")}";
+        if (_windowTitle != title) { _application.SetWindowTitle(title); _windowTitle = title; }
+        return height;
+    }
+
+    private (string Path, int Frame, int Count) transportTarget()
+    {
+        var player = _player();
+        if (_document is not null && timelineOf(player.InspectDisplayList()) is { } target)
+            return (target.Clip.Path, target.Clip.Frame, target.Clip.FrameCount);
+        return (_timelineContext.Path, 0, 0);
+    }
+
+    private void togglePlayback()
+    {
+        if (transportTarget().Count == 0) return;
+        Paused = !Paused;
+        if (!Paused) _player().InspectSetPlaying(transportTarget().Path, true);
+    }
+
+    private void seekTimeline(int frame)
+    {
+        var target = transportTarget();
+        if (target.Count == 0) return;
+        frame = Math.Clamp(frame, 0, Math.Max(0, target.Count - 1));
+        Paused = true;
+        if (target.Path.Length == 0) _player().Seek(frame);
+        else _player().InspectGoto(target.Path, frame, play: false);
+    }
+
+    private void navigateTimeline(int direction, bool label)
+    {
+        var target = transportTarget();
+        var frame = label ? MovieTransport.AdjacentLabel(target.Frame, direction, _player().InspectLabels(target.Path).Select(label => label.Frame))
+            : Math.Clamp(target.Frame + direction, 0, Math.Max(0, target.Count - 1));
+        if (frame is { } at) seekTimeline(at);
+    }
+
+    private void timelineTransport()
+    {
+        var target = transportTarget();
+        void button(string text, string hint, Action action)
+        {
+            if (ImGui.Button(text)) action();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(hint);
+            ImGui.SameLine();
+        }
+        button("|<", "Previous label (Ctrl+Left)", () => navigateTimeline(-1, true));
+        button("<", "Previous frame (Left)", () => navigateTimeline(-1, false));
+        button(Paused ? "Play" : "Pause", "Play / pause (Space)", togglePlayback);
+        button(">", "Next frame (Right)", () => navigateTimeline(1, false));
+        button(">|", "Next label (Ctrl+Right)", () => navigateTimeline(1, true));
+        if (SetScriptsEnabled is not null)
+        {
+            if (ImGui.Checkbox("Run scripts", ref _scriptsEnabled))
+            {
+                SetScriptsEnabled(_scriptsEnabled);
+                ShowSprite?.Invoke(_shown);
+                Paused = true;
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restarts the preview with scripts enabled or disabled.");
+            ImGui.SameLine();
+        }
+        ImGui.SetNextItemWidth(Math.Max(100, ImGui.GetContentRegionAvail().X - 70));
+        var frame = target.Frame;
+        if (ImGui.SliderInt(target.Path.Length == 0 ? "Root frame" : "Frame", ref frame, 0, Math.Max(0, target.Count - 1))) seekTimeline(frame);
     }
 }

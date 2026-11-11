@@ -6,6 +6,8 @@ public sealed class MovieDocumentAssetsTests : IDisposable
 {
     private readonly string _directory = Directory.CreateTempSubdirectory("waddamburo-assets-test").FullName;
 
+    private MovieDocument? _working;
+
     private MovieDocument open()
     {
         File.WriteAllText(Path.Combine(_directory, "movie.json"), """
@@ -19,20 +21,20 @@ public sealed class MovieDocumentAssetsTests : IDisposable
               }
             }
             """);
-        return new MovieDocument(_directory);
+        return _working = new MovieDocument(_directory);
     }
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
     private MoviePackage.Assembled assemble(List<ActionScriptException>? errors = null) =>
-        MoviePackage.Assemble(File.ReadAllText(Path.Combine(_directory, "movie.json")), file => File.ReadAllText(Path.Combine(_directory, file)), errors);
+        MoviePackage.Assemble(_working!.Text, file => System.Text.Encoding.UTF8.GetString(_working.ReadFile(file)), errors);
 
     [Fact]
     public void TheFileStaysCompactAndStillAssembles()
     {
         var document = open();
         document.Edit(root => root["frameRate"] = 30);
-        var text = File.ReadAllText(document.Path);
+        var text = document.Text;
         Assert.Contains("""{ "frame": 0, "x": 10 }""", text);
         Assert.Contains("\"ball\": { \"texture\": \"ball\", \"rect\": [-8, -8, 16, 16] }", text);
         Assert.True(text.Split('\n').Length < 30, text);
@@ -47,7 +49,8 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         File.WriteAllText(source, "<svg/>");
         Assert.Equal("My_Star", document.ImportTexture(source));
         Assert.Equal("My_Star_2", document.ImportTexture(source));
-        Assert.True(File.Exists(Path.Combine(_directory, "textures", "My_Star_2.svg")));
+        Assert.False(File.Exists(Path.Combine(_directory, "textures", "My_Star_2.svg")));
+        Assert.Equal("<svg/>", System.Text.Encoding.UTF8.GetString(document.ReadFile("textures/My_Star_2.svg")));
         Assert.Throws<InvalidOperationException>(() => document.ImportTexture(Path.Combine(_directory, "movie.json")));
 
         Assert.Equal("star", document.AddShape("star", "My_Star", 64, 32, [0, 0, .5, 1]));
@@ -71,6 +74,7 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         document.Undo();
         Assert.True(document.Exists("shapes", "spare"));
         Assert.Throws<InvalidOperationException>(() => document.FilePath("../outside.as"));
+        Directory.CreateDirectory(Path.Combine(_directory, "textures"));
         File.WriteAllBytes(Path.Combine(_directory, "textures", "ball.png"), []);
         Assert.Equal(3, assemble().TextureFiles.Length);
     }
@@ -87,16 +91,17 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         document.ReplaceTexture("ball", replacement);
         var replacedPath = (string)document.Root["textures"]!["ball"]!;
         Assert.NotEqual("textures/ball.png", replacedPath);
-        Assert.Equal("replacement", File.ReadAllText(document.FilePath(replacedPath)));
+        Assert.Equal("replacement", System.Text.Encoding.UTF8.GetString(document.ReadFile(replacedPath)));
         Assert.Equal("original", File.ReadAllText(document.FilePath("textures/ball.png")));
         Assert.Equal("ball", (string?)document.Root["shapes"]!["ball"]!["texture"]);
         Assert.Equal("b", (string?)document.Root["sprites"]!["main"]!["layers"]![0]!["name"]);
         document.Undo();
         Assert.Equal(original.TrimEnd(), File.ReadAllText(document.Path).TrimEnd());
-        Assert.Equal("original", File.ReadAllText(document.FilePath((string)document.Root["textures"]!["ball"]!)));
+        Assert.Equal("original", System.Text.Encoding.UTF8.GetString(document.ReadFile((string)document.Root["textures"]!["ball"]!)));
         document.Redo();
-        Assert.Equal("replacement", File.ReadAllText(document.FilePath((string)document.Root["textures"]!["ball"]!)));
+        Assert.Equal("replacement", System.Text.Encoding.UTF8.GetString(document.ReadFile((string)document.Root["textures"]!["ball"]!)));
 
+        document.Save();
         // Replacing from the current artwork itself is safe, too (no overwrite of history).
         document.ReplaceTexture("ball", document.FilePath(replacedPath));
         Assert.NotEqual(replacedPath, (string?)document.Root["textures"]!["ball"]);
@@ -113,13 +118,14 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         File.WriteAllText(source, "first artwork");
         var name = document.ImportTexture(source);
         var first = (string)document.Root["textures"]![name]!;
+        document.Save();
         document.Undo();
         File.WriteAllText(source, "second artwork");
         Assert.Equal(name, document.ImportTexture(source));
         var second = (string)document.Root["textures"]![name]!;
         Assert.NotEqual(first, second);
         Assert.Equal("first artwork", File.ReadAllText(document.FilePath(first)));
-        Assert.Equal("second artwork", File.ReadAllText(document.FilePath(second)));
+        Assert.Equal("second artwork", System.Text.Encoding.UTF8.GetString(document.ReadFile(second)));
         document.Undo();
         document.Redo();
         Assert.Equal(second, (string?)document.Root["textures"]![name]);
@@ -195,7 +201,8 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => document.AttachScript("main", "0", "scripts/start.txt"));
         Assert.Equal([new("scripts/classes.as", null, null), new("scripts/go.as", "main", "go"), new("scripts/start.as", "main", "0")],
             document.Scripts());
-        Assert.StartsWith("//", File.ReadAllText(document.FilePath("scripts/go.as")));
+        Assert.StartsWith("//", System.Text.Encoding.UTF8.GetString(document.ReadFile("scripts/go.as")));
+        document.Save();
 
         File.WriteAllText(document.FilePath("scripts/go.as"), "var a = ;");
         File.WriteAllText(document.FilePath("scripts/start.as"), "var fine = 1;\nstop(;");

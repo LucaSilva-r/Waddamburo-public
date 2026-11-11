@@ -6,19 +6,23 @@ using Waddamburo.Formats.Package;
 namespace Waddamburo.Editor;
 
 /// <summary>
-/// A movie package's movie.json as the editor changes it (docs/development/free-movies-plan.md). Every edit is
-/// written to the file at once, which is also what makes the movie on stage reload; undo and redo are earlier
-/// and later texts of the file. ponytail: a file the editor has written loses the comments it had (the JSON
-/// tree does not keep them) and is formatted the editor's way.
+/// A working movie package with explicit saving. Edits and undo/redo update the preview in memory;
+/// Save writes JSON, stable identities, and staged artwork/scripts. Saved JSON uses the editor's formatting.
 /// </summary>
 public sealed partial class MovieDocument
 {
     private static readonly JsonSerializerOptions ValueOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-    private sealed record Snapshot(string Movie, string Metadata);
+    private sealed record Snapshot(string Movie, string Metadata, Dictionary<string, byte[]> Files);
     private readonly List<Snapshot> _undo = [], _redo = [];
     private string _text;
     private string _metadataText = "{}";
     private JsonObject _metadata = new();
+    private Dictionary<string, byte[]> _pendingFiles = new(StringComparer.Ordinal);
+    private Snapshot? _saved;
+    private Snapshot snapshot() => new(_text, _metadataText, new(_pendingFiles, StringComparer.Ordinal));
+    public string Text => _text;
+    public bool IsDirty => !ReadOnly && _saved is { } saved && (_text != saved.Movie || _metadataText != saved.Metadata
+        || _pendingFiles.Count != saved.Files.Count || _pendingFiles.Any(file => !saved.Files.TryGetValue(file.Key, out var bytes) || !sameBytes(file.Value, bytes)));
 
     private readonly IReadOnlyDictionary<uint, string>? _names;
 
@@ -46,6 +50,7 @@ public sealed partial class MovieDocument
         _metadata = File.Exists(metadataPath) ? parse(File.ReadAllText(metadataPath)) : new JsonObject();
         syncAssetIds();
         _metadataText = Format(_metadata);
+        _saved = snapshot();
     }
 
     public string Path { get; }
@@ -59,14 +64,16 @@ public sealed partial class MovieDocument
 
     public bool CanRedo => _redo.Count > 0;
 
-    /// <summary>Raised after the file was written: the movie on stage should load it.</summary>
+    /// <summary>Raised when the working document changes: the preview should reload from memory.</summary>
     public event Action? Changed;
+    /// <summary>Raised after an explicit save, so hosts can acknowledge their own file changes without restarting playback.</summary>
+    public event Action? Saved;
 
     private static JsonObject parse(string text) =>
         JsonNode.Parse(text, documentOptions: MoviePackage.ReadOptions) as JsonObject ?? throw new FormatException("movie.json is not an object.");
 
     /// <summary>
-    /// Applies a change and writes the file. <paramref name="continues"/>: the same gesture as the last edit (a
+    /// Applies a change to the working document. <paramref name="continues"/>: the same gesture as the last edit (a
     /// drag), so one undo takes the whole gesture back.
     /// </summary>
     public void Edit(Action<JsonObject> change, bool continues = false)
@@ -74,26 +81,29 @@ public sealed partial class MovieDocument
         ArgumentNullException.ThrowIfNull(change);
         if (ReadOnly)
             return;
-        var before = new Snapshot(_text, _metadataText);
+        var before = snapshot();
         try
         {
             change(Root);
             syncAssetIds();
+            var referenced = referencedFiles();
+            foreach (var file in _pendingFiles.Keys.Where(file => !referenced.Contains(file)).ToArray()) _pendingFiles.Remove(file);
         }
         catch
         {
             Root = parse(before.Movie);
             _metadata = parse(before.Metadata);
+            _pendingFiles = new(before.Files, StringComparer.Ordinal);
             throw;
         }
         var after = Format(Root);
         var metadata = Format(_metadata);
-        if (after == normalised(before.Movie) && metadata == before.Metadata)
+        if (after == normalised(before.Movie) && metadata == before.Metadata && sameFiles(before.Files))
             return;
         if (!continues || _undo.Count == 0)
             _undo.Add(before);
         _redo.Clear();
-        write(new Snapshot(after, metadata));
+        apply(new Snapshot(after, metadata, new(_pendingFiles, StringComparer.Ordinal)));
     }
 
     private static string normalised(string text) => Format(parse(text));
@@ -151,22 +161,54 @@ public sealed partial class MovieDocument
     {
         if (from.Count == 0 || ReadOnly)
             return;
-        to.Add(new Snapshot(_text, _metadataText));
+        to.Add(snapshot());
         var text = from[^1];
         from.RemoveAt(from.Count - 1);
         Root = parse(text.Movie);
         _metadata = parse(text.Metadata);
-        write(text);
+        apply(text);
     }
 
-    private void write(Snapshot text)
+    private static bool sameBytes(byte[] first, byte[] second) => ReferenceEquals(first, second) || first.AsSpan().SequenceEqual(second);
+
+    private bool sameFiles(Dictionary<string, byte[]> files) => _pendingFiles.Count == files.Count
+        && _pendingFiles.All(file => files.TryGetValue(file.Key, out var bytes) && sameBytes(file.Value, bytes));
+
+    private void apply(Snapshot text)
     {
         _text = text.Movie;
         _metadataText = text.Metadata;
-        File.WriteAllText(Path, _text + (_text.EndsWith('\n') ? "" : "\n"));
-        File.WriteAllText(System.IO.Path.Combine(Directory, MetadataFileName), _metadataText + "\n");
+        _pendingFiles = new(text.Files, StringComparer.Ordinal);
         Revision++;
         Changed?.Invoke();
+    }
+
+    /// <summary>Reads the current working asset, including artwork and new scripts which have not been saved.</summary>
+    public byte[] ReadFile(string relative) => _pendingFiles.TryGetValue(relative, out var bytes)
+        && (_saved is null || !_saved.Files.TryGetValue(relative, out var saved) || !sameBytes(bytes, saved))
+        ? bytes.ToArray() : File.ReadAllBytes(FilePath(relative));
+
+    private bool hasFile(string relative) => _pendingFiles.ContainsKey(relative) || File.Exists(FilePath(relative));
+    private HashSet<string> referencedFiles() => group("textures").Select(entry => (string)entry.Value!)
+        .Concat(Scripts().Select(script => script.File)).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Writes the working package and companion metadata only when explicitly requested.</summary>
+    public void Save()
+    {
+        if (ReadOnly) throw new InvalidOperationException("Reference movies cannot be saved.");
+        var referenced = referencedFiles();
+        foreach (var file in _pendingFiles.Where(file => referenced.Contains(file.Key)))
+        {
+            var target = FilePath(file.Key);
+            if (_saved is { } previous && previous.Files.TryGetValue(file.Key, out var saved)
+                && sameBytes(saved, file.Value) && File.Exists(target)) continue;
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, file.Value);
+        }
+        File.WriteAllText(Path, _text + (_text.EndsWith('\n') ? "" : "\n"));
+        File.WriteAllText(System.IO.Path.Combine(Directory, MetadataFileName), _metadataText + "\n");
+        _saved = snapshot();
+        Saved?.Invoke();
     }
 
     /// <summary>A character's name by its id in the assembled movie (see <see cref="MoviePackage.CharacterNames"/>).</summary>

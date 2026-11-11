@@ -28,6 +28,39 @@ public sealed class MovieDocumentTests : IDisposable
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
     [Fact]
+    public void ArchiveReferenceClipsResolveTheirIntegerDepthsWithoutSerializingTheDescription()
+    {
+        const string movie = """
+            { "format": 1, "root": "main",
+              "shapes": { "body": { "rect": [0, 0, 20, 20] } },
+              "sprites": { "main": { "frames": 3, "layers": [
+                { "character": "body", "name": "left", "keys": [{ "frame": 0, "x": 20 }] },
+                { "character": "body", "name": "right", "depth": 7, "keys": [{ "frame": 0, "x": 40 }] }
+              ] } } }
+            """;
+        var assembled = Waddamburo.Formats.Package.MoviePackage.Assemble(movie);
+        var definition = Waddamburo.Formats.Lmb.LmbSemanticReader.Read(Waddamburo.Formats.Lmb.LmbFile.Parse(assembled.Lmb)).Value;
+        var (description, names) = Waddamburo.Formats.Package.MovieReference.Describe(definition, []);
+        var document = new MovieDocument(description, names);
+        var root = (string)description["root"]!;
+        var layers = description["sprites"]![root]!["layers"]!.AsArray();
+        foreach (var node in layers)
+        {
+            var layer = node!.AsObject();
+            var depth = layer["depth"]!.GetValue<int>(); // The in-memory archive description really stores Int32.
+            var resolved = document.Layer(root, depth, (string)layer["character"]!);
+            Assert.Same(layer, resolved);
+            var sampled = MovieDocument.KeyAt((JsonObject)resolved!.DeepClone(), 1);
+            Assert.NotNull(MovieDocument.Value(sampled, "x"));
+            Assert.Equal((1d, 1d, 1d), MovieDocument.Tint(sampled));
+        }
+        Assert.True(document.ReadOnly);
+        Assert.False(document.IsDirty);
+        Assert.False(document.CanUndo);
+        Assert.Null(document.Layer(root, 8, (string)layers[0]!["character"]!));
+    }
+
+    [Fact]
     public void ClipsAreFoundByCharacterAndDepth()
     {
         var document = open();
@@ -55,14 +88,15 @@ public sealed class MovieDocumentTests : IDisposable
     }
 
     [Fact]
-    public void EditsAreWrittenAtOnceAndUndone()
+    public void EditsPreviewInMemoryAndSaveOnlyOnRequest()
     {
         var document = open();
         var changes = 0;
         document.Changed += () => changes++;
-        double x() => (double)JsonNode.Parse(File.ReadAllText(document.Path),
+        double x() => (double)JsonNode.Parse(document.Text,
             documentOptions: new() { CommentHandling = System.Text.Json.JsonCommentHandling.Skip })!["sprites"]!["main"]!["layers"]![0]!["keys"]![0]!["x"]!;
 
+        var original = File.ReadAllText(document.Path);
         document.Edit(_ => { }); // Nothing changed: nothing written, nothing to undo.
         Assert.False(document.CanUndo);
         Assert.Equal(0, changes);
@@ -71,6 +105,8 @@ public sealed class MovieDocumentTests : IDisposable
         document.Edit(root => root["sprites"]!["main"]!["layers"]![0]!["keys"]![0]!["x"] = 120, continues: true);
         document.Edit(root => root["sprites"]!["main"]!["layers"]![0]!["keys"]![0]!["x"] = 300);
         Assert.Equal((300d, 3), (x(), changes));
+        Assert.Equal(original, File.ReadAllText(document.Path));
+        Assert.True(document.IsDirty);
 
         document.Undo();
         Assert.Equal(120, x()); // The first two were one gesture.
@@ -78,10 +114,14 @@ public sealed class MovieDocumentTests : IDisposable
         Assert.Equal(100, x());
         Assert.Contains("// A comment", File.ReadAllText(document.Path)); // Back to the very text it was opened with.
         Assert.False(document.CanUndo);
+        Assert.False(document.IsDirty);
         document.Redo();
         document.Redo();
         Assert.Equal(300, x());
         Assert.False(document.CanRedo);
+        document.Save();
+        Assert.False(document.IsDirty);
+        Assert.Contains("300", File.ReadAllText(document.Path));
         Assert.Equal(300d, (double)document.Layer("main", 1, "box")!["keys"]![0]!["x"]!); // The tree follows the file.
     }
 }
