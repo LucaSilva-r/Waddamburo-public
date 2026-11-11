@@ -430,10 +430,15 @@ options, favourites, search, a course per drum (both play the one picked), Don-c
 
 **Boot to a song on an empty data directory** (2026-11-11, headless): boot and logo pass as stand-ins, a DON opens
 the entry, the player setup, song select on the user's own libraries, a course, the rainbow with the title, the song
-on the placeholder gameplay parts. Not yet walked: the song's end (shutter, results as a stand-in, back to song
-select), the dan covers, the title screen (blank).
+on the placeholder gameplay parts. User-walked in the window the same day, to the end: the shutter closes, the
+results are blank (a stand-in), and the game is back in song select. So the whole loop runs without the game's data.
+A skeleton has only the labels a recorded session jumped to: the fire gauge's `fever_end` and the banner's `success`
+and `fail` were added by hand after a song stopped on the first.
 
-Next: the end of a song (results, then back), then the boot, logo and title of our own.
+Blank or missing on that loop, in the order a player meets them: boot, logo and title; the results; score, combo
+and gauge during the song (milestone 6); the tutorial (no way out of its stand-in); song select's "Difficulty" folder.
+
+Next: results, then the title screen, then the board and gauge of the gameplay screen.
 
 ## Open
 
