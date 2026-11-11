@@ -294,6 +294,25 @@ jumps to, fill slots), which each contract page lists under "what the host addre
 6. A run with an empty data directory: the engine has to start without the game data it reads besides movies (song
    lists, sound banks, models), each with a free stand-in or a clean "not there".
 
+### The empty data directory, probed (2026-11-11)
+
+The game was started on a data directory holding nothing, and given the real thing piece by piece until it ran:
+
+- The start-up checks want the folders `data/lumendata/packed`, `data/don3d` and `data/sound` to exist (empty is
+  enough to get past them).
+- Three things besides movies stop the boot when missing, in this order: Don-chan's data (`data/don3d`, first file
+  `ani/don_bind.bin`, at DON-CHAN), the sound data (`data/sound/config/…`, at SOUND DATA), and the gameplay layout
+  (`data/ensolayout.bin`, at GAMEPLAY DATA).
+- Everything else the engine reads from the game data is already optional: with only those three and the movies in
+  place it boots to the title and runs (no charts, song lists, videos, fonts, icons or tuning files).
+- Movies: the boot itself loads the six intermissions (rainbow, fade, shutter, the three dan covers); reaching the
+  title adds the boot screen, the logo, the title and three indicator parts. Twelve movies to the title screen.
+
+So a start with no game data needs: the three made optional (no Don-chan drawn, silence, the engine's own layout
+numbers), twelve free movies of which the logo and title are ours to design rather than to replace, and then the
+screens after the title. Not probed yet: song select and a song without the game data (their movies need the rest of
+this milestone first).
+
 ## Open
 
 - Free movies live in `movies/<archive folder>/<movie>/` in the repository; the game only looks in
