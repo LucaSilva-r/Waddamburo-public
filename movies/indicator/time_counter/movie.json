@@ -1,0 +1,62 @@
+{
+  // The countdown timer of the entry, song select and other timed screens. A free movie: it answers the
+  // callbacks the game's hosts call on the timer (see docs/development/free-movies-plan.md).
+  "format": 1,
+  "frameRate": 60,
+  "root": "timer",
+  "textures": {
+    "disc_white": "textures/disc_white.svg",
+    "disc_red": "textures/disc_red.svg",
+    "shade": "textures/shade.svg",
+    "tab": "textures/tab.svg"
+  },
+  "shapes": {
+    "disc_white": { "texture": "disc_white", "rect": [-72, -72, 144, 144] },
+    "disc_red": { "texture": "disc_red", "rect": [-72, -72, 144, 144] },
+    "shade": { "texture": "shade", "rect": [-72, -72, 144, 144] },
+    "tab": { "texture": "tab", "rect": [0, 0, 304, 54] }
+  },
+  "texts": {
+    "digits_dark": { "rect": [-80, -56, 160, 112], "size": 100, "align": "center", "color": "#111111" },
+    "digits_light": { "rect": [-80, -56, 160, 112], "size": 100, "align": "center", "color": "#ffffff" },
+    "tab_normal": { "rect": [0, 0, 136, 46], "size": 42, "align": "center", "color": "#222222" },
+    "tab_final": { "rect": [0, 0, 136, 46], "size": 42, "align": "center", "color": "#e60012" }
+  },
+  "sprites": {
+    // The number, as a clip of its own so three digits can be drawn smaller.
+    "digits": {
+      "frames": 1,
+      "layers": [
+        { "character": "digits_dark", "name": "dark", "keys": [ { "frame": 0 } ] },
+        { "character": "digits_light", "name": "light", "keys": [ { "frame": 0 } ] }
+      ]
+    },
+    // The disc and its number: the script scales it for the tick of each second.
+    "face": {
+      "frames": 1,
+      "layers": [
+        { "character": "disc_white", "name": "white", "keys": [ { "frame": 0 } ] },
+        { "character": "disc_red", "name": "red", "keys": [ { "frame": 0 } ] },
+        { "character": "digits", "name": "digits", "keys": [ { "frame": 0 } ] },
+        { "character": "shade", "name": "shade", "keys": [ { "frame": 0 } ] }
+      ]
+    },
+    // The "song N" tab behind the disc.
+    "song": {
+      "frames": 1,
+      "layers": [
+        { "character": "tab", "keys": [ { "frame": 0 } ] },
+        { "character": "tab_normal", "name": "normal", "keys": [ { "frame": 0, "x": 8, "y": 4 } ] },
+        { "character": "tab_final", "name": "final", "keys": [ { "frame": 0, "x": 8, "y": 4 } ] }
+      ]
+    },
+    "timer": {
+      "frames": 1,
+      "scripts": { "0": "scripts/timer.as" },
+      "layers": [
+        { "character": "song", "name": "song", "keys": [ { "frame": 0, "x": 976, "y": 28 } ] },
+        { "character": "face", "name": "face", "keys": [ { "frame": 0, "x": 1193, "y": 86 } ] }
+      ]
+    }
+  }
+}

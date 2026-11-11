@@ -40,14 +40,19 @@ A directory per movie, found before the archive movie of the same id:
 ```text
 <waddamburo data>/movies/<archive folder>/<movie>/     e.g. movies/indicator/time_counter/
   movie.json        frame rate, textures, shapes, sprites, labels
-  textures/*.png    referenced by name from movie.json
+  textures/*        PNG or SVG, referenced by name from movie.json
   scripts/*.as      ActionScript 2 (milestone 2)
 ```
 
 `movie.json` (`Waddamburo.Formats.Package.MoviePackage`; comments and trailing commas allowed; sample in
 `samples/movie-package/bounce`):
 
-- `format` (1), `frameRate`, `root` (a sprite's name), `textures` (name → file).
+- `format` (1), `frameRate`, `root` (a sprite's name), `textures` (name → file). A texture is a PNG or an SVG; an
+  SVG is drawn once at load, at its own `width` / `height` (author it at twice the size it shows at for sharp edges;
+  a shape's `rect` sets the size on screen).
+- `texts`: name → `rect`, `size`, `align` (`left`, `center`, `right`), `color` (`#rrggbb`). A text field: a box a
+  script fills (`clip.field.text = "12"`), drawn by the engine's text renderer in the game's font. This is the one way
+  a free movie shows text or numbers; there are no glyph textures.
 - `shapes`: name → `rect` [x, y, width, height] in the shape's own space, `texture` and optional `uv`
   [left, top, right, bottom]. One textured quad, as in Lumen: no vector art. Without a texture the shape is a slot the
   host draws into (a native fill).
@@ -57,10 +62,11 @@ A directory per movie, found before the archive movie of the same id:
 - A key: `frame`, `x`, `y`, `scale` or `scaleX` / `scaleY`, `rotation` (degrees), `alpha`, `tint` [r, g, b], `hold`.
   Values run straight from one key to the next unless `hold`. This is the model the editor edits (layers and
   keyframes); curves other than straight lines are the editor's to add.
-- Not yet: texts, masks (`ClipDepth`), colour add, several quads per shape, seek snapshots (a seek replays the
+- Not yet: text outlines, masks (`ClipDepth`), colour add, several quads per shape, seek snapshots (a seek replays the
   timeline from frame 0).
 - ponytail: loose directories only; a single-file archive for distribution when packs are shared.
-- ponytail: PNG decoded to RGBA at load; BC7 through the existing upscale cache if load time matters.
+- ponytail: textures decoded or drawn to RGBA at every load, SVG at a fixed size whatever the window's; a cache, and
+  drawing at the display's scale, when load time or 4K sharpness matter.
 
 ### Loader
 
@@ -103,16 +109,12 @@ they report to a host function (`ActionScriptTests`).
 - ponytail: no optimisation (locals by name, one push per value, `a.b += 1` evaluates `a` twice); registers when a
   script shows up in a profile.
 
-### Ideas for our own runtime (user, 2026-11-11)
+### Our own runtime's extras (user, 2026-11-11)
 
-Since both ends are ours, the package format may grow features Lumen never had, where they speed up making movies:
-
-- **SVG textures**: a texture file may be an `.svg`, rasterised at load at the size the movie needs, so art can be
-  generated or edited as text. Planned for milestone 3 in place of drawn art.
-- **Text**: one text function in the runtime, drawing through the engine's FreeType renderer, for every text a free
-  movie shows (digits included), instead of baked glyph textures. Also milestone 3.
-
-Bandai movies never see these; free movies still answer the same callbacks.
+Since both ends are ours, the package format has features Lumen never had, where they speed up making movies: SVG
+textures (Svg.Skia, so files from a drawing program work too) and text fields drawn by the engine's text renderer.
+A free movie needs no artist to exist: shapes as SVG text, numbers and words as text fields. Bandai movies never see
+these; free movies still answer the same callbacks.
 
 ### Movie editor
 
@@ -174,8 +176,10 @@ used by several scenes, and other movies' developer branches load it.
   Not yet seen in the game itself: that is milestone 3, the first movie with the callbacks a host calls.
 - [x] 2. Compiler (2026-11-11): `ActionScript` with its tests (27 scripts, classes bound to clips, callbacks), scripts
   and classes in packages, the sample's script, viewer reload on save (the reload itself not yet tried by hand).
-- [ ] 3. First replacement, by hand: `time_counter` from its contract page, its art as SVG and its digits through the
-  text function (see the ideas above); empty log diff against the stock one in every scene that uses it.
+- [ ] 3. First replacement, by hand: `time_counter` (`movies/indicator/time_counter`, 2026-11-11), written from its
+  contract page and from what the stock timer shows and answers when probed (60 scripted calls: same edge log);
+  SVG art, text-field digits; `FreeTimeCounterTests` keeps the measured behaviour. Left: seen in the game by the user
+  in arcade mode, and the same edge log over a real session.
 - [ ] 4. Editor, read side: tree, stage selection, timeline scrubbing, inspector, host panel; works on Bandai movies.
 - [ ] 5. Editor, write side: edit, textures panel, save, undo; the milestone 3 movie rebuilt in it.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.
@@ -185,6 +189,10 @@ Milestones 1 to 3 need no editor and carry the risk (does a package movie writte
 stock one). The editor comes after so it has something to save.
 
 ## Open
+
+- Free movies live in `movies/<archive folder>/<movie>/` in the repository; the game only looks in
+  `USRDIR/waddamburo/movies` so far. Shipping them with the engine (and choosing free or original per movie in the
+  settings) comes with milestone 6.
 
 - Art: who draws the free assets, and their licence (must allow redistribution with the engine).
 - Don-chan is a 3D model (`don-rendering.md`), sounds are NUB banks: both need free replacements too, outside this plan.

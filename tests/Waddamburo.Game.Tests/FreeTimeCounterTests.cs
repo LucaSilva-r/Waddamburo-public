@@ -1,0 +1,104 @@
+using Waddamburo.Lumen.Runtime;
+
+namespace Waddamburo.Game.Tests;
+
+/// <summary>
+/// The free time_counter movie (movies/indicator/time_counter) keeps the behaviour measured on the timer it
+/// replaces: a second every 60 frames, and what each callback answers in each state.
+/// </summary>
+public sealed class FreeTimeCounterTests
+{
+    private static LumenPlayer load()
+    {
+        var directory = AppContext.BaseDirectory;
+        while (!Directory.Exists(Path.Combine(directory, "movies", "indicator", "time_counter")))
+            directory = Path.GetDirectoryName(directory) ?? throw new DirectoryNotFoundException("movies/indicator/time_counter");
+        // The textures only need a size here.
+        var content = LumenMovieContent.LoadPackage(Path.Combine(directory, "movies", "indicator", "time_counter"),
+            static _ => (1, 1, new byte[4]));
+        Assert.Empty(content.Diagnostics);
+        return content.CreatePlayer();
+    }
+
+    private static LumenHostValue call(LumenPlayer player, string name, params LumenHostValue[] arguments)
+    {
+        Assert.True(player.TryInvokeCallback(name, arguments, out var result), name);
+        return result;
+    }
+
+    private static void advance(LumenPlayer player, int frames)
+    {
+        for (var frame = 0; frame < frames; frame++)
+            player.Advance();
+    }
+
+    private static LumenHostValue n(double value) => LumenHostValue.FromNumber(value);
+
+    [Fact]
+    public void CountsASecondEverySixtyFramesAndAnswersEachState()
+    {
+        var player = load();
+        Assert.Equal(16, player.CallbackNames.Length);
+        call(player, "SetTime", n(12));
+        Assert.Equal(12, call(player, "GetSec").AsNumber());
+        Assert.False(call(player, "IsStarted").AsBoolean());
+        advance(player, 90);
+        Assert.Equal(12, call(player, "GetSec").AsNumber()); // Not started: not counting.
+
+        call(player, "Start", n(12), LumenHostValue.FromBoolean(true));
+        Assert.True(call(player, "IsStarted").AsBoolean());
+        advance(player, 59);
+        Assert.Equal(12, call(player, "GetSec").AsNumber());
+        advance(player, 1);
+        Assert.Equal(11, call(player, "GetSec").AsNumber());
+
+        call(player, "Pause");
+        Assert.True(call(player, "IsPaused").AsBoolean());
+        advance(player, 200);
+        Assert.Equal(11, call(player, "GetSec").AsNumber());
+        call(player, "Resume");
+        Assert.False(call(player, "IsPaused").AsBoolean());
+        call(player, "AddSec", n(5));
+        Assert.Equal(16, call(player, "GetSec").AsNumber());
+
+        call(player, "Stop");
+        Assert.False(call(player, "IsStarted").AsBoolean());
+        call(player, "Resume"); // Only a paused timer resumes.
+        advance(player, 120);
+        Assert.Equal(16, call(player, "GetSec").AsNumber());
+
+        call(player, "Start", n(2), LumenHostValue.FromBoolean(false));
+        advance(player, 119);
+        Assert.False(call(player, "IsTimeup").AsBoolean());
+        advance(player, 1);
+        Assert.True(call(player, "IsTimeup").AsBoolean());
+        Assert.Equal(0, call(player, "GetSec").AsNumber());
+        advance(player, 300);
+        Assert.Equal(0, call(player, "GetSec").AsNumber());
+        Assert.True(call(player, "IsStarted").AsBoolean()); // Time up is still "started".
+        call(player, "SetTime", n(30));
+        Assert.True(call(player, "IsTimeup").AsBoolean());
+        advance(player, 120);
+        Assert.Equal(30, call(player, "GetSec").AsNumber());
+        Assert.Empty(player.Diagnostics);
+    }
+
+    [Fact]
+    public void ShowsItsNumberAndSongTab()
+    {
+        var player = load();
+        call(player, "SetFinalStage", LumenHostValue.FromBoolean(false));
+        call(player, "SetMusicNum", n(2));
+        call(player, "SetTime", n(42));
+        Assert.Equal("42", player.ReadScriptValue("face.digits.dark.text"));
+        Assert.Equal("2曲目", player.ReadScriptValue("song.normal.text"));
+        call(player, "SetFinalStage", LumenHostValue.FromBoolean(true));
+        Assert.Equal("2曲目", player.ReadScriptValue("song.final.text"));
+        call(player, "SetTime", n(7)); // The last seconds are drawn light on red.
+        Assert.Equal("7", player.ReadScriptValue("face.digits.light.text"));
+        call(player, "SetMusicNum", n(0));
+        Assert.Equal("", player.ReadScriptValue("song.final.text"));
+        call(player, "SetVisible", LumenHostValue.FromBoolean(false));
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+    }
+}
