@@ -11,7 +11,7 @@ namespace Waddamburo.Lumen.Runtime;
 /// render snapshots, and executes the bounded AVM subset used by initialized
 /// timelines.
 /// </summary>
-public sealed class LumenPlayer
+public sealed partial class LumenPlayer
 {
     private const float TranslationCutThreshold = 200f;
     private const float ColorCutThreshold = 0.3f;

@@ -1,0 +1,343 @@
+using System.Globalization;
+using System.Numerics;
+using ImGuiNET;
+using Waddamburo.Lumen.Runtime;
+using Waddamburo.Platform.Sdl;
+using Waddamburo.Platform.Sdl.Rendering;
+
+namespace Waddamburo.Editor;
+
+/// <summary>
+/// The movie inspector (docs/development/free-movies-plan.md, the editor's read side): a running movie's clips as
+/// a tree, the selected clip's state and timeline, the stage with click selection, and the movie's callbacks to
+/// call by hand. It looks and pokes; it changes no file, so it opens the game's own movies as well as packages.
+/// </summary>
+public sealed class MovieInspectorSession : IDisposable
+{
+    private readonly SdlApplication _application;
+    private readonly ImGuiLayer _layer;
+    private readonly RenderRectangle? _previousRegion;
+    private readonly Func<LumenPlayer> _player;
+    private readonly string _title;
+    private readonly bool _gameData;
+    private readonly Dictionary<string, string[]> _arguments = new(StringComparer.Ordinal);
+    private readonly List<string> _log = [];
+    // Clips opened in the tree beyond the first two levels (a big movie has thousands).
+    private readonly HashSet<string> _open = new(StringComparer.Ordinal);
+    private string? _selected;
+    private string _filter = "";
+    private bool _step, _scrollToSelected, _disposed;
+    private static readonly uint Outline = color(1, .56f, .18f), Muted = color(.52f, .56f, .61f), Text = color(.85f, .87f, .9f);
+
+    /// <param name="application">The window.</param>
+    /// <param name="player">The movie being shown (asked every frame: a reloaded package is a new player).</param>
+    /// <param name="title">The movie's name.</param>
+    /// <param name="gameData">The movie comes from the user's game data: shown as read-only reference.</param>
+    /// <param name="select">A clip to select at once, by instance name (for screenshots).</param>
+    public MovieInspectorSession(SdlApplication application, Func<LumenPlayer> player, string title, bool gameData, string? select = null)
+    {
+        _selected = select is null ? null : player().InspectDisplayList().FirstOrDefault(clip => clip.Name == select)?.Path;
+        ArgumentNullException.ThrowIfNull(application);
+        ArgumentNullException.ThrowIfNull(player);
+        _application = application;
+        _player = player;
+        _title = title;
+        _gameData = gameData;
+        _previousRegion = application.StageRegion;
+        _layer = application.AttachImGui(draw);
+        EditorTheme.Apply();
+        _layer.CaptureKey = static key => key is ImGuiKey.Space or ImGuiKey.RightArrow;
+    }
+
+    /// <summary>The movie is held on its current frame.</summary>
+    public bool Paused { get; private set; }
+
+    /// <summary>Whether the movie advances this tick: playing, or a single step was asked for.</summary>
+    public bool TakeTick()
+    {
+        var advance = !Paused || _step;
+        _step = false;
+        return advance;
+    }
+
+    private static uint color(float r, float g, float b, float a = 1) => ImGui.ColorConvertFloat4ToU32(new(r, g, b, a));
+
+    private static string number(double value) => (Math.Abs(value) < .0005 ? 0 : value).ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static bool panel(string name, EditorPanel rect, ImGuiWindowFlags extra = 0)
+    {
+        ImGui.SetNextWindowPos(rect.Position);
+        ImGui.SetNextWindowSize(rect.Size);
+        return ImGui.Begin(name, ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse
+            | ImGuiWindowFlags.NoSavedSettings | extra);
+    }
+
+    private void draw()
+    {
+        var io = ImGui.GetIO();
+        var size = io.DisplaySize;
+        if (size.X < 32 || size.Y < 32)
+            return;
+        if (!io.WantTextInput)
+        {
+            if (ImGui.IsKeyPressed(ImGuiKey.Space, false))
+                Paused = !Paused;
+            if (ImGui.IsKeyPressed(ImGuiKey.RightArrow))
+                (Paused, _step) = (true, true);
+        }
+        var player = _player();
+        var clips = player.InspectDisplayList();
+        if (_selected is not null && clips.All(clip => clip.Path != _selected))
+            _selected = null;
+        var layout = EditorLayout.Calculate(size.X, size.Y, .24f, .26f, .3f);
+        _application.StageRegion = EditorLayout.Preview(layout.Stage).Normalized(size.X, size.Y);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
+        toolbar(layout.Toolbar, player);
+        tree(layout.Targets, clips);
+        inspector(layout.Inspector, player, clips.FirstOrDefault(clip => clip.Path == _selected));
+        host(layout.Tracks, player);
+        stage(layout.Stage, player);
+        ImGui.PopStyleVar();
+    }
+
+    private void toolbar(EditorPanel rect, LumenPlayer player)
+    {
+        if (panel("##movie toolbar", rect, ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar))
+        {
+            ImGui.TextUnformatted(_title);
+            ImGui.SameLine();
+            ImGui.TextColored(new(.52f, .56f, .61f, 1), _gameData ? "game data: reference only, nothing here is saved" : "movie package");
+            if (ImGui.Button(Paused ? "Play" : "Pause"))
+                Paused = !Paused;
+            ImGui.SameLine();
+            if (ImGui.Button("Step"))
+                (Paused, _step) = (true, true);
+            ImGui.SameLine();
+            ImGui.TextColored(new(.52f, .56f, .61f, 1), "Space: play/pause   Right: one frame   click the stage or the tree to select");
+            ImGui.SameLine();
+            var frame = player.CurrentFrame;
+            ImGui.SetNextItemWidth(Math.Max(120, rect.Width * .25f));
+            if (player.FrameCount > 1 && ImGui.SliderInt("root frame", ref frame, 0, player.FrameCount - 1))
+                player.Seek(frame);
+        }
+        ImGui.End();
+    }
+
+    private void tree(EditorPanel rect, IReadOnlyList<LumenInstanceInfo> clips)
+    {
+        if (panel("Clips", rect))
+        {
+            ImGui.SetNextItemWidth(-1);
+            ImGui.InputTextWithHint("##filter", "filter by name", ref _filter, 64);
+            ImGui.BeginChild("##clips");
+            string? closed = null; // The collapsed clip whose children are being skipped.
+            for (var index = 0; index < clips.Count; index++)
+            {
+                var clip = clips[index];
+                if (_filter.Length > 0 && !clip.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (_filter.Length == 0)
+                {
+                    if (closed is not null && clip.Path.StartsWith(closed, StringComparison.Ordinal))
+                        continue;
+                    closed = null;
+                }
+                var parent = index + 1 < clips.Count && clips[index + 1].Level > clip.Level;
+                var open = clip.Level < 2 || _open.Contains(clip.Path);
+                var name = clip.Level == 0 ? "root" : clip.Name.Length > 0 ? clip.Name : $"#{clip.CharacterId}";
+                var state = clip.Kind switch
+                {
+                    LumenInstanceKind.Sprite when clip.FrameCount > 1 => $"  {clip.Frame}/{clip.FrameCount - 1}{(clip.Label is null ? "" : $" {clip.Label}")}{(clip.Playing ? "" : " (stopped)")}",
+                    LumenInstanceKind.Shape => "  shape",
+                    LumenInstanceKind.Text => "  text",
+                    _ => "",
+                };
+                var shown = clip.Visible && !clip.HiddenByHost && clip.Multiply.Alpha > 0;
+                ImGui.PushStyleColor(ImGuiCol.Text, shown ? Text : Muted);
+                if (_filter.Length == 0)
+                {
+                    ImGui.Indent(clip.Level * 12f + .01f);
+                    if (parent && clip.Level >= 2)
+                    {
+                        if (ImGui.SmallButton($"{(open ? "-" : "+")}##open{clip.Path}") && !_open.Remove(clip.Path))
+                            _open.Add(clip.Path);
+                        ImGui.SameLine();
+                    }
+                    if (parent && !open)
+                        closed = clip.Path + "/";
+                }
+                if (ImGui.Selectable($"{name}{state}##{clip.Path}", clip.Path == _selected))
+                    _selected = clip.Path;
+                if (clip.Path == _selected && _scrollToSelected)
+                {
+                    ImGui.SetScrollHereY();
+                    _scrollToSelected = false;
+                }
+                if (_filter.Length == 0)
+                    ImGui.Unindent(clip.Level * 12f + .01f);
+                ImGui.PopStyleColor();
+            }
+            ImGui.EndChild();
+        }
+        ImGui.End();
+    }
+
+    private static void inspector(EditorPanel rect, LumenPlayer player, LumenInstanceInfo? clip)
+    {
+        if (panel("Clip", rect))
+        {
+            if (clip is null)
+                ImGui.TextColored(new(.52f, .56f, .61f, 1), "Select a clip.");
+            else
+            {
+                void row(string label, string value)
+                {
+                    ImGui.TextColored(new(.52f, .56f, .61f, 1), label);
+                    ImGui.SameLine(110);
+                    ImGui.TextUnformatted(value);
+                }
+                var matrix = clip.Transform;
+                row("name", clip.Name.Length > 0 ? clip.Name : "(none)");
+                row("character", $"{clip.CharacterId} ({clip.Kind.ToString().ToLowerInvariant()})");
+                if (clip.ClassName is not null)
+                    row("export", clip.ClassName);
+                row("depth", clip.Depth.ToString(CultureInfo.InvariantCulture));
+                row("position", $"{number(matrix.X)}, {number(matrix.Y)}");
+                row("scale", $"{number(MathF.Sqrt(matrix.M11 * matrix.M11 + matrix.M12 * matrix.M12))}, {number(MathF.Sqrt(matrix.M21 * matrix.M21 + matrix.M22 * matrix.M22))}");
+                row("rotation", $"{number(MathF.Atan2(matrix.M12, matrix.M11) * 180 / MathF.PI)}°");
+                row("colour x", $"{number(clip.Multiply.Red)}, {number(clip.Multiply.Green)}, {number(clip.Multiply.Blue)}, alpha {number(clip.Multiply.Alpha)}");
+                row("colour +", $"{number(clip.Add.Red)}, {number(clip.Add.Green)}, {number(clip.Add.Blue)}, {number(clip.Add.Alpha)}");
+                row("blend", clip.BlendMode switch { 0 or 1 => "normal", 3 => "multiply", 4 => "screen", 8 => "add", var other => other.ToString(CultureInfo.InvariantCulture) });
+                row("visible", clip.Visible ? "yes" : "no (its script hid it)");
+                if (player.TryInspectBounds(clip.Path, out var box))
+                    row("on stage", $"{number(box.X)}, {number(box.Y)}  {number(box.Width)} x {number(box.Height)}");
+                var hidden = clip.HiddenByHost;
+                if (ImGui.Checkbox("hide", ref hidden))
+                    player.InspectSetHidden(clip.Path, hidden);
+
+                if (clip is { Kind: LumenInstanceKind.Sprite, FrameCount: > 1 })
+                {
+                    ImGui.SeparatorText("timeline");
+                    var frame = clip.Frame;
+                    ImGui.SetNextItemWidth(-1);
+                    if (ImGui.SliderInt("##frame", ref frame, 0, clip.FrameCount - 1))
+                        player.InspectGoto(clip.Path, frame, play: false);
+                    if (ImGui.Button(clip.Playing ? "Stop" : "Play"))
+                        player.InspectSetPlaying(clip.Path, !clip.Playing);
+                    foreach (var (label, at) in player.InspectLabels(clip.Path))
+                    {
+                        ImGui.SameLine();
+                        if (ImGui.GetContentRegionAvail().X < ImGui.CalcTextSize(label).X + 20)
+                            ImGui.NewLine();
+                        if (ImGui.SmallButton($"{label}##{at}"))
+                            player.InspectGoto(clip.Path, at, play: true);
+                    }
+                }
+                var variables = player.InspectVariables(clip.Path);
+                if (variables.Count > 0)
+                {
+                    ImGui.SeparatorText("script variables");
+                    foreach (var (name, value) in variables)
+                        row(name, value);
+                }
+            }
+        }
+        ImGui.End();
+    }
+
+    // The host side: every callback the movie registered, with a box per parameter.
+    private void host(EditorPanel rect, LumenPlayer player)
+    {
+        if (panel("Callbacks (what the game calls on this movie)", rect))
+        {
+            var callbacks = player.Callbacks;
+            if (callbacks.IsEmpty)
+                ImGui.TextColored(new(.52f, .56f, .61f, 1), "This movie registers no callbacks.");
+            ImGui.BeginChild("##callbacks", new(rect.Width * .62f, 0));
+            foreach (var callback in callbacks)
+            {
+                if (!_arguments.TryGetValue(callback.Name, out var values) || values.Length != callback.Parameters.Length)
+                    _arguments[callback.Name] = values = [.. callback.Parameters.Select(static _ => "")];
+                if (ImGui.Button($"{callback.Name}##call"))
+                {
+                    var arguments = values.Select(parse).ToArray();
+                    var text = player.TryInvokeCallback(callback.Name, arguments, out var result)
+                        ? $"{callback.Name}({string.Join(", ", values)}) -> {show(result)}"
+                        : $"{callback.Name}: the call failed";
+                    _log.Insert(0, text);
+                    if (_log.Count > 100)
+                        _log.RemoveAt(_log.Count - 1);
+                }
+                for (var index = 0; index < values.Length; index++)
+                {
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(110);
+                    ImGui.InputTextWithHint($"##{callback.Name}{index}", callback.Parameters[index], ref values[index], 128);
+                }
+            }
+            ImGui.EndChild();
+            ImGui.SameLine();
+            ImGui.BeginChild("##log");
+            ImGui.TextColored(new(.52f, .56f, .61f, 1), "numbers, true / false, null, anything else is text");
+            foreach (var line in _log)
+                ImGui.TextUnformatted(line);
+            ImGui.EndChild();
+        }
+        ImGui.End();
+    }
+
+    private static LumenHostValue parse(string text) => text.Trim() switch
+    {
+        "" or "undefined" => LumenHostValue.Undefined,
+        "null" => LumenHostValue.Null,
+        "true" => LumenHostValue.FromBoolean(true),
+        "false" => LumenHostValue.FromBoolean(false),
+        var value when double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && double.IsFinite(parsed)
+            => LumenHostValue.FromNumber(parsed),
+        var value => LumenHostValue.FromString(value),
+    };
+
+    private static string show(LumenHostValue value) => value.Kind switch
+    {
+        LumenHostValueKind.Number => number(value.AsNumber()),
+        LumenHostValueKind.Text => $"\"{value.AsString()}\"",
+        LumenHostValueKind.Boolean => value.AsBoolean() ? "true" : "false",
+        var kind => kind.ToString().ToLowerInvariant(),
+    };
+
+    // Over the stage: the selected clip's outline, and a click selects the smallest clip under the pointer.
+    private void stage(EditorPanel rect, LumenPlayer player)
+    {
+        var view = EffectViewport.Fit(EditorLayout.Preview(rect));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        if (panel("##movie stage", rect, ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoScrollbar
+            | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoNav | ImGuiWindowFlags.NoBringToFrontOnFocus))
+        {
+            var draw = ImGui.GetWindowDrawList();
+            draw.AddRect(view.Rectangle.Position, view.Rectangle.Position + view.Rectangle.Size, Muted);
+            var mouse = ImGui.GetIO().MousePos;
+            if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && view.Contains(mouse))
+            {
+                var point = view.ToStage(mouse);
+                _selected = player.InspectPick(point.X, point.Y);
+                _scrollToSelected = _selected is not null;
+                // Its parents open in the tree so it can be seen there.
+                for (var path = _selected; path?.LastIndexOf('/') is > 0 and var cut; path = path[..cut])
+                    _open.Add(path[..cut]);
+            }
+            if (_selected is not null && player.TryInspectBounds(_selected, out var box))
+                draw.AddRect(view.ToScreen(new(box.X, box.Y)), view.ToScreen(new(box.X + box.Width, box.Y + box.Height)), Outline, 0, ImDrawFlags.None, 2);
+        }
+        ImGui.End();
+        ImGui.PopStyleVar();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _layer.Dispose();
+        _application.StageRegion = _previousRegion;
+        _disposed = true;
+    }
+}

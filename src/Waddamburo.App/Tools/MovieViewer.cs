@@ -46,6 +46,7 @@ internal static class MovieViewer
         int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline,
         string? package = null)
     {
+        var plain = Environment.GetCommandLineArgs().Contains("--plain", StringComparer.Ordinal);
         foreach (var diagnostic in content.Diagnostics)
         {
             var output = diagnostic.Severity is DiagnosticSeverity.Error ? Console.Error : Console.Out;
@@ -101,6 +102,12 @@ internal static class MovieViewer
         var debugger = frameLimit is null && tickLimit is null
             ? new InteractiveMovieDebugger(player)
             : null;
+        // The movie inspector (tree, clip state, callbacks) over an interactive window; --plain leaves the bare movie.
+        // --inspect[=clip] shows it in a --ticks / --screenshot run too, with that clip selected.
+        var inspect = Environment.GetCommandLineArgs().FirstOrDefault(static each => each.StartsWith("--inspect", StringComparison.Ordinal));
+        using var inspector = plain || (debugger is null && inspect is null) ? null
+            : new Waddamburo.Editor.MovieInspectorSession(application, () => player, content.Name, gameData: package is null,
+                select: inspect?.Split('=', 2) is [_, var clip] ? clip : null);
         // A package open in a window is reloaded when one of its files is saved (scripts, movie.json, textures): the
         // movie starts again from its first frame. A mistake is printed and the last good version keeps playing.
         DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
@@ -150,7 +157,8 @@ internal static class MovieViewer
                     invoke(invocation);
                 if (debugger is null)
                 {
-                    player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
+                    if (inspector?.TakeTick() != false)
+                        player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
                     // Diagnostic: WADDAMBURO_TREE_EVERY=N prints the display list every N ticks (lines containing
                     // WADDAMBURO_TREE_FILTER, '|'-separated, when set).
                     if (treeEvery > 0 && simulationTick % treeEvery == 0)
@@ -163,7 +171,7 @@ internal static class MovieViewer
                         lastRead = read;
                     }
                 }
-                else
+                else if (inspector?.TakeTick() != false)
                     debugger.Tick(keyboard);
             },
             frameLimit,

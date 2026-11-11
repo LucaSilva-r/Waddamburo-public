@@ -118,17 +118,38 @@ these; free movies still answer the same callbacks.
 
 ### Movie editor
 
-A third mode of `Waddamburo.Editor`, opened from the dev tools on any movie:
+Its own editor (user, 2026-11-11), not a mode of the effects editor: that one edits tracks over a chart's time on
+named screen parts; this one edits a movie's clips, their frames, its assets and its code. They share the shell
+only (`Waddamburo.Editor`: the ImGui layer, panel layout, theme, stage mapping, later the keyframe and curve widgets).
 
-- **Tree** panel (sprites and their children), **stage** with click selection and the existing gizmos, **timeline**
-  (frames, labels, per-depth placements; the keyframe widgets), **inspector** (matrix, colour transform, blend, texture,
-  UVs, label, depth), **textures** panel (import PNG, cut a region into a shape).
-- Scripts are edited in the user's own text editor; the editor watches the package and reloads on change (as
-  `ChartFileWatch` does for TJA), keeping the current frame where it can.
-- A **host panel** calls the movie's callbacks by hand with typed arguments, so a movie can be tried without the game.
-- A Bandai movie opens **read-only**: inspect, measure, play. No save, no copy of its shapes, textures or scripts into
-  a package.
-- Save writes the package; undo as in the effects editor.
+Read side, built (`MovieInspectorSession`, over the player's `Inspect…` calls, which leave the edge log alone):
+
+- **Clips**: the display list as a tree (name, kind, frame and label, dimmed when not drawn), filter by name, deeper
+  levels collapsed.
+- **Stage**: the running movie; a click selects the smallest clip under the pointer, outlined.
+- **Clip**: the selected clip's transform, colour, blend, bounds, script variables; its timeline (frame slider, play /
+  stop, a button per label); a hide switch.
+- **Callbacks**: every callback the movie registered, a box per parameter, a call button, the results.
+- Play / pause, single step (Space, Right).
+- Opened by the movie viewer on any movie: `--package=<folder>` or `--archive=… --movie=…` (`--plain` for the bare
+  movie; `--inspect[=clip]` with `--ticks` / `--screenshot`). A movie from the game data is reference only.
+
+Write side, to build (packages only):
+
+- **Document**: the editor edits `movie.json` as a document (layers and keys, not the assembled records) with undo;
+  every edit reassembles the movie and keeps the playhead, as a script save does now.
+- **Timeline**: the selected sprite's layers as rows, keys as the effects editor draws them (drag, box select, copy),
+  labels and script markers on a ruler; the stage gizmos move / scale / rotate the selected layer at the playhead,
+  writing a key.
+- **Assets**: the package's textures as thumbnails (PNG and SVG); import by file drop or path (copied into
+  `textures/`), replace, rename, delete with a list of the shapes using it; a new shape from a texture or a region of
+  one; text fields (box, size, alignment, colour) made and edited here too. Unused assets are marked.
+- **Code**: the package's scripts listed with where each runs (class file, or sprite and frame), attach / detach;
+  compile errors as a list, a click going to the file and line. The text itself is edited in the user's own editor
+  (opened from the list), with reload on save: ponytail, no code editor inside (ImGui has no real one); an embedded
+  one if artists turn out to need it.
+- Save writes the package. A game-data movie stays reference only: no save, and no copying of its shapes, textures
+  or scripts into a package.
 
 ### Contract per movie
 
@@ -176,12 +197,16 @@ used by several scenes, and other movies' developer branches load it.
   Not yet seen in the game itself: that is milestone 3, the first movie with the callbacks a host calls.
 - [x] 2. Compiler (2026-11-11): `ActionScript` with its tests (27 scripts, classes bound to clips, callbacks), scripts
   and classes in packages, the sample's script, viewer reload on save (the reload itself not yet tried by hand).
-- [ ] 3. First replacement, by hand: `time_counter` (`movies/indicator/time_counter`, 2026-11-11), written from its
+- [x] 3. First replacement, by hand: `time_counter` (`movies/indicator/time_counter`, 2026-11-11), written from its
   contract page and from what the stock timer shows and answers when probed (60 scripted calls: same edge log);
-  SVG art, text-field digits; `FreeTimeCounterTests` keeps the measured behaviour. Left: seen in the game by the user
-  in arcade mode, and the same edge log over a real session.
-- [ ] 4. Editor, read side: tree, stage selection, timeline scrubbing, inspector, host panel; works on Bandai movies.
-- [ ] 5. Editor, write side: edit, textures panel, save, undo; the milestone 3 movie rebuilt in it.
+  SVG art, text-field digits; `FreeTimeCounterTests` keeps the measured behaviour. User-checked in an arcade session:
+  song number, countdown and the last seconds work; it is a proof that the system works, not a finished asset
+  (plain look, and the host's ten-second tick sound is not in step with the number). Left as is by the user's call.
+- [x] 4. Editor, read side (2026-11-11): `MovieInspectorSession` in the movie viewer, on packages and game movies
+  (tried on the timer and on song_select); `Inspect…` calls on the player with a test. Not yet user-tried by hand.
+- [ ] 5. Editor, write side, in this order: (a) document + undo + save, inspector fields editable; (b) timeline rows
+  and keys, stage gizmos; (c) assets panel; (d) code panel with the error list. Done when the timer can be rebuilt
+  in it from an empty package.
 - [ ] 6. Gameplay screen complete in free movies; a build started with an empty data directory plays a TJA.
 - [ ] 7. Remaining screens by flow order (song select last: the largest script).
 

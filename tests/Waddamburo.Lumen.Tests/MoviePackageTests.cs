@@ -62,6 +62,33 @@ public sealed class MoviePackageTests
         Assert.Empty(player.Diagnostics);
     }
 
+    [Fact]
+    public void TheInspectorSeesPicksAndMovesClipsWithoutTouchingTheEdgeLog()
+    {
+        var edges = new StringWriter();
+        LumenEdgeLog.Writer = edges;
+        var player = play(Movie);
+        player.Name = "inspected";
+        var clips = player.InspectDisplayList();
+        Assert.Equal(["", "ball"], clips.Select(static clip => clip.Name == "_level0" ? "" : clip.Name));
+        var ball = clips[1];
+        Assert.Equal((LumenInstanceKind.Shape, 1, 100f, 0f), (ball.Kind, ball.Level, ball.Transform.X, ball.Multiply.Alpha));
+        Assert.Equal((LumenInstanceKind.Sprite, 6, "in"), (clips[0].Kind, clips[0].FrameCount, clips[0].Label));
+        Assert.Equal([("in", 0), ("out", 4)], player.InspectLabels(""));
+        Assert.True(player.TryInspectBounds(ball.Path, out var box));
+        Assert.Equal((90f, 40f, 20f, 20f), (box.X, box.Y, box.Width, box.Height));
+        Assert.Equal(ball.Path, player.InspectPick(100, 50));
+        Assert.Null(player.InspectPick(500, 500));
+
+        Assert.True(player.InspectGoto("", 4, play: false));
+        Assert.Equal((4, 300f), (player.CurrentFrame, player.InspectDisplayList()[1].Transform.X));
+        Assert.True(player.InspectSetHidden(ball.Path, true));
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
+        Assert.False(player.InspectGoto("999", 0, play: true));
+        LumenEdgeLog.Writer = null;
+        Assert.DoesNotContain("\tinspected\t", edges.ToString());
+    }
+
     [Theory]
     [InlineData("\"root\": \"main\"", "\"root\": \"nope\"", "names no sprite")]
     [InlineData("\"character\": \"ball\"", "\"character\": \"cube\"", "unknown character")]
