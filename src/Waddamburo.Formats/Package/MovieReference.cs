@@ -8,7 +8,7 @@ namespace Waddamburo.Formats.Package;
 /// markers, shapes, textures), for looking at how it is built in the editor. In memory only: this is a reading
 /// aid for the user's own game data, never written to a file and never a source for a package.
 /// The description is approximate where the package format is simpler: a shape shows its first quad, skew is
-/// dropped, colour add is left out, scripts are markers ("action 12") without their code.
+/// dropped, colour add is left out, scripts are read back as text (Avm1Text), a reading aid without their source.
 /// </summary>
 public static class MovieReference
 {
@@ -195,8 +195,11 @@ public static class MovieReference
         if (labels.Count > 0)
             result["labels"] = labels;
         if (scripts.Count > 0)
-            result["scripts"] = new JsonObject(scripts.Select(static pair =>
-                KeyValuePair.Create(pair.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), (JsonNode?)$"action {string.Join(", ", pair.Value)}")));
+            result["scripts"] = new JsonObject(scripts.Select(pair =>
+                // Where a package names a script file, a described movie carries the script read back as text (in
+                // memory, like the rest of the description).
+                KeyValuePair.Create(pair.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), (JsonNode?)string.Join("\n\n", pair.Value.Select(index =>
+                    $"// action {index}\n" + (index < movie.Actions.Length ? Lmb.Avm1Text.Decompile(movie.Actions[(int)index].Code, text) : ""))))));
         var list2 = new JsonArray();
         foreach (var layer in layers.Where(static layer => layer.Keys.Count > 0))
         {

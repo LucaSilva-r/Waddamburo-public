@@ -158,7 +158,8 @@ public sealed partial class MovieInspectorSession
     {
         if (panel("Inspector", rect))
         {
-            if (_selectedAsset is not null)
+            if (scriptInspector()) { }
+            else if (_selectedAsset is not null)
                 assetInspector();
             else if (clip is null)
                 {

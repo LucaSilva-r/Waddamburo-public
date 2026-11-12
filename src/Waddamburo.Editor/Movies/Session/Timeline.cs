@@ -156,8 +156,10 @@ public sealed partial class MovieInspectorSession
             Paused = true;
         }
         var labelHeight = timelineLabels(player, clip.Path, labels, origin, width, step);
-        ImGui.PopClipRect();
+        var marks = scriptMarks(sprite);
         var headerHeight = RowHeight + labelHeight;
+        headerHeight += scriptTrack(name, marks, draw, names, origin.Y + headerHeight, x, step);
+        ImGui.PopClipRect();
 
         if (_keysSprite != name)
         {
@@ -208,6 +210,14 @@ public sealed partial class MovieInspectorSession
                 }
                 if (channel is null)
                 {
+                    // Where a script of this timeline sends this clip to one of its own frames.
+                    foreach (var mark in marks)
+                        foreach (var jump in mark.Jumps.Where(jump => jump.Child == (string?)layer["name"]))
+                        {
+                            var at = new Vector2(x(mark.Frame) + step / 2, top + RowHeight / 2);
+                            draw.AddTriangleFilled(at + new Vector2(-3, -4), at + new Vector2(4, 0), at + new Vector2(-3, 4), ScriptColour);
+                            draw.AddText(at + new Vector2(7, -8), ScriptColour, jump.To);
+                        }
                     // Its two ends can be dragged.
                     draw.AddRectFilled(new(x(start), top + 1), new(x(start) + 3, top + RowHeight - 1), LifeEdge);
                     draw.AddRectFilled(new(x(until) - 3, top + 1), new(x(until), top + RowHeight - 1), LifeEdge);

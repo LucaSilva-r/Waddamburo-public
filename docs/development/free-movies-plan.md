@@ -524,3 +524,12 @@ explicit timeline transport. A frame-script count signals logic; archive referen
 without source, while authored package source stays in Code. Library/asset actions explicitly identify isolated
 previews. If an instance disappears or its depth is reused for a different sprite, its context is retained rather
 than silently switching to another timeline. Package contexts follow stable editor asset IDs across reindexing.
+
+Scripts on the timeline (2026-11-12): keys say how a frame looks; what happens next (stop, loop, jump, a child sent
+to one of its frames) is frame scripts, which the timeline did not show. Each script now has a mark on a "scripts"
+track (a square where it stops, an arrow with the label it jumps to), a child it sends somewhere shows "→ frame" on
+its own row, and a click shows the script in the Inspector. A package's script is its `.as` file. A game movie's is
+read back from its bytecode by `Avm1Text` (Formats/Lmb): statements for straight code, `if (...) goto L` for
+branches, an instruction listing when a jump crosses a value on the stack; held in the in-memory description and
+shown in the editor only, never written to disk. It is a reading aid for how a movie is wired, not a source to copy:
+replacements are still written from the contract and the observed behaviour.

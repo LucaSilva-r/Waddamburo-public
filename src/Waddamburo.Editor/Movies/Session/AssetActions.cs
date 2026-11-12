@@ -30,6 +30,7 @@ public sealed partial class MovieInspectorSession
         _selectedAssetId = _document?.AssetId(group, name);
         // One thing is selected at a time: an asset lets go of the clips and the keys.
         _selection.Clear();
+        _script = null;
         _selected = _selectionAnchor = null;
         _keys.Clear();
         _key = null;

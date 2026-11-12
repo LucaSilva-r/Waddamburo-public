@@ -136,6 +136,12 @@ public sealed partial class MovieDocument
         static void write(System.Text.StringBuilder text, JsonNode? value, int level)
         {
             var small = flat(value) || (value is JsonObject leaf && leaf.All(static entry => flat(entry.Value)));
+            // A plain value is written on its line however long (a long string has nothing to be broken into).
+            if (value is null or JsonValue || small && inline(value) is { Length: <= 110 })
+            {
+                text.Append(inline(value));
+                return;
+            }
             if (small && inline(value) is { Length: <= 110 } line)
             {
                 text.Append(line);

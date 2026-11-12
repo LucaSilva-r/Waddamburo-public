@@ -17,6 +17,7 @@ public sealed partial class MovieInspectorSession
         _selectionAnchor = path;
         _selected = path;
         _keysClickedLast = false; // Delete now means this clip
+        if (path is not null) _script = null;
         _selectedAsset = null;
         _selectedAssetId = null;
         _assetGesture = false;
