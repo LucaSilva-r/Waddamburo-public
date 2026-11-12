@@ -39,6 +39,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private readonly List<double> _hitOffsets = [];
     private int _seed;
     private SongSelectSong? _song;
+    private bool _songInfoMode;
 
     /// <summary>The song being (or last) played.</summary>
     public SongSelectSong? Song => _song;
@@ -298,14 +299,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _shutterStartTick = -1;
         _shutterClosing = false;
         var active = Shell.Active;
-        if (_song is not null && sceneLayer("song_info") is { } songInfo)
+        _songInfoMode = false;
+        if (_song is not null)
         {
             showSongTitle(_song);
-            ModeLabel.Show(songInfo, modeLabel(_demo ? Strings.T("mode.demo")
-                : Shell.Autoplay && request.Review is null && _course is null ? Strings.T("mode.autoplay") : ModeText(request)));
-            // Home without the arcade HUD: no song number (a dan course keeps its N曲目).
-            if (Shell.HideArcadeHud && _course is null)
-                songInfo.TrySetInstanceAlpha("main/stage", 0);
+            showMode(_demo ? Strings.T("mode.demo")
+                : Shell.Autoplay && request.Review is null && _course is null ? Strings.T("mode.autoplay") : ModeText(request));
         }
         _timeline = _course is { } course
             ? new GameplayTimeline(course.Songs[0].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn)
@@ -387,12 +386,11 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         : null;
 
     // song_info's corner says so after the song started as a play.
-    private void showMode(string text)
+    private void showMode(string? text)
     {
-        var songInfo = Shell.Active.Layers.ToList().FindIndex(layer =>
-            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "song_info");
-        if (songInfo >= 0)
-            ModeLabel.Show(Shell.Active.Player.Layers[songInfo].Player, modeLabel(text));
+        _songInfoMode = text is not null;
+        if (songInfoPlayer() is { } info)
+            ModeLabel.Show(info, modeLabel(text));
     }
 
     /// <summary>A replay (one player's, not Waiwai) can turn into practice: P in it.</summary>
@@ -748,9 +746,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     // Paused or frozen (the editors' Freeze animations), the movies stand on one tick: no blending between ticks.
-    public override LumenRenderSnapshot CreateSnapshot(float interpolation) =>
-        Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation
+    public override LumenRenderSnapshot CreateSnapshot(float interpolation)
+    {
+        if (songInfoPlayer() is { } info)
+            TaikoSongInfoPresentation.UpdateVisibility(info,
+                showStage: !Shell.HideArcadeHud || _course is not null || _songInfoMode,
+                showInfo: _battle?.ResultShownAt is null);
+        return Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation
             : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
+    }
 
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
@@ -1032,14 +1036,17 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         return index < 0 ? null : Shell.Active.Player.Layers[index].Player;
     }
 
+    // Both movies share the song_name, main/genre and main/stage slots.
+    private LumenPlayer? songInfoPlayer() => sceneLayer("song_info") ?? sceneLayer("ai_song_info");
+
     // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
     private void showSongTitle(SongSelectSong song)
     {
-        if (sceneLayer("song_info") is not { } info)
+        if (songInfoPlayer() is not { } info)
             return;
         var title = Shell.Titles.GetGameplayTitle(song);
         _ = Shell.Titles.Resolve(title);
-        info.SetNativeFill("song_name", title);
+        TaikoSongInfoPresentation.SetTitle(info, title);
     }
 
     // A finished song shows its results (the shutter stays over them until their first frames are

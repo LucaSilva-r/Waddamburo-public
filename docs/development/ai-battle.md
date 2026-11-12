@@ -78,3 +78,18 @@ setups rescore the same; a test pins the generated presses.
 The normal ladder reaches rank 10. The challenge folder required for higher ranks
 is not implemented. Win milestones can be displayed, but titles, songs, and
 costume unlocks are not granted by this implementation.
+
+## Song metadata visibility
+
+The normal `song_info` and battle `ai_song_info` movies expose the same title,
+genre and stage slots (an asset-derived relationship checked on user-supplied
+movies). The host binds the song title in either movie. HOME mode with the arcade
+HUD disabled hides the stage slot through host visibility rather than alpha, so
+its authored fade-in cannot reveal it later. Course stages and replay/practice
+labels remain visible.
+
+AI battle hides the complete metadata panel when the battle's victory/defeat
+animation starts, using the same result-start state that schedules the later
+results screen. Visibility is reapplied before rendering to cover clips recreated
+by animation. This is an independently implemented presentation policy with
+synthetic regression fixtures; no movie content or scripts are included.
