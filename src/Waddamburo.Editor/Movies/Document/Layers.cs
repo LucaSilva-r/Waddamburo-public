@@ -83,11 +83,27 @@ public sealed partial class MovieDocument
     }
 
     /// <summary>The frame a layer is removed on (after its last key, inside the sprite); null: it stays to the end.</summary>
+    /// <summary>The frame a layer appears on; null: on its first key's frame.</summary>
+    public void SetFrom(string sprite, int index, int? frame)
+    {
+        var layer = layerAt(sprite, index);
+        var end = Math.Min((int?)layer["until"] ?? int.MaxValue, (int?)group("sprites")[sprite]!["frames"] ?? 1);
+        if (frame is { } at && (at < 0 || at >= end))
+            throw new InvalidOperationException("A layer appears inside the sprite's frames, before it is removed.");
+        Edit(_ =>
+        {
+            if (frame is null) layer.Remove("from"); else layer["from"] = frame;
+        });
+    }
+
+    /// <summary>The frame a layer appears on (see <see cref="SetFrom"/>).</summary>
+    public static int From(JsonObject layer) => (int?)layer["from"] ?? layer["keys"]!.AsArray().Min(static key => (int)key!["frame"]!);
+
     public void SetUntil(string sprite, int index, int? frame)
     {
         var layer = layerAt(sprite, index);
         var last = layer["keys"]!.AsArray().Max(static key => (int)key!["frame"]!);
-        if (frame is { } at && (at <= last || at >= ((int?)group("sprites")[sprite]!["frames"] ?? 1)))
+        if (frame is { } at && (at <= last || at <= From(layer) || at >= ((int?)group("sprites")[sprite]!["frames"] ?? 1)))
             throw new InvalidOperationException("A layer ends after its last key and before the sprite's last frame.");
         Edit(_ =>
         {

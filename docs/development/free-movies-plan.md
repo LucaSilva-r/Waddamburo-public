@@ -71,6 +71,8 @@ A directory per movie, found before the archive movie of the same id:
   key's frame. In format 1 every key holds every channel (the ones left out at their defaults); both load. The editor
   works in format 2: it opens a format 1 package with the defaults written out (nothing moves) and saves it as 2.
   Two channels keyed on one frame share that key's ease.
+- A layer is on stage from `from` (its first key's frame when left out) until `until`; before its first key every
+  channel is already at that key's value.
 - Not yet: text outlines, masks (`ClipDepth`), colour add, several quads per shape, seek snapshots (a seek replays the
   timeline from frame 0).
 - ponytail: loose directories only; a single-file archive for distribution when packs are shared.

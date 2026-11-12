@@ -226,12 +226,16 @@ public static class MoviePackage
                 if (keys.Length == 0 || keys[^1].Frame >= frameCount)
                     throw new FormatException($"{FileName}: {where} needs keys inside the sprite's {frameCount} frames.");
                 var until = (int)number(layer, "until", frameCount);
+                // "from": the frame the layer appears on (its first key's, when left out); it is there until "until".
+                var from = (int)number(layer, "from", keys[0].Frame);
+                if (from < 0 || from >= Math.Min(until, frameCount))
+                    throw new FormatException($"{FileName}: {where} appears (\"from\") outside its own frames.");
                 // "masks": n: this layer is not drawn; its shape clips the n layers above it (the next n depths).
                 var clip = (uint)number(layer, "masks", 0) is > 0 and var masked ? depth + masked : 0;
                 if (clip > ushort.MaxValue)
                     throw new FormatException($"{FileName}: {where} masks too many layers.");
                 (uint Matrix, uint Colour)? last = null;
-                for (var frame = keys[0].Frame; frame < Math.Min(until, frameCount); frame++)
+                for (var frame = from; frame < Math.Min(until, frameCount); frame++)
                 {
                     var value = Key.At(keys, frame);
                     var now = (matrix(value), colour(value));
@@ -241,7 +245,7 @@ public static class MoviePackage
                     frames[frame].Add((LmbTags.PlaceObject,
                     [
                         character, layerIndex + 1, 0, last is null ? name : 0, (last is null ? 1u : 2u) << 16 | blend, depth << 16 | clip,
-                        (uint)keys[0].Frame << 16, now.Item1, now.Item2, uint.MaxValue, 0, 0,
+                        (uint)from << 16, now.Item1, now.Item2, uint.MaxValue, 0, 0,
                     ]));
                     last = now;
                 }

@@ -16,7 +16,7 @@ public sealed partial class MovieInspectorSession
     private int? _length; // The frame count being typed.
     private string _newLabel = "";
     private float _frameWidth; // pixels per frame; 0: the whole timeline fitted to the panel
-    private static readonly uint KeyColour = color(.61f, .76f, .91f), KeySelected = color(1, .56f, .18f), Life = color(.26f, .35f, .44f, .8f),
+    private static readonly uint KeyColour = color(.61f, .76f, .91f), KeySelected = color(1, .56f, .18f), Life = color(.2f, .225f, .26f),
         Row = color(.16f, .175f, .2f), RowOdd = color(.14f, .15f, .17f), Ruler = color(.2f, .22f, .25f);
 
     // The clip whose timeline is shown, and its sprite's entry in movie.json.
@@ -196,8 +196,22 @@ public sealed partial class MovieInspectorSession
                 var shade = channel is not null ? RowChannel : index % 2 == 0 ? Row : RowOdd;
                 draw.AddRectFilled(new(origin.X, top), new(origin.X + NameColumn + width, top + RowHeight), shade);
                 ImGui.PushClipRect(trackMin, trackMax, true);
-                if (channel is null && keys.Length > 0)
-                    draw.AddRectFilled(new(x(keys[0]), top + 7), new(x(until), top + RowHeight - 7), Life);
+                // The band: the frames the layer is on stage. The lines: where a value is on its way from one key to the next.
+                var start = MovieDocument.From(layer);
+                draw.AddRectFilled(new(x(start), top + 1), new(x(until), top + RowHeight - 1), channel is null ? Life : LifeChannel);
+                foreach (var each in channel is null ? animated : [channel])
+                {
+                    var held = layerKeys.Where(key => MovieDocument.Has(key, each)).ToArray();
+                    for (var at = 0; at + 1 < held.Length; at++)
+                        if (MovieDocument.Ease(held[at]) != "hold" && channelValue(held[at], each).ToJsonString() != channelValue(held[at + 1], each).ToJsonString())
+                            draw.AddLine(new(x((int)held[at]["frame"]!) + step / 2, top + RowHeight / 2), new(x((int)held[at + 1]["frame"]!) + step / 2, top + RowHeight / 2), KeyColour, 2);
+                }
+                if (channel is null)
+                {
+                    // Its two ends can be dragged.
+                    draw.AddRectFilled(new(x(start), top + 1), new(x(start) + 3, top + RowHeight - 1), LifeEdge);
+                    draw.AddRectFilled(new(x(until) - 3, top + 1), new(x(until), top + RowHeight - 1), LifeEdge);
+                }
                 foreach (var key in shown)
                 {
                     var centre = new Vector2(x(key) + step / 2, top + RowHeight / 2);
@@ -261,7 +275,34 @@ public sealed partial class MovieInspectorSession
                 ImGui.SetCursorScreenPos(new(origin.X + NameColumn, top));
                 ImGui.InvisibleButton($"##row {index} {channel}", new(width, RowHeight));
                 var under = frameAt(mouse.X);
-                if (ImGui.IsItemActivated())
+                var lifeStart = MovieDocument.From(layer);
+                var onStart = channel is null && Math.Abs(mouse.X - x(lifeStart)) < 5;
+                var onEnd = channel is null && Math.Abs(mouse.X - x(until)) < 5;
+                if (ImGui.IsItemHovered() && (onStart || onEnd) && !_document!.ReadOnly)
+                {
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEW);
+                    ImGui.SetTooltip(onStart ? $"Appears on frame {lifeStart}. Drag to change." : until >= frames ? "Stays to the end. Drag to remove it earlier." : $"Gone from frame {until}. Drag to change.");
+                }
+                if (ImGui.IsItemActivated() && (onStart || onEnd) && !_document!.ReadOnly)
+                    _lifeDrag = (index, onStart);
+                if (_lifeDrag is { } life && life.Layer == index && channel is null)
+                {
+                    if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _lifeDrag = null;
+                    else
+                    {
+                        var to = Math.Clamp((int)MathF.Round((mouse.X - origin.X - NameColumn) / step), 0, frames);
+                        var lastKey = keys.Max();
+                        // Appears anywhere before it is gone; gone only after its last key.
+                        int? edge = life.Start ? Math.Min(to, until - 1) : to >= frames ? null : Math.Max(to, Math.Max(lastKey, lifeStart) + 1);
+                        var now = life.Start ? lifeStart : (int?)layer["until"];
+                        if (edge != now && !(edge is { } end && !life.Start && end >= frames))
+                        {
+                            var at = index;
+                            stale = attempt(() => { if (life.Start) _document!.SetFrom(name, at, edge); else _document!.SetUntil(name, at, edge); });
+                        }
+                    }
+                }
+                else if (ImGui.IsItemActivated())
                 {
                     selectClip(path, keepKeys: true);
                     _keysClickedLast = true; // after selectClip: Delete now means the keys
@@ -309,6 +350,18 @@ public sealed partial class MovieInspectorSession
                     selectClip(path, keepKeys: true);
                     selectedLayer = index;
                     stale = keyMenu(layers, selectedLayer, clip.Frame);
+                    if (channel is null && !_document!.ReadOnly)
+                    {
+                        // On stage or not: where the layer's band starts and ends.
+                        var (at, here) = (index, under);
+                        ImGui.Separator();
+                        if (ImGui.MenuItem($"Appears on frame {here}", "", false, here < until))
+                            stale |= attempt(() => _document.SetFrom(name, at, here));
+                        if (ImGui.MenuItem($"Gone from frame {here}", "", false, here > Math.Max(keys.Max(), lifeStart) && here < frames))
+                            stale |= attempt(() => _document.SetUntil(name, at, here));
+                        if (ImGui.MenuItem("Stays to the end", "", false, layer["until"] is not null))
+                            stale |= attempt(() => _document.SetUntil(name, at, null));
+                    }
                     ImGui.EndPopup();
                 }
             }
@@ -360,6 +413,8 @@ public sealed partial class MovieInspectorSession
     private string? _keysSprite;
     private readonly HashSet<(string Sprite, int Layer)> _expanded = [];
     private Vector2? _keyBox;
+    private (int Layer, bool Start)? _lifeDrag; // An end of a layer's band being dragged.
+    private static readonly uint LifeChannel = color(.15f, .17f, .2f), LifeEdge = color(.36f, .42f, .5f);
     private int? _keyGrab; // The frame the grabbed key is on, while keys are dragged.
     private sealed record CopiedKey(int Layer, int Frame, string? Channel, JsonNode Value);
     private readonly List<CopiedKey> _copiedKeys = [];

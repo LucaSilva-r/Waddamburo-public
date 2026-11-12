@@ -43,8 +43,8 @@ public sealed partial class MovieDocument
                 var (label, from) = labels[index];
                 var to = labels.Skip(index + 1).Select(static next => next.Frame).FirstOrDefault(next => next > from, frames);
                 // Alive in the label's frames: first key before its end, not removed before its start.
-                var found = state(layers.Where(layer => layer["keys"] is JsonArray { Count: > 0 } keys
-                    && keys.Min(static key => (int)key!["frame"]!) < to && ((int?)layer["until"] ?? int.MaxValue) > from));
+                var found = state(layers.Where(layer => layer["keys"] is JsonArray { Count: > 0 }
+                    && From(layer) < to && ((int?)layer["until"] ?? int.MaxValue) > from));
                 list.Add(new("state", name, label, found, found switch
                 {
                     MovieTodoState.Missing => $"frames {from} to {to - 1}: nothing is shown",
