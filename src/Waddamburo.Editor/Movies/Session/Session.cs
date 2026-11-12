@@ -103,12 +103,43 @@ public sealed partial class MovieInspectorSession : IDisposable
             | ImGuiWindowFlags.NoSavedSettings | extra);
     }
 
+    private string? _drawError;
+    private bool _failNow; // WADDAMBURO_EDITOR_FAIL: a panel fails once on frame 120, to check the window survives
+
+    // A mistake in one panel must not take the window (and the unsaved work) with it: the frame is cut short where it
+    // failed, ImGui closes what was left open, and the error stays on screen. Undo and save still work.
+    // ponytail: one catch for the whole frame, so panels after the failing one are missing while it fails; per-panel
+    // recovery needs ImGui's internal state restore, which the binding does not expose.
     private void draw()
     {
         var io = ImGui.GetIO();
         var size = io.DisplaySize;
         if (size.X < 32 || size.Y < 32)
             return;
+        try
+        {
+            drawPanels(io, size);
+            _drawError = null;
+        }
+        catch (Exception error)
+        {
+            if (_drawError != error.Message)
+                Console.Error.WriteLine($"Movie editor: a panel failed to draw: {error}");
+            _drawError = error.Message;
+            io.ConfigErrorRecoveryEnableAssert = false;
+            io.ConfigErrorRecoveryEnableTooltip = false;
+            var text = $"Editor error (Ctrl+Z undoes the last change, Ctrl+S saves): {error.GetType().Name}: {error.Message}";
+            var at = new Vector2(8, size.Y - ImGui.GetTextLineHeight() - 8);
+            var list = ImGui.GetForegroundDrawList();
+            list.AddRectFilled(at - new Vector2(4), at + ImGui.CalcTextSize(text) + new Vector2(4), color(.35f, 0, 0));
+            list.AddText(at, color(1, 1, 1), text);
+        }
+    }
+
+    private void drawPanels(ImGuiIOPtr io, Vector2 size)
+    {
+        if (ImGui.GetFrameCount() == 120 && Environment.GetEnvironmentVariable("WADDAMBURO_EDITOR_FAIL") is not null)
+            _failNow = true;
         pollAssetFile();
         refreshAssetSelection();
         pollMovieFiles();
@@ -145,6 +176,7 @@ public sealed partial class MovieInspectorSession : IDisposable
         _application.StageRegion = EditorLayout.Preview(layout.Stage).Normalized(size.X, size.Y);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, Vector2.One);
         tree(layout.Targets, clips);
+        if (_failNow) { _failNow = false; throw new InvalidOperationException("test failure"); }
         inspector(layout.Inspector, player, clips, clips.FirstOrDefault(clip => clip.Path == _selected));
         bottom(layout.Tracks, player, clips);
         stage(layout.Stage, player, clips);
