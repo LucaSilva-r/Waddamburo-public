@@ -1,6 +1,6 @@
 # The engine as provider, movies as presentation (design draft)
 
-Status: **draft for discussion** (2026-11-12). Nothing here is built. It follows from
+Status: **accepted as the plan** (user, 2026-11-12; see Decision). Nothing here is built yet. It follows from
 [free-movies-plan.md](free-movies-plan.md) and decides how the engine and the movies talk once the engine's own
 movies are more than drop-in replacements.
 
