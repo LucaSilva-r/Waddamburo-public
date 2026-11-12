@@ -965,6 +965,10 @@ internal sealed class GameShell : IDisposable
                 Options.ScreenshotPath is null ? null : capture => ScreenshotWriter.Write(Options.ScreenshotPath, capture),
                 updateFrame: keyboard =>
                 {
+                    // Presses delivered between frames never reach tick's snapshot: traced here, for the tick to come.
+                    if (_traceInput)
+                        foreach (var press in keyboard.Presses)
+                            Console.WriteLine($"[input] {press.Key}@{Tick + 1}");
                     if (_effectsEditor is { } editor)
                     {
                         if (keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Escape))
