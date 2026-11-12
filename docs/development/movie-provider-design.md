@@ -90,6 +90,44 @@ Taken from what the gameplay hosts push today, renamed for what they mean rather
 Per-player values are namespaced by player (`play.N.score`) when two drums play; a movie placed for one drum reads
 its own without knowing its number (see Slots).
 
+## Scopes: what a movie can ask depends on what it is for (user, 2026-11-12)
+
+What data exists depends on the game's state: there is no player on the attract screen, no score in song select. So
+the provider is not one flat list. Names belong to **scopes**, a scope is live only while its state is, and a movie
+says which it is made for. The purpose of a movie decides what it may use, which also pushes a skin towards sensible
+choices.
+
+Scopes nest; an inner one has everything of the outer ones:
+
+| Scope | Live | Holds (examples) |
+| --- | --- | --- |
+| `app` | always | clock, credits and coin state, network status, the skin's own settings |
+| `session` | from the first player joining to the credit's end | `player.N.*`, songs played, the mode chosen |
+| a screen: `attract`, `entry`, `select`, `play`, `results` | while that screen is up | `select.cursor`, `play.score`, `results.*` |
+
+Modes do not multiply the screens. A mode **adds** names to a screen's scope: an AI battle adds `play.ai.*`, a dan
+course adds `play.dan.*`, Waiwai adds `play.voltage`. The names every mode shares mean the same in each. A movie that
+wants a mode's extras asks whether they are there (`Wd.has("play.ai")`) and is otherwise the same movie; one made
+only for a mode says so.
+
+A package declares what it needs in `movie.json`, by scope or by data:
+
+- A screen's own movie: `"for": "play"`.
+- A shared piece declares the data, not a screen: a name board has `"needs": ["player"]`, so it can go anywhere a
+  player exists (entry, select, play, results) and nowhere else.
+
+What that buys:
+
+- **The editor knows what exists.** It lists the names a movie may use, feeds a preview with sample data of that
+  scope, and refuses a name board in a slot of the attract screen with the reason: there is no player there.
+- **A wrong read is not a crash.** At run time a name outside the live scope reads as undefined and is logged once,
+  naming the movie. Mistakes show while authoring, not in a player's game.
+- **The adapter is scoped the same way**: the game's entry movie is fed by the entry scope's adapter and no other.
+
+The risk is confusion: too many scopes, or names that drift between them. Kept down by: few scopes (the table above
+is meant to be nearly all of them), modes only ever adding, one meaning per name everywhere, and the editor showing
+the list rather than a document having to be read.
+
 ## The game's movies: an adapter
 
 The game's movies keep working, unchanged, through an **adapter** that is itself just a subscriber:
@@ -165,6 +203,8 @@ Each step: name the data, move the game's host onto it, prove with logs, then le
 
 ## Open questions
 
+0. **The scope list itself.** Whether `session` is right as a level, where player setup at home belongs, and
+   whether results is its own scope or the tail of `play` (a results movie wants the play's numbers).
 1. **Shape of the script API.** A `Wd` object with `get` / `on` / `request` (above), or the game's style (callbacks
    registered through `ExternalInterface`, the engine calling them by name)? The second keeps one mechanism in the
    VM; the first reads better and needs no naming convention.
