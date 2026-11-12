@@ -92,6 +92,11 @@ its own without knowing its number (see Slots).
 
 ## Scopes: what a movie can ask depends on what it is for (user, 2026-11-12)
 
+**Scopes are a check, not a wall.** There is one API and every name is always callable; nothing is hidden or removed
+by mode. A scope only says when a name has a value. Outside it the name reads as undefined, and the editor and the
+language server warn where it is written. So the rule is enforced while authoring, and a mistake that gets through
+shows an empty field, not a broken movie.
+
 What data exists depends on the game's state: there is no player on the attract screen, no score in song select. So
 the provider is not one flat list. Names belong to **scopes**, a scope is live only while its state is, and a movie
 says which it is made for. The purpose of a movie decides what it may use, which also pushes a skin towards sensible
@@ -200,6 +205,13 @@ Each step: name the data, move the game's host onto it, prove with logs, then le
 - The data names are a promise to everyone who makes a skin; a wrong one is hard to take back. The API is versioned
   and starts small.
 - The first step is engine work with nothing new on screen except a widget.
+
+## Decision (user, 2026-11-12)
+
+This is the plan. The one reservation is the scopes: accepted because nothing else stops a name being used where it
+has no value, and on the condition that the editor makes them plain (which names are live, why one is not). The
+editor is therefore part of this work, not something after it. The open questions below are still open and are
+settled as each step reaches them.
 
 ## Open questions
 
