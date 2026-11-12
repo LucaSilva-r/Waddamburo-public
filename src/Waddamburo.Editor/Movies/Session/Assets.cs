@@ -82,7 +82,7 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) _navigateAssetFolder = folder.Id;
                 assetDropTarget(folder.Id);
                 folderContext(folder);
-                drawAssetTile(origin, size, folder.Name, "folder", "folder", null, null);
+                if (ImGui.IsItemVisible()) drawAssetTile(origin, size, folder.Name, "folder", "folder", null, null);
                 ImGui.PopID();
             }
             var entries = document.ReadOnly
@@ -101,7 +101,9 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.IsItemActive() && ImGui.IsMouseDragging(ImGuiMouseButton.Left) && !document.ReadOnly) _dragAsset = asset.Id;
                 assetContext(asset);
                 var icon = asset.Group switch { "textures" => "image", "shapes" => "shapes", "texts" => "type", _ => "clapperboard" };
-                drawAssetTile(origin, size, asset.Name, asset.Group[..^1], icon, asset.Group, document.Root[asset.Group]?[asset.Name]);
+                // Only what is in view is drawn: a big movie has thousands of assets, and a panel's drawing has a size limit
+                // (past it the whole panel comes out empty).
+                if (ImGui.IsItemVisible()) drawAssetTile(origin, size, asset.Name, asset.Group[..^1], icon, asset.Group, document.Root[asset.Group]?[asset.Name]);
                 ImGui.PopID();
             }
             if (entries.Length == 0 && !document.ReadOnly)

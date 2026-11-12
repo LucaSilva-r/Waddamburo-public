@@ -110,7 +110,8 @@ public sealed partial class MovieInspectorSession
                     changed = hierarchyMenu(clips, clip);
                     hierarchyReorder(clips, clip);
                 }
-                drawAssetIcon(icon, iconAt, 15, shown ? Text : Muted);
+                if (ImGui.IsRectVisible(iconAt, iconAt + new Vector2(15))) // thousands of rows: only the ones in view are drawn
+                    drawAssetIcon(icon, iconAt, 15, shown ? Text : Muted);
                 if (clip.Level > 0)
                 {
                     // The eye: out of the way while working (not saved).
