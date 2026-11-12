@@ -1346,7 +1346,7 @@ internal sealed class GameShell : IDisposable
             // The rainbow stays up across its scene switch (only a fade is cleared with it).
             return _home.Draw(held.Black && Overlay.IsShown
                 ? new RenderFrame(held.Frame.ClearColor,
-                    [.. Overlay.Quads(interpolation, Titles.Resolve), .. held.Frame.Quads], held.Frame.ContentAspectRatio)
+                    [.. Overlay.Quads(interpolation, ResolveSurface), .. held.Frame.Quads], held.Frame.ContentAspectRatio)
                 : held.Frame);
         }
         Titles.UploadCompleted();
@@ -1364,7 +1364,7 @@ internal sealed class GameShell : IDisposable
         var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
-                "Indicator", Titles.Resolve).Quads);
+                "Indicator", ResolveSurface).Quads);
         // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
         // collection expression's growing list plus RenderFrame's copy of it, every frame.
         var quads = _frameQuads;
@@ -1377,7 +1377,7 @@ internal sealed class GameShell : IDisposable
         if (_playerSetup is not null)
             quads.AddRange(_playerSetup.Quads(interpolation));
         quads.AddRange(indicatorQuads(false));
-        quads.AddRange(Overlay.Quads(interpolation, Titles.Resolve));
+        quads.AddRange(Overlay.Quads(interpolation, ResolveSurface));
         // The online lobby shades (frosts) Song Select, all but its Don-chans and name boards: those come again over it.
         var frosted = 0;
         if (Room.ShadesScene && Active.Id == FlowScenes.SongSelect)
@@ -1472,7 +1472,7 @@ internal sealed class GameShell : IDisposable
     {
         var network = _indicators is null ? []
             : SceneTextures.Compose(_indicators.CreateNetworkSnapshot(1), _indicatorTextures,
-                "Network", Titles.Resolve).Quads;
+                "Network", ResolveSurface).Quads;
         return new RenderFrame(RenderColor.Black, network, 1280d / 720d);
     }
 

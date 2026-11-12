@@ -301,7 +301,7 @@ internal sealed class HomeControls : IDisposable
         // The resume countdown is the layout's "timer" element, drawn on the stage (squeezed with it on a 4:3 screen).
         var extra = (_resume is { Running: true } countdown
                 ? SceneTextures.Compose(countdown.CreateSnapshot(1, layer => _shell.Gameplay.PlaceOverlay(layer, "timer")),
-                    _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
+                    _resumeTextures, "Resume", _shell.ResolveSurface).Quads
                 : [])
             .Concat(_shell.Unsqueezed(Enumerable.Empty<RenderQuad>()
             .Concat(_settingsOverlay && _shell.Service is { } settings ? settings.Quads()
