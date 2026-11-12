@@ -31,8 +31,13 @@ public static class WdNames
         new("play.bad", WdKind.State, "number", "play", "Notes missed."),
         new("play.accuracy", WdKind.State, "number", "play", "0 to 1: GOOD counts whole, OK half, of the notes judged so far; 1 before the first."),
         new("play.course", WdKind.State, "text", "play", "easy, normal, hard, oni or ura."),
+        new("play.goGo", WdKind.State, "bool", "play", "Go-Go Time is on."),
+        new("play.roll", WdKind.State, "number", "play", "Hits on the drumroll under way; no value when there is none."),
+        new("play.balloon", WdKind.State, "number", "play", "Hits the balloon under way still needs; no value when there is none."),
+        new("play.progress", WdKind.State, "number", "play", "How far through the song, 0 to 1, in hundredths."),
         new("note.judged", WdKind.Event, "result: text (good, ok, bad), big: bool", "play", "A note of this drum was hit or missed."),
         new("combo.milestone", WdKind.Event, "combo: number", "play", "The combo reached a hundred."),
+        new("song.ended", WdKind.Event, "cleared: bool, fullCombo: bool", "play", "The song is over and its result is known."),
     ];
 
     private static readonly ImmutableDictionary<string, WdName> ByName = All.ToImmutableDictionary(static name => name.Name, StringComparer.Ordinal);

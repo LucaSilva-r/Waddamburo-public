@@ -583,9 +583,17 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _danSongEnds = danSongEnds;
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
+            var published = new Dictionary<string, LumenHostValue>(StringComparer.Ordinal);
             void publish(string name, LumenHostValue value)
             {
+                if (published.TryGetValue(name, out var before) && before == value)
+                    return; // most ticks nothing changed: not worth a walk over the lane's movies
+                published[name] = value;
                 foreach (var layer in layers.Values) layer.Player.Publish(name, value);
+            }
+            void emit(string name, params ReadOnlySpan<LumenHostValue> arguments)
+            {
+                foreach (var layer in layers.Values) layer.Player.Emit(name, arguments);
             }
             void publishPlay()
             {
@@ -603,12 +611,19 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             }
             publish("play.course", LumenHostValue.FromString(course.ToString().ToLowerInvariant()));
             publish("play.gaugeClearLine", LumenHostValue.FromNumber((double)gauge.Clear / TaikoSoulGauge.Max));
+            publish("play.goGo", LumenHostValue.FromBoolean(false));
             publishPlay();
             var bannerTime = TaikoResultBanner.Time(chart);
             EndBanner = endBanner;
             var bannerShown = false;
             _onChartTime = time =>
             {
+                var under = _longNotes.Active;
+                publish("play.roll", under is { Balloon: false } roll ? LumenHostValue.FromNumber(roll.Count) : LumenHostValue.Undefined);
+                publish("play.balloon", under is { Balloon: true } balloon ? LumenHostValue.FromNumber(balloon.Count) : LumenHostValue.Undefined);
+                // In hundredths: a bar does not need more, and a movie is not told sixty times a second.
+                publish("play.progress", LumenHostValue.FromNumber(
+                    Math.Round(Math.Clamp(time / TaikoResultBanner.Time(chart), 0, 1), 2)));
                 // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
                 danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
                     great, good, miss, maxCombo, score.RollHits + score.BalloonHits, score.Value);
@@ -630,6 +645,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false, danSongEnds)
                     : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
                 if (banner is not null) label(banner, TaikoResultBanner.Label(cleared, !missed));
+                emit("song.ended", LumenHostValue.FromBoolean(cleared), LumenHostValue.FromBoolean(cleared && !missed));
                 sound(!cleared ? GameplaySoundEvent.FailBanner
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
                 if (cleared && !missed) _character?.React("don_full_combo");
@@ -710,16 +726,14 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 publishPlay();
                 if (!judgement.StrongHitCompleted && judgement.Result is { } told)
                 {
-                    foreach (var layer in layers.Values)
-                        layer.Player.Emit("note.judged", LumenHostValue.FromString(told switch
-                        {
-                            TaikoHitResult.Great => "good",
-                            TaikoHitResult.Good => "ok",
-                            _ => "bad",
-                        }), LumenHostValue.FromBoolean(judgement.HitObject.IsStrong));
+                    emit("note.judged", LumenHostValue.FromString(told switch
+                    {
+                        TaikoHitResult.Great => "good",
+                        TaikoHitResult.Good => "ok",
+                        _ => "bad",
+                    }), LumenHostValue.FromBoolean(judgement.HitObject.IsStrong));
                     if (score.Combo > 0 && score.Combo % 100 == 0)
-                        foreach (var layer in layers.Values)
-                            layer.Player.Emit("combo.milestone", LumenHostValue.FromNumber(score.Combo));
+                        emit("combo.milestone", LumenHostValue.FromNumber(score.Combo));
                 }
             };
             // A reviewed play shows the baked state of its moment: the score, combo and gauge are set
@@ -830,6 +844,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             hitRadius = _presentation.HitRadius;
             _presentation.GoGoChanged += active =>
             {
+                publish("play.goGo", LumenHostValue.FromBoolean(active));
                 if (active && goGoSplash is not null) label(goGoSplash, "splash");
                 _character?.SetBalloonVisible(_longNotes.BalloonVisible);
                 _character?.SetGoGo(active);
