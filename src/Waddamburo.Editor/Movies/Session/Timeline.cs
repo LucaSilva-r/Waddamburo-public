@@ -115,6 +115,12 @@ public sealed partial class MovieInspectorSession
             _frameWidth = 0;
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show the whole timeline.\nCtrl+wheel over the rows: zoom at the pointer. Shift+wheel: scroll sideways.");
 
+        // So does a click on nothing in the timeline's header.
+        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !ImGui.IsAnyItemHovered())
+        {
+            _keys.Clear();
+            _key = null;
+        }
         ImGui.BeginChild("##timeline rows", Vector2.Zero, ImGuiChildFlags.None, ImGuiWindowFlags.HorizontalScrollbar);
         var draw = ImGui.GetWindowDrawList();
         var origin = ImGui.GetCursorScreenPos();
@@ -324,6 +330,12 @@ public sealed partial class MovieInspectorSession
             if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _keyBox = null;
         }
         if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _keyGrab = null;
+        // A click on nothing (under the rows) lets go of the keys.
+        if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !ImGui.IsAnyItemHovered())
+        {
+            _keys.Clear();
+            _key = null;
+        }
         if (!stale && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem) && !ImGui.GetIO().WantTextInput && !_document!.ReadOnly)
         {
             var control = ImGui.GetIO().KeyCtrl;

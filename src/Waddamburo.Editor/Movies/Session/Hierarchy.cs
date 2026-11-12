@@ -141,6 +141,9 @@ public sealed partial class MovieInspectorSession
                 else if (ImGui.IsKeyPressed(ImGuiKey.F2, false)) startRename(active);
             }
             if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _hierarchyDrag = null;
+            // A click on nothing in the list selects nothing.
+            if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !ImGui.IsAnyItemHovered())
+                selectClip(null);
             ImGui.EndChild();
         }
         ImGui.End();

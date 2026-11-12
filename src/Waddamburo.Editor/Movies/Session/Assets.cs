@@ -114,6 +114,9 @@ public sealed partial class MovieInspectorSession
         if (!document.ReadOnly && ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !ImGui.GetIO().WantTextInput
             && ImGui.IsKeyPressed(ImGuiKey.F2) && document.Assets().FirstOrDefault(asset => asset.Id == _selectedAssetId) is { } renameAsset)
             requestAssetDialog(AssetDialog.RenameAsset, renameAsset.Name, renameAsset.Id);
+        // A click on nothing in the browser selects nothing.
+        if (!tileHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows))
+            _selectedAsset = _selectedAssetId = null;
         // EndTable registers its full rectangle as an item, including empty cells. Only tiles block this menu.
         if (!tileHovered && ImGui.IsMouseReleased(ImGuiMouseButton.Right)
             && ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
