@@ -114,6 +114,8 @@
   "settings.retry_hold.value": "{0} ms",
   "settings.retry_hold.instant": "即時",
   "settings.retry_hold.hint": "リトライキー (Q) を押し続けてから曲がやり直しになるまでの時間です。",
+  "settings.hide_tutorials": "説明フォルダーを非表示",
+  "settings.hide_tutorials.hint": "HOMEモードの説明フォルダーを非表示にします。アーケードではクレジットごとに再表示されます。",
   "settings.record_performance": "パフォーマンス記録",
   "settings.record_performance.hint": "オフにするかゲームを閉じるまで、パフォーマンスの記録（フレーム時間、CPU とメモリの使用量）を logs フォルダに書き出します。動作が重いときの報告に添えてください。",
   "settings.stereo_panning": "ステレオ定位",

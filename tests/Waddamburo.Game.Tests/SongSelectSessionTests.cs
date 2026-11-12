@@ -363,7 +363,10 @@ public sealed class SongSelectSessionTests
         Assert.Equal(SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
             view.Categories[0].Presentation);
         Assert.Equal(-1, new SongSelectCatalogView(snapshot).TutorialCategory);
-        Assert.Equal(-1, new SongSelectCatalogView(snapshot, SongSelectMode.Waiwai, tutorial: true).TutorialCategory);
+        var waiwai = new SongSelectCatalogView(snapshot, SongSelectMode.Waiwai, tutorial: true);
+        Assert.True(waiwai.TutorialCategory >= 0);
+        Assert.Equal(SongSelectCatalogView.WaiwaiTutorialLabel, waiwai.Categories[waiwai.TutorialCategory].AuthoredLabel);
+        Assert.Empty(waiwai.Categories[waiwai.TutorialCategory].Songs);
     }
 
     [Fact]

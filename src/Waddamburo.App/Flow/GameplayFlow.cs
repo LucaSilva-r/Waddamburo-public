@@ -971,9 +971,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             // An abandoned song gives its stage back: Song Select counts it again when the next one starts (#21).
             if (input.Escape && !Shell.Arcade.Home && Shell.Players.SongsPlayed > 0)
             {
-                var tutorialSeen = Shell.Hosts.TutorialSeen; // back at 0 would offer the tutorial again
+                var tutorialSeen = Shell.Hosts.TutorialSeen; // Giving a stage back is not a new credit.
+                var waiwaiTutorialSeen = Shell.Hosts.WaiwaiTutorialSeen;
+                var aiTutorialSeen = Shell.Hosts.AiTutorialSeen;
                 Shell.Players.SongsPlayed--;
                 Shell.Hosts.TutorialSeen = tutorialSeen;
+                Shell.Hosts.WaiwaiTutorialSeen = waiwaiTutorialSeen;
+                Shell.Hosts.AiTutorialSeen = aiTutorialSeen;
             }
             end(finished: !input.Escape || Shell.Arcade.Home);
         }

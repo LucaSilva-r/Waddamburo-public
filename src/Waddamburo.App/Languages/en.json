@@ -114,6 +114,8 @@
   "settings.retry_hold.value": "{0} ms",
   "settings.retry_hold.instant": "Instant",
   "settings.retry_hold.hint": "How long the retry key (Q) is held before the song restarts.",
+  "settings.hide_tutorials": "Hide tutorial folders",
+  "settings.hide_tutorials.hint": "Hide tutorial folders in HOME mode. Arcade tutorials are available again each credit.",
   "settings.record_performance": "Record Performance",
   "settings.record_performance.hint": "Writes a performance report (frame times, CPU and memory use) to the logs folder until turned off or the game closes. Send it with a performance problem.",
   "settings.stereo_panning": "Stereo Panning",

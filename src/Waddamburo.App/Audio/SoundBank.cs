@@ -124,6 +124,27 @@ internal sealed class SoundBank
         }
     }
 
+    private AudioPlaybackHandle? _tutorialMusic;
+
+    public Action? PrepareTutorialMusic(string name)
+    {
+        if (Path.GetFileName(name) != name) return null;
+        try
+        {
+            var clip = AudioClip.Load(Path.Combine(_musicRoot, name + ".nub"), _audio.Mixer.Format, TimeSpan.FromMinutes(2));
+            return () =>
+            {
+                if (_tutorialMusic is { } previous) _audio.Mixer.Stop(previous);
+                _tutorialMusic = _audio.Mixer.Play(clip, AudioBus.Bgm, loop: name != "JINGLE_SILENCE");
+            };
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
+        {
+            Console.Error.WriteLine($"Tutorial music {name} unavailable: {exception.Message}");
+            return null;
+        }
+    }
+
     public bool IsPlaying(AudioPlaybackHandle? handle) => handle is { } value && _audio.Mixer.IsPlaying(value);
 
     /// <summary>Fades a track out (20 ms).</summary>

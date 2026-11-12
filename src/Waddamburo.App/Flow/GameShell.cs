@@ -842,6 +842,8 @@ internal sealed class GameShell : IDisposable
         [FlowScenes.Entry] = entry,
         [FlowScenes.SongSelect] = songSelect,
         [FlowScenes.Tutorial] = songSelect,
+        [FlowScenes.WaiwaiTutorial] = songSelect,
+        [FlowScenes.AiTutorial] = songSelect,
         [FlowScenes.DaniSelect] = songSelect,
         [FlowScenes.Gameplay] = gameplay,
         [FlowScenes.Calibration] = calibration,
@@ -895,10 +897,14 @@ internal sealed class GameShell : IDisposable
             StartScene.Retry => FlowScenes.Retry,
             StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,
             StartScene.AiRemind => FlowScenes.AiRemind,
+            StartScene.WaiwaiTutorial => FlowScenes.WaiwaiTutorial,
+            StartScene.AiTutorial => FlowScenes.AiTutorial,
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
         };
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
+        if (Options.StartScene == StartScene.WaiwaiTutorial) Hosts.Waiwai = true;
+        if (Options.StartScene == StartScene.AiTutorial) Hosts.AiBattle = true;
         if (Options.StartScene == StartScene.AiSongSelect)
             Players.ChooseMode(aiBattle: true);
         _boot?.Begin("SYSTEM SETUP");

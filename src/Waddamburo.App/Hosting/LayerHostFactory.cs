@@ -135,6 +135,9 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
     public bool TutorialSeen { get; set; }
+    public bool WaiwaiTutorialSeen { get; set; }
+    public bool AiTutorialSeen { get; set; }
+    public ModeTutorialHostBinding? ModeTutorial { get; private set; }
 
     /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
     public DanCourses? Dan { get; set; }
@@ -365,6 +368,9 @@ internal sealed class LayerHostFactory(
             "waitinput" => new LumenLayerHost(null), // the game never calls its Start (traced)
             "retry" => retryHost(),
             "tutorial" => tutorialHost(),
+            "waiwai-tutorial" => modeTutorialHost(false),
+            "ai-tutorial" => modeTutorialHost(true),
+            "ai-tutorial-timer" => new LumenLayerHost(null, movie => ModeTutorial?.AttachTimer(movie)),
             "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
             "attract" => attractHost(),
@@ -427,7 +433,7 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
             // AI battle: the current library's songs, without the folders leading to the others.
-            links: AiBattle ? [] : linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: !AiBattle && !TutorialSeen && HomeTutorialSeen?.Invoke() != true,
+            links: AiBattle ? [] : linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: HomeTutorialSeen?.Invoke() != true && !(AiBattle ? AiTutorialSeen : Waiwai ? WaiwaiTutorialSeen : TutorialSeen),
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: !AiBattle && Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,
@@ -586,6 +592,16 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost retryHost()
     {
         var binding = Retry = new RetryGameHostBinding(don, sounds?.Retry);
+        return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    private LumenLayerHost modeTutorialHost(bool aiBattle)
+    {
+        Action? music = null;
+        var binding = ModeTutorial = new ModeTutorialHostBinding(aiBattle, PlayerSide, TwoPlayers,
+            sounds is null ? null : sounds.Frontend.PlayCue,
+            name => (music = sounds?.Bank.PrepareTutorialMusic(name)) is not null,
+            () => music?.Invoke(), counting);
         return new LumenLayerHost(binding, binding.Attach);
     }
 

@@ -1794,6 +1794,9 @@ public sealed class LumenPlayer
         bool boolean => LumenHostValue.FromBoolean(boolean),
         double number => LumenHostValue.FromNumber(number),
         string text => LumenHostValue.FromString(text),
+        Avm1Object script => LumenHostValue.FromObject(script.Properties
+            .Where(static field => field.Value is null or bool or double or string)
+            .ToDictionary(static field => field.Key, static field => toHostValue(field.Value), StringComparer.Ordinal)),
         _ => LumenHostValue.Undefined,
     };
 
@@ -1804,8 +1807,16 @@ public sealed class LumenPlayer
         LumenHostValueKind.Boolean => value.AsBoolean(),
         LumenHostValueKind.Number => value.AsNumber(),
         LumenHostValueKind.Text => value.AsString(),
+        LumenHostValueKind.Fields => hostFields(value),
         _ => Avm1Undefined.Instance,
     };
+
+    private static Avm1Object hostFields(LumenHostValue value)
+    {
+        var result = new Avm1Object();
+        foreach (var field in value.AsObject()) result.Properties[field.Key] = fromHostValue(field.Value);
+        return result;
+    }
 
     private Avm1Lookup invokeFunction(
         DisplayInstance timelineTarget,

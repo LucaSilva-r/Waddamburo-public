@@ -25,6 +25,8 @@ internal static class FlowScenes
     public static readonly SceneId GameOver = new("gameover");
     public static readonly SceneId AiRemind = new("ai-remind");
     public static readonly SceneId Tutorial = new("tutorial");
+    public static readonly SceneId WaiwaiTutorial = new("waiwai-tutorial");
+    public static readonly SceneId AiTutorial = new("ai-tutorial");
     public static readonly SceneId DaniSelect = new("dani-select");
 
     // Traced session30: the game plays this as Song Select ends and sends it out once dani_select has loaded.
@@ -121,6 +123,14 @@ internal static class FlowScenes
         // Traced: the how-to-play folder cuts straight to the tutorial movie, full screen.
         new SceneDefinition(SceneDefinition.CurrentVersion, Tutorial, [
             new SceneLayerDefinition("tutorial/packeddata.ddp", "tutorial/tutorial.lm", LumenMatrix.Identity, "tutorial"),
+        ]),
+        new SceneDefinition(SceneDefinition.CurrentVersion, WaiwaiTutorial, [
+            new SceneLayerDefinition("waiwai_tutorial/packeddata.ddp", "waiwai_tutorial/waiwai_tutorial.lm", LumenMatrix.Identity, "waiwai-tutorial"),
+        ]),
+        new SceneDefinition(SceneDefinition.CurrentVersion, AiTutorial, [
+            new SceneLayerDefinition("ghost/common_bg/packeddata.ddp", "common_bg/common_bg.lm", LumenMatrix.Identity, "ai-remind-bg"),
+            new SceneLayerDefinition("ghost/tutorial/packeddata.ddp", "tutorial/tutorial.lm", LumenMatrix.Identity, "ai-tutorial"),
+            new SceneLayerDefinition("indicator/packeddata.ddp", "time_counter/time_counter.lm", LumenMatrix.Identity, "ai-tutorial-timer"),
         ]),
         DaniSelectScene(0),
         NormalGameOver,
