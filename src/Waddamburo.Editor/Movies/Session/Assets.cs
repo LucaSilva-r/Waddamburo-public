@@ -201,10 +201,10 @@ public sealed partial class MovieInspectorSession
     }
 
     /// <summary>A button showing one of the editor's icons; what it does is said on hover.</summary>
-    private bool iconButton(string icon, string hint, bool active = false, string? id = null, float size = 26, bool plain = false)
+    private bool iconButton(string icon, string hint, bool active = false, string? id = null, float size = 26, bool plain = false, Vector4? accent = null)
     {
         var start = ImGui.GetCursorScreenPos();
-        if (active) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(.28f, .40f, .54f, 1));
+        if (active) ImGui.PushStyleColor(ImGuiCol.Button, accent ?? new Vector4(.28f, .40f, .54f, 1));
         else if (plain) ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
         var pressed = ImGui.Button("##icon " + (id ?? icon), new(size + 4, size));
         if (active || plain) ImGui.PopStyleColor();

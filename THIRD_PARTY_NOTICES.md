@@ -89,13 +89,13 @@ Inter Regular 4.0, copyright The Inter Project Authors, SIL Open Font License 1.
 
 ## Lucide editor icons
 
-The movie editor embeds these SVGs (`circle-dot`, `clapperboard`, `eye-off`, `eye`, `file-code`, `folder`, `image`, `maximize`, `move`, `pause`, `play`, `plus`, `rotate-cw`, `scaling`, `search`, `shapes`, `skip-back`, `skip-forward`, `square-dashed-mouse-pointer`, `step-back`, `step-forward`, `type`) from [Lucide](https://github.com/lucide-icons/lucide/tree/03eae6069edfc373673bd05d723491f05ba936e3/icons), revision `03eae6069edfc373673bd05d723491f05ba936e3`. Copyright (c) 2026 Lucide Icons and Contributors, ISC License; inherited Feather icons also carry the MIT notice, copyright (c) 2013-present Cole Bemis. The complete upstream license is shipped as `eng/packaging/licenses/Lucide.txt`.
+The movie editor embeds these SVGs (`circle`, `clapperboard`, `eye-off`, `eye`, `file-code`, `folder`, `image`, `maximize`, `move`, `pause`, `play`, `plus`, `rotate-cw`, `scaling`, `search`, `shapes`, `skip-back`, `skip-forward`, `square-dashed-mouse-pointer`, `step-back`, `step-forward`, `type`) from [Lucide](https://github.com/lucide-icons/lucide/tree/03eae6069edfc373673bd05d723491f05ba936e3/icons), revision `03eae6069edfc373673bd05d723491f05ba936e3`. Copyright (c) 2026 Lucide Icons and Contributors, ISC License; inherited Feather icons also carry the MIT notice, copyright (c) 2013-present Cole Bemis. The complete upstream license is shipped as `eng/packaging/licenses/Lucide.txt`.
 
 Original SVGs are stored unchanged in `src/Waddamburo.Editor/Resources/Lucide/`. SHA-256:
 
 | File | SHA-256 |
 | --- | --- |
-| `circle-dot.svg` | `c263f6a08a089c06ad40f408ad5da9100359ab52d379e6c571cd7c5bd74eaa87` |
+| `circle.svg` | `3a991bd47beaf9874fba6fdf87bbba442970a89b5e6aa391558bc8b0a00a0513` |
 | `clapperboard.svg` | `e4d78946cda7812f13c431c68b6d4d0077a92217c7f468667a203f237e247d7e` |
 | `eye-off.svg` | `774bcd975c5de781a4ee778c76e5591bcdeb409955f7054847e7e6003da0a520` |
 | `eye.svg` | `5bf90197dd7629cad64a2e48d1186a71559deb6121207d10e3dc5b19ebaffdcf` |

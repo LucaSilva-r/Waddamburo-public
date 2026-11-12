@@ -19,7 +19,7 @@ public sealed partial class MovieInspectorSession
         ImGui.BeginDisabled(_move is not null);
         void tool(int mode, string icon, string label)
         {
-            if (iconButton(icon, label, active: _stageTool == mode)) _stageTool = mode;
+            if (iconButton(icon, label, active: _stageTool == mode, accent: new Vector4(.2f, .5f, .3f, 1))) _stageTool = mode;
         }
         tool(3, "square-dashed-mouse-pointer", "Free transform (Q): drag inside to move, the squares to scale, the knob on top to turn.\nShift: one axis / keep proportions / 15 degree steps. Alt: scale about the pivot. Ctrl: no snapping.");
         ImGui.SameLine();
@@ -29,9 +29,9 @@ public sealed partial class MovieInspectorSession
         ImGui.SameLine();
         tool(2, "scaling", "Scale (R): drag handles. Shift preserves proportions; Alt scales around the pivot.");
         ImGui.SameLine(0, 14);
-        if (iconButton("circle-dot", _autoKey
+        if (iconButton("circle", _autoKey
                 ? "Auto key is on: changing something makes a key on the current frame.\nMove the playhead, move the thing, and it animates."
-                : "Auto key is off: changing something moves its whole animation; no key is added.", active: _autoKey))
+                : "Auto key is off: changing something moves its whole animation; no key is added.", active: _autoKey, accent: new Vector4(.78f, .16f, .16f, 1)))
             _autoKey = !_autoKey;
         ImGui.EndDisabled();
         // Transport in the middle, as the timeline may be out of sight; the view's zoom on the right.

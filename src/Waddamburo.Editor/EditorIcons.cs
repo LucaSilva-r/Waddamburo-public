@@ -9,7 +9,7 @@ public static class EditorIcons
     [
         "folder", "image", "shapes", "clapperboard", "type",
         "skip-back", "step-back", "play", "pause", "step-forward", "skip-forward",
-        "eye", "eye-off", "move", "rotate-cw", "scaling", "maximize", "file-code", "plus", "search", "circle-dot", "square-dashed-mouse-pointer",
+        "eye", "eye-off", "move", "rotate-cw", "scaling", "maximize", "file-code", "plus", "search", "circle", "square-dashed-mouse-pointer",
     ];
 
     public static byte[] Svg(string name)

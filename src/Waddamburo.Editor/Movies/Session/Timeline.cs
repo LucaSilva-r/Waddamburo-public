@@ -105,8 +105,8 @@ public sealed partial class MovieInspectorSession
         if (_key is { } chosen && chosen.Sprite == name)
         {
             ImGui.SameLine();
-            if (ImGui.Button("Remove key") || (!ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Delete, false)))
-                removeKey(layers, chosen);
+            if (ImGui.Button(_keys.Count > 1 ? $"Remove {_keys.Count} keys" : "Remove key"))
+                deleteKeys(layers);
         }
 
         ImGui.SameLine();
@@ -152,105 +152,319 @@ public sealed partial class MovieInspectorSession
         ImGui.PopClipRect();
         var headerHeight = RowHeight + labelHeight;
 
-        for (var index = 0; index < layers.Count; index++)
+        if (_keysSprite != name)
+        {
+            _keys.Clear();
+            _keysSprite = name;
+        }
+        // Rows: a layer, then (opened) one per channel its keys change.
+        var rows = new List<(float Top, int Layer, string? Channel, int[] Frames)>();
+        var stale = false; // The document changed under this loop: the rest is drawn next frame.
+        var selectedLayer = -1;
+        var rowTop = origin.Y + headerHeight;
+        var mouse = ImGui.GetIO().MousePos;
+        for (var index = 0; index < layers.Count && !stale; index++)
         {
             if (layers[index] is not JsonObject layer)
                 continue;
-            var top = origin.Y + headerHeight + RowHeight * index;
-            var keys = layer["keys"]!.AsArray().OfType<JsonObject>().Select(static key => (int)key["frame"]!).Order().ToArray();
+            var layerKeys = layer["keys"]!.AsArray().OfType<JsonObject>().OrderBy(static key => (int)key["frame"]!).ToArray();
+            var keys = layerKeys.Select(static key => (int)key["frame"]!).ToArray();
             var until = Math.Min((int?)layer["until"] ?? frames, frames);
             var depth = (int?)layer["depth"] ?? index + 1;
             var path = clip.Path.Length == 0 ? $"{LumenPlayer.TimelineDepthBase + depth}" : $"{clip.Path}/{LumenPlayer.TimelineDepthBase + depth}";
-            draw.AddRectFilled(new(origin.X, top), new(origin.X + NameColumn + width, top + RowHeight), index % 2 == 0 ? Row : RowOdd);
-            ImGui.PushClipRect(trackMin, trackMax, true);
-            if (keys.Length > 0)
-                draw.AddRectFilled(new(x(keys[0]), top + 7), new(x(until), top + RowHeight - 7), Life);
-            foreach (var key in keys)
+            if (path == _selected) selectedLayer = index;
+            var open = _expanded.Contains((name, index));
+            // A channel is listed when a key changes it; its keys are the ones where it changes.
+            var channels = open ? Channels.Where(channel => layerKeys.Select(key => channelValue(key, channel).ToJsonString()).Distinct().Count() > 1
+                || channelValue(layerKeys[0], channel).ToJsonString() != channelValue([], channel).ToJsonString()).ToArray() : [];
+            for (var line = 0; line <= channels.Length && !stale; line++)
             {
-                var centre = new Vector2(x(key) + step / 2, top + RowHeight / 2);
-                var chosenKey = _key == (name, index, key);
-                draw.AddQuadFilled(centre + new Vector2(0, -6), centre + new Vector2(5, 0), centre + new Vector2(0, 6), centre + new Vector2(-5, 0),
-                    chosenKey ? KeySelected : KeyColour);
-            }
-            ImGui.PopClipRect();
-
-            // The name selects the layer's clip; right-click for what can be done with the layer.
-            draw.AddRectFilled(new(names, top), new(names + NameColumn, top + RowHeight), index % 2 == 0 ? Row : RowOdd);
-            ImGui.SetCursorScreenPos(new(names + 6, top + 1));
-            var character = (string?)layer["character"] ?? "?";
-            var title = (string?)layer["name"] is { Length: > 0 } instance && instance != character ? $"{instance}  ({character})" : character;
-            if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.AllowDoubleClick, new(NameColumn - 12, RowHeight - 4)))
-                selectClip(path);
-            if (ImGui.BeginPopupContextItem($"##layer menu {index}"))
-            {
-                selectClip(path);
-                var at = index;
-                var removed = false;
-                if (ImGui.MenuItem("Key on this frame", "double-click the row", false, !_document!.ReadOnly && !keys.Contains(clip.Frame)))
-                    edited(() => _document.Edit(_ => MovieDocument.KeyAt(layer, clip.Frame)));
-                if (ImGui.MenuItem("Rename", "F2", false, !_document.ReadOnly))
-                    _focusName = true;
-                if (ImGui.MenuItem("Duplicate layer", "", false, !_document.ReadOnly))
-                    removed = attempt(() => _document.DuplicateLayer(name, at));
-                ImGui.Separator();
-                if (ImGui.MenuItem("Delete layer", "", false, !_document.ReadOnly))
+                var channel = line == 0 ? null : channels[line - 1];
+                var top = rowTop;
+                rowTop += RowHeight;
+                var shown = channel is null ? keys : [.. layerKeys.Where((key, at) => at == 0
+                    || channelValue(key, channel).ToJsonString() != channelValue(layerKeys[at - 1], channel).ToJsonString()).Select(static key => (int)key["frame"]!)];
+                rows.Add((top, index, channel, shown));
+                var shade = channel is not null ? RowChannel : index % 2 == 0 ? Row : RowOdd;
+                draw.AddRectFilled(new(origin.X, top), new(origin.X + NameColumn + width, top + RowHeight), shade);
+                ImGui.PushClipRect(trackMin, trackMax, true);
+                if (channel is null && keys.Length > 0)
+                    draw.AddRectFilled(new(x(keys[0]), top + 7), new(x(until), top + RowHeight - 7), Life);
+                foreach (var key in shown)
                 {
-                    edited(() => _document.Edit(_ => layers.RemoveAt(at)));
-                    removed = true;
+                    var centre = new Vector2(x(key) + step / 2, top + RowHeight / 2);
+                    var size = channel is null ? 6f : 4.5f;
+                    // A whole key lights up its channels too.
+                    var chosenKey = _keys.Contains((index, key, channel)) || channel is not null && _keys.Contains((index, key, null));
+                    draw.AddQuadFilled(centre + new Vector2(0, -size), centre + new Vector2(size - 1, 0), centre + new Vector2(0, size), centre + new Vector2(1 - size, 0),
+                        chosenKey ? KeySelected : KeyColour);
                 }
-                ImGui.EndPopup();
-                if (removed) break;
-            }
-            var child = clips.FirstOrDefault(each => each.Path == path && each.Kind == LumenInstanceKind.Sprite);
-            if (child is not null && ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("Select: inspect this layer. Double-click: open its child timeline.");
-                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) openInstanceTimeline(path);
-            }
+                ImGui.PopClipRect();
 
-            // The row: a click on a key selects it, a drag moves it, a double click on empty space makes one.
-            ImGui.SetCursorScreenPos(new(origin.X + NameColumn, top));
-            ImGui.InvisibleButton($"##row {index}", new(width, RowHeight));
-            var under = frameAt(ImGui.GetIO().MousePos.X);
-            if (ImGui.IsItemActivated())
-            {
-                selectClip(path);
-                // The nearest key within a few pixels, so thin frames can still be grabbed.
-                var near = keys.OrderBy(key => Math.Abs(x(key) + step / 2 - ImGui.GetIO().MousePos.X)).Cast<int?>().FirstOrDefault();
-                _key = near is { } hit && Math.Abs(x(hit) + step / 2 - ImGui.GetIO().MousePos.X) <= Math.Max(step / 2, 6) ? (name, index, hit) : null;
-                _keyDrag = false;
-                player.InspectGoto(clip.Path, _key?.Frame ?? under, clip.Playing);
-                Paused = true;
+                draw.AddRectFilled(new(names, top), new(names + NameColumn, top + RowHeight), shade);
+                if (channel is not null)
+                    draw.AddText(new(names + 34, top + 3), Muted, ChannelNames[Array.IndexOf(Channels, channel)]);
+                else
+                {
+                    // The arrow opens the layer's channels; the name selects its clip; right-click for the layer's menu.
+                    ImGui.SetCursorScreenPos(new(names + 2, top + 2));
+                    ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+                    ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(1, 0));
+                    if (ImGui.ArrowButton($"##channels {index}", open ? ImGuiDir.Down : ImGuiDir.Right) && !_expanded.Remove((name, index)))
+                        _expanded.Add((name, index));
+                    ImGui.PopStyleVar();
+                    ImGui.PopStyleColor();
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show what its keys animate, a row each: position, scale, rotation, opacity, tint.");
+                    ImGui.SetCursorScreenPos(new(names + 24, top + 1));
+                    var character = (string?)layer["character"] ?? "?";
+                    var title = (string?)layer["name"] is { Length: > 0 } instance && instance != character ? $"{instance}  ({character})" : character;
+                    if (ImGui.Selectable($"{title}##layer {index}", _selected == path, ImGuiSelectableFlags.AllowDoubleClick, new(NameColumn - 30, RowHeight - 4)))
+                        selectClip(path);
+                    if (ImGui.BeginPopupContextItem($"##layer menu {index}"))
+                    {
+                        selectClip(path);
+                        var at = index;
+                        if (ImGui.MenuItem("Key on this frame", "double-click the row", false, !_document!.ReadOnly && !keys.Contains(clip.Frame)))
+                        {
+                            edited(() => _document.Edit(_ => MovieDocument.KeyAt(layer, clip.Frame)));
+                            stale = true;
+                        }
+                        if (ImGui.MenuItem("Rename", "F2", false, !_document.ReadOnly))
+                            _focusName = true;
+                        if (ImGui.MenuItem("Duplicate layer", "", false, !_document.ReadOnly))
+                            stale = attempt(() => _document.DuplicateLayer(name, at));
+                        ImGui.Separator();
+                        if (ImGui.MenuItem("Delete layer", "", false, !_document.ReadOnly))
+                        {
+                            edited(() => _document.Edit(_ => layers.RemoveAt(at)));
+                            _keys.Clear();
+                            stale = true;
+                        }
+                        ImGui.EndPopup();
+                        if (stale) break;
+                    }
+                    var child = clips.FirstOrDefault(each => each.Path == path && each.Kind == LumenInstanceKind.Sprite);
+                    if (child is not null && ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                        openInstanceTimeline(path);
+                }
+
+                // The track: click a key to select it (Shift adds), drag to move the selected keys, drag on empty space
+                // for a selection box, double-click empty space for a key.
+                ImGui.SetCursorScreenPos(new(origin.X + NameColumn, top));
+                ImGui.InvisibleButton($"##row {index} {channel}", new(width, RowHeight));
+                var under = frameAt(mouse.X);
+                if (ImGui.IsItemActivated())
+                {
+                    selectClip(path);
+                    selectedLayer = index;
+                    // The nearest key within a few pixels, so thin frames can still be grabbed.
+                    var near = shown.OrderBy(key => Math.Abs(x(key) + step / 2 - mouse.X)).Cast<int?>().FirstOrDefault();
+                    var hit = near is { } found && Math.Abs(x(found) + step / 2 - mouse.X) <= Math.Max(step / 2, 6) ? near : null;
+                    var shift = ImGui.GetIO().KeyShift;
+                    _keyDrag = false;
+                    _keyGrab = null;
+                    if (hit is { } frame)
+                    {
+                        var entry = (index, frame, channel);
+                        if (shift && !_keys.Add(entry)) _keys.Remove(entry);
+                        else if (!shift && !_keys.Contains(entry)) { _keys.Clear(); _keys.Add(entry); }
+                        _key = (name, index, frame);
+                        _keyGrab = frame;
+                    }
+                    else
+                    {
+                        if (!shift) _keys.Clear();
+                        _key = null;
+                        _keyBox = mouse;
+                    }
+                    player.InspectGoto(clip.Path, hit ?? under, clip.Playing);
+                    Paused = true;
+                }
+                if (ImGui.IsItemActive() && _keyGrab is { } grabbed && under != grabbed && !_document!.ReadOnly && moveKeys(layers, under - grabbed, frames))
+                {
+                    _keyGrab = under;
+                    _key = _key is { } primary ? primary with { Frame = primary.Frame + under - grabbed } : null;
+                    player.InspectGoto(clip.Path, under, clip.Playing);
+                    stale = true;
+                }
+                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !keys.Contains(under) && !_document!.ReadOnly)
+                {
+                    edited(() => _document.Edit(_ => MovieDocument.KeyAt(layer, under)));
+                    _keys.Clear();
+                    _keys.Add((index, under, null));
+                    _key = (name, index, under);
+                    stale = true;
+                }
+                if (ImGui.BeginPopupContextItem($"##keys menu {index} {channel}"))
+                {
+                    selectClip(path);
+                    selectedLayer = index;
+                    stale = keyMenu(layers, selectedLayer, clip.Frame);
+                    ImGui.EndPopup();
+                }
             }
-            if (ImGui.IsItemActive() && _key is { } held && held.Layer == index && held.Sprite == name && under != held.Frame && !keys.Contains(under))
+        }
+        var bottom = origin.Y + headerHeight + RowHeight * Math.Max(rows.Count, layers.Count);
+        // The selection box: keys of the rows it crosses, between its sides.
+        if (_keyBox is { } boxStart)
+        {
+            var (min, max) = (Vector2.Min(boxStart, mouse), Vector2.Max(boxStart, mouse));
+            if (Vector2.Distance(boxStart, mouse) > 4)
             {
-                var continues = _keyDrag;
-                _keyDrag = true;
-                edited(() => _document!.Edit(_ => layer["keys"]!.AsArray().OfType<JsonObject>().First(key => (int)key["frame"]! == held.Frame)["frame"] = under, continues));
-                _key = (name, index, under);
-                player.InspectGoto(clip.Path, under, clip.Playing);
+                draw.AddRectFilled(min, max, color(.3f, .6f, 1, .15f));
+                draw.AddRect(min, max, Outline);
+                if (!ImGui.GetIO().KeyShift) _keys.Clear();
+                foreach (var row in rows.Where(row => row.Top < max.Y && row.Top + RowHeight > min.Y))
+                    foreach (var frame in row.Frames.Where(frame => x(frame) + step / 2 >= min.X && x(frame) + step / 2 <= max.X))
+                        _keys.Add((row.Layer, frame, row.Channel));
             }
-            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !keys.Contains(under))
-            {
-                edited(() => _document!.Edit(_ => MovieDocument.KeyAt(layer, under)));
-                _key = (name, index, under);
-            }
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _keyBox = null;
+        }
+        if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _keyGrab = null;
+        if (!stale && ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem) && !ImGui.GetIO().WantTextInput && !_document!.ReadOnly)
+        {
+            var control = ImGui.GetIO().KeyCtrl;
+            if (control && ImGui.IsKeyPressed(ImGuiKey.C, false)) copyKeys(layers);
+            else if (control && ImGui.IsKeyPressed(ImGuiKey.X, false)) { copyKeys(layers); deleteKeys(layers); }
+            else if (control && ImGui.IsKeyPressed(ImGuiKey.V, false)) pasteKeys(layers, selectedLayer, clip.Frame);
+            else if (ImGui.IsKeyPressed(ImGuiKey.Delete, false)) deleteKeys(layers);
         }
         // The playhead, over the tracks.
         var head = x(clip.Frame) + step / 2;
         ImGui.PushClipRect(trackMin, trackMax, true);
-        draw.AddLine(new(head, origin.Y), new(head, origin.Y + headerHeight + RowHeight * layers.Count), KeySelected, 2);
+        draw.AddLine(new(head, origin.Y), new(head, bottom), KeySelected, 2);
         ImGui.PopClipRect();
-        ImGui.SetCursorScreenPos(new(origin.X, origin.Y + headerHeight + RowHeight * layers.Count));
+        ImGui.SetCursorScreenPos(new(origin.X, bottom));
         ImGui.Dummy(new(NameColumn + width, 4));
         ImGui.EndChild();
     }
 
-    private void removeKey(JsonArray layers, (string Sprite, int Layer, int Frame) key)
+    // ------------------------------------------------------------------------------------------- keys: several at once
+    // A selected key is a whole key (Channel null) or one channel of it. Internally a key is one pose: a channel is a view.
+    private readonly HashSet<(int Layer, int Frame, string? Channel)> _keys = [];
+    private string? _keysSprite;
+    private readonly HashSet<(string Sprite, int Layer)> _expanded = [];
+    private Vector2? _keyBox;
+    private int? _keyGrab; // The frame the grabbed key is on, while keys are dragged.
+    private sealed record CopiedKey(int Layer, int Frame, string? Channel, JsonNode Value);
+    private readonly List<CopiedKey> _copiedKeys = [];
+    private static readonly string[] Channels = [.. MovieDocument.Properties, "tint"];
+    private static readonly string[] ChannelNames = ["X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity", "Tint"];
+    private static readonly uint RowChannel = color(.115f, .125f, .145f);
+
+    private static JsonNode channelValue(JsonObject key, string channel)
     {
-        if (key.Layer >= layers.Count || layers[key.Layer]?["keys"] is not JsonArray keys || keys.Count <= 1)
-            return; // A layer keeps one key: without any it would be nowhere.
-        edited(() => _document!.Edit(_ => keys.Remove(keys.OfType<JsonObject>().FirstOrDefault(each => (int)each["frame"]! == key.Frame))));
+        if (channel != "tint") return JsonValue.Create(MovieDocument.Value(key, channel)!.Value);
+        var tint = MovieDocument.Tint(key);
+        return new JsonArray(tint.Red, tint.Green, tint.Blue);
+    }
+
+    private static void setChannel(JsonObject key, string channel, JsonNode value)
+    {
+        if (channel == "tint") MovieDocument.SetTint(key, (double)value[0]!, (double)value[1]!, (double)value[2]!);
+        else MovieDocument.Set(key, channel, (double)value);
+    }
+
+    private static JsonObject? keyOn(JsonArray layers, int layer, int frame) => layer >= 0 && layer < layers.Count
+        ? layers[layer]?["keys"]?.AsArray().OfType<JsonObject>().FirstOrDefault(key => (int)key["frame"]! == frame) : null;
+
+    // The selected keys move together by a number of frames, whole (a channel takes its key along); refused when one
+    // would leave the timeline or land on a key that stays.
+    private bool moveKeys(JsonArray layers, int delta, int frames)
+    {
+        var moving = _keys.Select(static key => (key.Layer, key.Frame)).ToHashSet();
+        foreach (var (layer, frame) in moving)
+            if (frame + delta < 0 || frame + delta >= frames || keyOn(layers, layer, frame) is null
+                || keyOn(layers, layer, frame + delta) is not null && !moving.Contains((layer, frame + delta)))
+                return false;
+        var continues = _keyDrag;
+        _keyDrag = true;
+        edited(() => _document!.Edit(_ =>
+        {
+            foreach (var key in moving.Select(each => keyOn(layers, each.Layer, each.Frame)!).ToArray())
+                key["frame"] = (int)key["frame"]! + delta;
+        }, continues));
+        var moved = _keys.Select(key => (key.Layer, key.Frame + delta, key.Channel)).ToArray();
+        _keys.Clear();
+        _keys.UnionWith(moved);
+        return true;
+    }
+
+    private void copyKeys(JsonArray layers)
+    {
+        if (_keys.Count == 0) return;
+        _copiedKeys.Clear();
+        var (firstLayer, firstFrame) = (_keys.Min(static key => key.Layer), _keys.Min(static key => key.Frame));
+        foreach (var (layer, frame, channel) in _keys)
+            // A whole key covers its channels.
+            if (keyOn(layers, layer, frame) is { } key && (channel is null || !_keys.Contains((layer, frame, null))))
+                _copiedKeys.Add(new(layer - firstLayer, frame - firstFrame, channel, channel is null ? key.DeepClone() : channelValue(key, channel)));
+        _notice = null;
+    }
+
+    // Onto the selected layer (and the ones after it, for keys copied from several), the first key on the playhead.
+    private void pasteKeys(JsonArray layers, int layer, int frame)
+    {
+        if (_copiedKeys.Count == 0 || layer < 0)
+        {
+            if (_copiedKeys.Count > 0) _notice = "Select the layer to paste the keys on.";
+            return;
+        }
+        var length = (int?)((JsonObject)layers.Parent!)["frames"] ?? 1;
+        var pasted = new List<(int, int, string?)>();
+        attempt(() => _document!.Edit(_ =>
+        {
+            foreach (var copied in _copiedKeys.OrderBy(static each => each.Channel is null ? 0 : 1))
+            {
+                var (to, at) = (layer + copied.Layer, frame + copied.Frame);
+                if (to >= layers.Count || at >= length || layers[to] is not JsonObject target) continue;
+                if (copied.Channel is null)
+                {
+                    var keys = target["keys"]!.AsArray();
+                    if (keyOn(layers, to, at) is { } old) keys.Remove(old);
+                    var key = (JsonObject)copied.Value.DeepClone();
+                    key["frame"] = at;
+                    keys.Insert(keys.OfType<JsonObject>().Count(each => (int)each["frame"]! < at), key);
+                }
+                else setChannel(MovieDocument.KeyAt(target, at), copied.Channel, copied.Value.DeepClone());
+                pasted.Add((to, at, copied.Channel));
+            }
+        }));
+        _keys.Clear();
+        _keys.UnionWith(pasted);
+    }
+
+    // A whole key is removed (a layer keeps one); a channel goes back to what the key before has.
+    private void deleteKeys(JsonArray layers)
+    {
+        if (_keys.Count == 0) return;
+        edited(() => _document!.Edit(_ =>
+        {
+            foreach (var (layer, frame, channel) in _keys.OrderByDescending(static key => key.Frame))
+            {
+                if (keyOn(layers, layer, frame) is not { } key || key.Parent is not JsonArray keys) continue;
+                if (channel is null)
+                {
+                    if (keys.Count > 1) keys.Remove(key);
+                }
+                else if (!_keys.Contains((layer, frame, null)))
+                    setChannel(key, channel, channelValue(keys.OfType<JsonObject>().Where(each => (int)each["frame"]! < frame)
+                        .OrderBy(static each => (int)each["frame"]!).LastOrDefault() ?? [], channel));
+            }
+        }));
+        _keys.Clear();
         _key = null;
+    }
+
+    private bool keyMenu(JsonArray layers, int layer, int frame)
+    {
+        var changed = false;
+        var editable = !_document!.ReadOnly;
+        if (ImGui.MenuItem("Copy", "Ctrl+C", false, _keys.Count > 0)) copyKeys(layers);
+        if (ImGui.MenuItem("Cut", "Ctrl+X", false, editable && _keys.Count > 0)) { copyKeys(layers); deleteKeys(layers); changed = true; }
+        if (ImGui.MenuItem($"Paste on frame {frame}", "Ctrl+V", false, editable && _copiedKeys.Count > 0)) { pasteKeys(layers, layer, frame); changed = true; }
+        ImGui.Separator();
+        if (ImGui.MenuItem("Delete", "Del", false, editable && _keys.Count > 0)) { deleteKeys(layers); changed = true; }
+        return changed;
     }
 }
