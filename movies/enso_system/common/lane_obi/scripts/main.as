@@ -1,7 +1,15 @@
-// The callbacks the game calls on this movie. Skeleton: each one still has to be written.
+// The board. Score and combo are read from the provider; the callbacks below are what the game's own board is
+// driven by, kept empty so this movie can stand where that one does.
 import flash.external.ExternalInterface;
 
 var self = this;
+
+Wd.on("play.score", function(score) {
+    self.score.text = "" + score;
+});
+Wd.on("play.combo", function(combo) {
+    self.combo.text = combo >= 10 ? "" + combo : "";
+});
 
 // Called as: (bool) -> undefined
 ExternalInterface.addCallback("SetAbekobe", this, function(n) {

@@ -1,10 +1,13 @@
-// gage_don_1p_easy: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// gage_don_1p_easy: the soul gauge, a bar filled from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "box": "textures/box.svg"
+    "box": "textures/box.svg",
+    "back": "textures/back.svg",
+    "fill": "textures/fill.svg",
+    "line": "textures/line.svg"
   },
   "shapes": {
     "box": {
@@ -15,12 +18,72 @@
         64,
         64
       ]
+    },
+    "back": {
+      "texture": "back",
+      "rect": [
+        0,
+        0,
+        780,
+        28
+      ]
+    },
+    "fill": {
+      "texture": "fill",
+      "rect": [
+        0,
+        0,
+        776,
+        24
+      ]
+    },
+    "line": {
+      "texture": "line",
+      "rect": [
+        -2,
+        -6,
+        4,
+        40
+      ]
     }
   },
   "sprites": {
     "main": {
       "frames": 511,
-      "layers": [],
+      "layers": [
+        {
+          "character": "back",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 250,
+              "y": -131
+            }
+          ]
+        },
+        {
+          "character": "bar",
+          "name": "bar",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 252,
+              "y": -129
+            }
+          ]
+        },
+        {
+          "character": "mark",
+          "name": "mark",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 252,
+              "y": -131
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as",
         "10": "scripts/stop.as",
@@ -128,6 +191,32 @@
         "gage_49": 491,
         "gage_50": 501
       }
+    },
+    "bar": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "fill",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "mark": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "line",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
     }
   }
 }

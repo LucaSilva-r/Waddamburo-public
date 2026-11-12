@@ -581,6 +581,29 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
+            // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
+            // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
+            void publish(string name, LumenHostValue value)
+            {
+                foreach (var layer in layers.Values) layer.Player.Publish(name, value);
+            }
+            void publishPlay()
+            {
+                publish("play.score", LumenHostValue.FromNumber(score.Value));
+                publish("play.combo", LumenHostValue.FromNumber(score.Combo));
+                publish("play.maxCombo", LumenHostValue.FromNumber(maxCombo));
+                publish("play.gauge", LumenHostValue.FromNumber((double)gauge.Value / TaikoSoulGauge.Max));
+                publish("play.gaugeCleared", LumenHostValue.FromBoolean(gauge.State != TaikoGaugeState.BelowClear));
+                publish("play.gaugeFull", LumenHostValue.FromBoolean(gauge.State == TaikoGaugeState.Full));
+                publish("play.good", LumenHostValue.FromNumber(great));
+                publish("play.ok", LumenHostValue.FromNumber(good));
+                publish("play.bad", LumenHostValue.FromNumber(miss));
+                var judged = great + good + miss;
+                publish("play.accuracy", LumenHostValue.FromNumber(judged == 0 ? 1 : (great + good * .5) / judged));
+            }
+            publish("play.course", LumenHostValue.FromString(course.ToString().ToLowerInvariant()));
+            publish("play.gaugeClearLine", LumenHostValue.FromNumber((double)gauge.Clear / TaikoSoulGauge.Max));
+            publishPlay();
             var bannerTime = TaikoResultBanner.Time(chart);
             EndBanner = endBanner;
             var bannerShown = false;
@@ -684,6 +707,20 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 else
                     _presentation!.SetCombo(score.Combo);
                 skinPresentation.OnJudged(judgement, gauge);
+                publishPlay();
+                if (!judgement.StrongHitCompleted && judgement.Result is { } told)
+                {
+                    foreach (var layer in layers.Values)
+                        layer.Player.Emit("note.judged", LumenHostValue.FromString(told switch
+                        {
+                            TaikoHitResult.Great => "good",
+                            TaikoHitResult.Good => "ok",
+                            _ => "bad",
+                        }), LumenHostValue.FromBoolean(judgement.HitObject.IsStrong));
+                    if (score.Combo > 0 && score.Combo % 100 == 0)
+                        foreach (var layer in layers.Values)
+                            layer.Player.Emit("combo.milestone", LumenHostValue.FromNumber(score.Combo));
+                }
             };
             // A reviewed play shows the baked state of its moment: the score, combo and gauge are set
             // from it after every move (a seek, or playing on: a Go-Go edge timed by the playhead
@@ -705,6 +742,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     full = !full;
                     label(gaugeFire, full ? "fever_start" : "fever_end");
                 }
+                publishPlay();
             };
             // Static layers in the scene's traced depth order: behind the bar lines (2000) and notes (1002+),
             // or in front of them. Host-placed templates, Don (drawn by his presentation), the other

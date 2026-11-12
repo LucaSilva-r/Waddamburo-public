@@ -1,10 +1,11 @@
-// lane_obi: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// lane_obi: the band left of the lane. Score and combo come from the provider (Wd); the rest is still a skeleton.
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "box": "textures/box.svg"
+    "box": "textures/box.svg",
+    "band": "textures/band.svg"
   },
   "shapes": {
     "box": {
@@ -15,12 +16,48 @@
         64,
         64
       ]
+    },
+    "band": {
+      "texture": "band",
+      "rect": [
+        -248,
+        -87,
+        332,
+        176
+      ]
     }
   },
   "sprites": {
     "main": {
       "frames": 61,
-      "layers": [],
+      "layers": [
+        {
+          "character": "band",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "score",
+          "name": "score",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "combo",
+          "name": "combo",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as",
         "10": "scripts/stop.as",
@@ -38,6 +75,30 @@
         "tokkun_auto_off": 41,
         "tokkun_auto_on": 51
       }
+    }
+  },
+  "texts": {
+    "score": {
+      "rect": [
+        -240,
+        -80,
+        170,
+        40
+      ],
+      "size": 30,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "combo": {
+      "rect": [
+        -60,
+        -26,
+        120,
+        52
+      ],
+      "size": 40,
+      "align": "center",
+      "color": "#3a2a20"
     }
   }
 }

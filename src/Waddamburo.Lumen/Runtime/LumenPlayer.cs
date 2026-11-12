@@ -107,6 +107,7 @@ public sealed partial class LumenPlayer
             return LumenHostValue.FromNumber(digits.Length == 0 || radix is not (10 or 16) ? double.NaN
                 : sign * (double)Convert.ToInt64(digits, radix));
         });
+        _globals["Wd"] = createProvider();
         hostBinding?.Install(new LumenHostContext(_globals, _externalInterface, findNumericVariableName));
         bootstrapPackageClasses();
         enterFrame(_root, 0, queueActions: true);

@@ -176,4 +176,40 @@ public sealed class ActionScriptTests
     {
         public void Install(LumenHostContext context) => install(context);
     }
+
+    [Fact]
+    public void AMovieReadsAndHearsTheProvider()
+    {
+        var (player, reports) = run("""
+            report("start", Wd.has("play.score"), Wd.get("play.score"));
+            Wd.on("play.score", function(score) { report("score", score, Wd.get("play.score")); });
+            Wd.on("note.judged", function(result, big) { report("judged", result, big); });
+            report(Wd.get("play.scroe"));
+            stop();
+            """);
+        Assert.True(player.UsesProvider);
+        player.Publish("play.score", LumenHostValue.FromNumber(100));
+        player.Publish("play.score", LumenHostValue.FromNumber(100)); // no change: not told again
+        player.Emit("note.judged", LumenHostValue.FromString("good"), LumenHostValue.FromBoolean(true));
+        player.Emit("combo.milestone", LumenHostValue.FromNumber(100)); // nobody listens
+        Assert.Equal(["start,false,undefined", "undefined", "score,100,100", "judged,good,true"], reports);
+        Assert.Throws<ArgumentException>(() => player.Publish("play.scroe", LumenHostValue.FromNumber(1)));
+        Assert.Throws<ArgumentException>(() => player.Emit("play.score"));
+    }
+
+    [Fact]
+    public void AListenerHearsAValueAlreadyThere()
+    {
+        var (player, reports) = run("""
+            import flash.external.ExternalInterface;
+            ExternalInterface.addCallback("Late", this, function() {
+                Wd.on("play.combo", function(combo) { report(combo); });
+            });
+            stop();
+            """);
+        Assert.False(player.UsesProvider);
+        player.Publish("play.combo", LumenHostValue.FromNumber(7));
+        Assert.True(player.TryInvokeCallback("Late", []));
+        Assert.Equal(["7"], reports);
+    }
 }
