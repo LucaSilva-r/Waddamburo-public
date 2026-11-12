@@ -19,15 +19,18 @@ public sealed partial class MovieInspectorSession
 
     private void code()
     {
-        foreach (var script in _document!.Scripts())
+        // One row per file, with where it runs: a file used on many frames (a stop) is one row, not one per frame.
+        foreach (var file in _document!.Scripts().GroupBy(static script => script.File))
         {
-            ImGui.PushID($"{script.File}/{script.Sprite}/{script.Frame}");
-            if (ImGui.SmallButton("Open in VS Code")) openCode(script.File);
+            ImGui.PushID(file.Key);
+            if (ImGui.SmallButton("Open in VS Code")) openCode(file.Key);
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Saving recompiles and reloads the movie, also while paused. Script state restarts on reload.");
             ImGui.SameLine();
-            ImGui.TextUnformatted(script.File);
+            ImGui.TextUnformatted(file.Key);
             ImGui.SameLine();
-            ImGui.TextDisabled(script.IsClass ? "Class" : $"{script.Sprite}, frame {script.Frame}");
+            ImGui.TextDisabled(string.Join("; ", file.GroupBy(static use => (use.IsClass, use.Sprite)).Select(static uses =>
+                uses.Key.IsClass ? "a class"
+                : $"runs in sprite \"{uses.Key.Sprite}\" at frame{(uses.Count() > 1 ? "s" : "")} {string.Join(", ", uses.Select(static use => use.Frame).Order())}")));
             ImGui.PopID();
         }
         if (ScriptErrors.Count != 0)
