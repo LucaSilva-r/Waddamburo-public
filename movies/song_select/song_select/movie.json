@@ -1,7 +1,7 @@
 // song_select: a plain list, bare minimum (placeholder look). Folders, then a folder's songs, then the song's courses.
 // It asks the game for what it lists (the Wd… methods of SongSelectHostBinding); the rest are the game's own calls.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

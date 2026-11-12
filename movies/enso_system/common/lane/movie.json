@@ -1,6 +1,6 @@
 // The lane the notes run along.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "lane",
   "textures": {

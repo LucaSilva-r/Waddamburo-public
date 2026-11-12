@@ -1,6 +1,6 @@
 // result: the song's results, bare minimum (placeholder look): the numbers the game sets, a column per drum.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
@@ -72,9 +72,7 @@
           "name": "name0",
           "keys": [
             {
-              "frame": 0,
-              "x": 0,
-              "y": 0
+              "frame": 0
             }
           ]
         },
@@ -83,9 +81,7 @@
           "name": "value0",
           "keys": [
             {
-              "frame": 0,
-              "x": 0,
-              "y": 0
+              "frame": 0
             }
           ]
         },
@@ -95,7 +91,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 52
             }
           ]
@@ -106,7 +101,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 52
             }
           ]
@@ -117,7 +111,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 104
             }
           ]
@@ -128,7 +121,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 104
             }
           ]
@@ -139,7 +131,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 156
             }
           ]
@@ -150,7 +141,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 156
             }
           ]
@@ -161,7 +151,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 208
             }
           ]
@@ -172,7 +161,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 208
             }
           ]
@@ -183,7 +171,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 260
             }
           ]
@@ -194,7 +181,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 260
             }
           ]
@@ -205,7 +191,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 312
             }
           ]
@@ -216,7 +201,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 312
             }
           ]
@@ -227,7 +211,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 364
             }
           ]
@@ -238,7 +221,6 @@
           "keys": [
             {
               "frame": 0,
-              "x": 0,
               "y": 364
             }
           ]

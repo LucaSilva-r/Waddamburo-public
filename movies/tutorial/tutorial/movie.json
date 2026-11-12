@@ -1,6 +1,6 @@
 // tutorial: how to play, bare minimum (placeholder look): four lines, a DON to leave. The game's labels are kept as names.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

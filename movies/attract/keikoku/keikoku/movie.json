@@ -1,6 +1,6 @@
 // keikoku: The notice between the title and the logo in the attract loop. Placeholder look.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

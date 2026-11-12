@@ -1,7 +1,7 @@
 // entry: the player join, bare minimum (placeholder look). Each drum joins with its DON; a joined drum's DON starts.
 // No mode select, costumes or cards yet: it always asks for Song Select.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

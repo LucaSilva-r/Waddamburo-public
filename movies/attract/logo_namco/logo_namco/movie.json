@@ -1,6 +1,6 @@
 // logo_namco: The logo screen of the attract loop. Placeholder look.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

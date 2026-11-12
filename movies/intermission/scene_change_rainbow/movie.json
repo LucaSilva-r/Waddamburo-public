@@ -1,6 +1,6 @@
 // scene_change_rainbow: the cover between song select and a song (placeholder look). The game plays "in" / "out", or "in_extra" / "out_extra" with the song's title drawn into "scene_change_song_name", and waits for each to stop.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
@@ -125,8 +125,7 @@
             {
               "frame": 90,
               "x": 1280,
-              "ease": "out",
-              "y": 280
+              "ease": "out"
             },
             {
               "frame": 120,
@@ -142,8 +141,7 @@
             {
               "frame": 130,
               "x": 0,
-              "ease": "in",
-              "y": 280
+              "ease": "in"
             },
             {
               "frame": 160,
@@ -161,7 +159,6 @@
             {
               "frame": 90,
               "x": 1920,
-              "y": 360,
               "ease": "out"
             },
             {
@@ -179,7 +176,6 @@
             {
               "frame": 130,
               "x": 640,
-              "y": 360,
               "ease": "in"
             },
             {

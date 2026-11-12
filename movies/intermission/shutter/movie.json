@@ -1,6 +1,6 @@
 // shutter: doors that close when a song ends (Close) and open on the results (Open). Placeholder look.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

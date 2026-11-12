@@ -1,7 +1,7 @@
 {
   // The countdown timer of the entry, song select and other timed screens. A free movie: it answers the
   // callbacks the game's hosts call on the timer (see docs/development/free-movies-plan.md).
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "timer",
   "textures": {

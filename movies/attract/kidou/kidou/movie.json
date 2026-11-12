@@ -1,6 +1,6 @@
 // kidou: The boot notice: shown a moment, then the game goes on to the logo. Placeholder look.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

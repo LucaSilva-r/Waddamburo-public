@@ -1,6 +1,6 @@
 // title: The title screen of the attract loop. Placeholder look.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

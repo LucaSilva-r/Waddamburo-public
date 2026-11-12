@@ -1,6 +1,6 @@
 // The words drawn under the notes: the engine parks one copy on each label it needs.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "words",
   "texts": {

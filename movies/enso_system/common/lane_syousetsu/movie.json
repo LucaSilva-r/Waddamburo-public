@@ -1,6 +1,6 @@
 // A bar line, centred on its own origin; "bunki" is the yellow one of a branch check.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "bar",
   "textures": {

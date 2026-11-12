@@ -1,6 +1,6 @@
 // scene_change_fade: to black in one second ("in"); "wait" shows nothing.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

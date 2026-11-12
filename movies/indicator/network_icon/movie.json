@@ -1,6 +1,6 @@
 // network_icon: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {

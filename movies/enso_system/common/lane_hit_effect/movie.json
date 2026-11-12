@@ -1,6 +1,6 @@
 // The judgement word over the hit target.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "texts": {
@@ -81,28 +81,20 @@
           "keys": [
             {
               "frame": 10,
-              "x": 413,
               "y": 4,
-              "scale": 1,
               "ease": "out"
             },
             {
               "frame": 18,
-              "x": 413,
-              "y": -14,
-              "scale": 1
+              "y": -14
             },
             {
               "frame": 30,
-              "x": 413,
-              "y": -14,
-              "scale": 1
+              "alpha": 1
             },
             {
               "frame": 39,
               "x": 413,
-              "y": -14,
-              "scale": 1,
               "alpha": 0
             }
           ],
@@ -115,28 +107,20 @@
           "keys": [
             {
               "frame": 40,
-              "x": 413,
               "y": 4,
-              "scale": 1,
               "ease": "out"
             },
             {
               "frame": 48,
-              "x": 413,
-              "y": -14,
-              "scale": 1
+              "y": -14
             },
             {
               "frame": 60,
-              "x": 413,
-              "y": -14,
-              "scale": 1
+              "alpha": 1
             },
             {
               "frame": 69,
               "x": 413,
-              "y": -14,
-              "scale": 1,
               "alpha": 0
             }
           ],
@@ -149,28 +133,20 @@
           "keys": [
             {
               "frame": 70,
-              "x": 413,
               "y": 4,
-              "scale": 1,
               "ease": "out"
             },
             {
               "frame": 78,
-              "x": 413,
-              "y": -14,
-              "scale": 1
+              "y": -14
             },
             {
               "frame": 90,
-              "x": 413,
-              "y": -14,
-              "scale": 1
+              "alpha": 1
             },
             {
               "frame": 99,
               "x": 413,
-              "y": -14,
-              "scale": 1,
               "alpha": 0
             }
           ],
@@ -183,29 +159,23 @@
           "keys": [
             {
               "frame": 100,
-              "x": 413,
               "y": 4,
-              "scale": 1.25,
               "ease": "out"
             },
             {
               "frame": 108,
-              "x": 413,
-              "y": -14,
-              "scale": 1.25
+              "y": -14
             },
             {
               "frame": 120,
-              "x": 413,
-              "y": -14,
-              "scale": 1.25
+              "alpha": 1
             },
             {
               "frame": 129,
               "x": 413,
-              "y": -14,
-              "scale": 1.25,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.25,
+              "scaleY": 1.25
             }
           ],
           "until": 130
@@ -217,29 +187,23 @@
           "keys": [
             {
               "frame": 130,
-              "x": 413,
               "y": 4,
-              "scale": 1.25,
               "ease": "out"
             },
             {
               "frame": 138,
-              "x": 413,
-              "y": -14,
-              "scale": 1.25
+              "y": -14
             },
             {
               "frame": 150,
-              "x": 413,
-              "y": -14,
-              "scale": 1.25
+              "alpha": 1
             },
             {
               "frame": 159,
               "x": 413,
-              "y": -14,
-              "scale": 1.25,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.25,
+              "scaleY": 1.25
             }
           ]
         }

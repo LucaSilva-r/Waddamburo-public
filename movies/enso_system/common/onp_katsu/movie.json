@@ -1,6 +1,6 @@
 // A note as the engine draws it along the lane: centred on its own origin; its labels are the face states.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "note",
   "textures": {

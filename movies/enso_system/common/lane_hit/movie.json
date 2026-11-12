@@ -1,6 +1,6 @@
 // The hit target of the lane: "target" is where notes are hit; "hit_effect" flashes a judged hit, "effect" the lane for a drum hit.
 {
-  "format": 1,
+  "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
@@ -111,14 +111,16 @@
           "keys": [
             {
               "frame": 30,
-              "scale": 0.8,
               "alpha": 0.9,
-              "ease": "out"
+              "ease": "out",
+              "scaleX": 0.8,
+              "scaleY": 0.8
             },
             {
               "frame": 43,
-              "scale": 1.3,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.3,
+              "scaleY": 1.3
             }
           ]
         },
@@ -129,14 +131,16 @@
           "keys": [
             {
               "frame": 50,
-              "scale": 0.8,
               "alpha": 0.9,
-              "ease": "out"
+              "ease": "out",
+              "scaleX": 0.8,
+              "scaleY": 0.8
             },
             {
               "frame": 63,
-              "scale": 1.3,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.3,
+              "scaleY": 1.3
             }
           ]
         },
@@ -147,14 +151,16 @@
           "keys": [
             {
               "frame": 70,
-              "scale": 0.8,
               "alpha": 0.9,
-              "ease": "out"
+              "ease": "out",
+              "scaleX": 0.8,
+              "scaleY": 0.8
             },
             {
               "frame": 83,
-              "scale": 1.3,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.3,
+              "scaleY": 1.3
             }
           ]
         },
@@ -165,14 +171,16 @@
           "keys": [
             {
               "frame": 90,
-              "scale": 1.2000000000000002,
               "alpha": 0.9,
-              "ease": "out"
+              "ease": "out",
+              "scaleX": 1.2000000000000002,
+              "scaleY": 1.2000000000000002
             },
             {
               "frame": 103,
-              "scale": 1.9500000000000002,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.9500000000000002,
+              "scaleY": 1.9500000000000002
             }
           ]
         },
@@ -183,14 +191,16 @@
           "keys": [
             {
               "frame": 110,
-              "scale": 1.2000000000000002,
               "alpha": 0.9,
-              "ease": "out"
+              "ease": "out",
+              "scaleX": 1.2000000000000002,
+              "scaleY": 1.2000000000000002
             },
             {
               "frame": 123,
-              "scale": 1.9500000000000002,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.9500000000000002,
+              "scaleY": 1.9500000000000002
             }
           ]
         },
@@ -201,14 +211,16 @@
           "keys": [
             {
               "frame": 130,
-              "scale": 1.2000000000000002,
               "alpha": 0.9,
-              "ease": "out"
+              "ease": "out",
+              "scaleX": 1.2000000000000002,
+              "scaleY": 1.2000000000000002
             },
             {
               "frame": 143,
-              "scale": 1.9500000000000002,
-              "alpha": 0
+              "alpha": 0,
+              "scaleX": 1.9500000000000002,
+              "scaleY": 1.9500000000000002
             }
           ]
         }
