@@ -84,10 +84,13 @@ public static class MoviePackage
         private readonly Dictionary<string, uint> _characters = new(StringComparer.Ordinal);
         private readonly List<(uint Tag, uint[] Words)> _records = [];
 
+        private int _format;
+
         public Assembled Run(JsonElement root)
         {
-            if (number(root, "format", 0) != 1)
-                throw new FormatException($"{FileName}: \"format\" must be 1.");
+            _format = (int)number(root, "format", 0);
+            if (_format is not (1 or 2))
+                throw new FormatException($"{FileName}: \"format\" must be 1 or 2.");
             var textures = root.TryGetProperty("textures", out var textureMap)
                 ? textureMap.EnumerateObject().Select(static entry => (entry.Name, File: entry.Value.GetString() ?? "")).ToArray()
                 : [];
@@ -219,7 +222,7 @@ public static class MoviePackage
                     "add" => 8u,
                     var other => throw new FormatException($"{FileName}: {where} has an unknown blend: \"{other}\"."),
                 };
-                var keys = layer.GetProperty("keys").EnumerateArray().Select(Key.Read).OrderBy(static key => key.Frame).ToArray();
+                var keys = layer.GetProperty("keys").EnumerateArray().Select(key => Key.Read(key, _format == 1)).OrderBy(static key => key.Frame).ToArray();
                 if (keys.Length == 0 || keys[^1].Frame >= frameCount)
                     throw new FormatException($"{FileName}: {where} needs keys inside the sprite's {frameCount} frames.");
                 var until = (int)number(layer, "until", frameCount);
@@ -271,7 +274,7 @@ public static class MoviePackage
             }
         }
 
-        private uint matrix(Key key)
+        private uint matrix(Pose key)
         {
             var (sin, cos) = MathF.SinCos(key.Rotation * MathF.PI / 180);
             var value = (cos * key.ScaleX, sin * key.ScaleX, -sin * key.ScaleY, cos * key.ScaleY, key.X, key.Y);
@@ -287,7 +290,7 @@ public static class MoviePackage
                 : throw new FormatException($"{FileName}: more than 65536 different transforms (shorten or split the tweens).");
         }
 
-        private uint colour(Key key)
+        private uint colour(Pose key)
         {
             // Always an entry, plain white included: a move without one keeps the colour it had.
             var value = (fixed8(key.Red), fixed8(key.Green), fixed8(key.Blue), fixed8(key.Alpha));
@@ -389,40 +392,52 @@ public static class MoviePackage
         }
     }
 
-    /// <summary>One keyframe of a layer; values run straight to the next key unless <see cref="Hold"/>.</summary>
-    private readonly record struct Key(int Frame, float X, float Y, float ScaleX, float ScaleY, float Rotation,
-        float Alpha, float Red, float Green, float Blue, bool Hold, string? Ease)
+    /// <summary>
+    /// One keyframe of a layer. Format 2: it holds the channels it names and no others; a channel runs from one key
+    /// that names it to the next that does (by the first one's ease, or held), whatever keys lie between. Format 1:
+    /// every key holds every channel, the ones left out at their defaults.
+    /// </summary>
+    private readonly record struct Key(int Frame, float? X, float? Y, float? ScaleX, float? ScaleY, float? Rotation,
+        float? Alpha, float? Red, float? Green, float? Blue, bool Hold, string? Ease)
     {
-        public static Key Read(JsonElement key)
+        public static Key Read(JsonElement key, bool whole)
         {
-            float get(string name, float fallback) => key.TryGetProperty(name, out var value) ? value.GetSingle() : fallback;
-            var scale = get("scale", 1);
-            var tint = key.TryGetProperty("tint", out var tintValue) ? tintValue.EnumerateArray().Select(static value => value.GetSingle()).ToArray() : [1, 1, 1];
+            float? get(string name, float fallback) => key.TryGetProperty(name, out var value) ? value.GetSingle() : whole ? fallback : null;
+            float? scale = key.TryGetProperty("scale", out var both) ? both.GetSingle() : null;
+            var tint = key.TryGetProperty("tint", out var tintValue) ? tintValue.EnumerateArray().Select(static value => (float?)value.GetSingle()).ToArray()
+                : whole ? [1, 1, 1] : [null, null, null];
             if (tint.Length != 3)
                 throw new FormatException($"{FileName}: a key's tint needs 3 numbers.");
-            return new Key(key.GetProperty("frame").GetInt32(), get("x", 0), get("y", 0), get("scaleX", scale), get("scaleY", scale),
+            return new Key(key.GetProperty("frame").GetInt32(), get("x", 0), get("y", 0), get("scaleX", scale ?? 1) ?? scale, get("scaleY", scale ?? 1) ?? scale,
                 get("rotation", 0), get("alpha", 1), tint[0], tint[1], tint[2],
                 key.TryGetProperty("hold", out var hold) && hold.GetBoolean(),
                 key.TryGetProperty("ease", out var ease) ? ease.GetString() : null);
         }
 
-        public static Key At(Key[] keys, int frame)
+        /// <summary>The layer's values on a frame: every channel worked out by itself.</summary>
+        public static Pose At(Key[] keys, int frame)
         {
-            var next = Array.FindIndex(keys, key => key.Frame > frame);
-            if (next < 0)
-                return keys[^1];
-            var start = keys[next - 1];
-            var end = keys[next];
-            if (start.Hold)
-                return start;
-            var t = (float)MoviePackage.Ease(start.Ease, (frame - start.Frame) / (double)(end.Frame - start.Frame));
-            float mix(float a, float b) => a + (b - a) * t;
-            return start with
+            float channel(Func<Key, float?> of, float fallback)
             {
-                X = mix(start.X, end.X), Y = mix(start.Y, end.Y), ScaleX = mix(start.ScaleX, end.ScaleX), ScaleY = mix(start.ScaleY, end.ScaleY),
-                Rotation = mix(start.Rotation, end.Rotation), Alpha = mix(start.Alpha, end.Alpha),
-                Red = mix(start.Red, end.Red), Green = mix(start.Green, end.Green), Blue = mix(start.Blue, end.Blue),
-            };
+                Key? start = null, end = null;
+                foreach (var key in keys)
+                {
+                    if (of(key) is null) continue;
+                    if (key.Frame <= frame) start = key;
+                    else { end = key; break; }
+                }
+                if (start is not { } from)
+                    return end is { } first ? of(first)!.Value : fallback; // before its first key: already there
+                if (end is not { } to || from.Hold)
+                    return of(from)!.Value;
+                var t = (float)MoviePackage.Ease(from.Ease, (frame - from.Frame) / (double)(to.Frame - from.Frame));
+                return of(from)!.Value + (of(to)!.Value - of(from)!.Value) * t;
+            }
+            return new(channel(static key => key.X, 0), channel(static key => key.Y, 0), channel(static key => key.ScaleX, 1),
+                channel(static key => key.ScaleY, 1), channel(static key => key.Rotation, 0), channel(static key => key.Alpha, 1),
+                channel(static key => key.Red, 1), channel(static key => key.Green, 1), channel(static key => key.Blue, 1));
         }
     }
+
+    private readonly record struct Pose(float X, float Y, float ScaleX, float ScaleY, float Rotation, float Alpha, float Red, float Green, float Blue);
 }

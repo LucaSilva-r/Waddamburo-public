@@ -28,22 +28,20 @@ public sealed partial class MovieInspectorSession
         // The values shown are the layer's on this frame, between its keys.
         var probe = (System.Text.Json.Nodes.JsonObject)layer.DeepClone();
         var current = MovieDocument.KeyAt(probe, frame);
-        // Where this frame sits among the keys: the key on it, the one before, the one after.
-        var at = keys.FirstOrDefault(key => (int)key["frame"]! == frame);
-        var previous = keys.LastOrDefault(key => (int)key["frame"]! < frame);
-        var next = keys.FirstOrDefault(key => (int)key["frame"]! > frame);
         void drag(string property, float speed, string format, float width, float min = 0, float max = 0)
         {
             var value = (float)MovieDocument.Value(current, property)!;
             double? of(System.Text.Json.Nodes.JsonObject? key) => key is null ? null : MovieDocument.Value(key, property);
-            // Orange: this key changes the property (it differs from the key before). Blue: the property is on its way
-            // from one key to the next here. Plain: it does not animate at this point.
+            // Among the keys that hold this property: the one on this frame, the one before, the one after.
+            var held = keys.Where(key => MovieDocument.Has(key, property)).ToList();
+            var at = held.FirstOrDefault(key => (int)key["frame"]! == frame);
+            var previous = held.LastOrDefault(key => (int)key["frame"]! < frame);
+            var next = held.FirstOrDefault(key => (int)key["frame"]! > frame);
+            // Orange: keyed on this frame. Blue: on its way from one key to the next. Plain: not animating here.
             var from = at ?? previous;
-            var changedHere = at is not null && previous is not null && of(at) != of(previous);
-            var moving = from is not null && next is not null && of(from) != of(next) && MovieDocument.Ease(from) != "hold";
-            var arriving = at is null && previous is not null && next is not null && of(previous) != of(next);
-            if (changedHere) ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(.55f, .32f, .1f, 1));
-            else if (moving || arriving) ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(.16f, .3f, .46f, 1));
+            var moving = at is null && from is not null && next is not null && of(from) != of(next) && MovieDocument.Ease(from) != "hold";
+            if (at is not null) ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(.55f, .32f, .1f, 1));
+            else if (moving) ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(.16f, .3f, .46f, 1));
             ImGui.SetNextItemWidth(width);
             if (ImGui.DragFloat("##" + property, ref value, speed, min, max, format, max > min ? ImGuiSliderFlags.AlwaysClamp : ImGuiSliderFlags.None))
             {
@@ -51,29 +49,32 @@ public sealed partial class MovieInspectorSession
                 _gesture = true;
                 edited(() => _document.Edit(_ => setValues(layer, frame, (property, value)), continues));
             }
-            if (changedHere || moving || arriving) ImGui.PopStyleColor();
+            if (at is not null || moving) ImGui.PopStyleColor();
             if (ImGui.IsItemDeactivated()) _gesture = false;
-            if (ImGui.IsItemHovered() && !ImGui.IsItemActive() && (changedHere || moving || arriving))
-                ImGui.SetTooltip(changedHere ? $"This key changes it (the key before has {number(of(previous)!.Value)}). Right-click to take that back."
+            if (ImGui.IsItemHovered() && !ImGui.IsItemActive() && (at is not null || moving))
+                ImGui.SetTooltip(at is not null ? "Keyed on this frame. Right-click to remove it from the key."
                     : $"Animating: {number(of(from)!.Value)} on frame {(int)from!["frame"]!} to {number(of(next)!.Value)} on frame {(int)next!["frame"]!}.");
             if (ImGui.BeginPopupContextItem("##menu " + property))
             {
-                void put(double wanted) => edited(() => _document.Edit(_ => MovieDocument.Set(MovieDocument.KeyAt(layer, frame), property, wanted)));
+                void put(double wanted) => edited(() => _document.Edit(_ => MovieDocument.Set(MovieDocument.BareKey(layer, frame), property, wanted)));
                 if (ImGui.MenuItem("Key here", "", false, at is null))
-                    edited(() => _document.Edit(_ => MovieDocument.KeyAt(layer, frame)));
+                    put(value);
+                if (ImGui.MenuItem("Remove from this key", "", false, at is not null && held.Count > 1))
+                    edited(() => _document.Edit(_ => MovieDocument.RemoveChannel(layer, frame, property)));
+                ImGui.Separator();
                 if (ImGui.MenuItem(previous is null ? "Same as previous key" : $"Same as previous key  ({number(of(previous)!.Value)})", "", false,
-                        at is not null && previous is not null && of(at) != of(previous)))
+                        previous is not null && value != (float)of(previous)!.Value))
                     put(of(previous)!.Value);
                 if (ImGui.MenuItem(next is null ? "Same as next key" : $"Same as next key  ({number(of(next)!.Value)})", "", false,
-                        at is not null && next is not null && of(at) != of(next)))
+                        next is not null && value != (float)of(next)!.Value))
                     put(of(next)!.Value);
                 if (ImGui.MenuItem($"Default  ({number(MovieDocument.Default(property))})", "", false, value != (float)MovieDocument.Default(property)))
                     edited(() => _document.Edit(_ => setValues(layer, frame, (property, MovieDocument.Default(property)))));
                 ImGui.Separator();
-                if (ImGui.MenuItem("Same on every key", "", false, keys.Count > 1))
+                if (ImGui.MenuItem("Same on every key", "", false, held.Count > 1))
                     edited(() => _document.Edit(_ =>
                     {
-                        foreach (var key in keys) MovieDocument.Set(key, property, value);
+                        foreach (var key in held) MovieDocument.Set(key, property, value);
                     }));
                 ImGui.EndPopup();
             }
@@ -115,7 +116,7 @@ public sealed partial class MovieInspectorSession
         {
             ImGui.TextColored(onKey ? new Vector4(1, .56f, .18f, 1) : new(.52f, .56f, .61f, 1),
                 onKey ? $"Key on frame {frame}" : $"Frame {frame}, between keys");
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("A key holds the whole pose. Orange fields: what this key changes from the key before.\nBlue fields: what is on its way to the next key. Right-click a field to take a change back or copy a neighbour's value.");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("A key holds only what was keyed on its frame. Orange fields: keyed here.\nBlue fields: on their way to their next key. Right-click a field to key it, take it out of the key, or copy a neighbour's value.");
             if (onKey && keys.Count > 1)
             {
                 ImGui.SameLine();

@@ -18,7 +18,7 @@ public sealed partial class MovieInspectorSession
         if (ImGui.ColorEdit3("##tint", ref rgb))
         {
             var continues = _tintGesture && !ImGui.IsItemActivated();
-            attempt(() => _document!.Edit(_ => MovieDocument.SetTint(MovieDocument.KeyAt(layer, frame), rgb.X, rgb.Y, rgb.Z), continues));
+            attempt(() => _document!.Edit(_ => MovieDocument.SetTint(MovieDocument.BareKey(layer, frame), rgb.X, rgb.Y, rgb.Z), continues));
             _tintGesture = true;
         }
         if (ImGui.IsItemDeactivated()) _tintGesture = false;
@@ -42,15 +42,15 @@ public sealed partial class MovieInspectorSession
     private void interpolationField(JsonObject layer, int frame)
     {
         var keys = layer["keys"]!.AsArray().OfType<JsonObject>().OrderBy(key => (int)key["frame"]!).ToArray();
-        var key = keys.LastOrDefault(key => (int)key["frame"]! <= frame);
-        var ease = key is null ? "linear" : MovieDocument.Ease(key);
-        fieldLabel("Easing", "How the values run from this key to the next: linear, hold (jump at the next key), or eased in / out.");
+        var key = keys.LastOrDefault(key => (int)key["frame"]! <= frame) ?? keys[0];
+        var ease = MovieDocument.Ease(key);
+        fieldLabel("Easing", $"How what the key on frame {(int)key["frame"]!} holds runs to its next key: linear, hold (jump there), or eased in / out.");
         ImGui.SetNextItemWidth(-1);
         if (ImGui.BeginCombo("##ease", ease))
         {
             foreach (var option in Interpolations)
                 if (ImGui.Selectable(option, option == ease))
-                    attempt(() => _document!.Edit(_ => MovieDocument.SetEase(MovieDocument.KeyAt(layer, frame), option)));
+                    attempt(() => _document!.Edit(_ => MovieDocument.SetEase(key, option)));
             ImGui.EndCombo();
         }
     }

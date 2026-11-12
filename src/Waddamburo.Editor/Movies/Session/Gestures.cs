@@ -25,7 +25,7 @@ public sealed partial class MovieInspectorSession
     {
         if (_autoKey)
         {
-            var key = MovieDocument.KeyAt(layer, frame);
+            var key = MovieDocument.BareKey(layer, frame); // only what changed is keyed
             foreach (var (property, value) in values) MovieDocument.Set(key, property, value);
             return;
         }
@@ -34,8 +34,11 @@ public sealed partial class MovieInspectorSession
         {
             var delta = value - MovieDocument.Value(now, property)!.Value;
             if (delta == 0) continue;
-            foreach (var key in layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
+            var held = layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().Where(key => MovieDocument.Has(key, property)).ToArray();
+            foreach (var key in held)
                 MovieDocument.Set(key, property, MovieDocument.Value(key, property)!.Value + delta);
+            if (held.Length == 0)
+                MovieDocument.Set(layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().MinBy(static key => (int)key["frame"]!)!, property, value);
         }
     }
     private StageMove? _move;

@@ -26,7 +26,8 @@ public sealed class MovieOrganizationTests : IDisposable
         var ids = document.Assets().ToDictionary(asset => asset.Group, asset => asset.Id);
         Assert.All(ids.Values, id => Assert.True(Guid.TryParse(id, out _)));
         Assert.False(File.Exists(Path.Combine(_directory, MovieDocument.MetadataFileName))); // Opening a legacy package writes nothing.
-        var original = File.ReadAllText(document.Path);
+        Assert.Contains("\"format\": 1", File.ReadAllText(document.Path)); // ... and the file stays format 1 until saved,
+        var original = document.Text; // while the document is format 2 from the start: undo goes back to this.
         document.Edit(_ => { });
         Assert.False(document.CanUndo);
         Assert.False(File.Exists(Path.Combine(_directory, MovieDocument.MetadataFileName)));

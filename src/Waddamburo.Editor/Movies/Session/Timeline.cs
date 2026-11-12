@@ -174,16 +174,14 @@ public sealed partial class MovieInspectorSession
             var path = clip.Path.Length == 0 ? $"{LumenPlayer.TimelineDepthBase + depth}" : $"{clip.Path}/{LumenPlayer.TimelineDepthBase + depth}";
             if (path == _selected) selectedLayer = index;
             var open = _expanded.Contains((name, index));
-            // A channel is listed when a key changes it; its keys are the ones where it changes.
-            var channels = open ? Channels.Where(channel => layerKeys.Select(key => channelValue(key, channel).ToJsonString()).Distinct().Count() > 1
-                || channelValue(layerKeys[0], channel).ToJsonString() != channelValue([], channel).ToJsonString()).ToArray() : [];
+            // A channel is listed when a key holds it; its keys are the ones that do.
+            var channels = open ? Channels.Where(channel => layerKeys.Any(key => MovieDocument.Has(key, channel))).ToArray() : [];
             for (var line = 0; line <= channels.Length && !stale; line++)
             {
                 var channel = line == 0 ? null : channels[line - 1];
                 var top = rowTop;
                 rowTop += RowHeight;
-                var shown = channel is null ? keys : [.. layerKeys.Where((key, at) => at == 0
-                    || channelValue(key, channel).ToJsonString() != channelValue(layerKeys[at - 1], channel).ToJsonString()).Select(static key => (int)key["frame"]!)];
+                var shown = channel is null ? keys : [.. layerKeys.Where(key => MovieDocument.Has(key, channel)).Select(static key => (int)key["frame"]!)];
                 rows.Add((top, index, channel, shown));
                 var shade = channel is not null ? RowChannel : index % 2 == 0 ? Row : RowOdd;
                 draw.AddRectFilled(new(origin.X, top), new(origin.X + NameColumn + width, top + RowHeight), shade);
@@ -348,7 +346,7 @@ public sealed partial class MovieInspectorSession
     private int? _keyGrab; // The frame the grabbed key is on, while keys are dragged.
     private sealed record CopiedKey(int Layer, int Frame, string? Channel, JsonNode Value);
     private readonly List<CopiedKey> _copiedKeys = [];
-    private static readonly string[] Channels = [.. MovieDocument.Properties, "tint"];
+    private static readonly string[] Channels = MovieDocument.Channels;
     private static readonly string[] ChannelNames = ["X", "Y", "Scale X", "Scale Y", "Rotation", "Opacity", "Tint"];
     private static readonly uint RowChannel = color(.115f, .125f, .145f);
 
@@ -368,21 +366,33 @@ public sealed partial class MovieInspectorSession
     private static JsonObject? keyOn(JsonArray layers, int layer, int frame) => layer >= 0 && layer < layers.Count
         ? layers[layer]?["keys"]?.AsArray().OfType<JsonObject>().FirstOrDefault(key => (int)key["frame"]! == frame) : null;
 
-    // The selected keys move together by a number of frames, whole (a channel takes its key along); refused when one
-    // would leave the timeline or land on a key that stays.
+    // The selected keys move together by a number of frames: a whole key as it is, a channel's key by itself (out of
+    // its key, into the one on the new frame). Refused when one would leave the timeline or land on what stays.
     private bool moveKeys(JsonArray layers, int delta, int frames)
     {
-        var moving = _keys.Select(static key => (key.Layer, key.Frame)).ToHashSet();
-        foreach (var (layer, frame) in moving)
+        var whole = _keys.Where(static key => key.Channel is null).Select(static key => (key.Layer, key.Frame)).ToHashSet();
+        var single = _keys.Where(key => key.Channel is not null && !whole.Contains((key.Layer, key.Frame))).ToHashSet();
+        foreach (var (layer, frame) in whole)
             if (frame + delta < 0 || frame + delta >= frames || keyOn(layers, layer, frame) is null
-                || keyOn(layers, layer, frame + delta) is not null && !moving.Contains((layer, frame + delta)))
+                || keyOn(layers, layer, frame + delta) is not null && !whole.Contains((layer, frame + delta)))
+                return false;
+        foreach (var (layer, frame, channel) in single)
+            if (frame + delta < 0 || frame + delta >= frames || keyOn(layers, layer, frame) is not { } key || !MovieDocument.Has(key, channel!)
+                || keyOn(layers, layer, frame + delta) is { } target && MovieDocument.Has(target, channel!) && !single.Contains((layer, frame + delta, channel))
+                    && !whole.Contains((layer, frame + delta)))
                 return false;
         var continues = _keyDrag;
         _keyDrag = true;
         edited(() => _document!.Edit(_ =>
         {
-            foreach (var key in moving.Select(each => keyOn(layers, each.Layer, each.Frame)!).ToArray())
+            // Lifted first, put down after: keys moving onto each other's frames do not meet.
+            var lifted = single.Select(each => (each.Layer, each.Frame, Channel: each.Channel!, Value: channelValue(keyOn(layers, each.Layer, each.Frame)!, each.Channel!))).ToArray();
+            foreach (var each in lifted)
+                MovieDocument.RemoveChannel((JsonObject)layers[each.Layer]!, each.Frame, each.Channel);
+            foreach (var key in whole.Select(each => keyOn(layers, each.Layer, each.Frame)!).ToArray())
                 key["frame"] = (int)key["frame"]! + delta;
+            foreach (var each in lifted)
+                setChannel(MovieDocument.BareKey((JsonObject)layers[each.Layer]!, each.Frame + delta), each.Channel, each.Value);
         }, continues));
         var moved = _keys.Select(key => (key.Layer, key.Frame + delta, key.Channel)).ToArray();
         _keys.Clear();
@@ -426,7 +436,7 @@ public sealed partial class MovieInspectorSession
                     key["frame"] = at;
                     keys.Insert(keys.OfType<JsonObject>().Count(each => (int)each["frame"]! < at), key);
                 }
-                else setChannel(MovieDocument.KeyAt(target, at), copied.Channel, copied.Value.DeepClone());
+                else setChannel(MovieDocument.BareKey(target, at), copied.Channel, copied.Value.DeepClone());
                 pasted.Add((to, at, copied.Channel));
             }
         }));
@@ -434,7 +444,7 @@ public sealed partial class MovieInspectorSession
         _keys.UnionWith(pasted);
     }
 
-    // A whole key is removed (a layer keeps one); a channel goes back to what the key before has.
+    // A whole key is removed (a layer keeps one); a channel is taken out of its key (the channel keeps one).
     private void deleteKeys(JsonArray layers)
     {
         if (_keys.Count == 0) return;
@@ -447,9 +457,8 @@ public sealed partial class MovieInspectorSession
                 {
                     if (keys.Count > 1) keys.Remove(key);
                 }
-                else if (!_keys.Contains((layer, frame, null)))
-                    setChannel(key, channel, channelValue(keys.OfType<JsonObject>().Where(each => (int)each["frame"]! < frame)
-                        .OrderBy(static each => (int)each["frame"]!).LastOrDefault() ?? [], channel));
+                else if (!_keys.Contains((layer, frame, null)) && keys.OfType<JsonObject>().Count(each => MovieDocument.Has(each, channel)) > 1)
+                    MovieDocument.RemoveChannel((JsonObject)layers[layer]!, frame, channel);
             }
         }));
         _keys.Clear();

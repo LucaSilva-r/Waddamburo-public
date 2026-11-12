@@ -206,6 +206,37 @@ public sealed class MovieDocumentAssetsTests : IDisposable
     }
 
     [Fact]
+    public void AKeyHoldsOnlyItsChannelsAndEachRunsBetweenItsOwnKeys()
+    {
+        File.WriteAllText(Path.Combine(_directory, "movie.json"), """
+            { "format": 1, "root": "main", "shapes": { "dot": { "rect": [0, 0, 4, 4] } },
+              "sprites": { "main": { "frames": 11, "layers": [ { "character": "dot", "keys": [
+                { "frame": 0, "x": 100, "alpha": 0 }, { "frame": 10, "y": 50 } ] } ] } } }
+            """);
+        var document = new MovieDocument(_directory);
+        var layer = (System.Text.Json.Nodes.JsonObject)document.Root["sprites"]!["main"]!["layers"]![0]!;
+        var last = MovieDocument.BareKey(layer, 10);
+        // Format 1 meant the defaults where a key said nothing: written out, so nothing moves.
+        Assert.Equal(2, (int?)document.Root["format"]);
+        Assert.Equal((0d, 1d, 50d), (MovieDocument.Value(last, "x"), MovieDocument.Value(last, "alpha"), MovieDocument.Value(last, "y")));
+        Assert.False(MovieDocument.Has(last, "rotation")); // never named: left alone
+        document.Edit(_ =>
+        {
+            // A key in the middle for the opacity only: x and y run past it.
+            MovieDocument.Set(MovieDocument.BareKey(layer, 5), "alpha", 1);
+        });
+        var pose = MovieDocument.KeyAt((System.Text.Json.Nodes.JsonObject)layer.DeepClone(), 5);
+        Assert.Equal((50d, 25d, 1d), (MovieDocument.Value(pose, "x"), MovieDocument.Value(pose, "y"), MovieDocument.Value(pose, "alpha")));
+        Assert.Equal(3, layer["keys"]!.AsArray().Count);
+        document.Edit(_ => MovieDocument.RemoveChannel(layer, 5, "alpha")); // the key held nothing else: gone
+        Assert.Equal(2, layer["keys"]!.AsArray().Count);
+        document.Edit(_ => MovieDocument.RemoveChannel(layer, 0, "x")); // the first key stays: the layer starts there
+        Assert.Equal(2, layer["keys"]!.AsArray().Count);
+        Assert.Equal(0d, MovieDocument.Value(MovieDocument.KeyAt((System.Text.Json.Nodes.JsonObject)layer.DeepClone(), 3), "x")); // already at its only key's value
+        MoviePackage.Assemble(document.Text);
+    }
+
+    [Fact]
     public void LayersAndKeysTakeTheirSettings()
     {
         var document = open();
@@ -226,6 +257,8 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         MovieDocument.SetTint(first, 1, 0, 0);
         MovieDocument.SetEase(first, "out");
         Assert.Equal("out", MovieDocument.Ease(first));
+        // A channel runs between the keys that name it: the tint needs its other end said.
+        MovieDocument.SetTint(layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().MaxBy(static key => (int)key["frame"]!)!, 1, 1, 1);
         var middle = MovieDocument.KeyAt(layer, 1); // A third of the way in time, 5/9 of the way eased out.
         Assert.Equal((15.556, (1d, .556, .556)), (MovieDocument.Value(middle, "x"), MovieDocument.Tint(middle)));
         MovieDocument.SetEase(first, "hold");

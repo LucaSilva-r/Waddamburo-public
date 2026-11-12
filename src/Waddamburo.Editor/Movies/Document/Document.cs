@@ -35,6 +35,7 @@ public sealed partial class MovieDocument
         Path = "";
         _text = "";
         Root = description;
+        Upgrade(Root);
         _names = names;
     }
 
@@ -46,6 +47,9 @@ public sealed partial class MovieDocument
         Path = System.IO.Path.Combine(packageDirectory, MoviePackage.FileName);
         _text = File.ReadAllText(Path);
         Root = parse(_text);
+        // Edited as format 2 from the start (the file is written so on the next save; undo never goes back before this).
+        if (Upgrade(Root))
+            _text = Format(Root);
         var metadataPath = System.IO.Path.Combine(packageDirectory, MetadataFileName);
         _metadata = File.Exists(metadataPath) ? parse(File.ReadAllText(metadataPath)) : new JsonObject();
         syncAssetIds();

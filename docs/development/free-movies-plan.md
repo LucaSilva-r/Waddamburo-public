@@ -64,6 +64,13 @@ A directory per movie, found before the archive movie of the same id:
   `add`, `multiply` or `screen`; `masks`: n makes it a mask for the n layers above it (not drawn itself).
   Values run straight from one key to the next unless `hold`. This is the model the editor edits (layers and
   keyframes); curves other than straight lines are the editor's to add.
+- **Format 2** (2026-11-12): a key holds only the channels it names (`x`, `y`, `scaleX`, `scaleY`, `rotation`,
+  `alpha`, `tint`), and each channel runs from one key that names it to the next that does, by the first one's `ease`
+  or `hold`, whatever keys lie between; before its first key a channel is already at that key's value, and a channel
+  no key names is at its default. So an opacity key says nothing about position. A layer still appears on its first
+  key's frame. In format 1 every key holds every channel (the ones left out at their defaults); both load. The editor
+  works in format 2: it opens a format 1 package with the defaults written out (nothing moves) and saves it as 2.
+  Two channels keyed on one frame share that key's ease.
 - Not yet: text outlines, masks (`ClipDepth`), colour add, several quads per shape, seek snapshots (a seek replays the
   timeline from frame 0).
 - ponytail: loose directories only; a single-file archive for distribution when packs are shared.
