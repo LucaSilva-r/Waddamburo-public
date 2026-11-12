@@ -212,4 +212,32 @@ public sealed class ActionScriptTests
         Assert.True(player.TryInvokeCallback("Late", []));
         Assert.Equal(["7"], reports);
     }
+
+    [Fact]
+    public void AMovieAsksForItsOwnDrumOrAPlayerByNumber()
+    {
+        var (player, reports) = run("""
+            Wd.on("play.score", function(score) { report("mine", score); });
+            Wd.on("play.score", function(score) { report("p2", score, Wd.get("play.score", 2), Wd.get("play.score")); }, 2);
+            Wd.on("drum.hit", function(side, part) { report("hit2", side, part); }, 2);
+            stop();
+            """);
+        player.Publish("play.score", LumenHostValue.FromNumber(10));
+        player.Publish("play.score", LumenHostValue.FromNumber(20), 2);
+        player.Emit("drum.hit", LumenHostValue.FromString("left"), LumenHostValue.FromString("don"));
+        player.EmitFor(2, "drum.hit", LumenHostValue.FromString("right"), LumenHostValue.FromString("ka"));
+        Assert.Equal(["mine,undefined", "p2,undefined,undefined,undefined", "mine,10", "p2,20,20,10", "hit2,right,ka"], reports);
+    }
+
+    [Fact]
+    public void AMovieOfNoDrumGetsPlayerOne()
+    {
+        var (player, reports) = run("""
+            Wd.on("play.score", function(score) { report(score, Wd.get("play.score")); });
+            stop();
+            """);
+        player.Publish("play.score", LumenHostValue.FromNumber(2), 2);
+        player.Publish("play.score", LumenHostValue.FromNumber(1), 1);
+        Assert.Equal(["undefined,undefined", "1,1"], reports);
+    }
 }

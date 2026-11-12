@@ -43,6 +43,18 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     private Lane[] _lanes = [];
     private WaiwaiStage? _stage;
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
+    // What the flow knows and the lanes do not (the song's title, the players' names): kept, and given to the lanes
+    // each time they are built.
+    private readonly Dictionary<(int? Lane, string Name), LumenHostValue> _provided = [];
+
+    /// <summary>Publishes a provider state (WdNames) to the movies of one lane, or of every lane.</summary>
+    public void Publish(string name, LumenHostValue value, int? lane = null)
+    {
+        _provided[(lane, name)] = value;
+        for (var index = 0; index < _lanes.Length; index++)
+            if (lane is null || lane == index)
+                _lanes[index].Publish(name, value);
+    }
 
     /// <summary>The song's clear / fail banner shows at its end (off in practice; set before <see cref="Start"/>).</summary>
     /// <remarks>Read each frame; lanes rebuilt (a seek back in a review) start without a banner shown.</remarks>
@@ -99,6 +111,25 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     public void Start(IReadOnlyList<PlayableChart> charts, LumenGameSceneInstance scene,
         IReadOnlyList<TaikoCourse> courses, int side = 0, WaiwaiComposition? waiwai = null,
         IReadOnlyList<ReviewTimeline>? reviews = null)
+    {
+        start(charts, scene, courses, side, waiwai, reviews);
+        // Lanes are built one after the other: what each published while being built reaches every movie here.
+        var everyone = scene.Player.Layers.Select(static layer => layer.Player).ToArray();
+        foreach (var built in _lanes)
+        {
+            built.Everyone = everyone;
+            foreach (var (name, value) in built.Published)
+                foreach (var movie in everyone) movie.Publish(name, value, built.Drum);
+        }
+        foreach (var ((lane, name), value) in _provided)
+            for (var index = 0; index < _lanes.Length; index++)
+                if (lane is null || lane == index)
+                    _lanes[index].Publish(name, value);
+    }
+
+    private void start(IReadOnlyList<PlayableChart> charts, LumenGameSceneInstance scene,
+        IReadOnlyList<TaikoCourse> courses, int side, WaiwaiComposition? waiwai,
+        IReadOnlyList<ReviewTimeline>? reviews)
     {
         var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: scene.Player.Layers[index],
             layer.Content)).ToArray();
@@ -319,6 +350,18 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public TaikoJudgementSession Session => _session;
         private readonly TaikoHitFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
+        private readonly Action<string, LumenHostValue> _publish;
+
+        /// <summary>This drum's player number for the provider: 1 the left drum, 2 the right.</summary>
+        public int Drum { get; }
+
+        /// <summary>What this lane has published so far.</summary>
+        public Dictionary<string, LumenHostValue> Published { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>Every movie on stage, told this drum's values under its player number.</summary>
+        public LumenPlayer[] Everyone { get; set; } = [];
+
+        public void Publish(string name, LumenHostValue value) => _publish(name, value);
 
         public TaikoLongNotePresentation LongNotes => _longNotes;
         private readonly TaikoDonPresentation? _character;
@@ -583,17 +626,24 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _danSongEnds = danSongEnds;
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
-            var published = new Dictionary<string, LumenHostValue>(StringComparer.Ordinal);
+            // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
+            // and every other movie on stage, get them under the player's number (Everyone, set once all lanes exist).
+            Drum = (players == 2 ? lane : side) + 1;
+            var mine = layers.Where(pair => !(players == 2 && GameplaySceneComposition.SharedRoles.Contains(pair.Key)))
+                .Select(static pair => pair.Value.Player).ToArray();
+            var published = Published;
             void publish(string name, LumenHostValue value)
             {
                 if (published.TryGetValue(name, out var before) && before == value)
-                    return; // most ticks nothing changed: not worth a walk over the lane's movies
+                    return; // most ticks nothing changed: not worth a walk over the movies
                 published[name] = value;
-                foreach (var layer in layers.Values) layer.Player.Publish(name, value);
+                foreach (var movie in mine) movie.Publish(name, value);
+                foreach (var movie in Everyone) movie.Publish(name, value, Drum);
             }
             void emit(string name, params ReadOnlySpan<LumenHostValue> arguments)
             {
-                foreach (var layer in layers.Values) layer.Player.Emit(name, arguments);
+                foreach (var movie in mine) movie.Emit(name, arguments);
+                foreach (var movie in Everyone) movie.EmitFor(Drum, name, arguments);
             }
             void publishPlay()
             {
@@ -611,6 +661,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             }
             publish("play.course", LumenHostValue.FromString(course.ToString().ToLowerInvariant()));
             publish("play.gaugeClearLine", LumenHostValue.FromNumber((double)gauge.Clear / TaikoSoulGauge.Max));
+            _publish = publish;
+            publish("player.side", LumenHostValue.FromNumber(side));
+            publish("player.speed", LumenHostValue.FromNumber(options.ScrollSpeed));
+            publish("player.doron", LumenHostValue.FromBoolean(options.Doron));
+            publish("player.abekobe", LumenHostValue.FromBoolean(options.Abekobe));
+            publish("player.random", LumenHostValue.FromNumber((int)options.Random));
+            publish("player.shinuchi", LumenHostValue.FromBoolean(options.Shinuchi));
             publish("play.goGo", LumenHostValue.FromBoolean(false));
             publishPlay();
             var bannerTime = TaikoResultBanner.Time(chart);
@@ -842,6 +899,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             board.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
             board.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
             hitRadius = _presentation.HitRadius;
+            _presentation.DrumHit += action => emit("drum.hit",
+                LumenHostValue.FromString(action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa ? "left" : "right"),
+                LumenHostValue.FromString(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don" : "ka"));
             _presentation.GoGoChanged += active =>
             {
                 publish("play.goGo", LumenHostValue.FromBoolean(active));

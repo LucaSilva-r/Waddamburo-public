@@ -125,8 +125,12 @@ public sealed class TaikoLumenPresentation
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(combo));
     }
 
+    /// <summary>The drum was struck (whether or not a note was there).</summary>
+    public event Action<TaikoInputAction>? DrumHit;
+
     public void Hit(TaikoInputAction action)
     {
+        DrumHit?.Invoke(action);
         var don = action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon;
         var left = action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa;
         if (!_target.Player.TryGotoLabel("effect", don ? "don_s" : "katsu_s"))

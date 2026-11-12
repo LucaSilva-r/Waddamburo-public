@@ -223,8 +223,14 @@ settled as each step reaches them.
   not in it is reported once on the console, naming the movie. Publishing one not in it is an engine error.
 - The gameplay screen publishes to every movie of a lane: `play.score`, `combo`, `maxCombo`, `gauge`,
   `gaugeClearLine`, `gaugeCleared`, `gaugeFull`, `good`, `ok`, `bad`, `accuracy`, `course`, `goGo`, `roll`, `balloon`,
-  `progress`; events `note.judged`, `combo.milestone`, `song.ended`. Not yet: the song's title, the players' names
-  and options, `drum.hit`.
+  `progress`; events `note.judged`, `combo.milestone`, `song.ended`.
+- **Two drums** (user, 2026-11-12): one set of names, an optional last argument for the player. `Wd.get(name)` and
+  `Wd.on(name, fn)` give a movie its own drum's, so a part made once serves either drum; `Wd.get(name, 2)` and
+  `Wd.on(name, fn, 2)` ask for a player by number (1 left, 2 right) from any movie. A movie both drums share (the
+  song's title) belongs to neither and gets player 1's where it names none.
+- Also published: `song.title`, `song.subtitle`, `player.name`, `player.side`, `player.speed`, `player.doron`,
+  `player.abekobe`, `player.random`, `player.shinuchi`; event `drum.hit`. Read by `song_info` (title) and the board
+  (the drum lights where it was struck).
 - Read by the engine's own movies: the board (`lane_obi`: score, combo), the three gauges, the roll counter, the
   balloon, the end banner. Their game-style callbacks stay as empty functions, because the gameplay host still calls
   them: it has not been moved behind an adapter.

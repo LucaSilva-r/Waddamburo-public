@@ -122,4 +122,33 @@ public sealed class FreeTimeCounterTests
         call(player, "SetVisible", LumenHostValue.FromBoolean(false));
         Assert.Empty(player.CreateRenderSnapshot().Quads);
     }
+
+    [Fact]
+    public void TheBoardLightsItsDrumWhereItWasStruck()
+    {
+        var directory = AppContext.BaseDirectory;
+        while (!Directory.Exists(Path.Combine(directory, "movies", "indicator", "time_counter")))
+            directory = Path.GetDirectoryName(directory) ?? throw new DirectoryNotFoundException("movies");
+        var player = LumenMovieContent.LoadPackage(Path.Combine(directory, "movies", "enso_system", "common", "lane_obi"),
+            static _ => (1, 1, new byte[4])).CreatePlayer();
+        advance(player, 2);
+        var idle = player.CreateRenderSnapshot().Quads.Length;
+        Assert.Equal(0, player.InstanceFrame("ka_right")?.Frame);
+        player.Emit("drum.hit", LumenHostValue.FromString("right"), LumenHostValue.FromString("ka"));
+        advance(player, 1);
+        Assert.True(player.InstanceFrame("ka_right")?.Frame > 0);
+        Assert.Equal(0, player.InstanceFrame("don_left")?.Frame);
+        Assert.Equal(idle + 1, player.CreateRenderSnapshot().Quads.Length);
+        advance(player, 10);
+        Assert.Equal(idle, player.CreateRenderSnapshot().Quads.Length); // faded and gone
+        // Both hands at once, then struck again while still lit (a drumroll).
+        player.Emit("drum.hit", LumenHostValue.FromString("left"), LumenHostValue.FromString("ka"));
+        player.Emit("drum.hit", LumenHostValue.FromString("right"), LumenHostValue.FromString("ka"));
+        advance(player, 2);
+        Assert.Equal(idle + 2, player.CreateRenderSnapshot().Quads.Length);
+        player.Emit("drum.hit", LumenHostValue.FromString("left"), LumenHostValue.FromString("ka"));
+        advance(player, 1);
+        Assert.Equal(idle + 2, player.CreateRenderSnapshot().Quads.Length);
+        Assert.True(player.Diagnostics.IsEmpty, string.Join("; ", player.Diagnostics.Select(static each => each.Message)));
+    }
 }

@@ -36,8 +36,18 @@ public static class WdNames
         new("play.roll", WdKind.State, "number", "play", "Hits on the drumroll under way; no value when there is none.", "24"),
         new("play.balloon", WdKind.State, "number", "play", "Hits the balloon under way still needs; no value when there is none.", "5"),
         new("play.progress", WdKind.State, "number", "play", "How far through the song, 0 to 1, in hundredths.", "0.4"),
+        new("song.title", WdKind.State, "text", "play", "The song's title.", "Senbonzakura"),
+        new("song.subtitle", WdKind.State, "text", "play", "The song's subtitle; no value when it has none.", "Kurousa-P feat. Hatsune Miku"),
+        new("player.name", WdKind.State, "text", "play", "The name of this drum's player.", "Don-chan"),
+        new("player.side", WdKind.State, "number", "play", "This drum: 0 the left one, 1 the right one.", "0"),
+        new("player.speed", WdKind.State, "number", "play", "The notes' scroll speed option, 1 for none.", "1.5"),
+        new("player.doron", WdKind.State, "bool", "play", "The vanishing notes option is on.", "false"),
+        new("player.abekobe", WdKind.State, "bool", "play", "The swapped notes option is on.", "false"),
+        new("player.random", WdKind.State, "number", "play", "The shuffled notes option: 0 off, 1 a little, 2 a lot.", "0"),
+        new("player.shinuchi", WdKind.State, "bool", "play", "The true-score option is on.", "false"),
         new("note.judged", WdKind.Event, "result: text (good, ok, bad), big: bool", "play", "A note of this drum was hit or missed.", "good, false"),
         new("combo.milestone", WdKind.Event, "combo: number", "play", "The combo reached a hundred.", "100"),
+        new("drum.hit", WdKind.Event, "side: text (left, right), part: text (don, ka)", "play", "This drum was struck, note or not.", "left, don"),
         new("song.ended", WdKind.Event, "cleared: bool, fullCombo: bool", "play", "The song is over and its result is known.", "true, false"),
     ];
 

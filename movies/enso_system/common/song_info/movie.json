@@ -1,4 +1,4 @@
-// song_info: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// song_info: the song's title and subtitle, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -20,16 +20,7 @@
   "sprites": {
     "stage": {
       "frames": 1,
-      "layers": [
-        {
-          "character": "box",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        }
-      ]
+      "layers": []
     },
     "main": {
       "frames": 1,
@@ -44,8 +35,53 @@
               "y": 100
             }
           ]
+        },
+        {
+          "character": "title",
+          "name": "title",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "subtitle",
+          "name": "subtitle",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
         }
-      ]
+      ],
+      "scripts": {
+        "0": "scripts/main.as"
+      }
+    }
+  },
+  "texts": {
+    "title": {
+      "rect": [
+        -340,
+        -30,
+        710,
+        44
+      ],
+      "size": 34,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "subtitle": {
+      "rect": [
+        -340,
+        16,
+        710,
+        30
+      ],
+      "size": 20,
+      "align": "right",
+      "color": "#c8c8c8"
     }
   }
 }

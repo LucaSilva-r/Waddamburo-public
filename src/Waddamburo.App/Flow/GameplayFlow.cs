@@ -345,6 +345,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // A 4:3 layout (camera.aspect below 1): the stage drawn squeezed into a 4:3 picture.
         Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Hosts.AiBattle && _charts.Length > 0 && fourThree(_charts[0].Effects);
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
+        // The provider's player.name, per lane: the drum's account, or Guest.
+        for (var lane = 0; lane < _charts.Length; lane++)
+            Shell.Gameplay.Publish("player.name", LumenHostValue.FromString(
+                TaikoGuest.Profiles[_charts.Length == 2 ? lane : _side]?.DisplayName ?? Strings.T("setup.guest")), lane);
         _hitOffsets.Clear();
         if (_review is null && _charts.Length > 0)
             Shell.Gameplay.OnJudged(0, judgement =>
@@ -1046,6 +1050,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
     private void showSongTitle(SongSelectSong song)
     {
+        Shell.Gameplay.Publish("song.title", LumenHostValue.FromString(song.Descriptor.Title.English ?? song.Descriptor.Title.Primary));
+        Shell.Gameplay.Publish("song.subtitle", song.Descriptor.Subtitle is { Length: > 0 } subtitle
+            ? LumenHostValue.FromString(subtitle) : LumenHostValue.Undefined);
         if (songInfoPlayer() is not { } info)
             return;
         var title = Shell.Titles.GetGameplayTitle(song);

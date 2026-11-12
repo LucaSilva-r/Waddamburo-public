@@ -5,7 +5,11 @@
   "root": "main",
   "textures": {
     "box": "textures/box.svg",
-    "band": "textures/band.svg"
+    "band": "textures/band.svg",
+    "don_left": "textures/don_left.svg",
+    "don_right": "textures/don_right.svg",
+    "ka_left": "textures/ka_left.svg",
+    "ka_right": "textures/ka_right.svg"
   },
   "shapes": {
     "box": {
@@ -24,6 +28,42 @@
         0,
         580,
         176
+      ]
+    },
+    "don_left_lit": {
+      "texture": "don_left",
+      "rect": [
+        -58,
+        -58,
+        116,
+        116
+      ]
+    },
+    "don_right_lit": {
+      "texture": "don_right",
+      "rect": [
+        -58,
+        -58,
+        116,
+        116
+      ]
+    },
+    "ka_left_lit": {
+      "texture": "ka_left",
+      "rect": [
+        -58,
+        -58,
+        116,
+        116
+      ]
+    },
+    "ka_right_lit": {
+      "texture": "ka_right",
+      "rect": [
+        -58,
+        -58,
+        116,
+        116
       ]
     }
   },
@@ -45,6 +85,50 @@
           "keys": [
             {
               "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "don_left",
+          "name": "don_left",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 230,
+              "y": 71
+            }
+          ]
+        },
+        {
+          "character": "don_right",
+          "name": "don_right",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 230,
+              "y": 71
+            }
+          ]
+        },
+        {
+          "character": "ka_left",
+          "name": "ka_left",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 230,
+              "y": 71
+            }
+          ]
+        },
+        {
+          "character": "ka_right",
+          "name": "ka_right",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 230,
+              "y": 71
             }
           ]
         },
@@ -74,6 +158,98 @@
         "out": 31,
         "tokkun_auto_off": 41,
         "tokkun_auto_on": 51
+      }
+    },
+    "don_left": {
+      "frames": 8,
+      "layers": [
+        {
+          "character": "don_left_lit",
+          "keys": [
+            {
+              "frame": 1,
+              "alpha": 1
+            },
+            {
+              "frame": 6,
+              "alpha": 0
+            }
+          ],
+          "until": 7
+        }
+      ],
+      "scripts": {
+        "0": "scripts/stop.as",
+        "7": "scripts/stop.as"
+      }
+    },
+    "don_right": {
+      "frames": 8,
+      "layers": [
+        {
+          "character": "don_right_lit",
+          "keys": [
+            {
+              "frame": 1,
+              "alpha": 1
+            },
+            {
+              "frame": 6,
+              "alpha": 0
+            }
+          ],
+          "until": 7
+        }
+      ],
+      "scripts": {
+        "0": "scripts/stop.as",
+        "7": "scripts/stop.as"
+      }
+    },
+    "ka_left": {
+      "frames": 8,
+      "layers": [
+        {
+          "character": "ka_left_lit",
+          "keys": [
+            {
+              "frame": 1,
+              "alpha": 1
+            },
+            {
+              "frame": 6,
+              "alpha": 0
+            }
+          ],
+          "until": 7
+        }
+      ],
+      "scripts": {
+        "0": "scripts/stop.as",
+        "7": "scripts/stop.as"
+      }
+    },
+    "ka_right": {
+      "frames": 8,
+      "layers": [
+        {
+          "character": "ka_right_lit",
+          "keys": [
+            {
+              "frame": 1,
+              "alpha": 1
+            },
+            {
+              "frame": 6,
+              "alpha": 0
+            }
+          ],
+          "until": 7
+        }
+      ],
+      "scripts": {
+        "0": "scripts/stop.as",
+        "7": "scripts/stop.as"
       }
     }
   },

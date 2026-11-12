@@ -122,6 +122,10 @@ public sealed partial class MovieInspectorSession
             _wdSet.Clear();
         ImGui.SameLine();
         ImGui.Checkbox("Show every name", ref _wdAll);
+        // Diagnostic: WADDAMBURO_EDITOR_EMIT="drum.hit:left,don" sends that event every 20 frames, for a screenshot run.
+        if (ImGui.GetFrameCount() % 20 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_EDITOR_EMIT") is { } repeated
+            && repeated.Split(':') is [var repeatedName, var repeatedArguments])
+            player.Emit(repeatedName, [.. repeatedArguments.Split(',').Select(parse)]);
         // Kept up every frame: a movie restarted by an edit reads the same values again. Publish ignores no change.
         foreach (var name in WdNames.All)
             if (name.Kind == WdKind.State)
