@@ -65,7 +65,10 @@
         }
       },
       "waddamburo.catalog": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )"
+        }
       },
       "waddamburo.editor": {
         "type": "Project",

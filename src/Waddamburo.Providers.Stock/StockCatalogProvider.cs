@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Buffers.Binary;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -21,6 +22,9 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
     private const string Courses = "enhmx";
 
     private readonly string _root;
+    public CatalogMetadataCache? MetadataCache { get; init; }
+    private CatalogMetadataScope? _scan;
+    private bool exists(string path) => _scan?.Exists(path) ?? File.Exists(path);
     // Star ratings of the last scan, for the charts it published.
     private IReadOnlyDictionary<string, int[]> _stars = new Dictionary<string, int[]>();
 
@@ -55,104 +59,115 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)
     {
-        progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));
-        var diagnostics = new List<CatalogDiagnostic>();
-        // Installs carry one musicinfo.xml per game revision; the one describing the most installed
-        // charts is the installed revision's.
-        var candidates = metadataCandidates(_root)
-            .Select(path => (Path: path, Entries: readMetadata(path, diagnostics)))
-            .ToList();
-        if (candidates.Count == 0)
-            throw new FileNotFoundException("The stock data folder has no musicinfo.xml.");
-        // The revision listing the most installed charts is the base (its titles, genres and order); the others
-        // add the installed songs it no longer lists (rotated out, mostly licensed anime and J-POP: 171 in
-        // Green), each from the fullest revision that has it.
-        var revisions = candidates
-            .OrderByDescending(candidate => candidate.Entries.Count(entry => installedCourses(entry.Id).Any()))
-            .ThenBy(static candidate => candidate.Path, StringComparer.Ordinal)
-            .ToList();
-        var entries = revisions[0].Entries.ToList();
-        var listed = entries.Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var revision in revisions.Skip(1))
-            foreach (var entry in revision.Entries)
-                if (installedCourses(entry.Id).Any() && listed.Add(entry.Id))
-                    entries.Add(entry);
-        // The attract demo list (demoplay): later revisions dropped the flag, so any revision's counts.
-        var demo = candidates.SelectMany(static candidate => candidate.Entries)
-            .Where(static entry => entry.DemoPlay).Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-
-        var stars = readStars(Path.Combine(_root, "fumen", "tuning.bin"), diagnostics);
-        _stars = stars;
-        var songs = new List<SongDescriptor>();
-        var categories = new List<(string Genre, List<SongKey> Songs)>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var index = 0; index < entries.Count; index++)
+        using var cached = MetadataCache?.Open(_root, "stock-v1", sourceTree: true,
+            within: ["fumen", "sound/bgm", "config", "musicinfo.xml"], cancellationToken);
+        _scan = cached;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new CatalogScanProgress(Id, "inspect", index, entries.Count));
-            var entry = entries[index];
-            if (!seen.Add(entry.Id))
-            {
-                diagnostics.Add(warning("STOCK_DUPLICATE_SONG", $"Music id '{entry.Id}' is listed more than once."));
-                continue;
-            }
-            var key = new SongKey(Source, entry.Id);
-            var charts = installedCourses(entry.Id)
-                .Select(course => new SongChartDescriptor(
-                    new ChartKey(key, course.ToString().ToLowerInvariant()),
-                    course.ToString(),
-                    new CatalogAssetKey(Id, $"chart:{entry.Id}:{Courses[(int)course]}"),
-                    course,
-                    level(stars, entry.Id, course),
-                    hasDuet(entry.Id, Courses[(int)course])
-                        ? [new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:1"),
-                           new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:2")]
-                        : null)
-                {
-                    HasBranches = FumenChartReader.HasBranchesFlag(chartPath(entry.Id, Courses[(int)course])),
-                })
-                .ToArray();
-            if (charts.Length == 0)
-                continue;
-            var bank = "SONG_" + entry.Id.ToUpperInvariant();
-            var hasAudio = File.Exists(Path.Combine(_root, "sound", "bgm", "nub", bank + ".nub"));
-            if (!hasAudio)
-                diagnostics.Add(warning("STOCK_AUDIO_MISSING", $"Music id '{entry.Id}' has no installed music."));
-            var extra = StockMetadata.Value.GetValueOrDefault(entry.Id);
-            songs.Add(new SongDescriptor(
-                key,
-                new SongTitle(entry.Title ?? entry.Id, entry.Title, extra.EnglishTitle),
-                null,
-                charts,
-                hasAudio ? new CatalogAssetKey(Id, $"audio:{entry.Id}") : null,
-                hasAudio ? previewStart(Path.Combine(_root, "sound", "bgm", "nsh", bank + ".nsh")) : null,
-                extra.Subtitle)
-            {
-                EnglishSubtitle = extra.EnglishSubtitle,
-                DemoPlay = demo.Contains(entry.Id),
-                // Waiwai songs are the ones with a section layout (all of Green's 182 match the traced list).
-                WaiwaiComposition = File.Exists(compositionPath(entry.Id))
-                    ? new CatalogAssetKey(Id, $"composition:{entry.Id}") : null,
-            });
-            var genre = entry.Genre ?? "";
-            var category = categories.FindIndex(category => category.Genre == genre);
-            if (category < 0)
-                categories.Add((genre, [key]));
-            else
-                categories[category].Songs.Add(key);
-        }
+            progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));
+            var diagnostics = new List<CatalogDiagnostic>();
+            // Installs carry one musicinfo.xml per game revision; the one describing the most installed
+            // charts is the installed revision's.
+            var candidates = metadataCandidates(_root)
+                .Select(path => (Path: path, Entries: cached?.Read(path, "metadata", () => readMetadata(path, diagnostics), CacheJsonContext.Default.ListMetadataEntry, diagnostics) ?? readMetadata(path, diagnostics)))
+                .ToList();
+            if (candidates.Count == 0)
+                throw new FileNotFoundException("The stock data folder has no musicinfo.xml.");
+            // The revision listing the most installed charts is the base (its titles, genres and order); the others
+            // add the installed songs it no longer lists (rotated out, mostly licensed anime and J-POP: 171 in
+            // Green), each from the fullest revision that has it.
+            var revisions = candidates
+                .OrderByDescending(candidate => candidate.Entries.Count(entry => installedCourses(entry.Id).Any()))
+                .ThenBy(static candidate => candidate.Path, StringComparer.Ordinal)
+                .ToList();
+            var entries = revisions[0].Entries.ToList();
+            var listed = entries.Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var revision in revisions.Skip(1))
+                foreach (var entry in revision.Entries)
+                    if (installedCourses(entry.Id).Any() && listed.Add(entry.Id))
+                        entries.Add(entry);
+            // The attract demo list (demoplay): later revisions dropped the flag, so any revision's counts.
+            var demo = candidates.SelectMany(static candidate => candidate.Entries)
+                .Where(static entry => entry.DemoPlay).Select(static entry => entry.Id).ToHashSet(StringComparer.Ordinal);
 
-        progress?.Report(new CatalogScanProgress(Id, "complete", entries.Count, entries.Count));
-        return ValueTask.FromResult(new SongCatalogContribution(
-            Id,
-            Source,
-            songs,
-            categories.Select((category, index) => new SongCategoryDescriptor(
-                new CategoryKey(Source, category.Genre.Length == 0 ? "-" : category.Genre),
-                categoryName(category.Genre),
-                index,
-                category.Songs)),
-            diagnostics));
+            var tuningPath = Path.Combine(_root, "fumen", "tuning.bin");
+            var stars = cached?.Read(tuningPath, "stars", () => readStars(tuningPath, diagnostics), CacheJsonContext.Default.DictionaryStringInt32Array, diagnostics)
+                ?? readStars(tuningPath, diagnostics);
+            _stars = stars;
+            var songs = new List<SongDescriptor>();
+            var categories = new List<(string Genre, List<SongKey> Songs)>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < entries.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(new CatalogScanProgress(Id, "inspect", index, entries.Count));
+                var entry = entries[index];
+                if (!seen.Add(entry.Id))
+                {
+                    diagnostics.Add(warning("STOCK_DUPLICATE_SONG", $"Music id '{entry.Id}' is listed more than once."));
+                    continue;
+                }
+                var key = new SongKey(Source, entry.Id);
+                var charts = installedCourses(entry.Id)
+                    .Select(course => new SongChartDescriptor(
+                        new ChartKey(key, course.ToString().ToLowerInvariant()),
+                        course.ToString(),
+                        new CatalogAssetKey(Id, $"chart:{entry.Id}:{Courses[(int)course]}"),
+                        course,
+                        level(stars, entry.Id, course),
+                        hasDuet(entry.Id, Courses[(int)course])
+                            ? [new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:1"),
+                               new CatalogAssetKey(Id, $"duet:{entry.Id}:{Courses[(int)course]}:2")]
+                            : null)
+                    {
+                        HasBranches = cached?.Read(chartPath(entry.Id, Courses[(int)course]), "branches",
+                            () => FumenChartReader.HasBranchesFlag(chartPath(entry.Id, Courses[(int)course])), CacheJsonContext.Default.Boolean)
+                            ?? FumenChartReader.HasBranchesFlag(chartPath(entry.Id, Courses[(int)course])),
+                    })
+                    .ToArray();
+                if (charts.Length == 0)
+                    continue;
+                var bank = "SONG_" + entry.Id.ToUpperInvariant();
+                var hasAudio = exists(Path.Combine(_root, "sound", "bgm", "nub", bank + ".nub"));
+                if (!hasAudio)
+                    diagnostics.Add(warning("STOCK_AUDIO_MISSING", $"Music id '{entry.Id}' has no installed music."));
+                var extra = StockMetadata.Value.GetValueOrDefault(entry.Id);
+                songs.Add(new SongDescriptor(
+                    key,
+                    new SongTitle(entry.Title ?? entry.Id, entry.Title, extra.EnglishTitle),
+                    null,
+                    charts,
+                    hasAudio ? new CatalogAssetKey(Id, $"audio:{entry.Id}") : null,
+                    hasAudio ? cachedPreview(Path.Combine(_root, "sound", "bgm", "nsh", bank + ".nsh")) : null,
+                    extra.Subtitle)
+                {
+                    EnglishSubtitle = extra.EnglishSubtitle,
+                    DemoPlay = demo.Contains(entry.Id),
+                    // Waiwai songs are the ones with a section layout (all of Green's 182 match the traced list).
+                    WaiwaiComposition = exists(compositionPath(entry.Id))
+                        ? new CatalogAssetKey(Id, $"composition:{entry.Id}") : null,
+                });
+                var genre = entry.Genre ?? "";
+                var category = categories.FindIndex(category => category.Genre == genre);
+                if (category < 0)
+                    categories.Add((genre, [key]));
+                else
+                    categories[category].Songs.Add(key);
+            }
+
+            progress?.Report(new CatalogScanProgress(Id, "complete", entries.Count, entries.Count));
+            return ValueTask.FromResult(new SongCatalogContribution(
+                Id,
+                Source,
+                songs,
+                categories.Select((category, index) => new SongCategoryDescriptor(
+                    new CategoryKey(Source, category.Genre.Length == 0 ? "-" : category.Genre),
+                    categoryName(category.Genre),
+                    index,
+                    category.Songs)),
+                diagnostics));
+        }
+        finally { _scan = null; }
     }
 
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default)
@@ -219,11 +234,11 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
         Path.Combine(_root, "fumen", id, "duet", $"{id}_{course}_{player}.bin");
 
     private bool hasDuet(string id, char course) =>
-        File.Exists(duetPath(id, course, "1")) && File.Exists(duetPath(id, course, "2"));
+        exists(duetPath(id, course, "1")) && exists(duetPath(id, course, "2"));
 
     private IEnumerable<TaikoCourse> installedCourses(string id) =>
         Enumerable.Range(0, Courses.Length)
-            .Where(course => File.Exists(chartPath(id, Courses[course])))
+            .Where(course => exists(chartPath(id, Courses[course])))
             .Select(static course => (TaikoCourse)course);
 
     private static IEnumerable<string> metadataCandidates(string root)
@@ -311,6 +326,9 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
             return null;
         return TimeSpan.FromMilliseconds(word(nsh, entry + 0xB0));
     }
+
+    private TimeSpan? cachedPreview(string path) => _scan is { } cache
+        ? cache.Read(path, "preview", () => previewStart(path), CacheJsonContext.Default.NullableTimeSpan) : previewStart(path);
 
     private static TimeSpan? previewStart(string path)
     {
@@ -422,4 +440,9 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
 
     [GeneratedRegex("^[a-z0-9_]{1,32}$")]
     private static partial Regex MusicId();
+    [JsonSerializable(typeof(List<MetadataEntry>))]
+    [JsonSerializable(typeof(Dictionary<string, int[]>))]
+    [JsonSerializable(typeof(bool))]
+    [JsonSerializable(typeof(TimeSpan?))]
+    private sealed partial class CacheJsonContext : JsonSerializerContext;
 }

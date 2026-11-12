@@ -27,7 +27,10 @@ public sealed class NijiiroCatalogProviderTests
             File.WriteAllBytes(Path.Combine(data, "fumen", "abc", "abc_m.bin"), []);
             File.WriteAllBytes(Path.Combine(data, "sound", "song_abc.nus3bank"), []);
 
-            var provider = new NijiiroCatalogProvider(install, keys: keys);
+            var cache = new CatalogMetadataCache(Path.Combine(install, "metadata.db"));
+            var provider = new NijiiroCatalogProvider(install, keys: keys) { MetadataCache = cache };
+            await provider.ScanAsync(null, default);
+            provider = new NijiiroCatalogProvider(install, keys: keys) { MetadataCache = cache };
             Assert.True(provider.Exists);
             var contribution = await provider.ScanAsync(null, default);
 

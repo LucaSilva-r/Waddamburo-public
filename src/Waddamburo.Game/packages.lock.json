@@ -55,7 +55,10 @@
         }
       },
       "waddamburo.catalog": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )"
+        }
       },
       "waddamburo.formats": {
         "type": "Project"
@@ -63,7 +66,7 @@
       "waddamburo.lumen": {
         "type": "Project",
         "dependencies": {
-          "Waddamburo.Formats": "[1.0.0, )"
+          "Waddamburo.Formats": "[0.0.0-dev, )"
         }
       }
     },

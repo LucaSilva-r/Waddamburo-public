@@ -22,10 +22,10 @@ internal sealed class SongLibraries : IDisposable
         Providers = providers;
         _catalog = new GlobalSongCatalog(providers);
         Snapshot = _catalog.RefreshAsync(percent is null ? null : new ScanPercent(providers.Length, percent)).AsTask().GetAwaiter().GetResult();
+        percent?.Invoke(100);
     }
 
-    // Every provider's share done, averaged, as 0-100, never going back: merged installs report under their own ids, so
-    // the count of shares grows mid-scan and the average can dip.
+    // Average each provider's share, reserving 100% until the final snapshot has been published.
     // ponytail: equal weight per provider, not per song (totals arrive late); weight by Total if it reads jumpy.
     private sealed class ScanPercent(int providers, Action<int> percent) : IProgress<CatalogScanProgress>
     {
@@ -35,7 +35,7 @@ internal sealed class SongLibraries : IDisposable
         public void Report(CatalogScanProgress value)
         {
             _done[value.Provider] = value.Total is > 0 and var total ? Math.Clamp((double)value.Completed / total, 0, 1) : 0;
-            var now = (int)(_done.Values.Sum() * 100 / Math.Max(providers, _done.Count));
+            var now = Math.Min(99, (int)(_done.Values.Sum() * 100 / Math.Max(providers, _done.Count)));
             lock (_done) // the scans report from several threads
                 if (now > _shown)
                     percent(_shown = now);
@@ -57,6 +57,7 @@ internal sealed class SongLibraries : IDisposable
     public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null)
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
+        var metadataCache = new CatalogMetadataCache(Path.Combine(Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!, "catalog-metadata.db"));
         List<(string, string)> problems = [];
         if (arcade.Home && arcade.TjaFolder is not null && !Directory.Exists(tja))
             problems.Add((tja, "Folder not found"));
@@ -65,13 +66,13 @@ internal sealed class SongLibraries : IDisposable
         if (arcade.Home && !string.IsNullOrEmpty(arcade.OsuStableFolder) && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is null)
             problems.Add((arcade.OsuStableFolder, "No osu!stable install (osu!.db) in this folder"));
         var libraries = new SongLibraries([
-            .. stock(dataRoot, arcade, problems),
+            .. stock(dataRoot, arcade, problems, metadataCache),
             // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
             // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
             .. (arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(tja)
-                ? [new TjaCatalogProvider(tja)] : Array.Empty<ISongCatalogProvider>(),
+                ? [new TjaCatalogProvider(tja) { MetadataCache = metadataCache }] : Array.Empty<ISongCatalogProvider>(),
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
-            .. arcade.Home ? nijiiro(arcade, problems) : [],
+            .. arcade.Home ? nijiiro(arcade, problems, metadataCache) : [],
             // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
             .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
                 ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
@@ -98,7 +99,7 @@ internal sealed class SongLibraries : IDisposable
     }
 
     // The game's own songs, then (home mode) other releases' that it lacks, newest release first.
-    private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems)
+    private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
         var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
             .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
@@ -112,17 +113,17 @@ internal sealed class SongLibraries : IDisposable
         return roots.Count switch
         {
             0 => [],
-            1 => [new StockCatalogProvider(roots[0])],
-            _ => [new MergedCatalogProvider([.. roots.Select(static root => new StockCatalogProvider(root))])],
+            1 => [new StockCatalogProvider(roots[0]) { MetadataCache = metadataCache }],
+            _ => [new MergedCatalogProvider([.. roots.Select(root => new StockCatalogProvider(root) { MetadataCache = metadataCache })])],
         };
     }
 
     // Nijiiro installations that can play, the newest (highest song number) first.
-    private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade, List<(string, string)> problems)
+    private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
         var installs = ArcadeSettings.Folders(arcade.NijiiroFolder)
             .Select(folder => (Folder: folder, Installation: new NijiiroCatalogProvider(folder,
-                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey))))
+                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) { MetadataCache = metadataCache }))
             .Where(install => usable(install.Folder, install.Installation, problems))
             .Select(static install => install.Installation)
             .OrderByDescending(static installation => installation.NewestSong)

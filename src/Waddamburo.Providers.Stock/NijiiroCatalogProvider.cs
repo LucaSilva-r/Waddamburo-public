@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Collections.Immutable;
 using System.Buffers.Binary;
 using System.IO.Compression;
@@ -27,6 +28,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     private static readonly string[] Genres = ["J-POP", "Anime", "Kids", "Vocaloid", "Game Music", "Namco Original", "Variety", "Classical"];
 
     private readonly string _root;
+    public CatalogMetadataCache? MetadataCache { get; init; }
     private readonly NijiiroKeys _keys;
     private Dictionary<string, int[]> _stars = [];
 
@@ -76,7 +78,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                 return "No Nijiiro data there.";
             try
             {
-                _ = table("musicinfo");
+                _ = musicinfo();
                 return null;
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException
@@ -97,7 +99,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
         {
             try
             {
-                return table("musicinfo").Select(static entry => entry.TryGetProperty("uniqueId", out var number)
+                return musicinfo().Select(static entry => entry.TryGetProperty("uniqueId", out var number)
                     && number.TryGetInt32(out var value) ? value : 0).DefaultIfEmpty().Max();
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException
@@ -110,9 +112,14 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     public ValueTask<SongCatalogContribution> ScanAsync(IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
     {
+        // The key hash keeps installs opened with different keys apart; the keys themselves are not stored.
+        using var cached = MetadataCache?.Open(_root, "nijiiro-v1-" +
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                [.. _keys.Datatable ?? [], .. _keys.Fumen ?? []])), sourceTree: true, within: ["fumen", "sound"], cancellationToken);
         progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));
         var diagnostics = new List<CatalogDiagnostic>();
-        var music = table("musicinfo");
+        var music = musicinfo();
+        _musicinfo = null; // a later scan reads the file again
         var titles = new Dictionary<string, (string Japanese, string English)>(StringComparer.Ordinal);
         foreach (var entry in table("wordlist"))
         {
@@ -136,7 +143,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             if (text(entry, "id") is not { } id || !SongId().IsMatch(id) || !seen.Add(id))
                 continue;
             var audio = audioPath(id);
-            if (!File.Exists(audio))
+            if (!(cached?.Exists(audio) ?? File.Exists(audio)))
             {
                 diagnostics.Add(warning("NIJIIRO_AUDIO_MISSING", $"Song '{id}' has no song_{id}.nus3bank."));
                 continue;
@@ -147,7 +154,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             for (var course = 0; course < Courses.Length; course++)
             {
                 var letter = Courses[course];
-                if (!File.Exists(chartPath(id, letter, "")))
+                if (!(cached?.Exists(chartPath(id, letter, "")) ?? File.Exists(chartPath(id, letter, ""))))
                     continue;
                 levels[course] = entry.TryGetProperty(StarFields[course], out var star) && star.TryGetInt32(out var value)
                     && value is > 0 and <= 10 ? value : 0;
@@ -174,7 +181,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                 null,
                 charts,
                 new CatalogAssetKey(Id, $"audio:{id}"),
-                previewStart(audio),
+                cached is null ? previewStart(audio) : cached.Read(audio, "preview", () => previewStart(audio), NijiiroCacheJsonContext.Default.NullableTimeSpan),
                 subtitle.Japanese)
             {
                 EnglishSubtitle = subtitle.English,
@@ -271,6 +278,10 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
         ["yokai_ht"] = "yokai_hatsukoi",
         ["yokai_yt"] = "yokai_yougota",
     };
+
+    // The usable check, the newest-song ordering and then the scan all want it: read once.
+    private List<JsonElement>? _musicinfo;
+    private List<JsonElement> musicinfo() => _musicinfo ??= table("musicinfo");
 
     private List<JsonElement> table(string name)
     {
@@ -378,6 +389,8 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
     private static partial Regex SongId();
+    [JsonSerializable(typeof(TimeSpan?))]
+    private sealed partial class NijiiroCacheJsonContext : JsonSerializerContext;
 }
 
 /// <summary>

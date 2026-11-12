@@ -26,7 +26,10 @@ public sealed class StockCatalogProviderTests
         data.WriteBytes("sound/bgm/nub/SONG_ALPHA.nub", [1, 2, 3]);
         data.WriteBytes("sound/bgm/nsh/SONG_ALPHA.nsh", Nsh(previewMs: 48_500));
 
-        var provider = new StockCatalogProvider(data.Path);
+        var cache = new CatalogMetadataCache(Path.Combine(data.Path, "metadata.db"));
+        var provider = new StockCatalogProvider(data.Path) { MetadataCache = cache };
+        await provider.ScanAsync(null, CancellationToken.None);
+        provider = new StockCatalogProvider(data.Path) { MetadataCache = cache };
         var contribution = await provider.ScanAsync(null, CancellationToken.None);
 
         Assert.Equal(["beta", "alpha", "gamma"], contribution.Songs.Select(static song => song.Key.StableId));
@@ -177,6 +180,27 @@ public sealed class StockCatalogProviderTests
             ("ex_song", [("ex_song1p_m", 10)])));
 
         Assert.Equal([3, 0, 0, 8, 10], stars["song"]);
+    }
+
+    [Fact]
+    public async Task WarmCacheRestoresTuningAndDetectsChangedAndDeletedCharts()
+    {
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "Song", "J-POP"));
+        data.WriteBytes("fumen/song/solo/song_m.bin", Fumen(new Measure(120, 0, [N(1, 0)])));
+        data.WriteBytes("fumen/tuning.bin", Tuning(("song", [("song1p_m", 8)])));
+        var cache = new CatalogMetadataCache(Path.Combine(data.Path, "metadata.db"));
+        StockCatalogProvider provider() => new(data.Path) { MetadataCache = cache };
+        await provider().ScanAsync(null, default);
+        var warm = provider();
+        var chart = Assert.Single(Assert.Single((await warm.ScanAsync(null, default)).Songs).Charts);
+        Assert.Equal(8, chart.Level);
+        Assert.Single((await warm.LoadChartAsync(chart.Key, chart.ChartAsset)).HitObjects);
+        data.WriteBytes("fumen/tuning.bin", Tuning(("song", [("song1p_m", 9)])));
+        File.SetLastWriteTimeUtc(Path.Combine(data.Path, "fumen", "tuning.bin"), DateTime.UtcNow.AddMinutes(1));
+        Assert.Equal(9, Assert.Single(Assert.Single((await provider().ScanAsync(null, default)).Songs).Charts).Level);
+        File.Delete(Path.Combine(data.Path, "fumen", "song", "solo", "song_m.bin"));
+        Assert.Empty((await provider().ScanAsync(null, default)).Songs);
     }
 
     // tuning.bin: count, 0x90C-byte records (three string offsets, then 0x80-byte course

@@ -135,7 +135,10 @@
         }
       },
       "waddamburo.catalog": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )"
+        }
       },
       "waddamburo.formats": {
         "type": "Project"
@@ -144,15 +147,15 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite": "[10.0.12, )",
-          "Waddamburo.Catalog": "[1.0.0, )",
-          "Waddamburo.Formats": "[1.0.0, )",
-          "Waddamburo.Lumen": "[1.0.0, )"
+          "Waddamburo.Catalog": "[0.0.0-dev, )",
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )"
         }
       },
       "waddamburo.lumen": {
         "type": "Project",
         "dependencies": {
-          "Waddamburo.Formats": "[1.0.0, )"
+          "Waddamburo.Formats": "[0.0.0-dev, )"
         }
       },
       "Microsoft.Data.Sqlite": {

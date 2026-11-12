@@ -1,8 +1,8 @@
 # Song catalog providers
 
 Waddamburo builds one immutable global catalog from independent content sources.
-The shared `Waddamburo.Catalog` assembly has no filesystem, database, Lumen, or
-platform dependency. Stock, Nijiiro, custom TJA, and osu!lazer integrations all
+The shared `Waddamburo.Catalog` assembly defines the provider contracts and an
+optional filesystem/SQLite metadata cache. It has no Lumen or platform dependency. Stock, Nijiiro, custom TJA, and osu!lazer integrations all
 implement the same `ISongCatalogProvider` contract; Song Select consumes the
 published catalog rather than branching on a source type.
 
@@ -86,3 +86,40 @@ rather than entering Song Select or the Lumen runtime.
 Public tests use synthetic contributions and snapshots. User libraries, database
 files, commercial assets, paths, hashes, and captured game output are not test
 fixtures and must not be committed.
+
+## Persistent metadata cache
+
+Stock, Nijiiro and custom TJA startup scans use a separate `catalog-metadata.db`
+in the configured cache directory, beside the audio cache. This is disposable
+acceleration data; scores and replays remain in their existing storage.
+
+Each library scan inventories relative paths, sizes and UTC modification times
+once. File existence checks use that inventory. Parsed XML and tuning data,
+branch flags, preview positions, and TJA metadata/content hashes
+are reused only when the source file's size and timestamp still match. New and
+changed files are parsed; deleted files disappear from the next catalog and their
+cache rows are pruned. TJA folder definitions are checked independently.
+Game installations (stock, Nijiiro) follow links and pass over unreadable folders,
+as plain file probes would; a custom TJA library leaves links out. An installation's
+inventory covers only the folders its catalog reads (charts, music, song tables),
+not its models or movies. Reading
+an individual TJA file in the editor does not inventory the whole library.
+
+Entries are scoped by absolute library root and parser version. Nijiiro also
+includes a hash of the configured decoding keys in that scope; keys themselves
+are never stored. Parser changes affecting cached values must increment the
+provider's cache version. Serialization uses generated JSON contexts for AOT.
+
+Rows are read together per library and changes are saved in a short transaction.
+An unchanged warm scan does not rewrite its cache rows. Files changed during
+parsing and reads that produce diagnostics are not saved. Cancellation skips
+saving; corrupt database storage is rebuilt, and an unavailable/unwritable cache
+falls back to source parsing. Gameplay still opens current chart/audio files;
+the inventory is used only for the startup scan.
+
+Changes which preserve both file size and modification time cannot be detected
+by this check. Removing `catalog-metadata.db` forces a fresh parse on the next
+launch without deleting scores. The first scan still reads source metadata;
+subsequent scans still enumerate every configured library, so disk speed and
+library size continue to affect startup. Merged-library progress counts every
+installation, and the loading screen reserves 100% until catalog publication.
