@@ -127,7 +127,7 @@ public sealed class MoviePackageTests
     [InlineData("\"root\": \"main\"", "\"root\": \"nope\"", "names no sprite")]
     [InlineData("\"character\": \"ball\"", "\"character\": \"cube\"", "unknown character")]
     [InlineData("\"frame\": 4,", "\"frame\": 9,", "inside the sprite's 6 frames")]
-    [InlineData("\"format\": 1", "\"format\": 2", "\"format\" must be 1")]
+    [InlineData("\"format\": 1", "\"format\": 3", "\"format\" must be 1")]
     public void MistakesAreReportedByName(string from, string to, string expected) =>
         Assert.Contains(expected, Assert.Throws<FormatException>(() => MoviePackage.Assemble(Movie.Replace(from, to))).Message);
 }
