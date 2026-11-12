@@ -30,6 +30,7 @@ public sealed partial class MovieInspectorSession
 
     private void timeline(LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips)
     {
+        _timelineShown = true;
         timelineNavigation(clips);
         if (timelineOf(clips) is not var (clip, name, sprite))
         {
@@ -325,8 +326,8 @@ public sealed partial class MovieInspectorSession
             if (control && ImGui.IsKeyPressed(ImGuiKey.C, false)) copyKeys(layers);
             else if (control && ImGui.IsKeyPressed(ImGuiKey.X, false)) { copyKeys(layers); deleteKeys(layers); }
             else if (control && ImGui.IsKeyPressed(ImGuiKey.V, false)) pasteKeys(layers, selectedLayer, clip.Frame);
-            else if (ImGui.IsKeyPressed(ImGuiKey.Delete, false)) deleteKeys(layers);
         }
+        if (!stale && _deleteKeys) deleteKeys(layers);
         // The playhead, over the tracks.
         var head = x(clip.Frame) + step / 2;
         ImGui.PushClipRect(trackMin, trackMax, true);
@@ -444,10 +445,11 @@ public sealed partial class MovieInspectorSession
         _keys.UnionWith(pasted);
     }
 
-    // A whole key is removed (a layer keeps one); a channel is taken out of its key (the channel keeps one).
+    // A whole key is removed (a layer keeps one, and says so); a channel is taken out of its key.
     private void deleteKeys(JsonArray layers)
     {
         if (_keys.Count == 0) return;
+        var kept = false;
         edited(() => _document!.Edit(_ =>
         {
             foreach (var (layer, frame, channel) in _keys.OrderByDescending(static key => key.Frame))
@@ -456,13 +458,16 @@ public sealed partial class MovieInspectorSession
                 if (channel is null)
                 {
                     if (keys.Count > 1) keys.Remove(key);
+                    else kept = true;
                 }
-                else if (!_keys.Contains((layer, frame, null)) && keys.OfType<JsonObject>().Count(each => MovieDocument.Has(each, channel)) > 1)
+                // A channel's last key may go: the channel is then at its default, off the list.
+                else if (!_keys.Contains((layer, frame, null)))
                     MovieDocument.RemoveChannel((JsonObject)layers[layer]!, frame, channel);
             }
         }));
         _keys.Clear();
         _key = null;
+        _notice = kept ? "A layer keeps its last key: it is where the layer is. Delete the layer instead (right-click its name), or clear single properties in its channel rows." : null;
     }
 
     private bool keyMenu(JsonArray layers, int layer, int frame)

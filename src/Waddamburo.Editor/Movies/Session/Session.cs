@@ -23,6 +23,7 @@ public sealed partial class MovieInspectorSession : IDisposable
     private MovieDocument? _document;
     public Action<bool>? SetScriptsEnabled { get; set; }
     private bool _disposed;
+    private bool _deleteAsked, _deleteKeys, _timelineShown;
     private readonly Func<bool>? _previousClose;
     private static readonly uint Outline = color(1, .56f, .18f), Muted = color(.52f, .56f, .61f), Text = color(.85f, .87f, .9f);
 
@@ -116,6 +117,11 @@ public sealed partial class MovieInspectorSession : IDisposable
         if (!io.WantTextInput)
         {
             if (ImGui.IsKeyPressed(ImGuiKey.Space, false)) togglePlayback();
+            // Delete (or Backspace) removes what is selected, wherever the pointer is: the selected keys when the
+            // timeline shows some, else the selected clip. Carried out by the panel that owns them, this frame.
+            _deleteAsked = _document is { ReadOnly: false } && _renaming is null
+                && (ImGui.IsKeyPressed(ImGuiKey.Delete, false) || ImGui.IsKeyPressed(ImGuiKey.Backspace, false));
+            _deleteKeys = _deleteAsked && _timelineShown && _keys.Count > 0;
             if (ImGui.IsKeyPressed(ImGuiKey.RightArrow)) navigateTimeline(1, io.KeyCtrl);
             if (ImGui.IsKeyPressed(ImGuiKey.LeftArrow)) navigateTimeline(-1, io.KeyCtrl);
             if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
@@ -126,6 +132,8 @@ public sealed partial class MovieInspectorSession : IDisposable
             if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
                 edited(() => _document?.Redo());
         }
+        else _deleteAsked = _deleteKeys = false;
+        _timelineShown = false;
         var menuHeight = menuBar();
         movieDialogs();
         var player = _player();

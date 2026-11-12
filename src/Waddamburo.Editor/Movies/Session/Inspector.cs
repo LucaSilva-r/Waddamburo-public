@@ -59,7 +59,7 @@ public sealed partial class MovieInspectorSession
                 void put(double wanted) => edited(() => _document.Edit(_ => MovieDocument.Set(MovieDocument.BareKey(layer, frame), property, wanted)));
                 if (ImGui.MenuItem("Key here", "", false, at is null))
                     put(value);
-                if (ImGui.MenuItem("Remove from this key", "", false, at is not null && held.Count > 1))
+                if (ImGui.MenuItem("Remove from this key", "", false, at is not null))
                     edited(() => _document.Edit(_ => MovieDocument.RemoveChannel(layer, frame, property)));
                 ImGui.Separator();
                 if (ImGui.MenuItem(previous is null ? "Same as previous key" : $"Same as previous key  ({number(of(previous)!.Value)})", "", false,

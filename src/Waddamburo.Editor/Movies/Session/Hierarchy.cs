@@ -132,10 +132,11 @@ public sealed partial class MovieInspectorSession
             }
             if (clips.Count <= 1 && _document is { ReadOnly: false })
                 ImGui.TextWrapped("Nothing on stage yet. Drag an asset from the Assets tab below, or use Add layer in the Timeline.");
-            if (ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows) && !ImGui.GetIO().WantTextInput && _selected is not null
+            if (!ImGui.GetIO().WantTextInput && _selected is not null
                 && clips.FirstOrDefault(each => each.Path == _selected) is { } active && _document is { ReadOnly: false })
             {
-                if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _key is null) removeLayer(clips, active);
+                if (_deleteAsked && !_deleteKeys) removeLayer(clips, active);
+                else if (!ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows)) { }
                 else if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.D, false)) duplicateLayer(clips, active);
                 else if (ImGui.IsKeyPressed(ImGuiKey.F2, false)) startRename(active);
             }
