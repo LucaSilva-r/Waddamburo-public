@@ -1,4 +1,4 @@
-// renda_num: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// renda_num: the drumroll's count, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -20,7 +20,19 @@
   "sprites": {
     "main": {
       "frames": 31,
-      "layers": [],
+      "layers": [
+        {
+          "character": "count",
+          "name": "count",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 573,
+              "y": -70
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as",
         "10": "scripts/stop.as",
@@ -32,6 +44,19 @@
         "hit": 11,
         "out": 21
       }
+    }
+  },
+  "texts": {
+    "count": {
+      "rect": [
+        -70,
+        -32,
+        140,
+        60
+      ],
+      "size": 48,
+      "align": "center",
+      "color": "#ffd23c"
     }
   }
 }

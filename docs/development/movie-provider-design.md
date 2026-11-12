@@ -213,6 +213,22 @@ has no value, and on the condition that the editor makes them plain (which names
 editor is therefore part of this work, not something after it. The open questions below are still open and are
 settled as each step reaches them.
 
+## Built so far (2026-11-12)
+
+- `Wd.get(name)`, `Wd.has(name)`, `Wd.on(name, fn)` in the movie runtime (`LumenPlayer.Provider.cs`). A listener is
+  told at once of a value already there, then of every change; an event's listener gets its arguments. `Wd.request`
+  is not built.
+- `WdNames` (`src/Waddamburo.Lumen/Provider`): the one list of names, with kind, type, scope and description. A name
+  not in it is reported once on the console, naming the movie. Publishing one not in it is an engine error.
+- The gameplay screen publishes to every movie of a lane: `play.score`, `combo`, `maxCombo`, `gauge`,
+  `gaugeClearLine`, `gaugeCleared`, `gaugeFull`, `good`, `ok`, `bad`, `accuracy`, `course`, `goGo`, `roll`, `balloon`,
+  `progress`; events `note.judged`, `combo.milestone`, `song.ended`. Not yet: the song's title, the players' names
+  and options, `drum.hit`.
+- Read by the engine's own movies: the board (`lane_obi`: score, combo), the three gauges, the roll counter, the
+  balloon, the end banner. Their game-style callbacks stay as empty functions, because the gameplay host still calls
+  them: it has not been moved behind an adapter.
+- The edge log shows what a movie is told (`Wd name(value)`), so a provider-driven movie can be compared run to run.
+
 ## Open questions
 
 0. **The scope list itself.** Whether `session` is right as a level, where player setup at home belongs, and

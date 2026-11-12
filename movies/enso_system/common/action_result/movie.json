@@ -1,4 +1,4 @@
-// action_result: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// action_result: the banner at a song's end, told by the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -26,10 +26,31 @@
         "fail": 6,
         "wait": 10
       },
-      "layers": [],
+      "layers": [
+        {
+          "character": "banner",
+          "name": "banner",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ],
       "scripts": {
-        "19": "scripts/stop.as"
+        "19": "scripts/stop.as",
+        "0": "scripts/main.as"
       }
+    }
+  },
+  "texts": {
+    "banner": {
+      "rect": [
+         332, 36, 700, 72
+      ],
+      "size": 60,
+      "align": "center",
+      "color": "#ffffff"
     }
   }
 }

@@ -1,10 +1,11 @@
-// action_fusen_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// action_fusen_1p: the balloon and the hits it still needs, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "box": "textures/box.svg"
+    "box": "textures/box.svg",
+    "balloon": "textures/balloon.svg"
   },
   "shapes": {
     "box": {
@@ -15,12 +16,33 @@
         64,
         64
       ]
+    },
+    "balloon": {
+      "texture": "balloon",
+      "rect": [
+        -60,
+        -62,
+        120,
+        150
+      ]
     }
   },
   "sprites": {
     "main": {
       "frames": 41,
-      "layers": [],
+      "layers": [
+        {
+          "character": "ball",
+          "name": "ball",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 660,
+              "y": 190
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as",
         "10": "scripts/stop.as",
@@ -34,6 +56,41 @@
         "break": 21,
         "miss": 31
       }
+    },
+    "ball": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "balloon",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "count",
+          "name": "count",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "texts": {
+    "count": {
+      "rect": [
+        -60,
+        -30,
+        120,
+        56
+      ],
+      "size": 44,
+      "align": "center",
+      "color": "#ffffff"
     }
   }
 }
