@@ -14,6 +14,16 @@ public sealed partial class LumenPlayer
     private readonly Dictionary<string, LumenHostValue> _provided = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<(Avm1FunctionValue Function, object? This)>> _providerListeners = new(StringComparer.Ordinal);
     private HashSet<string>? _providerWarned;
+    private readonly HashSet<string> _providerAsked = new(StringComparer.Ordinal);
+
+    /// <summary>The provider's names this movie has read or listens to, so far.</summary>
+    public IReadOnlyCollection<string> ProviderNames => _providerAsked;
+
+    /// <summary>What this movie asked the provider for that is not one of its names (a mistyped name, most likely).</summary>
+    public IReadOnlyCollection<string> ProviderUnknownNames => _providerWarned is { } warned ? warned : [];
+
+    /// <summary>A state's value as this movie would read it; undefined while it has none.</summary>
+    public LumenHostValue Provided(string name) => _provided.GetValueOrDefault(name);
 
     /// <summary>The movie has asked the provider for something: it is one of ours, made for it.</summary>
     public bool UsesProvider { get; private set; }
@@ -60,7 +70,10 @@ public sealed partial class LumenPlayer
         {
             UsesProvider = true;
             if (arguments.Count > 0 && arguments[0] is string name && WdNames.Find(name) is not null)
+            {
+                _providerAsked.Add(name);
                 return name;
+            }
             // A mistyped name is the quiet failure of a pull API: say so, once, naming the movie.
             var asked = arguments.Count > 0 ? arguments[0]?.ToString() ?? "null" : "(nothing)";
             if ((_providerWarned ??= []).Add(asked))

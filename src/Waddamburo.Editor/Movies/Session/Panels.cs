@@ -32,12 +32,8 @@ public sealed partial class MovieInspectorSession
                     library();
                     ImGui.EndTabItem();
                 }
-                if (_document is { ReadOnly: false } && ImGui.BeginTabItem("Code"))
-                {
-                    code();
-                    ImGui.EndTabItem();
-                }
-                if (ImGui.BeginTabItem("Game calls"))
+                // Scripts, what the movie asks of the engine, what the game calls on it, and what came of it: one place.
+                if (ImGui.BeginTabItem("Scripts"))
                 {
                     host(new(rect.X, rect.Y, rect.Width, rect.Height), player);
                     ImGui.EndTabItem();
