@@ -103,7 +103,7 @@ public sealed partial class MovieDocument
                     }
                 foreach (var channel in Channels.Where(channel => keys.Any(key => key.ContainsKey(channel))))
                     foreach (var key in keys.Where(key => !key.ContainsKey(channel)))
-                        key[channel] = channel == "tint" ? new JsonArray(1, 1, 1) : Default(channel);
+                        key[channel] = channel == "tint" ? new JsonArray(1d, 1d, 1d) : Default(channel);
             }
         root["format"] = 2;
         return true;
@@ -111,7 +111,7 @@ public sealed partial class MovieDocument
 
     /// <summary>A key's tint (what the clip's colours are multiplied by; 1, 1, 1 leaves them).</summary>
     public static (double Red, double Green, double Blue) Tint(JsonObject key) =>
-        key["tint"] is JsonArray { Count: 3 } tint ? ((double)tint[0]!, (double)tint[1]!, (double)tint[2]!) : (1, 1, 1);
+        key["tint"] is JsonArray { Count: 3 } tint ? (Number(tint[0]), Number(tint[1]), Number(tint[2])) : (1, 1, 1);
 
     public static void SetTint(JsonObject key, double red, double green, double blue)
     {
@@ -143,8 +143,10 @@ public sealed partial class MovieDocument
         number(key[property]) ?? (property is "scaleX" or "scaleY" ? number(key["scale"]) : null) ?? Default(property);
 
     // A number however it got into the document (parsed, or set as a float or an int by an edit).
-    private static double? number(JsonNode? node) => node is null ? null
-        : double.Parse(node.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
+    private static double? number(JsonNode? node) => node is null ? null : Number(node);
+
+    /// <summary>A JSON number as a double, whatever type put it in the tree (a cast only takes the type it was made with).</summary>
+    public static double Number(JsonNode? node) => double.Parse(node!.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
 
     public static void Set(JsonObject key, string property, double value)
     {

@@ -431,8 +431,8 @@ public sealed partial class MovieInspectorSession
 
     private static void setChannel(JsonObject key, string channel, JsonNode value)
     {
-        if (channel == "tint") MovieDocument.SetTint(key, (double)value[0]!, (double)value[1]!, (double)value[2]!);
-        else MovieDocument.Set(key, channel, (double)value);
+        if (channel == "tint") MovieDocument.SetTint(key, MovieDocument.Number(value[0]), MovieDocument.Number(value[1]), MovieDocument.Number(value[2]));
+        else MovieDocument.Set(key, channel, MovieDocument.Number(value));
     }
 
     private static JsonObject? keyOn(JsonArray layers, int layer, int frame) => layer >= 0 && layer < layers.Count

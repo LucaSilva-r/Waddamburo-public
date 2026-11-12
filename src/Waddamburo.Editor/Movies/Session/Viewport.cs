@@ -185,7 +185,7 @@ public sealed partial class MovieInspectorSession
             _handlePivot = new Vector2(.5f);
             if (_selection.Count == 1 && selected is not null && layerOf(clips, selected) is { } pivotSource
                 && pivotSource.Layer["editorPivot"] is System.Text.Json.Nodes.JsonArray { Count: 2 } pivotData)
-                _handlePivot = new((float)pivotData[0]!, (float)pivotData[1]!);
+                _handlePivot = new((float)MovieDocument.Number(pivotData[0]), (float)MovieDocument.Number(pivotData[1]));
             var centre = hasBox ? view.ToScreen(new(box.X + box.Width * _handlePivot.X, box.Y + box.Height * _handlePivot.Y)) : Vector2.Zero;
             var handle = hasBox ? stageHandles(draw, view, box.X, box.Y, box.Width, box.Height, mouse) : -1;
             if (!overTools && ImGui.IsWindowHovered() && ImGui.GetIO().KeyShift && handle < 0

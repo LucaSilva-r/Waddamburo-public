@@ -99,7 +99,7 @@ public sealed partial class MovieInspectorSession
             drag("rotation", .5f, "%.1f deg", -1);
             fieldLabel("Pivot", "The point the stage handles rotate and scale about: 0 to 1 across its box (0.5 is the middle). An editor aid, not part of the movie.");
             var pivot = layer["editorPivot"] as System.Text.Json.Nodes.JsonArray;
-            var pivotValue = pivot is { Count: 2 } ? new Vector2((float)pivot[0]!, (float)pivot[1]!) : new Vector2(.5f);
+            var pivotValue = pivot is { Count: 2 } ? new Vector2((float)MovieDocument.Number(pivot[0]), (float)MovieDocument.Number(pivot[1])) : new Vector2(.5f);
             ImGui.SetNextItemWidth(-1);
             if (ImGui.DragFloat2("##pivot", ref pivotValue, .01f, 0, 0, "%.2f"))
             {

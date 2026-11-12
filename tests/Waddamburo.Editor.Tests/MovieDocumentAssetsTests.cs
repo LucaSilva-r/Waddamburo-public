@@ -211,7 +211,7 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         File.WriteAllText(Path.Combine(_directory, "movie.json"), """
             { "format": 1, "root": "main", "shapes": { "dot": { "rect": [0, 0, 4, 4] } },
               "sprites": { "main": { "frames": 11, "layers": [ { "character": "dot", "keys": [
-                { "frame": 0, "x": 100, "alpha": 0 }, { "frame": 10, "y": 50 } ] } ] } } }
+                { "frame": 0, "x": 100, "alpha": 0 }, { "frame": 10, "y": 50, "tint": [1, 0, 0] } ] } ] } } }
             """);
         var document = new MovieDocument(_directory);
         var layer = (System.Text.Json.Nodes.JsonObject)document.Root["sprites"]!["main"]!["layers"]![0]!;
@@ -220,6 +220,7 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         Assert.Equal(2, (int?)document.Root["format"]);
         Assert.Equal((0d, 1d, 50d), (MovieDocument.Value(last, "x"), MovieDocument.Value(last, "alpha"), MovieDocument.Value(last, "y")));
         Assert.False(MovieDocument.Has(last, "rotation")); // never named: left alone
+        Assert.Equal((1d, 1d, 1d), MovieDocument.Tint((System.Text.Json.Nodes.JsonObject)layer["keys"]![0]!)); // the default the upgrade wrote
         document.Edit(_ =>
         {
             // A key in the middle for the opacity only: x and y run past it.
