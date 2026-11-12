@@ -1534,9 +1534,9 @@ internal sealed class GameShell : IDisposable
         DonRenderer?.Dispose();
         Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();
+        CustomUploadPrompt.Dispose(); // its glyph textures belong to the window
         Application.Dispose();
         _libraries.Dispose();
-        CustomUploadPrompt.Dispose();
         Room.Dispose();
         Sync.Dispose();
         _discord?.Dispose();
