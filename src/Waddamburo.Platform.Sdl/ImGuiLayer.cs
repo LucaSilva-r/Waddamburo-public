@@ -41,6 +41,14 @@ public sealed unsafe class ImGuiLayer : IDisposable
                 // The atlas owns this allocation until the context is destroyed.
                 var density = Math.Clamp(pixelDensity, 1, 4);
                 io.Fonts.AddFontFromMemoryTTF(memory, bytes.Length, 15 * density);
+                // Names in a movie are often Japanese: its glyphs come from a second font, merged in, when the host has one.
+                if (JapaneseFontPath is { } japanese && File.Exists(japanese))
+                {
+                    ImFontConfigPtr merge = ImGuiNative.ImFontConfig_ImFontConfig();
+                    merge.MergeMode = true;
+                    io.Fonts.AddFontFromFileTTF(japanese, 15 * density, merge, io.Fonts.GetGlyphRangesJapanese());
+                    merge.Destroy();
+                }
                 io.FontGlobalScale = 1 / density;
             }
             io.Fonts.GetTexDataAsRGBA32(out nint pixels, out int width, out int height);
@@ -55,6 +63,9 @@ public sealed unsafe class ImGuiLayer : IDisposable
             throw;
         }
     }
+
+    /// <summary>A TrueType font with Japanese glyphs, for the layers attached after it is set (null: Latin only).</summary>
+    public static string? JapaneseFontPath { get; set; }
 
     /// <summary>Host shortcuts which should reach the UI even when its windows are unfocused.</summary>
     public Func<ImGuiKey, bool>? CaptureKey { get; set; }

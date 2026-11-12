@@ -140,6 +140,9 @@ internal static class MovieViewer
         var debugger = interactive ? new InteractiveMovieDebugger(player) : null;
         // The movie inspector (tree, clip state, callbacks) over an interactive window; --plain leaves the bare movie.
         // --inspect[=clip] shows it in a --ticks / --screenshot run too, with that clip selected.
+        if (inspecting)
+            // The service menu's plain Japanese font, bundled with the app: names in the game's movies are often Japanese.
+            Platform.Sdl.ImGuiLayer.JapaneseFontPath = Cli.BundledFonts.Extract(Path.Combine(Path.GetTempPath(), "Waddamburo", "fonts")).Service;
         using var inspector = !inspecting ? null
             : new Waddamburo.Editor.MovieInspectorSession(application, () => player, content.Name, gameData: package is null,
                 select: inspect?.Split('=', 2) is [_, var clip] && !clip.StartsWith("sprite:", StringComparison.Ordinal) ? clip : null, document: document);
