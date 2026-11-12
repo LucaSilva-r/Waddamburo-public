@@ -5,7 +5,7 @@ import flash.external.ExternalInterface;
 var self = this;
 
 Wd.on("play.score", function(score) {
-    self.score.text = "" + score;
+    self.score.text = score == undefined ? "" : "" + score;
 });
 Wd.on("play.combo", function(combo) {
     self.combo.text = combo >= 10 ? "" + combo : "";

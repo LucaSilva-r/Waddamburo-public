@@ -6,10 +6,11 @@ var self = this;
 var WIDTH = 776;
 
 Wd.on("play.gauge", function(gauge) {
-    self.bar._xscale = gauge * 100;
+    self.bar._xscale = gauge == undefined ? 0 : gauge * 100;
 });
 Wd.on("play.gaugeClearLine", function(line) {
-    self.mark._x = 252 + line * WIDTH;
+    self.mark._visible = line != undefined;
+    if (line != undefined) self.mark._x = 252 + line * WIDTH;
 });
 Wd.on("play.gaugeCleared", function(cleared) {
     self.bar._alpha = cleared ? 100 : 60;

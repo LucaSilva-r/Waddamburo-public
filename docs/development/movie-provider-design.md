@@ -215,8 +215,9 @@ settled as each step reaches them.
 
 ## Built so far (2026-11-12)
 
-- `Wd.get(name)`, `Wd.has(name)`, `Wd.on(name, fn)` in the movie runtime (`LumenPlayer.Provider.cs`). A listener is
-  told at once of a value already there, then of every change; an event's listener gets its arguments. `Wd.request`
+- `Wd.get(name)`, `Wd.has(name)`, `Wd.on(name, fn)` in the movie runtime (`LumenPlayer.Provider.cs`). A state's
+  listener is told at once where things stand (the value, or undefined while there is none; user, 2026-11-12), then
+  of every change; an event's listener gets its arguments. `Wd.request`
   is not built.
 - `WdNames` (`src/Waddamburo.Lumen/Provider`): the one list of names, with kind, type, scope and description. A name
   not in it is reported once on the console, naming the movie. Publishing one not in it is an engine error.

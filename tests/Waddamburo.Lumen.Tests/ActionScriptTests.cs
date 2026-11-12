@@ -192,7 +192,7 @@ public sealed class ActionScriptTests
         player.Publish("play.score", LumenHostValue.FromNumber(100)); // no change: not told again
         player.Emit("note.judged", LumenHostValue.FromString("good"), LumenHostValue.FromBoolean(true));
         player.Emit("combo.milestone", LumenHostValue.FromNumber(100)); // nobody listens
-        Assert.Equal(["start,false,undefined", "undefined", "score,100,100", "judged,good,true"], reports);
+        Assert.Equal(["start,false,undefined", "score,undefined,undefined", "undefined", "score,100,100", "judged,good,true"], reports);
         Assert.Throws<ArgumentException>(() => player.Publish("play.scroe", LumenHostValue.FromNumber(1)));
         Assert.Throws<ArgumentException>(() => player.Emit("play.score"));
     }

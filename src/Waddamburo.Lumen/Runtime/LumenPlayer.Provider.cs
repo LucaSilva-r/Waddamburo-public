@@ -5,7 +5,8 @@ namespace Waddamburo.Lumen.Runtime;
 // The provider as a movie sees it (movie-provider-design.md): a global Wd with
 //   Wd.get(name)      the value now, undefined while the name has none
 //   Wd.has(name)      whether it has one
-//   Wd.on(name, fn)   fn(value) now if there is one and at every change of a state; fn(arguments...) at every event
+//   Wd.on(name, fn)   a state: fn(value) at once (undefined while it has none) and at every change;
+//                     an event: fn(arguments...) each time it happens
 // The engine side is Publish (state) and Emit (event). Scopes are a check, not a wall: any name may be asked for at
 // any time, and one without a value reads undefined.
 public sealed partial class LumenPlayer
@@ -78,8 +79,11 @@ public sealed partial class LumenPlayer
                 if (!_providerListeners.TryGetValue(name, out var listeners))
                     _providerListeners[name] = listeners = [];
                 listeners.Add((function, self));
-                if (_provided.TryGetValue(name, out var value))
-                    invokeFunction(_root, function, self, [fromHostValue(value)], _activeContext);
+                // A state's listener is told where things stand at once, value or none (undefined): a movie draws its
+                // "nothing yet" look from the same function as everything else. An event has no "now".
+                if (WdNames.Find(name)!.Kind == WdKind.State)
+                    invokeFunction(_root, function, self,
+                        [_provided.TryGetValue(name, out var value) ? fromHostValue(value) : Avm1Undefined.Instance], _activeContext);
             }
             return new Avm1Lookup(true, Avm1Undefined.Instance);
         });
