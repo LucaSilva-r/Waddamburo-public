@@ -1,0 +1,39 @@
+// ai_lane_obi: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 40,
+      "labels": {
+        "normal": 0,
+        "in": 10,
+        "fever": 20,
+        "out": 30
+      },
+      "layers": [],
+      "scripts": {
+        "9": "scripts/stop.as",
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as",
+        "39": "scripts/stop.as",
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}

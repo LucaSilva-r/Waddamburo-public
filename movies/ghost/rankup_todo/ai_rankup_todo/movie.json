@@ -1,0 +1,65 @@
+// ai_rankup_todo: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 170,
+      "labels": {
+        "init": 0,
+        "rank_0": 10,
+        "rank_1": 20,
+        "rank_2": 30,
+        "rank_3": 40,
+        "rank_4": 50,
+        "rank_5": 60,
+        "rank_6": 70,
+        "rank_7": 80,
+        "rank_8": 90,
+        "rank_9": 100,
+        "rank_10": 110,
+        "rank_11": 120,
+        "rank_12": 130,
+        "rank_13": 140,
+        "rank_14": 150,
+        "rank_15": 160
+      },
+      "layers": [],
+      "scripts": {
+        "9": "scripts/stop.as",
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as",
+        "39": "scripts/stop.as",
+        "49": "scripts/stop.as",
+        "59": "scripts/stop.as",
+        "69": "scripts/stop.as",
+        "79": "scripts/stop.as",
+        "89": "scripts/stop.as",
+        "99": "scripts/stop.as",
+        "109": "scripts/stop.as",
+        "119": "scripts/stop.as",
+        "129": "scripts/stop.as",
+        "139": "scripts/stop.as",
+        "149": "scripts/stop.as",
+        "159": "scripts/stop.as",
+        "169": "scripts/stop.as",
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}

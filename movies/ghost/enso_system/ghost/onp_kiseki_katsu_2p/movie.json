@@ -1,0 +1,69 @@
+// onp_kiseki_katsu_2p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 190,
+      "labels": {
+        "don_d_hit": 0,
+        "don_hit": 10,
+        "katsu_d_hit": 20,
+        "katsu_hit": 30,
+        "no_hit": 40,
+        "don_hit_add": 50,
+        "katsu_hit_add": 60,
+        "don_d_hit_add": 70,
+        "katsu_d_hit_add": 80,
+        "geki_hit": 90,
+        "geki_hit_add": 100,
+        "don_w_hit": 110,
+        "don_w_hit_add": 120,
+        "katsu_w_hit": 130,
+        "katsu_w_hit_add": 140,
+        "don_renda_d_hit": 150,
+        "don_renda_d_hit_add": 160,
+        "katsu_renda_d_hit": 170,
+        "katsu_renda_d_hit_add": 180
+      },
+      "layers": [],
+      "scripts": {
+        "0": "scripts/stop.as",
+        "9": "scripts/stop.as",
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as",
+        "39": "scripts/stop.as",
+        "49": "scripts/stop.as",
+        "59": "scripts/stop.as",
+        "69": "scripts/stop.as",
+        "79": "scripts/stop.as",
+        "89": "scripts/stop.as",
+        "99": "scripts/stop.as",
+        "109": "scripts/stop.as",
+        "119": "scripts/stop.as",
+        "129": "scripts/stop.as",
+        "139": "scripts/stop.as",
+        "149": "scripts/stop.as",
+        "159": "scripts/stop.as",
+        "169": "scripts/stop.as",
+        "179": "scripts/stop.as",
+        "189": "scripts/stop.as"
+      }
+    }
+  }
+}

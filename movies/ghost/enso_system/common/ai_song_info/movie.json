@@ -1,0 +1,65 @@
+// ai_song_info: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "main",
+          "name": "main",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 100,
+              "y": 100
+            }
+          ]
+        },
+        {
+          "character": "stage",
+          "name": "stage",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 180,
+              "y": 100
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "0": "scripts/stop.as"
+      }
+    },
+    "stage": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "box",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

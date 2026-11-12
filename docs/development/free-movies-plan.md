@@ -466,13 +466,17 @@ the main path is reported missing; only the themed gameplay parts (backgrounds, 
 
 The lab's skeleton generator now takes every label from the movie's structure (`tools/describe`), not only the ones
 a recorded session jumped to, and rests at each label's last frame; the 27 earlier packages got their missing labels
-the same way. Still without a skeleton: the gameplay parts of the dan, AI battle and Waiwai modes, and the themed gameplay sets.
+the same way. Still without a skeleton: Waiwai's gameplay parts, AI battle's own copies of the common parts
+(`ghost/enso_system/player`), and the themed gameplay sets. The dan and AI battle parts a recorded session reached
+(2026-11-12) have one: `enso_dojo/{dani_enso,donbg_dojo_1p,chibi_dojo,gage_don_1p_dani,between}`, and under `ghost/`
+the score board, lane band, roll counter, timer, section icon, battle result, song info, name, backdrop, hit effect,
+tension, rank panel and rank-up list.
 
 **Skeletons for the other modes' menus** (2026-11-12): `dani_select`, `dani_result` (and `dani_gameover`),
 `entry_info`, AI battle's `ghost/{song_select,tutorial,common_bg,remind}` and `ghost/result/{result_bg,result_normal,
-result_section}`, `waiwai_result`, `waiwai_tutorial`. Callbacks and labels only, taken from the movies themselves: no
-session of these modes was recorded with the edge log, so the clips the game reaches into by name are not in them
-yet, and none has an exit signal. The free song select has no way into these modes, so nothing on the main path
+result_section}`, `waiwai_result`, `waiwai_tutorial`. Callbacks and labels only, taken from the movies themselves: the
+dan and AI battle ones also from a recorded session (dan course to its results, one AI battle to its results); the
+tutorials, `remind`, `dani_gameover`, `entry_info` and Waiwai were not visited. None has an exit signal yet. The free song select has no way into these modes, so nothing on the main path
 waits on them; each needs a recorded session and its exit before it is reachable.
 
 Next (user, 2026-11-11): the editor, to make authoring these as easy as possible. Later: Waddamburo in a folder of

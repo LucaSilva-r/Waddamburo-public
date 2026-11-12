@@ -18,12 +18,84 @@
     }
   },
   "sprites": {
+    "genreSelect_": {
+      "frames": 210,
+      "labels": {
+        "init": 0,
+        "カーソル右": 10,
+        "md_update_right": 20,
+        "appear_mbs_right": 30,
+        "appear_md_right": 40,
+        "right_stopped": 50,
+        "カーソル左": 60,
+        "md_update_left": 70,
+        "appear_mbs_left": 80,
+        "appear_md_left": 90,
+        "left_stopped": 100,
+        "ジャンル決定（終了）": 110,
+        "genre_decide_finish_end": 120,
+        "ジャンル決定（通常）": 130,
+        "genre_decide_end": 140,
+        "フォルダを閉じる": 150,
+        "cancel_end": 160,
+        "曲決定": 170,
+        "music_decide_end": 180,
+        "曲キャンセル": 190,
+        "music_cancel_end": 200
+      },
+      "layers": [
+        {
+          "character": "box",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "in_": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "box",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
     "main": {
       "frames": 10,
       "labels": {
         "init": 0
       },
-      "layers": [],
+      "layers": [
+        {
+          "character": "genreSelect_",
+          "name": "genreSelect_",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 100,
+              "y": 100
+            }
+          ]
+        },
+        {
+          "character": "in_",
+          "name": "in_",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 180,
+              "y": 100
+            }
+          ]
+        }
+      ],
       "scripts": {
         "9": "scripts/stop.as",
         "0": "scripts/main.as"
