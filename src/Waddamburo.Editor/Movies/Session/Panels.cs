@@ -33,7 +33,11 @@ public sealed partial class MovieInspectorSession
                     ImGui.EndTabItem();
                 }
                 // Scripts, what the movie asks of the engine, what the game calls on it, and what came of it: one place.
-                if (ImGui.BeginTabItem("Scripts"))
+                // Diagnostic: WADDAMBURO_EDITOR_TAB=Scripts opens on that tab, for a screenshot run.
+                // (The only call that takes flags also draws a close button, so it is used for those first frames alone.)
+                var open = true;
+                if (ImGui.GetFrameCount() < 3 && Environment.GetEnvironmentVariable("WADDAMBURO_EDITOR_TAB") == "Scripts"
+                    ? ImGui.BeginTabItem("Scripts", ref open, ImGuiTabItemFlags.SetSelected) : ImGui.BeginTabItem("Scripts"))
                 {
                     host(new(rect.X, rect.Y, rect.Width, rect.Height), player);
                     ImGui.EndTabItem();

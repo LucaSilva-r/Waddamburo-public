@@ -9,64 +9,95 @@ public sealed partial class MovieInspectorSession
 {
     private readonly List<string> _log = [];
     private readonly Dictionary<string, string[]> _arguments = new(StringComparer.Ordinal);
+    // Three panes side by side, each with its own heading, padding and scroll: what the movie asks of the engine, what
+    // the game calls on it, and the files with what came of it.
     private void host(EditorPanel rect, LumenPlayer player)
     {
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new System.Numerics.Vector2(10, 8));
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new System.Numerics.Vector2(8, 6));
+        ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new System.Numerics.Vector2(6, 3));
+        var width = ImGui.GetContentRegionAvail().X - 2 * ImGui.GetStyle().ItemSpacing.X;
+        var dim = new System.Numerics.Vector4(.52f, .56f, .61f, 1);
+
+        ImGui.BeginChild("##data", new(width * .36f, 0), ImGuiChildFlags.Borders);
+        provider(player);
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+        ImGui.BeginChild("##callbacks", new(width * .30f, 0), ImGuiChildFlags.Borders);
+        ImGui.TextUnformatted("Callbacks the game calls");
+        ImGui.Separator();
+        var callbacks = player.Callbacks;
+        if (callbacks.IsEmpty)
+            ImGui.TextColored(dim, "This movie registers no callbacks.");
+        else if (ImGui.BeginTable("##calls", 2, ImGuiTableFlags.SizingFixedFit))
         {
-            var callbacks = player.Callbacks;
-            ImGui.BeginChild("##callbacks", new(rect.Width * .62f, 0));
-            provider(player);
-            ImGui.SeparatorText("Callbacks the game calls");
-            if (callbacks.IsEmpty)
-                ImGui.TextColored(new(.52f, .56f, .61f, 1), "This movie registers no callbacks.");
+            ImGui.TableSetupColumn("call");
+            ImGui.TableSetupColumn("arguments", ImGuiTableColumnFlags.WidthStretch);
+            var button = callbacks.Max(static callback => ImGui.CalcTextSize(callback.Name).X) + 2 * ImGui.GetStyle().FramePadding.X;
             foreach (var callback in callbacks)
             {
                 if (!_arguments.TryGetValue(callback.Name, out var values) || values.Length != callback.Parameters.Length)
                     _arguments[callback.Name] = values = [.. callback.Parameters.Select(static _ => "")];
-                if (ImGui.Button($"{callback.Name}##call"))
+                ImGui.TableNextRow();
+                ImGui.TableNextColumn();
+                if (ImGui.Button($"{callback.Name}##call", new(button, 0)))
                 {
                     var arguments = values.Select(parse).ToArray();
-                    var text = player.TryInvokeCallback(callback.Name, arguments, out var result)
+                    log(player.TryInvokeCallback(callback.Name, arguments, out var result)
                         ? $"{callback.Name}({string.Join(", ", values)}) -> {show(result)}"
-                        : $"{callback.Name}: the call failed";
-                    _log.Insert(0, text);
-                    if (_log.Count > 100)
-                        _log.RemoveAt(_log.Count - 1);
+                        : $"{callback.Name}: the call failed");
                 }
+                ImGui.TableNextColumn();
+                var each = values.Length == 0 ? 0 : (ImGui.GetContentRegionAvail().X - (values.Length - 1) * ImGui.GetStyle().ItemSpacing.X) / values.Length;
                 for (var index = 0; index < values.Length; index++)
                 {
-                    ImGui.SameLine();
-                    ImGui.SetNextItemWidth(110);
+                    if (index > 0) ImGui.SameLine();
+                    ImGui.SetNextItemWidth(each);
                     ImGui.InputTextWithHint($"##{callback.Name}{index}", callback.Parameters[index], ref values[index], 128);
                 }
             }
-            ImGui.EndChild();
-            ImGui.SameLine();
-            ImGui.BeginChild("##log");
-            if (_document is { ReadOnly: false })
-            {
-                ImGui.SeparatorText("Script files");
-                code();
-            }
-            if (ImGui.BeginTabBar("##messages"))
-            {
-                var found = issues(player, draw: false);
-                // The label changes with the count; the id after ### does not, so the tab stays selected.
-                if (ImGui.BeginTabItem(found == 0 ? "Issues###issues" : $"Issues ({found})###issues"))
-                {
-                    issues(player, draw: true);
-                    ImGui.EndTabItem();
-                }
-                if (ImGui.BeginTabItem("Log"))
-                {
-                    ImGui.TextColored(new(.52f, .56f, .61f, 1), "What you set, sent or called on the left, newest first.");
-                    foreach (var line in _log)
-                        ImGui.TextUnformatted(line);
-                    ImGui.EndTabItem();
-                }
-                ImGui.EndTabBar();
-            }
-            ImGui.EndChild();
+            ImGui.EndTable();
         }
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+        ImGui.BeginChild("##log", default, ImGuiChildFlags.Borders);
+        if (_document is { ReadOnly: false })
+        {
+            ImGui.TextUnformatted("Script files");
+            ImGui.Separator();
+            code();
+            ImGui.Spacing();
+        }
+        if (ImGui.BeginTabBar("##messages"))
+        {
+            var found = issues(player, draw: false);
+            // The label changes with the count; the id after ### does not, so the tab stays selected.
+            if (ImGui.BeginTabItem(found == 0 ? "Issues###issues" : $"Issues ({found})###issues"))
+            {
+                issues(player, draw: true);
+                ImGui.EndTabItem();
+            }
+            if (ImGui.BeginTabItem("Log"))
+            {
+                if (_log.Count == 0)
+                    ImGui.TextColored(dim, "What you set, send or call shows here, newest first.");
+                foreach (var line in _log)
+                    ImGui.TextUnformatted(line);
+                ImGui.EndTabItem();
+            }
+            ImGui.EndTabBar();
+        }
+        ImGui.EndChild();
+        ImGui.PopStyleVar(3);
+    }
+
+    private void log(string text)
+    {
+        _log.Insert(0, text);
+        if (_log.Count > 100)
+            _log.RemoveAt(_log.Count - 1);
     }
 
     // What the engine provides (Wd.get, Wd.on), from the engine's own list: every name, what this movie uses of it, and
@@ -77,11 +108,12 @@ public sealed partial class MovieInspectorSession
 
     private void provider(LumenPlayer player)
     {
-        ImGui.SeparatorText("Game data (Wd)");
         var dim = new System.Numerics.Vector4(.52f, .56f, .61f, 1);
         var used = player.ProviderNames;
-        if (used.Count == 0)
-            ImGui.TextColored(dim, "This movie has asked the engine for nothing yet. In a script: Wd.on(\"play.score\", function(score) { ... });");
+        ImGui.TextUnformatted("Game data (Wd)");
+        ImGui.SameLine();
+        ImGui.TextColored(dim, "numbers, true / false, anything else is text");
+        ImGui.Separator();
         if (ImGui.SmallButton("Fill with sample values"))
             foreach (var name in WdNames.All.Where(name => name.Kind == WdKind.State && (_wdAll || used.Contains(name.Name))))
                 _wdSet[name.Name] = _wdTyped[name.Name] = name.Sample;
@@ -94,44 +126,55 @@ public sealed partial class MovieInspectorSession
         foreach (var name in WdNames.All)
             if (name.Kind == WdKind.State)
                 player.Publish(name.Name, _wdSet.TryGetValue(name.Name, out var set) ? parse(set) : LumenHostValue.Undefined);
+        if (used.Count == 0)
+            ImGui.TextWrapped("This movie has asked the engine for nothing yet. In a script: Wd.on(\"play.score\", function(score) { ... });");
+        if ((!_wdAll && used.Count == 0) || !ImGui.BeginTable("##names", 4, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.RowBg))
+            return;
+        ImGui.TableSetupColumn("name");
+        ImGui.TableSetupColumn("value", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn("do");
+        ImGui.TableSetupColumn("now");
         foreach (var name in WdNames.All)
         {
             if (!_wdAll && !used.Contains(name.Name))
                 continue;
             var typed = _wdTyped.GetValueOrDefault(name.Name, "");
             ImGui.PushID(name.Name);
-            ImGui.SetNextItemWidth(150);
-            var entered = ImGui.InputTextWithHint("##value", name.Kind == WdKind.Event ? name.Type : name.Sample, ref typed, 128,
-                ImGuiInputTextFlags.EnterReturnsTrue);
-            _wdTyped[name.Name] = typed;
-            ImGui.SameLine();
-            if (name.Kind == WdKind.State)
-            {
-                if (ImGui.SmallButton("Set") || entered)
-                {
-                    _wdSet[name.Name] = typed;
-                    _log.Insert(0, $"Wd {name.Name} = {typed}");
-                }
-                ImGui.SameLine();
-                if (ImGui.SmallButton("None") && _wdSet.Remove(name.Name))
-                    _log.Insert(0, $"Wd {name.Name} = (no value)");
-            }
-            else if (ImGui.SmallButton("Send") || entered)
-            {
-                player.Emit(name.Name, [.. (typed.Length == 0 ? name.Sample : typed).Split(',').Select(parse)]);
-                _log.Insert(0, $"Wd {name.Name}({(typed.Length == 0 ? name.Sample : typed)})");
-            }
-            ImGui.SameLine();
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.AlignTextToFramePadding();
             ImGui.TextColored(used.Contains(name.Name) ? new(1, 1, 1, 1) : dim, name.Name);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip($"{name.Description}\n{(name.Kind == WdKind.Event ? "Event" : "State")}: {name.Type}. Has a value during: {name.Scope}.");
+            ImGui.TableNextColumn();
+            ImGui.SetNextItemWidth(-1);
+            var entered = ImGui.InputTextWithHint("##value", name.Kind == WdKind.Event ? name.Type : name.Sample, ref typed, 128,
+                ImGuiInputTextFlags.EnterReturnsTrue);
+            _wdTyped[name.Name] = typed;
+            ImGui.TableNextColumn();
             if (name.Kind == WdKind.State)
             {
+                if (ImGui.Button("Set") || entered)
+                {
+                    _wdSet[name.Name] = typed;
+                    log($"Wd {name.Name} = {typed}");
+                }
                 ImGui.SameLine();
-                ImGui.TextColored(dim, "= " + show(player.Provided(name.Name)));
+                if (ImGui.Button("None") && _wdSet.Remove(name.Name))
+                    log($"Wd {name.Name} = (no value)");
             }
+            else if (ImGui.Button("Send") || entered)
+            {
+                player.Emit(name.Name, [.. (typed.Length == 0 ? name.Sample : typed).Split(',').Select(parse)]);
+                log($"Wd {name.Name}({(typed.Length == 0 ? name.Sample : typed)})");
+            }
+            ImGui.TableNextColumn();
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextColored(dim, name.Kind == WdKind.Event ? "event"
+                : player.Provided(name.Name) is { Kind: not LumenHostValueKind.Undefined } now ? show(now) : "no value");
             ImGui.PopID();
         }
+        ImGui.EndTable();
     }
 
     private static LumenHostValue parse(string text) => text.Trim() switch

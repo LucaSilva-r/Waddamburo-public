@@ -64,10 +64,13 @@ public sealed partial class MovieInspectorSession
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Saving recompiles and reloads the movie, also while paused. Script state restarts on reload.");
             ImGui.SameLine();
             ImGui.TextUnformatted(file.Key);
-            ImGui.SameLine();
-            ImGui.TextDisabled(string.Join("; ", file.GroupBy(static use => (use.IsClass, use.Sprite)).Select(static uses =>
+            ImGui.Indent();
+            ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
+            ImGui.TextWrapped(string.Join("; ", file.GroupBy(static use => (use.IsClass, use.Sprite)).Select(static uses =>
                 uses.Key.IsClass ? "a class"
                 : $"runs in sprite \"{uses.Key.Sprite}\" at frame{(uses.Count() > 1 ? "s" : "")} {string.Join(", ", uses.Select(static use => use.Frame).OrderBy(static frame => int.TryParse(frame, out var number) ? number : int.MaxValue))}")));
+            ImGui.PopStyleColor();
+            ImGui.Unindent();
             ImGui.PopID();
         }
     }

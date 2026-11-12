@@ -8,7 +8,8 @@ Wd.on("play.score", function(score) {
     self.score.text = score == undefined ? "" : "" + score;
 });
 Wd.on("play.combo", function(combo) {
-    self.combo.text = combo >= 10 ? "" + combo : "";
+    // (undefined >= 10 is true in ActionScript 2: asked for outright.)
+    self.combo.text = combo != undefined && combo >= 10 ? "" + combo : "";
 });
 
 // Called as: (bool) -> undefined
