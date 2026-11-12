@@ -434,6 +434,20 @@ public sealed class LumenPlayer
         return findInstance(instancePath) is { } instance ? (instance.Frame, instance.Playing) : null;
     }
 
+    /// <summary>
+    /// Whether a named clip and its ancestors are present and visible to script and host visibility controls.
+    /// Alpha is ignored: a transparent panel can already own input while its fade-in plays.
+    /// </summary>
+    public bool IsInstanceVisible(string instancePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+        var instance = findInstance(instancePath);
+        if (instance is null) return false;
+        for (var current = instance; current is not null; current = current.Parent)
+            if (current.Removed || !current.Visible || current.HiddenByHost) return false;
+        return true;
+    }
+
     /// <summary>The frame a label names on a named clip's timeline.</summary>
     public bool TryGetLabelFrame(string instancePath, string label, out int frame)
     {

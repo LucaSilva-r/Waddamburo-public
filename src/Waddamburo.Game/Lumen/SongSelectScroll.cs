@@ -74,6 +74,13 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     {
         ArgumentNullException.ThrowIfNull(input);
         _handed = 0;
+        // The by-difficulty folder has its own course/star panel. Its inputs never start the list's slide,
+        // so queueing a notch here would retry it for 30 ticks instead of consuming it once.
+        if (movie.IsInstanceVisible("main/courseStar_"))
+        {
+            _pending = _waited = _age = 0;
+            return input;
+        }
         var keys = input.PressedKeyCodes;
         // Backing out of the difficulty boards: the list plays its close (曲キャンセル, about half a second) and
         // takes no step until it ends. A wheel notch then cuts it short, so the list scrolls at once.

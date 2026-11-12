@@ -79,6 +79,13 @@ boards a second; hits in between are lost. With the setting on:
 - A single hit on a list at rest is the movie's own. Queued steps and skips inside a folder stop
   at its first or last song; the next hit from there moves on (a skip from there is a short one).
 
+The by-difficulty folder uses a separate course/star panel. While that panel is visible, fast
+scrolling clears its song-list queue and passes input through once per press, including during the
+panel's fade-in. The panel never starts the list's slide, so waiting for that slide to acknowledge a
+wheel notch would resend it until the cursor reached the end. The panel/list relationship was
+checked through the public runtime with user-supplied movie data; synthetic fixtures cover the
+queue behavior without including movie content or scripts.
+
 The movie is never written to: it gets the same key presses and plays the same frames, sooner.
 
 MIDI (`MidiInput`) uses no library: Linux reads the raw devices (`/dev/snd/midiC*D*`), Windows uses
