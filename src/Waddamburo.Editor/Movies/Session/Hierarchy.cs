@@ -103,7 +103,8 @@ public sealed partial class MovieInspectorSession
                 else
                 {
                     if (ImGui.Selectable($"      {name}{state}##{clip.Path}", _selection.Contains(clip.Path),
-                            ImGuiSelectableFlags.AllowDoubleClick | ImGuiSelectableFlags.AllowOverlap, new Vector2(0, ImGui.GetFrameHeight())))
+                            ImGuiSelectableFlags.AllowDoubleClick | ImGuiSelectableFlags.AllowOverlap,
+                            new Vector2(Math.Max(40, ImGui.GetContentRegionAvail().X - 30), ImGui.GetFrameHeight()))) // short of the eye
                         hierarchySelection(clips, clip.Path);
                     if (clip.Kind == LumenInstanceKind.Sprite && ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                         openInstanceTimeline(clip.Path);
