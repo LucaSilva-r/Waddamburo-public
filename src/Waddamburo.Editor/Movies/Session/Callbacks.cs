@@ -47,12 +47,24 @@ public sealed partial class MovieInspectorSession
                 ImGui.SeparatorText("Script files");
                 code();
             }
-            ImGui.SeparatorText("Messages");
-            foreach (var diagnostic in player.Diagnostics)
-                ImGui.TextColored(new(1, .78f, .35f, 1), diagnostic.Message);
-            ImGui.TextColored(new(.52f, .56f, .61f, 1), "Values typed on the left: numbers, true / false, null, anything else is text.");
-            foreach (var line in _log)
-                ImGui.TextUnformatted(line);
+            if (ImGui.BeginTabBar("##messages"))
+            {
+                var found = issues(player, draw: false);
+                // The label changes with the count; the id after ### does not, so the tab stays selected.
+                if (ImGui.BeginTabItem(found == 0 ? "Issues###issues" : $"Issues ({found})###issues"))
+                {
+                    issues(player, draw: true);
+                    ImGui.EndTabItem();
+                }
+                if (ImGui.BeginTabItem("Log"))
+                {
+                    ImGui.TextColored(new(.52f, .56f, .61f, 1), "What you set, sent or called on the left, newest first.");
+                    foreach (var line in _log)
+                        ImGui.TextUnformatted(line);
+                    ImGui.EndTabItem();
+                }
+                ImGui.EndTabBar();
+            }
             ImGui.EndChild();
         }
     }
@@ -67,11 +79,9 @@ public sealed partial class MovieInspectorSession
     {
         ImGui.SeparatorText("Game data (Wd)");
         var dim = new System.Numerics.Vector4(.52f, .56f, .61f, 1);
-        foreach (var unknown in player.ProviderUnknownNames)
-            ImGui.TextColored(new(1, .42f, .38f, 1), $"\"{unknown}\" is not a name the engine provides. A typing mistake?");
         var used = player.ProviderNames;
-        if (used.Count == 0 && player.ProviderUnknownNames.Count == 0)
-            ImGui.TextColored(dim, "This movie asks the engine for nothing yet. In a script: Wd.on(\"play.score\", function(score) { ... });");
+        if (used.Count == 0)
+            ImGui.TextColored(dim, "This movie has asked the engine for nothing yet. In a script: Wd.on(\"play.score\", function(score) { ... });");
         if (ImGui.SmallButton("Fill with sample values"))
             foreach (var name in WdNames.All.Where(name => name.Kind == WdKind.State && (_wdAll || used.Contains(name.Name))))
                 _wdSet[name.Name] = _wdTyped[name.Name] = name.Sample;
@@ -98,10 +108,13 @@ public sealed partial class MovieInspectorSession
             if (name.Kind == WdKind.State)
             {
                 if (ImGui.SmallButton("Set") || entered)
+                {
                     _wdSet[name.Name] = typed;
+                    _log.Insert(0, $"Wd {name.Name} = {typed}");
+                }
                 ImGui.SameLine();
-                if (ImGui.SmallButton("None"))
-                    _wdSet.Remove(name.Name);
+                if (ImGui.SmallButton("None") && _wdSet.Remove(name.Name))
+                    _log.Insert(0, $"Wd {name.Name} = (no value)");
             }
             else if (ImGui.SmallButton("Send") || entered)
             {

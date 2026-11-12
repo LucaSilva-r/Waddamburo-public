@@ -298,4 +298,15 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         Assert.Null(document.Root["classes"]);
         Assert.Null(document.Root["sprites"]!["main"]!["scripts"]);
     }
+
+    [Fact]
+    public void AMistypedProviderNameIsFoundInItsFile()
+    {
+        var document = open();
+        document.AttachScript("main", "0", "scripts/start.as");
+        document.Save();
+        File.WriteAllText(document.FilePath("scripts/start.as"),
+            "Wd.on(\"play.score\", function(s) {});\nvar a = Wd.get( \"play.scroe\" ) + Wd.has(\"nope\");\n");
+        Assert.Equal([new("scripts/start.as", 2, 18, "play.scroe"), new("scripts/start.as", 2, 42, "nope")], document.ProviderMistakes());
+    }
 }

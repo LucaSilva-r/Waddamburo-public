@@ -9,8 +9,34 @@ public sealed record MovieScript(string File, string? Sprite, string? Frame)
     public bool IsClass => Sprite is null;
 }
 
+/// <summary>A script asks the engine for a name it does not provide (<c>Wd.get("play.scroe")</c>).</summary>
+public sealed record ProviderMistake(string File, int Line, int Column, string Name);
+
 public sealed partial class MovieDocument
 {
+    private static readonly System.Text.RegularExpressions.Regex ProviderAsk =
+        new("\\bWd\\s*\\.\\s*(?:get|has|on)\\s*\\(\\s*\"([^\"\\r\\n]*)\"", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Names asked of the engine's provider that it does not have, in every script file as it is on disk: found by
+    /// reading the text, so a line the movie has not run yet is checked too. A name built at run time is not seen.
+    /// </summary>
+    public IReadOnlyList<ProviderMistake> ProviderMistakes()
+    {
+        var found = new List<ProviderMistake>();
+        foreach (var file in Scripts().Select(static script => script.File).Distinct(StringComparer.Ordinal))
+        {
+            string[] lines;
+            try { lines = File.ReadAllLines(FilePath(file)); }
+            catch (IOException) { continue; } // not saved yet, or being written by the editor outside
+            for (var line = 0; line < lines.Length; line++)
+                foreach (System.Text.RegularExpressions.Match ask in ProviderAsk.Matches(lines[line]))
+                    if (Waddamburo.Lumen.Provider.WdNames.Find(ask.Groups[1].Value) is null)
+                        found.Add(new(file, line + 1, ask.Groups[1].Index + 1, ask.Groups[1].Value));
+        }
+        return found;
+    }
+
     // ------------------------------------------------------------------------------------------- scripts
 
     /// <summary>Every script the movie runs, classes first.</summary>
