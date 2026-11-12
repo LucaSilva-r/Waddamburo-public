@@ -5,6 +5,43 @@ libraries. Configure it with one absolute library root and a stable provider ID.
 It recursively discovers `.tja` files without traversing symbolic-link directories
 and publishes one validated contribution through the shared catalog interface.
 
+## Score uploads and local replays
+
+Settings > Songs > Upload Custom Songs controls TaikOnline uploads for TJA and osu!
+songs (`upload_custom_songs` in `config.cfg`). It defaults to on. On first entering
+a TJA or osu! library, a fullscreen message explains automatic uploads and the
+`donotupload` option, then asks whether to disable custom-song uploads. Both answers
+show a confirmation and a reminder that the setting can be changed anytime in game
+settings. The answer is remembered by `custom_upload_notice_seen`; setting it to
+false asks again on the next library entry. Existing explicit upload preferences
+are preserved when upgrading the configuration.
+
+Put an empty file named `donotupload` (no extension) in a chart folder to exclude
+all charts in that folder and its subfolders, even with custom-song uploads on.
+The check stops at the configured library root; a marker there protects the whole
+library. For osu!stable, use the song's folder under `Songs` or the installation
+root. The marker is supported for TJA and osu!stable only. osu!lazer's hashed
+asset store has no per-song folder, so use the global custom-song upload setting
+for lazer instead. Markers are checked fresh, so no library rescan is required.
+
+Plays made under folder protection remain local permanently, including after the
+marker is removed or the game restarts. Markers also block earlier pending plays
+while present. Custom charts no longer resolvable in the current catalog stay
+pending rather than bypassing privacy checks. Official Stock and Nijiiro songs
+follow their usual upload rules. A top banner distinguishes uploads disabled for
+all custom songs from a chart protected by a folder marker, using the nightly
+banner's presentation.
+
+While the setting is off, custom scores, replays and their chart uploads stay on
+this PC. The score list's own plays includes successful saved plays awaiting
+upload, with local replay playback available even when the score server cannot be
+reached. Plays started or saved while custom uploads are off are marked permanently
+local and never enter the pending upload queue. Re-enabling applies to new plays;
+it does not upload scores made while off. Plays made while uploads were enabled
+still use the normal offline retry queue. Turning uploads off also pauses that
+queue's custom plays; it cannot recall a request already sent or remove existing
+server scores. Local replay data is retained after upload.
+
 ## Metadata and categories
 
 The initial inspector supports UTF-8 (with or without BOM), UTF-16 BOMs, and

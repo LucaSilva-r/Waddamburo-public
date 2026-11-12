@@ -11,8 +11,6 @@ namespace Waddamburo.App.Audio;
 /// </summary>
 internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundController
 {
-    private bool _categoryVoiceSelected;
-
     /// <summary>Entry's sound calls.</summary>
     public void RequestSound(LumenFrontendSoundRequest request)
     {
@@ -108,16 +106,12 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             StopVoice();
             return;
         }
-        _categoryVoiceSelected = true;
         bank.Play("VO_SELECT", cue, AudioBus.Voice);
     }
 
     public void StopVoice() => bank.StopVoice();
 
     public void StopVoice(int cue) => bank.StopVoice(cue);
-
-    /// <summary>A new credit: Song Select's genre voice is chosen afresh.</summary>
-    public void Reset() => _categoryVoiceSelected = false;
 
     private void playBankCue(ImmutableArray<LumenHostValue> arguments)
     {
@@ -127,11 +121,6 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             SoundBank.TraceUnmapped("Effect", arguments);
             return;
         }
-        // Song Select emits its stock initial-genre sound ID after host data is assigned. The
-        // host-owned category selection above has already resolved the custom catalog's semantic
-        // genre and must not be replaced by that ID.
-        if (_categoryVoiceSelected && bankName == "VO_SELECT" && cueId == 32)
-            return;
         bank.Play(bankName, cueId);
     }
 

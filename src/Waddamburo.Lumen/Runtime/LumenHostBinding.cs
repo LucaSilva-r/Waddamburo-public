@@ -15,6 +15,7 @@ public enum LumenHostValueKind
     Boolean,
     Number,
     Text,
+    Fields,
 }
 
 /// <summary>A bounded primitive value crossing the runtime/host boundary.</summary>
@@ -40,6 +41,12 @@ public readonly record struct LumenHostValue
 
     public static LumenHostValue FromString(string value) =>
         new(LumenHostValueKind.Text, value ?? throw new ArgumentNullException(nameof(value)));
+
+    public static LumenHostValue FromObject(IReadOnlyDictionary<string, LumenHostValue> fields) =>
+        new(LumenHostValueKind.Fields, fields.ToImmutableDictionary(StringComparer.Ordinal));
+
+    public IReadOnlyDictionary<string, LumenHostValue> AsObject() => Kind == LumenHostValueKind.Fields
+        ? (IReadOnlyDictionary<string, LumenHostValue>)_value! : throw wrongKind(LumenHostValueKind.Fields);
 
     public bool AsBoolean() => Kind == LumenHostValueKind.Boolean
         ? (bool)_value!

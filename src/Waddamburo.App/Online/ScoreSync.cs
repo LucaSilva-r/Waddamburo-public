@@ -13,6 +13,8 @@ namespace Waddamburo.App.Online;
 internal sealed class ScoreSync : IDisposable
 {
     private readonly ArcadeSettings _arcade;
+    private readonly Func<bool> _uploadCustomSongs;
+    private readonly Func<string, bool> _canUploadChart;
     private readonly AccountBook? _accounts;
     private readonly Uri? _server;
     private readonly Dictionary<string, ScoreClient> _clients = [];
@@ -27,9 +29,11 @@ internal sealed class ScoreSync : IDisposable
     private StatusReporter? _statusReporter;
 
     // accounts: the ones stored on this PC (home mode; null in arcade).
-    public ScoreSync(ArcadeSettings arcade, string? scoresPath, AccountBook? accounts)
+    public ScoreSync(ArcadeSettings arcade, string? scoresPath, AccountBook? accounts, Func<bool> uploadCustomSongs, Func<string, bool> canUploadChart)
     {
         _arcade = arcade;
+        _uploadCustomSongs = uploadCustomSongs;
+        _canUploadChart = canUploadChart;
         _accounts = accounts;
         var cabinet = !arcade.Home && arcade is { Server: not null, CabinetToken: not null };
         // A cabinet's indicator also says whether the server takes its token.
@@ -59,14 +63,18 @@ internal sealed class ScoreSync : IDisposable
             Pairing = new CabinetPairing(http);
         }
         // Plays left over from offline runs: a cabinet's (everyone's), or each stored account's.
-        if (CabinetServer is not null)
-            Upload(ScoreProfile.LocalGuest);
         foreach (var account in accounts?.Accounts ?? [])
         {
-            Upload(account.Profile);
             RefreshBests(account.Profile);
         }
         RefreshProfiles();
+    }
+
+    /// <summary>Only after the catalog and its folder privacy checks are ready may offline plays upload.</summary>
+    public void UploadPending()
+    {
+        if (CabinetServer is not null) Upload(ScoreProfile.LocalGuest);
+        foreach (var account in _accounts?.Accounts ?? []) Upload(account.Profile);
     }
 
     /// <summary>
@@ -156,11 +164,11 @@ internal sealed class ScoreSync : IDisposable
             return;
         if (CabinetServer is { } cabinet)
         {
-            cabinet.SyncInBackground(Scores, null, Jobs.Start(Strings.T("job.upload_scores")), () => RefreshBests(profile));
+            cabinet.SyncInBackground(Scores, null, Jobs.Start(Strings.T("job.upload_scores")), () => RefreshBests(profile), _uploadCustomSongs, _canUploadChart);
             return;
         }
         if (profile.Token is { } token && ClientFor(token) is { } uploader)
-            uploader.SyncInBackground(Scores, profile.Baid, Jobs.Start(Strings.T("job.upload_scores")), () => RefreshBests(profile));
+            uploader.SyncInBackground(Scores, profile.Baid, Jobs.Start(Strings.T("job.upload_scores")), () => RefreshBests(profile), _uploadCustomSongs, _canUploadChart);
     }
 
     public async Task<AiBattleSession?> BeginAiBattleAsync(ScoreProfile? profile, string chartSha256, string baseSha256,

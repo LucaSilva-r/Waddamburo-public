@@ -29,6 +29,18 @@ internal sealed class CatalogAssetRouter(IEnumerable<object> providers) : ICatal
 
     public string? ChartPath(CatalogAssetKey asset) => (charts(asset) as IChartModFileProvider)?.ChartPath(asset);
 
+    public bool UploadBlocked(CatalogAssetKey asset)
+    {
+        try
+        {
+            return (charts(asset) as IChartUploadPolicyProvider)?.UploadBlocked(asset) ?? false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return true; // A privacy check that cannot resolve its chart must not permit an upload.
+        }
+    }
+
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default) =>
         resolver(asset) is { } owner
             ? owner.OpenReadAsync(asset, cancellationToken)

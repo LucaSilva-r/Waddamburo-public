@@ -103,6 +103,8 @@ public sealed class SongSelectCatalogView
     /// <summary>The how-to-play folder (GenreResource id 0): deciding it plays the tutorial movie.</summary>
     public const string TutorialLabel = "あそびかた説明";
 
+    public const string WaiwaiTutorialLabel = "ワイワイ演奏説明";
+
     /// <summary>The dan dojo folder (GenreResource id 13): deciding it opens the course list.</summary>
     public const string DanLabel = "段位道場";
 
@@ -150,7 +152,6 @@ public sealed class SongSelectCatalogView
     /// them, with a Group and a Sort spine after the folders to change either.
     /// <paramref name="online"/> adds an Online spine (it opens the online lobby); <paramref name="onlySong"/> lists that song alone.
     /// </summary>
-    // ponytail: Waiwai's "how to play" folder (id 21, before the switch; waiwai_tutorial) is left out, untraced.
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
@@ -168,7 +169,7 @@ public sealed class SongSelectCatalogView
             new SongSelectCategory(new CategoryKey(library ?? SongSourceKind.Stock, "favourites"), "Favourites",
                 FavouritesLabel, SongCategoryPresentation.AlwaysVisible, boardStyle(""), marked(favourites)),
         };
-        var tutorialFolder = !tutorial || mode != SongSelectMode.Normal ? [] : new[]
+        var tutorialFolder = !tutorial || mode == SongSelectMode.Waiwai ? [] : new[]
         {
             new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "tutorial"), "How to Play", TutorialLabel,
                 SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), []),
@@ -281,6 +282,10 @@ public sealed class SongSelectCatalogView
                 Tint = LibraryTint(link),
                 Art = libraryArt(snapshot, link),
             }));
+        if (tutorial && mode == SongSelectMode.Waiwai)
+            categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "waiwai-tutorial"),
+                "Waiwai Tutorial", WaiwaiTutorialLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
+                boardStyle(""), []));
         if (modeSwitch)
             categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "mode-switch"),
                 mode == SongSelectMode.Waiwai ? "To Normal" : "To Waiwai", ModeSwitchLabel,
@@ -485,7 +490,7 @@ public sealed class SongSelectCatalogView
     public int ModeSwitchCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == ModeSwitchLabel && category.Control is null);
 
     /// <summary>Index of the how-to-play folder, or -1.</summary>
-    public int TutorialCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel == TutorialLabel);
+    public int TutorialCategory => Categories.ToList().FindIndex(static category => category.AuthoredLabel is TutorialLabel or WaiwaiTutorialLabel);
 
     private const string DanSeriesPrefix = "dan-series:";
 

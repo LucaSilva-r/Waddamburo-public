@@ -8,7 +8,7 @@ namespace Waddamburo.Providers.OsuLazer;
 /// the player's lazer collections become categories after "All Songs". An osu!stable install (osu!.db) is read the
 /// same way through <see cref="OsuStableReader"/>.
 /// </summary>
-public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
+public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartUploadPolicyProvider
 {
     private readonly string _root;
     private readonly bool _stable;
@@ -195,6 +195,15 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         cancellationToken.ThrowIfCancellationRequested();
         var parts = asset.StableId.Split(':');
         return ValueTask.FromResult<Stream>(File.OpenRead(storePath(parts.Length > 1 ? parts[1] : "")));
+    }
+
+    public bool UploadBlocked(CatalogAssetKey chartAsset)
+    {
+        if (chartAsset.Provider != Id) throw new ArgumentException("The chart belongs to another provider.", nameof(chartAsset));
+        var parts = chartAsset.StableId.Split(':');
+        if (parts is not ["chart", var hash, _]) throw new ArgumentException("Not an osu! chart asset.", nameof(chartAsset));
+        // lazer's content-addressed file store has no per-song folder for an authoring marker.
+        return _stable && ChartUploadPolicy.HasMarker(storePath(hash), _root);
     }
 
     public async ValueTask<PlayableChart> LoadChartAsync(ChartKey chart, CatalogAssetKey asset, CancellationToken cancellationToken = default)

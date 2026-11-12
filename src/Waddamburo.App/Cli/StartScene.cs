@@ -19,6 +19,8 @@ internal enum StartScene
     GameOver,
     WaiwaiResult,
     AiRemind,
+    WaiwaiTutorial,
+    AiTutorial,
 }
 
 internal static class StartSceneParser
@@ -40,6 +42,8 @@ internal static class StartSceneParser
         "gameover" => StartScene.GameOver,
         "waiwai-result" => StartScene.WaiwaiResult,
         "ai-remind" => StartScene.AiRemind,
+        "waiwai-tutorial" => StartScene.WaiwaiTutorial,
+        "ai-tutorial" => StartScene.AiTutorial,
         _ => throw new ArgumentException(
             "--start-scene must be boot, attract, entry, song-select, ai-song-select, dani-select, result-fail, dani-result-fail, dani-result-clear, dani-gameover, result-clear, retry, gameover, waiwai-result, or ai-remind."),
     };

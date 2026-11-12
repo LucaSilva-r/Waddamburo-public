@@ -260,6 +260,187 @@ public sealed class ScoreSavingTests
         }
     }
 
+    [Theory]
+    [InlineData(42L)]
+    [InlineData(null)]
+    public async Task DisablingCustomUploadsPausesEarlierOfflinePlaysWithoutBlockingOfficialSongs(long? baid)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-scores-{Guid.NewGuid():N}.db");
+        try
+        {
+            Guid customId;
+            byte[] replay;
+            using (var store = new ScoreStore(path))
+            {
+                var recorded = new TaikoReplay();
+                recorded.Add(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+                replay = recorded.Encode();
+                // More custom plays than one batch, before the official songs. All share canonical notes:
+                // eligibility must follow the individual play's source, not shared chart metadata.
+                foreach (var source in new[] { SongSourceKind.Tja, SongSourceKind.OsuLazer, SongSourceKind.OsuStable })
+                    for (var index = 0; index < 20; index++)
+                        save(store, source, replay);
+                customId = store.PendingPlays(42, 1)[0].Id;
+                save(store, SongSourceKind.Stock, replay);
+                save(store, SongSourceKind.Nijiiro, replay);
+                // A guest's custom play must never become eligible, even on a cabinet.
+                save(store, SongSourceKind.Tja, replay, player: 0);
+            }
+            // Startup/offline backlog uses the same policy after reopening the database.
+            using var reopened = new ScoreStore(path);
+            var server = new StubServer("not-requested");
+            using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
+            var client = new ScoreClient(http);
+            var enabled = false;
+            Assert.Equal(2, await client.SyncAsync(reopened, baid, uploadCustomSongs: () => enabled));
+            Assert.Equal(0, await client.SyncAsync(reopened, baid, uploadCustomSongs: () => enabled));
+            Assert.DoesNotContain(customId.ToString(), server.Plays);
+            Assert.Null(server.Chart);
+            Assert.Equal(60, reopened.PendingPlays(42, 100).Count);
+            var local = reopened.LocalPlays(42, "shared-sha");
+            Assert.Equal(62, local.Count);
+            Assert.All(local, entry => Assert.Equal(replay, entry.Replay.Encode()));
+            Assert.Equal(1000, reopened.PreviousBest(42, "shared-sha", Guid.NewGuid()));
+
+            enabled = true;
+            Assert.Equal(60, await client.SyncAsync(reopened, baid, uploadCustomSongs: () => enabled));
+            Assert.Empty(reopened.PendingPlays(42, 100));
+            Assert.Contains(customId.ToString(), server.Plays);
+            // Even after upload, every local replay remains directly available offline.
+            Assert.Equal(62, reopened.LocalPlays(42, "shared-sha").Count);
+            Assert.Equal(63, reopened.OutdatedPlays(int.MaxValue).Count);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+
+        static void save(ScoreStore store, SongSourceKind source, byte[] replay, long player = 42)
+        {
+            var played = chart(source: source);
+            store.Save(new PlayRecord(Guid.NewGuid(), player, "shared-sha", played.Key, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
+                replay) { EngineVersion = "1.0.0" }, ChartUpload.From(played, TaikoCourse.Oni, null));
+        }
+    }
+
+    [Theory]
+    [InlineData(42L)]
+    [InlineData(null)]
+    public async Task FolderPrivacyProtectsSavedAndQueuedPlaysWithoutBlockingOtherCharts(long? baid)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"wdb-marker-{Guid.NewGuid():N}.db");
+        var protectedIds = new List<Guid>();
+        var queuedIds = new List<Guid>();
+        var replay = new TaikoReplay();
+        replay.Add(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        try
+        {
+            using (var store = new ScoreStore(path))
+            {
+                // Folder privacy is per play, even when private and public charts share the same notes/hash.
+                for (var index = 0; index < 55; index++)
+                {
+                    protectedIds.Add(save(store, "protected", true));
+                    queuedIds.Add(save(store, "queued", false));
+                }
+                save(store, "public", false);
+            }
+            using var reopened = new ScoreStore(path);
+            var server = new StubServer("not-requested");
+            using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
+            var client = new ScoreClient(http);
+            // A marker added after saving also blocks the offline backlog. More than a batch cannot starve public plays.
+            Assert.Equal(1, await client.SyncAsync(reopened, baid, canUploadChart: key => !key.EndsWith("/queued", StringComparison.Ordinal)));
+            Assert.All(protectedIds.Concat(queuedIds), id => Assert.DoesNotContain(id.ToString(), server.Plays));
+            Assert.Equal(111, reopened.LocalPlays(42, "shared").Count);
+            Assert.Null(server.Chart);
+            // Removing a marker allows the earlier backlog, but never plays saved under folder protection.
+            Assert.Equal(55, await client.SyncAsync(reopened, baid, canUploadChart: _ => true));
+            Assert.All(protectedIds, id => Assert.DoesNotContain(id.ToString(), server.Plays));
+            var local = reopened.LocalPlays(42, "shared");
+            Assert.Equal(111, local.Count);
+            Assert.All(local, entry => Assert.Equal(replay.Encode(), entry.Replay.Encode()));
+            Assert.Equal(1000, reopened.PreviousBest(42, "shared", Guid.NewGuid()));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+
+        Guid save(ScoreStore store, string name, bool blocked)
+        {
+            var played = chart(key: name);
+            var id = Guid.NewGuid();
+            store.Save(new PlayRecord(id, 42, "shared", played.Key, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
+                replay.Encode()) { EngineVersion = "1.0.0", UploadBlocked = blocked }, ChartUpload.From(played, TaikoCourse.Oni, null));
+            return id;
+        }
+    }
+
+    [Theory]
+    [InlineData(SongSourceKind.Tja)]
+    [InlineData(SongSourceKind.OsuLazer)]
+    [InlineData(SongSourceKind.OsuStable)]
+    [InlineData(SongSourceKind.Stock)]
+    [InlineData(SongSourceKind.Nijiiro)]
+    public async Task PlaysMadeWithCustomUploadsOffNeverBecomePendingAfterReenabling(SongSourceKind source)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"wdb-private-plays-{Guid.NewGuid():N}.db");
+        var played = chart(source: source);
+        var upload = ChartUpload.From(played, TaikoCourse.Oni, null);
+        var official = source is SongSourceKind.Stock or SongSourceKind.Nijiiro;
+        var replay = new TaikoReplay();
+        replay.Add(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1));
+        var oldIds = new List<Guid>();
+        try
+        {
+            using (var store = new ScoreStore(path))
+            {
+                foreach (var mode in new[] { "normal", "ai_battle" })
+                {
+                    var play = record(mode);
+                    oldIds.Add(play.Id);
+                    store.Save(play, upload, uploadCustomSongs: false);
+                }
+                Assert.Equal(official ? 2 : 0, store.PendingPlays(42, 50).Count);
+                Assert.Equal(official ? 2 : 0, store.PendingPlays(null, 50).Count);
+            }
+            // Restart with uploads enabled: private history must still be excluded before any network request.
+            using var reopened = new ScoreStore(path);
+            var server = new StubServer("shared");
+            using var http = new HttpClient(server) { BaseAddress = new Uri("https://server.test/") };
+            var client = new ScoreClient(http);
+            Assert.Equal(official ? 2 : 0, await client.SyncAsync(reopened, 42, uploadCustomSongs: () => true));
+            if (!official)
+            {
+                Assert.Empty(server.Plays);
+                Assert.Null(server.Chart);
+            }
+            foreach (var mode in new[] { "normal", "ai_battle" })
+                reopened.Save(record(mode), upload, uploadCustomSongs: true);
+            Assert.Equal(2, await client.SyncAsync(reopened, null, uploadCustomSongs: () => true));
+            Assert.Empty(reopened.PendingPlays(null, 50));
+            if (!official)
+                Assert.All(oldIds, id => Assert.DoesNotContain(id.ToString(), server.Plays));
+            Assert.Equal(4, reopened.LocalPlays(42, "shared").Count);
+            Assert.All(reopened.LocalPlays(42, "shared"), entry => Assert.Equal(replay.Encode(), entry.Replay.Encode()));
+            Assert.Equal(1000, reopened.PreviousBest(42, "shared", Guid.NewGuid()));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+
+        PlayRecord record(string mode) => new(Guid.NewGuid(), 42, "shared", played.Key, mode,
+            new TaikoPlayResult(TaikoCourse.Oni, 1000, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
+            replay.Encode()) { EngineVersion = "1.0.0" };
+    }
+
     private sealed class StubServer(string missingChart) : HttpMessageHandler
     {
         public string Plays { get; private set; } = "";
@@ -335,8 +516,8 @@ public sealed class ScoreSavingTests
                 var failed = play(cleared: false) with { Result = new TaikoPlayResult(TaikoCourse.Oni, 2000, 3, 0, 0, 3, 0, 50, false) };
                 store.Save(failed, upload);
                 Assert.Equal(2000, store.PreviousBest(42, "sha", Guid.NewGuid()));
-                var local = store.LocalOnlyPlays(42, "sha");
-                Assert.Equal(2, local.Count); // the failed ones, newest first, with their replays
+                var local = store.LocalPlays(42, "sha");
+                Assert.Equal(3, local.Count); // failed and pending successful plays, newest first, with their replays
                 Assert.Equal(2000, local[0].Row.Score);
                 Assert.All(local, static play => Assert.True(play.Row.LocalOnly));
             }
@@ -353,6 +534,7 @@ public sealed class ScoreSavingTests
                     ALTER TABLE plays DROP COLUMN ai_session_id; ALTER TABLE plays DROP COLUMN ai_ranked;
                     ALTER TABLE plays DROP COLUMN ai_base_sha256; ALTER TABLE plays DROP COLUMN ai_prior_median;
                     ALTER TABLE plays DROP COLUMN ai_prior_variance;
+                    ALTER TABLE plays DROP COLUMN upload_blocked;
                     DROP TABLE remote_ai_plays;
                     PRAGMA user_version = 8;
                     """;

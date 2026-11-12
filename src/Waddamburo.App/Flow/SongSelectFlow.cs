@@ -20,7 +20,7 @@ namespace Waddamburo.App.Flow;
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
     public override IndicatorScene IndicatorsFor(SceneId scene) =>
-        scene == FlowScenes.Tutorial ? IndicatorScene.Tutorial
+        (scene == FlowScenes.Tutorial || scene == FlowScenes.WaiwaiTutorial || scene == FlowScenes.AiTutorial) ? IndicatorScene.Tutorial
             : scene == FlowScenes.DaniSelect ? IndicatorScene.DaniSelect : IndicatorScene.SongSelect;
 
     private const string DanMusicCue = "JINGLE_DANI";
@@ -29,16 +29,25 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         Shell.Players.StopWatching();
         if (scene == FlowScenes.SongSelect)
+        {
             Shell.Previews?.StartBackground(Shell.Hosts.Waiwai, Shell.Hosts.AiBattle);
+            if (Shell.Arcade.Home && !Shell.Arcade.CustomUploadNoticeSeen
+                && Shell.Hosts.Library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
+                Shell.CustomUploadPrompt.Open(static () => { });
+        }
         else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
             Shell.Sounds?.Bank.PlayMusic(DanMusicCue, DanMusicCue, loop: true);
+        else if (scene == FlowScenes.WaiwaiTutorial)
+            Shell.Sounds?.Bank.PrepareTutorialMusic("JINGLE_WAITUTOR")?.Invoke();
+        else if (scene == FlowScenes.AiTutorial)
+            Shell.Sounds?.Bank.PrepareTutorialMusic("JINGLE_AIBTL_TUTOR")?.Invoke();
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)
             Shell.Sounds?.Bank.PlayMusic("Tutorial", "JINGLE_DOJO", loop: true);
     }
 
     public override void Exit(SceneId scene)
     {
-        if (scene == FlowScenes.Tutorial || scene == FlowScenes.DaniSelect)
+        if (scene == FlowScenes.Tutorial || scene == FlowScenes.WaiwaiTutorial || scene == FlowScenes.AiTutorial || scene == FlowScenes.DaniSelect)
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
     }
 
@@ -80,6 +89,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null,
             keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input);
         scroll?.After();
+        if (Shell.Active.Id == FlowScenes.WaiwaiTutorial || Shell.Active.Id == FlowScenes.AiTutorial)
+            Shell.Hosts.ModeTutorial?.Poll();
         Shell.Hosts.SongSelect?.Poll();
         if (Shell.Active.Id == FlowScenes.DaniSelect)
             Shell.Hosts.DaniSelect?.Poll();
@@ -92,6 +103,11 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         // Traced: the tutorial cuts in and out (its movie fades itself); Song Select comes back
         // without the folder, the cursor on the first genre.
+        if (Shell.Active.Id == FlowScenes.WaiwaiTutorial || Shell.Active.Id == FlowScenes.AiTutorial)
+        {
+            if (input.Escape || Shell.Hosts.ModeTutorial?.Finished == true) showSongSelect();
+            return;
+        }
         if (Shell.Active.Id == FlowScenes.Tutorial)
         {
             if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player))
@@ -135,6 +151,18 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (Shell.Hosts.SongSelect?.TutorialRequested == true)
         {
+            if (Shell.Hosts.Waiwai)
+            {
+                Shell.Hosts.WaiwaiTutorialSeen = true;
+                Shell.Scenes.Show(FlowScenes.WaiwaiTutorial);
+                return;
+            }
+            if (Shell.Hosts.AiBattle)
+            {
+                Shell.Hosts.AiTutorialSeen = true;
+                Shell.Scenes.Show(FlowScenes.AiTutorial);
+                return;
+            }
             Shell.Hosts.TutorialSeen = true;
             // Home: once is enough (Green offers it every credit until watched; a PC has one endless credit).
             if (Shell.Arcade.Home && !Shell.Arcade.TutorialSeen)
@@ -363,7 +391,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         if (Shell.Hosts.SongSelect?.LibraryRequested is not { } library)
             return false;
-        Shell.Reload.Start(() => Shell.Hosts.Library = library);
+        if (!Shell.Arcade.CustomUploadNoticeSeen && library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
+            Shell.CustomUploadPrompt.Open(() => Shell.Reload.Start(() => Shell.Hosts.Library = library));
+        else
+            Shell.Reload.Start(() => Shell.Hosts.Library = library);
         return true;
     }
 

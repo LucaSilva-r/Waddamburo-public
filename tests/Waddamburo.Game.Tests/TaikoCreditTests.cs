@@ -5,6 +5,24 @@ namespace Waddamburo.Game.Tests;
 public sealed class TaikoCreditTests
 {
     [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void EveryConfiguredStageIsPlayableBeforeTheCreditEnds(int songs)
+    {
+        var settings = Waddamburo.Game.Flow.ArcadeSettings.Parse($"songs_per_session = {songs}");
+        for (var stage = 1; stage <= songs; stage++)
+        {
+            Assert.Equal(stage == songs ? TaikoCreditNext.End : TaikoCreditNext.NextSong,
+                TaikoCredit.Next(stage, [true], settings.SongsPerSession));
+            Assert.Equal(stage == songs ? TaikoCreditNext.End : TaikoCreditNext.NextSong,
+                TaikoCredit.Next(stage, [true, true], settings.SongsPerSession));
+        }
+    }
+
+    [Theory]
     [InlineData(1, "F", 2, TaikoCreditNext.Revival, 2)]  // one player failed the first song
     [InlineData(1, "C", 2, TaikoCreditNext.NextSong, 0)] // traced 0 after a cleared song
     [InlineData(2, "F", 2, TaikoCreditNext.End, 0)]      // last song, cleared or not (traced)

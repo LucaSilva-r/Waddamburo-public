@@ -23,7 +23,11 @@ internal sealed class PlayerSession(GameShell shell)
         {
             field = value;
             if (value == 0)
+            {
                 shell.Hosts.TutorialSeen = false;
+                shell.Hosts.WaiwaiTutorialSeen = false;
+                shell.Hosts.AiTutorialSeen = false;
+            }
         }
     }
 

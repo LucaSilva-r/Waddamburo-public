@@ -55,6 +55,14 @@ public sealed class OsuStableReaderTests
             // The chart id is the .osu file's SHA-256, as lazer names it.
             Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Osu))), chart.Key.StableId);
             Assert.Equal(2, (await provider.LoadChartAsync(chart.Key, chart.ChartAsset)).HitObjects.Length);
+            Assert.False(provider.UploadBlocked(chart.ChartAsset));
+            var marker = Path.Combine(root, "Songs", "123 Artist - Song", "donotupload");
+            File.WriteAllText(marker, "");
+            Assert.True(provider.UploadBlocked(chart.ChartAsset));
+            File.Delete(marker);
+            Assert.False(provider.UploadBlocked(chart.ChartAsset));
+            File.WriteAllText(Path.Combine(root, "donotupload"), "");
+            Assert.True(provider.UploadBlocked(chart.ChartAsset));
             await using (var audio = await provider.OpenReadAsync(song.AudioAsset!))
                 Assert.Equal(3, audio.Length);
             Assert.Contains(contribution.Categories, category => category.Name == "Favourites" && category.Songs.Single() == song.Key);

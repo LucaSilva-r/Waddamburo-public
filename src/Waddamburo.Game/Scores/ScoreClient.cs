@@ -268,13 +268,15 @@ public sealed class ScoreClient(HttpClient http)
     /// Uploads the player's pending plays, then any charts the server asks for. Plays the server
     /// answered for are marked uploaded (rejected ones too: retrying would not change the answer).
     /// Returns the number of plays sent; throws on network/server errors, leaving the rest pending.
+    /// The custom-song upload setting is read before each batch; excluded plays remain stored and pending.
     /// </summary>
-    public async Task<int> SyncAsync(ScoreStore store, long? baid, CancellationToken cancellationToken = default)
+    public async Task<int> SyncAsync(ScoreStore store, long? baid, Func<bool>? uploadCustomSongs = null, Func<string, bool>? canUploadChart = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         var sent = 0;
         var devPlays = AcceptsDevPlays(http.BaseAddress);
-        while (store.PendingPlays(baid, BatchSize) is { Count: > 0 } pending)
+        while (store.PendingPlays(baid, BatchSize, uploadCustomSongs?.Invoke() ?? true, canUploadChart) is { Count: > 0 } pending)
         {
             var batch = devPlays ? pending : keep(pending, static play => (play.EngineVersion, play.Id), store.MarkUploaded);
             if (batch.Count == 0)
@@ -351,7 +353,8 @@ public sealed class ScoreClient(HttpClient http)
     /// Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.
     /// <paramref name="job"/> reports it on the notice sidebar.
     /// </summary>
-    public void SyncInBackground(ScoreStore store, long? baid, Flow.JobBoard.Job? job = null, Action? completed = null)
+    public void SyncInBackground(ScoreStore store, long? baid, Flow.JobBoard.Job? job = null, Action? completed = null,
+        Func<bool>? uploadCustomSongs = null, Func<string, bool>? canUploadChart = null)
     {
         if (Interlocked.Exchange(ref _syncing, 1) == 1)
         {
@@ -362,7 +365,7 @@ public sealed class ScoreClient(HttpClient http)
         {
             try
             {
-                var sent = await SyncAsync(store, baid).ConfigureAwait(false);
+                var sent = await SyncAsync(store, baid, uploadCustomSongs: uploadCustomSongs, canUploadChart: canUploadChart).ConfigureAwait(false);
                 job?.Complete();
                 completed?.Invoke();
                 if (sent > 0)

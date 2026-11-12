@@ -535,6 +535,20 @@ public sealed partial class LumenPlayer
         return hostFind(instancePath, "frame") is { } instance ? (instance.Frame, instance.Playing) : null;
     }
 
+    /// <summary>
+    /// Whether a named clip and its ancestors are present and visible to script and host visibility controls.
+    /// Alpha is ignored: a transparent panel can already own input while its fade-in plays.
+    /// </summary>
+    public bool IsInstanceVisible(string instancePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+        var instance = findInstance(instancePath);
+        if (instance is null) return false;
+        for (var current = instance; current is not null; current = current.Parent)
+            if (current.Removed || !current.Visible || current.HiddenByHost) return false;
+        return true;
+    }
+
     /// <summary>The frame a label names on a named clip's timeline.</summary>
     public bool TryGetLabelFrame(string instancePath, string label, out int frame)
     {
@@ -1898,6 +1912,9 @@ public sealed partial class LumenPlayer
         bool boolean => LumenHostValue.FromBoolean(boolean),
         double number => LumenHostValue.FromNumber(number),
         string text => LumenHostValue.FromString(text),
+        Avm1Object script => LumenHostValue.FromObject(script.Properties
+            .Where(static field => field.Value is null or bool or double or string)
+            .ToDictionary(static field => field.Key, static field => toHostValue(field.Value), StringComparer.Ordinal)),
         _ => LumenHostValue.Undefined,
     };
 
@@ -1908,8 +1925,16 @@ public sealed partial class LumenPlayer
         LumenHostValueKind.Boolean => value.AsBoolean(),
         LumenHostValueKind.Number => value.AsNumber(),
         LumenHostValueKind.Text => value.AsString(),
+        LumenHostValueKind.Fields => hostFields(value),
         _ => Avm1Undefined.Instance,
     };
+
+    private static Avm1Object hostFields(LumenHostValue value)
+    {
+        var result = new Avm1Object();
+        foreach (var field in value.AsObject()) result.Properties[field.Key] = fromHostValue(field.Value);
+        return result;
+    }
 
     private Avm1Lookup invokeFunction(
         DisplayInstance timelineTarget,

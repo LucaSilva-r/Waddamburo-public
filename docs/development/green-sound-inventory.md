@@ -36,6 +36,27 @@ The root browser reports a settled category through
 against the pinned catalog, then plays its cue once. Opening a folder does not
 cut off the announcement; an explicit `StopVoice` or leaving Song Select does.
 
+## Song Select navigation voices
+
+`VO_SELECT` cue 32 (decoder stream 33) says “Choose a song, Don!”; cue 33
+(stream 34) asks for a song's difficulty. The user independently confirmed these
+in File Preview. Cue 61 (stream 62) is the by-difficulty folder's input prompt,
+identified in the community report and reproduced through the public runtime.
+These are semantic observations from user-supplied audio, not redistributed cues.
+
+The movie requests cue 32 after its initial data is assigned. The host leaves
+that startup announcement intact; it does not substitute the initial category's
+voice. Later `NotifyGenreFolder` notifications still announce browsed categories.
+The same startup rule applies when returning to Song Select after a song.
+
+Backing out of a real song's difficulty screen requests cue 32. The closing
+boards subsequently issue duplicate `RequestSE_Save` requests for cue 61, which
+would replace the correct voice. While `LeavingCourseSelect` is true, both sound
+request paths suppress only that prompt. A newly opened song's difficulty screen
+clears the closing state; ordinary difficulty announcements and drum-tone previews
+remain available. Synthetic host-call fixtures exercise this sequence without
+including any supplied movie script or audio.
+
 ## Tutorial
 
 The how-to-play movie asks for its sounds through `LumenMethod`. Observed routing:
