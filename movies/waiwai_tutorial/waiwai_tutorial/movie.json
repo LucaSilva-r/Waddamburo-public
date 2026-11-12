@@ -1,0 +1,43 @@
+// waiwai_tutorial: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "box": "textures/box.svg"
+  },
+  "shapes": {
+    "box": {
+      "texture": "box",
+      "rect": [
+        -32,
+        -32,
+        64,
+        64
+      ]
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 60,
+      "labels": {
+        "cut01": 0,
+        "cut02": 10,
+        "cut03": 20,
+        "cut04": 30,
+        "lastloop": 40,
+        "cut05": 50
+      },
+      "layers": [],
+      "scripts": {
+        "9": "scripts/stop.as",
+        "19": "scripts/stop.as",
+        "29": "scripts/stop.as",
+        "39": "scripts/stop.as",
+        "49": "scripts/stop.as",
+        "59": "scripts/stop.as",
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}
