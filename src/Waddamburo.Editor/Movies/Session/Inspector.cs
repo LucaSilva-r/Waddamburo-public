@@ -34,7 +34,8 @@ public sealed partial class MovieInspectorSession
             double? of(System.Text.Json.Nodes.JsonObject? key) => key is null ? null : MovieDocument.Value(key, property);
             // Among the keys that hold this property: the one on this frame, the one before, the one after.
             var held = keys.Where(key => MovieDocument.Has(key, property)).ToList();
-            var at = held.FirstOrDefault(key => (int)key["frame"]! == frame);
+            // Held by one key only, it does not animate: that is the clip's resting value, not a key to show.
+            var at = held.Count < 2 ? null : held.FirstOrDefault(key => (int)key["frame"]! == frame);
             var previous = held.LastOrDefault(key => (int)key["frame"]! < frame);
             var next = held.FirstOrDefault(key => (int)key["frame"]! > frame);
             // Orange: keyed on this frame. Blue: on its way from one key to the next. Plain: not animating here.
@@ -56,7 +57,7 @@ public sealed partial class MovieInspectorSession
                     : $"Animating: {number(of(from)!.Value)} on frame {(int)from!["frame"]!} to {number(of(next)!.Value)} on frame {(int)next!["frame"]!}.");
             if (ImGui.BeginPopupContextItem("##menu " + property))
             {
-                void put(double wanted) => edited(() => _document.Edit(_ => MovieDocument.Set(MovieDocument.BareKey(layer, frame), property, wanted)));
+                void put(double wanted) => edited(() => _document.Edit(_ => keyValue(layer, frame, property, wanted)));
                 if (ImGui.MenuItem("Key here", "", false, at is null))
                     put(value);
                 if (ImGui.MenuItem("Remove from this key", "", false, at is not null))
@@ -71,10 +72,12 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.MenuItem($"Default  ({number(MovieDocument.Default(property))})", "", false, value != (float)MovieDocument.Default(property)))
                     edited(() => _document.Edit(_ => setValues(layer, frame, (property, MovieDocument.Default(property)))));
                 ImGui.Separator();
-                if (ImGui.MenuItem("Same on every key", "", false, held.Count > 1))
+                if (ImGui.MenuItem("Stop animating (this value throughout)", "", false, held.Count > 1))
                     edited(() => _document.Edit(_ =>
                     {
-                        foreach (var key in held) MovieDocument.Set(key, property, value);
+                        // One value everywhere is one resting value: on the first key that held it.
+                        MovieDocument.Set(held[0], property, value);
+                        foreach (var key in held.Skip(1).ToArray()) MovieDocument.RemoveChannel(layer, (int)key["frame"]!, property);
                     }));
                 ImGui.EndPopup();
             }

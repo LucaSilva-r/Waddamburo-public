@@ -19,14 +19,23 @@ public sealed partial class MovieInspectorSession
     /// <summary>
     /// Sets a layer's values as they should be on <paramref name="frame"/> (inside a document edit). Auto key on: in a
     /// key on that frame, made when there is none. Off: every key changes by the same amount, so the whole animation
-    /// moves and no key is added.
+    /// moves and no key is added; for a property that does not animate that is simply its resting value.
     /// </summary>
+    // Keys one property on a frame. A property nothing holds yet first gets its resting value written on the layer's
+    // first key, so the new key animates from where the clip was (on the first key's own frame it is just set).
+    private static void keyValue(System.Text.Json.Nodes.JsonObject layer, int frame, string property, double value)
+    {
+        var keys = layer["keys"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().ToArray();
+        if (!keys.Any(key => MovieDocument.Has(key, property)))
+            MovieDocument.Set(keys.MinBy(static key => (int)key["frame"]!)!, property, MovieDocument.Default(property));
+        MovieDocument.Set(MovieDocument.BareKey(layer, frame), property, value);
+    }
+
     private void setValues(System.Text.Json.Nodes.JsonObject layer, int frame, params (string Property, double Value)[] values)
     {
         if (_autoKey)
         {
-            var key = MovieDocument.BareKey(layer, frame); // only what changed is keyed
-            foreach (var (property, value) in values) MovieDocument.Set(key, property, value);
+            foreach (var (property, value) in values) keyValue(layer, frame, property, value);
             return;
         }
         var now = MovieDocument.KeyAt((System.Text.Json.Nodes.JsonObject)layer.DeepClone(), frame);

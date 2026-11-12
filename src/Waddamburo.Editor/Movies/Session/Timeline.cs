@@ -176,13 +176,16 @@ public sealed partial class MovieInspectorSession
             if (path == _selected) selectedLayer = index;
             var open = _expanded.Contains((name, index));
             // A channel is listed when a key holds it; its keys are the ones that do.
-            var channels = open ? Channels.Where(channel => layerKeys.Any(key => MovieDocument.Has(key, channel))).ToArray() : [];
+            // A channel animates when two keys or more hold it; held by one, it is the clip's resting value: no key shown.
+            var animated = Channels.Where(channel => layerKeys.Count(key => MovieDocument.Has(key, channel)) >= 2).ToArray();
+            var channels = open ? animated : [];
+            int[] marked = [.. layerKeys.Where(key => animated.Any(channel => MovieDocument.Has(key, channel))).Select(static key => (int)key["frame"]!)];
             for (var line = 0; line <= channels.Length && !stale; line++)
             {
                 var channel = line == 0 ? null : channels[line - 1];
                 var top = rowTop;
                 rowTop += RowHeight;
-                var shown = channel is null ? keys : [.. layerKeys.Where(key => MovieDocument.Has(key, channel)).Select(static key => (int)key["frame"]!)];
+                var shown = channel is null ? marked : [.. layerKeys.Where(key => MovieDocument.Has(key, channel)).Select(static key => (int)key["frame"]!)];
                 rows.Add((top, index, channel, shown));
                 var shade = channel is not null ? RowChannel : index % 2 == 0 ? Row : RowOdd;
                 draw.AddRectFilled(new(origin.X, top), new(origin.X + NameColumn + width, top + RowHeight), shade);
@@ -254,7 +257,8 @@ public sealed partial class MovieInspectorSession
                 var under = frameAt(mouse.X);
                 if (ImGui.IsItemActivated())
                 {
-                    selectClip(path);
+                    selectClip(path, keepKeys: true);
+                    _keysClickedLast = true; // after selectClip: Delete now means the keys
                     selectedLayer = index;
                     // The nearest key within a few pixels, so thin frames can still be grabbed.
                     var near = shown.OrderBy(key => Math.Abs(x(key) + step / 2 - mouse.X)).Cast<int?>().FirstOrDefault();
@@ -296,7 +300,7 @@ public sealed partial class MovieInspectorSession
                 }
                 if (ImGui.BeginPopupContextItem($"##keys menu {index} {channel}"))
                 {
-                    selectClip(path);
+                    selectClip(path, keepKeys: true);
                     selectedLayer = index;
                     stale = keyMenu(layers, selectedLayer, clip.Frame);
                     ImGui.EndPopup();
@@ -449,7 +453,6 @@ public sealed partial class MovieInspectorSession
     private void deleteKeys(JsonArray layers)
     {
         if (_keys.Count == 0) return;
-        var kept = false;
         edited(() => _document!.Edit(_ =>
         {
             foreach (var (layer, frame, channel) in _keys.OrderByDescending(static key => key.Frame))
@@ -457,8 +460,17 @@ public sealed partial class MovieInspectorSession
                 if (keyOn(layers, layer, frame) is not { } key || key.Parent is not JsonArray keys) continue;
                 if (channel is null)
                 {
-                    if (keys.Count > 1) keys.Remove(key);
-                    else kept = true;
+                    // The key goes, but not what rests on it: values no other key holds move to the layer's first key,
+                    // and the first key itself only loses what animates (the layer starts there).
+                    var all = keys.OfType<JsonObject>().OrderBy(static each => (int)each["frame"]!).ToArray();
+                    var first = ReferenceEquals(all[0], key);
+                    foreach (var each in Channels.Where(each => MovieDocument.Has(key, each)).ToArray())
+                    {
+                        var alone = all.Count(other => MovieDocument.Has(other, each)) == 1;
+                        if (alone && !first) setChannel(all[0], each, channelValue(key, each));
+                        else if (!alone && first) MovieDocument.RemoveChannel((JsonObject)layers[layer]!, frame, each);
+                    }
+                    if (!first) keys.Remove(key);
                 }
                 // A channel's last key may go: the channel is then at its default, off the list.
                 else if (!_keys.Contains((layer, frame, null)))
@@ -467,7 +479,6 @@ public sealed partial class MovieInspectorSession
         }));
         _keys.Clear();
         _key = null;
-        _notice = kept ? "A layer keeps its last key: it is where the layer is. Delete the layer instead (right-click its name), or clear single properties in its channel rows." : null;
     }
 
     private bool keyMenu(JsonArray layers, int layer, int frame)

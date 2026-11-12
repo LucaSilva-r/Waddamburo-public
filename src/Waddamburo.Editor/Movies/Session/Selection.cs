@@ -8,12 +8,15 @@ public sealed partial class MovieInspectorSession
 {
     private bool _scrollToSelected;
     private string? _selected;
-    private void selectClip(string? path)
+    private void selectClip(string? path, bool keepKeys = false)
     {
+        // A selection made anywhere else lets go of the timeline's keys (and of an asset, below).
+        if (!keepKeys) { _keys.Clear(); _key = null; }
         _selection.Clear();
         if (path is not null) _selection.Add(path);
         _selectionAnchor = path;
         _selected = path;
+        _keysClickedLast = false; // Delete now means this clip
         _selectedAsset = null;
         _selectedAssetId = null;
         _assetGesture = false;
