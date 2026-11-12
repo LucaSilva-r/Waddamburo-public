@@ -18,7 +18,7 @@ namespace Waddamburo.App.Flow;
 /// the play; the other keys are GameActions' (Scores opens and closes it, Leaderboard switches
 /// leaderboard/own plays, ShinuchiBoard the normal/真打 leaderboard, Confirm watches; Escape closes).
 /// Practice starts from a play's pause menu instead, with its own options. The own plays also list the
-/// failed plays kept on this PC only (in their own colour, replayed from the local store), offline too.
+/// failed plays and successful plays awaiting upload (in their own colour, replayed from the local store), offline too.
 /// </summary>
 internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, OptionIcons optionIcons) : IInputOverlay
 {
@@ -103,14 +103,14 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         _charts = [.. song.Descriptor.Charts.Where(static chart => chart.Course is not null).OrderBy(static chart => chart.Course)];
         if (_charts.Length == 0)
             return false;
-        _profile = TaikoGuest.Profiles[shell.Hosts.PlayerSide];
+        _profile = TaikoGuest.Profiles[shell.Hosts.PlayerSide] ?? ScoreProfile.LocalGuest;
         _client = _profile?.Token is { } token ? shell.Sync.ClientFor(token) : null;
         var crowns = _profile is { } profile && shell.Sync.Scores is { } scores ? scores.Crowns(profile.Baid) : [];
         var played = Array.FindLastIndex(_charts, chart => crowns.ContainsKey(chart.Key.ToString()));
         _chart = played >= 0 ? played : Math.Max(0, Array.FindIndex(_charts, static chart => chart.Course == TaikoCourse.Oni));
         _lists.Clear();
         _localReplays.Clear();
-        (_mine, _shinuchi, _selection, _watching, _error) = (false, false, 0, null, null);
+        (_mine, _shinuchi, _selection, _watching, _error) = (_client is null, false, 0, null, null);
         IsOpen = true;
         return true;
     }
@@ -137,12 +137,22 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                     ?? throw new InvalidOperationException("The chart has no course.");
                 if (!mine)
                     return (await client!.LeaderboardAsync(sha, shinuchi: shinuchi).ConfigureAwait(false)).Scores;
-                var local = _profile is { } profile && shell.Sync.Scores is { } scores ? scores.LocalOnlyPlays(profile.Baid, sha) : [];
+                var local = _profile is { } profile && shell.Sync.Scores is { } scores ? scores.LocalPlays(profile.Baid, sha) : [];
                 lock (_localReplays)
                     foreach (var (row, replay) in local)
                         _localReplays[row.PlayId] = replay;
-                var online = client is null ? [] : await client.MyScoresAsync(sha).ConfigureAwait(false);
-                return [.. online.Concat(local.Select(static entry => entry.Row))
+                List<ScoreRow> online = [];
+                try
+                {
+                    if (client is not null)
+                        online = await client.MyScoresAsync(sha).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+                {
+                    // Saved replays remain watchable when the score server is unreachable.
+                }
+                var onlineIds = online.Select(static row => row.PlayId).ToHashSet();
+                return [.. online.Concat(local.Where(entry => !onlineIds.Contains(entry.Row.PlayId)).Select(static entry => entry.Row))
                     .OrderByDescending(static play => play.PlayedAt ?? DateTimeOffset.MinValue)];
             });
         }

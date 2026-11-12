@@ -68,6 +68,11 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private bool _paused;
     private bool _directStart;
     private PlayRequest? _lastRequest;
+    public PlayRequest? CurrentRequest => _lastRequest;
+    private HashSet<ChartKey> _uploadProtectedCharts = [];
+    private bool _customUploadsAtStart;
+    public bool UploadBlocked => _uploadProtectedCharts.Count > 0
+        || _lastRequest?.Players.Any(player => Shell.Assets.UploadBlocked(player.ChartAsset)) == true;
     private int _pausedAtTick;
     private int _pausedTicks;
     private float _pauseInterpolation;
@@ -232,6 +237,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         var request = Shell.PlayRequests.ActivatePending();
         _lastRequest = request;
+        _customUploadsAtStart = Shell.Arcade.UploadCustomSongs;
+        _uploadProtectedCharts = request.Players.Where(player => Shell.Assets.UploadBlocked(player.ChartAsset))
+            .Select(static player => player.Chart).ToHashSet();
         Playing = !_demo && request.Review is null;
         PlayingChart = Playing && _course is null && Shell.Arcade.Home && _sourceCharts.Length > 0
             ? ChartHash.Compute(_sourceCharts[0], request.Players[0].Course) : null;
@@ -1223,10 +1231,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                         { ShowProgress = ranked };
                     Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");
                 }
+                Shell.RememberUploadChart(player.Chart, player.ChartAsset);
                 scores.Save(new PlayRecord(id, profile.Baid, sha,
                     player.Chart, battle is null ? "normal" : "ai_battle", Shell.Gameplay.Results[lane], DateTimeOffset.UtcNow,
                     Shell.Gameplay.Replays[lane].Encode())
                     {
+                        UploadBlocked = _uploadProtectedCharts.Contains(player.Chart) || Shell.Assets.UploadBlocked(player.ChartAsset),
                         AudioOffsetMs = (int)_audioOffset.TotalMilliseconds,
                         InputOffsetMs = (int)_inputOffset.TotalMilliseconds,
                         // AI-don's decisions use the seed even without random chart options.
@@ -1234,7 +1244,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                         Battle = battle,
                         Timing = lane == 0 ? GhostTimingModel.TimingOf(_hitOffsets) : null,
                     },
-                    ChartUpload.From(played, player.Course, _song?.Descriptor));
+                    ChartUpload.From(played, player.Course, _song?.Descriptor),
+                    uploadCustomSongs: _customUploadsAtStart && Shell.Arcade.UploadCustomSongs);
                 saved.Add(profile);
             }
             catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)

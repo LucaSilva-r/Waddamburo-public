@@ -27,7 +27,7 @@ public sealed record ArcadeSettings
     public const string FileName = "config.cfg";
 
     /// <summary>The config_version this build writes. Bump it with each new entry in <see cref="Additions"/>.</summary>
-    public const int CurrentVersion = 27;
+    public const int CurrentVersion = 28;
 
     // Version 2's mode for a file written before it: a cabinet (token, or coins) stays arcade.
     private const string ModePlaceholder = "{mode}";
@@ -327,6 +327,15 @@ public sealed record ArcadeSettings
         dev_no_focus_pause = false
 
         """,
+        """
+        # upload_custom_songs (also in Settings): upload scores, replays and charts for TJA and osu! songs.
+        # false = plays made while off stay on this PC permanently. Turning it on applies to new plays.
+        # Local replays remain available either way; official songs are unaffected.
+        upload_custom_songs = true
+        # The first custom-library upload question was answered; false = ask on the next entry.
+        custom_upload_notice_seen = false
+
+        """,
     ];
 
     /// <summary>The drum pads' settings, in the order of <see cref="Controls"/>.</summary>
@@ -422,6 +431,12 @@ public sealed record ArcadeSettings
 
     /// <summary>Discord shows what the player is doing (home mode, while Discord runs).</summary>
     public bool DiscordPresence { get; init; } = true;
+
+    /// <summary>Upload new custom (TJA and osu!) plays; plays made while disabled stay local permanently.</summary>
+    public bool UploadCustomSongs { get; init; } = true;
+
+    /// <summary>The custom-library upload question has been answered on this installation.</summary>
+    public bool CustomUploadNoticeSeen { get; init; }
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
     public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
@@ -841,6 +856,8 @@ public sealed record ArcadeSettings
                 "dev_autoplay" => settings with { DevAutoplay = boolean(value, index) },
                 "dev_no_focus_pause" => settings with { DevNoFocusPause = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
+                "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
+                "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
                 "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
                 "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
@@ -948,6 +965,8 @@ public sealed record ArcadeSettings
             ["dev_autoplay"] = settings.DevAutoplay ? "true" : "false",
             ["dev_no_focus_pause"] = settings.DevNoFocusPause ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
+            ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
+            ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
             ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,
             ["timing_indicator"] = settings.TimingIndicator switch

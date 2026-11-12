@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Diagnostics;
 using Waddamburo.App.Audio;
@@ -218,6 +219,14 @@ internal sealed class GameShell : IDisposable
     private readonly TimingMarkOverlay _timingMarks;
     private readonly ReviewOverlay _reviewBar;
 
+    private readonly ConcurrentDictionary<string, CatalogAssetKey> _uploadCharts;
+
+    public void RememberUploadChart(ChartKey chart, CatalogAssetKey asset) => _uploadCharts.TryAdd(chart.ToString(), asset);
+
+    private bool CanUploadChart(string chartKey) => chartKey.StartsWith("Stock:", StringComparison.Ordinal)
+        || chartKey.StartsWith("Nijiiro:", StringComparison.Ordinal)
+        || _uploadCharts.TryGetValue(chartKey, out var asset) && !Assets.UploadBlocked(asset);
+
     public CatalogAssetRouter Assets { get; }
 
     /// <summary>The players' own modcharts: &lt;chart hash&gt;.wddmod, one per chart and course (ChartModFile).</summary>
@@ -288,6 +297,7 @@ internal sealed class GameShell : IDisposable
     private readonly SongSearch _search;
     private readonly ScoreListOverlay _scores;
     // Overlays that take the keyboard (topmost last) and the painter Waddamburo's own overlays draw with.
+    public CustomUploadPrompt CustomUploadPrompt { get; }
     private readonly IInputOverlay[] _inputOverlays;
 
     /// <summary>Song Select's flow (an online host's cover is cancelled through it).</summary>
@@ -527,7 +537,7 @@ internal sealed class GameShell : IDisposable
         try
         {
             _boot.Begin("NETWORK SERVICE");
-            Sync = new ScoreSync(Arcade, options.ScoresPath, Accounts);
+            Sync = new ScoreSync(Arcade, options.ScoresPath, Accounts, () => Arcade.UploadCustomSongs, CanUploadChart);
             // Not fatal: the game plays offline (scores wait for the server). Its first answer, up to 3 s.
             if (Sync.Health is { } health)
             {
@@ -556,6 +566,9 @@ internal sealed class GameShell : IDisposable
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
+            _uploadCharts = new ConcurrentDictionary<string, CatalogAssetKey>(snapshot.Songs.Values.SelectMany(static song => song.Charts)
+                .Select(static chart => new KeyValuePair<string, CatalogAssetKey>(chart.Key.ToString(), chart.ChartAsset)), StringComparer.Ordinal);
+            Sync.UploadPending();
             // Next to the settings file (USRDIR/waddamburo), like the favourites; none without one.
             Modcharts = Options.ArcadePath is { } settingsFile ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsFile))!, "modcharts") : null;
             // The one layout of earlier versions becomes the first of the list, and stays the active one.
@@ -702,7 +715,8 @@ internal sealed class GameShell : IDisposable
             _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
             Room = new RoomOverlay(this, Painter);
             Match = new OnlineMatch(this);
-            _inputOverlays = [_search, _scores, Room];
+            CustomUploadPrompt = new CustomUploadPrompt(this, options.ServiceFontPath ?? options.FontPath);
+            _inputOverlays = [_search, _scores, Room, CustomUploadPrompt];
             Reload = new SongSelectReload(this);
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
@@ -1404,6 +1418,12 @@ internal sealed class GameShell : IDisposable
             top.Add(Painter.Rect(400, 0, 480, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
             top.Add(Painter.Text(Strings.T("nightly.banner"), 640, 13, 468, 22));
         }
+        if (uploadBanner() is { } uploadMessage)
+        {
+            var y = BuildInfo.Nightly ? 28 : 0;
+            top.Add(Painter.Rect(380, y, 520, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
+            top.Add(Painter.Text(Strings.T(uploadMessage), 640, y + 13, 508, 22));
+        }
         top.AddRange(_performance.Quads());
         if (top.Count == 0)
             return frame;
@@ -1412,6 +1432,29 @@ internal sealed class GameShell : IDisposable
             BlurredQuads = frame.BlurredQuads,
             BackdropBrightness = frame.BackdropBrightness,
         };
+    }
+
+    private string? _uploadBanner;
+    private string? _uploadBannerContext;
+    private int _uploadBannerTick = -60;
+
+    private string? uploadBanner()
+    {
+        var song = Active.Id == FlowScenes.SongSelect
+            ? Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
+        var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
+        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}";
+        // Marker checks touch the filesystem; refresh once a second and immediately when the context changes.
+        if (_uploadBannerContext == context && Tick - _uploadBannerTick < 60) return _uploadBanner;
+        (_uploadBannerContext, _uploadBannerTick) = (context, Tick);
+        var source = song?.Descriptor.Key.Source ?? request?.Song.Source
+            ?? (Active.Id == FlowScenes.SongSelect ? Hosts.Library : (SongSourceKind?)null);
+        if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))
+            return _uploadBanner = null;
+        if (!Arcade.UploadCustomSongs) return _uploadBanner = "custom_upload.banner_all";
+        var blocked = request is not null ? _gameplay.UploadBlocked
+            : song?.Descriptor.Charts.Any(chart => Assets.UploadBlocked(chart.ChartAsset)) == true;
+        return _uploadBanner = blocked ? "custom_upload.banner_chart" : null;
     }
 
     private RenderFrame blackLoadingFrame()
@@ -1482,6 +1525,7 @@ internal sealed class GameShell : IDisposable
         SceneTextures.Upscaler?.Dispose();
         Application.Dispose();
         _libraries.Dispose();
+        CustomUploadPrompt.Dispose();
         Room.Dispose();
         Sync.Dispose();
         _discord?.Dispose();

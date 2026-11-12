@@ -154,6 +154,9 @@ public sealed record PlayRecord(
     /// </summary>
     public const int CurrentScoringVersion = 9; // 5: a big note hit is always a big hit; 6: the other hand's press right after is part of it; 7: ka popped balloons (reverted); 8: don only again; 9: Go-Go by the note's window, branch and osu! gauge scaling
 
+    /// <summary>Uploads were disabled for this play by a setting or folder marker; it must never be uploaded later.</summary>
+    public bool UploadBlocked { get; init; }
+
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 
     public static string CurrentEngineVersion { get; } =
@@ -358,6 +361,9 @@ public sealed class ScoreStore : IDisposable
         ALTER TABLE plays ADD COLUMN ai_prior_median REAL;
         ALTER TABLE plays ADD COLUMN ai_prior_variance REAL;
         """,
+        """
+        ALTER TABLE plays ADD COLUMN upload_blocked INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -371,10 +377,13 @@ public sealed class ScoreStore : IDisposable
     }
 
     // ponytail: one connection behind a lock (game thread saves, uploader reads); fine at a few plays a minute.
-    public void Save(PlayRecord play, ChartUpload chart)
+    public void Save(PlayRecord play, ChartUpload chart, bool uploadCustomSongs = true)
     {
         ArgumentNullException.ThrowIfNull(play);
         ArgumentNullException.ThrowIfNull(chart);
+        // Record privacy with the play itself, so a later setting change never queues private history.
+        if (!uploadCustomSongs && play.Chart.Song.Source is not (SongSourceKind.Stock or SongSourceKind.Nijiiro))
+            play = play with { UploadBlocked = true };
         lock (_connection)
         {
             using var transaction = _connection.BeginTransaction();
@@ -395,8 +404,9 @@ public sealed class ScoreStore : IDisposable
     /// <summary>
     /// Plays not yet on the server, oldest first: one player's, or everyone's (null: a cabinet). Local
     /// guest plays (baid 0) and failed plays never leave the PC, except AI battles (a failed one can still be a win).
+    /// Disabling custom uploads filters by each play's source before applying the batch limit.
     /// </summary>
-    public List<UploadPlay> PendingPlays(long? baid, int limit)
+    public List<UploadPlay> PendingPlays(long? baid, int limit, bool uploadCustomSongs = true, Func<string, bool>? canUploadChart = null)
     {
         lock (_connection)
         {
@@ -405,16 +415,19 @@ public sealed class ScoreStore : IDisposable
                 SELECT id, baid, chart_sha256, mode, course, score, great, good, miss, max_combo, rolls, gauge,
                     cleared, scoring_version, engine_version, played_at, replay, audio_offset_ms, input_offset_ms,
                     options, seed, ai_won, ai_sections, ai_support, ai_points, hit_median, hit_variance, ai_session_id,
-                    ai_base_sha256, ai_prior_median, ai_prior_variance
+                    ai_base_sha256, ai_prior_median, ai_prior_variance, chart_key
                 FROM plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND (cleared = 1 OR mode = 'ai_battle')
-                    AND uploaded_at IS NULL
-                ORDER BY played_at LIMIT $limit
+                    AND uploaded_at IS NULL AND upload_blocked = 0
+                    AND ($custom OR chart_key GLOB 'Stock:*' OR chart_key GLOB 'Nijiiro:*')
+                ORDER BY played_at
                 """;
             command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
-            command.Parameters.AddWithValue("$limit", limit);
+            command.Parameters.AddWithValue("$custom", uploadCustomSongs);
             using var reader = command.ExecuteReader();
             var plays = new List<UploadPlay>();
-            while (reader.Read())
+            while (plays.Count < limit && reader.Read())
+            {
+                if (canUploadChart?.Invoke(reader.GetString(31)) == false) continue;
                 plays.Add(new UploadPlay(Guid.Parse(reader.GetString(0)), reader.GetInt64(1), reader.GetString(2),
                     reader.GetString(3), reader.GetInt32(4), reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7),
                     reader.GetInt32(8), reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11), reader.GetBoolean(12),
@@ -437,15 +450,16 @@ public sealed class ScoreStore : IDisposable
                     AiPriorMedianMs = reader.IsDBNull(29) ? null : reader.GetDouble(29),
                     AiPriorVariance = reader.IsDBNull(30) ? null : reader.GetDouble(30),
                 });
+            }
             return plays;
         }
     }
 
     /// <summary>
-    /// A player's failed plays on a chart, newest first: kept on this PC only (see <see cref="PendingPlays"/>),
-    /// with their replays, for the score list's own plays.
+    /// Every play saved on this PC for this player and chart, newest first, with its local replay.
+    /// Uploaded plays remain available offline; the score list deduplicates them against server rows.
     /// </summary>
-    public List<(ScoreRow Row, TaikoReplay Replay)> LocalOnlyPlays(long baid, string sha256)
+    public List<(ScoreRow Row, TaikoReplay Replay)> LocalPlays(long baid, string sha256)
     {
         lock (_connection)
         {
@@ -453,7 +467,7 @@ public sealed class ScoreStore : IDisposable
             command.CommandText = """
                 SELECT id, course, score, great, good, miss, max_combo, rolls, gauge, played_at, replay,
                     audio_offset_ms, input_offset_ms, options, seed
-                FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND cleared = 0 ORDER BY played_at DESC
+                FROM plays WHERE baid = $baid AND chart_sha256 = $sha ORDER BY played_at DESC
                 """;
             command.Parameters.AddWithValue("$baid", baid);
             command.Parameters.AddWithValue("$sha", sha256);
@@ -616,12 +630,13 @@ public sealed class ScoreStore : IDisposable
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
                 audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
-                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance)
+                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked)
             """;
         command.Parameters.AddWithValue("$id", play.Id.ToString());
+        command.Parameters.AddWithValue("$upload_blocked", play.UploadBlocked);
         command.Parameters.AddWithValue("$baid", play.Baid);
         command.Parameters.AddWithValue("$sha", play.ChartSha256);
         command.Parameters.AddWithValue("$key", play.Chart.ToString());

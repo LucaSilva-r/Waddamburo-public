@@ -6,6 +6,23 @@ namespace Waddamburo.Providers.Tja.Tests;
 public sealed class TjaCatalogProviderTests
 {
     [Fact]
+    public async Task FolderPrivacyIsCheckedFreshForEveryChartWithoutChangingChartContent()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("Drafts/Nested/song.tja", "TITLE:Draft\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var chart = Assert.Single(Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs).Charts);
+        var before = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
+        Assert.False(provider.UploadBlocked(chart.ChartAsset));
+        library.WriteText("Drafts/donotupload", "");
+        Assert.True(provider.UploadBlocked(chart.ChartAsset));
+        var after = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
+        Assert.Equal(ChartHash.Compute(before, TaikoCourse.Oni), ChartHash.Compute(after, TaikoCourse.Oni));
+        File.Delete(Path.Combine(library.Path, "Drafts", "donotupload"));
+        Assert.False(provider.UploadBlocked(chart.ChartAsset));
+    }
+
+    [Fact]
     public async Task ASelectedFileCanBeReinspectedAfterSavingWithoutScanningTheRestOfTheLibrary()
     {
         using var library = new TemporaryLibrary();

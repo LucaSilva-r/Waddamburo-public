@@ -7,7 +7,7 @@ using Waddamburo.Catalog;
 namespace Waddamburo.Providers.Tja;
 
 /// <summary>Discovers read-only custom TJA songs below one configured library root.</summary>
-public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartModFileProvider
+public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartModFileProvider, IChartUploadPolicyProvider
 {
     private readonly string _root;
     private readonly TjaProviderOptions _options;
@@ -228,6 +228,8 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         rejectReparsePoints(path);
         return path;
     }
+
+    public bool UploadBlocked(CatalogAssetKey chartAsset) => ChartUploadPolicy.HasMarker(ChartPath(chartAsset)!, _root);
 
     public async ValueTask<PlayableChart> LoadChartAsync(
         ChartKey chart,

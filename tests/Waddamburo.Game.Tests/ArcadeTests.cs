@@ -5,6 +5,31 @@ namespace Waddamburo.Game.Tests;
 public sealed class ArcadeTests
 {
     [Fact]
+    public void CustomSongUploadsDefaultOnAndPersistAcrossUpgradesAndMenuSaves()
+    {
+        Assert.True(ArcadeSettings.Parse("").UploadCustomSongs);
+        Assert.True(ArcadeSettings.Parse(ArcadeSettings.Upgrade("config_version = 27\n")).UploadCustomSongs);
+        var upgraded = ArcadeSettings.Upgrade("config_version = 27\nupload_custom_songs = false\n");
+        Assert.False(ArcadeSettings.Parse(upgraded).UploadCustomSongs);
+        Assert.Single(upgraded.Split('\n'), static line => line.StartsWith("upload_custom_songs =", StringComparison.Ordinal));
+        Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("upload_custom_songs = invalid"));
+        var path = Path.GetTempFileName();
+        try
+        {
+            foreach (var enabled in new[] { true, false })
+            {
+                ArcadeSettings.SaveMenuSettings(path, new ArcadeSettings { UploadCustomSongs = enabled, CustomUploadNoticeSeen = true });
+                Assert.Equal(enabled, ArcadeSettings.Parse(File.ReadAllText(path)).UploadCustomSongs);
+                Assert.True(ArcadeSettings.Parse(File.ReadAllText(path)).CustomUploadNoticeSeen);
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void LanguagesDefaultToTheSystems()
     {
         var japanese = ArcadeSettings.SystemLanguage == "ja";

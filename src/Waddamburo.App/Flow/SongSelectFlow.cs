@@ -29,7 +29,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         Shell.Players.StopWatching();
         if (scene == FlowScenes.SongSelect)
+        {
             Shell.Previews?.StartBackground(Shell.Hosts.Waiwai, Shell.Hosts.AiBattle);
+            if (Shell.Arcade.Home && !Shell.Arcade.CustomUploadNoticeSeen
+                && Shell.Hosts.Library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
+                Shell.CustomUploadPrompt.Open(static () => { });
+        }
         else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
             Shell.Sounds?.Bank.PlayMusic(DanMusicCue, DanMusicCue, loop: true);
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)
@@ -363,7 +368,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         if (Shell.Hosts.SongSelect?.LibraryRequested is not { } library)
             return false;
-        Shell.Reload.Start(() => Shell.Hosts.Library = library);
+        if (!Shell.Arcade.CustomUploadNoticeSeen && library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
+            Shell.CustomUploadPrompt.Open(() => Shell.Reload.Start(() => Shell.Hosts.Library = library));
+        else
+            Shell.Reload.Start(() => Shell.Hosts.Library = library);
         return true;
     }
 

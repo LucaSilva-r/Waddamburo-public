@@ -19,6 +19,31 @@ public sealed class OsuLazerCatalogProviderTests
         song.Charts.ToDictionary(static chart => chart.Course!.Value, static chart => chart.DifficultyName);
 
     [Fact]
+    public void LazerHashStoreDoesNotTreatStorageFoldersAsSongPrivacyFolders()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"wdb-lazer-privacy-{Guid.NewGuid():N}");
+        var hash = new string('a', 64);
+        var folder = Path.Combine(root, "files", "a", "aa");
+        try
+        {
+            Directory.CreateDirectory(folder);
+            var provider = new OsuLazerCatalogProvider(root);
+            var asset = new CatalogAssetKey(provider.Id, $"chart:{hash}:5");
+            Assert.False(provider.UploadBlocked(asset));
+            File.WriteAllText(Path.Combine(folder, "donotupload"), "");
+            Assert.False(provider.UploadBlocked(asset));
+            File.Delete(Path.Combine(folder, "donotupload"));
+            Assert.False(provider.UploadBlocked(asset));
+            File.WriteAllText(Path.Combine(root, "donotupload"), "");
+            Assert.False(provider.UploadBlocked(asset));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ChartsFillTheCoursesLeftToRightInStarOrderFourPerEntry()
     {
         var songs = contribution(beatmap("Inner Oni", 6.3), beatmap("Kantan", 1.4), beatmap("Oni", 4.2),
