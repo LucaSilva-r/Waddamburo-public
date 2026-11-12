@@ -410,6 +410,13 @@ public sealed partial class MovieInspectorSession
         // The playhead, over the tracks.
         var head = x(clip.Frame) + step / 2;
         ImGui.PushClipRect(trackMin, trackMax, true);
+        // Zoomed in far enough to tell frames apart: a line between each, every fifth a little stronger.
+        if (step >= 9)
+        {
+            var (first, last) = (Math.Max(0, frameAt(trackMin.X)), Math.Min(frames, frameAt(trackMax.X) + 2));
+            for (var frame = first; frame <= last; frame++)
+                draw.AddLine(new(x(frame), origin.Y + RowHeight), new(x(frame), bottom), frame % 5 == 0 ? FrameLineStrong : FrameLine);
+        }
         draw.AddLine(new(head, origin.Y), new(head, bottom), KeySelected, 2);
         ImGui.PopClipRect();
         ImGui.SetCursorScreenPos(new(origin.X, bottom));
@@ -422,6 +429,7 @@ public sealed partial class MovieInspectorSession
     private readonly HashSet<(int Layer, int Frame, string? Channel)> _keys = [];
     private string? _keysSprite;
     private readonly HashSet<(string Sprite, int Layer)> _expanded = [];
+    private static readonly uint FrameLine = color(1, 1, 1, .05f), FrameLineStrong = color(1, 1, 1, .12f);
     private Vector2? _keyBox;
     private (int Layer, bool Start)? _lifeDrag; // An end of a layer's band being dragged.
     private static readonly uint LifeChannel = color(.15f, .17f, .2f), LifeEdge = color(.36f, .42f, .5f);
