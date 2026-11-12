@@ -30,6 +30,5 @@ internal sealed class GameSounds
     public void StopAll()
     {
         Bank.StopAll();
-        Frontend.Reset();
     }
 }

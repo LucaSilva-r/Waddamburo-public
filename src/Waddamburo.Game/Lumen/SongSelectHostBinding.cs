@@ -522,9 +522,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("RequestSE_Save", call =>
             {
                 if (call.Arguments.Length >= 3)
-                    _sounds?.RequestSound(new SongSelectSoundRequest(
-                        integer(call, 1) is >= 7 and <= 9 ? SongSelectSoundRequestKind.TonePreview : SongSelectSoundRequestKind.Effect,
-                        call.Arguments[1..]));
+                    return requestSound(integer(call, 1) is >= 7 and <= 9
+                        ? SongSelectSoundRequestKind.TonePreview : SongSelectSoundRequestKind.Effect,
+                        new LumenHostCall(call.Arguments[1..]));
                 return LumenHostValue.Undefined;
             });
             // RequestSE_Stop(player): the movie calls it before each preview; the preview cuts the last one itself.
@@ -670,7 +670,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     requirePlayer().TryWriteScriptValue($"_global.CppConnection.resource.course.{field}.{player}", (double)last);
         _parts?.ShowGuestNames(_shown);
         _optionsPending = true;
-        _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
+        // The movie announces SELECT_SONG after setup. Category voices belong to later folder navigation.
         return true;
     }
 
@@ -970,6 +970,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue requestSound(SongSelectSoundRequestKind kind, LumenHostCall call)
     {
+        // A closing course board requests the by-difficulty input prompt through RequestSE_Save,
+        // twice for a solo player. It must not replace the SELECT_SONG voice already played on backout.
+        if (LeavingCourseSelect && kind == SongSelectSoundRequestKind.Effect
+            && call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
+            && call.Arguments[0].AsNumber() == 5 && call.Arguments[1].Kind == LumenHostValueKind.Number
+            && call.Arguments[1].AsNumber() == 61)
+            return LumenHostValue.Undefined;
         if (Scroll?.Jumping != true || kind != SongSelectSoundRequestKind.PlayerEffect)
             _sounds?.RequestSound(new SongSelectSoundRequest(kind, call.Arguments));
         return LumenHostValue.Undefined;
