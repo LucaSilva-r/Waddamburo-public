@@ -61,6 +61,18 @@ public sealed partial class MovieInspectorSession
         if (ImGui.Button(_assetGrid ? "List" : "Grid")) _assetGrid = !_assetGrid;
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Switch between thumbnails and a plain list.");
         ImGui.SameLine();
+        // With one sprite shown alone (Library): only what it is made of, however deep.
+        HashSet<(string Group, string Name)>? scope = null;
+        if (_shown is { } alone)
+        {
+            if (_assetScoped) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(.28f, .40f, .54f, 1));
+            var pressed = ImGui.Button($"Only in {alone}");
+            if (_assetScoped) ImGui.PopStyleColor();
+            if (pressed) _assetScoped = !_assetScoped;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("List only what this sprite uses: its shapes, texts and sprites, theirs in turn, and their textures.");
+            ImGui.SameLine();
+            if (_assetScoped) scope = usedBy(alone);
+        }
         assetBreadcrumb();
         ImGui.BeginChild("##asset browser", Vector2.Zero);
         if (_dragAsset is not null)
@@ -88,8 +100,11 @@ public sealed partial class MovieInspectorSession
             var entries = document.ReadOnly
                 ? AssetGroups.SelectMany(group => (document.Root[group] as JsonObject ?? []).Select(entry => new MovieAsset(group + "/" + entry.Key, group, entry.Key, ""))).ToArray()
                 : document.Assets().ToArray();
-            foreach (var asset in entries.Where(asset => (asset.Group == "textures") == _texturesView && (_assetFilter.Length > 0
-                ? asset.Name.Contains(_assetFilter, StringComparison.OrdinalIgnoreCase) : asset.Folder == _assetFolder)))
+            // Scoped to a sprite, folders do not matter: everything it uses, in one list.
+            foreach (var asset in entries.Where(asset => (asset.Group == "textures") == _texturesView
+                && (scope is null || scope.Contains((asset.Group, asset.Name)))
+                && (_assetFilter.Length > 0 ? asset.Name.Contains(_assetFilter, StringComparison.OrdinalIgnoreCase)
+                    : scope is not null || asset.Folder == _assetFolder)))
             {
                 ImGui.TableNextColumn();
                 ImGui.PushID(asset.Id);
@@ -142,6 +157,31 @@ public sealed partial class MovieInspectorSession
             _assetFilter = "";
         }
         assetDialogs();
+    }
+
+    private bool _assetScoped = true;
+    private (string Sprite, long Revision, HashSet<(string, string)> Used)? _scopeCache;
+
+    // Everything a sprite is made of: the characters on its layers, theirs in turn, and the shapes' textures.
+    private HashSet<(string Group, string Name)> usedBy(string sprite)
+    {
+        if (_scopeCache is { } cached && cached.Sprite == sprite && cached.Revision == _document!.Revision)
+            return cached.Used;
+        var used = new HashSet<(string, string)>();
+        void add(string name)
+        {
+            foreach (var group in AssetCharacterGroups)
+                if (_document!.Root[group]?[name] is JsonObject entry && used.Add((group, name)))
+                {
+                    if (group == "shapes" && (string?)entry["texture"] is { } texture) used.Add(("textures", texture));
+                    foreach (var layer in (entry["layers"] as JsonArray ?? []).OfType<JsonObject>())
+                        if ((string?)layer["character"] is { } child) add(child);
+                }
+        }
+        add(sprite);
+        used.Remove(("sprites", sprite));
+        _scopeCache = (sprite, _document!.Revision, used);
+        return used;
     }
 
     private void assetBreadcrumb()
