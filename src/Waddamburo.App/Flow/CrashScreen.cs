@@ -18,9 +18,13 @@ internal static class CrashScreen
     /// <paramref name="code"/> and <paramref name="name"/>: the error's ("10-1", "MOVIES"); <paramref name="log"/>: the
     /// crash file written for it.
     /// </summary>
+    /// <summary>--no-crash-screen: a crash ends the game at once (it is on the console and in the crash file), for runs nobody watches.</summary>
+    public static bool Off { get; set; }
+
     public static void Show(SdlApplication application, string fontPath, string code, string name, Exception exception,
         string? log, (string Text, RenderColor Colour)[]? footer = null)
     {
+        if (Off) return;
         using var menu = new OverlayMenu(application, fontPath);
         menu.Open(new OverlayPage(() => Strings.T("service.crash.title", code, name), static () => [], Centred: true, Legend: false,
             Body: () =>

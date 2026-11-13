@@ -20,6 +20,7 @@ try
     ReleaseConsole.Begin();
     if (SelfUpdate.HandOff(ref args))
         return 0;
+    Waddamburo.App.Flow.CrashScreen.Off = args.Contains("--no-crash-screen", StringComparer.Ordinal);
     var frameLimit = parseFrameLimit(args);
     var tickLimit = parseLimit(args, "--ticks=");
     var seekFrame = parseLimit(args, "--seek-frame=");

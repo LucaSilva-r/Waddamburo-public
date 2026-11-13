@@ -191,7 +191,7 @@ one line per part as it loads (`_` blinking, then OK or NG), the song library sc
 A part that throws stops the game on an error screen (its number and name, the message, the crash log's path)
 until the window is closed or Escape pressed; the exit code is then 1. `WADDAMBURO_BOOT_FAIL=<check>` (e.g.
 `MOVIES`, `SONG LIBRARY`) fails that check on purpose, to see the screen. The same screen (`Flow/CrashScreen.cs`)
-takes the window when the game crashes while it runs (code 99-1; `WADDAMBURO_CRASH_AT=<tick>` crashes on purpose),
+takes the window when the game crashes while it runs (code 99-1; `WADDAMBURO_CRASH_AT=<tick>` crashes on purpose; `--no-crash-screen` ends the game at once instead, exit code 1, for runs nobody watches),
 and opens a window of its own for an error before the game's (00-1: the game folder, its settings), drawn with the
 bundled font from the user's app data. Scripted runs (a screenshot, a tick or frame limit) fail as before instead.
 
