@@ -33,6 +33,7 @@ public static class WdNames
         new("play.accuracy", WdKind.State, "number", "play", "0 to 1: GOOD counts whole, OK half, of the notes judged so far; 1 before the first.", "0.92"),
         new("play.course", WdKind.State, "text", "play", "easy, normal, hard, oni or ura.", "oni"),
         new("play.goGo", WdKind.State, "bool", "play", "Go-Go Time is on.", "true"),
+        new("play.branch", WdKind.State, "text", "play", "The route the lane is on: normal, expert or master; no value when the chart has no routes.", "expert"),
         new("play.roll", WdKind.State, "number", "play", "Hits on the drumroll under way; no value when there is none.", "24"),
         new("play.balloon", WdKind.State, "number", "play", "Hits the balloon under way still needs; no value when there is none.", "5"),
         new("play.progress", WdKind.State, "number", "play", "How far through the song, 0 to 1, in hundredths.", "0.4"),

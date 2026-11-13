@@ -139,6 +139,28 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheLaneAndTheBubbleFollowTheRoute()
+    {
+        static LumenHostValue text(string value) => LumenHostValue.FromString(value);
+        var lane = load("enso_system/common/lane_hit");
+        advance(lane, 2);
+        lane.Publish("play.goGo", LumenHostValue.FromBoolean(true));
+        lane.Publish("play.branch", text("master"));
+        Assert.Empty(lane.Diagnostics); // what the tints show is checked on screen: a clip's _visible is not readable here
+
+        var bubble = load("enso_system/base1p/fukidashi_level_1p");
+        advance(bubble, 2);
+        bubble.Publish("play.branch", text("normal")); // where the play stands: no change yet
+        Assert.Null(bubble.ReadScriptValue("word.text"));
+        bubble.Publish("play.branch", text("master"));
+        Assert.Equal("LEVEL UP!", bubble.ReadScriptValue("word.text"));
+        bubble.Publish("play.branch", text("expert"));
+        Assert.Equal("LEVEL DOWN", bubble.ReadScriptValue("word.text"));
+        advance(bubble, 90);
+        Assert.Equal("", bubble.ReadScriptValue("word.text"));
+    }
+
+    [Fact]
     public void ShowsItsNumberAndSongTab()
     {
         var player = load();

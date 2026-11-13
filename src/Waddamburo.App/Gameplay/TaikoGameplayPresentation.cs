@@ -902,6 +902,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _presentation.DrumHit += action => emit("drum.hit",
                 LumenHostValue.FromString(action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa ? "left" : "right"),
                 LumenHostValue.FromString(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don" : "ka"));
+            // No value on a chart without routes.
+            if (chart.Branching is not null) publish("play.branch", LumenHostValue.FromString("normal"));
+            _presentation.BranchChanged += route => publish("play.branch", LumenHostValue.FromString(route.ToString().ToLowerInvariant()));
             _presentation.GoGoChanged += active =>
             {
                 publish("play.goGo", LumenHostValue.FromBoolean(active));

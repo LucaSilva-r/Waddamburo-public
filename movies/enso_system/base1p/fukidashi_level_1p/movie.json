@@ -1,4 +1,4 @@
-// fukidashi_level_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// fukidashi_level_1p: the route went up or down, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -20,7 +20,19 @@
   "sprites": {
     "main": {
       "frames": 51,
-      "layers": [],
+      "layers": [
+        {
+          "character": "word",
+          "name": "word",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 110,
+              "y": -8
+            }
+          ]
+        }
+      ],
       "labels": {
         "wait": 1,
         "level_up": 11,
@@ -33,8 +45,22 @@
         "20": "scripts/stop.as",
         "30": "scripts/stop.as",
         "40": "scripts/stop.as",
-        "50": "scripts/stop.as"
+        "50": "scripts/stop.as",
+        "0": "scripts/main.as"
       }
+    }
+  },
+  "texts": {
+    "word": {
+      "rect": [
+        -110,
+        -18,
+        220,
+        36
+      ],
+      "size": 26,
+      "align": "center",
+      "color": "#ffd23c"
     }
   }
 }

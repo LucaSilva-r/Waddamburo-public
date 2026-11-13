@@ -141,6 +141,9 @@ public sealed class TaikoLumenPresentation
 
     public event Action<bool>? GoGoChanged;
 
+    /// <summary>The route the lane shows changed (a branching chart only).</summary>
+    public event Action<ChartBranch>? BranchChanged;
+
     /// <summary>The ドロン option: notes are not drawn, only the text under them.</summary>
     public bool Doron { get; set; }
 
@@ -193,6 +196,7 @@ public sealed class TaikoLumenPresentation
             _branchBubble?.GotoLabel(_judgement.Branch > _shownBranch ? "level_up" : "level_down", play: true);
             _shownBranch = _judgement.Branch;
             callback(_target.Player, "SetBranch", LumenHostValue.FromNumber((int)_shownBranch));
+            BranchChanged?.Invoke(_shownBranch);
         }
     }
 

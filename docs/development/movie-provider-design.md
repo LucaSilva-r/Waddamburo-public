@@ -233,7 +233,10 @@ settled as each step reaches them.
   (the drum lights where it was struck).
 - Read by the engine's own movies: the board (`lane_obi`: score, combo), the three gauges, the roll counter, the
   balloon, the end banner, the Go-Go sign (`play.goGo`), the full gauge's sign (`play.gaugeFull`), the combo sign
-  (`combo.milestone`) and the points popup (worked out in the movie from `play.score`'s changes). Their game-style callbacks stay as empty functions, because the gameplay host still calls
+  (`combo.milestone`) and the points popup (worked out in the movie from `play.score`'s changes).
+- `play.branch` (normal, expert, master; no value on a chart without routes), from the lane's `BranchChanged`. Read
+  by the hit target's movie (`lane_hit`: a tint over the lane per route, and one for Go-Go) and by the bubble that
+  says which way the route went (`fukidashi_level_1p`). Not yet seen on screen: needs a chart with routes. Their game-style callbacks stay as empty functions, because the gameplay host still calls
   them: it has not been moved behind an adapter.
 - The edge log shows what a movie is told (`Wd name(value)`), so a provider-driven movie can be compared run to run.
 

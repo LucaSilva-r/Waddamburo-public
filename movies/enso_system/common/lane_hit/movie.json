@@ -9,7 +9,10 @@
     "flash_gold": "textures/flash_gold.svg",
     "flash_blue": "textures/flash_blue.svg",
     "light_red": "textures/light_red.svg",
-    "light_cyan": "textures/light_cyan.svg"
+    "light_cyan": "textures/light_cyan.svg",
+    "tint_gogo": "textures/tint_gogo.svg",
+    "tint_expert": "textures/tint_expert.svg",
+    "tint_master": "textures/tint_master.svg"
   },
   "shapes": {
     "ring": {
@@ -59,6 +62,33 @@
     },
     "light_cyan": {
       "texture": "light_cyan",
+      "rect": [
+        -476,
+        -65,
+        952,
+        130
+      ]
+    },
+    "tint_gogo": {
+      "texture": "tint_gogo",
+      "rect": [
+        -476,
+        -65,
+        952,
+        130
+      ]
+    },
+    "tint_expert": {
+      "texture": "tint_expert",
+      "rect": [
+        -476,
+        -65,
+        952,
+        130
+      ]
+    },
+    "tint_master": {
+      "texture": "tint_master",
       "rect": [
         -476,
         -65,
@@ -350,6 +380,42 @@
       },
       "layers": [
         {
+          "character": "expert",
+          "name": "expert",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 804,
+              "y": 73,
+              "alpha": 0.3
+            }
+          ]
+        },
+        {
+          "character": "master",
+          "name": "master",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 804,
+              "y": 73,
+              "alpha": 0.3
+            }
+          ]
+        },
+        {
+          "character": "gogo",
+          "name": "gogo",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 804,
+              "y": 73,
+              "alpha": 0.3
+            }
+          ]
+        },
+        {
           "character": "effect",
           "name": "effect",
           "keys": [
@@ -380,6 +446,45 @@
               "frame": 0,
               "x": 413,
               "y": 73
+            }
+          ]
+        }
+      ]
+    },
+    "gogo": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "tint_gogo",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "expert": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "tint_expert",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "master": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "tint_master",
+          "keys": [
+            {
+              "frame": 0
             }
           ]
         }
