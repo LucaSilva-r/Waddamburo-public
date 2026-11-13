@@ -71,6 +71,11 @@ public sealed class PerformanceRecorder : IDisposable
     }
 
     /// <summary>One rendered frame: the interval since the last one and the update and render time inside it.</summary>
+    /// <param name="interval">Time since the previous frame.</param>
+    /// <param name="update">Time spent updating the game this frame.</param>
+    /// <param name="render">Time spent rendering this frame.</param>
+    /// <param name="ticks">Simulation ticks run this frame.</param>
+    /// <param name="gpu">The GPU figure for the log line, read only when a line is written.</param>
     /// <param name="missedRefresh">The frame took long enough to cost a screen refresh (the notes jump forward).</param>
     public void Record(TimeSpan interval, TimeSpan update, TimeSpan render, int ticks, Func<string>? gpu = null, bool missedRefresh = false)
     {
