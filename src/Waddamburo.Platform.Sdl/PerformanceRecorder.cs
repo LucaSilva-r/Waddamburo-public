@@ -39,7 +39,7 @@ public sealed class PerformanceRecorder : IDisposable
     private long _secondStart;
     private long _lastWrite;
     private double _maxUpdate, _maxRender;
-    private int _ticks, _droppedHitches;
+    private int _ticks, _droppedHitches, _missed;
     private TimeSpan _cpuAt;
     private (ulong Idle, ulong Total) _systemCpuAt;
     private (int Gen0, int Gen1, int Gen2, TimeSpan Pause) _gcAt;
@@ -49,7 +49,7 @@ public sealed class PerformanceRecorder : IDisposable
 
     private sealed class SceneTotals
     {
-        public double Seconds, Frames, Hitches, MaxIntervalMs;
+        public double Seconds, Frames, Hitches, MaxIntervalMs, Missed;
         public List<double> Lows { get; } = []; // each second's 1% low fps
     }
 
@@ -71,8 +71,11 @@ public sealed class PerformanceRecorder : IDisposable
     }
 
     /// <summary>One rendered frame: the interval since the last one and the update and render time inside it.</summary>
-    public void Record(TimeSpan interval, TimeSpan update, TimeSpan render, int ticks, Func<string>? gpu = null)
+    /// <param name="missedRefresh">The frame took long enough to cost a screen refresh (the notes jump forward).</param>
+    public void Record(TimeSpan interval, TimeSpan update, TimeSpan render, int ticks, Func<string>? gpu = null, bool missedRefresh = false)
     {
+        if (missedRefresh)
+            _missed++;
         var now = Stopwatch.GetTimestamp();
         var ms = interval.TotalMilliseconds;
         _intervals.Add(ms);
@@ -131,13 +134,15 @@ public sealed class PerformanceRecorder : IDisposable
         _seconds.Add(string.Join('\t', clock(now), Scene, f(fps, 0), f(low, 0), f(pct(.5)), f(pct(.99)), f(sorted.Length == 0 ? 0 : sorted[^1]),
             f(_maxUpdate), f(_maxRender), _ticks, f(processCpu, 0), f(systemCpu, 0), f(rss, 0), f(managed, 0),
             f(ramUsed, 0) + "/" + f(ramTotal, 0), $"{gcNow.Gen0 - _gcAt.Gen0}/{gcNow.Gen1 - _gcAt.Gen1}/{gcNow.Gen2 - _gcAt.Gen2}",
-            f((gcNow.Pause - _gcAt.Pause).TotalMilliseconds)));
+            f((gcNow.Pause - _gcAt.Pause).TotalMilliseconds), _missed));
         _gcAt = gcNow;
         if (!_scenes.TryGetValue(Scene, out var totals))
             _scenes[Scene] = totals = new SceneTotals();
         totals.Seconds += wall;
         totals.Frames += sorted.Length;
         totals.Hitches += sorted.Count(static ms => ms >= HitchInterval.TotalMilliseconds);
+        totals.Missed += _missed;
+        _missed = 0;
         totals.MaxIntervalMs = Math.Max(totals.MaxIntervalMs, sorted.Length == 0 ? 0 : sorted[^1]);
         totals.Lows.Add(low);
         (_maxUpdate, _maxRender, _ticks) = (0, 0, 0);
@@ -152,12 +157,13 @@ public sealed class PerformanceRecorder : IDisposable
         text.AppendLine(CultureInfo.InvariantCulture, $"recorded\t{Stopwatch.GetElapsedTime(_start).TotalMinutes:F1} min{(final ? "" : " (still running)")}");
         text.AppendLine();
         text.AppendLine("== Summary by scene (fps = frames / seconds; low = worst 1% of frames as fps, median over the scene's seconds)");
-        text.AppendLine("scene\tseconds\tfps\tlow1%\tworst-second-low\tmax-frame-ms\thitches>=25ms");
+        text.AppendLine("scene\tseconds\tfps\tlow1%\tworst-second-low\tmax-frame-ms\thitches>=25ms\tmissed-refreshes\tmissed/min");
         foreach (var (scene, t) in _scenes.OrderByDescending(static pair => pair.Value.Seconds))
         {
             var lows = t.Lows.Order().ToArray();
             text.AppendLine(string.Join('\t', scene, f(t.Seconds, 0), f(t.Frames / Math.Max(t.Seconds, 1e-9), 0),
-                f(lows.Length == 0 ? 0 : lows[lows.Length / 2], 0), f(lows.Length == 0 ? 0 : lows[0], 0), f(t.MaxIntervalMs), t.Hitches));
+                f(lows.Length == 0 ? 0 : lows[lows.Length / 2], 0), f(lows.Length == 0 ? 0 : lows[0], 0), f(t.MaxIntervalMs), t.Hitches,
+                t.Missed, f(t.Missed / Math.Max(t.Seconds / 60, 1e-9), 1)));
         }
         text.AppendLine();
         text.AppendLine("== Memory");
@@ -183,7 +189,7 @@ public sealed class PerformanceRecorder : IDisposable
             text.AppendLine(line);
         text.AppendLine();
         text.AppendLine("== Seconds (cpu% = share of all cores; ram = system used/total MiB; rss/managed = Waddamburo's MiB)");
-        text.AppendLine("time\tscene\tfps\tlow1%\tp50-ms\tp99-ms\tmax-ms\tmax-update-ms\tmax-render-ms\tticks\tproc-cpu%\tsys-cpu%\trss\tmanaged\tram\tGC0/1/2\tGC-pause-ms");
+        text.AppendLine("time\tscene\tfps\tlow1%\tp50-ms\tp99-ms\tmax-ms\tmax-update-ms\tmax-render-ms\tticks\tproc-cpu%\tsys-cpu%\trss\tmanaged\tram\tGC0/1/2\tGC-pause-ms\tmissed");
         foreach (var line in _seconds)
             text.AppendLine(line);
         return text.ToString();

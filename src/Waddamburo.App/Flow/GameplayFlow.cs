@@ -749,7 +749,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private TimeSpan? _frameTime;
 
     // Diagnostic (WADDAMBURO_HITCH_TRACE=1): a frame whose notes moved further or less than the time since the last
-    // frame (the clock jumped), or a long frame (everything stalled: the notes jump to catch up).
+    // frame (the clock jumped).
     private static readonly bool NoteStepTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
     private long _noteStepAt;
     private TimeSpan _noteStepTime;
@@ -761,7 +761,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var wall = System.Diagnostics.Stopwatch.GetElapsedTime(_noteStepAt, now).TotalMilliseconds;
             var chart = (time - _noteStepTime).TotalMilliseconds;
-            if (Math.Abs(chart - wall) > 1 || wall > 8)
+            if (Math.Abs(chart - wall) > 1) // long frames: the hitch trace and the recorder's missed refreshes
                 Console.Error.WriteLine(FormattableString.Invariant(
                     $"Note step at {time.TotalSeconds:F3} s: chart moved {chart:F1} ms in {wall:F1} ms of frame ({chart - wall:+0.0;-0.0} ms); GC gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, paused total {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms."));
         }

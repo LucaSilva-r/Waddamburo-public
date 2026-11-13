@@ -56,7 +56,8 @@ internal sealed record GameOptions(
     BenchmarkMode Benchmark = BenchmarkMode.Off);
 
 /// <summary>--benchmark: off, run and quit, or run and start the game again (Settings > Run Benchmark).</summary>
-internal enum BenchmarkMode { Off, Quit, Restart }
+// Paced: the benchmark at the player's own vsync, frame cap and frame queue (it quits at the end), to count missed refreshes.
+internal enum BenchmarkMode { Off, Quit, Restart, Paced }
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -444,7 +445,7 @@ internal sealed class GameShell : IDisposable
                 Path.Combine(ReleaseConsole.CrashFolder, $"{(Options.Benchmark != BenchmarkMode.Off ? "benchmark" : "performance")}-{DateTime.Now:yyyyMMdd-HHmmss}.txt"),
                 Options.Benchmark != BenchmarkMode.Off ? "benchmark (attract 3 min, song select scroll, stress song)" : "session",
                 [$"version\t{version}", .. Application.DescribeRendering(),
-                    $"settings\t{(Options.Benchmark != BenchmarkMode.Off ? "uncapped (benchmark), " : "")}vsync {Arcade.Vsync}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
+                    $"settings\t{(Options.Benchmark is BenchmarkMode.Quit or BenchmarkMode.Restart ? "uncapped (benchmark), " : "")}vsync {Arcade.Vsync}, frame queue {Arcade.FrameLatency}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
                     + $"textures {(MovieContent.KeepCompressed ? "BC1/BC3 kept" : "decoded to RGBA")}, "
                     + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
@@ -470,7 +471,7 @@ internal sealed class GameShell : IDisposable
         var exclusive = Arcade.ExclusiveFullscreen && OperatingSystem.IsWindows();
         // A benchmark runs uncapped (no vsync, no fps cap; the settings stay as they are): frame rates then
         // compare across machines and changes instead of all reading the refresh rate.
-        var uncapped = Options.Benchmark != BenchmarkMode.Off;
+        var uncapped = Options.Benchmark is BenchmarkMode.Quit or BenchmarkMode.Restart;
         var display = new DisplaySettings(Arcade.Vsync && !uncapped, Arcade.Fullscreen, exclusive, Arcade.FullscreenWidth,
             Arcade.FullscreenHeight, Arcade.RefreshRate, Arcade.LetterboxSize / 100f, Arcade.LetterboxX / 100f, Arcade.LetterboxY / 100f,
             exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap, Arcade.RenderHeight, Arcade.FrameLatency);

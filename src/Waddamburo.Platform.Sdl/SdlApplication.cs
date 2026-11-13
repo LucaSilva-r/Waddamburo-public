@@ -1106,7 +1106,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
             var profileEligibleAtEnd = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             if (performanceActive)
                 performanceSample?.Invoke(new SdlFrameMetrics(elapsed, inputTime, updateTime, renderTime, update.ExecutedTicks));
-            Recorder?.Record(elapsed, updateTime, renderTime, update.ExecutedTicks, gpuStats);
+            // A frame that can cost a screen refresh (the note lane visibly jumps): longer than the refresh interval
+            // when uncapped, 1.5 intervals with vsync (its frames are one interval give or take).
+            var hitchAt = Recorder is not null || hitchTrace ? refreshInterval() * (_display?.Vsync == true ? 1.5 : 1) : TimeSpan.MaxValue;
+            Recorder?.Record(elapsed, updateTime, renderTime, update.ExecutedTicks, gpuStats, missedRefresh: elapsed > hitchAt);
             if (frameProfile is not null)
             {
                 if (previousProfileEligible && profileEligibleAtStart && profileEligibleAtEnd)
@@ -1122,10 +1125,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
             {
                 // With the collections and GC pause time since the last report: a hitch that is GC shows here.
                 var (gen0, gen1, gen2, pause) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration());
-                // A frame that can cost a screen refresh (the note lane visibly jumps): longer than the refresh
-                // interval when uncapped, 1.5 intervals with vsync (its frames are one interval give or take).
                 // The whole frame, too: a stall in present or a descheduled thread is in neither update nor render.
-                var hitchAt = refreshInterval() * (_display?.Vsync == true ? 1.5 : 1);
                 if (frameInputTime + updateTime + renderTime > hitchAt || elapsed > hitchAt)
                     Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: frame {elapsed.TotalMilliseconds:F0} ms, "
                         + $"between frames {betweenFrames.TotalMilliseconds:F0} ms, input {frameInputTime.TotalMilliseconds:F0} ms (judged per frame), update {updateTime.TotalMilliseconds:F0} ms "

@@ -51,7 +51,8 @@ try
     var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
     var recordPerformance = args.Contains("--benchmark-record", StringComparer.Ordinal);
     var benchmark = args.Contains("--benchmark", StringComparer.Ordinal) ? BenchmarkMode.Quit
-        : args.Contains("--benchmark=restart", StringComparer.Ordinal) ? BenchmarkMode.Restart : BenchmarkMode.Off;
+        : args.Contains("--benchmark=restart", StringComparer.Ordinal) ? BenchmarkMode.Restart
+        : args.Contains("--benchmark=paced", StringComparer.Ordinal) ? BenchmarkMode.Paced : BenchmarkMode.Off;
     var startScene = StartSceneParser.Parse(startSceneOption);
     var donRoot = parseOption(args, "--don-root=");
     var previewPath = parseOption(args, "--preview=");
