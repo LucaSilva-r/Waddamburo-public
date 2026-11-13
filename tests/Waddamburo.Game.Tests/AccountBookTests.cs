@@ -100,6 +100,82 @@ public sealed class AccountBookTests
     }
 
     [Fact]
+    public void SavingReplacesTheBookWithoutChangingAnExistingReader()
+    {
+        var directory = Directory.CreateTempSubdirectory("waddamburo-accounts").FullName;
+        try
+        {
+            var book = AccountBook.Load(directory);
+            book.Add(new ScoreAccount("token", 1, "Before"));
+            var path = Path.Combine(directory, AccountBook.FileName);
+            var previous = File.ReadAllText(path);
+            using var original = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+            book.Add(new ScoreAccount("token", 1, "After"));
+
+            Assert.Equal("After", AccountBook.Load(directory).Default?.Name);
+            // Read only after saving: an in-place rewrite would change what this existing reader sees.
+            using var reader = new StreamReader(original);
+            Assert.Equal(previous, reader.ReadToEnd());
+            Assert.Equal(path, Assert.Single(Directory.EnumerateFileSystemEntries(directory)));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FailedSaveLeavesTheDestinationAndRemovesTheTemporaryFile()
+    {
+        var directory = Directory.CreateTempSubdirectory("waddamburo-accounts").FullName;
+        try
+        {
+            var book = AccountBook.Load(directory);
+            var path = Path.Combine(directory, AccountBook.FileName);
+            Directory.CreateDirectory(path); // A directory cannot be replaced by the account file.
+            var sentinel = Path.Combine(path, "keep.txt");
+            File.WriteAllText(sentinel, "untouched");
+
+            var exception = Record.Exception(() => book.Add(new ScoreAccount("token", 1, "Player")));
+
+            Assert.True(exception is IOException or UnauthorizedAccessException);
+            Assert.Equal("untouched", File.ReadAllText(sentinel));
+            Assert.Equal(path, Assert.Single(Directory.EnumerateFileSystemEntries(directory)));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SavesAccountsOwnerOnlyOnUnix()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        var directory = Directory.CreateTempSubdirectory("waddamburo-accounts").FullName;
+        try
+        {
+            var book = AccountBook.Load(directory);
+            book.Add(new ScoreAccount("token", 1, "Before"));
+            var path = Path.Combine(directory, AccountBook.FileName);
+            const UnixFileMode ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            Assert.Equal(ownerOnly, File.GetUnixFileMode(path));
+            File.SetUnixFileMode(path, ownerOnly | UnixFileMode.GroupRead);
+
+            book.Add(new ScoreAccount("token", 1, "After"));
+
+            Assert.Equal(ownerOnly, File.GetUnixFileMode(path));
+            Assert.Equal("After", AccountBook.Load(directory).Default?.Name);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void FriendPairingGivesTheFriendsProfileAndStartsOverAfterwards()
     {
         var pairing = new FriendPairingClient(new HttpClient());
