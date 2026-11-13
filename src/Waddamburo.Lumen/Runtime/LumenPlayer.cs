@@ -853,6 +853,15 @@ public sealed class LumenPlayer
         return new LumenRenderSnapshot(StageWidth, StageHeight, _quads.ToImmutable());
     }
 
+    /// <summary>This frame's quads appended to <paramref name="into"/> (a scene's builder): no array of their own.</summary>
+    public void AppendRenderQuads(float interpolationFraction, ImmutableArray<LumenRenderQuad>.Builder into)
+    {
+        if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
+            throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
+        ArgumentNullException.ThrowIfNull(into);
+        appendInstance(_root, LumenMatrix.Identity, ColorState.Identity, LumenRenderBlend.Normal, interpolationFraction, into);
+    }
+
     private readonly ImmutableArray<LumenRenderQuad>.Builder _quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
 
     private static SpriteTimeline compileTimeline(
@@ -2659,8 +2668,11 @@ public sealed class LumenPlayer
         // Masks apply only to following siblings through the inclusive authored depth.
         // Scope each child separately so crossing depth ranges and nested sprites compose safely.
         List<(long End, ImmutableArray<LumenRenderQuad> Quads)>? masks = null;
-        foreach (var child in instance.Children.Values)
+        var children = instance.Children.Values;
+        // An index loop: drawing changes no children, and it allocates no enumerator.
+        for (var childIndex = 0; childIndex < children.Count; childIndex++)
         {
+            var child = children[childIndex];
             // A loop, not RemoveAll: its lambda would capture `child`, a closure per child per frame.
             for (var index = (masks?.Count ?? 0) - 1; index >= 0; index--)
                 if (masks![index].End < child.Depth)
@@ -2917,7 +2929,9 @@ public sealed class LumenPlayer
 
         public bool? PreviousVisible { get; set; }
 
-        public SortedDictionary<long, DisplayInstance> Children { get; } = [];
+        // A sorted list, not a SortedDictionary: enumerating that allocated a stack and its node array per clip per
+        // frame (~45 MiB/s uncapped); a clip has tens of children, so its array insertion costs nothing.
+        public SortedList<long, DisplayInstance> Children { get; } = [];
 
         public Dictionary<long, DisplayInstance>? ReusableTimelineChildren { get; set; }
 

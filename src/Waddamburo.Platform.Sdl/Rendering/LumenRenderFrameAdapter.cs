@@ -15,10 +15,34 @@ public static class LumenRenderFrameAdapter
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(resolveTexture);
 
-        var inverseWidth = 1f / snapshot.StageWidth;
-        var inverseHeight = 1f / snapshot.StageHeight;
         // Exact capacity: MoveToImmutable hands the array to the frame without a copy.
         var quads = ImmutableArray.CreateBuilder<RenderQuad>(snapshot.Quads.Length);
+        append(snapshot, resolveTexture, resolveNativeSurface, quads.Add);
+        return new RenderFrame(
+            clearColor,
+            quads.Count == quads.Capacity ? quads.MoveToImmutable() : quads.ToImmutable(),
+            (double)snapshot.StageWidth / snapshot.StageHeight);
+    }
+
+    /// <summary>The snapshot's quads appended to <paramref name="into"/> (a reused list: no array of their own).</summary>
+    public static void ComposeInto(
+        LumenRenderSnapshot snapshot,
+        List<RenderQuad> into,
+        Func<uint, RenderTextureId> resolveTexture,
+        Func<LumenNativeSurfaceKey, RenderTextureId?>? resolveNativeSurface = null)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(into);
+        ArgumentNullException.ThrowIfNull(resolveTexture);
+        into.EnsureCapacity(into.Count + snapshot.Quads.Length);
+        append(snapshot, resolveTexture, resolveNativeSurface, into.Add);
+    }
+
+    private static void append(LumenRenderSnapshot snapshot, Func<uint, RenderTextureId> resolveTexture,
+        Func<LumenNativeSurfaceKey, RenderTextureId?>? resolveNativeSurface, Action<RenderQuad> add)
+    {
+        var inverseWidth = 1f / snapshot.StageWidth;
+        var inverseHeight = 1f / snapshot.StageHeight;
         foreach (var quad in snapshot.Quads)
         {
             RenderTextureId? texture = quad.NativeSurface is { } surface
@@ -28,7 +52,7 @@ public static class LumenRenderFrameAdapter
             if (texture is null)
                 continue;
 
-            quads.Add(new RenderQuad(
+            add(new RenderQuad(
                 texture.Value,
                 convert(quad.TopLeft, inverseWidth, inverseHeight),
                 convert(quad.TopRight, inverseWidth, inverseHeight),
@@ -46,10 +70,6 @@ public static class LumenRenderFrameAdapter
                     _ => throw new ArgumentOutOfRangeException(nameof(snapshot)),
                 }, quad.MaskDepth));
         }
-        return new RenderFrame(
-            clearColor,
-            quads.Count == quads.Capacity ? quads.MoveToImmutable() : quads.ToImmutable(),
-            (double)snapshot.StageWidth / snapshot.StageHeight);
     }
 
     private static RenderVertex convert(LumenRenderVertex vertex, float inverseWidth, float inverseHeight) =>

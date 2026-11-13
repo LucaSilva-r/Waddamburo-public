@@ -164,11 +164,15 @@ internal static class SceneTextures
 
     public static RenderFrame Compose(LumenRenderSnapshot snapshot, RenderTextureId[] textures, string owner,
         Func<LumenNativeSurfaceKey, RenderTextureId?> surfaces) =>
-        LumenRenderFrameAdapter.Compose(
-            snapshot,
-            RenderColor.Black,
-            index => index < textures.Length
-                ? textures[index]
-                : throw new InvalidDataException($"{owner} snapshot references missing texture {index}."),
-            surfaces);
+        LumenRenderFrameAdapter.Compose(snapshot, RenderColor.Black, resolver(textures, owner), surfaces);
+
+    /// <summary><see cref="Compose"/> appending to a reused list.</summary>
+    public static void ComposeInto(LumenRenderSnapshot snapshot, List<RenderQuad> into, RenderTextureId[] textures, string owner,
+        Func<LumenNativeSurfaceKey, RenderTextureId?> surfaces) =>
+        LumenRenderFrameAdapter.ComposeInto(snapshot, into, resolver(textures, owner), surfaces);
+
+    private static Func<uint, RenderTextureId> resolver(RenderTextureId[] textures, string owner) =>
+        index => index < textures.Length
+            ? textures[index]
+            : throw new InvalidDataException($"{owner} snapshot references missing texture {index}.");
 }

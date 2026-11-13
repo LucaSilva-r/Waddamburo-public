@@ -287,7 +287,7 @@ internal sealed unsafe class RenderDevice : IDisposable
 
         // A prepass draws only what this frame shows (an off-screen Don costs ~5 ms on integrated GPUs).
         _drawnBorrowed.Clear();
-        foreach (var quad in frame.Quads)
+        foreach (var quad in frame.QuadSpan)
             if (_borrowedTextures.Contains(quad.Texture.Value))
                 _drawnBorrowed.Add(quad.Texture.Value);
         // The whole window (letterbox bars included) takes the clear colour; the stage draws inside.
@@ -336,7 +336,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.set_view_rect(MainView, (short)stage.X, (short)stage.Y, (ushort)stage.Width, (ushort)stage.Height, 0, 1);
         bgfx.set_view_scissor(MainView, (ushort)stage.X, (ushort)stage.Y, (ushort)stage.Width, (ushort)stage.Height);
         bgfx.touch(MainView);
-        var quads = frame.Quads.AsSpan();
+        var quads = frame.QuadSpan;
         if (frame.BlurredQuads > 0 && _blurProgram is { } blur)
         {
             var backdrop = Math.Min(frame.BlurredQuads, quads.Length);
@@ -727,7 +727,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     private void validateFrame(RenderFrame frame)
     {
         validateColor(frame.ClearColor, nameof(frame.ClearColor));
-        foreach (var quad in frame.Quads)
+        foreach (var quad in frame.QuadSpan)
         {
             if (!_textures.ContainsKey(quad.Texture.Value))
                 throw new ArgumentException($"Render frame references unknown texture {quad.Texture.Value}.", nameof(frame));

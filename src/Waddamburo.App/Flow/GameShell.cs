@@ -1328,8 +1328,7 @@ internal sealed class GameShell : IDisposable
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),
     // network/card (-3000); then Waddamburo's own overlays and the home menu over everything.
-    private readonly System.Collections.Immutable.ImmutableArray<RenderQuad>.Builder _frameQuads =
-        System.Collections.Immutable.ImmutableArray.CreateBuilder<RenderQuad>();
+    private readonly List<RenderQuad> _frameQuads = [];
 
     // The scene's Don-chans (their native surfaces) and its name board layers, on their own.
     private System.Collections.Immutable.ImmutableArray<RenderQuad> players(LumenRenderSnapshot scene, float interpolation)
@@ -1377,15 +1376,13 @@ internal sealed class GameShell : IDisposable
         var scene = flowOf(Active.Id).CreateSnapshot(interpolation);
         if (LumenPlayer.Inspect)
             _inspected = scene;
-        var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
+        // The scene's quads go straight into the reused frame list (no frame of their own).
+        var quads = _frameQuads;
+        quads.Clear();
+        SceneTextures.ComposeInto(scene, quads, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads);
-        // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
-        // collection expression's growing list plus RenderFrame's copy of it, every frame.
-        var quads = _frameQuads;
-        quads.Clear();
-        quads.AddRange(frame.Quads);
         if (Active.Id == FlowScenes.Gameplay)
             quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
         if (!EffectsEditorOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
@@ -1409,11 +1406,9 @@ internal sealed class GameShell : IDisposable
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
             quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
-        var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio)
-        {
-            BlurredQuads = frosted,
-            BackdropBrightness = HomeControls.BackdropBrightness,
-        };
+        // The frame reads the reused list without a copy: valid until the next one (the presenter detaches what it holds).
+        var result = RenderFrame.Shared(RenderColor.Black, quads, (double)scene.StageWidth / scene.StageHeight,
+            blurredQuads: frosted, backdropBrightness: HomeControls.BackdropBrightness);
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);
