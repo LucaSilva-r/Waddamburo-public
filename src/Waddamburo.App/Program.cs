@@ -113,7 +113,10 @@ try
         if (seekFrame is not null || !callbackInvocations.IsEmpty)
             throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
-        startingUp = screenshotPath is null && frameLimit is null && tickLimit is null;
+        var consoleTool = login || logout || exportCharts is not null
+            || args.Any(static arg => arg.StartsWith("--online-test", StringComparison.Ordinal)
+                || arg.StartsWith("--upscale-textures", StringComparison.Ordinal));
+        startingUp = !consoleTool && screenshotPath is null && frameLimit is null && tickLimit is null;
         // The update comes first, before anything that could fail (a release that can't start must still be replaced
         // by the next): the settings are read for it if they can be, and read again below to report what's wrong.
         GameDataLayout? early = null;
@@ -162,8 +165,8 @@ try
         Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
             : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "
                 + $"{arcade.SongsPerSession} songs per session).");
-        // From here the tools report on the console, and the game shows its own errors (BootChecks, CrashScreen).
-        startingUp = false;
+        // Keep the startup screen available through account loading and window creation. Once the game's
+        // handlers take over, BootChecks and GameShell.Run handle failures before they reach the outer catch.
         // Fills the texture upscale cache ahead of play, with no game window (see TextureCacheBuilder).
         if (args.FirstOrDefault(static arg => arg.StartsWith("--upscale-textures", StringComparison.Ordinal)) is { } upscale)
             return TextureCacheBuilder.Run(layout.UpscaleCache(arcade.CacheFolder), layout.LumenRoot, upscale.Split('=') is [_, var count]

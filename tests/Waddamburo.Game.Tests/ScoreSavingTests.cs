@@ -8,6 +8,30 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class ScoreSavingTests
 {
+    [Fact]
+    public void CorruptScoresFailWithoutReplacingThePlayersDatabase()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"waddamburo-corrupt-scores-{Guid.NewGuid():N}.db");
+        byte[] corrupt = System.Text.Encoding.UTF8.GetBytes("This is a synthetic corrupt database, not SQLite.");
+        try
+        {
+            File.WriteAllBytes(path, corrupt);
+
+            var exception = Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
+            {
+                using var store = new ScoreStore(path);
+            });
+
+            Assert.Equal(26, exception.SqliteErrorCode); // SQLITE_NOTADB
+            Assert.Equal(corrupt, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
     private static readonly TaikoJudgementWindows Windows = new(
         TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(75), TimeSpan.FromMilliseconds(108));
 

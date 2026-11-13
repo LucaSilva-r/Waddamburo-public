@@ -378,8 +378,17 @@ public sealed class ScoreStore : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         _connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
-        _connection.Open();
-        migrate();
+        try
+        {
+            _connection.Open();
+            migrate();
+        }
+        catch
+        {
+            // A failed constructor has no owner to dispose the connection (for example, a corrupt database).
+            _connection.Dispose();
+            throw;
+        }
     }
 
     // ponytail: one connection behind a lock (game thread saves, uploader reads); fine at a few plays a minute.

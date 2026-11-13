@@ -4,6 +4,29 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class AccountBookTests
 {
+    [Theory]
+    [InlineData(AccountBook.FileName)]
+    [InlineData(AccountBook.LegacyFileName)]
+    public void MalformedAccountsFailWithoutReplacingThePlayersFile(string fileName)
+    {
+        var directory = Directory.CreateTempSubdirectory("waddamburo-accounts").FullName;
+        try
+        {
+            var path = Path.Combine(directory, fileName);
+            const string malformed = "{\"token\":\"synthetic\",\"baid\":";
+            File.WriteAllText(path, malformed);
+
+            Assert.Throws<System.Text.Json.JsonException>(() => AccountBook.Load(directory));
+
+            Assert.Equal(malformed, File.ReadAllText(path));
+            Assert.Equal(path, Assert.Single(Directory.EnumerateFiles(directory)));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void ReadsTheNameBoardTitleAndCostumeSets()
     {
