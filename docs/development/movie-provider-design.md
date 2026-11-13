@@ -239,7 +239,8 @@ settled as each step reaches them.
   says which way the route went (`fukidashi_level_1p`). Seen on the Note Kind Check chart, which ends on the three routes.
 - **Note flights, the provider way** (user, 2026-11-13). `note.judged` carries the note's kind (don, ka) as a third
   argument; new events `roll.hit` (part, big) and `balloon.popped`. Our flight movie (`onp_kiseki_don_1p`) hears them
-  and flies the notes itself, eight clips taken in turn. The game's flight movie is still a pool of sixteen players
+  and flies the notes itself: each hit attaches a flight of its own (`attachMovie` of an exported sprite), which
+  removes itself on landing; at most 128 in the air, the oldest giving its place. The game's flight movie is still a pool of sixteen players
   jumped to a label per hit: `TaikoHitFlights` leaves all that alone when the scene's own flight movie reads the
   provider (asked once its first frame has run), and draws that one movie where the pool was drawn.
 - `play.kusudama` (hits left; `play.balloon` no longer covers a kusudama), read by `action_kusudama`.

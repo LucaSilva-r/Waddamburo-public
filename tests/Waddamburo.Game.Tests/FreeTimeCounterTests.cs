@@ -170,7 +170,10 @@ public sealed class FreeTimeCounterTests
         flights.Emit("note.judged", LumenHostValue.FromString("bad"), LumenHostValue.FromBoolean(false), LumenHostValue.FromString("don"));
         flights.Emit("roll.hit", LumenHostValue.FromString("don"), LumenHostValue.FromBoolean(false));
         Assert.Equal(2d, Convert.ToDouble(flights.ReadScriptValue("next"))); // the miss took no note
-        advance(flights, 40);
+        advance(flights, 10);
+        Assert.Equal("DisplayInstance", flights.ReadScriptValue("f0")?.GetType().Name); // in the air
+        advance(flights, 30);
+        Assert.NotEqual("DisplayInstance", flights.ReadScriptValue("f0")?.GetType().Name); // landed: the flight removed itself
         Assert.Empty(flights.Diagnostics);
     }
 

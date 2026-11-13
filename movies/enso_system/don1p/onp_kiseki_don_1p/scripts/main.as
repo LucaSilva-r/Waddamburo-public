@@ -1,10 +1,12 @@
-// A note that was hit flies from the target to the gauge. The hits are heard from the provider; eight notes can be in
-// the air at once (f0 to f7, taken in turn). The game's own flight movie is jumped to a label per hit instead.
+// A note that was hit flies from the target to the gauge. The hits are heard from the provider; each one gets a
+// flight of its own (the sprite exported as "flight"), which removes itself when it lands. The game's own flight
+// movie is jumped to a label per hit instead.
 var self = this;
+var MOST = 128; // flights in the air at once: past that the oldest gives its place
 var next = 0;
 var fly = function(label) {
-    self["f" + next].gotoAndPlay(label);
-    next = (next + 1) % 8;
+    self.attachMovie("flight", "f" + next, next).gotoAndPlay(label);
+    next = (next + 1) % MOST;
 };
 
 Wd.on("note.judged", function(result, big, kind) {

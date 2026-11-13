@@ -163,89 +163,16 @@
         }
       ],
       "scripts": {
-        "0": "scripts/rest.as",
-        "31": "scripts/rest.as",
-        "71": "scripts/rest.as",
-        "111": "scripts/rest.as",
-        "151": "scripts/rest.as"
-      }
+        "31": "scripts/landed.as",
+        "71": "scripts/landed.as",
+        "111": "scripts/landed.as",
+        "151": "scripts/landed.as"
+      },
+      "export": "flight"
     },
     "main": {
       "frames": 1,
-      "layers": [
-        {
-          "character": "flight",
-          "name": "f0",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f1",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f2",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f3",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f4",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f5",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f6",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        },
-        {
-          "character": "flight",
-          "name": "f7",
-          "keys": [
-            {
-              "frame": 0
-            }
-          ]
-        }
-      ],
+      "layers": [],
       "scripts": {
         "0": "scripts/main.as"
       }
