@@ -274,10 +274,36 @@ order between different movies within a tick.
 Our own movies lost the empty callbacks that only existed to be called (`SetScore`, `SetCurrentGauge`,
 `SetComboBonus`, `Create`, `SetCount`); the points popup hears `score.added` instead of working it out.
 
-**Not moved yet**: what the lane's classes in `Waddamburo.Game` call themselves (the board's combo count and
-options, the hit target's Go-Go and route, the judgement words, the route bubble, rolls, balloons, the kusudama,
-the game's flight pool). Those classes do not know the provider; moving them means giving them the same
-state/event stream, then the same proof. Our movies keep empty callbacks for those until then.
+### Second step (2026-11-13)
+
+Also in the adapter now, with the lane's classes in `Waddamburo.Game` only raising what happened (`DrumHit`,
+`GoGoChanged`, `BranchChanged`) and no longer calling these:
+
+| Published | The game's movie gets |
+| --- | --- |
+| `play.combo`, and every `note.judged` | board `SetComboCount` (at each judged note, changed or not) |
+| `drum.hit` | board `SetTaikoHit` (`left_don`, `right_katsu`, ...) |
+| `play.goGo` | hit target `SetGogo`, both edges |
+| `play.branch` | hit target `SetBranch`, route bubble `level_up` / `level_down` (not for the first value) |
+| at start | hit target `SetBranchAvailable` |
+
+The board's set-up calls (side, course, option icons) are made on the game's board only. `play.goGo` has no value
+until the lane's first update (it was published false at build before: the game's lane is first told then).
+
+Same proof, wider: every gameplay movie's calls and jumps, 33,293 lines, identical per movie.
+
+**Skipped, not moved**: the roll counter, the balloon and the kusudama. `TaikoLongNotePresentation` still makes their
+calls and leaves alone a movie that reads the provider. The game's balloon and kusudama are told how one ended
+(burst high or low, missed), which the provider does not say yet; moving them needs those events first.
+**Staying where they are**: label jumps that are the lane's own drawing (hit flashes, judgement words, note faces,
+the game's flight pool): our movies answer the same labels with their own animation.
+
+Our gameplay movies now have no empty callback left.
+
+**Two drums on our movies**: the second drum's and Katsu-chan's parts (`enso_system/base2p`, `katsu1p`, `katsu2p`)
+have no package of their own; the first drum's is loaded in their place, since a package reads its own drum from
+the provider. The benchmark's two-drum song runs on an empty data directory. Their art is still laid out for the
+upper lane only (the lower drum's gauge sits over the upper lane).
 
 ## Open questions
 

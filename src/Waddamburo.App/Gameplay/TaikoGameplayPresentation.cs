@@ -486,15 +486,19 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             };
             // Traced SetEntryType 1 / SetPlaySide 0 for the left player, 2 / 1 for the right one alone,
             // and 3 with each lane's side for two players.
-            board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
-            // Waiwai's lanes, and AI battle's AI-don lane (traced SetWaiwai(true) on its bar only).
-            if (stage is not null || donStage is not null && lane == 1) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
-            if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
-                || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(dan is null ? courseLabel : "dani")]))
-                throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
-            // The three gauge movies differ in their authored clear line (60/70/80%).
-            if (dan is not null)
-                board.TryInvokeCallback("SetDani", []);
+            // The game's board only: ours reads the same from the provider (player.side, play.course, ...).
+            if (!board.UsesProvider)
+            {
+                board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
+                // Waiwai's lanes, and AI battle's AI-don lane (traced SetWaiwai(true) on its bar only).
+                if (stage is not null || donStage is not null && lane == 1) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
+                if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
+                    || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(dan is null ? courseLabel : "dani")]))
+                    throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
+                // The three gauge movies differ in their authored clear line (60/70/80%).
+                if (dan is not null)
+                    board.TryInvokeCallback("SetDani", []);
+            }
             // osu! charts fill as Oni (TaikoSoulGauge), so they show Oni's clear line.
             var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course) switch
             {
@@ -515,7 +519,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var banner = skin("action_result"); // none in Waiwai
             // The game's movies are driven from what is published, by their adapter (ours read it themselves).
             var gameMovies = new GameplayGameMovies(board, gaugeMovie, () => gauge.FilledSegments, scoreAdd, comboBonus,
-                gaugeFire, goGoSplash, banner);
+                gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player);
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
             // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
@@ -665,7 +669,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             publish("player.abekobe", LumenHostValue.FromBoolean(options.Abekobe));
             publish("player.random", LumenHostValue.FromNumber((int)options.Random));
             publish("player.shinuchi", LumenHostValue.FromBoolean(options.Shinuchi));
-            publish("play.goGo", LumenHostValue.FromBoolean(false));
             publishPlay();
             var bannerTime = TaikoResultBanner.Time(chart);
             EndBanner = endBanner;
@@ -866,11 +869,15 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // The options' icons on the lane (traced SetSpeed(1) for none). lane_obi's setOption shows
             // speedx<n> above 1, doron and abekobe when true, random<level> above 0 (1 きまぐれ, 2 でたらめ),
             // and option_serious "on" for SetSeriousMode(true) (真打).
-            board.TryInvokeCallback("SetSpeed", [LumenHostValue.FromNumber(options.SpeedIcon)]); // Green's art by range
-            board.TryInvokeCallback("SetDoron", [LumenHostValue.FromBoolean(options.Doron)]);
-            board.TryInvokeCallback("SetAbekobe", [LumenHostValue.FromBoolean(options.Abekobe)]);
-            board.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
-            board.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
+            if (gameMovies.Board is { } gameBoard)
+            {
+                gameBoard.TryInvokeCallback("SetSpeed", [LumenHostValue.FromNumber(options.SpeedIcon)]); // Green's art by range
+                gameBoard.TryInvokeCallback("SetDoron", [LumenHostValue.FromBoolean(options.Doron)]);
+                gameBoard.TryInvokeCallback("SetAbekobe", [LumenHostValue.FromBoolean(options.Abekobe)]);
+                gameBoard.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
+                gameBoard.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
+            }
+            gameMovies.Start(chart.Branching is not null);
             hitRadius = _presentation.HitRadius;
             counted.LongNoteHit += progress =>
             {

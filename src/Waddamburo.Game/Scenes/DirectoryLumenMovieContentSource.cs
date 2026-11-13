@@ -72,6 +72,15 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var directory = Path.Combine(root, Path.GetDirectoryName(archiveId) ?? "", Path.GetFileNameWithoutExtension(movieId));
             if (File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)))
                 return directory;
+            // The second drum's and Katsu-chan's gameplay parts: a package reads its own drum from the provider, so the
+            // first drum's serves ("enso_system/katsu2p" + "gage_katsu_2p_easy" -> enso_system/don1p/gage_don_1p_easy).
+            var folder = Path.GetDirectoryName(archiveId) ?? "";
+            var first = folder.Replace("base2p", "base1p").Replace("katsu1p", "don1p").Replace("katsu2p", "don1p").Replace("don2p", "don1p");
+            if (!folder.StartsWith("enso_system", StringComparison.Ordinal))
+                continue;
+            directory = Path.Combine(root, first, Path.GetFileNameWithoutExtension(movieId).Replace("_katsu_", "_don_").Replace("_2p", "_1p"));
+            if (File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)))
+                return directory;
         }
         return null;
     }

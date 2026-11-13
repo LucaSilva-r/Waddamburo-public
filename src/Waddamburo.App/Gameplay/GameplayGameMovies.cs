@@ -10,16 +10,30 @@ namespace Waddamburo.App.Gameplay;
 /// provider itself is one of ours: it is left alone, and needs none of these callbacks or labels.
 /// </summary>
 /// <remarks>
-/// Moved here so far: the board's score, the gauge, the gauge's fire, the points popup, the combo sign, the Go-Go
-/// splash and the end banner. Still called by the lane's own classes (Waddamburo.Game): the combo count, the hit
-/// target, the judgement words, rolls, balloons and the kusudama.
+/// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
+/// target's Go-Go and route, the route bubble, the Go-Go splash and the end banner. Not here: the roll counter, the
+/// balloon and the kusudama (TaikoLongNotePresentation calls them, and skips one of ours), and the label jumps
+/// that are the lane's drawing itself (hit flashes, judgement words, note faces).
 /// </remarks>
 internal sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,
-    LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner)
+    LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner, LumenPlayer target, LumenPlayer? bubble)
 {
+    private static readonly string[] Routes = ["normal", "expert", "master"];
     private int _segments = -1;
     private bool _full;
+    private int _combo;
+    private bool _comboTold; // since the last judged note
+    private int _route = -1;
+
+    /// <summary>The board when it is the game's: what the lane sets up on it by hand (side, course, option icons).</summary>
+    public LumenPlayer? Board => game(board);
+
+    /// <summary>Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.</summary>
+    public void Start(bool routes)
+    {
+        if (game(target) is { } movie) call(movie, "SetBranchAvailable", LumenHostValue.FromBoolean(routes));
+    }
 
     /// <summary>The movie when it is the game's (it does not read the provider); none, or one of ours: null.</summary>
     private static LumenPlayer? game(LumenPlayer? movie) => movie is { UsesProvider: false } ? movie : null;
@@ -32,6 +46,26 @@ internal sealed class GameplayGameMovies(
             case "play.score" when game(board) is { } movie:
                 call(movie, "SetScore", value);
                 break;
+            case "play.combo":
+                _combo = (int)value.AsNumber();
+                _comboTold = true;
+                if (game(board) is { } comboBoard) call(comboBoard, "SetComboCount", value);
+                break;
+            // The hit target's lane at both edges; the splash at each start (one player only: two load none).
+            case "play.goGo":
+                if (game(target) is { } lane) call(lane, "SetGogo", value);
+                if (value.AsBoolean() && game(goGoSplash) is { } splash) label(splash, "splash");
+                break;
+            // The first value is where the play starts (normal); from then on the lane takes the route a check
+            // picked at once, and the bubble says which way it went (traced: same tick).
+            case "play.branch" when Array.IndexOf(Routes, value.AsString()) is var route && route != _route:
+                if (_route >= 0)
+                {
+                    if (game(bubble) is { } bubbleMovie) bubbleMovie.GotoLabel(route > _route ? "level_up" : "level_down", play: true);
+                    if (game(target) is { } laneMovie) call(laneMovie, "SetBranch", LumenHostValue.FromNumber(route));
+                }
+                _route = route;
+                break;
             // The game's gauge counts in segments: it is told when the count moves, not at every change of the fill.
             case "play.gauge" when gaugeSegments() is var segments && segments != _segments:
                 _segments = segments;
@@ -43,10 +77,6 @@ internal sealed class GameplayGameMovies(
                 _full = !_full;
                 if (game(gaugeFire) is { } fire) label(fire, _full ? "fever_start" : "fever_end");
                 break;
-            // The splash at each Go-Go start (one player only; two-player gameplay loads none).
-            case "play.goGo" when value.AsBoolean() && game(goGoSplash) is { } splash:
-                label(splash, "splash");
-                break;
         }
     }
 
@@ -55,6 +85,17 @@ internal sealed class GameplayGameMovies(
     {
         switch (name)
         {
+            // The board is told the combo at every judged note, changed or not (a miss on a combo of 0).
+            case "note.judged":
+                if (!_comboTold && game(board) is { } comboBoard)
+                    call(comboBoard, "SetComboCount", LumenHostValue.FromNumber(_combo));
+                _comboTold = false;
+                break;
+            // side: left, right; part: don, ka. The game's board names its lights left_don, right_katsu, ...
+            case "drum.hit" when game(board) is { } hitBoard:
+                call(hitBoard, "SetTaikoHit", LumenHostValue.FromString(
+                    arguments[0].AsString() + (arguments[1].AsString() == "don" ? "_don" : "_katsu")));
+                break;
             case "score.added" when game(scoreAdd) is { } movie:
                 call(movie, "Create");
                 call(movie, "SetCount", arguments[0]);

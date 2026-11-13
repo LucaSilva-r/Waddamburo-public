@@ -24,7 +24,6 @@ public sealed class TaikoLumenPresentation
     private readonly LumenSceneLayer? _branchBar;
     private readonly HashSet<TimeSpan> _checkBars;
     private ChartBranch _shownBranch;
-    private readonly LumenPlayer? _branchBubble;
     private readonly LumenSceneLayer _target;
     private readonly LumenPlayer _feedback;
     private readonly LumenPlayer _board;
@@ -51,7 +50,7 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<LumenPlayer, string>? roles = null)
     {
         _branchBar = branchBar;
-        _branchBubble = branchBubble;
+        _ = branchBubble; // the game's bubble is jumped by its adapter (BranchChanged)
         _checkBars = [.. chart.Branching?.Checks.Select(static check => check.Start) ?? []];
         _noteTexts = noteTexts;
         _noteLabels = TaikoNoteText.Labels(chart);
@@ -75,7 +74,6 @@ public sealed class TaikoLumenPresentation
         _longNotes = longNotes;
         _gogo = new TaikoGoGoPresentation(now => chart.IsGoGoAt(now, judgement.BranchAt(now)), active =>
         {
-            callback(_target.Player, "SetGogo", LumenHostValue.FromBoolean(active));
             GoGoChanged?.Invoke(active);
         });
         // Lanes built again on the same movie (practice retries, replay jumps): the target back in its place first.
@@ -91,9 +89,6 @@ public sealed class TaikoLumenPresentation
         _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty, _layout);
         StageEffects.Prime(_background.Concat(_foreground));
         judgement.Judged += onJudged;
-        callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
-        // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.
-        callback(_target.Player, "SetBranchAvailable", LumenHostValue.FromBoolean(chart.Branching is not null));
     }
 
     /// <summary>Replaces drawing effects without rebuilding judgement, movie players, or the live attempt.</summary>
@@ -122,7 +117,6 @@ public sealed class TaikoLumenPresentation
         if (_combo == combo)
             return;
         _combo = combo;
-        callback(_board, "SetComboCount", LumenHostValue.FromNumber(combo));
     }
 
     /// <summary>The drum was struck (whether or not a note was there).</summary>
@@ -132,11 +126,8 @@ public sealed class TaikoLumenPresentation
     {
         DrumHit?.Invoke(action);
         var don = action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon;
-        var left = action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa;
         if (!_target.Player.TryGotoLabel("effect", don ? "don_s" : "katsu_s"))
             throw new InvalidDataException("Gameplay lane has no drum feedback state.");
-        callback(_board, "SetTaikoHit", LumenHostValue.FromString(
-            (left ? "left_" : "right_") + (don ? "don" : "katsu")));
     }
 
     public event Action<bool>? GoGoChanged;
@@ -193,9 +184,7 @@ public sealed class TaikoLumenPresentation
         // and Don-chan's bubble says which way it went (traced: same tick; the movie stops itself after).
         if (_judgement.Branch != _shownBranch)
         {
-            _branchBubble?.GotoLabel(_judgement.Branch > _shownBranch ? "level_up" : "level_down", play: true);
             _shownBranch = _judgement.Branch;
-            callback(_target.Player, "SetBranch", LumenHostValue.FromNumber((int)_shownBranch));
             BranchChanged?.Invoke(_shownBranch);
         }
     }
@@ -386,7 +375,6 @@ public sealed class TaikoLumenPresentation
         if (!ExternalCombo)
         {
             _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
-            callback(_board, "SetComboCount", LumenHostValue.FromNumber(_combo));
         }
         if (result.TimedOut)
             return;
