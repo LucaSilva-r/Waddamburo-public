@@ -198,6 +198,31 @@ public sealed class ActionScriptTests
     }
 
     [Fact]
+    public void AMovieReadsAListByIndex()
+    {
+        var (player, reports) = run("""
+            import flash.external.ExternalInterface;
+            report("start", Wd.has("dan.exam.value", 0), Wd.get("dan.exam.value", 0));
+            Wd.on("dan.exam.value", function(index, value) { report("value", index, value, Wd.get("dan.exam.value", index)); });
+            ExternalInterface.addCallback("Late", this, function() {
+                Wd.on("dan.exam.value", function(index, value) { report("late", index, value); });
+                report("p2", Wd.get("dan.exam.value", 0, 2));
+            });
+            stop();
+            """);
+        player.PublishItem("dan.exam.value", 1, LumenHostValue.FromNumber(5));
+        player.PublishItem("dan.exam.value", 0, LumenHostValue.FromNumber(3));
+        player.PublishItem("dan.exam.value", 0, LumenHostValue.FromNumber(3)); // no change: not told again
+        player.PublishItem("dan.exam.value", 0, LumenHostValue.FromNumber(9), 2);
+        Assert.True(player.TryInvokeCallback("Late", []));
+        player.PublishItem("dan.exam.value", 1, LumenHostValue.Undefined); // gone
+        Assert.Equal(["start,false,undefined", "value,1,5,5", "value,0,3,3", "late,0,3", "late,1,5", "p2,9",
+            "value,1,undefined,undefined", "late,1,undefined"], reports);
+        Assert.Throws<ArgumentException>(() => player.Publish("dan.exam.value", LumenHostValue.FromNumber(1)));
+        Assert.Throws<ArgumentException>(() => player.PublishItem("play.score", 0, LumenHostValue.FromNumber(1)));
+    }
+
+    [Fact]
     public void AListenerHearsAValueAlreadyThere()
     {
         var (player, reports) = run("""

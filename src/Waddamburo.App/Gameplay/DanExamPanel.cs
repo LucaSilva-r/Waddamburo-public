@@ -8,7 +8,13 @@ namespace Waddamburo.App.Gameplay;
 /// SetConditionType(i, type, red), then as the play goes SetLeftNotes(n), SetConditionValue(i, value) and
 /// SetConditionValid(i, 0|1). Its callbacks register on its first frame, so set up waits for them.
 /// </summary>
-internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
+/// <remarks>
+/// The same is published to the provider (dan.rank, dan.song, dan.notesLeft, the dan.exam lists). A panel that reads
+/// it is ours and gets none of the calls. ponytail: the game's panel is still called from here, not from the
+/// gameplay adapter: no recorded dan session to prove a move against yet.
+/// </remarks>
+internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course,
+    Action<string, LumenHostValue> publish, Action<string, int, LumenHostValue> publishItem)
 {
     private readonly DanExams _exams = new(course);
     private bool _ready;
@@ -32,6 +38,7 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
             return;
         _shown = progress;
         call("SetLeftNotes", _exams.NotesLeft(progress));
+        publish("dan.notesLeft", LumenHostValue.FromNumber(_exams.NotesLeft(progress)));
         foreach (var requirement in _exams.Requirements)
             Failed |= !_exams.StillPossible(requirement, progress, song, start);
         var shown = _exams.OnPanel;
@@ -39,6 +46,8 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
         {
             call("SetConditionValue", index, DanExams.ValueOf(shown[index], progress, start));
             call("SetConditionValid", index, _exams.StillPossible(shown[index], progress, song, start) ? 1 : 0);
+            publishItem("dan.exam.value", index, LumenHostValue.FromNumber(DanExams.ValueOf(shown[index], progress, start)));
+            publishItem("dan.exam.possible", index, LumenHostValue.FromBoolean(_exams.StillPossible(shown[index], progress, song, start)));
         }
     }
 
@@ -53,6 +62,8 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
         if (!call("SetChallengeLevel", course.Rank == Waddamburo.Game.Dan.DanRanks.Challenge ? LevelChallenge : course.Rank))
             return false;
         call("SetConditionNum", _exams.OnPanel.Count);
+        publish("dan.rank", LumenHostValue.FromNumber(course.Rank));
+        publish("dan.exam.count", LumenHostValue.FromNumber(_exams.OnPanel.Count));
         setTypes();
         return true;
     }
@@ -60,6 +71,12 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
     private void setTypes()
     {
         var shown = _exams.OnPanel;
+        publish("dan.song", LumenHostValue.FromNumber(_song + 1));
+        for (var index = 0; index < shown.Count; index++)
+        {
+            publishItem("dan.exam.type", index, LumenHostValue.FromString(shown[index].Type));
+            publishItem("dan.exam.target", index, LumenHostValue.FromNumber(DanExams.Target(shown[index].Red, _song)));
+        }
         for (var index = 0; index < shown.Count; index++)
             call("SetConditionType", index, DanExams.TypeOf(shown[index].Type), DanExams.Target(shown[index].Red, _song));
     }
@@ -67,5 +84,5 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course)
     private const int LevelChallenge = 101;
 
     private bool call(string name, params long[] arguments) =>
-        movie.TryInvokeCallback(name, [.. arguments.Select(static value => LumenHostValue.FromNumber(value))]);
+        movie.UsesProvider || movie.TryInvokeCallback(name, [.. arguments.Select(static value => LumenHostValue.FromNumber(value))]);
 }

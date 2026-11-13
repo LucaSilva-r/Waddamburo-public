@@ -2,7 +2,8 @@ using System.Collections.Immutable;
 
 namespace Waddamburo.Lumen.Provider;
 
-public enum WdKind { State, Event }
+/// <summary>List: a state with a value per place in a list (Wd.get(name, index)); the list's length is a state of its own, named in the description.</summary>
+public enum WdKind { State, Event, List }
 
 /// <summary>One name of the provider: what a movie may read with <c>Wd.get</c> or listen to with <c>Wd.on</c>.</summary>
 /// <param name="Type">number, bool, text; an event's arguments in order.</param>
@@ -38,6 +39,14 @@ public static class WdNames
         new("play.balloon", WdKind.State, "number", "play", "Hits the balloon under way still needs; no value when there is none (a kusudama is play.kusudama).", "5"),
         new("play.kusudama", WdKind.State, "number", "play", "Hits the kusudama under way still needs; no value when there is none.", "120"),
         new("play.progress", WdKind.State, "number", "play", "How far through the song, 0 to 1, in hundredths.", "0.4"),
+        new("dan.rank", WdKind.State, "number", "play", "The dan course's rank, 0 for the lowest; no value outside a course.", "9"),
+        new("dan.song", WdKind.State, "number", "play", "Which song of the dan course is playing, from 1.", "2"),
+        new("dan.notesLeft", WdKind.State, "number", "play", "Notes of the dan course not judged yet.", "1240"),
+        new("dan.exam.count", WdKind.State, "number", "play", "How many requirements the dan course's panel shows: the length of the dan.exam lists.", "3"),
+        new("dan.exam.type", WdKind.List, "text", "play", "A requirement's kind: soul_gauge, goods, oks, bads, combo, hits, score or rolls.", "bads"),
+        new("dan.exam.target", WdKind.List, "number", "play", "What the requirement asks for (this song's, where each song has its own).", "10"),
+        new("dan.exam.value", WdKind.List, "number", "play", "Where the play stands on the requirement.", "3"),
+        new("dan.exam.possible", WdKind.List, "bool", "play", "The requirement can still be met.", "true"),
         new("song.title", WdKind.State, "text", "play", "The song's title.", "Senbonzakura"),
         new("song.subtitle", WdKind.State, "text", "play", "The song's subtitle; no value when it has none.", "Kurousa-P feat. Hatsune Miku"),
         new("player.name", WdKind.State, "text", "play", "The name of this drum's player.", "Don-chan"),

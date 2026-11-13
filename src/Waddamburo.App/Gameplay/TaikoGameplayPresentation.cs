@@ -119,7 +119,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         {
             built.Everyone = everyone;
             foreach (var (name, value) in built.Published)
-                foreach (var movie in everyone) movie.Publish(name, value, built.Drum);
+                foreach (var movie in everyone)
+                    if (name.IndexOf('#') is var at and >= 0) movie.PublishItem(name[..at], int.Parse(name.AsSpan(at + 1)), value, built.Drum);
+                    else movie.Publish(name, value, built.Drum);
         }
         foreach (var ((lane, name), value) in _provided)
             for (var index = 0; index < _lanes.Length; index++)
@@ -537,6 +539,16 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 foreach (var movie in Everyone) movie.Publish(name, value, Drum);
                 gameMovies.State(name, value);
             }
+            // A place of a list (WdKind.List), kept in Published under "name#index".
+            void publishItem(string name, int index, LumenHostValue value)
+            {
+                var key = $"{name}#{index}";
+                if (published.TryGetValue(key, out var before) && before == value)
+                    return;
+                published[key] = value;
+                foreach (var movie in mine) movie.PublishItem(name, index, value);
+                foreach (var movie in Everyone) movie.PublishItem(name, index, value, Drum);
+            }
             void emit(string name, params ReadOnlySpan<LumenHostValue> arguments)
             {
                 foreach (var movie in mine) movie.Emit(name, arguments);
@@ -640,12 +652,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _result = () => new TaikoPlayResult(course, score.Value, great, good, miss, maxCombo,
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options, BalloonHits = score.BalloonHits };
-            var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan);
             if (dan is not null && danArt is { } challengeArt)
                 layers["dani_enso"].Player.SetNativeFill("challenge_lv_mini", challengeArt);
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
+            var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan, publish, publishItem);
             void publishPlay()
             {
                 publish("play.score", LumenHostValue.FromNumber(score.Value));

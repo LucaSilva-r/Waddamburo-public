@@ -167,6 +167,19 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.Button("None") && _wdSet.Remove(name.Name))
                     log($"Wd {name.Name} = (no value)");
             }
+            else if (name.Kind == WdKind.List)
+            {
+                // A list's place: "index, value" (the index alone: that place's sample value).
+                if (ImGui.Button("Set at") || entered)
+                {
+                    var parts = (typed.Length == 0 ? "0" : typed).Split(',', 2);
+                    if (int.TryParse(parts[0], out var index) && index >= 0)
+                    {
+                        player.PublishItem(name.Name, index, parse(parts.Length > 1 ? parts[1] : name.Sample));
+                        log($"Wd {name.Name}[{index}] = {(parts.Length > 1 ? parts[1].Trim() : name.Sample)}");
+                    }
+                }
+            }
             else if (ImGui.Button("Send") || entered)
             {
                 player.Emit(name.Name, [.. (typed.Length == 0 ? name.Sample : typed).Split(',').Select(parse)]);
@@ -174,7 +187,7 @@ public sealed partial class MovieInspectorSession
             }
             ImGui.TableNextColumn();
             ImGui.AlignTextToFramePadding();
-            ImGui.TextColored(dim, name.Kind == WdKind.Event ? "event"
+            ImGui.TextColored(dim, name.Kind == WdKind.Event ? "event" : name.Kind == WdKind.List ? "list: index, value"
                 : player.Provided(name.Name) is { Kind: not LumenHostValueKind.Undefined } now ? show(now) : "no value");
             ImGui.PopID();
         }

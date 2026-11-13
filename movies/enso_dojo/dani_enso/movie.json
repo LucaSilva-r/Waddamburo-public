@@ -1,26 +1,63 @@
-// dani_enso: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// dani_enso: the dan course's requirements during a song, read from the provider's dan.exam lists (Wd).
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
-  "textures": {
-    "box": "textures/box.svg"
-  },
-  "shapes": {
-    "box": {
-      "texture": "box",
+  "texts": {
+    "line": {
       "rect": [
-        -32,
-        -32,
-        64,
-        64
-      ]
+        0,
+        -16,
+        460,
+        32
+      ],
+      "size": 24,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "left": {
+      "rect": [
+        0,
+        -16,
+        460,
+        32
+      ],
+      "size": 24,
+      "align": "left",
+      "color": "#ffd23c"
     }
   },
   "sprites": {
+    "row": {
+      "frames": 1,
+      "export": "row",
+      "layers": [
+        {
+          "character": "line",
+          "name": "line",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
     "main": {
       "frames": 1,
-      "layers": [],
+      "layers": [
+        {
+          "character": "left",
+          "name": "left",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 600,
+              "y": 470
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as"
       }

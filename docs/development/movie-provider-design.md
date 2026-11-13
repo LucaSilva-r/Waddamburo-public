@@ -320,6 +320,31 @@ upper lane only (the lower drum's gauge sits over the upper lane).
 5. **Versioning.** One number for the whole provider, or per name.
 6. **Performance budget** for subscribers during a song, and whether widgets run on the play's thread at all.
 
+## Lists (user, 2026-11-13)
+
+Some of what the engine knows is a list: a dan course's requirements now, a song library later. A list is a name
+with a value per place (`WdKind.List`), read by index:
+
+```actionscript
+Wd.get("dan.exam.value", 2)            // the third requirement's count; undefined when there is none
+Wd.on("dan.exam.value", function(index, value) { ... });   // every place that has a value at once, then each change
+Wd.get("dan.exam.value", 2, 1)         // the player comes after the index
+```
+
+- A list's length is a state of its own (`dan.exam.count`). A movie makes or removes what it shows when the length
+  changes (the dan panel attaches a row per requirement), and holds nothing else.
+- A place that goes away is told as undefined. That is the whole of adding and removing: the engine can change a
+  list while a movie shows it, and the movie follows from the same listeners.
+- The engine side is `PublishItem(name, index, value)`.
+- **For the song library** (not built): the same shape lets the engine publish only the places a movie asks to see.
+  That needs the movie to say which (a window: a request, see Requests), and probably list events that say
+  "inserted at" and "removed at" rather than re-telling every place after it. To be designed with song select.
+
+**Dan course, built**: `dan.rank`, `dan.song`, `dan.notesLeft`, `dan.exam.count`, and the lists `dan.exam.type`,
+`dan.exam.target`, `dan.exam.value`, `dan.exam.possible`, published by `DanExamPanel`. Our panel (`dani_enso`) reads
+them; the game's is still called from `DanExamPanel` (no recorded dan session to prove a move to the adapter
+against). The dan gauge is the song gauge's package. Neither has been seen on screen in a course yet.
+
 ## To do: limits on what a movie may cost (2026-11-13)
 
 Not built, and not needed while every movie is the engine's own; to be done with the loading of other people's

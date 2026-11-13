@@ -176,6 +176,27 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheDanPanelMakesARowPerRequirement()
+    {
+        var panel = load("enso_dojo/dani_enso");
+        advance(panel, 2);
+        panel.PublishItem("dan.exam.type", 0, LumenHostValue.FromString("bads"));
+        panel.PublishItem("dan.exam.target", 0, n(10));
+        panel.PublishItem("dan.exam.type", 1, LumenHostValue.FromString("soul_gauge"));
+        panel.PublishItem("dan.exam.target", 1, n(100));
+        panel.Publish("dan.exam.count", n(2));
+        Assert.Equal("BAD  0 / 10", panel.ReadScriptValue("row0.line.text"));
+        panel.PublishItem("dan.exam.value", 1, n(64));
+        panel.PublishItem("dan.exam.possible", 0, LumenHostValue.FromBoolean(false));
+        Assert.Equal("Soul gauge  64 / 100", panel.ReadScriptValue("row1.line.text"));
+        Assert.Equal("BAD  0 / 10  FAILED", panel.ReadScriptValue("row0.line.text"));
+        panel.Publish("dan.exam.count", n(1)); // the list shrank: the row goes
+        advance(panel, 1);
+        Assert.NotEqual("DisplayInstance", panel.ReadScriptValue("row1")?.GetType().Name);
+        Assert.Empty(panel.Diagnostics);
+    }
+
+    [Fact]
     public void ShowsItsNumberAndSongTab()
     {
         var player = load();

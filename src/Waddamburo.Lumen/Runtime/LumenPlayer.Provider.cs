@@ -7,6 +7,9 @@ namespace Waddamburo.Lumen.Runtime;
 //   Wd.has(name)           whether it has one
 //   Wd.on(name, fn)        a state: fn(value) at once (undefined while it has none) and at every change;
 //                          an event: fn(arguments...) each time it happens
+//   a list (WdKind.List)   Wd.get(name, index), Wd.has(name, index); Wd.on(name, fn): fn(index, value) at once for
+//                          every place that has a value, then whenever one changes (undefined: it is gone). A
+//                          list's length is a state of its own (dan.exam.count), so a movie holds only what it shows.
 //   ...(name, ..., player) the same for one drum's player by number, 1 the left drum, 2 the right
 // Without a player a movie gets its own drum's: a part made once serves either drum and never learns its number. A
 // movie that belongs to no drum (one both share, like the song's title) gets player 1's.
@@ -51,6 +54,24 @@ public sealed partial class LumenPlayer
         else _provided[(name, drum)] = value;
         tell(name, drum, [fromHostValue(value)]);
     }
+
+    /// <summary>Sets one place of a list (WdKind.List) for this movie; undefined withdraws it. Listeners get the index and the value.</summary>
+    public void PublishItem(string name, int index, LumenHostValue value, int drum = 0)
+    {
+        if (WdNames.Find(name) is not { Kind: WdKind.List })
+            throw new ArgumentException($"'{name}' is not a list of the provider (WdNames).", nameof(name));
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        if (drum == 0) _hasOwnDrum = true;
+        var key = (item(name, index), drum);
+        if (_provided.TryGetValue(key, out var before) ? before == value : value.Kind == LumenHostValueKind.Undefined)
+            return;
+        if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove(key);
+        else _provided[key] = value;
+        tell(name, drum, [(double)index, fromHostValue(value)]);
+    }
+
+    // A list's places are kept beside the states, under "name#index" (# is in no name).
+    private static string item(string name, int index) => $"{name}#{index}";
 
     /// <summary>Something happened at this moment on this movie's drum; listeners get the arguments in WdNames' order.</summary>
     public void Emit(string name, params ReadOnlySpan<LumenHostValue> arguments) => EmitFor(0, name, arguments);
@@ -106,11 +127,19 @@ public sealed partial class LumenPlayer
         // The player argument, where given: 1 or 2. Anything else is the movie's own drum.
         static int drum(IReadOnlyList<object?> arguments, int at) =>
             arguments.Count > at && arguments[at] is double number && number is 1 or 2 ? (int)number : 0;
+        // A list's name takes its index before the player: the key asked for, and where the player argument is.
+        (string Name, int Drum) asked(string name, IReadOnlyList<object?> arguments)
+        {
+            if (WdNames.Find(name)!.Kind != WdKind.List)
+                return own(name, drum(arguments, 1));
+            var index = arguments.Count > 1 && arguments[1] is double number && number >= 0 ? (int)number : -1;
+            return own(item(name, index), drum(arguments, 2));
+        }
         wd.Properties["get"] = new Avm1MethodWrapper((_, arguments) => new Avm1Lookup(true,
-            known(arguments, "get") is { } name && _provided.TryGetValue(own(name, drum(arguments, 1)), out var value)
+            known(arguments, "get") is { } name && _provided.TryGetValue(asked(name, arguments), out var value)
                 ? fromHostValue(value) : Avm1Undefined.Instance));
         wd.Properties["has"] = new Avm1MethodWrapper((_, arguments) => new Avm1Lookup(true,
-            known(arguments, "has") is { } name && _provided.ContainsKey(own(name, drum(arguments, 1)))));
+            known(arguments, "has") is { } name && _provided.ContainsKey(asked(name, arguments))));
         wd.Properties["on"] = new Avm1MethodWrapper((self, arguments) =>
         {
             if (known(arguments, "on") is { } name && arguments.Count > 1 && arguments[1] is Avm1FunctionValue function)
@@ -124,6 +153,15 @@ public sealed partial class LumenPlayer
                 if (WdNames.Find(name)!.Kind == WdKind.State)
                     invokeFunction(_root, function, self,
                         [_provided.TryGetValue(own(name, player), out var value) ? fromHostValue(value) : Avm1Undefined.Instance], _activeContext);
+                // A list's listener: every place that has a value, in order.
+                if (WdNames.Find(name)!.Kind == WdKind.List)
+                {
+                    var (_, from) = own(name, player);
+                    var prefix = name + "#";
+                    foreach (var (index, value) in _provided.Where(pair => pair.Key.Drum == from && pair.Key.Name.StartsWith(prefix, StringComparison.Ordinal))
+                        .Select(pair => (Index: int.Parse(pair.Key.Name.AsSpan(prefix.Length)), pair.Value)).OrderBy(static each => each.Index).ToArray())
+                        invokeFunction(_root, function, self, [(double)index, fromHostValue(value)], _activeContext);
+                }
             }
             return new Avm1Lookup(true, Avm1Undefined.Instance);
         });
