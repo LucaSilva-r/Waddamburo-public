@@ -264,3 +264,21 @@ settled as each step reaches them.
    only draws. The streamed song list wanted for song select points to the engine owning the list.
 5. **Versioning.** One number for the whole provider, or per name.
 6. **Performance budget** for subscribers during a song, and whether widgets run on the play's thread at all.
+
+## To do: limits on what a movie may cost (2026-11-13)
+
+Not built, and not needed while every movie is the engine's own; to be done with the loading of other people's
+skins. A movie can now make clips as it goes (`attachMovie`; the flight movie makes one per hit), so nothing but the
+movie's own script bounds what it costs.
+
+- **A ceiling on clips made by script**, per movie, in the engine: generous (in the order of 1024), there to stop a
+  script that attaches without end from eating memory, with one warning naming the movie. The flight movie's own
+  128 is its script's choice, about four times the most a play can put in the air (a flight lasts half a second;
+  the fastest roll is 40 hits a second).
+- **A script budget per movie per tick**, counted in instructions run (not time, so a play stays repeatable). This is
+  the real guard: a clip without a script of its own is a timeline step and a quad, hundreds are cheap, while a few
+  clips each running a heavy `onEnterFrame` are not, and no clip count catches that. Over budget: reported in the
+  editor's Issues tab; in the game the movie's scripts are cut short for that tick rather than a song dropping
+  frames.
+- **Measure before choosing the numbers**: flights in the air at 128, 512 and 2048, milliseconds per tick each, on
+  the slow test machine.
