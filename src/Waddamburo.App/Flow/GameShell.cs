@@ -193,6 +193,24 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>Songs play themselves: --autoplay, or the home setting (not in an online match).</summary>
     /// <summary>Home with the arcade HUD off: no timer, song number or free-play line (they don't count there).</summary>
+    /// <summary>The active scene and its mode, for the log: "gameplay (AI battle, dev autoplay)".</summary>
+    public string DescribeScene()
+    {
+        if (Active is not { } active)
+            return "starting";
+        var gameplay = active.Id == FlowScenes.Gameplay && _scenes.TryGetValue(active.Id, out var flow) ? flow as GameplayFlow : null;
+        string[] modes =
+        [
+            Arcade.Home ? "home" : "arcade",
+            .. Hosts.AiBattle ? ["AI battle"] : Array.Empty<string>(),
+            .. Hosts.Waiwai ? ["Waiwai"] : Array.Empty<string>(),
+            .. gameplay?.Demo == true ? ["attract demo"] : Array.Empty<string>(),
+            .. gameplay is not null && Autoplay ? ["autoplay"] : Array.Empty<string>(),
+            .. gameplay is not null && DevAutoplay ? ["dev autoplay"] : Array.Empty<string>(),
+        ];
+        return $"{active.Id} ({string.Join(", ", modes)})";
+    }
+
     public bool HideArcadeHud => Arcade.Home && !Arcade.ArcadeHud;
 
     /// <summary>Development builds: the player's lane is drummed live by the bot (Settings > Developer).</summary>
@@ -614,7 +632,7 @@ internal sealed class GameShell : IDisposable
                 Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
                     + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
                     + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
-            Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{Active?.Id.ToString() ?? "starting"} at tick {Tick}" };
+            Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{DescribeScene()} at tick {Tick}" };
             Previews = Audio is null
                 ? null
                 : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"),
@@ -1069,6 +1087,7 @@ internal sealed class GameShell : IDisposable
     private void tick(SdlKeyboardSnapshot keyboard)
     {
         Tick++;
+        Sounds?.Bank.Pump();
         // Diagnostic: WADDAMBURO_CRASH_AT=<tick> crashes the game there, to see its error screen.
         if (_crashAt == Tick)
             throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");

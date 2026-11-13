@@ -127,6 +127,8 @@ internal sealed class SceneSwitcher(
         var collect = Stopwatch.GetTimestamp();
         tidyMemory();
         shell.Application.DiscardElapsed();
+        // Always: the log says where the game is (a report never has to guess the scene or mode).
+        Console.WriteLine($"Scene: {from} -> {shell.DescribeScene()} at tick {shell.Tick}.");
         if (profile || PerformanceRecorder.Current is not null)
         {
             using var process = Process.GetCurrentProcess();

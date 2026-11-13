@@ -746,19 +746,28 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     }
 
     // Paused or frozen (the editors' Freeze animations), the movies stand on one tick: no blending between ticks.
+    private TimeSpan? _frameTime;
+
     public override LumenRenderSnapshot CreateSnapshot(float interpolation)
     {
+        var time = _frameTime ?? chartTime();
+        _frameTime = null; // one frame's: a frame without UpdateFrame reads the clock itself
         if (songInfoPlayer() is { } info)
             TaikoSongInfoPresentation.UpdateVisibility(info,
                 showStage: !Shell.HideArcadeHud || _course is not null || _songInfoMode,
                 showInfo: _battle?.ResultShownAt is null);
-        return Shell.Gameplay.CreateSnapshot(chartTime(), _paused ? _pauseInterpolation
+        return Shell.Gameplay.CreateSnapshot(time, _paused ? _pauseInterpolation
             : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
     }
 
     // Live drum input is judged per display frame (headless, per tick).
     public override void UpdateFrame(SdlKeyboardSnapshot keys)
     {
+        // The notes are drawn at the chart time of the frame's start, as the movies are blended at the frame start's
+        // tick fraction. Read when the frame was built instead, a frame that judged a hit (judgement, score, sounds,
+        // AI-don: a few ms on a slow PC) read it later than its neighbours and drew the lane ahead: it jerked forward
+        // as the note in front was hit.
+        _frameTime = _review is null && revealed && !_paused ? chartTime() : null;
         if (CanEditEffects && !Shell.EffectsEditorOpen
             && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8)) Shell.OpenEffectsEditor();
         if (_review is { } review)

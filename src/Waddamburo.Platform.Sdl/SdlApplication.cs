@@ -233,6 +233,13 @@ public sealed unsafe partial class SdlApplication : IDisposable
             + (mode is null ? "?" : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{mode->w}x{mode->h} @ {mode->refresh_rate:F1} Hz"))];
     }
 
+    // Read every frame only while the hitch trace is on; SDL keeps the mode, so the call is cheap.
+    private TimeSpan refreshInterval()
+    {
+        var mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(_window));
+        return TimeSpan.FromSeconds(1 / (mode is null || mode->refresh_rate <= 0 ? 60f : mode->refresh_rate));
+    }
+
     private (int Width, int Height) desktop()
     {
         var mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(_window));
@@ -825,6 +832,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 pendingPresses.Add(new SdlKeyPress(key, TimeSpan.FromTicks(checked((long)(timestamp / 100)))));
         }
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+        long previousFrameEnd = 0;
         (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
         using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
             ? new FrameProfile() : null;
@@ -1043,6 +1051,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
             var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
+            // Event pumping, frame pacing and the hitch log itself: what no other part of the frame line covers.
+            var betweenFrames = previousFrameEnd == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(previousFrameEnd, timestamp);
             previousTimestamp = timestamp;
             var remainingTicks = tickLimit is int limit ? limit - simulationTicks : int.MaxValue;
             var eventTime = TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)));
@@ -1056,7 +1066,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     new(Math.Max(1, pixelWidth), Math.Max(1, pixelHeight)));
             }
             var keyboard = new SdlKeyboardSnapshot(_pressedKeys, pendingPresses, eventTime);
+            var frameInputStart = Stopwatch.GetTimestamp();
             updateFrame?.Invoke(keyboard);
+            var frameInputTime = Stopwatch.GetElapsedTime(frameInputStart);
             var inputTime = performanceActive ? Stopwatch.GetElapsedTime(inputStart) : TimeSpan.Zero;
             var delivered = updateFrame is not null;
             var updateStart = Stopwatch.GetTimestamp();
@@ -1088,6 +1100,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
             // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
             var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
             var renderTime = Stopwatch.GetElapsedTime(renderStart);
+            previousFrameEnd = Stopwatch.GetTimestamp();
             var profileEligibleAtEnd = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             if (performanceActive)
                 performanceSample?.Invoke(new SdlFrameMetrics(elapsed, inputTime, updateTime, renderTime, update.ExecutedTicks));
@@ -1107,8 +1120,13 @@ public sealed unsafe partial class SdlApplication : IDisposable
             {
                 // With the collections and GC pause time since the last report: a hitch that is GC shows here.
                 var (gen0, gen1, gen2, pause) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration());
-                if (updateTime + renderTime > TimeSpan.FromMilliseconds(25))
-                    Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
+                // A frame that can cost a screen refresh (the note lane visibly jumps): longer than the refresh
+                // interval when uncapped, 1.5 intervals with vsync (its frames are one interval give or take).
+                // The whole frame, too: a stall in present or a descheduled thread is in neither update nor render.
+                var hitchAt = refreshInterval() * (_display?.Vsync == true ? 1.5 : 1);
+                if (frameInputTime + updateTime + renderTime > hitchAt || elapsed > hitchAt)
+                    Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: frame {elapsed.TotalMilliseconds:F0} ms, "
+                        + $"between frames {betweenFrames.TotalMilliseconds:F0} ms, input {frameInputTime.TotalMilliseconds:F0} ms (judged per frame), update {updateTime.TotalMilliseconds:F0} ms "
                         + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms; GC since last "
                         + $"{gen0 - hitchGc.Gen0}/{gen1 - hitchGc.Gen1}/{gen2 - hitchGc.Gen2} (gen0/1/2), paused {(pause - hitchGc.Pause).TotalMilliseconds:F0} ms"
                         + $"{gpuStats()}.");

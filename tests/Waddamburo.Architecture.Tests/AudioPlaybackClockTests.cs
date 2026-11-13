@@ -57,9 +57,34 @@ public sealed class AudioPlaybackClockTests
             if (frame % 17 == 0)
                 consumed = TimeSpan.FromSeconds(1 + now.TotalSeconds);
             var position = clock.Update(consumed, latency, now);
-            Assert.InRange((position - previous).TotalSeconds, 0.99 / 240 - 0.000001,
-                1.01 / 240 + 0.000001);
+            // Gaps longer than the latency put it more than a buffer off: it corrects at up to 5%, still no jump.
+            Assert.InRange((position - previous).TotalSeconds, 0.95 / 240 - 0.000001,
+                1.05 / 240 + 0.000001);
             previous = position;
         }
+    }
+
+    [Fact]
+    public void ExclusivePeriodSlipIsCaughtQuicklyWithoutSteps()
+    {
+        // WASAPI exclusive: 3.33 ms periods; one 10 ms stall puts the audio 10 ms behind the wall clock for good.
+        var clock = new AudioPlaybackClock();
+        var period = TimeSpan.FromSeconds(160d / 48000);
+        var stall = TimeSpan.FromSeconds(0.5);
+        var slip = TimeSpan.FromMilliseconds(10);
+        var previous = clock.Update(TimeSpan.Zero, period, TimeSpan.Zero);
+        for (var frame = 1; frame <= 600; frame++)
+        {
+            var now = TimeSpan.FromSeconds(frame / 600d);
+            // The device thread stalls at 0.5 s for 10 ms (the audio stands still), then plays on that much behind.
+            var audio = now < stall ? now : now < stall + slip ? stall : now - slip;
+            var consumed = TimeSpan.FromSeconds(Math.Floor(audio.TotalSeconds / period.TotalSeconds) * period.TotalSeconds);
+            var position = clock.Update(consumed, period, now);
+            if (now > period * 3)
+                Assert.InRange((position - previous).TotalSeconds, 0.95 / 600 - 0.000001, 1.05 / 600 + 0.000001);
+            previous = position;
+        }
+        // 0.5 s after the slip it is back within a period of the audio, not still 10 ms ahead (1% took a second).
+        Assert.InRange((previous - (TimeSpan.FromSeconds(1) - TimeSpan.FromMilliseconds(10))).TotalMilliseconds, -4, 4);
     }
 }
