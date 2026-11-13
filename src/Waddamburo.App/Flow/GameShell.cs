@@ -924,8 +924,7 @@ internal sealed class GameShell : IDisposable
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
         if (Options.StartScene == StartScene.WaiwaiTutorial) Hosts.Waiwai = true;
-        if (Options.StartScene == StartScene.AiTutorial) Hosts.AiBattle = true;
-        if (Options.StartScene == StartScene.AiSongSelect)
+        if (Options.StartScene is StartScene.AiSongSelect or StartScene.AiTutorial)
             Players.ChooseMode(aiBattle: true);
         _boot?.Begin("SYSTEM SETUP");
         try

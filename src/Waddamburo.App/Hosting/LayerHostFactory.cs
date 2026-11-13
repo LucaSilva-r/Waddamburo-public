@@ -604,7 +604,7 @@ internal sealed class LayerHostFactory(
         var binding = ModeTutorial = new ModeTutorialHostBinding(aiBattle, PlayerSide, TwoPlayers,
             sounds is null ? null : sounds.Frontend.PlayCue,
             name => (music = sounds?.Bank.PrepareTutorialMusic(name)) is not null,
-            () => music?.Invoke(), counting);
+            () => music?.Invoke());
         return new LumenLayerHost(binding, binding.Attach);
     }
 
