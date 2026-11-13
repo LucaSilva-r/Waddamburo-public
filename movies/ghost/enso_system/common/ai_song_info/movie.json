@@ -22,7 +22,7 @@
       "frames": 1,
       "layers": [
         {
-          "character": "main",
+          "character": "main_clip",
           "name": "main",
           "keys": [
             {
@@ -49,6 +49,19 @@
       }
     },
     "stage": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "box",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "main_clip": {
       "frames": 1,
       "layers": [
         {

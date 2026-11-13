@@ -1,4 +1,4 @@
-// combo_bonus_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// combo_bonus_1p: the combo milestone sign, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -20,7 +20,19 @@
   "sprites": {
     "main": {
       "frames": 21,
-      "layers": [],
+      "layers": [
+        {
+          "character": "word",
+          "name": "word",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as",
         "10": "scripts/stop.as",
@@ -30,6 +42,19 @@
         "wait": 1,
         "start": 11
       }
+    }
+  },
+  "texts": {
+    "word": {
+      "rect": [
+        -90,
+        -20,
+        180,
+        40
+      ],
+      "size": 26,
+      "align": "center",
+      "color": "#ffd23c"
     }
   }
 }

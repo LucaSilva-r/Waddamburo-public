@@ -1,4 +1,4 @@
-// score_add_don_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// score_add_don_1p: the points just scored, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -20,10 +20,35 @@
   "sprites": {
     "main": {
       "frames": 1,
-      "layers": [],
+      "layers": [
+        {
+          "character": "word",
+          "name": "word",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 172,
+              "y": 195
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as"
       }
+    }
+  },
+  "texts": {
+    "word": {
+      "rect": [
+        -200,
+        -16,
+        200,
+        32
+      ],
+      "size": 24,
+      "align": "right",
+      "color": "#ffffff"
     }
   }
 }

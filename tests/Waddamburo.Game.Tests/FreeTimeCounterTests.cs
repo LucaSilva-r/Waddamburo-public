@@ -8,13 +8,13 @@ namespace Waddamburo.Game.Tests;
 /// </summary>
 public sealed class FreeTimeCounterTests
 {
-    private static LumenPlayer load()
+    private static LumenPlayer load(string movie = "indicator/time_counter")
     {
         var directory = AppContext.BaseDirectory;
         while (!Directory.Exists(Path.Combine(directory, "movies", "indicator", "time_counter")))
             directory = Path.GetDirectoryName(directory) ?? throw new DirectoryNotFoundException("movies/indicator/time_counter");
         // The textures only need a size here.
-        var content = LumenMovieContent.LoadPackage(Path.Combine(directory, "movies", "indicator", "time_counter"),
+        var content = LumenMovieContent.LoadPackage(Path.Combine(directory, "movies", movie),
             static _ => (1, 1, new byte[4]));
         Assert.Empty(content.Diagnostics);
         return content.CreatePlayer();
@@ -102,6 +102,40 @@ public sealed class FreeTimeCounterTests
             advance(player, 3);
             Assert.True(player.Diagnostics.IsEmpty, $"{package}: {string.Join("; ", player.Diagnostics.Select(static each => each.Message))}");
         }
+    }
+
+    [Fact]
+    public void TheGameplaySignsFollowTheProvider()
+    {
+        var goGo = load("enso_system/base1p/action_gogotime");
+        advance(goGo, 2);
+        goGo.Publish("play.goGo", LumenHostValue.FromBoolean(true));
+        Assert.True(goGo.TryGotoLabel("", "splash")); // the game's jump: the listener is not set twice
+        advance(goGo, 2);
+        Assert.Equal("GO-GO TIME!", goGo.ReadScriptValue("word.text"));
+        goGo.Publish("play.goGo", LumenHostValue.FromBoolean(false));
+        Assert.Equal("", goGo.ReadScriptValue("word.text"));
+
+        var fire = load("enso_system/base1p/gage_fire_1p");
+        advance(fire, 2);
+        fire.Publish("play.gaugeFull", LumenHostValue.FromBoolean(true));
+        Assert.Equal("MAX", fire.ReadScriptValue("word.text"));
+
+        var combo = load("enso_system/don1p/combo_bonus_don_1p");
+        advance(combo, 2);
+        combo.Emit("combo.milestone", n(200));
+        Assert.Equal("200 COMBO!", combo.ReadScriptValue("word.text"));
+        advance(combo, 90);
+        Assert.Equal("", combo.ReadScriptValue("word.text"));
+
+        var added = load("enso_system/don1p/score_add_don_1p");
+        advance(added, 2);
+        added.Publish("play.score", n(0)); // the first value is where the play stands, not points scored
+        Assert.Null(added.ReadScriptValue("word.text"));
+        added.Publish("play.score", n(960));
+        Assert.Equal("+960", added.ReadScriptValue("word.text"));
+        advance(added, 40);
+        Assert.Equal("", added.ReadScriptValue("word.text"));
     }
 
     [Fact]

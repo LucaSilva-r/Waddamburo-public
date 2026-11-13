@@ -1,4 +1,4 @@
-// action_gogotime: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// action_gogotime: the Go-Go Time sign, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -24,10 +24,36 @@
         "splash": 0,
         "wait": 10
       },
-      "layers": [],
+      "layers": [
+        {
+          "character": "word",
+          "name": "word",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 1000,
+              "y": 215
+            }
+          ]
+        }
+      ],
       "scripts": {
-        "19": "scripts/stop.as"
+        "19": "scripts/stop.as",
+        "0": "scripts/main.as"
       }
+    }
+  },
+  "texts": {
+    "word": {
+      "rect": [
+        -200,
+        -24,
+        400,
+        48
+      ],
+      "size": 40,
+      "align": "center",
+      "color": "#ff5a28"
     }
   }
 }

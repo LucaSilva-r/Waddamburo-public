@@ -1,4 +1,4 @@
-// gage_fire_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// gage_fire_1p: the full gauge's sign, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -26,11 +26,37 @@
         "fever_no": 10,
         "fever": 20
       },
-      "layers": [],
+      "layers": [
+        {
+          "character": "word",
+          "name": "word",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 1028,
+              "y": -152
+            }
+          ]
+        }
+      ],
       "scripts": {
         "19": "scripts/stop.as",
-        "29": "scripts/stop.as"
+        "29": "scripts/stop.as",
+        "0": "scripts/main.as"
       }
+    }
+  },
+  "texts": {
+    "word": {
+      "rect": [
+        -120,
+        -18,
+        120,
+        36
+      ],
+      "size": 28,
+      "align": "right",
+      "color": "#ff5a28"
     }
   }
 }

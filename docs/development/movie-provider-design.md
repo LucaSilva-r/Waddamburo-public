@@ -232,7 +232,8 @@ settled as each step reaches them.
   `player.abekobe`, `player.random`, `player.shinuchi`; event `drum.hit`. Read by `song_info` (title) and the board
   (the drum lights where it was struck).
 - Read by the engine's own movies: the board (`lane_obi`: score, combo), the three gauges, the roll counter, the
-  balloon, the end banner. Their game-style callbacks stay as empty functions, because the gameplay host still calls
+  balloon, the end banner, the Go-Go sign (`play.goGo`), the full gauge's sign (`play.gaugeFull`), the combo sign
+  (`combo.milestone`) and the points popup (worked out in the movie from `play.score`'s changes). Their game-style callbacks stay as empty functions, because the gameplay host still calls
   them: it has not been moved behind an adapter.
 - The edge log shows what a movie is told (`Wd name(value)`), so a provider-driven movie can be compared run to run.
 
