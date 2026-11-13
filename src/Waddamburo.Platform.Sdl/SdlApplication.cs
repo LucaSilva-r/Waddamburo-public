@@ -77,6 +77,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
             int pixelWidth, pixelHeight;
             if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
                 throw sdlFailure("query the window pixel size");
+            if (SystemPriority.PreferHighPerformanceGpu() is { } gpu)
+                Console.WriteLine($"{gpu}.");
             BgfxSupport.Initialize(_window, (uint)pixelWidth, (uint)pixelHeight, debugGpu);
             _bgfxInitialized = true;
             _renderer = new RenderDevice(_window, (uint)pixelWidth, (uint)pixelHeight);

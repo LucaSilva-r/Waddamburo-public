@@ -18,8 +18,29 @@ public static class SystemPriority
             if (OperatingSystem.IsLinux())
                 return requestGameMode();
             if (OperatingSystem.IsWindows())
-                return SetPriorityClass(GetCurrentProcess(), AboveNormalPriorityClass)
-                    ? "above-normal priority" : $"priority class refused ({Marshal.GetLastPInvokeError()})";
+            {
+                var granted = new List<string>
+                {
+                    SetPriorityClass(GetCurrentProcess(), AboveNormalPriorityClass)
+                        ? "above-normal priority" : $"priority class refused ({Marshal.GetLastPInvokeError()})",
+                };
+                // Windows 11 may run a process it judges background-like on efficiency cores at low clocks (EcoQoS),
+                // and lets a minimised one's timers go coarse: neither for the game.
+                // The timer flag is Windows 11's: Windows 10 refuses the whole call over it, so it goes again without.
+                var throttling = new PowerThrottlingState { Version = 1, ControlMask = ExecutionSpeed | IgnoreTimerResolution, StateMask = 0 };
+                var size = Marshal.SizeOf<PowerThrottlingState>();
+                var unthrottled = SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, ref throttling, size);
+                if (!unthrottled)
+                {
+                    throttling.ControlMask = ExecutionSpeed;
+                    unthrottled = SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, ref throttling, size);
+                }
+                granted.Add(unthrottled ? "no power throttling" : $"power throttling kept ({Marshal.GetLastPInvokeError()})");
+                // 1 ms timer resolution: Sleep(1) in the frame cap's pacing sleeps ~1 ms instead of up to 15.6.
+                if (timeBeginPeriod(1) == 0)
+                    granted.Add("1 ms timers");
+                return string.Join(", ", granted);
+            }
         }
         catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
         {
@@ -45,6 +66,28 @@ public static class SystemPriority
         }
     }
 
+    /// <summary>
+    /// Windows: the high-performance GPU for this exe (a laptop's discrete one), as Settings > Display > Graphics sets it,
+    /// unless the player chose one there. DXGI reads it when it creates its factory: call it before the renderer starts.
+    /// </summary>
+    public static string? PreferHighPerformanceGpu()
+    {
+        if (!OperatingSystem.IsWindows() || Environment.ProcessPath is not { } exe)
+            return null;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\DirectX\UserGpuPreferences");
+            if (key.GetValue(exe) is string chosen)
+                return $"GPU preference kept ({chosen.TrimEnd(';')})";
+            key.SetValue(exe, "GpuPreference=2;");
+            return "GPU preference: high performance";
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            return $"GPU preference not set ({exception.Message})";
+        }
+    }
+
     // libgamemode's client entry points (gamemode_client.h dlopens the same library and calls these).
     private static unsafe string requestGameMode()
     {
@@ -60,6 +103,21 @@ public static class SystemPriority
     }
 
     private const uint AboveNormalPriorityClass = 0x8000;
+    private const int ProcessPowerThrottling = 4; // PROCESS_INFORMATION_CLASS.ProcessPowerThrottling
+    private const uint ExecutionSpeed = 0x1, IgnoreTimerResolution = 0x4;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PowerThrottlingState
+    {
+        public uint Version, ControlMask, StateMask;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessInformation(nint process, int informationClass, ref PowerThrottlingState information, int size);
+
+    [DllImport("winmm.dll")]
+    private static extern uint timeBeginPeriod(uint milliseconds);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
