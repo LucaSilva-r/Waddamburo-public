@@ -497,5 +497,10 @@
   "search.no_recent": "最近の検索はありません",
   "search.legend.keys": "入力で検索 · ←→ カーソル · ↑↓ 最近の検索 · ENTER 決定 · TAB/ESC 閉じる",
   "search.legend.filters": "stars>=8  oni=9  ura>0  bpm>180  length<2:30  artist=  mapper=  title=  source=osu,tja,nijiiro,stock",
-  "search.legend.crowns": "crown=fc  oni=notcleared  (notcleared, cleared, fc, dondaful)  ·  すべての語と条件に一致"
+  "search.legend.crowns": "crown=fc  oni=notcleared  (notcleared, cleared, fc, dondaful)  ·  すべての語と条件に一致",
+  "service.vibration": "振動",
+  "service.vibration.hint": "大音符：大音符、連打、風船、くす玉。すべての音符：音符を叩くたび。すべて：太鼓を叩くたび。",
+  "service.vibration.big_notes": "大音符",
+  "service.vibration.every_hit": "すべて",
+  "service.vibration.all_notes": "すべての音符"
 }

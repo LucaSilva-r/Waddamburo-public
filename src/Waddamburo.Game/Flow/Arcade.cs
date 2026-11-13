@@ -6,6 +6,12 @@ namespace Waddamburo.Game.Flow;
 public enum TimingIndicator { Off, GoodBad, Always }
 
 /// <summary>
+/// Which hits rumble a controller: none; big notes, rolls, balloons and kusudama; also every small note hit; or every
+/// drum hit, a stray one too.
+/// </summary>
+public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
+
+/// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
 /// <c>config_version</c>; an older file gets each later version's settings appended (with their
@@ -81,6 +87,9 @@ public sealed record ArcadeSettings
         # drum_sound_in_songs: the don/ka sound of your hits during a song (the menus keep theirs). false = silent
         # drum, as the console games' 音なし.
         drum_sound_in_songs = true
+        # controller_vibration: off, big (big notes, rolls, balloons and kusudama), notes (every note hit too) or all (every
+        # drum hit), on the controllers bound to the player's drum (Settings > Drum Controls).
+        controller_vibration = big
 
         """,
         """
@@ -575,6 +584,9 @@ public sealed record ArcadeSettings
     /// <summary>The drum's don/ka sound on hits during a song; the menus keep theirs (the console games' 音なし when off).</summary>
     public bool DrumSoundInSongs { get; init; } = true;
 
+    /// <summary>Controllers bound to a player's drum rumble on big notes, rolls, balloons and kusudama.</summary>
+    public ControllerVibration ControllerVibration { get; init; } = ControllerVibration.BigNotes;
+
     /// <summary>The player accepted that playing online shows their IP address to the other player.</summary>
     public bool OnlineWarningAccepted { get; init; }
 
@@ -823,6 +835,14 @@ public sealed record ArcadeSettings
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
                 "drum_sound_in_songs" => settings with { DrumSoundInSongs = boolean(value, index) },
+                "controller_vibration" => settings with { ControllerVibration = value.ToLowerInvariant() switch
+                {
+                    "off" or "false" => ControllerVibration.Off,
+                    "big" or "true" => ControllerVibration.BigNotes,
+                    "notes" => ControllerVibration.AllNotes,
+                    "all" => ControllerVibration.EveryHit,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: controller_vibration is off, big, notes or all, not '{value}'."),
+                } },
                 "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
                 "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
@@ -943,6 +963,13 @@ public sealed record ArcadeSettings
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
             ["drum_sound_in_songs"] = settings.DrumSoundInSongs ? "true" : "false",
+            ["controller_vibration"] = settings.ControllerVibration switch
+            {
+                ControllerVibration.Off => "off",
+                ControllerVibration.AllNotes => "notes",
+                ControllerVibration.EveryHit => "all",
+                _ => "big",
+            },
             ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
             ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",

@@ -432,7 +432,16 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 Hint: S("service.set_up_all_pads.hint")),
             new(S("service.reset_to_default"), 400, Enter: () => set(s => s with { Controls = ControlBindings.Reset(s.Controls, _player, _device) }),
                 Hint: S("service.reset_to_default.hint")),
-            new(S("service.io_test"), 400, Gap: true, Enter: () => open(Page.Io)),
+            new(S("service.vibration"), 400, () => $"{{{S(_settings.ControllerVibration switch
+                {
+                    ControllerVibration.Off => "service.off",
+                    ControllerVibration.AllNotes => "service.vibration.all_notes",
+                    ControllerVibration.EveryHit => "service.vibration.every_hit",
+                    _ => "service.vibration.big_notes",
+                })}}}", 640,
+                Step: step => set(s => s with { ControllerVibration = (ControllerVibration)wrap((int)s.ControllerVibration, step, 0, 3) }),
+                IsDefault: () => _settings.ControllerVibration == Defaults.ControllerVibration, Gap: true, Hint: S("service.vibration.hint")),
+            new(S("service.io_test"), 400, Enter: () => open(Page.Io)),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Libraries =>

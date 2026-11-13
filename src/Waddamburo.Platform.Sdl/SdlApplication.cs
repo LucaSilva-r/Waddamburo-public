@@ -477,6 +477,20 @@ public sealed unsafe partial class SdlApplication : IDisposable
     private readonly System.Text.StringBuilder _typed = new();
 
     /// <summary>Starts taking typed text (the system's text input, IME included); see <see cref="TakeTypedText"/>.</summary>
+    /// <summary>
+    /// Rumbles controllers <paramref name="pads"/> (their numbers, 1 = the first connected; unknown ones are skipped):
+    /// low- and high-frequency motor strength 0-1, for <paramref name="duration"/> (a newer rumble replaces it).
+    /// </summary>
+    public void Rumble(IEnumerable<int> pads, float low, float high, TimeSpan duration)
+    {
+        ArgumentNullException.ThrowIfNull(pads);
+        ensureOwnerThread();
+        static ushort strength(float value) => (ushort)(Math.Clamp(value, 0, 1) * ushort.MaxValue);
+        foreach (var number in pads)
+            if (number >= 1 && number <= _pads.Length && _pads[number - 1].Pad != IntPtr.Zero)
+                SDL_RumbleGamepad((SDL_Gamepad*)_pads[number - 1].Pad, strength(low), strength(high), (uint)duration.TotalMilliseconds);
+    }
+
     public void StartTextInput()
     {
         ensureOwnerThread();

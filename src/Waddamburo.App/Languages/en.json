@@ -497,5 +497,10 @@
   "search.no_recent": "No recent searches",
   "search.legend.keys": "TYPE TO SEARCH · ←→ CURSOR · ↑↓ RECENT SEARCHES · ENTER OPEN · TAB/ESC CLOSE",
   "search.legend.filters": "stars>=8  oni=9  ura>0  bpm>180  length<2:30  artist=  mapper=  title=  source=osu,tja,nijiiro,stock",
-  "search.legend.crowns": "crown=fc  oni=notcleared  (notcleared, cleared, fc, dondaful)  ·  every word and filter must match"
+  "search.legend.crowns": "crown=fc  oni=notcleared  (notcleared, cleared, fc, dondaful)  ·  every word and filter must match",
+  "service.vibration": "VIBRATION",
+  "service.vibration.hint": "Big notes: big notes, rolls, balloons and kusudama. All notes: every note hit too. Every hit: any drum hit.",
+  "service.vibration.big_notes": "BIG NOTES",
+  "service.vibration.every_hit": "EVERY HIT",
+  "service.vibration.all_notes": "ALL NOTES"
 }

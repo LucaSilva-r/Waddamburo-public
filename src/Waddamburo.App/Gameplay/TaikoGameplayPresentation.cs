@@ -30,6 +30,18 @@ internal enum GameplaySoundEvent
     RareHit,
     SynchroCutIn,
     SoloCutIn,
+    /// <summary>A big note hit (no sound: controllers rumble, #35).</summary>
+    BigHit,
+    /// <summary>A small don hit (no sound: controllers rumble).</summary>
+    DonHit,
+    /// <summary>A small ka hit (no sound: controllers rumble).</summary>
+    KaHit,
+    /// <summary>A don on a roll, balloon or kusudama (no sound: controllers rumble).</summary>
+    LongDonHit,
+    /// <summary>A ka on a roll (no sound: controllers rumble).</summary>
+    LongKaHit,
+    /// <summary>A hit on a big roll (no sound: controllers rumble).</summary>
+    BigLongHit,
 }
 
 /// <summary>
@@ -557,6 +569,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 var previousScore = score.Value;
                 if (score.Apply(progress, counted.CurrentTime)) updateScore(score.Value - previousScore);
                 if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
+                sound(progress.Note.Kind == PlayableLongNoteKind.BigRoll ? GameplaySoundEvent.BigLongHit
+                    : progress.LastAction is TaikoInputAction.LeftKa or TaikoInputAction.RightKa ? GameplaySoundEvent.LongKaHit
+                    : GameplaySoundEvent.LongDonHit);
             };
             var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
             // Player name board (traced call sequence; the name is host text, see NameText).
@@ -658,6 +673,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!judgement.StrongHitCompleted && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good)
                 {
                     if (judgement.HitObject.IsRare) sound(GameplaySoundEvent.RareHit);
+                    sound(judgement.HitObject.IsStrong ? GameplaySoundEvent.BigHit
+                        : judgement.HitObject.Kind == PlayableNoteKind.Ka ? GameplaySoundEvent.KaHit : GameplaySoundEvent.DonHit);
                     if (score.Combo == 50 || score.Combo % 100 == 0 && score.Combo <= 5000)
                         sound(GameplaySoundEvent.Combo, score.Combo);
                 }

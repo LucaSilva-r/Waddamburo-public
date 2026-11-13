@@ -114,6 +114,13 @@ internal sealed class GameplaySounds(SoundBank bank)
                 bank.Play("VO_RESULT", 0);
                 bank.Play("SE_GAME", 15);
                 break;
+            case GameplaySoundEvent.BigHit:
+            case GameplaySoundEvent.DonHit:
+            case GameplaySoundEvent.KaHit:
+            case GameplaySoundEvent.LongDonHit:
+            case GameplaySoundEvent.LongKaHit:
+            case GameplaySoundEvent.BigLongHit:
+                break; // the controllers' rumble (GameShell), not a sound
             default:
                 throw new ArgumentOutOfRangeException(nameof(sound));
         }
