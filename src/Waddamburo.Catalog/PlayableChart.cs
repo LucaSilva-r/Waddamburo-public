@@ -32,6 +32,7 @@ public readonly record struct PlayableHitObject
         IsKo = IsKo,
         IsRare = IsRare,
         Branch = Branch,
+        EndsMeasure = EndsMeasure,
     };
 
     public TimeSpan StartTime { get; }
@@ -69,6 +70,13 @@ public readonly record struct PlayableHitObject
 
     /// <summary>The 譜面分岐 route this note belongs to; null: played on every route.</summary>
     public ChartBranch? Branch { get; init; }
+
+    /// <summary>
+    /// A fumen note at its measure's very end, where the next measure (and its scroll) starts: it scrolls at its own
+    /// measure's speed. Presentation only: not part of the chart hash.
+    /// </summary>
+    public bool EndsMeasure { get; init; }
+
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }
 

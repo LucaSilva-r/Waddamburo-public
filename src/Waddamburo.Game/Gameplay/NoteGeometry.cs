@@ -75,12 +75,13 @@ public sealed class NoteGeometry
     /// hidden (#SUDDEN) or off the stage. <paramref name="hitNote"/>: a hit note or its text (#SUDDEN and note mods
     /// apply); <paramref name="barLine"/>: it stands across the way it travels (complex scroll), notes stay upright.
     /// </summary>
-    public NotePlacement? Place(TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool hitNote = false, bool barLine = false)
+    public NotePlacement? Place(TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool hitNote = false,
+        bool barLine = false, TimeSpan? controlTime = null)
     {
-        var scroll = _chart.ScrollPointAt(noteTime, route);
+        var scroll = _chart.ScrollPointAt(controlTime ?? noteTime, route);
         if (hitNote && scroll.Show is { } show && noteTime - time > show)
             return null;
-        var (x, y) = Point(noteTime, time, noteTime, route, hitNote);
+        var (x, y) = Point(noteTime, time, controlTime ?? noteTime, route, hitNote);
         y += yOffset;
         var margin = WideView ? 1500 : 100;
         if (x < -margin || x > 1280 + margin || y < -margin || y > 720 + margin)
@@ -96,11 +97,15 @@ public sealed class NoteGeometry
         return new NotePlacement(new LumenMatrix(size * cos, size * sin, -size * sin, size * cos, x, y), alpha);
     }
 
-    /// <summary>When a note due at <paramref name="noteTime"/> can be on the lane (so a frame skips the rest with one comparison).</summary>
-    public (TimeSpan From, TimeSpan Until) Window(TimeSpan noteTime, ChartBranch? route)
+    /// <summary>
+    /// When a note due at <paramref name="noteTime"/> can be on the lane (so a frame skips the rest with one comparison).
+    /// <paramref name="controlTime"/>: where its speed is read, when not at the note (<see cref="ScrollTime"/>).
+    /// </summary>
+    public (TimeSpan From, TimeSpan Until) Window(TimeSpan noteTime, ChartBranch? route, TimeSpan? controlTime = null)
     {
-        var scroll = _chart.ScrollPointAt(noteTime, route);
-        var speed = ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(noteTime, route), Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary));
+        var at = controlTime ?? noteTime;
+        var scroll = _chart.ScrollPointAt(at, route);
+        var speed = ScrollPixelsPerSecond(_chart.BeatsPerMinuteAt(at, route), Math.Sqrt(scroll.Multiplier * scroll.Multiplier + scroll.Imaginary * scroll.Imaginary));
         // A moved camera or playfield: listed as long as any of it could be on screen (a turned or shrunk lane).
         if (WideView && !scroll.ByBeat && speed >= 1 && scroll.Show is null && scroll.Wait is null)
             return (noteTime - TimeSpan.FromSeconds(4000 / speed), noteTime + TimeSpan.FromSeconds(4000 / speed));
@@ -118,11 +123,17 @@ public sealed class NoteGeometry
         if (scroll.Show is not null || scroll.Wait is not null)
             return (scroll.Show is { } show ? noteTime - show : TimeSpan.MinValue, noteTime + TimeSpan.FromSeconds(1500 / Math.Max(1, speed)));
         if (scroll.Multiplier > 0 && scroll.Imaginary == 0 && _effects.JudgeMoves.IsEmpty)
-            return VisibleWindow(noteTime, pixelsPerSecond(noteTime, route), HitX);
+            return VisibleWindow(noteTime, pixelsPerSecond(at, route), HitX);
         // Backwards or slanted scroll, a moving target: from any side, within a screen's diagonal of the target.
         var reach = TimeSpan.FromSeconds(1500 / speed);
         return speed < 1 ? (TimeSpan.MinValue, TimeSpan.MaxValue) : (noteTime - reach, noteTime + reach);
     }
+
+    /// <summary>
+    /// Where a note's speed is read: at the note, or just before it for a note that ends its measure (fumen), which
+    /// shares its time with the next measure's speed change but keeps its own measure's.
+    /// </summary>
+    public static TimeSpan ScrollTime(PlayableHitObject note) => note.EndsMeasure ? note.StartTime - TimeSpan.FromTicks(1) : note.StartTime;
 
     /// <summary>A bar line follows whichever route is playing, so it stays listed for as long as the slowest would show it.</summary>
     public (TimeSpan From, TimeSpan Until) BarWindow(TimeSpan time) => _chart.ScrollPointAt(time).ByBeat || WideView

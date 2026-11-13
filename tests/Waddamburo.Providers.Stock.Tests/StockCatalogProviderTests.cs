@@ -109,6 +109,27 @@ public sealed class StockCatalogProviderTests
     }
 
     [Fact]
+    public async Task ANoteOnItsMeasuresEndKeepsThatMeasuresScroll()
+    {
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "曲", "J-POP"));
+        // A quarter measure at scroll 0.5 whose don sits on its end, then a measure at 0.8 with its own don at its start.
+        data.WriteBytes("fumen/song/solo/song_e.bin", Fumen(
+            new Measure(120, 0, [N(1, 500)], Speed: 0.5f),
+            new Measure(120, 500, [N(1, 0)], Speed: 0.8f)));
+        var provider = new StockCatalogProvider(data.Path);
+        var chart = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs[0].Charts);
+
+        var playable = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
+
+        Assert.Equal([true, false], playable.HitObjects.Select(static note => note.EndsMeasure));
+        // Both share one time; drawing reads the marked one's speed just before it (NoteGeometry.ScrollTime).
+        Assert.Equal(playable.HitObjects[0].StartTime, playable.HitObjects[1].StartTime);
+        Assert.Equal(0.5, playable.ScrollAt(playable.HitObjects[0].StartTime - TimeSpan.FromTicks(1)));
+        Assert.Equal(0.8, playable.ScrollAt(playable.HitObjects[1].StartTime), 6);
+    }
+
+    [Fact]
     public async Task EarlyFirstMeasureShiftsChartTimeThroughTheAuthoredOffset()
     {
         using var data = new TemporaryData();
