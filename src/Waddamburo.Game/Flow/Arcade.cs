@@ -78,6 +78,9 @@ public sealed record ArcadeSettings
         stereo_panning = true
         # mute_in_background: fade the sound out while the window is not focused.
         mute_in_background = true
+        # drum_sound_in_songs: the don/ka sound of your hits during a song (the menus keep theirs). false = silent
+        # drum, as the console games' 音なし.
+        drum_sound_in_songs = true
 
         """,
         """
@@ -569,6 +572,9 @@ public sealed record ArcadeSettings
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
 
+    /// <summary>The drum's don/ka sound on hits during a song; the menus keep theirs (the console games' 音なし when off).</summary>
+    public bool DrumSoundInSongs { get; init; } = true;
+
     /// <summary>The player accepted that playing online shows their IP address to the other player.</summary>
     public bool OnlineWarningAccepted { get; init; }
 
@@ -816,6 +822,7 @@ public sealed record ArcadeSettings
                 "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
+                "drum_sound_in_songs" => settings with { DrumSoundInSongs = boolean(value, index) },
                 "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
                 "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
@@ -935,6 +942,7 @@ public sealed record ArcadeSettings
             ["upscale_threads"] = settings.UpscaleThreads,
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
+            ["drum_sound_in_songs"] = settings.DrumSoundInSongs ? "true" : "false",
             ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
             ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",

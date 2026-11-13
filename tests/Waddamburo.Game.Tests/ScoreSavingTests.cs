@@ -631,8 +631,8 @@ public sealed class ScoreSavingTests
         try
         {
             var key = chart().Key;
-            PlayRecord play(bool cleared, int miss) => new(Guid.NewGuid(), 42, "sha", key, "normal",
-                new TaikoPlayResult(TaikoCourse.Oni, 1000, 3 - miss, 0, miss, 3 - miss, 0, 50, cleared),
+            PlayRecord play(bool cleared, int miss, int good = 1) => new(Guid.NewGuid(), 42, "sha", key, "normal",
+                new TaikoPlayResult(TaikoCourse.Oni, 1000, Math.Max(0, 3 - miss - good), good, miss, 3 - miss, 0, 50, cleared),
                 DateTimeOffset.UtcNow, new TaikoReplay().Encode());
             var upload = ChartUpload.From(chart(), TaikoCourse.Oni, null);
             using (var store = new ScoreStore(path))
@@ -649,6 +649,9 @@ public sealed class ScoreSavingTests
             }
             using var reopened = new ScoreStore(path); // migrations run once
             Assert.Equal(TaikoCrown.FullCombo, reopened.Crowns(42)[key.ToString()]);
+            // Every note 良: Dondaful.
+            reopened.Save(play(cleared: true, miss: 0, good: 0), upload);
+            Assert.Equal(TaikoCrown.Dondaful, reopened.Crowns(42)[key.ToString()]);
         }
         finally
         {
@@ -678,7 +681,7 @@ public sealed class ScoreSavingTests
             store.Save(new PlayRecord(id, 42, "sha", played, "normal",
                 new TaikoPlayResult(TaikoCourse.Oni, 700, 3, 0, 0, 3, 0, 50, true), DateTimeOffset.UtcNow,
                 new TaikoReplay().Encode()), ChartUpload.From(chart(), TaikoCourse.Oni, null));
-            Assert.Equal(TaikoCrown.FullCombo, store.Crowns(42)[played.ToString()]);
+            Assert.Equal(TaikoCrown.Dondaful, store.Crowns(42)[played.ToString()]); // the local play is all 良
             Assert.Equal(500, store.PreviousBest(42, "sha", id));
             Assert.Equal(700, store.PreviousBest(42, "sha", Guid.NewGuid()));
             Assert.Null(store.PreviousBest(7, "sha", id));

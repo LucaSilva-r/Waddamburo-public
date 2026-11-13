@@ -183,6 +183,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(T("section.sound")),
         new(Setting: toggle("settings.stereo_panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v })),
         new(Setting: toggle("settings.mute_in_background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v })),
+        new(Setting: toggle("settings.drum_sound_in_songs", static s => s.DrumSoundInSongs, static (s, v) => s with { DrumSoundInSongs = v })),
         new(Setting: new(T("settings.audio_buffer"), static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
             static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint"))),

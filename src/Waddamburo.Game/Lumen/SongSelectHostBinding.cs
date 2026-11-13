@@ -840,7 +840,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     if (crowns is not null)
                         foreach (var song in catalog.CourseStarSongs(course, stars))
                             if (crown(song, course, crowns) is { } won and not TaikoCrown.None)
-                                (silver, gold) = (silver + 1, gold + (won == TaikoCrown.FullCombo ? 1 : 0));
+                                (silver, gold) = (silver + 1, gold + (won >= TaikoCrown.FullCombo ? 1 : 0));
                     tryInvoke("SetCourseStarSilverNum", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(course),
                         LumenHostValue.FromNumber(stars), LumenHostValue.FromNumber(silver));
                     tryInvoke("SetCourseStarGoldNum", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(course),
@@ -885,7 +885,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     continue;
                 var bit = 1 << (course == TaikoCourse.Ura ? 7 : (int)course);
                 silver |= bit;
-                if (crown == TaikoCrown.FullCombo)
+                if (crown >= TaikoCrown.FullCombo) // the movie's gold crown; a Dondaful shows as one too
                     gold |= bit;
             }
             invoke("SetClearBits", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(silver),

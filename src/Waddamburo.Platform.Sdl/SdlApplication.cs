@@ -481,12 +481,14 @@ public sealed unsafe partial class SdlApplication : IDisposable
     {
         ensureOwnerThread();
         _typed.Clear();
+        _textInput = true;
         SDL_StartTextInput(_window);
     }
 
     public void StopTextInput()
     {
         ensureOwnerThread();
+        _textInput = false;
         SDL_StopTextInput(_window);
         _typed.Clear();
     }
@@ -535,13 +537,17 @@ public sealed unsafe partial class SdlApplication : IDisposable
         SdlKeyboardKey.Left, SdlKeyboardKey.Right, SdlKeyboardKey.Up, SdlKeyboardKey.Down,
         SdlInputBindings.Pads[0], SdlInputBindings.Pads[3], SdlInputBindings.Pads[4], SdlInputBindings.Pads[7],
     ];
+    // While a text field takes typing (StartTextInput), Backspace and Delete repeat too: elsewhere Backspace may be a
+    // BACK button, which must not leave several pages at once.
+    private static readonly SdlKeyboardKey[] RepeatingTextKeys = [.. RepeatingKeys, SdlKeyboardKey.Backspace, SdlKeyboardKey.Delete];
     private const ulong RepeatDelayNs = 400_000_000, RepeatIntervalNs = 50_000_000;
     private readonly Dictionary<SdlKeyboardKey, ulong> _repeatAt = [];
+    private bool _textInput;
 
     private void repeatHeld(List<SdlKeyPress> presses)
     {
         var now = SDL_GetTicksNS();
-        foreach (var key in RepeatingKeys)
+        foreach (var key in _textInput ? RepeatingTextKeys : RepeatingKeys)
         {
             if (!_menuInput || _capturing || !_pressedKeys.Contains(key))
             {

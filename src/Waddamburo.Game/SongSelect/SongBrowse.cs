@@ -74,14 +74,22 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
 
     /// <summary>
     /// Whether every word of <paramref name="query"/> appears (ignoring case) in the song's titles,
-    /// subtitles, artist or mapper, as written or with their kana in romaji (<see cref="Romaji"/>).
+    /// subtitles, artist or mapper, as written or with their kana in romaji (<see cref="Romaji"/>), and every filter holds
+    /// (<see cref="Filter"/>: <c>stars&gt;=8</c>, <c>oni&gt;=9</c>, <c>ura&gt;0</c>, <c>bpm&gt;180</c>, <c>length&lt;2:30</c>,
+    /// <c>artist=</c>, <c>mapper=</c>, <c>title=</c>, and with <paramref name="crownOf"/> the player's crowns: <c>crown=fc</c>,
+    /// <c>oni=notcleared</c>; <c>source=osu,tja</c>).
+    /// Filters and words all have to hold (a comma list in one filter is any of its values).
     /// </summary>
-    public static bool Matches(SongDescriptor song, string query)
+    public static bool Matches(SongDescriptor song, string query, Func<SongChartDescriptor, Scores.TaikoCrown>? crownOf = null)
     {
         ArgumentNullException.ThrowIfNull(song);
-        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (words.Length == 0)
+        var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var filters = tokens.Select(token => (Token: token, Holds: Filter(token, crownOf))).ToArray();
+        var words = filters.Where(static filter => filter.Holds is null).Select(static filter => filter.Token).ToArray();
+        if (tokens.Length == 0 || !filters.All(filter => filter.Holds?.Invoke(song) ?? true))
             return false;
+        if (words.Length == 0)
+            return true;
         var text = string.Join('\n', new[]
         {
             song.Title.Primary, song.Title.English, song.Title.Japanese, song.Subtitle, song.EnglishSubtitle,
@@ -92,6 +100,97 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
         return words.All(word => text.Contains(word, StringComparison.OrdinalIgnoreCase)
             || romaji.Contains(Romaji.Fold(word), StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// A search filter token (osu!'s style: key, operator <c>= : &gt; &lt; &gt;= &lt;=</c>, value) as a test on a song;
+    /// null when the token isn't one (it is then a word to find). Levels: <c>stars</c> any chart's, a course name
+    /// (easy, normal, hard, oni, ura) that course's (a song without the course never matches). Length in seconds or m:ss. Crowns (with
+    /// <paramref name="crownOf"/>): <c>crown</c> any chart's, a course name that course's; notcleared, cleared, fc, dondaful.
+    /// </summary>
+    public static Func<SongDescriptor, bool>? Filter(string token, Func<SongChartDescriptor, Scores.TaikoCrown>? crownOf = null)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        var at = token.IndexOfAny(['=', ':', '>', '<']);
+        if (at <= 0 || at == token.Length - 1)
+            return null;
+        var key = token[..at].ToLowerInvariant();
+        var op = token[at + 1] == '=' && token[at] is '>' or '<' ? token.Substring(at, 2) : token[at].ToString();
+        var value = token[(at + op.Length)..];
+        if (value.Length == 0)
+            return null;
+        bool compare(double actual, double wanted) => op switch
+        {
+            ">" => actual > wanted, "<" => actual < wanted, ">=" => actual >= wanted, "<=" => actual <= wanted,
+            _ => Math.Abs(actual - wanted) < 0.5,
+        };
+        bool number(out double wanted) =>
+            double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out wanted);
+        bool contains(string? text) => op is "=" or ":" && text?.Contains(value, StringComparison.OrdinalIgnoreCase) == true;
+        TaikoCourse? course = key switch
+        {
+            "easy" or "kantan" => TaikoCourse.Easy, "normal" or "futsuu" => TaikoCourse.Normal,
+            "hard" or "muzukashii" => TaikoCourse.Hard, "oni" => TaikoCourse.Oni, "ura" or "edit" => TaikoCourse.Ura,
+            _ => null,
+        };
+        // Only songs that have the course: ura>0 is "has an ura", and ura<5 leaves out songs without one.
+        if (course is { } wantedCourse && number(out var level))
+            return song => song.Charts.Any(chart => chart.Course == wantedCourse && compare(chart.Level ?? 0, level));
+        // Crowns: none < cleared < full combo < Dondaful, so crown>=fc takes both gold ones.
+        if (crownOf is not null && (course is not null || key == "crown") && crown(value) is { } wantedCrown)
+            return song => song.Charts.Any(chart => (course is null || chart.Course == course)
+                && compare((int)crownOf(chart), (int)wantedCrown));
+        return key switch
+        {
+            "stars" or "star" or "level" when number(out var stars) =>
+                song => song.Charts.Any(chart => compare(chart.Level ?? 0, stars)),
+            "bpm" when number(out var bpm) => song => song.Bpm is { } actual && compare(actual, bpm),
+            "length" or "len" when seconds(value) is { } length => song => song.Length is { } actual && compare(actual.TotalSeconds, length),
+            "artist" => song => contains(song.Artist),
+            "mapper" or "creator" or "charter" => song => contains(song.Creator),
+            "title" => song => contains(song.Title.Primary) || contains(song.Title.English) || contains(song.Title.Japanese),
+            // source=osu,tja: any of the listed libraries (osu = lazer and stable).
+            "source" or "src" or "library" when op is "=" or ":" && sources(value) is { Count: > 0 } wanted =>
+                song => wanted.Contains(song.Key.Source),
+            _ => null,
+        };
+    }
+
+    private static HashSet<SongSourceKind>? sources(string value)
+    {
+        var wanted = new HashSet<SongSourceKind>();
+        foreach (var name in value.ToLowerInvariant().Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            SongSourceKind[] kinds = name switch
+            {
+                "osu" => [SongSourceKind.OsuLazer, SongSourceKind.OsuStable],
+                "lazer" or "osulazer" => [SongSourceKind.OsuLazer],
+                "stable" or "osustable" => [SongSourceKind.OsuStable],
+                "tja" => [SongSourceKind.Tja],
+                "nijiiro" or "niji" => [SongSourceKind.Nijiiro],
+                "stock" or "official" or "green" => [SongSourceKind.Stock],
+                _ => [],
+            };
+            if (kinds.Length == 0)
+                return null; // an unknown name: not a filter, a word
+            wanted.UnionWith(kinds);
+        }
+        return wanted;
+    }
+
+    private static Scores.TaikoCrown? crown(string value) => value.ToLowerInvariant() switch
+    {
+        "none" or "notcleared" or "uncleared" or "failed" => Scores.TaikoCrown.None,
+        "clear" or "cleared" or "silver" => Scores.TaikoCrown.Clear,
+        "fc" or "fullcombo" or "gold" => Scores.TaikoCrown.FullCombo,
+        "dfc" or "dondaful" or "donderful" or "zenryo" or "rainbow" => Scores.TaikoCrown.Dondaful,
+        _ => null,
+    };
+
+    // "150" or "2:30", in seconds.
+    private static double? seconds(string value) =>
+        value.Split(':') is [var minutes, var rest] && int.TryParse(minutes, CultureInfo.InvariantCulture, out var m)
+            && int.TryParse(rest, CultureInfo.InvariantCulture, out var s) ? m * 60 + s
+        : double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var total) ? total : null;
 
     private IOrderedEnumerable<SongDescriptor> sort(IEnumerable<SongDescriptor> songs)
     {

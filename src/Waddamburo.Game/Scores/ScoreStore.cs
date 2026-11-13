@@ -7,7 +7,8 @@ using Waddamburo.Game.Gameplay;
 
 namespace Waddamburo.Game.Scores;
 
-public enum TaikoCrown { None, Clear, FullCombo }
+/// <summary>A chart's best crown, as the server numbers them (Dondaful 3: 全良, no 可 and no 不可).</summary>
+public enum TaikoCrown { None, Clear, FullCombo, Dondaful }
 
 /// <summary>A player's best on one chart, as the server keeps it (crown 0 none, 1 clear, 2 full combo).</summary>
 public sealed record RemoteBest(string Sha256, long Score, int Crown);
@@ -871,7 +872,7 @@ public sealed class ScoreStore : IDisposable
         using var command = _connection.CreateCommand();
         command.CommandText = """
             SELECT chart_key, MAX(crown) FROM (
-                SELECT chart_key, cleared + (cleared AND miss = 0) AS crown FROM plays WHERE baid = $baid
+                SELECT chart_key, cleared + (cleared AND miss = 0) + (cleared AND miss = 0 AND good = 0) AS crown FROM plays WHERE baid = $baid
                 UNION ALL
                 SELECT hashes.chart_key, bests.crown FROM remote_bests bests
                 JOIN chart_hashes hashes ON hashes.sha256 = bests.sha256 WHERE bests.baid = $baid

@@ -67,6 +67,47 @@ public sealed class SongBrowseTests
     }
 
     [Fact]
+    public void SearchFiltersLikeOsu()
+    {
+        // Courses by index: easy 3, normal 5, hard 7, oni 9; no ura.
+        var target = song("Senbonzakura", artist: "Kurousa-P", levels: [3, 5, 7, 9], bpm: 154)
+            with { Creator = "mapper", Length = TimeSpan.FromSeconds(125) };
+        Assert.True(SongBrowse.Matches(target, "stars>=9"));
+        Assert.False(SongBrowse.Matches(target, "stars>9"));
+        Assert.True(SongBrowse.Matches(target, "oni=9 hard<=7 easy<4"));
+        Assert.False(SongBrowse.Matches(target, "ura>0"));
+        Assert.False(SongBrowse.Matches(target, "ura<5")); // a course filter needs the course
+        Assert.False(SongBrowse.Matches(target, "ura=0"));
+        Assert.True(SongBrowse.Matches(target, "bpm>150 length<2:30 length>=125"));
+        Assert.True(SongBrowse.Matches(target, "senbon artist=kurousa mapper:MAP"));
+        Assert.False(SongBrowse.Matches(target, "senbon artist=other"));
+        Assert.False(SongBrowse.Matches(target, "title=other stars>1"));
+        // The test songs are osu!lazer's.
+        Assert.True(SongBrowse.Matches(target, "source=osu stars>=9"));
+        Assert.True(SongBrowse.Matches(target, "source=tja,lazer"));
+        Assert.False(SongBrowse.Matches(target, "source=tja,nijiiro"));
+        // Not a filter: a word to find (re:zero's colon, an unknown key).
+        Assert.True(SongBrowse.Matches(song("Re:Zero"), "re:zero"));
+    }
+
+    [Fact]
+    public void SearchFiltersByThePlayersCrowns()
+    {
+        // Courses by index: easy cleared, normal full combo, hard Dondaful, oni not cleared.
+        var target = song("Senbonzakura", levels: [3, 5, 7, 9]);
+        Scores.TaikoCrown[] byCourse = [Scores.TaikoCrown.Clear, Scores.TaikoCrown.FullCombo, Scores.TaikoCrown.Dondaful, Scores.TaikoCrown.None];
+        Scores.TaikoCrown crownOf(SongChartDescriptor chart) => byCourse[(int)chart.Course!.Value];
+        Assert.True(SongBrowse.Matches(target, "oni=notcleared", crownOf));
+        Assert.False(SongBrowse.Matches(target, "oni>=cleared", crownOf));
+        Assert.True(SongBrowse.Matches(target, "hard=dondaful normal=fc easy=cleared", crownOf));
+        Assert.True(SongBrowse.Matches(target, "crown=dondaful", crownOf));
+        Assert.True(SongBrowse.Matches(target, "crown>=fc oni>=9", crownOf));
+        Assert.False(SongBrowse.Matches(target, "normal=dondaful", crownOf));
+        // Without crowns (no player) a crown token is just a word.
+        Assert.False(SongBrowse.Matches(target, "oni=notcleared"));
+    }
+
+    [Fact]
     public void CyclingWrapsAround()
     {
         Assert.Equal(SongGroupMode.All, new SongBrowse(SongGroupMode.Length).NextGroup().Group);

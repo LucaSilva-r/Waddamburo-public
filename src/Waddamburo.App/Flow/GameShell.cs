@@ -679,7 +679,11 @@ internal sealed class GameShell : IDisposable
                     baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
             _boot.Begin("GAMEPLAY DATA");
             Gameplay = new TaikoGameplayPresentation((lane, action) =>
-                Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
+            {
+                // 音なし (reported on Discord): the hits are silent in songs only, the menus keep their drum.
+                if (Arcade.DrumSoundInSongs)
+                    Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon);
+            },
                 Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
                 () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
             _costumeIcons = new CostumeIconTextures(Application, _nutData, dataRoot);
@@ -731,7 +735,7 @@ internal sealed class GameShell : IDisposable
                 _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart);
             }
             _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
-            _search = new SongSearch(this, _libraries.Snapshot, Painter);
+            _search = new SongSearch(this, _libraries.Snapshot);
             _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
             Room = new RoomOverlay(this, Painter);
             Match = new OnlineMatch(this);
@@ -1040,6 +1044,7 @@ internal sealed class GameShell : IDisposable
             SceneTextures.Release(Application, _indicatorTextures);
             _home.Dispose();
             _service?.Dispose();
+            _search?.Dispose();
             Book.Save();
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
@@ -1399,12 +1404,19 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(players(scene, interpolation));
         }
         foreach (var overlay in _inputOverlays)
-            quads.AddRange(overlay.Quads());
+            if (overlay != _search)
+                quads.AddRange(overlay.Quads());
         quads.AddRange(indicatorQuads(true));
         quads.AddRange(pill());
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
             quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
+        // Song search is a menu page: everything under it frosted, as the settings are.
+        if (_search.IsOpen)
+        {
+            frosted = quads.Count;
+            quads.AddRange(_search.Quads());
+        }
         // The frame reads the reused list without a copy: valid until the next one (the presenter detaches what it holds).
         var result = RenderFrame.Shared(RenderColor.Black, quads, (double)scene.StageWidth / scene.StageHeight,
             blurredQuads: frosted, backdropBrightness: HomeControls.BackdropBrightness);
