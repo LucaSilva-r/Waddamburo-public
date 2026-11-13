@@ -1,10 +1,16 @@
-// The callbacks the game calls on this movie. Skeleton: each one still has to be written.
-import flash.external.ExternalInterface;
-
+// The soul gauge, read from the provider.
 var self = this;
+var WIDTH = 776;
 
-// Called as: (number) -> undefined
-ExternalInterface.addCallback("SetCurrentGauge", this, function(current_gage) {
+Wd.on("play.gauge", function(gauge) {
+    self.bar._xscale = gauge == undefined ? 0 : gauge * 100;
+});
+Wd.on("play.gaugeClearLine", function(line) {
+    self.mark._visible = line != undefined;
+    if (line != undefined) self.mark._x = 252 + line * WIDTH;
+});
+Wd.on("play.gaugeCleared", function(cleared) {
+    self.bar._alpha = cleared ? 100 : 60;
 });
 
 stop();
