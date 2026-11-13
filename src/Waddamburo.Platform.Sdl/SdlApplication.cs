@@ -197,6 +197,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
         BgfxSupport.SetVsync(display.Vsync);
+        BgfxSupport.SetFrameLatency(display.FrameLatency);
         _frameInterval = display.FpsCap > 0 ? Stopwatch.Frequency / display.FpsCap : 0;
         _renderer!.Letterbox = (display.LetterboxSize, display.LetterboxX, display.LetterboxY);
         _renderer.RenderHeight = display.RenderHeight;
@@ -831,6 +832,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
             else
                 pendingPresses.Add(new SdlKeyPress(key, TimeSpan.FromTicks(checked((long)(timestamp / 100)))));
         }
+        SystemPriority.FavourThread(); // the game thread paces the frames
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
         long previousFrameEnd = 0;
         (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
@@ -1301,10 +1303,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
 
 /// <summary>
 /// The display settings <see cref="SdlApplication.ApplyDisplay"/> takes. Width/Height 0: the desktop's; RefreshRate 0: the
-/// highest; FpsCap 0: none; RenderHeight: the stage drawn at this many lines and scaled up (0: the window's own).
+/// highest; FpsCap 0: none; RenderHeight: the stage drawn at this many lines and scaled up (0: the window's own);
+/// FrameLatency: frames queued with vsync (1-3).
 /// </summary>
 public readonly record struct DisplaySettings(bool Vsync, bool Fullscreen, bool Exclusive, int Width, int Height, int RefreshRate,
-    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0, int RenderHeight = 0);
+    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0, int RenderHeight = 0, int FrameLatency = 1);
 
 public readonly record struct SdlRunResult(
     int RenderedFrames,

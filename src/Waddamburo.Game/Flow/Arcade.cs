@@ -123,13 +123,15 @@ public sealed record ArcadeSettings
         """,
         """
         # Display (also in the Settings menu). vsync: wait for the screen's refresh (no tearing); false
-        # renders as fast as it can. fps_cap: frames per second at most in a window or borderless
+        # renders as fast as it can. frame_latency: frames queued with vsync, 1-3; 2 keeps the notes smooth
+        # when the desktop is slow to show frames (screen casting on Linux) at one refresh more of delay. fps_cap: frames per second at most in a window or borderless
         # fullscreen, 0 = no limit. fullscreen_mode (Windows): borderless (a window covering the desktop)
         # or exclusive (the game takes the screen: less load on older PCs, and the resolution and
         # refresh rate below apply; a 4:3 resolution shows the game letterboxed).
         # fullscreen_resolution: WIDTHxHEIGHT or native (the desktop's); refresh_rate in Hz, 0 = the
         # highest at that resolution. The resolution also sizes the upscaled textures loaded.
         vsync = true
+        frame_latency = 1
         fps_cap = 0
         fullscreen_mode = borderless
         fullscreen_resolution = native
@@ -472,6 +474,9 @@ public sealed record ArcadeSettings
     /// <summary>Wait for the display's refresh before showing a frame.</summary>
     public bool Vsync { get; init; } = true;
 
+    /// <summary>Frames queued with vsync (1-3): more absorb a desktop's late presents, each a refresh of delay.</summary>
+    public int FrameLatency { get; init; } = 1;
+
     /// <summary>Frames per second at most, outside exclusive fullscreen; 0 = no limit.</summary>
     public int FpsCap { get; init; }
 
@@ -763,6 +768,7 @@ public sealed record ArcadeSettings
                 "config_version" => settings with { Version = count(value, index, 0) },
                 "fullscreen" => settings with { Fullscreen = boolean(value, index) },
                 "vsync" => settings with { Vsync = boolean(value, index) },
+                "frame_latency" => settings with { FrameLatency = integer(value, index, 1, 3) },
                 "dan_series" => settings with { DanSeries = value },
                 "fps_cap" => settings with { FpsCap = integer(value, index, 0, 10000) },
                 "fullscreen_mode" => settings with { ExclusiveFullscreen = value.ToLowerInvariant() switch
@@ -945,6 +951,7 @@ public sealed record ArcadeSettings
             ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),
             ["fullscreen"] = settings.Fullscreen ? "true" : "false",
             ["vsync"] = settings.Vsync ? "true" : "false",
+            ["frame_latency"] = settings.FrameLatency,
             ["fps_cap"] = settings.FpsCap,
             ["fullscreen_mode"] = settings.ExclusiveFullscreen ? "exclusive" : "borderless",
             ["fullscreen_resolution"] = settings.FullscreenWidth == 0 ? "native" : $"{settings.FullscreenWidth}x{settings.FullscreenHeight}",

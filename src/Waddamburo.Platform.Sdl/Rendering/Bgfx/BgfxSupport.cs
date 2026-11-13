@@ -133,11 +133,14 @@ namespace Waddamburo.Platform.Sdl.Rendering
         /// <summary>BGFX_RESET_* for init and every resize: vsync unless WADDAMBURO_PRESENT_MODE uncaps it.</summary>
         public static uint ResetFlags { get; private set; }
 
-        // One frame in the driver's queue: DXGI's default of three let vsync add ~50 ms of display lag
-        // (Present returns at once until the queue fills, so our own pacing never waits).
-        // Diagnostic: WADDAMBURO_FRAME_LATENCY=2 queues one more frame (absorbs a late present under a compositor).
-        public static readonly byte MaxFrameLatency =
-            byte.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_FRAME_LATENCY"), out var latency) && latency is >= 1 and <= 3 ? latency : (byte)1;
+        // Frames in the driver's queue, the frame_latency setting (1 by default): DXGI's default of three let vsync add
+        // ~50 ms of display lag (Present returns at once until the queue fills, so our own pacing never waits). Two
+        // absorb a compositor's late present (KWin while screen casting: 67 skipped refreshes a minute, 5 with two)
+        // at one refresh more of delay.
+        public static byte MaxFrameLatency { get; private set; } = 1;
+
+        /// <summary>Sets the frames queued (1-3); the next present resets the swap chain.</summary>
+        public static void SetFrameLatency(int frames) => MaxFrameLatency = (byte)Math.Clamp(frames, 1, 3);
 
         /// <summary>Turns vsync on or off (the next present resets the swap chain); the diagnostic env var still wins.</summary>
         public static void SetVsync(bool vsync) =>
@@ -196,6 +199,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
 
         private static void renderLoop(ManualResetEventSlim started)
         {
+            SystemPriority.FavourThread(); // it presents: a late present skips a refresh
             // The first call before init makes this thread bgfx's render thread.
             bgfx.render_frame(0);
             started.Set();

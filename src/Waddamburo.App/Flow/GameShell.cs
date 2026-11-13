@@ -473,7 +473,7 @@ internal sealed class GameShell : IDisposable
         var uncapped = Options.Benchmark != BenchmarkMode.Off;
         var display = new DisplaySettings(Arcade.Vsync && !uncapped, Arcade.Fullscreen, exclusive, Arcade.FullscreenWidth,
             Arcade.FullscreenHeight, Arcade.RefreshRate, Arcade.LetterboxSize / 100f, Arcade.LetterboxX / 100f, Arcade.LetterboxY / 100f,
-            exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap, Arcade.RenderHeight);
+            exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap, Arcade.RenderHeight, Arcade.FrameLatency);
         Application.ApplyDisplay(display);
         // The stage is 720 lines: 1080p loads textures at 1.5x, 1440p at 2x, 4K at the model's 3x.
         if (Upscale is not null)
@@ -551,6 +551,7 @@ internal sealed class GameShell : IDisposable
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"Renderer: {Application.GpuDriver}");
+        Console.WriteLine($"System priority: {SystemPriority.Request()}.");
         _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, interactive: Interactive);
         try
         {

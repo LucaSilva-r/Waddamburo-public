@@ -39,6 +39,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     private uint _width;
     private uint _height;
     private uint _resetFlags = BgfxSupport.ResetFlags;
+    private byte _frameLatency = BgfxSupport.MaxFrameLatency;
     private uint _nextTextureId = 1;
     private bool _disposed;
 
@@ -266,8 +267,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
         var width = (uint)Math.Max(1, pixelWidth);
         var height = (uint)Math.Max(1, pixelHeight);
-        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags)
+        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags || _frameLatency != BgfxSupport.MaxFrameLatency)
         {
+            _frameLatency = BgfxSupport.MaxFrameLatency;
             _width = width;
             _height = height;
             _resetFlags = BgfxSupport.ResetFlags;
