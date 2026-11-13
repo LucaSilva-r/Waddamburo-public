@@ -334,6 +334,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly int _side;
         private readonly int? _soundLane;
         private readonly LumenSceneLayer[] _beatLayers;
+        private readonly LumenPlayer? _dancers;
         private readonly LumenPlayer[] _noteFaces;
         private readonly Func<int> _combo;
         private readonly LumenSceneLayer[] _fixedLayers;
@@ -544,6 +545,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // rolls' characters and the lane run in real time.
             _beatLayers = [.. layers.Where(pair => pair.Key is "dance" or "fever" or "chibi"
                 || NoteMovieNames.Contains(pair.Key)).Select(pair => pair.Value)];
+            _dancers = layers.GetValueOrDefault("dance")?.Player;
             // Shared movies are advanced by the first lane only.
             _fixedLayers = [.. layers.Values.Except(_beatLayers)];
             var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg") ?? skin("donbg_w_00"),
@@ -810,8 +812,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             chartTime = shown(chartTime);
             var delta = _animationClock.Advance(chartTime);
             foreach (var layer in _fixedLayers) layer.Player.Advance(input);
+            // The dance movies bring their first dancer in on their first frame; the game holds them until the
+            // song starts (reported on Discord: the dancers were already in when the stage appeared).
             for (var i = 0; i < _animationClock.FramesToAdvance; i++)
-                foreach (var layer in _beatLayers) layer.Player.Advance(input);
+                foreach (var layer in _beatLayers)
+                    if (layer.Player != _dancers || chartTime >= TimeSpan.Zero)
+                        layer.Player.Advance(input);
             // Note faces by combo, at the beat's phase (TaikoNoteFaces).
             var beat = _animationClock.Position(chartTime) * 89 / 3600;
             var combo = _combo();
