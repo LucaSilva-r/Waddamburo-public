@@ -289,6 +289,49 @@ public sealed class LumenMovieEditor
         .Select(static sprite => sprite.CharacterId)
         .ToArray();
 
+    /// <summary>Sprite <paramref name="sprite"/>'s frame labels.</summary>
+    public IEnumerable<string> Labels(uint sprite) => _sprites[sprite].Timeline.OfType<LmbFrameLabelCommand>()
+        .Where(command => command.StringIndex < _strings.Count).Select(command => _strings[(int)command.StringIndex].Value);
+
+    /// <summary>The characters <paramref name="roots"/> are or place, at any depth (sprites and shapes).</summary>
+    public HashSet<uint> Reached(IEnumerable<uint> roots)
+    {
+        var reached = new HashSet<uint>();
+        var pending = new Stack<uint>(roots);
+        while (pending.TryPop(out var character))
+            if (reached.Add(character) && _sprites.TryGetValue(character, out var sprite))
+                foreach (var place in sprite.Timeline.OfType<LmbPlaceObjectCommand>())
+                    pending.Push(place.CharacterId);
+        return reached;
+    }
+
+    /// <summary>The textures the shapes among <paramref name="characters"/> draw.</summary>
+    public HashSet<uint> Textures(IEnumerable<uint> characters) =>
+        [.. characters.Where(_shapes.ContainsKey).SelectMany(id => _shapes[id].Geometry.Select(static geometry => geometry.TextureIndex))];
+
+    /// <summary>Whether <paramref name="character"/> is a shape (else a sprite, text or nothing).</summary>
+    public bool IsShape(uint character) => _shapes.ContainsKey(character);
+
+    /// <summary>Whether <paramref name="character"/> is a sprite.</summary>
+    public bool IsSprite(uint character) => _sprites.ContainsKey(character);
+
+    /// <summary>A shape's textures (empty for anything else).</summary>
+    public IEnumerable<uint> ShapeTextures(uint character) =>
+        _shapes.TryGetValue(character, out var shape) ? shape.Geometry.Select(static geometry => geometry.TextureIndex) : [];
+
+    /// <summary>A shape's extent (its vertices' width and height; zero for anything else).</summary>
+    public (float Width, float Height) ShapeSize(uint character)
+    {
+        if (!_shapes.TryGetValue(character, out var shape) || !shape.Geometry.SelectMany(static geometry => geometry.Vertices).Any())
+            return (0, 0);
+        var vertices = shape.Geometry.SelectMany(static geometry => geometry.Vertices).ToArray();
+        return (vertices.Max(static vertex => vertex.X) - vertices.Min(static vertex => vertex.X),
+            vertices.Max(static vertex => vertex.Y) - vertices.Min(static vertex => vertex.Y));
+    }
+
+    /// <summary>Texture <paramref name="index"/>'s size.</summary>
+    public (int Width, int Height) TextureSize(uint index) => (_textures[(int)index].Width, _textures[(int)index].Height);
+
     /// <summary>The characters sprite <paramref name="sprite"/> places from its label <paramref name="label"/> to the next.</summary>
     public IReadOnlySet<uint> PlacedAt(uint sprite, string label)
     {

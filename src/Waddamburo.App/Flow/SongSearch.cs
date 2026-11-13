@@ -46,9 +46,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         if (!IsOpen)
         {
             // Not during a scene switch (entry -> Song Select): the reload's restart needs an active scene.
-            // ponytail: not in Waiwai or AI battle either: their song selects don't take the results folder yet.
             if (!GameActions.Down(keys, GameAction.Search) || shell.Active.Id != FlowScenes.SongSelect
-                || shell.Hosts.Waiwai || shell.Hosts.AiBattle
                 || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active
                 || shell.Hosts.SongSelect is null || shell.PlayRequests.Pending is not null)
                 return false;
@@ -212,6 +210,8 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         var generation = Interlocked.Increment(ref _generation);
         bool stale() => Volatile.Read(ref _generation) != generation;
         var crowns = _crowns;
+        // Waiwai's folder lists only songs it has a composition for (SongSelectCatalogView): the count says the same.
+        var waiwai = shell.Hosts.Waiwai;
         _ = Task.Run(() =>
         {
             try
@@ -219,7 +219,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
                 var songs = catalog.Songs.Values.Where(song =>
                     {
                         if (stale()) throw new OperationCanceledException();
-                        return SongBrowse.Matches(song, query, crowns is null ? null : chart => crowns.GetValueOrDefault(chart.Key.ToString()));
+                        return (!waiwai || song.WaiwaiComposition is not null) && SongBrowse.Matches(song, query, crowns is null ? null : chart => crowns.GetValueOrDefault(chart.Key.ToString()));
                     })
                     .OrderBy(static song => song.Title.English ?? song.Title.Primary, StringComparer.OrdinalIgnoreCase)
                     .Take(SongBrowse.MaxFolderSongs)

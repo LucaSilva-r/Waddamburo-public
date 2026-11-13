@@ -204,6 +204,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The movie was patched with custom genres (Patching.SongSelectGenrePatch).</summary>
     public bool PatchedGenres { get; init; }
 
+    /// <summary>The custom genres' colour-pool entries in this movie (SongSelectGenrePatch.Colours).</summary>
+    public IReadOnlyList<uint> GenreColours { get; init; } = [];
+
     /// <summary>Both players' course select shows Oni at once (the movie's isMania; the original needs right-rim hits).</summary>
     public bool ShowOni { get; init; }
 
@@ -1020,7 +1023,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         var player = requirePlayer();
         // The recoloured art's body layer is multiplied by the folder's colour (its highlights stay light).
         var colour = category.Tint ?? PaletteColour(category.Name);
-        player.SetColorTransform(SongSelectGenrePatch.Colours[slot],
+        player.SetColorTransform(GenreColours[slot],
             new LumenRenderColor(colour.R / 255f, colour.G / 255f, colour.B / 255f, 1));
         // Genres outline their spine name in a dark shade of their colour.
         var outline = category.Outline ?? ((uint)(colour.R * 2 / 5) << 16 | (uint)(colour.G * 2 / 5) << 8 | (uint)(colour.B * 2 / 5));
