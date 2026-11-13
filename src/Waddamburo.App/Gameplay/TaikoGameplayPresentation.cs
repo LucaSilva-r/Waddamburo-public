@@ -504,22 +504,47 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             };
             // Waiwai has no player gauge: both play on the shared voltage.
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
-            if (gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(0)]) == false)
-                throw new InvalidDataException("Gameplay gauge is missing its initialization callback.");
             var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments, dan?.ExactGauge == true) : new TaikoSoulGauge(course, chart);
             var score = new TaikoScore(chart, WindowsFor(chart, course).Good);
             var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
-            if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(0)]))
-                throw new InvalidDataException("Gameplay board is missing its score initialization callback.");
+            var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
+            // Host label jumps traced in the game: gauge fire on full gauge, splash at Go-Go start
+            // (one player only; two-player gameplay loads no splash), and the end-of-song banner.
+            var gaugeFire = skin("gage_fire_1p"); // none in Waiwai
+            var goGoSplash = skin("action_gogotime");
+            var banner = skin("action_result"); // none in Waiwai
+            // The game's movies are driven from what is published, by their adapter (ours read it themselves).
+            var gameMovies = new GameplayGameMovies(board, gaugeMovie, () => gauge.FilledSegments, scoreAdd, comboBonus,
+                gaugeFire, goGoSplash, banner);
+            // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
+            // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
+            // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
+            // and every other movie on stage, get them under the player's number (Everyone, set once all lanes exist).
+            Drum = (players == 2 ? lane : side) + 1;
+            var mine = layers.Where(pair => !(players == 2 && GameplaySceneComposition.SharedRoles.Contains(pair.Key)))
+                .Select(static pair => pair.Value.Player).ToArray();
+            var published = Published;
+            void publish(string name, LumenHostValue value)
+            {
+                if (published.TryGetValue(name, out var before) && before == value)
+                    return; // most ticks nothing changed: not worth a walk over the movies
+                published[name] = value;
+                foreach (var movie in mine) movie.Publish(name, value);
+                foreach (var movie in Everyone) movie.Publish(name, value, Drum);
+                gameMovies.State(name, value);
+            }
+            void emit(string name, params ReadOnlySpan<LumenHostValue> arguments)
+            {
+                foreach (var movie in mine) movie.Emit(name, arguments);
+                foreach (var movie in Everyone) movie.EmitFor(Drum, name, arguments);
+                gameMovies.Event(name, arguments);
+            }
+            publish("play.score", LumenHostValue.FromNumber(0));
+            publish("play.gauge", LumenHostValue.FromNumber(0));
             void updateScore(long award, bool popup = true)
             {
-                if (!board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
-                    throw new InvalidDataException("Gameplay board is missing SetScore.");
-                if (scoreAdd is null || !popup) return;
-                if (!scoreAdd.TryInvokeCallback("Create", []))
-                    throw new InvalidDataException("Gameplay score-add movie is missing Create.");
-                if (!scoreAdd.TryInvokeCallback("SetCount", [LumenHostValue.FromNumber(award)]))
-                    throw new InvalidDataException("Gameplay score-add movie is missing SetCount after Create.");
+                publish("play.score", LumenHostValue.FromNumber(score.Value));
+                if (popup) emit("score.added", LumenHostValue.FromNumber(award));
             }
             foreach (var name in NoteMovieNames.Where(layers.ContainsKey))
                 if (!layers[name].Player.TryGotoLabel("", "level01"))
@@ -599,18 +624,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (score.Apply(progress, counted.CurrentTime)) updateScore(score.Value - previousScore);
                 if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
             };
-            var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
             // Player name board (traced call sequence; the name is host text, see NameText).
             var nameBoard = layers["player_name"].Player;
             GuestNameBoard.Show(nameBoard, side, visible: false);
-            // Host label jumps traced in the game: gauge fire on full gauge, splash at Go-Go start
-            // (one player only; two-player gameplay loads no splash), and the end-of-song banner.
-            var gaugeFire = skin("gage_fire_1p"); // none in Waiwai
-            var goGoSplash = skin("action_gogotime");
-            var banner = skin("action_result"); // none in Waiwai
             // Lanes built again (a seek back in a review or the editors): a banner already shown goes away.
             banner?.GotoFrame(0, play: false);
-            var full = false;
             var missed = false;
             _setMissed = value => missed = value;
             int great = 0, good = 0, miss = 0, maxCombo = 0;
@@ -624,27 +642,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
-            // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
-            // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
-            // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
-            // and every other movie on stage, get them under the player's number (Everyone, set once all lanes exist).
-            Drum = (players == 2 ? lane : side) + 1;
-            var mine = layers.Where(pair => !(players == 2 && GameplaySceneComposition.SharedRoles.Contains(pair.Key)))
-                .Select(static pair => pair.Value.Player).ToArray();
-            var published = Published;
-            void publish(string name, LumenHostValue value)
-            {
-                if (published.TryGetValue(name, out var before) && before == value)
-                    return; // most ticks nothing changed: not worth a walk over the movies
-                published[name] = value;
-                foreach (var movie in mine) movie.Publish(name, value);
-                foreach (var movie in Everyone) movie.Publish(name, value, Drum);
-            }
-            void emit(string name, params ReadOnlySpan<LumenHostValue> arguments)
-            {
-                foreach (var movie in mine) movie.Emit(name, arguments);
-                foreach (var movie in Everyone) movie.EmitFor(Drum, name, arguments);
-            }
             void publishPlay()
             {
                 publish("play.score", LumenHostValue.FromNumber(score.Value));
@@ -702,7 +699,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 bannerShown = true;
                 var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false, danSongEnds)
                     : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
-                if (banner is not null) label(banner, TaikoResultBanner.Label(cleared, !missed));
                 emit("song.ended", LumenHostValue.FromBoolean(cleared), LumenHostValue.FromBoolean(cleared && !missed));
                 sound(!cleared ? GameplaySoundEvent.FailBanner
                     : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
@@ -747,34 +743,20 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         updateScore(award);
                     }
                 }
-                // Combo bonus popup at every 100 combo (the movie picks its label from the count).
-                if (!judgement.StrongHitCompleted && score.Combo > 0 && score.Combo % 100 == 0)
-                    comboBonus.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(score.Combo)]);
                 if (!judgement.StrongHitCompleted && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good)
                 {
                     if (judgement.HitObject.IsRare) sound(GameplaySoundEvent.RareHit);
                     if (score.Combo == 50 || score.Combo % 100 == 0 && score.Combo <= 5000)
                         sound(GameplaySoundEvent.Combo, score.Combo);
                 }
-                var segments = gauge.FilledSegments;
                 if (gauge.Apply(judgement) && gaugeMovie is not null)
-                {
-                    if (gauge.FilledSegments != segments
-                        && !gaugeMovie.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(gauge.FilledSegments)]))
-                        throw new InvalidDataException("Gameplay gauge is missing SetCurrentGauge.");
                     _character?.SetGauge(gauge.State);
-                }
                 if (!judgement.StrongHitCompleted && judgement.Result is { } hit)
                 {
                     if (hit == TaikoHitResult.Great) great++;
                     else if (hit == TaikoHitResult.Good) good++;
                     else { miss++; missed = true; }
                     maxCombo = Math.Max(maxCombo, score.Combo);
-                }
-                if (gaugeFire is not null && gauge.State == TaikoGaugeState.Full != full)
-                {
-                    full = !full;
-                    label(gaugeFire, full ? "fever_start" : "fever_end");
                 }
                 if (_live is null)
                     _character?.OnJudged(judgement);
@@ -800,21 +782,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // could otherwise score differently from the play itself).
             _restore = state =>
             {
-                var shown = score.Value;
-                var segments = gauge.FilledSegments;
                 score.Restore(state?.Score ?? new TaikoScoreState(0, 0, 0, 0, -1, 0));
                 gauge.Restore(state?.Gauge ?? 0);
-                if (score.Value != shown && !board.TryInvokeCallback("SetScore", [LumenHostValue.FromNumber(score.Value)]))
-                    throw new InvalidDataException("Gameplay board is missing SetScore.");
                 _presentation!.SetCombo(score.Combo);
-                if (gauge.FilledSegments != segments)
-                    gaugeMovie?.TryInvokeCallback("SetCurrentGauge", [LumenHostValue.FromNumber(gauge.FilledSegments)]);
                 _character?.SetGauge(gauge.State);
-                if (gaugeFire is not null && gauge.State == TaikoGaugeState.Full != full)
-                {
-                    full = !full;
-                    label(gaugeFire, full ? "fever_start" : "fever_end");
-                }
                 publishPlay();
             };
             // Static layers in the scene's traced depth order: behind the bar lines (2000) and notes (1002+),
@@ -917,7 +888,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _presentation.GoGoChanged += active =>
             {
                 publish("play.goGo", LumenHostValue.FromBoolean(active));
-                if (active && goGoSplash is not null) label(goGoSplash, "splash");
                 _character?.SetBalloonVisible(_longNotes.BalloonVisible);
                 _character?.SetGoGo(active);
                 Console.WriteLine($"Gameplay Go-Go (lane {lane}): {(active ? "start" : "end")} at {_source.CurrentTime.TotalSeconds:F3}s.");

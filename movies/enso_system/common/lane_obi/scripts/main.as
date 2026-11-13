@@ -57,10 +57,6 @@ ExternalInterface.addCallback("SetPlaySide", this, function(n) {
 ExternalInterface.addCallback("SetRandomLevel", this, function(n) {
 });
 
-// Called as: (number) -> undefined
-ExternalInterface.addCallback("SetScore", this, function(n) {
-});
-
 // Called as: (bool) -> undefined
 ExternalInterface.addCallback("SetSeriousMode", this, function(n) {
 });

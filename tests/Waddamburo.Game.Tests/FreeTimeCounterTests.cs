@@ -130,9 +130,7 @@ public sealed class FreeTimeCounterTests
 
         var added = load("enso_system/don1p/score_add_don_1p");
         advance(added, 2);
-        added.Publish("play.score", n(0)); // the first value is where the play stands, not points scored
-        Assert.Null(added.ReadScriptValue("word.text"));
-        added.Publish("play.score", n(960));
+        added.Emit("score.added", n(960));
         Assert.Equal("+960", added.ReadScriptValue("word.text"));
         advance(added, 40);
         Assert.Equal("", added.ReadScriptValue("word.text"));

@@ -50,6 +50,7 @@ public static class WdNames
         new("player.tone", WdKind.State, "number", "play", "This drum's sound, 0 to 5: taiko, festival, dogs and cats, deluxe taiko, drum kit, tambourine.", "0"),
         new("player.support", WdKind.State, "bool", "play", "The helping-hand option (papa-mama support) is on. Always false for now: the engine does not have it yet.", "false"),
         new("note.judged", WdKind.Event, "result: text (good, ok, bad), big: bool, kind: text (don, ka)", "play", "A note of this drum was hit or missed.", "good, false, don"),
+        new("score.added", WdKind.Event, "points: number", "play", "Points were just scored on this drum (a big note's two halves come as one).", "960"),
         new("combo.milestone", WdKind.Event, "combo: number", "play", "The combo reached a hundred.", "100"),
         new("roll.hit", WdKind.Event, "part: text (don, ka), big: bool", "play", "A hit landed on this drum's drumroll.", "don, false"),
         new("balloon.popped", WdKind.Event, "", "play", "This drum's balloon burst.", ""),

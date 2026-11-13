@@ -223,7 +223,7 @@ settled as each step reaches them.
   not in it is reported once on the console, naming the movie. Publishing one not in it is an engine error.
 - The gameplay screen publishes to every movie of a lane: `play.score`, `combo`, `maxCombo`, `gauge`,
   `gaugeClearLine`, `gaugeCleared`, `gaugeFull`, `good`, `ok`, `bad`, `accuracy`, `course`, `goGo`, `roll`, `balloon`,
-  `progress`; events `note.judged`, `combo.milestone`, `song.ended`.
+  `progress`; events `note.judged`, `combo.milestone`, `score.added`, `song.ended`.
 - **Two drums** (user, 2026-11-12): one set of names, an optional last argument for the player. `Wd.get(name)` and
   `Wd.on(name, fn)` give a movie its own drum's, so a part made once serves either drum; `Wd.get(name, 2)` and
   `Wd.on(name, fn, 2)` ask for a player by number (1 left, 2 right) from any movie. A movie both drums share (the
@@ -249,6 +249,35 @@ settled as each step reaches them.
   `icon_neiro` and `papamama` are not placed on the gameplay screen by the engine. Their game-style callbacks stay as empty functions, because the gameplay host still calls
   them: it has not been moved behind an adapter.
 - The edge log shows what a movie is told (`Wd name(value)`), so a provider-driven movie can be compared run to run.
+
+## The adapter, first step (2026-11-13)
+
+`GameplayGameMovies` (`src/Waddamburo.App/Gameplay`) is the gameplay screen's adapter, one per drum. The lane tells
+it every state and event it publishes, after the movies; it turns them into the game's callbacks and label jumps,
+and leaves alone a movie that reads the provider. The lane itself no longer calls these:
+
+| Published | The game's movie gets |
+| --- | --- |
+| `play.score` | board `SetScore` |
+| `play.gauge` | gauge `SetCurrentGauge(segments)`, when the segment count moves |
+| `play.gaugeFull` | gauge fire `fever_start` / `fever_end` |
+| `play.goGo` (on) | splash label `splash` |
+| `score.added` (new event: points) | points popup `Create`, `SetCount` |
+| `combo.milestone` | combo sign `SetComboBonus` |
+| `song.ended` | end banner's label |
+
+Proof (as under "Proof that nothing changed"): the benchmark song (stress chart, one drum then two, the game's
+movies) recorded before and after; the lines of these movies are the same per movie, 20,516 of them. Ticks are left
+out of the comparison (the benchmark runs in real time, so they wander by one between any two runs), and so is the
+order between different movies within a tick.
+
+Our own movies lost the empty callbacks that only existed to be called (`SetScore`, `SetCurrentGauge`,
+`SetComboBonus`, `Create`, `SetCount`); the points popup hears `score.added` instead of working it out.
+
+**Not moved yet**: what the lane's classes in `Waddamburo.Game` call themselves (the board's combo count and
+options, the hit target's Go-Go and route, the judgement words, the route bubble, rolls, balloons, the kusudama,
+the game's flight pool). Those classes do not know the provider; moving them means giving them the same
+state/event stream, then the same proof. Our movies keep empty callbacks for those until then.
 
 ## Open questions
 
