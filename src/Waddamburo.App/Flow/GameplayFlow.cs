@@ -748,10 +748,32 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     // Paused or frozen (the editors' Freeze animations), the movies stand on one tick: no blending between ticks.
     private TimeSpan? _frameTime;
 
+    // Diagnostic (WADDAMBURO_HITCH_TRACE=1): a frame whose notes moved further or less than the time since the last
+    // frame (the clock jumped), or a long frame (everything stalled: the notes jump to catch up).
+    private static readonly bool NoteStepTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+    private long _noteStepAt;
+    private TimeSpan _noteStepTime;
+
+    private void traceNoteStep(TimeSpan time)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_noteStepAt != 0)
+        {
+            var wall = System.Diagnostics.Stopwatch.GetElapsedTime(_noteStepAt, now).TotalMilliseconds;
+            var chart = (time - _noteStepTime).TotalMilliseconds;
+            if (Math.Abs(chart - wall) > 1 || wall > 8)
+                Console.Error.WriteLine(FormattableString.Invariant(
+                    $"Note step at {time.TotalSeconds:F3} s: chart moved {chart:F1} ms in {wall:F1} ms of frame ({chart - wall:+0.0;-0.0} ms); GC gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, paused total {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms."));
+        }
+        (_noteStepAt, _noteStepTime) = (now, time);
+    }
+
     public override LumenRenderSnapshot CreateSnapshot(float interpolation)
     {
         var time = _frameTime ?? chartTime();
         _frameTime = null; // one frame's: a frame without UpdateFrame reads the clock itself
+        if (NoteStepTrace && !_paused && revealed)
+            traceNoteStep(time);
         if (songInfoPlayer() is { } info)
             TaikoSongInfoPresentation.UpdateVisibility(info,
                 showStage: !Shell.HideArcadeHud || _course is not null || _songInfoMode,

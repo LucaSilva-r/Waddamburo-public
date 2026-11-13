@@ -135,7 +135,9 @@ namespace Waddamburo.Platform.Sdl.Rendering
 
         // One frame in the driver's queue: DXGI's default of three let vsync add ~50 ms of display lag
         // (Present returns at once until the queue fills, so our own pacing never waits).
-        public const byte MaxFrameLatency = 1;
+        // Diagnostic: WADDAMBURO_FRAME_LATENCY=2 queues one more frame (absorbs a late present under a compositor).
+        public static readonly byte MaxFrameLatency =
+            byte.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_FRAME_LATENCY"), out var latency) && latency is >= 1 and <= 3 ? latency : (byte)1;
 
         /// <summary>Turns vsync on or off (the next present resets the swap chain); the diagnostic env var still wins.</summary>
         public static void SetVsync(bool vsync) =>
@@ -232,7 +234,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
             get
             {
                 lock (s_pendingLock)
-                    return s_pendingFrames <= ((ResetFlags & (uint)bgfx.ResetFlags.Vsync) != 0 ? 0 : 1);
+                    return s_pendingFrames <= ((ResetFlags & (uint)bgfx.ResetFlags.Vsync) != 0 ? MaxFrameLatency - 1 : 1);
             }
         }
 
