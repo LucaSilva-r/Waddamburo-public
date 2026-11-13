@@ -74,7 +74,7 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
 
     /// <summary>
     /// Whether every word of <paramref name="query"/> appears (ignoring case) in the song's titles,
-    /// subtitles, artist or mapper.
+    /// subtitles, artist or mapper, as written or with their kana in romaji (<see cref="Romaji"/>).
     /// </summary>
     public static bool Matches(SongDescriptor song, string query)
     {
@@ -87,7 +87,10 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
             song.Title.Primary, song.Title.English, song.Title.Japanese, song.Subtitle, song.EnglishSubtitle,
             song.Artist, song.Creator,
         }.Where(static value => value is not null));
-        return words.All(word => text.Contains(word, StringComparison.OrdinalIgnoreCase));
+        // ponytail: romanised per query, each song every keystroke; cache it on the song if search gets slow.
+        var romaji = Romaji.Fold(Romaji.FromKana(text));
+        return words.All(word => text.Contains(word, StringComparison.OrdinalIgnoreCase)
+            || romaji.Contains(Romaji.Fold(word), StringComparison.Ordinal));
     }
 
     private IOrderedEnumerable<SongDescriptor> sort(IEnumerable<SongDescriptor> songs)
