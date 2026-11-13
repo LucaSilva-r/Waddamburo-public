@@ -161,6 +161,20 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheFlightMovieFliesTheHitsItHears()
+    {
+        var flights = load("enso_system/don1p/onp_kiseki_don_1p");
+        advance(flights, 2);
+        Assert.True(flights.UsesProvider);
+        flights.Emit("note.judged", LumenHostValue.FromString("good"), LumenHostValue.FromBoolean(true), LumenHostValue.FromString("ka"));
+        flights.Emit("note.judged", LumenHostValue.FromString("bad"), LumenHostValue.FromBoolean(false), LumenHostValue.FromString("don"));
+        flights.Emit("roll.hit", LumenHostValue.FromString("don"), LumenHostValue.FromBoolean(false));
+        Assert.Equal(2d, Convert.ToDouble(flights.ReadScriptValue("next"))); // the miss took no note
+        advance(flights, 40);
+        Assert.Empty(flights.Diagnostics);
+    }
+
+    [Fact]
     public void ShowsItsNumberAndSongTab()
     {
         var player = load();

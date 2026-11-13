@@ -1,61 +1,253 @@
-// onp_kiseki_don_1p: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// onp_kiseki_don_1p: the notes flying from the target to the gauge, hits heard from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "box": "textures/box.svg"
+    "don": "textures/don.svg",
+    "ka": "textures/ka.svg"
   },
   "shapes": {
-    "box": {
-      "texture": "box",
+    "don": {
+      "texture": "don",
       "rect": [
-        -32,
-        -32,
-        64,
-        64
+        -64,
+        -64,
+        128,
+        128
+      ]
+    },
+    "ka": {
+      "texture": "ka",
+      "rect": [
+        -64,
+        -64,
+        128,
+        128
       ]
     }
   },
   "sprites": {
-    "main": {
-      "frames": 566,
+    "flight": {
+      "frames": 152,
       "labels": {
-        "don_d_hit": 0,
-        "don_hit": 10,
-        "don_renda_d_hit": 20,
-        "katsu_d_hit": 30,
-        "katsu_hit": 40,
-        "katsu_renda_d_hit": 50,
-        "no_hit": 436,
-        "don_hit_add": 446,
-        "katsu_hit_add": 456,
-        "don_d_hit_add": 466,
-        "katsu_d_hit_add": 476,
-        "geki_hit": 486,
-        "geki_hit_add": 496,
-        "don_w_hit": 506,
-        "don_w_hit_add": 516,
-        "katsu_w_hit": 526,
-        "katsu_w_hit_add": 536,
-        "don_renda_d_hit_add": 546,
-        "katsu_renda_d_hit_add": 556
+        "don": 1,
+        "ka": 41,
+        "don_big": 81,
+        "ka_big": 121
       },
-      "layers": [],
+      "layers": [
+        {
+          "character": "don",
+          "keys": [
+            {
+              "frame": 1,
+              "x": 413,
+              "y": 73,
+              "alpha": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "ease": "out"
+            },
+            {
+              "frame": 16,
+              "y": -190,
+              "ease": "in"
+            },
+            {
+              "frame": 30,
+              "alpha": 1
+            },
+            {
+              "frame": 31,
+              "x": 1010,
+              "y": -117,
+              "alpha": 0,
+              "scaleX": 0.6,
+              "scaleY": 0.6
+            }
+          ]
+        },
+        {
+          "character": "ka",
+          "keys": [
+            {
+              "frame": 41,
+              "x": 413,
+              "y": 73,
+              "alpha": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "ease": "out"
+            },
+            {
+              "frame": 56,
+              "y": -190,
+              "ease": "in"
+            },
+            {
+              "frame": 70,
+              "alpha": 1
+            },
+            {
+              "frame": 71,
+              "x": 1010,
+              "y": -117,
+              "alpha": 0,
+              "scaleX": 0.6,
+              "scaleY": 0.6
+            }
+          ]
+        },
+        {
+          "character": "don",
+          "keys": [
+            {
+              "frame": 81,
+              "x": 413,
+              "y": 73,
+              "alpha": 1,
+              "scaleX": 1.5,
+              "scaleY": 1.5,
+              "ease": "out"
+            },
+            {
+              "frame": 96,
+              "y": -190,
+              "ease": "in"
+            },
+            {
+              "frame": 110,
+              "alpha": 1
+            },
+            {
+              "frame": 111,
+              "x": 1010,
+              "y": -117,
+              "alpha": 0,
+              "scaleX": 0.8999999999999999,
+              "scaleY": 0.8999999999999999
+            }
+          ]
+        },
+        {
+          "character": "ka",
+          "keys": [
+            {
+              "frame": 121,
+              "x": 413,
+              "y": 73,
+              "alpha": 1,
+              "scaleX": 1.5,
+              "scaleY": 1.5,
+              "ease": "out"
+            },
+            {
+              "frame": 136,
+              "y": -190,
+              "ease": "in"
+            },
+            {
+              "frame": 150,
+              "alpha": 1
+            },
+            {
+              "frame": 151,
+              "x": 1010,
+              "y": -117,
+              "alpha": 0,
+              "scaleX": 0.8999999999999999,
+              "scaleY": 0.8999999999999999
+            }
+          ]
+        }
+      ],
       "scripts": {
-        "445": "scripts/stop.as",
-        "455": "scripts/stop.as",
-        "465": "scripts/stop.as",
-        "475": "scripts/stop.as",
-        "485": "scripts/stop.as",
-        "495": "scripts/stop.as",
-        "505": "scripts/stop.as",
-        "515": "scripts/stop.as",
-        "525": "scripts/stop.as",
-        "535": "scripts/stop.as",
-        "545": "scripts/stop.as",
-        "555": "scripts/stop.as",
-        "565": "scripts/stop.as"
+        "0": "scripts/rest.as",
+        "31": "scripts/rest.as",
+        "71": "scripts/rest.as",
+        "111": "scripts/rest.as",
+        "151": "scripts/rest.as"
+      }
+    },
+    "main": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "flight",
+          "name": "f0",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f1",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f2",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f3",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f4",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f5",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f6",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "flight",
+          "name": "f7",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "0": "scripts/main.as"
       }
     }
   }

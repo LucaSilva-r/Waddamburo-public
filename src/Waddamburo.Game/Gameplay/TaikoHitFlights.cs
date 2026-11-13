@@ -9,12 +9,14 @@ public sealed class TaikoHitFlights
     private readonly LumenSceneLayer[] _layers;
     private readonly bool[] _active;
     private int _next;
+    private readonly LumenSceneLayer? _own; // the scene's own flight movie: it flies the notes itself when it reads the provider
     private readonly int _kadonAt; // the Kadon flights (purple big ka) follow the others; none: _layers.Length
 
     /// <param name="layers">The hit flight movies, taken in turn.</param>
     /// <param name="kadonLayers">Flights for OpenTaiko's Kadon (the flight movie on its purple texture copies).</param>
-    public TaikoHitFlights(IEnumerable<LumenSceneLayer> layers, IEnumerable<LumenSceneLayer>? kadonLayers = null)
+    public TaikoHitFlights(IEnumerable<LumenSceneLayer> layers, IEnumerable<LumenSceneLayer>? kadonLayers = null, LumenSceneLayer? sceneOwn = null)
     {
+        _own = sceneOwn;
         var own = layers.ToArray();
         _kadonAt = own.Length;
         _layers = [.. own, .. kadonLayers ?? []];
@@ -24,6 +26,12 @@ public sealed class TaikoHitFlights
         foreach (var layer in _layers)
             layer.Player.Stop();
     }
+
+    /// <summary>
+    /// The flight movie hears the hits from the provider and flies them itself (one of ours): it is drawn as it
+    /// is, advanced with the scene, and nothing here jumps it to a label. Known once its first frame has run.
+    /// </summary>
+    private bool Provided => _own?.Player.UsesProvider == true;
 
     public static string? StateFor(PlayableNoteKind kind, TaikoHitResult? result, bool secondaryHit)
     {
@@ -69,7 +77,7 @@ public sealed class TaikoHitFlights
     // A free player in [from, until), else the next in turn there.
     private void trigger(string? label, int from, int until)
     {
-        if (label is null)
+        if (label is null || Provided)
             return;
         var index = Array.FindIndex(_active, from, until - from, active => !active);
         if (index < 0)
@@ -93,8 +101,8 @@ public sealed class TaikoHitFlights
     }
 
     /// <summary>Whether <paramref name="player"/> is one of these flights.</summary>
-    public bool Owns(LumenPlayer player) => Array.Exists(_layers, layer => layer.Player == player);
+    public bool Owns(LumenPlayer player) => Array.Exists(_layers, layer => layer.Player == player) || _own?.Player == player;
 
     public IEnumerable<LumenSceneLayer> ActiveLayers =>
-        _layers.Where((_, index) => _active[index]);
+        Provided ? [_own!] : _layers.Where((_, index) => _active[index]);
 }

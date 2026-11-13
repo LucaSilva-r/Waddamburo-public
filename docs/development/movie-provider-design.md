@@ -236,7 +236,16 @@ settled as each step reaches them.
   (`combo.milestone`) and the points popup (worked out in the movie from `play.score`'s changes).
 - `play.branch` (normal, expert, master; no value on a chart without routes), from the lane's `BranchChanged`. Read
   by the hit target's movie (`lane_hit`: a tint over the lane per route, and one for Go-Go) and by the bubble that
-  says which way the route went (`fukidashi_level_1p`). Not yet seen on screen: needs a chart with routes. Their game-style callbacks stay as empty functions, because the gameplay host still calls
+  says which way the route went (`fukidashi_level_1p`). Seen on the Note Kind Check chart, which ends on the three routes.
+- **Note flights, the provider way** (user, 2026-11-13). `note.judged` carries the note's kind (don, ka) as a third
+  argument; new events `roll.hit` (part, big) and `balloon.popped`. Our flight movie (`onp_kiseki_don_1p`) hears them
+  and flies the notes itself, eight clips taken in turn. The game's flight movie is still a pool of sixteen players
+  jumped to a label per hit: `TaikoHitFlights` leaves all that alone when the scene's own flight movie reads the
+  provider (asked once its first frame has run), and draws that one movie where the pool was drawn.
+- `play.kusudama` (hits left; `play.balloon` no longer covers a kusudama), read by `action_kusudama`.
+- `player.tone` (the drum's sound, 0 to 5) and `player.support` (papa-mama support: always false, the engine does
+  not have the option; exposed so a skin can already read it). No movie of ours reads them yet: the game's
+  `icon_neiro` and `papamama` are not placed on the gameplay screen by the engine. Their game-style callbacks stay as empty functions, because the gameplay host still calls
   them: it has not been moved behind an adapter.
 - The edge log shows what a movie is told (`Wd name(value)`), so a provider-driven movie can be compared run to run.
 

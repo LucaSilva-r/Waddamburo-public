@@ -1,10 +1,11 @@
-// action_kusudama: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// action_kusudama: the kusudama and the hits it still needs, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "box": "textures/box.svg"
+    "box": "textures/box.svg",
+    "ball": "textures/ball.svg"
   },
   "shapes": {
     "box": {
@@ -15,12 +16,33 @@
         64,
         64
       ]
+    },
+    "ball_art": {
+      "texture": "ball",
+      "rect": [
+        -160,
+        -160,
+        320,
+        320
+      ]
     }
   },
   "sprites": {
     "main": {
       "frames": 61,
-      "layers": [],
+      "layers": [
+        {
+          "character": "ball",
+          "name": "ball",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 360
+            }
+          ]
+        }
+      ],
       "scripts": {
         "0": "scripts/main.as",
         "10": "scripts/stop.as",
@@ -38,6 +60,41 @@
         "geki_break_high": 41,
         "geki_break_low": 51
       }
+    },
+    "ball": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "ball_art",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "count",
+          "name": "count",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "texts": {
+    "count": {
+      "rect": [
+        -120,
+        -48,
+        240,
+        90
+      ],
+      "size": 72,
+      "align": "center",
+      "color": "#3a2a22"
     }
   }
 }

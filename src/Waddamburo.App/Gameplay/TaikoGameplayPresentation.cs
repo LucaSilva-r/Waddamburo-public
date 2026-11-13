@@ -474,7 +474,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 })
                 : null;
             _flights = new TaikoHitFlights(Enumerable.Range(0, 16)
-                .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }), kadonFlights);
+                .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }), kadonFlights, flightTemplate);
             var courseLabel = course switch
             {
                 TaikoCourse.Easy => "easy",
@@ -677,7 +677,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             {
                 var under = _longNotes.Active;
                 publish("play.roll", under is { Balloon: false } roll ? LumenHostValue.FromNumber(roll.Count) : LumenHostValue.Undefined);
-                publish("play.balloon", under is { Balloon: true } balloon ? LumenHostValue.FromNumber(balloon.Count) : LumenHostValue.Undefined);
+                publish("play.kusudama", under is { Kusudama: true } ball ? LumenHostValue.FromNumber(ball.Count) : LumenHostValue.Undefined);
+                publish("play.balloon", under is { Balloon: true, Kusudama: false } balloon ? LumenHostValue.FromNumber(balloon.Count) : LumenHostValue.Undefined);
                 // In hundredths: a bar does not need more, and a movie is not told sixty times a second.
                 publish("play.progress", LumenHostValue.FromNumber(
                     Math.Round(Math.Clamp(time / TaikoResultBanner.Time(chart), 0, 1), 2)));
@@ -788,7 +789,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         TaikoHitResult.Great => "good",
                         TaikoHitResult.Good => "ok",
                         _ => "bad",
-                    }), LumenHostValue.FromBoolean(judgement.HitObject.IsStrong));
+                    }), LumenHostValue.FromBoolean(judgement.HitObject.IsStrong),
+                        LumenHostValue.FromString(judgement.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa ? "ka" : "don"));
                     if (score.Combo > 0 && score.Combo % 100 == 0)
                         emit("combo.milestone", LumenHostValue.FromNumber(score.Combo));
                 }
@@ -899,6 +901,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             board.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
             board.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
             hitRadius = _presentation.HitRadius;
+            counted.LongNoteHit += progress =>
+            {
+                if (progress.IsPopped) emit("balloon.popped");
+                else if (!progress.Note.IsBalloon && progress.LastAction is { } hand)
+                    emit("roll.hit", LumenHostValue.FromString(hand is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don" : "ka"),
+                        LumenHostValue.FromBoolean(progress.Note.Kind == PlayableLongNoteKind.BigRoll));
+            };
             _presentation.DrumHit += action => emit("drum.hit",
                 LumenHostValue.FromString(action is TaikoInputAction.LeftDon or TaikoInputAction.LeftKa ? "left" : "right"),
                 LumenHostValue.FromString(action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don" : "ka"));

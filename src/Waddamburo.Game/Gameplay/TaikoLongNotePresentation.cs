@@ -60,10 +60,10 @@ public sealed class TaikoLongNotePresentation
     private int? _active;
 
     /// <summary>The roll or balloon under way: a roll's hits so far, or the hits a balloon still needs.</summary>
-    public (bool Balloon, int Count)? Active => _active is not { } index ? null
+    public (bool Balloon, bool Kusudama, int Count)? Active => _active is not { } index ? null
         : _chart.LongNotes[index].IsBalloon
-            ? (true, Math.Max(_chart.LongNotes[index].RequiredHits - _session.GetLongNoteProgress(index).Hits, 0))
-            : (false, _shownHits);
+            ? (true, _chart.LongNotes[index].Kind == PlayableLongNoteKind.Kusudama, Math.Max(_chart.LongNotes[index].RequiredHits - _session.GetLongNoteProgress(index).Hits, 0))
+            : (false, false, _shownHits);
     private readonly HashSet<int> _finished = []; // a shared ball can end before the lane's own quota
     private bool _balloonVisible;
     private readonly LumenSceneLayer? _kusudama;

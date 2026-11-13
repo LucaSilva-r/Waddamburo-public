@@ -347,6 +347,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Start(_charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _review?.Timelines);
         // The provider's player.name, per lane: the drum's account, or Guest.
         for (var lane = 0; lane < _charts.Length; lane++)
+        {
+            Shell.Gameplay.Publish("player.tone", LumenHostValue.FromNumber(Shell.Sounds?.Gameplay.Tones.ElementAtOrDefault(lane) ?? 0), lane);
+            // ponytail: the パパママ support option is not in the engine; the name is there for a skin to read already.
+            Shell.Gameplay.Publish("player.support", LumenHostValue.FromBoolean(false), lane);
+        }
+        for (var lane = 0; lane < _charts.Length; lane++)
             Shell.Gameplay.Publish("player.name", LumenHostValue.FromString(
                 TaikoGuest.Profiles[_charts.Length == 2 ? lane : _side]?.DisplayName ?? Strings.T("setup.guest")), lane);
         _hitOffsets.Clear();
