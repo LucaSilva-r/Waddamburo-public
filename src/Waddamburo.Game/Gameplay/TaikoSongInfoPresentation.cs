@@ -18,5 +18,9 @@ public static class TaikoSongInfoPresentation
         ArgumentNullException.ThrowIfNull(player);
         player.SetInstanceHidden("main/stage", !showStage);
         player.SetInstanceHidden("main", !showInfo);
+        // Without the stage number (home, Issue #33) the board stays still: from frame 90 the movie cycles the title
+        // out for the number and back, which there only fades it. Its first frame shows it whole.
+        if (!showStage && player.InstanceFrame("main") is { Playing: true })
+            player.TryGotoFrame("main", 0, play: false);
     }
 }
