@@ -297,6 +297,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             _ = Shell.Titles.Resolve(gameplay.RainbowTitle.Value);
             rainbow.Begin(Shell.Tick, Shell.Hosts.Waiwai ? RainbowTransitionSequence.WaiwaiLeadInTicks : null);
             _titleReported = false;
+            // The last song's cover may have ended without its title stop (Song Select unloading silenced the music
+            // first): left set, it stopped this song's preview at the pick, before this rainbow even showed (#17).
+            _musicUnderCover = false;
             composeGameplay(request);
             _aiSetup = null;
             Console.WriteLine($"Queued rainbow cover for '{request.Song}' at tick {Shell.Tick}.");
