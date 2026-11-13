@@ -342,8 +342,14 @@ Wd.get("dan.exam.value", 2, 1)         // the player comes after the index
 
 **Dan course, built**: `dan.rank`, `dan.song`, `dan.notesLeft`, `dan.exam.count`, and the lists `dan.exam.type`,
 `dan.exam.target`, `dan.exam.value`, `dan.exam.possible`, published by `DanExamPanel`. Our panel (`dani_enso`) reads
-them; the game's is still called from `DanExamPanel` (no recorded dan session to prove a move to the adapter
-against). The dan gauge is the song gauge's package. Neither has been seen on screen in a course yet.
+them (also `dan.name`, and the list `dan.exam.gold`); the game's is still called from `DanExamPanel`. Our panel has
+the game's arrangement: the course's plate and the notes left on the left, a row per requirement with its bar (what
+is left, for the two that must stay under their target). The dan gauge is the song gauge's script over the lane, at
+the lane's length. Both seen in a course (六段), beside the game's at the same tick: the numbers agree.
+
+A recorded dan session now exists (the user's, on the game's movies, with its edge log), so the game's panel can be
+moved to the adapter with proof. Headless runs could not play a course before: the tick clock ran under the first
+song's card and went back when its music started (fixed in `GameplayFlow.songTime`).
 
 ## To do: limits on what a movie may cost (2026-11-13)
 

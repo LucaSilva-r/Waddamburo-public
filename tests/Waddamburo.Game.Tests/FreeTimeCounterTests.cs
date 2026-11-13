@@ -185,11 +185,12 @@ public sealed class FreeTimeCounterTests
         panel.PublishItem("dan.exam.type", 1, LumenHostValue.FromString("soul_gauge"));
         panel.PublishItem("dan.exam.target", 1, n(100));
         panel.Publish("dan.exam.count", n(2));
-        Assert.Equal("BAD  0 / 10", panel.ReadScriptValue("row0.line.text"));
+        Assert.Equal("BAD under 10", panel.ReadScriptValue("row0.label.text"));
         panel.PublishItem("dan.exam.value", 1, n(64));
         panel.PublishItem("dan.exam.possible", 0, LumenHostValue.FromBoolean(false));
-        Assert.Equal("Soul gauge  64 / 100", panel.ReadScriptValue("row1.line.text"));
-        Assert.Equal("BAD  0 / 10  FAILED", panel.ReadScriptValue("row0.line.text"));
+        Assert.Equal("64%", panel.ReadScriptValue("row1.value.text"));
+        Assert.Equal("Soul gauge 100% or more", panel.ReadScriptValue("row1.label.text"));
+        Assert.Equal("BAD under 10  FAILED", panel.ReadScriptValue("row0.label.text"));
         panel.Publish("dan.exam.count", n(1)); // the list shrank: the row goes
         advance(panel, 1);
         Assert.NotEqual("DisplayInstance", panel.ReadScriptValue("row1")?.GetType().Name);

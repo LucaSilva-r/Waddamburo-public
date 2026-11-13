@@ -1,4 +1,4 @@
-// gage_don_1p_dani: the dan course's soul gauge, read from the provider (Wd); the same as the song gauges for now.
+// gage_don_1p_dani: the dan course's soul gauge, over the lane, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
@@ -56,8 +56,9 @@
           "keys": [
             {
               "frame": 0,
-              "x": 250,
-              "y": -131
+              "x": 330,
+              "y": -26,
+              "scaleX": 1.1692307692307693
             }
           ]
         },
@@ -67,8 +68,8 @@
           "keys": [
             {
               "frame": 0,
-              "x": 252,
-              "y": -129
+              "x": 332,
+              "y": -24
             }
           ]
         },
@@ -78,8 +79,8 @@
           "keys": [
             {
               "frame": 0,
-              "x": 252,
-              "y": -131
+              "x": 332,
+              "y": -26
             }
           ]
         }

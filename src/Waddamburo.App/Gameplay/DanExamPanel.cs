@@ -63,6 +63,7 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course,
             return false;
         call("SetConditionNum", _exams.OnPanel.Count);
         publish("dan.rank", LumenHostValue.FromNumber(course.Rank));
+        publish("dan.name", LumenHostValue.FromString(course.Name));
         publish("dan.exam.count", LumenHostValue.FromNumber(_exams.OnPanel.Count));
         setTypes();
         return true;
@@ -76,6 +77,7 @@ internal sealed class DanExamPanel(LumenPlayer movie, DanCourse course,
         {
             publishItem("dan.exam.type", index, LumenHostValue.FromString(shown[index].Type));
             publishItem("dan.exam.target", index, LumenHostValue.FromNumber(DanExams.Target(shown[index].Red, _song)));
+            publishItem("dan.exam.gold", index, LumenHostValue.FromNumber(shown[index].Gold.Length == 0 ? 0 : DanExams.Target(shown[index].Gold, _song)));
         }
         for (var index = 0; index < shown.Count; index++)
             call("SetConditionType", index, DanExams.TypeOf(shown[index].Type), DanExams.Target(shown[index].Red, _song));

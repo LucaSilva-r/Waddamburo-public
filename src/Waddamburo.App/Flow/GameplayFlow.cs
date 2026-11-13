@@ -458,6 +458,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         !revealed ? TimeSpan.Zero
         : _musicEndPosition is { } ended ? ended + _afterMusic.Elapsed
         : _music is not null ? Shell.Audio!.GetPosition(_music)
+        // A dan course's first card: nothing runs before its music (the stopwatch below is stopped then; ticks are not).
+        : Shell.Headless && _courseCardTick is not null ? TimeSpan.Zero
         : Shell.Headless ? TimeSpan.FromSeconds((Shell.Tick - _startTick - _pausedTicks
             - (_paused ? Shell.Tick - _pausedAtTick : 0)) / 60d)
         : _clock.Elapsed) ?? TimeSpan.Zero;
@@ -893,6 +895,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _courseCardTick = null;
             _music = startAudio(Shell.PlayRequests.Active!);
             _clock.Restart();
+            _startTick = Shell.Tick; // the headless clock (ticks) restarts with it
             showCourseSong();
         }
         if (!revealed || _review is not null) // a review never ends by itself: Escape leaves it

@@ -1,43 +1,155 @@
-// dani_enso: the dan course's requirements during a song, read from the provider's dan.exam lists (Wd).
+// dani_enso: the dan course's plate, notes left and requirements during a song, read from the provider (Wd).
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
-  "texts": {
-    "line": {
+  "textures": {
+    "row": "textures/row.svg",
+    "fill": "textures/fill.svg",
+    "plate": "textures/plate.svg"
+  },
+  "shapes": {
+    "row_art": {
+      "texture": "row",
       "rect": [
         0,
-        -16,
-        460,
-        32
+        0,
+        950,
+        88
+      ]
+    },
+    "fill_art": {
+      "texture": "fill",
+      "rect": [
+        0,
+        0,
+        926,
+        20
+      ]
+    },
+    "plate_art": {
+      "texture": "plate",
+      "rect": [
+        0,
+        0,
+        240,
+        260
+      ]
+    }
+  },
+  "texts": {
+    "value": {
+      "rect": [
+        0,
+        -20,
+        200,
+        40
       ],
-      "size": 24,
-      "align": "left",
+      "size": 30,
+      "align": "center",
       "color": "#ffffff"
+    },
+    "label": {
+      "rect": [
+        -500,
+        -18,
+        500,
+        36
+      ],
+      "size": 26,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "name": {
+      "rect": [
+        -110,
+        -26,
+        220,
+        52
+      ],
+      "size": 40,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "caption": {
+      "rect": [
+        -96,
+        -14,
+        192,
+        28
+      ],
+      "size": 20,
+      "align": "center",
+      "color": "#3a2a22"
     },
     "left": {
       "rect": [
-        0,
-        -16,
-        460,
-        32
+        -96,
+        -32,
+        192,
+        64
       ],
-      "size": 24,
-      "align": "left",
-      "color": "#ffd23c"
+      "size": 52,
+      "align": "center",
+      "color": "#ffffff"
     }
   },
   "sprites": {
+    "fill": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "fill_art",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
     "row": {
       "frames": 1,
       "export": "row",
       "layers": [
         {
-          "character": "line",
-          "name": "line",
+          "character": "row_art",
           "keys": [
             {
               "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "fill",
+          "name": "fill",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 12,
+              "y": 56
+            }
+          ]
+        },
+        {
+          "character": "value",
+          "name": "value",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 30
+            }
+          ]
+        },
+        {
+          "character": "label",
+          "name": "label",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 932,
+              "y": 30
             }
           ]
         }
@@ -47,13 +159,45 @@
       "frames": 1,
       "layers": [
         {
+          "character": "plate_art",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 28,
+              "y": 378
+            }
+          ]
+        },
+        {
+          "character": "name",
+          "name": "name",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 148,
+              "y": 423
+            }
+          ]
+        },
+        {
+          "character": "caption",
+          "name": "caption",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 148,
+              "y": 496
+            }
+          ]
+        },
+        {
           "character": "left",
           "name": "left",
           "keys": [
             {
               "frame": 0,
-              "x": 600,
-              "y": 470
+              "x": 148,
+              "y": 560
             }
           ]
         }
