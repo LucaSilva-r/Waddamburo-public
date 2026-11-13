@@ -44,25 +44,23 @@ internal sealed class GameplayAutoplay
     /// </summary>
     public static IReadOnlyList<TaikoReplayInput> InputsFor(PlayableChart chart, TimeSpan rollInterval)
     {
-        // ponytail: 譜面分岐 charts play the master route, where a perfect play goes at the first check;
-        // a chart whose first check cannot reach master leaves the bot hitting master notes on a lower route.
-        chart = chart.OnRoute(ChartBranch.Master);
-        var inputs = new List<TaikoReplayInput>();
+        // Every route's hits, each with its route; on a 譜面分岐 chart the ones off the route played are dropped below.
+        var inputs = new List<(TaikoReplayInput Input, ChartBranch? Route)>();
         var right = false; // small notes alternate hands, like a person (#19: the bot drummed one side)
         foreach (var note in chart.HitObjects)
         {
             var ka = note.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa;
             right = !note.IsStrong && !right;
-            inputs.Add(new((ka, right) switch
+            inputs.Add((new((ka, right) switch
             {
                 (true, false) => TaikoInputAction.LeftKa,
                 (true, true) => TaikoInputAction.RightKa,
                 (false, false) => TaikoInputAction.LeftDon,
                 _ => TaikoInputAction.RightDon,
-            }, note.StartTime));
+            }, note.StartTime), note.Branch));
             if (note.IsStrong)
                 // A Kadon needs the other colour.
-                inputs.Add(new(ka || note.IsKadon ? TaikoInputAction.RightKa : TaikoInputAction.RightDon, note.StartTime));
+                inputs.Add((new(ka || note.IsKadon ? TaikoInputAction.RightKa : TaikoInputAction.RightDon, note.StartTime), note.Branch));
         }
         foreach (var longNote in chart.LongNotes)
         {
@@ -79,12 +77,27 @@ internal sealed class GameplayAutoplay
             var index = 0;
             while (hit < longNote.EndTime - TimeSpan.FromMilliseconds(25) && index < limit)
             {
-                if (!chart.HitObjects.Any(note => Math.Abs((note.StartTime - hit).TotalMilliseconds) < 40))
-                    inputs.Add(new(index++ % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightDon, hit));
+                if (!chart.HitObjects.Any(note => (note.Branch is null || longNote.Branch is null || note.Branch == longNote.Branch)
+                        && Math.Abs((note.StartTime - hit).TotalMilliseconds) < 40))
+                    inputs.Add((new(index++ % 2 == 0 ? TaikoInputAction.LeftDon : TaikoInputAction.RightDon, hit), longNote.Branch));
                 hit += step;
             }
         }
-        return [.. inputs.OrderBy(static input => input.Time)];
+        var ordered = inputs.OrderBy(static each => each.Input.Time);
+        if (chart.Branching is null)
+            return [.. ordered.Select(static each => each.Input)];
+        // The route depends on the play so far: the bot's own play is judged as it goes, and a hit is kept when its
+        // note is on the route that play is on by then (the windows do not matter, every hit is on time).
+        var session = new TaikoJudgementSession(chart, TaikoJudgementWindows.ForCourse(TaikoCourse.Oni));
+        var kept = new List<TaikoReplayInput>();
+        foreach (var (input, route) in ordered)
+        {
+            session.AdvanceTo(input.Time);
+            if (!PlayableChart.IsOn(route, session.BranchAt(input.Time))) continue;
+            session.SubmitInput(input.Action, input.Time);
+            kept.Add(input);
+        }
+        return kept;
     }
 
     public SdlKeyboardSnapshot Apply(SdlKeyboardSnapshot keyboard, TimeSpan chartTime)
