@@ -498,6 +498,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The AI battle results' standing (rank, points, wins before and after the battle).</summary>
     public AiResultNumbers? AiNumbers { get; set; }
 
+    /// <summary>The player's per-section bests before the battle the results show; null: a first play.</summary>
+    public IReadOnlyList<AiSectionCounts>? AiSectionBest { get; set; }
+
     /// <summary>AI battle's section results, while they are on stage.</summary>
     public AiSectionResultBinding? AiSectionResult { get; private set; }
 
@@ -538,7 +541,7 @@ internal sealed class LayerHostFactory(
     {
         var outcome = AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
         var binding = AiSectionResult = new AiSectionResultBinding(outcome, AiNumbers ?? AiResultNumbers.NewPlayer with { ShowProgress = false },
-            sounds is null ? null : sounds.Frontend.PlayCue)
+            sounds is null ? null : sounds.Frontend.PlayCue, AiSectionBest)
         {
             Backdrop = () => AiResultBackground,
         };

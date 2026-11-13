@@ -535,6 +535,7 @@ public sealed class ScoreSavingTests
                     ALTER TABLE plays DROP COLUMN ai_base_sha256; ALTER TABLE plays DROP COLUMN ai_prior_median;
                     ALTER TABLE plays DROP COLUMN ai_prior_variance;
                     ALTER TABLE plays DROP COLUMN upload_blocked;
+                    ALTER TABLE plays DROP COLUMN ai_section_counts;
                     DROP TABLE remote_ai_plays;
                     PRAGMA user_version = 8;
                     """;

@@ -1118,6 +1118,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
         Shell.Hosts.AiNumbers = null;
+        Shell.Hosts.AiSectionBest = null;
         if (finished && Shell.PlayRequests.Active is { } played)
         {
             saveScore(played, remoteLane);
@@ -1266,7 +1267,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                     {
                         SessionId = AiSession?.Id, Ranked = ranked,
                         BaseSha256 = ChartHash.Compute(_sourceCharts[lane], player.Course), Prior = _aiPrior,
+                        SectionCounts = Waddamburo.Game.Lumen.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)),
                     };
+                    Shell.Hosts.AiSectionBest = scores.AiSectionBest(profile.Baid, sha);
                     var rank = ranks.RankOf(before.Points);
                     Shell.Hosts.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
                         award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins))

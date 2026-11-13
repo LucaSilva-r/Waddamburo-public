@@ -70,6 +70,9 @@ public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, i
 
     /// <summary>AI-don's starting timing (median ms, variance ms²); null: the model's own.</summary>
     public (double Median, double Variance)? Prior { get; init; }
+
+    /// <summary>The player's counts per section (<see cref="Lumen.AiSectionCounts.Format"/>), for later section bests.</summary>
+    public string? SectionCounts { get; init; }
 }
 
 /// <summary>One of the player's AI battles on the server (any machine).</summary>
@@ -364,6 +367,9 @@ public sealed class ScoreStore : IDisposable
         """
         ALTER TABLE plays ADD COLUMN upload_blocked INTEGER NOT NULL DEFAULT 0;
         """,
+        """
+        ALTER TABLE plays ADD COLUMN ai_section_counts TEXT;
+        """,
     ];
 
     private readonly SqliteConnection _connection;
@@ -522,6 +528,44 @@ public sealed class ScoreStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// AI battles kept before plays held their section counts, with what replaying them needs (<see cref="OutdatedPlay"/>
+    /// plus AI-don's starting timing).
+    /// </summary>
+    public List<(OutdatedPlay Play, (double Median, double Variance)? Prior)> AiPlaysWithoutSectionCounts()
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT plays.id, charts.notes, charts.source, plays.options, plays.seed, plays.replay,
+                    plays.ai_prior_median, plays.ai_prior_variance
+                FROM plays JOIN charts ON charts.sha256 = plays.chart_sha256
+                WHERE plays.mode = 'ai_battle' AND plays.ai_section_counts IS NULL AND plays.seed IS NOT NULL
+                """;
+            using var reader = command.ExecuteReader();
+            var plays = new List<(OutdatedPlay, (double, double)?)>();
+            while (reader.Read())
+                plays.Add((new OutdatedPlay(Guid.Parse(reader.GetString(0)), (byte[])reader[1],
+                    reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4), (byte[])reader[5]),
+                    reader.IsDBNull(6) || reader.IsDBNull(7) ? null : (reader.GetDouble(6), reader.GetDouble(7))));
+            return plays;
+        }
+    }
+
+    /// <summary>Keeps an AI battle's section counts (<see cref="Lumen.AiSectionCounts.Format"/>).</summary>
+    public void SetAiSectionCounts(Guid id, string counts)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "UPDATE plays SET ai_section_counts = $counts WHERE id = $id";
+            command.Parameters.AddWithValue("$id", id.ToString());
+            command.Parameters.AddWithValue("$counts", counts);
+            command.ExecuteNonQuery();
+        }
+    }
+
     /// <summary>Keeps a play's numbers as rescored under <paramref name="version"/>.</summary>
     public void UpdateScore(Guid id, TaikoPlayResult result, int version)
     {
@@ -630,11 +674,12 @@ public sealed class ScoreStore : IDisposable
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
                 audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
-                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked)
+                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked, ai_section_counts)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked, $ai_section_counts)
             """;
+        command.Parameters.AddWithValue("$ai_section_counts", (object?)play.Battle?.SectionCounts ?? DBNull.Value);
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$upload_blocked", play.UploadBlocked);
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -705,6 +750,37 @@ public sealed class ScoreStore : IDisposable
                     timing = (reader.GetDouble(2), reader.GetDouble(3));
             }
             return new(points, wins, timing);
+        }
+    }
+
+    /// <summary>
+    /// The player's best per AI battle section on this chart, from their earlier battles on this PC; null: none kept.
+    /// </summary>
+    // ponytail: local plays only; server plays have no section counts on this PC, fetch them if bests should follow the player.
+    public Lumen.AiSectionCounts[]? AiSectionBest(long baid, string sha256)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT ai_section_counts FROM plays WHERE baid = $baid AND chart_sha256 = $sha AND mode = 'ai_battle'
+                    AND ai_section_counts IS NOT NULL
+                """;
+            command.Parameters.AddWithValue("$baid", baid);
+            command.Parameters.AddWithValue("$sha", sha256);
+            using var reader = command.ExecuteReader();
+            Lumen.AiSectionCounts[]? best = null;
+            while (reader.Read())
+            {
+                if (Lumen.AiSectionCounts.Parse(reader.GetString(0)) is not { } sections)
+                    continue;
+                if (best is null || best.Length < sections.Length)
+                    Array.Resize(ref best, sections.Length);
+                for (var section = 0; section < sections.Length; section++)
+                    if (sections[section].Beats(best[section]))
+                        best[section] = sections[section];
+            }
+            return best;
         }
     }
 
