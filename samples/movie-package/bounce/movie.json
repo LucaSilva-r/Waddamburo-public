@@ -1,5 +1,5 @@
 {
-  // A movie package: see docs/development/free-movies-plan.md. View it with
+  // A movie package: see docs/development/free-movies.md. View it with
   //   dotnet run --project src/Waddamburo.App -- --package=samples/movie-package/bounce
   "format": 1,
   "frameRate": 60,

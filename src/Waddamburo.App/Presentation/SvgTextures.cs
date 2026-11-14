@@ -4,7 +4,7 @@ using Svg.Skia;
 namespace Waddamburo.App.Presentation;
 
 /// <summary>
-/// SVG textures of movie packages (docs/development/free-movies-plan.md): drawn once, when the package loads,
+/// SVG textures of movie packages (docs/development/free-movies.md): drawn once, when the package loads,
 /// at the document's own size times the package's texture scale.
 /// </summary>
 internal static class SvgTextures

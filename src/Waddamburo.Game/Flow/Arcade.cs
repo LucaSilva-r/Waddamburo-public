@@ -527,7 +527,7 @@ public sealed record ArcadeSettings
 
     /// <summary>
     /// free_movies: play Waddamburo's own movies in place of the game's wherever one exists
-    /// (docs/development/free-movies-plan.md). Off: the game's movies, ours only where the game data has none.
+    /// (docs/development/free-movies.md). Off: the game's movies, ours only where the game data has none.
     /// </summary>
     public bool FreeMovies { get; init; }
 

@@ -25,7 +25,7 @@ public sealed class EnsoLayout
     /// <summary>
     /// The layout without the game's file: where each part of the gameplay screen is placed (by layout index),
     /// the same arrangement as the game's own so that its movies and Waddamburo's can be mixed part by part
-    /// (docs/development/free-movies-plan.md). A movie of ours is authored for its part's place here.
+    /// (docs/development/free-movies.md). A movie of ours is authored for its part's place here.
     /// </summary>
     public static EnsoLayout Standard { get; } = new(
     [

@@ -15,7 +15,7 @@ public sealed record LumenInstanceInfo(string Path, int Level, string Name, uint
     LumenMatrix Transform, LumenRenderColor Multiply, LumenRenderColor Add, int BlendMode, string? ClassName);
 
 /// <summary>
-/// The movie inspector's view of a running movie (docs/development/free-movies-plan.md). Unlike the host's own
+/// The movie inspector's view of a running movie (docs/development/free-movies.md). Unlike the host's own
 /// calls these leave no trace in the edge log: looking at a movie is not part of its contract.
 /// </summary>
 public sealed partial class LumenPlayer

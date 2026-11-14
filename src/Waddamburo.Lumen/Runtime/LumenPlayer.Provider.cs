@@ -2,7 +2,7 @@ using Waddamburo.Lumen.Provider;
 
 namespace Waddamburo.Lumen.Runtime;
 
-// The provider as a movie sees it (movie-provider-design.md): a global Wd with
+// The provider as a movie sees it (free-movies.md): a global Wd with
 //   Wd.get(name)           the value now, undefined while the name has none
 //   Wd.has(name)           whether it has one
 //   Wd.on(name, fn)        a state: fn(value) at once (undefined while it has none) and at every change;

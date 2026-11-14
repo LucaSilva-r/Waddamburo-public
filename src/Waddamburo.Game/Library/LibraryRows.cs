@@ -4,7 +4,7 @@ namespace Waddamburo.Game.Library;
 
 public enum LibraryNodeKind { Folder, Song, Chart, Course }
 
-/// <summary>One node of the library tree (movie-provider-design.md, Song select: one library tree).</summary>
+/// <summary>One node of the library tree (free-movies.md, Song select: one library tree).</summary>
 public sealed class LibraryNode(LibraryNodeKind kind, string title)
 {
     public LibraryNodeKind Kind => kind;

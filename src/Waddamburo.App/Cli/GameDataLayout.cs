@@ -34,7 +34,7 @@ internal sealed record GameDataLayout(
         var don = Path.Combine(fullRoot, "data", "don3d");
         var tja = Path.Combine(fullRoot, "custom_songs");
         var sound = Path.Combine(fullRoot, "data", "sound");
-        // None of the game data has to be there (docs/development/free-movies-plan.md): without Don-chan's data
+        // None of the game data has to be there (docs/development/free-movies.md): without Don-chan's data
         // he is not drawn, without the sound data the game is silent, and a movie the data lacks is the engine's
         // own or reported by name when a scene needs it.
         string? donRoot = File.Exists(Path.Combine(don, "ani", "don_bind.bin")) ? don : null;

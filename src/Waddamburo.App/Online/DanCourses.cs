@@ -69,7 +69,7 @@ internal sealed class DanCourses
     }
 
     /// <summary>
-    /// The dojo as the library tree shows it (movie-provider-design.md, Song select): a folder per series, its courses
+    /// The dojo as the library tree shows it (free-movies.md, Song select): a folder per series, its courses
     /// in it, each course's songs as its charts with the stars of the course they are played on. A course's Tag is its
     /// status, a series folder's its id.
     /// </summary>

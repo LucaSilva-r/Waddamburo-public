@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Waddamburo.Lumen.Runtime;
 
 /// <summary>
-/// Development record of everything that crosses a movie's edge (see docs/development/free-movies-plan.md):
+/// Development record of everything that crosses a movie's edge (see docs/development/free-movies.md):
 /// one tab-separated line per crossing, <c>tick, movie, kind, text</c>. <c>WADDAMBURO_EDGE_LOG=file</c> turns it
 /// on; a replacement movie is checked by comparing its lines with the original's over the same session.
 /// Kinds: <c>export</c> (a callback the movie registers), <c>in</c> (the host calls one), <c>out</c> (the movie

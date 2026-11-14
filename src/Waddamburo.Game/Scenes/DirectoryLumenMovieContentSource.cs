@@ -32,7 +32,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     public Action<string, string>? Loaded { get; set; }
 
     /// <summary>
-    /// Where movie packages are looked up before the archives (docs/development/free-movies-plan.md):
+    /// Where movie packages are looked up before the archives (docs/development/free-movies.md):
     /// <c>&lt;root&gt;/&lt;archive folder&gt;/&lt;movie&gt;/movie.json</c> replaces that archive's movie. Needs
     /// <see cref="DecodeImage"/>. Null (the default): archives only.
     /// </summary>

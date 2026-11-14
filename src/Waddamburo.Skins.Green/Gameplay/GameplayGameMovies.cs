@@ -6,7 +6,7 @@ using Waddamburo.Lumen.Runtime;
 namespace Waddamburo.Skins.Green.Gameplay;
 
 /// <summary>
-/// The adapter for one drum's gameplay movies when they are the game's own (movie-provider-design.md, "The game's
+/// The adapter for one drum's gameplay movies when they are the game's own (free-movies.md, "The game's
 /// movies: an adapter"). It hears what the lane publishes, as any movie could, and turns it into the callbacks and
 /// label jumps those movies are driven by, in the order the game was traced making them. A movie that reads the
 /// provider itself is one of ours: it is left alone, and needs none of these callbacks or labels.

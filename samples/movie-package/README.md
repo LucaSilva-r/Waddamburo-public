@@ -1,7 +1,7 @@
 # Movie package sample
 
 `bounce/` is a movie package: a movie of our own that the engine plays like one of the game's
-(`docs/development/free-movies-plan.md`). `movie.json` describes it (textures, shapes, sprites as
+(`docs/development/free-movies.md`). `movie.json` describes it (textures, shapes, sprites as
 layers with keyframes, labels); `textures/ball.png` was drawn by a script for this sample.
 
 ```sh

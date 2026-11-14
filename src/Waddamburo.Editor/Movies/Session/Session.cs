@@ -10,7 +10,7 @@ namespace Waddamburo.Editor;
 /// <summary>
 /// Coordinates the movie editor's panels, preview transport and host integration. Feature implementations and
 /// their state live in the matching partial files; package edits use MovieDocument, while original movies are
-/// inspected as read-only references. See docs/development/free-movies-plan.md.
+/// inspected as read-only references. See docs/development/movie-editor.md.
 /// </summary>
 public sealed partial class MovieInspectorSession : IDisposable
 {

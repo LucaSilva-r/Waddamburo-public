@@ -531,7 +531,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 (kusudama?.Layer ?? layers.GetValueOrDefault("action_kusudama"))?.Player, layers["lane_hit_effect"].Player);
             // Waiwai's lanes and AI battle's AI-don lane are shared-voltage lanes on the board.
             gameMovies.SetUpBoard(players == 2, side, stage is not null || donStage is not null && lane == 1, course, dan is not null);
-            // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
+            // The provider (free-movies.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
             // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
             // and every other movie on stage, get them under the player's number (Everyone, set once all lanes exist).

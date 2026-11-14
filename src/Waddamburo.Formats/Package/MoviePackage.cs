@@ -7,7 +7,7 @@ using Waddamburo.Formats.Lmb;
 namespace Waddamburo.Formats.Package;
 
 /// <summary>
-/// A movie package's <c>movie.json</c> (docs/development/free-movies-plan.md): a movie written by hand or by
+/// A movie package's <c>movie.json</c> (docs/development/free-movies.md): a movie written by hand or by
 /// the editor, as names, layers and keyframes. <see cref="Assemble"/> turns it into the record stream the
 /// Lumen reader takes, so a package movie goes through the same parser, validation and player as an
 /// archive movie.

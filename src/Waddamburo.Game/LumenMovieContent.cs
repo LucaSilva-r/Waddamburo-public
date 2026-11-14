@@ -70,7 +70,7 @@ public sealed class LumenMovieContent
     }
 
     /// <summary>
-    /// A movie package (a folder with movie.json and its PNG textures; docs/development/free-movies-plan.md),
+    /// A movie package (a folder with movie.json and its PNG textures; docs/development/free-movies.md),
     /// loaded into the same content an archive movie gives.
     /// </summary>
     /// <param name="directory">The package folder; its name is the movie's.</param>

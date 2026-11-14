@@ -20,7 +20,7 @@ public sealed class ActionScriptException(string file, int line, int column, str
 
 /// <summary>
 /// Compiles ActionScript 2 source to the AVM1 code the Lumen interpreter runs (strings as indices into the
-/// movie's pool), for the scripts of movie packages (docs/development/free-movies-plan.md).
+/// movie's pool), for the scripts of movie packages (docs/development/free-movies.md).
 /// The language is what the interpreter can run: variables, functions and closures, objects and arrays,
 /// classes (<c>extends</c>, <c>super</c>, <c>static</c>), <c>if</c>, <c>while</c>, <c>do</c>, <c>for</c>,
 /// <c>switch</c>, the usual operators; type annotations are read and ignored. <c>for..in</c>, <c>try</c>,

@@ -3,7 +3,7 @@ using Waddamburo.Lumen.Runtime;
 namespace Waddamburo.Lumen.Provider;
 
 /// <summary>
-/// The requests one screen takes (movie-provider-design.md, Requests). Its flow says what each does; installed on the
+/// The requests one screen takes (free-movies.md, Requests). Its flow says what each does; installed on the
 /// screen's movies, it answers their <c>Wd.request</c>. Scope: a movie the scene places asks for what its screen
 /// takes; everything inside it (child clips, attached sprites, movies loaded into its clips) runs in its player and
 /// asks the same.
