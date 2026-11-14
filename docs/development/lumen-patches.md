@@ -6,7 +6,7 @@ written and nothing of the game is shipped: a patch only rearranges what the use
 contains. It works like an edited file would, so the movie's own scripts and timelines (frame
 jumps, visibility logic) handle the result without host-side per-frame work.
 
-`LumenMovieEditor` (Game/Patching) edits the movie model (`LmbMovieDefinition`) and its decoded
+`LumenMovieEditor` (Skins.Green/Patching) edits the movie model (`LmbMovieDefinition`) and its decoded
 textures:
 
 - `AddString`, `AddColorTransform`: pool entries (colour entries can be set at runtime with

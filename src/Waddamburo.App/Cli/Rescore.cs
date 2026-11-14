@@ -199,7 +199,7 @@ internal static class Rescore
         }
         writer.WriteEndArray();
         writer.WriteEndObject();
-        void counts(string name, Waddamburo.Game.Lumen.AiSectionCounts counts)
+        void counts(string name, Waddamburo.Game.Gameplay.AiSectionCounts counts)
         {
             writer.WriteStartObject(name);
             writer.WriteNumber("great", counts.Great);

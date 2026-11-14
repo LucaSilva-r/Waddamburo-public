@@ -926,8 +926,8 @@ internal sealed class GameShell : IDisposable
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => Players.SongsPlayed,
             AiPanels = () => AiStanding() is var (points, wins, _)
-                ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer.Tension)
-                : Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer,
+                ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Skins.Green.AiBattlePanels.NewPlayer.Tension)
+                : Waddamburo.Skins.Green.AiBattlePanels.NewPlayer,
             ShowOni = () => Arcade.ShowOni,
             RandomSongFolder = () => Arcade.RandomSongFolder,
             HideArcadeHud = () => HideArcadeHud,

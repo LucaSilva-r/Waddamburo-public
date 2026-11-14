@@ -1,7 +1,7 @@
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;
@@ -35,7 +35,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             return;
         _resultStartTick = Shell.Tick;
         // The next song's Song Select loads in the background while the results play.
-        if (Shell.Hosts.CreditNext == Waddamburo.Game.Lumen.TaikoCreditNext.NextSong)
+        if (Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.NextSong)
             Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Hosts.Waiwai, Shell.Hosts.AiBattle));
         // dani_result's song boards: fills song_name1 to 3, and a challenge's name art.
         if (Shell.Hosts.DanResult is not null && Shell.Active.Player.Layers[0].Player is { } dani)

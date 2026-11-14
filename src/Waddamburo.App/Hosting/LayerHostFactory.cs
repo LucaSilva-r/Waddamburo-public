@@ -8,7 +8,7 @@ using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
@@ -428,7 +428,7 @@ internal sealed class LayerHostFactory(
         new(null, player => parts.Attach(movie, player));
 
     // The song select movie of the mode (FlowScenes.SongSelectScene), whose patched genres the host fills.
-    private string songSelectMovie => Waddamburo.Game.Patching.SongSelectGenrePatch.MovieNames[AiBattle ? 2 : Waiwai ? 1 : 0];
+    private string songSelectMovie => Waddamburo.Skins.Green.Patching.SongSelectGenrePatch.MovieNames[AiBattle ? 2 : Waiwai ? 1 : 0];
 
     private LumenLayerHost songSelectHost()
     {
@@ -482,8 +482,8 @@ internal sealed class LayerHostFactory(
             StartSong = startSong,
             Favourites = Favourites,
             ShowOni = ShowOni?.Invoke() == true,
-            PatchedGenres = Waddamburo.Game.Patching.SongSelectGenrePatch.Applied(songSelectMovie),
-            GenreColours = Waddamburo.Game.Patching.SongSelectGenrePatch.Colours(songSelectMovie),
+            PatchedGenres = Waddamburo.Skins.Green.Patching.SongSelectGenrePatch.Applied(songSelectMovie),
+            GenreColours = Waddamburo.Skins.Green.Patching.SongSelectGenrePatch.Colours(songSelectMovie),
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,

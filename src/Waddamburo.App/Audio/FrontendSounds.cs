@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
 

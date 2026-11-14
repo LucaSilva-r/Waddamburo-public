@@ -1,5 +1,4 @@
 using Waddamburo.Catalog;
-using Waddamburo.Game.Lumen;
 
 namespace Waddamburo.Game.Gameplay;
 

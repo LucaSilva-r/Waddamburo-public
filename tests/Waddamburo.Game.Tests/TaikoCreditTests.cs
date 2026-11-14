@@ -1,4 +1,4 @@
-using Waddamburo.Game.Lumen;
+using Waddamburo.Game.Flow;
 
 namespace Waddamburo.Game.Tests;
 

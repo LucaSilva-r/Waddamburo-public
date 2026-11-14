@@ -208,7 +208,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // AI battle's support menu: a level below いつもの is the course's chart simplified (both lanes play it).
         var pick = Shell.Hosts.AiBattle && _sourceCharts.Length == 2 && _play.Review is null ? Shell.Hosts.SongSelect?.SupportLevel ?? 0 : 0;
         var offered = Shell.Hosts.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)players[0].Course) ?? 0;
-        var supportLevel = Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(ChartSimplifier.LevelOf(players[0].Course), offered, pick);
+        var supportLevel = SupportInfo.SupportPick(ChartSimplifier.LevelOf(players[0].Course), offered, pick);
         _play.Intermediate = pick > 0 && ChartSimplifier.SourceCourse(supportLevel) == players[0].Course;
         if (_play.Intermediate)
             Console.WriteLine($"AI battle: level {supportLevel} (pick {pick} of {offered}).");
@@ -1210,7 +1210,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                     {
                         SessionId = AiSession?.Id, Ranked = ranked,
                         BaseSha256 = ChartHash.Compute(_sourceCharts[lane], player.Course), Prior = _play.AiPrior,
-                        SectionCounts = Waddamburo.Game.Lumen.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)),
+                        SectionCounts = Waddamburo.Game.Gameplay.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)),
                     };
                     Shell.Hosts.AiSectionBest = scores.AiSectionBest(profile.Baid, sha);
                     var rank = ranks.RankOf(before.Points);

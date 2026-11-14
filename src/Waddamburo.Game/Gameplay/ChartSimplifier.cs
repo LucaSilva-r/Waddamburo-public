@@ -244,4 +244,11 @@ public static class SupportInfo
             : null;
         return file is null ? new Dictionary<string, int[]>() : Parse(File.ReadAllText(file));
     }
+
+    /// <summary>
+    /// The level the support menu's pick is (ghost_song_select's SupportInfo: a course offering n levels below it lists
+    /// 1: [-2], 2: [-2, -3], 3: [-1, -2, -3] from its own, and sends the pick's place in that list, 0 = いつもの).
+    /// </summary>
+    public static int SupportPick(int courseLevel, int offered, int pick) =>
+        pick <= 0 || offered <= 0 ? courseLevel : courseLevel - (offered >= 3 ? pick : pick + 1);
 }

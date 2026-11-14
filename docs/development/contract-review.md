@@ -123,7 +123,7 @@ shutdown mid-transition. Assert state consistency and exact resource disposal.
 **Evidence.** [SongSelectSession.StopPreview](../../src/Waddamburo.Game/SongSelect/SongSelectSession.cs)
 calls `SetPreview(null)`. [SongPreviewController](../../src/Waddamburo.App/Audio/SongPreviewController.cs)
 interprets null as a request to play background music after a delay.
-[SongSelectHostBinding.Dispose](../../src/Waddamburo.Game/Lumen/SongSelectHostBinding.cs)
+[SongSelectHostBinding.Dispose](../../src/Waddamburo.Skins.Green/Screens/SongSelectHostBinding.cs)
 calls `StopPreview`. The app stops the Preview/Bgm buses during cover, but that
 does not cancel the controller operation. Preview completion may also restore Bgm.
 

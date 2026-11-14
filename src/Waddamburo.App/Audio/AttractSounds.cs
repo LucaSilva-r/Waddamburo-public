@@ -1,4 +1,4 @@
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl.Media;
 
 namespace Waddamburo.App.Audio;

@@ -1,7 +1,7 @@
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;

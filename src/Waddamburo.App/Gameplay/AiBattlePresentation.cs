@@ -1,7 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
-using Waddamburo.Game.Lumen;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.App.Gameplay;

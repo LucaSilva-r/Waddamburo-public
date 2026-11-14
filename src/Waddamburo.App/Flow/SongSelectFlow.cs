@@ -4,7 +4,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
@@ -366,7 +366,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         try
         {
             var source = await Shell.Assets.LoadChartAsync(player.Chart, player.ChartAsset).ConfigureAwait(false);
-            var level = Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(ChartSimplifier.LevelOf(player.Course), offered, pick);
+            var level = SupportInfo.SupportPick(ChartSimplifier.LevelOf(player.Course), offered, pick);
             var support = pick > 0 && ChartSimplifier.SourceCourse(level) == player.Course ? level : 0;
             var chart = support == 0 ? source : ChartSimplifier.Simplify(source, support);
             var session = await Shell.Sync.BeginAiBattleAsync(TaikoGuest.Profiles[(int)player.Player],

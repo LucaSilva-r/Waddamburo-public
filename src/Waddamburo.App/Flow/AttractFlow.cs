@@ -4,7 +4,7 @@ using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;

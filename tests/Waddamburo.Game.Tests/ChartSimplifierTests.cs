@@ -47,9 +47,9 @@ public sealed class ChartSimplifierTests
             + row(0, 0, 0) + row(13, 14, 15) + row(7, 8, 9) + row(1, 2, 0) + row(0, 0, 0) + "</elems></coursepatterns></supportinfo></boost_serialization>";
         Assert.Equal([0, 3, 3, 2], SupportInfo.Parse(xml)["uhear2"]);
         // The menu's list per count (おに 13): 1 -> 11; 2 -> 11, 10; 3 -> 12, 11, 10.
-        Assert.Equal(11, Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(13, 1, 1));
-        Assert.Equal([11, 10], Enumerable.Range(1, 2).Select(static pick => Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(13, 2, pick)));
-        Assert.Equal([12, 11, 10], Enumerable.Range(1, 3).Select(static pick => Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(13, 3, pick)));
-        Assert.Equal(13, Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(13, 3, 0));
+        Assert.Equal(11, SupportInfo.SupportPick(13, 1, 1));
+        Assert.Equal([11, 10], Enumerable.Range(1, 2).Select(static pick => SupportInfo.SupportPick(13, 2, pick)));
+        Assert.Equal([12, 11, 10], Enumerable.Range(1, 3).Select(static pick => SupportInfo.SupportPick(13, 3, pick)));
+        Assert.Equal(13, SupportInfo.SupportPick(13, 3, 0));
     }
 }

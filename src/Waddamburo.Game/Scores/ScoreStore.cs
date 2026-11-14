@@ -72,7 +72,7 @@ public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, i
     /// <summary>AI-don's starting timing (median ms, variance ms²); null: the model's own.</summary>
     public (double Median, double Variance)? Prior { get; init; }
 
-    /// <summary>The player's counts per section (<see cref="Lumen.AiSectionCounts.Format"/>), for later section bests.</summary>
+    /// <summary>The player's counts per section (<see cref="Gameplay.AiSectionCounts.Format"/>), for later section bests.</summary>
     public string? SectionCounts { get; init; }
 }
 
@@ -563,7 +563,7 @@ public sealed class ScoreStore : IDisposable
         }
     }
 
-    /// <summary>Keeps an AI battle's section counts (<see cref="Lumen.AiSectionCounts.Format"/>).</summary>
+    /// <summary>Keeps an AI battle's section counts (<see cref="Gameplay.AiSectionCounts.Format"/>).</summary>
     public void SetAiSectionCounts(Guid id, string counts)
     {
         lock (_connection)
@@ -767,7 +767,7 @@ public sealed class ScoreStore : IDisposable
     /// The player's best per AI battle section on this chart, from their earlier battles on this PC; null: none kept.
     /// </summary>
     // ponytail: local plays only; server plays have no section counts on this PC, fetch them if bests should follow the player.
-    public Lumen.AiSectionCounts[]? AiSectionBest(long baid, string sha256)
+    public Gameplay.AiSectionCounts[]? AiSectionBest(long baid, string sha256)
     {
         lock (_connection)
         {
@@ -779,10 +779,10 @@ public sealed class ScoreStore : IDisposable
             command.Parameters.AddWithValue("$baid", baid);
             command.Parameters.AddWithValue("$sha", sha256);
             using var reader = command.ExecuteReader();
-            Lumen.AiSectionCounts[]? best = null;
+            Gameplay.AiSectionCounts[]? best = null;
             while (reader.Read())
             {
-                if (Lumen.AiSectionCounts.Parse(reader.GetString(0)) is not { } sections)
+                if (Gameplay.AiSectionCounts.Parse(reader.GetString(0)) is not { } sections)
                     continue;
                 if (best is null || best.Length < sections.Length)
                     Array.Resize(ref best, sections.Length);

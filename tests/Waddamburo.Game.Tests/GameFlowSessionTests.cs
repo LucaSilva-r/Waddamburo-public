@@ -1,11 +1,7 @@
-using System.Buffers.Binary;
 using System.Collections.Immutable;
-using Waddamburo.Formats.Lmb;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
-using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
@@ -139,84 +135,10 @@ public sealed class GameFlowSessionTests
     }
 
     [Fact]
-    public void SyntheticLumenSetNextSceneEntersTheGameFlowMachine()
-    {
-        var flow = activeSession("entry");
-        var services = new SyntheticFrontendServices();
-        var player = new LumenPlayer(
-            createTransitionMovie(),
-            1280,
-            720,
-            hostBinding: new LumenFrontendHostBinding(services, flow));
-
-        player.Advance();
-
-        Assert.Equal(GameFlowState.TransitionPending, flow.State);
-        Assert.Equal(new LumenSceneRequest(1, 0, 0), flow.PendingTransition);
-        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_HOST_CALL_FAILED");
-        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
-    }
-
-    [Fact]
-    public void FrontendBindingForwardsEntryDonMotionCalls()
-    {
-        var don = new SyntheticDonPresentation();
-        var player = new LumenPlayer(
-            createDonMotionMovie(),
-            1280,
-            720,
-            hostBinding: new LumenFrontendHostBinding(
-                new SyntheticFrontendServices(),
-                new GameFlowSession(),
-                don));
-
-        player.Advance();
-
-        Assert.Equal(
-            new DonMotionRequest(0, "don_entry1P_out", "don_entry_loop"),
-            Assert.Single(don.Requests));
-        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
-    }
-
-    [Fact]
-    public void FrontendBindingWithDonAndEntryRegistersEachHostMethodOnce()
-    {
-        // The game's entry wiring: Don calls (ChangeAccessory...) and the entry host's own must not collide.
-        var player = new LumenPlayer(createDonMotionMovie(), 1280, 720,
-            hostBinding: new LumenFrontendHostBinding(new SyntheticFrontendServices(), new GameFlowSession(),
-                new SyntheticDonPresentation(), new EntrySceneHost(new IndicatorParts(IndicatorPartsScene.Entry, countdown: false))));
-
-        player.Advance();
-    }
-
-    [Theory]
-    [InlineData(0, 30, 31, "don_result_in", "don_result_loop")]
-    [InlineData(0, 32, 33, "don_result_clear", "don_result_clear_loop")]
-    [InlineData(0, 35, 36, "don_result_failure", "don_result_failure_loop")]
-    [InlineData(0, 38, 39, "don_result_full", "don_result_full_loop")]
-    [InlineData(0, 41, 42, "don_result_percious", "don_result_percious_loop")]
-    [InlineData(1, 38, 39, "don_result_full", "don_result_full_loop")]
-    [InlineData(1, 40, -1, "don_result_full_koshibai", null)]
-    public void ResultBindingResolvesNumericDonMotionsWithoutMovieConstants(
-        int side, int oneShot, int loop, string expectedOneShot, string? expectedLoop)
-    {
-        var don = new SyntheticDonPresentation();
-        var player = new LumenPlayer(createResultDonMotionMovie(side, oneShot, loop), 1280, 720,
-            hostBinding: new ResultHostBinding(static () => [], 1, 0, don));
-
-        player.Advance();
-
-        Assert.True(don.Requests.Count == 1,
-            string.Join(" | ", player.Diagnostics.Select(diagnostic => $"{diagnostic.Code}: {diagnostic.Message}")));
-        Assert.Equal(new DonMotionRequest(side, expectedOneShot, expectedLoop), don.Requests[0]);
-        Assert.DoesNotContain(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_AVM_METHOD_UNRESOLVED");
-    }
-
-    [Fact]
     public void AttachingDonToANewMovieResetsPreviousSceneState()
     {
         var don = new SyntheticDonPresentation();
-        var player = new LumenPlayer(createTransitionMovie(), 1280, 720);
+        var player = new LumenPlayer(TestMovies.TransitionMovie(), 1280, 720);
 
         DonLumenBinding.Attach(player, don);
 
@@ -230,13 +152,8 @@ public sealed class GameFlowSessionTests
         await using var coordinator = new GameFlowCoordinator(createCatalog(includeRoute: true), loader);
         await coordinator.StartAsync(new SceneId("entry"));
         var entry = Assert.IsType<SyntheticSceneInstance>(coordinator.ActiveScene);
-        var player = new LumenPlayer(
-            createTransitionMovie(),
-            1280,
-            720,
-            hostBinding: new LumenFrontendHostBinding(new SyntheticFrontendServices(), coordinator.Flow));
 
-        player.Advance();
+        Assert.True(coordinator.Flow.TryRequestTransition(new LumenSceneRequest(1, 0, 0)));
         await coordinator.ApplyPendingTransitionAsync();
 
         Assert.Equal(GameFlowState.Active, coordinator.Flow.State);
@@ -468,197 +385,6 @@ public sealed class GameFlowSessionTests
         "synthetic-movie",
         LumenMatrix.Identity,
         hostId);
-
-    private static LmbMovieDefinition createTransitionMovie()
-    {
-        var action = new byte[]
-        {
-            0x96, 0x14, 0x00,
-                0x07, 0x00, 0x00, 0x00, 0x00,
-                0x07, 0x00, 0x00, 0x00, 0x00,
-                0x07, 0x01, 0x00, 0x00, 0x00,
-                0x07, 0x03, 0x00, 0x00, 0x00,
-            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
-            0x1C,
-            0x96, 0x03, 0x00, 0x09, 0x01, 0x00,
-            0x52,
-            0x17,
-            0x00,
-        };
-        var file = createLmb(
-            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
-            record(LmbTags.StringPool, stringPool("Lumen", "SetNextScene")),
-            record(LmbTags.ActionPool, actionPool(action)),
-            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
-            words(LmbTags.ShowFrame, 0, 1),
-            words(LmbTags.ShowFrame, 1, 2),
-            words(LmbTags.DoAction, 0, 0));
-        return LmbSemanticReader.Read(file).Value;
-    }
-
-    private static LmbMovieDefinition createDonMotionMovie()
-    {
-        var action = new byte[]
-        {
-            0x96, 0x08, 0x00,
-                0x09, 0x02, 0x00,
-                0x07, 0x01, 0x00, 0x00, 0x00,
-            0x3C,
-            0x96, 0x08, 0x00,
-                0x09, 0x03, 0x00,
-                0x07, 0x02, 0x00, 0x00, 0x00,
-            0x3C,
-            0x96, 0x14, 0x00,
-                0x07, 0x02, 0x00, 0x00, 0x00,
-                0x07, 0x01, 0x00, 0x00, 0x00,
-                0x07, 0x00, 0x00, 0x00, 0x00,
-                0x07, 0x03, 0x00, 0x00, 0x00,
-            0x96, 0x03, 0x00, 0x09, 0x00, 0x00,
-            0x1C,
-            0x96, 0x03, 0x00, 0x09, 0x01, 0x00,
-            0x52,
-            0x17,
-            0x00,
-        };
-        var file = createLmb(
-            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
-            record(LmbTags.StringPool, stringPool("Lumen", "SetMotion", "DON_ENTRY1P_OUT", "DON_ENTRY_LOOP")),
-            record(LmbTags.ActionPool, actionPool(action)),
-            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
-            words(LmbTags.ShowFrame, 0, 1),
-            words(LmbTags.ShowFrame, 1, 2),
-            words(LmbTags.DoAction, 0, 0));
-        return LmbSemanticReader.Read(file).Value;
-    }
-
-    private static LmbMovieDefinition createResultDonMotionMovie(int side, int oneShot, int loop)
-    {
-        var action = new List<byte>();
-        void pushNumber(int value)
-        {
-            action.AddRange([0x96, 0x05, 0x00, 0x07]);
-            action.AddRange(BitConverter.GetBytes(value));
-        }
-        void pushString(int index) => action.AddRange([0x96, 0x03, 0x00, 0x09, (byte)index, 0x00]);
-        pushNumber(loop);
-        pushNumber(oneShot);
-        pushNumber(side);
-        pushString(4); // DonMot
-        pushNumber(4);
-        pushString(0); // flash
-        action.Add(0x1C); // GetVariable
-        pushString(1); // external
-        action.Add(0x4E); // GetMember
-        pushString(2); // ExternalInterface
-        action.Add(0x4E); // GetMember
-        pushString(3); // call
-        action.AddRange([0x52, 0x17, 0x00]); // CallMethod, Pop, End
-        var file = createLmb(
-            words(LmbTags.MovieProperties, 0, 0, 0, 7, 0, 0, 0, BitConverter.SingleToUInt32Bits(60)),
-            record(LmbTags.StringPool, stringPool("flash", "external", "ExternalInterface", "call", "DonMot")),
-            record(LmbTags.ActionPool, actionPool([.. action])),
-            words(LmbTags.DefineSprite, 7, 0, 0, 2, 3, 2, 0),
-            words(LmbTags.ShowFrame, 0, 1),
-            words(LmbTags.ShowFrame, 1, 2),
-            words(LmbTags.DoAction, 0, 0));
-        return LmbSemanticReader.Read(file).Value;
-    }
-
-    private static LmbFile createLmb(params (uint Tag, byte[] Payload)[] records)
-    {
-        using var stream = new MemoryStream();
-        stream.Write("LMB\0"u8);
-        stream.Write(new byte[LmbFile.HeaderLength - 4]);
-        foreach (var (tag, payload) in records)
-        {
-            writeUInt32(stream, tag);
-            writeUInt32(stream, checked((uint)payload.Length / 4));
-            stream.Write(payload);
-        }
-        return LmbFile.Parse(stream.ToArray());
-    }
-
-    private static (uint Tag, byte[] Payload) record(uint tag, byte[] payload) => (tag, payload);
-
-    private static (uint Tag, byte[] Payload) words(uint tag, params uint[] values)
-    {
-        var payload = new byte[values.Length * 4];
-        for (var index = 0; index < values.Length; index++)
-            BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(index * 4, 4), values[index]);
-        return (tag, payload);
-    }
-
-    private static byte[] actionPool(byte[] action)
-    {
-        using var stream = new MemoryStream();
-        writeUInt32(stream, 1);
-        writeUInt32(stream, checked((uint)action.Length));
-        stream.Write(action);
-        while (stream.Position % 4 != 0)
-            stream.WriteByte(0);
-        return stream.ToArray();
-    }
-
-    private static byte[] stringPool(params string[] values)
-    {
-        using var stream = new MemoryStream();
-        writeUInt32(stream, checked((uint)values.Length));
-        foreach (var value in values)
-        {
-            var encoded = System.Text.Encoding.UTF8.GetBytes(value);
-            writeUInt32(stream, checked((uint)encoded.Length));
-            stream.Write(encoded);
-            stream.WriteByte(0);
-            while (stream.Position % 4 != 0)
-                stream.WriteByte(0);
-        }
-        return stream.ToArray();
-    }
-
-    private static void writeUInt32(Stream stream, uint value)
-    {
-        Span<byte> buffer = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(buffer, value);
-        stream.Write(buffer);
-    }
-
-    private sealed class SyntheticFrontendServices : ILumenFrontendServices
-    {
-        public bool IsReady => true;
-
-        public bool IsStartLumen => true;
-
-        public bool IsFreePlay => false;
-
-        public void Initialize()
-        {
-        }
-
-        public bool TryEnterPlayer() => true;
-
-        public void RequestSound(LumenFrontendSoundRequest request)
-        {
-        }
-
-        public void StopVoice(int? cue = null)
-        {
-        }
-
-        public LumenHostValue CallExternalInterface(LumenHostCall hostCall) => LumenHostValue.Undefined;
-    }
-
-    private sealed class SyntheticDonPresentation : IDonPresentationController
-    {
-        public List<DonMotionRequest> Requests { get; } = [];
-
-        public List<DonPresentationLayout> ResetLayouts { get; } = [];
-
-        public void Reset(DonPresentationLayout layout) => ResetLayouts.Add(layout);
-
-        public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"don:{playerIndex}");
-
-        public void SetMotion(DonMotionRequest request) => Requests.Add(request);
-    }
 
     private sealed class SyntheticSceneLoader : IGameSceneLoader
     {

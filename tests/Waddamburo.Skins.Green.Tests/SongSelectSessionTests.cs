@@ -1,0 +1,482 @@
+using Waddamburo.Catalog;
+using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.SongSelect;
+using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
+
+namespace Waddamburo.Skins.Green.Tests;
+
+public sealed class SongSelectSessionTests
+{
+    [Theory]
+    [InlineData(0, TaikoCourse.Easy)]
+    [InlineData(1, TaikoCourse.Normal)]
+    [InlineData(2, TaikoCourse.Hard)]
+    [InlineData(3, TaikoCourse.Oni)]
+    [InlineData(7, TaikoCourse.Ura)]
+    public void AuthoredCourseSlotsAreTranslatedAtTheHostBoundary(int slot, TaikoCourse course)
+        => Assert.Equal((int)course, AuthoredSongSelectionRequest.ToCatalogCourse(slot));
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(8)]
+    public void UnsupportedAuthoredCourseSlotsAreNotSilentlyReinterpreted(int slot)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => AuthoredSongSelectionRequest.ToCatalogCourse(slot));
+
+    [Fact]
+    public void AuthoredOnePlayerSelectionAcceptsNonFinitePlayerTwoSentinel()
+    {
+        var request = AuthoredSongSelectionRequest.FromHostCall(new LumenHostCall([
+            LumenHostValue.FromNumber(2),
+            LumenHostValue.FromNumber(7),
+            LumenHostValue.FromNumber(3),
+            LumenHostValue.FromNumber(double.NaN),
+        ]));
+
+        Assert.Equal(new AuthoredSongSelectionRequest(2, 7, 3, null), request);
+    }
+
+    [Fact]
+    public void AuthoredSoloRightDrumSelectionHasAnEmptyPlayerOneCourse()
+    {
+        // Traced NotifyEndCourseSelect(2, 1, '', 3) for a player on the right drum alone.
+        var request = AuthoredSongSelectionRequest.FromHostCall(new LumenHostCall([
+            LumenHostValue.FromNumber(2),
+            LumenHostValue.FromNumber(1),
+            LumenHostValue.FromString(""),
+            LumenHostValue.FromNumber(3),
+        ]));
+
+        Assert.Equal(new AuthoredSongSelectionRequest(2, 1, null, 3), request);
+    }
+
+    [Fact]
+    public void AuthoredSelectionKeepsRequiredFieldsStrict()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            AuthoredSongSelectionRequest.FromHostCall(new LumenHostCall([
+                LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber(0),
+                LumenHostValue.FromNumber(double.NaN),
+            ])));
+    }
+
+    [Fact]
+    public void OsuSongsMarkMissingCoursesInvalidSoOniShowsAtOnce()
+    {
+        var key = new SongKey(SongSourceKind.OsuLazer, "osu-set");
+        var descriptor = new SongDescriptor(key, new SongTitle("osu"), null,
+        [
+            new SongChartDescriptor(new ChartKey(key, "hard"), "Muzukashii",
+                new CatalogAssetKey(new CatalogProviderId("synthetic"), "hard"), TaikoCourse.Hard, 5),
+            new SongChartDescriptor(new ChartKey(key, "oni"), "Oni",
+                new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"), TaikoCourse.Oni, 7),
+        ]);
+        var song = new SongSelectSong(descriptor, SongCourseBits.Hard | SongCourseBits.Oni, [null, null, 5, 7, null]);
+
+        Assert.Equal(AuthoredSongCourseBits.All & ~(AuthoredSongCourseBits.Hard | AuthoredSongCourseBits.Oni),
+            SongSelectCoursePresentation.FromSong(song).SelectionRestrictions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingCoursesRestrictSelectionUnlessTheSongHasUra(bool hasUra)
+    {
+        var key = new SongKey(SongSourceKind.Tja, "course-projection");
+        var descriptor = new SongDescriptor(
+            key,
+            new SongTitle("Projection"),
+            null,
+            [
+                new SongChartDescriptor(
+                    new ChartKey(key, "oni"),
+                    "Oni",
+                    new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"),
+                    TaikoCourse.Oni,
+                    8),
+                .. hasUra ? new[] { new SongChartDescriptor(
+                    new ChartKey(key, "ura"),
+                    "Ura",
+                    new CatalogAssetKey(new CatalogProviderId("synthetic"), "ura"),
+                    TaikoCourse.Ura,
+                    12) } : Array.Empty<SongChartDescriptor>(),
+            ]);
+        var song = new SongSelectSong(
+            descriptor,
+            SongCourseBits.Oni | (hasUra ? SongCourseBits.Ura : SongCourseBits.None),
+            [null, null, null, 8, hasUra ? 12 : null]);
+
+        var presentation = SongSelectCoursePresentation.FromSong(song);
+
+        // Restricted mode would show Ura in Oni's place, so a song with Ura keeps the game's board.
+        Assert.Equal(hasUra ? AuthoredSongCourseBits.None : AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni,
+            presentation.SelectionRestrictions);
+        Assert.Equal(8, presentation.OniStars);
+        Assert.Equal(hasUra ? 10 : 0, presentation.HiddenOniStars); // a custom 12 shows as the board's 10
+        Assert.Equal(0, presentation.EasyStars);
+        Assert.Equal(0, presentation.NormalStars);
+        Assert.Equal(0, presentation.HardStars);
+        Assert.Equal(0, presentation.HiddenEasyStars);
+        Assert.Equal(0, presentation.HiddenNormalStars);
+        Assert.Equal(0, presentation.HiddenHardStars);
+    }
+
+    [Fact]
+    public async Task CatalogViewPublishesCourseBitsLevelsAndAuthoredCategoryLabel()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+
+        var view = new SongSelectCatalogView(snapshot);
+
+        var category = Assert.Single(view.Categories);
+        Assert.Equal("Anime", category.Name);
+        Assert.Equal("アニメ", category.AuthoredLabel);
+        Assert.Equal(SongCategoryPresentation.AlwaysVisible, category.Presentation);
+        Assert.Equal(0x9e4309U, category.BoardStyle.CompactOutlineRgb);
+        var song = Assert.Single(category.Songs);
+        Assert.Equal(SongCourseBits.Easy | SongCourseBits.Oni, song.AvailableCourses);
+        Assert.Equal(2, song.Level(TaikoCourse.Easy));
+        Assert.Equal(8, song.Level(TaikoCourse.Oni));
+        Assert.False(song.HasCourse(TaikoCourse.Hard));
+    }
+
+    [Fact]
+    public async Task CourseStarFolderListsSongsOfTheChosenCourseAndStar()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var view = new SongSelectCatalogView(await catalog.RefreshAsync(), courseStar: true, rollFolder: true);
+
+        var folder = view.CourseStarCategory;
+        Assert.Equal(0, folder);
+        Assert.Equal(SongSelectCatalogView.CourseStarLabel, view.Categories[folder].AuthoredLabel);
+        Assert.Equal(35, (int)view.Categories[folder].Presentation); // traced AssignMusic_GenreID(18, 0, 35, -1)
+        Assert.Empty(view.Categories[folder].Songs);
+        Assert.Equal(1, view.CourseStarCount((int)TaikoCourse.Oni, 8));
+        Assert.Equal(0, view.CourseStarCount((int)TaikoCourse.Oni, 7));
+
+        view.SelectCourseStar((int)TaikoCourse.Oni, 8);
+        var song = Assert.Single(view.Categories[folder].Songs);
+        var genre = view.Categories[^1]; // after おすすめ and the random pick
+        Assert.Equal("Anime", genre.Name);
+        Assert.Equal(genre.Key, view.HomeOf(folder, song.Descriptor.Key));
+        Assert.Equal(genre.BoardStyle, view.BoardStyle(folder, song)); // the genre's title outline
+        Assert.Equal(SongSelectCatalogView.RecommendLabel, view.Categories[1].AuthoredLabel);
+        Assert.Equal(16 | 2 | 1, (int)view.Categories[view.RollCategory].Presentation); // FLAG_ROLL_MUSIC, as the developer setup
+        Assert.Single(view.Categories[view.RollCategory].Songs);
+        view.SelectCourseStar((int)TaikoCourse.Easy, 3);
+        Assert.Empty(view.Categories[folder].Songs);
+    }
+
+    [Fact]
+    public async Task RecentlyPlayedFolderListsHistorySongsOnceAndGivesTheLastCourseStar()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var song = new SongSelectCatalogView(snapshot).Categories[0].Songs[0];
+        string key(string course) => song.Descriptor.Charts.Single(chart => chart.Key.StableId == course).Key.ToString();
+
+        Assert.Single(new SongSelectCatalogView(snapshot).Categories); // no history, no folder (the movie drops an empty one)
+        var view = new SongSelectCatalogView(snapshot, recentCharts: [key("oni"), "gone", key("easy")]);
+        var history = view.Categories[0];
+        Assert.Equal(SongSelectCatalogView.HistoryLabel, history.AuthoredLabel);
+        Assert.Equal(SongCategoryPresentation.None, history.Presentation); // traced AssignMusic_GenreID(11, 20, 0)
+        Assert.Single(history.Songs);
+        Assert.Equal(((int)TaikoCourse.Oni, 8), view.LastCourseStar);
+        Assert.Equal(view.Categories[1].Key, view.HomeOf(0, song.Descriptor.Key));
+    }
+
+    [Fact]
+    public async Task RightDrumPlayerAloneSelectsAsPlayerTwo()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var playRequests = new PlayRequestState();
+        var previews = new RecordingPreviewController();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
+            previews, playRequests);
+
+        var selection = session.Select(0, 0, -1, (int)TaikoCourse.Oni);
+
+        Assert.True(previews.Held); // the preview plays on under the rainbow, nothing else starts
+        Assert.Null(selection.PlayerOneChart);
+        Assert.Equal("oni", selection.PlayerTwoChart!.StableId);
+        var player = Assert.Single(Assert.IsType<PlayRequest>(playRequests.Pending).Players);
+        Assert.Equal(LocalPlayerSlot.PlayerTwo, player.Player);
+    }
+
+    [Theory]
+    [InlineData(TaikoCourse.Oni, "oni:1", "oni:2")]
+    [InlineData(TaikoCourse.Easy, "oni:1", "easy")] // a course without duet charts keeps its solo chart
+    public async Task TwoPlayersPlayTheDuetCharts(TaikoCourse right, string leftAsset, string rightAsset)
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var playRequests = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), new RecordingTextureService(),
+            new RecordingPreviewController(), playRequests);
+
+        session.Select(0, 0, (int)TaikoCourse.Oni, (int)right);
+
+        Assert.Equal([leftAsset, rightAsset],
+            Assert.IsType<PlayRequest>(playRequests.Pending).Players.Select(static player => player.ChartAsset.StableId));
+    }
+
+    [Fact]
+    public async Task SessionRoutesBoardPreviewAndSelectionByPinnedCatalogIdentity()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var textures = new RecordingTextureService();
+        var previews = new RecordingPreviewController();
+        var playRequests = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot), textures, previews, playRequests);
+
+        var surface = session.GetBoardTexture(0, 0, SongBoardTextureKind.Compact);
+        var preview = session.Preview(0, 0);
+        Assert.Same(preview, previews.Current);
+        var selection = session.Select(0, 0, (int)TaikoCourse.Oni, -1);
+
+        Assert.Equal(new LumenNativeSurfaceKey("title:Compact:synthetic"), surface);
+        Assert.Equal("Synthetic", textures.LastSong!.Descriptor.Title.Primary);
+        Assert.Equal(TimeSpan.FromSeconds(12), preview!.Start);
+        Assert.Equal(snapshot.Revision, selection.CatalogRevision);
+        Assert.Equal("oni", selection.PlayerOneChart!.StableId);
+        Assert.Null(selection.PlayerTwoChart);
+        Assert.Same(preview, previews.Current); // held under the rainbow until its title appears
+        Assert.True(previews.Held);
+        var request = Assert.IsType<PlayRequest>(playRequests.Pending);
+        Assert.Equal(snapshot.Revision, request.CatalogRevision);
+        Assert.Equal(selection.Song, request.Song);
+        Assert.Equal(new CatalogAssetKey(new CatalogProviderId("synthetic"), "audio"), request.AudioAsset);
+        var player = Assert.Single(request.Players);
+        Assert.Equal(LocalPlayerSlot.PlayerOne, player.Player);
+        Assert.Equal(selection.PlayerOneChart, player.Chart);
+        Assert.Equal(new CatalogAssetKey(new CatalogProviderId("synthetic"), "oni"), player.ChartAsset);
+        Assert.Equal(TaikoCourse.Oni, player.Course);
+        Assert.Throws<InvalidOperationException>(() => session.Select(0, 0, (int)TaikoCourse.Hard, -1));
+    }
+
+    [Fact]
+    public async Task PendingPlayRequestMustBeConsumedBeforeAnotherLaunch()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var session = new SongSelectSession(
+            new SongSelectCatalogView(snapshot),
+            new RecordingTextureService(),
+            new RecordingPreviewController(),
+            pending);
+
+        session.Select(0, 0, (int)TaikoCourse.Easy, -1);
+
+        Assert.Throws<InvalidOperationException>(() => session.Select(0, 0, (int)TaikoCourse.Oni, -1));
+        var first = pending.ActivatePending();
+        Assert.Equal(TaikoCourse.Easy, Assert.Single(first.Players).Course);
+
+        pending.ClearActive();
+        session.Select(0, 0, (int)TaikoCourse.Oni, -1);
+        Assert.Equal(TaikoCourse.Oni, Assert.Single(pending.Pending!.Players).Course);
+    }
+
+    [Fact]
+    public async Task FailedChartLaunchCanBeCancelledAndRetried()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var session = new SongSelectSession(new SongSelectCatalogView(snapshot),
+            new RecordingTextureService(), new RecordingPreviewController(), pending);
+        session.Select(0, 0, (int)TaikoCourse.Easy, -1);
+        pending.CancelPending();
+        Assert.Null(pending.Pending);
+        Assert.Null(pending.Active);
+        session.Select(0, 0, (int)TaikoCourse.Oni, -1);
+        var active = pending.ActivatePending();
+        Assert.Equal(TaikoCourse.Oni, Assert.Single(active.Players).Course);
+        pending.CancelPending();
+        Assert.Same(active, pending.Active);
+    }
+
+    [Fact]
+    public async Task UnrestrictedSongCanLaunchBothOniAndUraAndAMissingCourseFallsBackToTheNearest()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider(includeUra: true)]);
+        var snapshot = await catalog.RefreshAsync();
+        var pending = new PlayRequestState();
+        var view = new SongSelectCatalogView(snapshot);
+        var session = new SongSelectSession(view, new RecordingTextureService(),
+            new RecordingPreviewController(), pending);
+        Assert.True(view.TryGetSong(0, 0, out var song));
+        var presentation = SongSelectCoursePresentation.FromSong(song);
+        Assert.Equal(AuthoredSongCourseBits.None, presentation.SelectionRestrictions);
+        Assert.Equal(8, presentation.OniStars);
+        Assert.Equal(9, presentation.HiddenOniStars);
+        foreach (var authoredCourse in new[] { 3, 7 })
+        {
+            var course = AuthoredSongSelectionRequest.ToCatalogCourse(authoredCourse);
+            session.Select(0, 0, course, -1);
+            Assert.Equal((TaikoCourse)course, Assert.Single(pending.ActivatePending().Players).Course);
+            pending.ClearActive();
+        }
+        Assert.Equal(0, presentation.HardStars);
+        // The movie still offers Hard: its nearest course plays, rather than a failed handoff leaving Song Select waiting.
+        session.Select(0, 0, (int)TaikoCourse.Hard, -1);
+        Assert.Equal(TaikoCourse.Oni, Assert.Single(pending.ActivatePending().Players).Course);
+    }
+
+    [Fact]
+    public async Task LibraryViewListsOneSourceAndLinksTheOthers()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+
+        Assert.Empty(new SongSelectCatalogView(snapshot, library: SongSourceKind.Stock).Categories);
+        var view = new SongSelectCatalogView(snapshot, library: SongSourceKind.Tja,
+            links: [SongSourceKind.Stock, SongSourceKind.Nijiiro]);
+
+        Assert.Equal(["Anime", "ORIGINAL", "NIJIIRO"], view.Categories.Select(static category => category.Name));
+        Assert.Null(view.Categories[0].Link);
+        var link = view.Categories[1];
+        Assert.Equal(SongSourceKind.Stock, link.Link);
+        Assert.Equal(SongSelectCatalogView.FeatureLabel, link.AuthoredLabel);
+        Assert.True(link.Presentation.HasFlag(SongCategoryPresentation.FolderEnd));
+        Assert.Equal(2, view.LinkCategory(SongSourceKind.Nijiiro));
+        Assert.Equal(-1, view.ModeSwitchCategory);
+        Assert.Equal((0, 0), view.Find(view.Categories[0].Key, view.Categories[0].Songs[0].Descriptor.Key));
+        Assert.Null(view.Find(link.Key, view.Categories[0].Songs[0].Descriptor.Key));
+    }
+
+    [Fact]
+    public async Task TutorialFolderComesFirstInNormalSelectOnly()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var view = new SongSelectCatalogView(snapshot, tutorial: true);
+        Assert.Equal(0, view.TutorialCategory);
+        Assert.Equal(SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
+            view.Categories[0].Presentation);
+        Assert.Equal(-1, new SongSelectCatalogView(snapshot).TutorialCategory);
+        var waiwai = new SongSelectCatalogView(snapshot, SongSelectMode.Waiwai, tutorial: true);
+        Assert.True(waiwai.TutorialCategory >= 0);
+        Assert.Equal(SongSelectCatalogView.WaiwaiTutorialLabel, waiwai.Categories[waiwai.TutorialCategory].AuthoredLabel);
+        Assert.Empty(waiwai.Categories[waiwai.TutorialCategory].Songs);
+    }
+
+    [Fact]
+    public async Task FavouritesFolderComesFirstPerLibraryAndPersists()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
+        var snapshot = await catalog.RefreshAsync();
+        var song = new SongSelectCatalogView(snapshot).Categories[0].Songs[0].Descriptor.Key;
+        var path = Path.Combine(Path.GetTempPath(), $"favourites-{Guid.NewGuid():N}.txt");
+        try
+        {
+            var favourites = new SongFavourites(path);
+            Assert.True(favourites.Toggle(song));
+            Assert.Equal([song], new SongFavourites(path).Songs);
+
+            var view = new SongSelectCatalogView(snapshot, library: song.Source, favourites: favourites.Songs);
+            Assert.Equal(SongSelectCatalogView.FavouritesLabel, view.Categories[0].AuthoredLabel);
+            Assert.Equal(song, view.Categories[0].Songs.Single().Descriptor.Key);
+            var other = song.Source == SongSourceKind.Stock ? SongSourceKind.Tja : SongSourceKind.Stock;
+            Assert.Empty(new SongSelectCatalogView(snapshot, library: other, favourites: favourites.Songs).Categories[0].Songs);
+
+            Assert.False(favourites.Toggle(song));
+            Assert.Empty(new SongFavourites(path).Songs);
+            Assert.Equal(0, view.RefreshFavourites(favourites.Songs));
+            Assert.Empty(view.Categories[view.FavouritesCategory].Songs);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
+    {
+        public CatalogProviderId Id { get; } = new("synthetic");
+
+        public SongSourceKind Source => SongSourceKind.Tja;
+
+        public ValueTask<SongCatalogContribution> ScanAsync(
+            IProgress<CatalogScanProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var songKey = new SongKey(Source, "synthetic");
+            var song = new SongDescriptor(
+                songKey,
+                new SongTitle("Synthetic"),
+                "Fixture",
+                [
+                    new SongChartDescriptor(
+                        new ChartKey(songKey, "easy"),
+                        "Easy",
+                        new CatalogAssetKey(Id, "easy"),
+                        TaikoCourse.Easy,
+                        2),
+                    new SongChartDescriptor(
+                        new ChartKey(songKey, "oni"),
+                        "Oni",
+                        new CatalogAssetKey(Id, "oni"),
+                        TaikoCourse.Oni,
+                        8,
+                        [new CatalogAssetKey(Id, "oni:1"), new CatalogAssetKey(Id, "oni:2")]),
+                    .. includeUra ? new[] { new SongChartDescriptor(
+                        new ChartKey(songKey, "ura"), "Ura", new CatalogAssetKey(Id, "ura"),
+                        TaikoCourse.Ura, 9) } : Array.Empty<SongChartDescriptor>(),
+                ],
+                new CatalogAssetKey(Id, "audio"),
+                TimeSpan.FromSeconds(12));
+            return ValueTask.FromResult(new SongCatalogContribution(
+                Id,
+                Source,
+                [song],
+                [new SongCategoryDescriptor(new CategoryKey(Source, "anime"), "Anime", 0, [songKey])]));
+        }
+    }
+
+    private sealed class RecordingTextureService : ISongBoardTextureService
+    {
+        public LumenNativeSurfaceKey GetImage(string path) => new($"image:{path}");
+
+        public LumenNativeSurfaceKey GetFolderArt(FolderArt art, FolderArtPart part) => new($"art:{art.Name}:{part}");
+
+        public LumenNativeSurfaceKey GetFolderDescription(string lines, uint outlineRgb) => new($"description:{lines}");
+
+        public LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0) =>
+            new($"folder:{name}:{kind}");
+
+        public SongSelectSong? LastSong { get; private set; }
+
+        public LumenNativeSurfaceKey GetSongTitle(
+            SongSelectSong song,
+            SongBoardTextureStyle style,
+            SongBoardTextureKind kind)
+        {
+            LastSong = song;
+            return new LumenNativeSurfaceKey($"title:{kind}:{song.Descriptor.Key.StableId}");
+        }
+    }
+
+    private sealed class RecordingPreviewController : ISongPreviewController
+    {
+        public SongPreviewRequest? Current { get; private set; }
+
+        public bool Stopped { get; private set; }
+
+        public void SetPreview(SongPreviewRequest? request) => (Current, Stopped) = (request, false);
+
+        public void Silence() => (Current, Stopped) = (null, true);
+
+        public bool Held { get; private set; }
+
+        public void Hold() => Held = true;
+    }
+}

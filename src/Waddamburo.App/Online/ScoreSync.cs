@@ -165,7 +165,7 @@ internal sealed class ScoreSync : IDisposable
             {
                 var (chart, course) = Cli.Rescore.Chart(charts, play.Notes, play.Source);
                 var outcome = Cli.Rescore.Battle(chart, course, play.Options, play.Seed!.Value, prior, play.Replay).Outcome;
-                scores.SetAiSectionCounts(play.Id, Waddamburo.Game.Lumen.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)));
+                scores.SetAiSectionCounts(play.Id, Waddamburo.Game.Gameplay.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)));
             }
             catch (Exception exception) when (Cli.Rescore.IsBadPlay(exception))
             {

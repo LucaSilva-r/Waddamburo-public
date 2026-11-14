@@ -230,6 +230,12 @@
           "Waddamburo.Catalog": "[0.0.0-dev, )"
         }
       },
+      "waddamburo.skins.green": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Game": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.upscale": {
         "type": "Project"
       },

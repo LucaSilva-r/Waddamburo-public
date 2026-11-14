@@ -167,6 +167,11 @@ all read from the user's Green movies. No tja2fumen source is copied or translat
 at a route change is `fukidashi_level_1p.lm`'s own `level_up`/`level_down` labels; when it plays was observed
 in a play session.
 
+`src/Waddamburo.Skins.Green/` is the host side of the user-supplied game's own movies: the
+callbacks and data they are driven with (screen bindings), the in-memory movie patches, and the gameplay
+adapter that turns the engine's published state into those movies' calls. It is original project code,
+written from traced sessions and the user's asset files; the engine assemblies do not reference it.
+
 `src/Waddamburo.Catalog/PlayableChart.cs` and the playable-chart conversion in
 `src/Waddamburo.Providers.Tja/` are original Waddamburo implementations. Their
 separation of absolute-time hit objects from timing, scroll, and effect control

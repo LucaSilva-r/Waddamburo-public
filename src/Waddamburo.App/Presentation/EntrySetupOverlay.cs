@@ -1,7 +1,7 @@
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
-using Waddamburo.Game.Lumen;
+using Waddamburo.Skins.Green;
 using Waddamburo.Lumen.Rendering;
 
 namespace Waddamburo.App.Presentation;
