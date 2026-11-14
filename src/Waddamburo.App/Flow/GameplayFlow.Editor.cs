@@ -17,11 +17,11 @@ internal sealed partial class GameplayFlow
     private TjaCatalogProvider? _editorProvider;
     private string EditorModchartFolder => Shell.Modcharts ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Waddamburo", "modcharts");
 
-    public string? EditorTjaPath() => _lastRequest?.Players[0] is { } player ? Shell.Assets.ChartPath(player.ChartAsset) : null;
+    public string? EditorTjaPath() => _play.LastRequest?.Players[0] is { } player ? Shell.Assets.ChartPath(player.ChartAsset) : null;
 
     public EffectEditorSource LoadEditorTja(string path, TaikoCourse? requestedCourse)
     {
-        if (!CanEditEffects || _lastRequest is not { } oldRequest || _training is null)
+        if (!CanEditEffects || _play.LastRequest is not { } oldRequest || _play.Training is null)
             throw new InvalidOperationException("Open the editor during a local single-player song.");
         path = Path.GetFullPath(path);
         var sameFile = string.Equals(path, EditorTjaPath(), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
@@ -32,7 +32,7 @@ internal sealed partial class GameplayFlow
             [.. Enum.GetValues<TaikoCourse>().Select(c => song.Charts.FirstOrDefault(d => d.Course == c)?.Level)]), keepLoop: sameFile);
         Console.WriteLine("Effects editor: loaded a TJA directly; chart changes remain unranked.");
         var course = descriptor.Course!.Value;
-        return new(chart, _training!, new(PlayerModcharts.PathFor(EditorModchartFolder, chart, course), course,
+        return new(chart, _play.Training!, new(PlayerModcharts.PathFor(EditorModchartFolder, chart, course), course,
             Path.ChangeExtension(path, ChartModFile.Extension)), path, courses);
     }
 
@@ -61,32 +61,32 @@ internal sealed partial class GameplayFlow
     // timeline, review, title, training), keeping the playhead, pause and speed, and the loop when it is the same file.
     private void switchPracticeChart(PlayRequest request, PlayableChart chart, SongSelectSong song, bool keepLoop)
     {
-        var previous = _training!;
+        var previous = _play.Training!;
         var at = previous.Clock.Position;
         var (paused, speed) = (previous.Clock.Paused, previous.Clock.Speed);
-        var sameAudio = _lastRequest?.AudioAsset == request.AudioAsset;
-        _lastRequest = request;
-        _sourceCharts = _charts = [chart];
+        var sameAudio = _play.LastRequest?.AudioAsset == request.AudioAsset;
+        _play.LastRequest = request;
+        _sourceCharts = _play.Charts = [chart];
         _song = song;
-        _timeline = new GameplayTimeline(chart.AuthoredOffset, TimeSpan.FromSeconds(3));
+        _play.Timeline = new GameplayTimeline(chart.AuthoredOffset, TimeSpan.FromSeconds(3));
         var end = chartEnd() + TimeSpan.FromSeconds(2);
-        at = at < -_timeline.LeadIn ? -_timeline.LeadIn : at > end ? end : at;
-        if (sameAudio && _review is { } review)
-            review.ReloadChart(chart, request.Players[0].Course, _timeline.LeadIn, _timeline.AudioStart - _timeline.LeadIn - _audioOffset);
+        at = at < -_play.Timeline.LeadIn ? -_play.Timeline.LeadIn : at > end ? end : at;
+        if (sameAudio && _play.Review is { } review)
+            review.ReloadChart(chart, request.Players[0].Course, _play.Timeline.LeadIn, _play.Timeline.AudioStart - _play.Timeline.LeadIn - _play.AudioOffset);
         else
         {
-            _review?.Dispose();
-            _review = reviewOf(request, [[]], end, _inputOffset);
+            _play.Review?.Dispose();
+            _play.Review = reviewOf(request, [[]], end, _play.InputOffset);
         }
         showSongTitle(song);
         Shell.Gameplay.Options = [default];
-        _training = new TrainingSession(Shell, _review!, chart);
-        _training.Begin(at);
-        _training.Clock.SetPaused(paused);
-        if (keepLoop) _training.RestoreLoop(previous);
-        while (_training.Clock.Speed < speed) _training.Clock.Faster();
-        while (_training.Clock.Speed > speed) _training.Clock.Slower();
-        _voided = true; Playing = false; PlayingChart = null;
+        _play.Training = new TrainingSession(Shell, _play.Review!, chart);
+        _play.Training.Begin(at);
+        _play.Training.Clock.SetPaused(paused);
+        if (keepLoop) _play.Training.RestoreLoop(previous);
+        while (_play.Training.Clock.Speed < speed) _play.Training.Clock.Faster();
+        while (_play.Training.Clock.Speed > speed) _play.Training.Clock.Slower();
+        _play.Voided = true; Playing = false; PlayingChart = null;
         showMode("Effects editor - unranked");
     }
 }

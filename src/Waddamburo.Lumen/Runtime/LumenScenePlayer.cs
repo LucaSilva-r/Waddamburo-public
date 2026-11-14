@@ -74,15 +74,18 @@ public sealed class LumenScenePlayer
         quads.Clear();
         foreach (var layer in _layers)
         {
-            var child = layer.Player.CreateRenderSnapshot(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction);
-            foreach (var quad in child.Quads)
+            // Each player appends to the scene's builder (no snapshot of its own), then its quads are placed in it.
+            var start = quads.Count;
+            layer.Player.AppendRenderQuads(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction, quads);
+            for (var index = start; index < quads.Count; index++)
             {
+                var quad = quads[index];
                 if (quad.NativeSurface is null && quad.TextureIndex >= layer.TextureCount)
                 {
                     throw new InvalidOperationException(
                         $"Child snapshot texture {quad.TextureIndex} exceeds its {layer.TextureCount}-texture namespace.");
                 }
-                quads.Add(quad with
+                quads[index] = quad with
                 {
                     MultiplyColor = layer.Alpha == 1 ? quad.MultiplyColor : quad.MultiplyColor with { Alpha = quad.MultiplyColor.Alpha * layer.Alpha },
                     AddColor = layer.Alpha == 1 ? quad.AddColor : quad.AddColor with { Alpha = quad.AddColor.Alpha * layer.Alpha },
@@ -93,7 +96,7 @@ public sealed class LumenScenePlayer
                     TopRight = transform(quad.TopRight, layer.Transform),
                     BottomRight = transform(quad.BottomRight, layer.Transform),
                     BottomLeft = transform(quad.BottomLeft, layer.Transform),
-                });
+                };
             }
         }
         return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());

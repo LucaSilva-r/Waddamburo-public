@@ -72,7 +72,9 @@ PY
 publish() { # rid native-dir out-dir extra-args...
     local rid=$1 native_dir=$2 dir=$3; shift 3
     rm -rf "$dir"
-    dotnet publish src/Waddamburo.App -c Release -r "$rid" --self-contained \
+    # ReadyToRun: precompiled, so a method's first call (the first hit, combo voice, Go-Go) is not JIT-compiled
+    # inside a frame (10-40 ms hitches on a low-end PC early in a song).
+    dotnet publish src/Waddamburo.App -c Release -r "$rid" --self-contained -p:PublishReadyToRun=true \
         -p:WaddamburoNativeDir="$native_dir" -p:Version="$version" -p:DebugType=none -p:PublishDocumentationFile=false -p:PublishReferencesDocumentationFiles=false \
         -o "$dir" "$@"
 }

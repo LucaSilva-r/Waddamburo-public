@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Collections.Immutable;
 using System.Security.Cryptography;
@@ -7,9 +8,11 @@ using Waddamburo.Catalog;
 namespace Waddamburo.Providers.Tja;
 
 /// <summary>Discovers read-only custom TJA songs below one configured library root.</summary>
-public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartModFileProvider, IChartUploadPolicyProvider
+public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartModFileProvider, IChartUploadPolicyProvider
 {
     private readonly string _root;
+    public CatalogMetadataCache? MetadataCache { get; init; }
+    private sealed record CachedTja(TjaMetadata Metadata, string Hash);
     private readonly TjaProviderOptions _options;
 
     public TjaCatalogProvider(
@@ -31,10 +34,13 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
     /// <summary>The library folder this provider reads below.</summary>
     public string Root => _root;
 
-    public ValueTask<SongCatalogContribution> ScanAsync(
+    public async ValueTask<SongCatalogContribution> ScanAsync(
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)
-        => inspectPaths(enumerateCharts(cancellationToken), progress, cancellationToken);
+    {
+        using var cached = MetadataCache?.Open(_root, "tja-v1", cancellationToken: cancellationToken);
+        return await inspectPaths(enumerateCharts(cancellationToken, cached?.Paths), progress, cancellationToken, cached).ConfigureAwait(false);
+    }
 
     /// <summary>Inspects one selected file without scanning its surrounding library.</summary>
     public ValueTask<SongCatalogContribution> InspectFileAsync(string path, CancellationToken cancellationToken = default)
@@ -46,7 +52,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         return inspectPaths([contained], null, cancellationToken);
     }
 
-    private async ValueTask<SongCatalogContribution> inspectPaths(string[] paths, IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
+    private async ValueTask<SongCatalogContribution> inspectPaths(string[] paths, IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken, CatalogMetadataScope? cached = null)
     {
         if (!Directory.Exists(_root))
             throw new DirectoryNotFoundException("The configured custom TJA library does not exist.");
@@ -63,8 +69,8 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             progress?.Report(new CatalogScanProgress(Id, "parse", index, paths.Length));
             try
             {
-                var file = new FileInfo(path);
-                if (file.Length > _options.MaximumChartBytes)
+                var size = cached?.Size(path) ?? new FileInfo(path).Length;
+                if (size > _options.MaximumChartBytes)
                 {
                     diagnostics.Add(warning(
                         "TJA_FILE_TOO_LARGE",
@@ -72,8 +78,19 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                     continue;
                 }
 
-                var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-                var metadata = TjaMetadataReader.Read(bytes);
+                CachedTja parsed;
+                if (cached is not null)
+                    parsed = cached.Read(path, "tja", () =>
+                    {
+                        var bytes = File.ReadAllBytes(path);
+                        return new CachedTja(TjaMetadataReader.Read(bytes), Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+                    }, CacheJsonContext.Default.CachedTja);
+                else
+                {
+                    var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+                    parsed = new CachedTja(TjaMetadataReader.Read(bytes), Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+                }
+                var metadata = parsed.Metadata with { Headers = new Dictionary<string, string>(parsed.Metadata.Headers, StringComparer.OrdinalIgnoreCase) };
                 validateBpm(metadata);
                 if (!metadata.Charts.Any(static chart => chart.Course is not null))
                 {
@@ -91,9 +108,9 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
                 inspected.Add(new InspectedTjaFile(
                     relativePath,
-                    Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+                    parsed.Hash,
                     metadata,
-                    resolveAudio(metadata.Get("WAVE"), path, relativePath, diagnostics),
+                    resolveAudio(metadata.Get("WAVE"), path, relativePath, diagnostics, cached),
                     categoryFor(relativePath, metadata.Get("GENRE"))));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -142,6 +159,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             var japaneseSubtitle = firstMetadata(files, "SUBTITLEJA");
             var primaryTitle = japaneseTitle ?? baseTitle ?? englishTitle
                 ?? Path.GetFileNameWithoutExtension(representative.RelativePath);
+            var tempo = this.tempo(charts.Where(static chart => chart.Course is not null).MaxBy(static chart => chart.Course), cached);
             var song = new SongDescriptor(
                 songKey,
                 new SongTitle(primaryTitle, japaneseTitle, englishTitle),
@@ -151,9 +169,11 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                 parsePreview(firstMetadata(files, "DEMOSTART"), representative.RelativePath, diagnostics),
                 normalizeSubtitle(japaneseSubtitle ?? firstMetadata(files, "SUBTITLE")))
             {
-                EnglishSubtitle = japaneseSubtitle is null ? null : normalizeSubtitle(firstMetadata(files, "SUBTITLE")),
+                EnglishSubtitle = normalizeSubtitle(firstMetadata(files, "SUBTITLEEN") ?? (japaneseSubtitle is null ? null : firstMetadata(files, "SUBTITLE"))),
                 ScenePresets = [.. (firstMetadata(files, "SCENEPRESET") ?? "")
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+                Bpm = tempo?.Bpm,
+                Length = tempo?.Length,
             };
             songs.Add(song);
 
@@ -175,7 +195,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
                 new CategoryKey(Source, stableCategoryId(category.Key)),
                 category.Key,
                 index,
-                category.Value.OrderBy(key => songOrder[key]))))
+                category.Value.OrderBy(key => songOrder[key])), cached))
             .ToArray();
 
         progress?.Report(new CatalogScanProgress(Id, "complete", paths.Length, paths.Length));
@@ -286,7 +306,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         }
     }
 
-    private string[] enumerateCharts(CancellationToken cancellationToken)
+    private string[] enumerateCharts(CancellationToken cancellationToken, IEnumerable<string>? inventory = null)
     {
         var enumeration = new EnumerationOptions
         {
@@ -296,7 +316,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             ReturnSpecialDirectories = false,
         };
         var paths = new List<string>();
-        foreach (var path in Directory.EnumerateFiles(_root, "*", enumeration))
+        foreach (var path in inventory ?? Directory.EnumerateFiles(_root, "*", enumeration))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!string.Equals(Path.GetExtension(path), ".tja", StringComparison.OrdinalIgnoreCase))
@@ -352,7 +372,7 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         string? wave,
         string chartPath,
         string relativeChartPath,
-        List<CatalogDiagnostic> diagnostics)
+        List<CatalogDiagnostic> diagnostics, CatalogMetadataScope? cached)
     {
         if (string.IsNullOrWhiteSpace(wave))
         {
@@ -369,14 +389,14 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
             var combined = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(chartPath)!, localWave));
             var relativeAudio = normalizeRelative(Path.GetRelativePath(_root, combined));
             _ = resolveContainedPath(relativeAudio);
-            if (!File.Exists(combined))
+            if (!(cached?.Exists(combined) ?? File.Exists(combined)))
             {
                 diagnostics.Add(warning(
                     "TJA_AUDIO_MISSING",
                     $"'{relativeChartPath}' refers to an audio file that does not exist."));
                 return new ResolvedTjaAudio($"chart:{relativeChartPath}", null);
             }
-            rejectReparsePoints(combined);
+            if (cached is null) rejectReparsePoints(combined);
             return new ResolvedTjaAudio($"audio:{relativeAudio}", TjaAssetKeyCodec.Encode(Id, relativeAudio));
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or NotSupportedException)
@@ -402,6 +422,29 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
 
         diagnostics.Add(warning("TJA_PREVIEW_INVALID", $"'{relativePath}' has an invalid DEMOSTART value."));
         return null;
+    }
+
+    // The hardest chart's tempo and length, for the bpm/length search and BPM grouping.
+    private SongTempo? tempo(SongChartDescriptor? chart, CatalogMetadataScope? cached)
+    {
+        if (chart is null)
+            return null;
+        var locator = TjaChartAssetKeyCodec.Decode(chart.ChartAsset);
+        var path = resolveContainedPath(locator.RelativePath);
+        SongTempo? read()
+        {
+            try
+            {
+                return SongTempo.Of(TjaPlayableChartReader.Read(File.ReadAllBytes(path), chart.Key, locator,
+                    _options.MaximumMeasures, _options.MaximumNotes));
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException
+                or OverflowException or FormatException or NotSupportedException or DecoderFallbackException)
+            {
+                return null;
+            }
+        }
+        return cached is null ? read() : cached.Read(path, "tempo", read, CacheJsonContext.Default.SongTempo);
     }
 
     private string resolveContainedPath(string relativePath)
@@ -456,15 +499,16 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         files.Select(file => file.Metadata.Get(name)).FirstOrDefault(static value => value is not null);
 
     // A top folder's box.def (TJAPlayer3/OpenTaiko): its title (#TITLE), genre, colours and description.
-    private SongCategoryDescriptor withBox(SongCategoryDescriptor category)
+    private SongCategoryDescriptor withBox(SongCategoryDescriptor category, CatalogMetadataScope? cached)
     {
         var path = Path.Combine(_root, category.Name, "box.def");
-        if (!File.Exists(path))
+        if (!(cached?.Exists(path) ?? File.Exists(path)))
             return category;
         string text;
         try
         {
-            text = TjaMetadataReader.Decode(File.ReadAllBytes(path));
+            text = cached is null ? TjaMetadataReader.Decode(File.ReadAllBytes(path))
+                : cached.Read(path, "box", () => TjaMetadataReader.Decode(File.ReadAllBytes(path)), CacheJsonContext.Default.String);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
         {
@@ -541,4 +585,8 @@ public sealed class TjaCatalogProvider : ISongCatalogProvider, ICatalogAssetReso
         string Category);
 
     private sealed record ResolvedTjaAudio(string GroupKey, CatalogAssetKey? Asset);
+    [JsonSerializable(typeof(CachedTja))]
+    [JsonSerializable(typeof(string))]
+    [JsonSerializable(typeof(SongTempo))]
+    private sealed partial class CacheJsonContext : JsonSerializerContext;
 }

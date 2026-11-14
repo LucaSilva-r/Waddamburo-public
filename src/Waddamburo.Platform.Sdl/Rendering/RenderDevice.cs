@@ -39,6 +39,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     private uint _width;
     private uint _height;
     private uint _resetFlags = BgfxSupport.ResetFlags;
+    private byte _frameLatency = BgfxSupport.MaxFrameLatency;
     private uint _nextTextureId = 1;
     private bool _disposed;
 
@@ -266,8 +267,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
         var width = (uint)Math.Max(1, pixelWidth);
         var height = (uint)Math.Max(1, pixelHeight);
-        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags)
+        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags || _frameLatency != BgfxSupport.MaxFrameLatency)
         {
+            _frameLatency = BgfxSupport.MaxFrameLatency;
             _width = width;
             _height = height;
             _resetFlags = BgfxSupport.ResetFlags;
@@ -285,7 +287,7 @@ internal sealed unsafe class RenderDevice : IDisposable
 
         // A prepass draws only what this frame shows (an off-screen Don costs ~5 ms on integrated GPUs).
         _drawnBorrowed.Clear();
-        foreach (var quad in frame.Quads)
+        foreach (var quad in frame.QuadSpan)
             if (_borrowedTextures.Contains(quad.Texture.Value))
                 _drawnBorrowed.Add(quad.Texture.Value);
         // The whole window (letterbox bars included) takes the clear colour; the stage draws inside.
@@ -334,7 +336,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.set_view_rect(MainView, (short)stage.X, (short)stage.Y, (ushort)stage.Width, (ushort)stage.Height, 0, 1);
         bgfx.set_view_scissor(MainView, (ushort)stage.X, (ushort)stage.Y, (ushort)stage.Width, (ushort)stage.Height);
         bgfx.touch(MainView);
-        var quads = frame.Quads.AsSpan();
+        var quads = frame.QuadSpan;
         if (frame.BlurredQuads > 0 && _blurProgram is { } blur)
         {
             var backdrop = Math.Min(frame.BlurredQuads, quads.Length);
@@ -725,7 +727,7 @@ internal sealed unsafe class RenderDevice : IDisposable
     private void validateFrame(RenderFrame frame)
     {
         validateColor(frame.ClearColor, nameof(frame.ClearColor));
-        foreach (var quad in frame.Quads)
+        foreach (var quad in frame.QuadSpan)
         {
             if (!_textures.ContainsKey(quad.Texture.Value))
                 throw new ArgumentException($"Render frame references unknown texture {quad.Texture.Value}.", nameof(frame));

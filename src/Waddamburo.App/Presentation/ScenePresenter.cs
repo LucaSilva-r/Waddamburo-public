@@ -121,7 +121,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
                 _heldFrame = loadingFrame();
             else
             {
-                _heldFrame = _lastFrame;
+                _heldFrame = _lastFrame.Detached(); // the frame's quads are reused by the next frame
                 _heldTextures = _textures;
             }
         }

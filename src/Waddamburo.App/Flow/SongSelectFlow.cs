@@ -56,10 +56,19 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     // game does (traced: the song's scene loads under the closed rainbow, out_extra ~60 ms after).
     private sealed record Prefetched(SongKey Song, int Side, bool TwoPlayers, bool Waiwai,
         GameplaySceneComposition.ThemedSkin? Theme, SceneDefinition Scene);
-    private Prefetched? _prefetch;
-    private Task<Prefetched>? _composing;
-    private int? _coveredAt;
-    private Task<AiBattleSession?>? _aiSetup;
+    // One pick's rainbow cover: made fresh as each cover begins (and when one is abandoned), so nothing carries
+    // over to the next pick (#17: a left-over preview flag cut the next song's preview).
+    private sealed class Cover
+    {
+        public Prefetched? Prefetch;
+        public Task<Prefetched>? Composing;
+        public int? CoveredAt;
+        public Task<AiBattleSession?>? AiSetup;
+        public bool TitleReported;
+        // The preview plays on under the closing rainbow until its title shows.
+        public bool MusicUnderCover;
+    }
+    private Cover _cover = new();
     // Covered this long without the prefetch ready: load the rest the slow way.
     private const int CoverHoldLimitTicks = 600;
 
@@ -72,8 +81,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // Waiwai's fixed layout (its charts only reshape the notes).
         var waiwai = Shell.Hosts.Waiwai && twoPlayers && song.Descriptor.WaiwaiComposition is not null;
         var dojo = Shell.Gameplay.Dan is not null;
-        _prefetch = null;
-        _composing = Task.Run(() =>
+        _cover.Composing = Task.Run(() =>
         {
             var theme = waiwai ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
             var scene = waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
@@ -97,7 +105,6 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     }
 
     private SongKey? _titled;
-    private bool _titleReported;
 
     public override void Tick(FlowInput input)
     {
@@ -236,14 +243,14 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     // The gameplay layout, composed in the background, starts decoding.
     private void finishComposing()
     {
-        if (_composing is not { IsCompleted: true } composed)
+        if (_cover.Composing is not { IsCompleted: true } composed)
             return;
-        _composing = null;
+        _cover.Composing = null;
         if (composed.IsCompletedSuccessfully)
         {
-            _prefetch = composed.Result;
-            Shell.Scenes.Prefetch(_prefetch.Scene);
-            Console.WriteLine($"Prefetching gameplay for '{_prefetch.Song}' at tick {Shell.Tick}.");
+            _cover.Prefetch = composed.Result;
+            Shell.Scenes.Prefetch(_cover.Prefetch.Scene);
+            Console.WriteLine($"Prefetching gameplay for '{_cover.Prefetch.Song}' at tick {Shell.Tick}.");
         }
     }
 
@@ -263,13 +270,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.PlayRequests.CancelPending();
         Shell.Overlay.Clear();
         gameplay.ResetRainbow();
-        _coveredAt = null;
-        _prefetch = null;
-        _musicUnderCover = false;
-        _aiSetup = null;
+        _cover = new Cover();
     }
-
-    private bool _musicUnderCover;
 
     private void stopMusic()
     {
@@ -296,9 +298,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             gameplay.RainbowTitle = Shell.Titles.GetTransitionTitle(find(request.Song).Song, GameplayFlow.ModeText(request));
             _ = Shell.Titles.Resolve(gameplay.RainbowTitle.Value);
             rainbow.Begin(Shell.Tick, Shell.Hosts.Waiwai ? RainbowTransitionSequence.WaiwaiLeadInTicks : null);
-            _titleReported = false;
+            _cover = new Cover();
             composeGameplay(request);
-            _aiSetup = null;
             Console.WriteLine($"Queued rainbow cover for '{request.Song}' at tick {Shell.Tick}.");
         }
         if (rainbow.ShouldStartCover(Shell.Tick))
@@ -313,47 +314,47 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             rainbow.StartCover();
             // The song's preview plays on under the closing rainbow and stops as its title appears (#17); a course's
             // plain rainbow has no title: it stops now.
-            _musicUnderCover = Shell.Gameplay.Dan is null;
-            if (!_musicUnderCover)
+            _cover.MusicUnderCover = Shell.Gameplay.Dan is null;
+            if (!_cover.MusicUnderCover)
                 stopMusic();
             Console.WriteLine($"Rainbow cover started at tick {Shell.Tick}.");
         }
-        if (_musicUnderCover && (Shell.Overlay.Player is not { } closing || titleShown(closing) || _coveredAt is not null
+        if (_cover.MusicUnderCover && (Shell.Overlay.Player is not { } closing || titleShown(closing) || _cover.CoveredAt is not null
             || rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete))
         {
-            _musicUnderCover = false;
+            _cover.MusicUnderCover = false;
             stopMusic();
             Console.WriteLine($"Song Select music stopped as the rainbow's title appeared, at tick {Shell.Tick}.");
         }
         var titleReady = gameplay.RainbowTitle is { } title && Shell.Titles.Resolve(title) is not null;
-        if (titleReady && !_titleReported && rainbow.State is not RainbowTransitionState.Idle)
+        if (titleReady && !_cover.TitleReported && rainbow.State is not RainbowTransitionState.Idle)
         {
-            _titleReported = true;
+            _cover.TitleReported = true;
             Console.WriteLine($"Rainbow title ready at tick {Shell.Tick}.");
         }
         if (Shell.Overlay.Player is { } cover && rainbow.FinishCoverWhenStopped(cover.IsPlaying, Shell.Tick))
-            _coveredAt = Shell.Tick;
+            _cover.CoveredAt = Shell.Tick;
         // Online: held on the song title until the other player has picked, then it plays with them.
-        if (_coveredAt is not null)
+        if (_cover.CoveredAt is not null)
         {
             if (Shell.Match.Together(request) is not { } together)
                 return;
             request = together;
             if (Shell.Hosts.AiBattle)
             {
-                _aiSetup ??= prepareBattle(request, Shell.Hosts.SongSelect?.SupportLevel ?? 0,
+                _cover.AiSetup ??= prepareBattle(request, Shell.Hosts.SongSelect?.SupportLevel ?? 0,
                     Shell.Hosts.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)request.Players[0].Course) ?? 0);
-                if (!_aiSetup.IsCompleted) return;
+                if (!_cover.AiSetup.IsCompleted) return;
             }
         }
         // Held on the song title (shown) until the song's scene is decoded and uploaded (then its switch is quick).
-        if (_coveredAt is { } coveredAt && ((titleReady && _prefetch is not null && _composing is null && Shell.Scenes.PrefetchReady)
+        if (_cover.CoveredAt is { } coveredAt && ((titleReady && _cover.Prefetch is not null && _cover.Composing is null && Shell.Scenes.PrefetchReady)
                 || Shell.Tick - coveredAt >= CoverHoldLimitTicks))
         {
             if (Shell.Tick - coveredAt >= CoverHoldLimitTicks)
                 Console.Error.WriteLine("The song's scene was not ready in time; loading the rest now.");
             Console.WriteLine($"Rainbow held covered {Shell.Tick - coveredAt} tick(s) for the song's scene.");
-            _coveredAt = null;
+            _cover.CoveredAt = null;
             startSong(request);
         }
     }
@@ -513,9 +514,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                     || Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RARE") == "1"); // diagnostic: force it
             charts = [left, right];
         }
-        var prefetched = _prefetch is { } ready && ready.Song == request.Song && ready.Side == side
+        var prefetched = _cover.Prefetch is { } ready && ready.Song == request.Song && ready.Side == side
             && ready.TwoPlayers == twoPlayers && ready.Waiwai == waiwai is not null ? ready : null;
-        _prefetch = null;
+        _cover.Prefetch = null;
         // Every song gets its themed skin or a fresh random original mix.
         var theme = prefetched is not null ? prefetched.Theme : waiwai is not null ? null
             : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
@@ -538,8 +539,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
                 twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
         gameplay.Prepare(charts, song, side, waiwai);
-        gameplay.AiSession = _aiSetup is { IsCompletedSuccessfully: true } setup ? setup.Result : null;
-        _aiSetup = null;
+        gameplay.AiSession = _cover.AiSetup is { IsCompletedSuccessfully: true } setup ? setup.Result : null;
+        _cover.AiSetup = null;
         if (timeline is not null)
             gameplay.PrepareCourse(timeline, courseSongs, courseStatus!);
         Shell.Scenes.Show(FlowScenes.Gameplay);

@@ -77,6 +77,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
             int pixelWidth, pixelHeight;
             if (!SDL_GetWindowSizeInPixels(_window, &pixelWidth, &pixelHeight))
                 throw sdlFailure("query the window pixel size");
+            if (SystemPriority.PreferHighPerformanceGpu() is { } gpu)
+                Console.WriteLine($"{gpu}.");
             BgfxSupport.Initialize(_window, (uint)pixelWidth, (uint)pixelHeight, debugGpu);
             _bgfxInitialized = true;
             _renderer = new RenderDevice(_window, (uint)pixelWidth, (uint)pixelHeight);
@@ -207,6 +209,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
         BgfxSupport.SetVsync(display.Vsync);
+        BgfxSupport.SetFrameLatency(display.FrameLatency);
         _frameInterval = display.FpsCap > 0 ? Stopwatch.Frequency / display.FpsCap : 0;
         _renderer!.Letterbox = (display.LetterboxSize, display.LetterboxX, display.LetterboxY);
         _renderer.RenderHeight = display.RenderHeight;
@@ -241,6 +244,13 @@ public sealed unsafe partial class SdlApplication : IDisposable
         var mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(_window));
         return [renderer, $"display\tbackbuffer {stats->width}x{stats->height}, display mode "
             + (mode is null ? "?" : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{mode->w}x{mode->h} @ {mode->refresh_rate:F1} Hz"))];
+    }
+
+    // Read every frame only while the hitch trace is on; SDL keeps the mode, so the call is cheap.
+    private TimeSpan refreshInterval()
+    {
+        var mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(_window));
+        return TimeSpan.FromSeconds(1 / (mode is null || mode->refresh_rate <= 0 ? 60f : mode->refresh_rate));
     }
 
     private (int Width, int Height) desktop()
@@ -477,16 +487,32 @@ public sealed unsafe partial class SdlApplication : IDisposable
     private readonly System.Text.StringBuilder _typed = new();
 
     /// <summary>Starts taking typed text (the system's text input, IME included); see <see cref="TakeTypedText"/>.</summary>
+    /// <summary>
+    /// Rumbles controllers <paramref name="pads"/> (their numbers, 1 = the first connected; unknown ones are skipped):
+    /// low- and high-frequency motor strength 0-1, for <paramref name="duration"/> (a newer rumble replaces it).
+    /// </summary>
+    public void Rumble(IEnumerable<int> pads, float low, float high, TimeSpan duration)
+    {
+        ArgumentNullException.ThrowIfNull(pads);
+        ensureOwnerThread();
+        static ushort strength(float value) => (ushort)(Math.Clamp(value, 0, 1) * ushort.MaxValue);
+        foreach (var number in pads)
+            if (number >= 1 && number <= _pads.Length && _pads[number - 1].Pad != IntPtr.Zero)
+                SDL_RumbleGamepad((SDL_Gamepad*)_pads[number - 1].Pad, strength(low), strength(high), (uint)duration.TotalMilliseconds);
+    }
+
     public void StartTextInput()
     {
         ensureOwnerThread();
         _typed.Clear();
+        _textInput = true;
         SDL_StartTextInput(_window);
     }
 
     public void StopTextInput()
     {
         ensureOwnerThread();
+        _textInput = false;
         SDL_StopTextInput(_window);
         _typed.Clear();
     }
@@ -535,13 +561,17 @@ public sealed unsafe partial class SdlApplication : IDisposable
         SdlKeyboardKey.Left, SdlKeyboardKey.Right, SdlKeyboardKey.Up, SdlKeyboardKey.Down,
         SdlInputBindings.Pads[0], SdlInputBindings.Pads[3], SdlInputBindings.Pads[4], SdlInputBindings.Pads[7],
     ];
+    // While a text field takes typing (StartTextInput), Backspace and Delete repeat too: elsewhere Backspace may be a
+    // BACK button, which must not leave several pages at once.
+    private static readonly SdlKeyboardKey[] RepeatingTextKeys = [.. RepeatingKeys, SdlKeyboardKey.Backspace, SdlKeyboardKey.Delete];
     private const ulong RepeatDelayNs = 400_000_000, RepeatIntervalNs = 50_000_000;
     private readonly Dictionary<SdlKeyboardKey, ulong> _repeatAt = [];
+    private bool _textInput;
 
     private void repeatHeld(List<SdlKeyPress> presses)
     {
         var now = SDL_GetTicksNS();
-        foreach (var key in RepeatingKeys)
+        foreach (var key in _textInput ? RepeatingTextKeys : RepeatingKeys)
         {
             if (!_menuInput || _capturing || !_pressedKeys.Contains(key))
             {
@@ -836,7 +866,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
             else
                 pendingPresses.Add(new SdlKeyPress(key, TimeSpan.FromTicks(checked((long)(timestamp / 100)))));
         }
+        SystemPriority.FavourThread(); // the game thread paces the frames
         var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+        long previousFrameEnd = 0;
         (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
         using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
             ? new FrameProfile() : null;
@@ -1055,6 +1087,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
             var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
+            // Event pumping, frame pacing and the hitch log itself: what no other part of the frame line covers.
+            var betweenFrames = previousFrameEnd == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(previousFrameEnd, timestamp);
             previousTimestamp = timestamp;
             var remainingTicks = tickLimit is int limit ? limit - simulationTicks : int.MaxValue;
             var eventTime = TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)));
@@ -1068,7 +1102,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     new(Math.Max(1, pixelWidth), Math.Max(1, pixelHeight)));
             }
             var keyboard = new SdlKeyboardSnapshot(_pressedKeys, pendingPresses, eventTime);
+            var frameInputStart = Stopwatch.GetTimestamp();
             updateFrame?.Invoke(keyboard);
+            var frameInputTime = Stopwatch.GetElapsedTime(frameInputStart);
             var inputTime = performanceActive ? Stopwatch.GetElapsedTime(inputStart) : TimeSpan.Zero;
             var delivered = updateFrame is not null;
             var updateStart = Stopwatch.GetTimestamp();
@@ -1100,10 +1136,14 @@ public sealed unsafe partial class SdlApplication : IDisposable
             // Diagnostic: WADDAMBURO_HITCH_TRACE=1 reports which part of a slow frame took the time.
             var updateTime = Stopwatch.GetElapsedTime(updateStart, renderStart);
             var renderTime = Stopwatch.GetElapsedTime(renderStart);
+            previousFrameEnd = Stopwatch.GetTimestamp();
             var profileEligibleAtEnd = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             if (performanceActive)
                 performanceSample?.Invoke(new SdlFrameMetrics(elapsed, inputTime, updateTime, renderTime, update.ExecutedTicks));
-            Recorder?.Record(elapsed, updateTime, renderTime, update.ExecutedTicks, gpuStats);
+            // A frame that can cost a screen refresh (the note lane visibly jumps): longer than the refresh interval
+            // when uncapped, 1.5 intervals with vsync (its frames are one interval give or take).
+            var hitchAt = Recorder is not null || hitchTrace ? refreshInterval() * (_display?.Vsync == true ? 1.5 : 1) : TimeSpan.MaxValue;
+            Recorder?.Record(elapsed, updateTime, renderTime, update.ExecutedTicks, gpuStats, missedRefresh: elapsed > hitchAt);
             if (frameProfile is not null)
             {
                 if (previousProfileEligible && profileEligibleAtStart && profileEligibleAtEnd)
@@ -1119,8 +1159,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
             {
                 // With the collections and GC pause time since the last report: a hitch that is GC shows here.
                 var (gen0, gen1, gen2, pause) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration());
-                if (updateTime + renderTime > TimeSpan.FromMilliseconds(25))
-                    Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: update {updateTime.TotalMilliseconds:F0} ms "
+                // The whole frame, too: a stall in present or a descheduled thread is in neither update nor render.
+                if (frameInputTime + updateTime + renderTime > hitchAt || elapsed > hitchAt)
+                    Console.Error.WriteLine($"Frame hitch at tick {simulationTicks}: frame {elapsed.TotalMilliseconds:F0} ms, "
+                        + $"between frames {betweenFrames.TotalMilliseconds:F0} ms, input {frameInputTime.TotalMilliseconds:F0} ms (judged per frame), update {updateTime.TotalMilliseconds:F0} ms "
                         + $"({update.ExecutedTicks} ticks), render {renderTime.TotalMilliseconds:F0} ms; GC since last "
                         + $"{gen0 - hitchGc.Gen0}/{gen1 - hitchGc.Gen1}/{gen2 - hitchGc.Gen2} (gen0/1/2), paused {(pause - hitchGc.Pause).TotalMilliseconds:F0} ms"
                         + $"{gpuStats()}.");
@@ -1295,10 +1337,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
 
 /// <summary>
 /// The display settings <see cref="SdlApplication.ApplyDisplay"/> takes. Width/Height 0: the desktop's; RefreshRate 0: the
-/// highest; FpsCap 0: none; RenderHeight: the stage drawn at this many lines and scaled up (0: the window's own).
+/// highest; FpsCap 0: none; RenderHeight: the stage drawn at this many lines and scaled up (0: the window's own);
+/// FrameLatency: frames queued with vsync (1-3).
 /// </summary>
 public readonly record struct DisplaySettings(bool Vsync, bool Fullscreen, bool Exclusive, int Width, int Height, int RefreshRate,
-    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0, int RenderHeight = 0);
+    float LetterboxSize, float LetterboxX, float LetterboxY, int FpsCap = 0, int RenderHeight = 0, int FrameLatency = 1);
 
 public readonly record struct SdlRunResult(
     int RenderedFrames,

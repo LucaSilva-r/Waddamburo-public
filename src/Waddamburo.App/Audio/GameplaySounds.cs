@@ -13,7 +13,7 @@ internal sealed class GameplaySounds(SoundBank bank)
     // ponytail: Waiwai song select's tone choice (AssignTone / RequestToneSE) is not offered yet.
     public bool Waiwai { get; set; }
 
-    /// <summary>AI battle: AI-don's lane (1) drums in its own tone (traced SE_GAME_NEIRO_AIDON_R).</summary>
+    /// <summary>AI battle: AI-don's lane (1) makes no sound at all.</summary>
     public bool AiBattle { get; set; }
 
     /// <summary>
@@ -31,7 +31,6 @@ internal sealed class GameplaySounds(SoundBank bank)
     // A drum's hit sounds, in its player's tone: centred for one player; in two-player play the left
     // drum's pan left and the right drum's right (traced session9-2p).
     private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100"
-        : AiBattle && lane == 1 ? "SE_GAME_NEIRO_AIDON"
         : $"SE_GAME_NEIRO_{Tones.ElementAtOrDefault(lane ?? 0):000}") + (Panning ? lane : null) switch
     {
         0 => "_L",
@@ -52,7 +51,7 @@ internal sealed class GameplaySounds(SoundBank bank)
 
     public void PlayDrum(int? lane, bool don)
     {
-        if (!Muted)
+        if (!Muted && !(AiBattle && lane == 1))
             bank.Play(drumBank(lane), don ? 0 : 1, AudioBus.DrumHit, trace: false);
     }
 
@@ -63,7 +62,8 @@ internal sealed class GameplaySounds(SoundBank bank)
     /// </summary>
     public void Play(int? lane, GameplaySoundEvent sound, int combo = 0)
     {
-        if (Muted) return;
+        // AI battle: AI-don's lane (1) is silent, drums included (PlayDrum).
+        if (Muted || AiBattle && lane == 1) return;
         int own(int cue) => lane is { } player && Panning ? cue + 1 + player : cue;
         switch (sound)
         {
@@ -114,6 +114,13 @@ internal sealed class GameplaySounds(SoundBank bank)
                 bank.Play("VO_RESULT", 0);
                 bank.Play("SE_GAME", 15);
                 break;
+            case GameplaySoundEvent.BigHit:
+            case GameplaySoundEvent.DonHit:
+            case GameplaySoundEvent.KaHit:
+            case GameplaySoundEvent.LongDonHit:
+            case GameplaySoundEvent.LongKaHit:
+            case GameplaySoundEvent.BigLongHit:
+                break; // the controllers' rumble (GameShell), not a sound
             default:
                 throw new ArgumentOutOfRangeException(nameof(sound));
         }

@@ -126,6 +126,7 @@ internal sealed class ScoreSync : IDisposable
             return;
         _ = Task.Run(() =>
         {
+            addSectionCounts(scores);
             var plays = scores.OutdatedPlays(PlayRecord.CurrentScoringVersion);
             if (plays.Count == 0)
                 return;
@@ -151,6 +152,29 @@ internal sealed class ScoreSync : IDisposable
             job.Complete();
             Console.WriteLine($"Rescored {plays.Count - failed} plays under scoring version {PlayRecord.CurrentScoringVersion}.");
         });
+    }
+
+    // AI battles from before plays kept their section counts get them from their replays (the results' section bests).
+    private static void addSectionCounts(ScoreStore scores)
+    {
+        var plays = scores.AiPlaysWithoutSectionCounts();
+        var charts = new Cli.Rescore.ChartCache();
+        foreach (var (play, prior) in plays)
+        {
+            try
+            {
+                var (chart, course) = Cli.Rescore.Chart(charts, play.Notes, play.Source);
+                var outcome = Cli.Rescore.Battle(chart, course, play.Options, play.Seed!.Value, prior, play.Replay).Outcome;
+                scores.SetAiSectionCounts(play.Id, Waddamburo.Game.Lumen.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)));
+            }
+            catch (Exception exception) when (Cli.Rescore.IsBadPlay(exception))
+            {
+                // ponytail: tried again next start.
+                Console.Error.WriteLine($"Warning AI_SECTIONS: play {play.Id} not replayed ({exception.Message}).");
+            }
+        }
+        if (plays.Count > 0)
+            Console.WriteLine($"AI battle section counts from {plays.Count} replays.");
     }
 
     /// <summary>

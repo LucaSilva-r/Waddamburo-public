@@ -64,7 +64,8 @@ public sealed class AudioEngine : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_outputGate)
         {
-            var transport = new AudioStreamTransport(source, () => _device.SubmittedFrames);
+            var transport = new AudioStreamTransport(source, () => _device.SubmittedFrames,
+                () => $"{_device.Diagnostics}; {TraceContext?.Invoke()}");
             transport.Handle = Mixer.PlayStream(transport, bus, volume);
             return transport;
         }

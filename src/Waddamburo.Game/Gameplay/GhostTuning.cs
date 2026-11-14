@@ -94,7 +94,11 @@ public sealed class GhostTimingModel(GhostLevel level)
         _samples.Enqueue(offset.TotalMilliseconds);
         while (_samples.Count > Math.Max(1, Level.SampleSize))
             _samples.Dequeue();
+        _statistics = null;
     }
+
+    // Sorted once per observed hit, not once per note AI-don decides (several in one frame cost ms on a slow PC).
+    private (double Median, double Variance)? _statistics;
 
     /// <summary>
     /// The player's timing from their earlier plays (Green's GhostPerfData: median ms, variance ms²), used until this play
@@ -104,7 +108,7 @@ public sealed class GhostTimingModel(GhostLevel level)
 
     /// <summary>The player's median offset and variance (ms, ms²) as AI-don uses them.</summary>
     public (double Median, double Variance) Statistics =>
-        _samples.Count < MinimumSamples ? Prior ?? (0, Level.VarianceFirst) : TimingOf(_samples)!.Value;
+        _samples.Count < MinimumSamples ? Prior ?? (0, Level.VarianceFirst) : _statistics ??= TimingOf(_samples)!.Value;
 
     /// <summary>Hit offsets' median and variance (ms, ms²); null without any.</summary>
     public static (double Median, double Variance)? TimingOf(IEnumerable<double> offsets)

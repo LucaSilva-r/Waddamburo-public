@@ -35,7 +35,9 @@ public static partial class ReleaseConsole
             var latest = Path.Combine(CrashFolder, "latest.log");
             if (File.Exists(latest))
                 File.Move(latest, Path.Combine(CrashFolder, "previous.log"), overwrite: true);
-            var file = new StreamWriter(new FileStream(latest, FileMode.Create, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+            // Not flushed per line: a background thread writes the queued lines (Tee.Drain); a flush per line cost the
+            // game thread 5-8 ms on a low-end Windows PC (antivirus on every write) and showed as the note lane jumping.
+            var file = new StreamWriter(new FileStream(latest, FileMode.Create, FileAccess.Write, FileShare.Read));
             file.WriteLine($"Waddamburo {Version ?? "unknown"} started at {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}, "
                 + $"{RuntimeInformation.OSDescription} {RuntimeInformation.OSArchitecture}, .NET {Environment.Version}");
             Tee.LogTo(file);
@@ -125,6 +127,7 @@ public static partial class ReleaseConsole
     /// <summary>crash-&lt;time&gt;.txt: version, system, the exception with its stack, the last lines logged; null if it could not be written.</summary>
     public static string? WriteCrashFile(Exception exception)
     {
+        Tee.Drain();
         try
         {
             Directory.CreateDirectory(CrashFolder);
@@ -162,9 +165,45 @@ public static partial class ReleaseConsole
         {
             lock (Lines)
             {
-                foreach (var line in Lines)
-                    file.WriteLine(line);
-                _file = file;
+                lock (FileGate)
+                {
+                    foreach (var line in Lines)
+                        file.WriteLine(line);
+                    file.Flush();
+                    _file = file;
+                }
+            }
+            new Thread(static () =>
+            {
+                while (true)
+                {
+                    Thread.Sleep(250);
+                    Drain();
+                }
+            }) { IsBackground = true, Name = "Log file" }.Start();
+            AppDomain.CurrentDomain.ProcessExit += static (_, _) => Drain();
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentQueue<string> Pending = new();
+        private static readonly object FileGate = new();
+
+        /// <summary>Writes the queued lines to the log file now (the background thread, a crash, the exit).</summary>
+        public static void Drain()
+        {
+            lock (FileGate)
+            {
+                if (_file is null || Pending.IsEmpty)
+                    return;
+                try
+                {
+                    while (Pending.TryDequeue(out var line))
+                        _file.WriteLine(line);
+                    _file.Flush();
+                }
+                catch (IOException)
+                {
+                    _file = null; // ponytail: a full disk stops the log file, not the game
+                }
             }
         }
 
@@ -202,14 +241,8 @@ public static partial class ReleaseConsole
                     return;
                 }
                 Lines.Enqueue(Line.ToString());
-                try
-                {
-                    _file?.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] {Line}");
-                }
-                catch (IOException)
-                {
-                    _file = null; // ponytail: a full disk stops the log file, not the game
-                }
+                if (_file is not null)
+                    Pending.Enqueue($"[{DateTime.Now:HH:mm:ss.fff}] {Line}");
                 Line.Clear();
                 if (Lines.Count > RecentLines)
                     Lines.Dequeue();

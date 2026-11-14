@@ -11,7 +11,7 @@ public sealed class AudioPlaybackClock
     public TimeSpan Update(TimeSpan consumed, TimeSpan hardwareLatency, TimeSpan timestamp)
     {
         // Queue consumption is a noisy reference, not the animation clock. Allow
-        // one buffer of uncertainty and correct drift at at most 1% playback speed.
+        // one buffer of uncertainty and correct drift at at most 1% playback speed (5% past 5 ms).
         var earliest = consumed - hardwareLatency;
         if (_timestamp is not { } previous)
         {
@@ -29,8 +29,11 @@ public sealed class AudioPlaybackClock
                 var predicted = _position + elapsed;
                 var error = predicted < earliest ? earliest - predicted
                     : predicted > consumed ? consumed - predicted : TimeSpan.Zero;
+                // Off by more than a buffer (audio that slipped: a late WASAPI exclusive period), 5% so it is caught
+                // within a fraction of a second; buffer-sized jitter and drift stay at 1%, too slow to see.
+                var rate = Math.Abs(error.TotalMilliseconds) > Math.Max(5, hardwareLatency.TotalMilliseconds) ? 0.05 : 0.01;
                 var correction = TimeSpan.FromSeconds(Math.Clamp(error.TotalSeconds,
-                    -elapsed.TotalSeconds * 0.01, elapsed.TotalSeconds * 0.01));
+                    -elapsed.TotalSeconds * rate, elapsed.TotalSeconds * rate));
                 _position = predicted + correction;
             }
         }

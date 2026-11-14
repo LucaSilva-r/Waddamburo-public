@@ -6,6 +6,34 @@ namespace Waddamburo.Providers.Tja.Tests;
 public sealed class TjaCatalogProviderTests
 {
     [Fact]
+    public async Task PersistentMetadataPreservesChartLoadingAndInvalidatesEditsAndAudioRemoval()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("Mine/song.tja", "title:First\nbpm:120\nwave:song.wav\nCOURSE:Oni\nLEVEL:8\n#START\n1000,\n#END\n");
+        library.WriteBytes("Mine/song.wav", [0]);
+        library.WriteText("Mine/box.def", "#TITLE:My songs\n");
+        var database = Path.Combine(library.Path, "metadata.db");
+        TjaCatalogProvider provider() => new(library.Path) { MetadataCache = new CatalogMetadataCache(database) };
+        await provider().ScanAsync(null, default);
+        var warm = provider();
+        var result = await warm.ScanAsync(null, default);
+        var song = Assert.Single(result.Songs);
+        Assert.Equal("First", song.Title.Primary);
+        Assert.NotNull(song.AudioAsset);
+        Assert.Equal("My songs", Assert.Single(result.Categories).Name);
+        var chart = Assert.Single(song.Charts);
+        Assert.Single((await warm.LoadChartAsync(chart.Key, chart.ChartAsset)).HitObjects);
+        library.WriteText("Mine/song.tja", "TITLE:Edited song\nBPM:120\nCOURSE:Easy\n#START\n1100,\n#END\n");
+        library.WriteText("Mine/box.def", "#TITLE:Renamed folder\n");
+        File.Delete(Path.Combine(library.Path, "Mine", "song.wav"));
+        var edited = await provider().ScanAsync(null, default);
+        Assert.Equal("Edited song", Assert.Single(edited.Songs).Title.Primary);
+        Assert.Null(edited.Songs[0].AudioAsset);
+        Assert.Equal("Renamed folder", Assert.Single(edited.Categories).Name);
+        Assert.Equal(TaikoCourse.Easy, Assert.Single(edited.Songs[0].Charts).Course);
+    }
+
+    [Fact]
     public async Task FolderPrivacyIsCheckedFreshForEveryChartWithoutChangingChartContent()
     {
         using var library = new TemporaryLibrary();

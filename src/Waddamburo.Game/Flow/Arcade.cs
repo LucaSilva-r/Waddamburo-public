@@ -6,6 +6,12 @@ namespace Waddamburo.Game.Flow;
 public enum TimingIndicator { Off, GoodBad, Always }
 
 /// <summary>
+/// Which hits rumble a controller: none; big notes, rolls, balloons and kusudama; also every small note hit; or every
+/// drum hit, a stray one too.
+/// </summary>
+public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
+
+/// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
 /// <c>config_version</c>; an older file gets each later version's settings appended (with their
@@ -80,6 +86,12 @@ public sealed record ArcadeSettings
         stereo_panning = true
         # mute_in_background: fade the sound out while the window is not focused.
         mute_in_background = true
+        # drum_sound_in_songs: the don/ka sound of your hits during a song (the menus keep theirs). false = silent
+        # drum, as the console games' 音なし.
+        drum_sound_in_songs = true
+        # controller_vibration: off, big (big notes, rolls, balloons and kusudama), notes (every note hit too) or all (every
+        # drum hit), on the controllers bound to the player's drum (Settings > Drum Controls).
+        controller_vibration = big
 
         """,
         """
@@ -125,13 +137,15 @@ public sealed record ArcadeSettings
         """,
         """
         # Display (also in the Settings menu). vsync: wait for the screen's refresh (no tearing); false
-        # renders as fast as it can. fps_cap: frames per second at most in a window or borderless
+        # renders as fast as it can. frame_latency: frames queued with vsync, 1-3; 2 keeps the notes smooth
+        # when the desktop is slow to show frames (screen casting on Linux) at one refresh more of delay. fps_cap: frames per second at most in a window or borderless
         # fullscreen, 0 = no limit. fullscreen_mode (Windows): borderless (a window covering the desktop)
         # or exclusive (the game takes the screen: less load on older PCs, and the resolution and
         # refresh rate below apply; a 4:3 resolution shows the game letterboxed).
         # fullscreen_resolution: WIDTHxHEIGHT or native (the desktop's); refresh_rate in Hz, 0 = the
         # highest at that resolution. The resolution also sizes the upscaled textures loaded.
         vsync = true
+        frame_latency = 1
         fps_cap = 0
         fullscreen_mode = borderless
         fullscreen_resolution = native
@@ -334,6 +348,8 @@ public sealed record ArcadeSettings
         # false = plays made while off stay on this PC permanently. Turning it on applies to new plays.
         # Local replays remain available either way; official songs are unaffected.
         upload_custom_songs = true
+        # upload_banner (also in Settings): the "Score upload disabled" line at the top (custom songs, Auto Play).
+        upload_banner = true
         # The first custom-library upload question was answered; false = ask on the next entry.
         custom_upload_notice_seen = false
 
@@ -437,6 +453,9 @@ public sealed record ArcadeSettings
     /// <summary>Upload new custom (TJA and osu!) plays; plays made while disabled stay local permanently.</summary>
     public bool UploadCustomSongs { get; init; } = true;
 
+    /// <summary>Show the "Score upload disabled" banner (custom songs, Auto Play).</summary>
+    public bool UploadBanner { get; init; } = true;
+
     /// <summary>The custom-library upload question has been answered on this installation.</summary>
     public bool CustomUploadNoticeSeen { get; init; }
 
@@ -473,6 +492,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Wait for the display's refresh before showing a frame.</summary>
     public bool Vsync { get; init; } = true;
+
+    /// <summary>Frames queued with vsync (1-3): more absorb a desktop's late presents, each a refresh of delay.</summary>
+    public int FrameLatency { get; init; } = 1;
 
     /// <summary>Frames per second at most, outside exclusive fullscreen; 0 = no limit.</summary>
     public int FpsCap { get; init; }
@@ -571,6 +593,12 @@ public sealed record ArcadeSettings
 
     /// <summary>Fade the sound out while the window is in the background.</summary>
     public bool MuteInBackground { get; init; } = true;
+
+    /// <summary>The drum's don/ka sound on hits during a song; the menus keep theirs (the console games' 音なし when off).</summary>
+    public bool DrumSoundInSongs { get; init; } = true;
+
+    /// <summary>Controllers bound to a player's drum rumble on big notes, rolls, balloons and kusudama.</summary>
+    public ControllerVibration ControllerVibration { get; init; } = ControllerVibration.BigNotes;
 
     /// <summary>The player accepted that playing online shows their IP address to the other player.</summary>
     public bool OnlineWarningAccepted { get; init; }
@@ -771,6 +799,7 @@ public sealed record ArcadeSettings
                 "config_version" => settings with { Version = count(value, index, 0) },
                 "fullscreen" => settings with { Fullscreen = boolean(value, index) },
                 "vsync" => settings with { Vsync = boolean(value, index) },
+                "frame_latency" => settings with { FrameLatency = integer(value, index, 1, 3) },
                 "dan_series" => settings with { DanSeries = value },
                 "fps_cap" => settings with { FpsCap = integer(value, index, 0, 10000) },
                 "fullscreen_mode" => settings with { ExclusiveFullscreen = value.ToLowerInvariant() switch
@@ -819,6 +848,15 @@ public sealed record ArcadeSettings
                 "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
                 "squash_titles" => settings with { SquashTitles = boolean(value, index) },
                 "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
+                "drum_sound_in_songs" => settings with { DrumSoundInSongs = boolean(value, index) },
+                "controller_vibration" => settings with { ControllerVibration = value.ToLowerInvariant() switch
+                {
+                    "off" or "false" => ControllerVibration.Off,
+                    "big" or "true" => ControllerVibration.BigNotes,
+                    "notes" => ControllerVibration.AllNotes,
+                    "all" => ControllerVibration.EveryHit,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: controller_vibration is off, big, notes or all, not '{value}'."),
+                } },
                 "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
                 "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
                 // ponytail: '#' starts a comment, so a folder path cannot contain one.
@@ -867,6 +905,7 @@ public sealed record ArcadeSettings
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
                 "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
                 "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
+                "upload_banner" => settings with { UploadBanner = boolean(value, index) },
                 "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
                 "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
@@ -938,6 +977,14 @@ public sealed record ArcadeSettings
             ["upscale_threads"] = settings.UpscaleThreads,
             ["squash_titles"] = settings.SquashTitles ? "true" : "false",
             ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
+            ["drum_sound_in_songs"] = settings.DrumSoundInSongs ? "true" : "false",
+            ["controller_vibration"] = settings.ControllerVibration switch
+            {
+                ControllerVibration.Off => "off",
+                ControllerVibration.AllNotes => "notes",
+                ControllerVibration.EveryHit => "all",
+                _ => "big",
+            },
             ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
             ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
             ["tja_folder"] = settings.TjaFolder ?? "",
@@ -954,6 +1001,7 @@ public sealed record ArcadeSettings
             ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),
             ["fullscreen"] = settings.Fullscreen ? "true" : "false",
             ["vsync"] = settings.Vsync ? "true" : "false",
+            ["frame_latency"] = settings.FrameLatency,
             ["fps_cap"] = settings.FpsCap,
             ["fullscreen_mode"] = settings.ExclusiveFullscreen ? "exclusive" : "borderless",
             ["fullscreen_resolution"] = settings.FullscreenWidth == 0 ? "native" : $"{settings.FullscreenWidth}x{settings.FullscreenHeight}",
@@ -976,6 +1024,7 @@ public sealed record ArcadeSettings
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
             ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
             ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
+            ["upload_banner"] = settings.UploadBanner ? "true" : "false",
             ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,
             ["timing_indicator"] = settings.TimingIndicator switch

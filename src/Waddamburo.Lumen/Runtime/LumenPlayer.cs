@@ -608,33 +608,25 @@ public sealed partial class LumenPlayer
         return true;
     }
 
-    // Clips the host has offset (SetInstanceOffset): where their own transform had them.
-    private readonly Dictionary<DisplayInstance, LumenMatrix> _offsetFrom = [];
+    // Clips the host has offset (SetInstanceOffset), and by how much: added on top of where their timeline places them.
+    // ponytail: entries of clips the timeline removed stay until the host sets their offset back to (0, 0).
+    private readonly Dictionary<DisplayInstance, (float X, float Y)> _hostOffsets = [];
 
     /// <summary>
-    /// Places a named clip (x, y) from where it was before the host first offset it, in its parent's space; its
-    /// timeline no longer places it (a tween on it stops) until the offset goes back to (0, 0). Absolute, so a
-    /// host building its scene again on this movie starts from the clip's own place.
+    /// Moves a named clip by (x, y) in its parent's space on top of its own placement: its timeline keeps animating it
+    /// (a clip that scales in still does), moved. (0, 0) puts it back. Absolute, not cumulative.
     /// </summary>
     public bool SetInstanceOffset(string instancePath, float x, float y)
     {
         ArgumentNullException.ThrowIfNull(instancePath);
         if (hostFind(instancePath, "offset") is not { } instance)
             return false;
-        if (x == 0 && y == 0)
-        {
-            if (_offsetFrom.Remove(instance, out var original))
-            {
-                instance.Transform = original;
-                // ponytail: assumes no script had moved the clip before the host did.
-                instance.ScriptTransformed = false;
-            }
+        var old = _hostOffsets.GetValueOrDefault(instance);
+        if (old == (x, y))
             return true;
-        }
-        if (!_offsetFrom.TryGetValue(instance, out var unmoved))
-            _offsetFrom[instance] = unmoved = instance.Transform;
-        instance.ScriptTransformed = true;
-        instance.Transform = unmoved with { X = unmoved.X + x, Y = unmoved.Y + y };
+        instance.Transform = instance.Transform with { X = instance.Transform.X + x - old.X, Y = instance.Transform.Y + y - old.Y };
+        if (x == 0 && y == 0) _hostOffsets.Remove(instance);
+        else _hostOffsets[instance] = (x, y);
         return true;
     }
 
@@ -958,6 +950,15 @@ public sealed partial class LumenPlayer
             interpolationFraction,
             _quads);
         return new LumenRenderSnapshot(StageWidth, StageHeight, _quads.ToImmutable());
+    }
+
+    /// <summary>This frame's quads appended to <paramref name="into"/> (a scene's builder): no array of their own.</summary>
+    public void AppendRenderQuads(float interpolationFraction, ImmutableArray<LumenRenderQuad>.Builder into)
+    {
+        if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
+            throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
+        ArgumentNullException.ThrowIfNull(into);
+        appendInstance(_root, LumenMatrix.Identity, ColorState.Identity, LumenRenderBlend.Normal, interpolationFraction, into);
     }
 
     private readonly ImmutableArray<LumenRenderQuad>.Builder _quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
@@ -2581,6 +2582,12 @@ public sealed partial class LumenPlayer
         }
     }
 
+    private void hostOffset(DisplayInstance instance)
+    {
+        if (_hostOffsets.TryGetValue(instance, out var offset))
+            instance.Transform = instance.Transform with { X = instance.Transform.X + offset.X, Y = instance.Transform.Y + offset.Y };
+    }
+
     private void applyPlacementFields(DisplayInstance instance, LmbPlaceObjectCommand placement, bool isNew)
     {
         if (placement.NameStringIndex != 0 && placement.NameStringIndex < _movie.Strings.Length)
@@ -2610,6 +2617,7 @@ public sealed partial class LumenPlayer
                 }
                 var matrix = _movie.Matrices[placement.PositionIndex];
                 instance.Transform = new LumenMatrix(matrix.M11, matrix.M12, matrix.M21, matrix.M22, matrix.X, matrix.Y);
+                hostOffset(instance);
                 break;
             case 0x8000:
                 if (placement.PositionIndex >= _movie.Translations.Length)
@@ -2619,6 +2627,7 @@ public sealed partial class LumenPlayer
                 }
                 var translation = _movie.Translations[placement.PositionIndex];
                 instance.Transform = LumenMatrix.Identity with { X = translation.X, Y = translation.Y };
+                hostOffset(instance);
                 break;
             case ushort.MaxValue:
                 break;
@@ -2782,8 +2791,11 @@ public sealed partial class LumenPlayer
         // Masks apply only to following siblings through the inclusive authored depth.
         // Scope each child separately so crossing depth ranges and nested sprites compose safely.
         List<(long End, ImmutableArray<LumenRenderQuad> Quads)>? masks = null;
-        foreach (var child in instance.Children.Values)
+        var children = instance.Children.Values;
+        // An index loop: drawing changes no children, and it allocates no enumerator.
+        for (var childIndex = 0; childIndex < children.Count; childIndex++)
         {
+            var child = children[childIndex];
             // A loop, not RemoveAll: its lambda would capture `child`, a closure per child per frame.
             for (var index = (masks?.Count ?? 0) - 1; index >= 0; index--)
                 if (masks![index].End < child.Depth)
@@ -3040,7 +3052,9 @@ public sealed partial class LumenPlayer
 
         public bool? PreviousVisible { get; set; }
 
-        public SortedDictionary<long, DisplayInstance> Children { get; } = [];
+        // A sorted list, not a SortedDictionary: enumerating that allocated a stack and its node array per clip per
+        // frame (~45 MiB/s uncapped); a clip has tens of children, so its array insertion costs nothing.
+        public SortedList<long, DisplayInstance> Children { get; } = [];
 
         public Dictionary<long, DisplayInstance>? ReusableTimelineChildren { get; set; }
 

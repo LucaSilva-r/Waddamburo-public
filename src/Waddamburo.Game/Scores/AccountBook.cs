@@ -136,11 +136,36 @@ public sealed class AccountBook
 
     private void save()
     {
-        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
+        // Keep the old book intact until the replacement has been written and closed.
+        var temporary = $"{_path}.{Guid.NewGuid():N}.tmp";
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
         if (!OperatingSystem.IsWindows())
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        using var stream = new FileStream(_path, options);
-        JsonSerializer.Serialize(stream, new StoredBook(_accounts, DefaultBaid), ScoreJson.Default.StoredBook);
+        // Only clean up after we have created the temporary file ourselves.
+        var stream = new FileStream(temporary, options);
+        try
+        {
+            using (stream)
+            {
+                JsonSerializer.Serialize(stream, new StoredBook(_accounts, DefaultBaid), ScoreJson.Default.StoredBook);
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(_path))
+                File.Replace(temporary, _path, destinationBackupFileName: null);
+            else
+                File.Move(temporary, _path);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A cleanup failure must not hide the original save error.
+            }
+        }
     }
 
     internal sealed record StoredBook(List<ScoreAccount> Accounts, long? Default);

@@ -427,13 +427,16 @@ internal sealed class LayerHostFactory(
     private static LumenLayerHost partHost(IndicatorParts parts, string movie) =>
         new(null, player => parts.Attach(movie, player));
 
+    // The song select movie of the mode (FlowScenes.SongSelectScene), whose patched genres the host fills.
+    private string songSelectMovie => Waddamburo.Game.Patching.SongSelectGenrePatch.MovieNames[AiBattle ? 2 : Waiwai ? 1 : 0];
+
     private LumenLayerHost songSelectHost()
     {
         var linked = Waiwai ? Array.Empty<SongSourceKind>() : libraries();
         var view = new SongSelectCatalogView(catalog, Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: TwoPlayers, library: linked.Length > 0 && OnlineSong is null ? Library : null,
-            // AI battle: the current library's songs, without the folders leading to the others.
-            links: AiBattle ? [] : linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: HomeTutorialSeen?.Invoke() != true && !(AiBattle ? AiTutorialSeen : Waiwai ? WaiwaiTutorialSeen : TutorialSeen),
+            // AI battle too: its song select takes the custom folders (SongSelectGenrePatch), the other libraries' among them.
+            links: linked.Where(library => library != Library), favourites: Favourites?.Songs, tutorial: HomeTutorialSeen?.Invoke() != true && !(AiBattle ? AiTutorialSeen : Waiwai ? WaiwaiTutorialSeen : TutorialSeen),
             browse: OsuBrowse, search: Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: !AiBattle && Dan?.Available == true && !TwoPlayers && TaikoGuest.Profiles[PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,
@@ -479,7 +482,8 @@ internal sealed class LayerHostFactory(
             StartSong = startSong,
             Favourites = Favourites,
             ShowOni = ShowOni?.Invoke() == true,
-            PatchedGenres = Waddamburo.Game.Patching.SongSelectGenrePatch.LastApplied,
+            PatchedGenres = Waddamburo.Game.Patching.SongSelectGenrePatch.Applied(songSelectMovie),
+            GenreColours = Waddamburo.Game.Patching.SongSelectGenrePatch.Colours(songSelectMovie),
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             RankingWanted = Rankings is null ? null : Rankings.Want,
             Rankings = Rankings is null ? null : Rankings.For,
@@ -497,6 +501,9 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The AI battle results' standing (rank, points, wins before and after the battle).</summary>
     public AiResultNumbers? AiNumbers { get; set; }
+
+    /// <summary>The player's per-section bests before the battle the results show; null: a first play.</summary>
+    public IReadOnlyList<AiSectionCounts>? AiSectionBest { get; set; }
 
     /// <summary>AI battle's section results, while they are on stage.</summary>
     public AiSectionResultBinding? AiSectionResult { get; private set; }
@@ -538,7 +545,7 @@ internal sealed class LayerHostFactory(
     {
         var outcome = AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
         var binding = AiSectionResult = new AiSectionResultBinding(outcome, AiNumbers ?? AiResultNumbers.NewPlayer with { ShowProgress = false },
-            sounds is null ? null : sounds.Frontend.PlayCue)
+            sounds is null ? null : sounds.Frontend.PlayCue, AiSectionBest)
         {
             Backdrop = () => AiResultBackground,
         };
@@ -601,7 +608,7 @@ internal sealed class LayerHostFactory(
         var binding = ModeTutorial = new ModeTutorialHostBinding(aiBattle, PlayerSide, TwoPlayers,
             sounds is null ? null : sounds.Frontend.PlayCue,
             name => (music = sounds?.Bank.PrepareTutorialMusic(name)) is not null,
-            () => music?.Invoke(), counting);
+            () => music?.Invoke());
         return new LumenLayerHost(binding, binding.Attach);
     }
 

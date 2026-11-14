@@ -40,20 +40,25 @@ public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetR
         var placed = new HashSet<SongKey>();
         var categories = new List<(SongCategoryDescriptor First, List<SongKey> Songs)>();
         var diagnostics = new List<CatalogDiagnostic>();
-        foreach (var source in _sources)
+        for (var sourceIndex = 0; sourceIndex < _sources.Length; sourceIndex++)
         {
+            var source = _sources[sourceIndex];
+            var part = sourceIndex;
+            var aggregate = progress is null ? null : new SourceProgress(progress, Id, part, _sources.Length);
             SongCatalogContribution contribution;
             try
             {
-                contribution = await source.ScanAsync(progress, cancellationToken).ConfigureAwait(false);
+                contribution = await source.ScanAsync(aggregate, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
                 or System.Xml.XmlException or System.Text.Json.JsonException)
             {
                 // One unreadable install leaves the others.
                 diagnostics.Add(new CatalogDiagnostic(CatalogDiagnosticSeverity.Warning, "MERGED_SOURCE_FAILED", exception.Message, Id));
+                progress?.Report(new CatalogScanProgress(Id, "scan", (part + 1) * 1000, _sources.Length * 1000));
                 continue;
             }
+            progress?.Report(new CatalogScanProgress(Id, "scan", (part + 1) * 1000, _sources.Length * 1000));
             diagnostics.AddRange(contribution.Diagnostics);
             foreach (var song in contribution.Songs)
             {
@@ -88,6 +93,16 @@ public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetR
                     BoxImage = category.First.BoxImage,
                 }),
             diagnostics);
+    }
+
+    private sealed class SourceProgress(IProgress<CatalogScanProgress> target, CatalogProviderId id, int part, int count)
+        : IProgress<CatalogScanProgress>
+    {
+        public void Report(CatalogScanProgress value)
+        {
+            var fraction = value.Total is > 0 ? Math.Clamp((double)value.Completed / value.Total.Value, 0, 1) : 0;
+            target.Report(new CatalogScanProgress(id, value.Stage, part * 1000 + (int)(fraction * 1000), count * 1000));
+        }
     }
 
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default) =>

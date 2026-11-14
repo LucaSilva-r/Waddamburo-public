@@ -54,8 +54,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private static readonly string TimingSection = Strings.T("section.timing");
     private static readonly string[] Devices = [S("service.device.keyboard"), S("service.device.controller"), S("service.device.midi")];
 
-    // The settings page's sections, by title (the language and volume ones go in OTHERS and SOUND TEST).
+    // The settings page's sections, by title (the language one goes in OTHERS, the volume and sound ones in SOUND).
     private static readonly string LanguageSection = Strings.T("section.language"), VolumeSection = Strings.T("section.volume"),
+        SoundSection = Strings.T("section.sound"),
         SongsSection = Strings.T("section.songs"), DisplaySection = Strings.T("section.display"),
         GraphicsSection = Strings.T("section.graphics");
 
@@ -292,11 +293,11 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             .. _home ? (Row[])[] : [new(S("service.coin_options"), Enter: () => open(Page.Coin))],
             new(S("service.game_options"), Enter: () => open(Page.Game)),
             new(S("service.network_options"), Enter: () => open(Page.Network)),
-            new(S("service.io_test"), Enter: () => open(Page.Io)),
-            new(S("service.sound_test"), Enter: () => open(Page.Sound)),
+            // SOUND: the volumes, the sound settings and the drum's sound test on one page (I/O TEST is in DRUM CONTROLS).
+            new(upper(SoundSection), Enter: () => open(Page.Sound)),
             // The rest of Waddamburo's settings, a page per section of the home settings.
             .. HomeMenu.Sections.Where(static section => section.Title != LanguageSection && section.Title != VolumeSection
-                    && section.Title != SongsSection && section.Title != GraphicsSection)
+                    && section.Title != SoundSection && section.Title != SongsSection && section.Title != GraphicsSection)
                 .Select(section => new Row(upper(section.Title), Enter: () => open(Page.Section, section.Title))),
             new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
             new(S("service.song_libraries"), Enter: () => open(Page.Libraries)),
@@ -344,6 +345,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Sound =>
         [
             .. shared(VolumeSection),
+            .. shared(SoundSection),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
             new(S("service.sound_test.note"), 400),
         ],
@@ -430,6 +432,16 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 Hint: S("service.set_up_all_pads.hint")),
             new(S("service.reset_to_default"), 400, Enter: () => set(s => s with { Controls = ControlBindings.Reset(s.Controls, _player, _device) }),
                 Hint: S("service.reset_to_default.hint")),
+            new(S("service.vibration"), 400, () => $"{{{S(_settings.ControllerVibration switch
+                {
+                    ControllerVibration.Off => "service.off",
+                    ControllerVibration.AllNotes => "service.vibration.all_notes",
+                    ControllerVibration.EveryHit => "service.vibration.every_hit",
+                    _ => "service.vibration.big_notes",
+                })}}}", 640,
+                Step: step => set(s => s with { ControllerVibration = (ControllerVibration)wrap((int)s.ControllerVibration, step, 0, 3) }),
+                IsDefault: () => _settings.ControllerVibration == Defaults.ControllerVibration, Gap: true, Hint: S("service.vibration.hint")),
+            new(S("service.io_test"), 400, Enter: () => open(Page.Io)),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Libraries =>
@@ -502,7 +514,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Main => S("service.menu"),
         Page.Coin => S("service.coin_options"),
         Page.Game => S("service.game_options"),
-        Page.Sound => S("service.sound_test"),
+        Page.Sound => upper(SoundSection),
         Page.Io => S("service.io_test"),
         Page.Bookkeeping => S("service.bookkeeping"),
         Page.Others => S("service.others"),

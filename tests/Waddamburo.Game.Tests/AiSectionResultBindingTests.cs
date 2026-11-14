@@ -38,6 +38,21 @@ public sealed class AiSectionResultBindingTests
         Assert.Single(player.CreateRenderSnapshot().Quads);
     }
 
+    [Fact]
+    public void SectionBestsRankLikeTheMovieAndRoundTrip()
+    {
+        AiSectionCounts best = new(10, 40, 1, 16);
+        Assert.True(new AiSectionCounts(11, 0, 9, 0).Beats(best)); // more 良 first
+        Assert.True(new AiSectionCounts(10, 41, 9, 0).Beats(best)); // then more 可
+        Assert.True(new AiSectionCounts(10, 40, 0, 0).Beats(best)); // then fewer 不可
+        Assert.True(new AiSectionCounts(10, 40, 1, 17).Beats(best)); // then more 連打
+        Assert.False(best.Beats(best));
+        Assert.False(new AiSectionCounts(9, 99, 0, 99).Beats(best));
+        AiSectionCounts[] sections = [best, new(4, 65, 1, 0)];
+        Assert.Equal(sections, AiSectionCounts.Parse(AiSectionCounts.Format(sections)));
+        Assert.Null(AiSectionCounts.Parse("1,2,3"));
+    }
+
     [Theory]
     [InlineData(0, "VO_COM")]
     [InlineData(1, "SE_COM")]

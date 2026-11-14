@@ -121,13 +121,47 @@ public sealed class RenderFrame
             throw new ArgumentOutOfRangeException(nameof(contentAspectRatio));
         }
         ClearColor = clearColor;
-        Quads = quads.ToImmutableArray();
+        _quads = quads.ToImmutableArray();
         ContentAspectRatio = contentAspectRatio;
     }
 
+    private RenderFrame(RenderColor clearColor, List<RenderQuad> shared, double? contentAspectRatio)
+    {
+        ClearColor = clearColor;
+        _shared = shared;
+        _sharedCount = shared.Count;
+        ContentAspectRatio = contentAspectRatio;
+    }
+
+    /// <summary>
+    /// A frame over <paramref name="quads"/> as they are now, without copying them: valid until the list is changed (the
+    /// next frame built into it). Whatever keeps a frame longer keeps <see cref="Detached"/>.
+    /// </summary>
+    // ponytail: one reused list for the window's frame (~30 KB a frame, ~100 MiB/s uncapped); a frame kept longer copies.
+    public static RenderFrame Shared(RenderColor clearColor, List<RenderQuad> quads, double? contentAspectRatio = null,
+        int blurredQuads = 0, float backdropBrightness = 1)
+    {
+        ArgumentNullException.ThrowIfNull(quads);
+        return new RenderFrame(clearColor, quads, contentAspectRatio) { BlurredQuads = blurredQuads, BackdropBrightness = backdropBrightness };
+    }
+
+    private ImmutableArray<RenderQuad>? _quads;
+    private readonly List<RenderQuad>? _shared;
+    private readonly int _sharedCount;
+
     public RenderColor ClearColor { get; }
 
-    public ImmutableArray<RenderQuad> Quads { get; }
+    /// <summary>The quads, as an array of their own (a shared frame copies them out on first use).</summary>
+    public ImmutableArray<RenderQuad> Quads => _quads ??= [.. QuadSpan];
+
+    /// <summary>The quads without a copy, for drawing.</summary>
+    public ReadOnlySpan<RenderQuad> QuadSpan => _quads is { } own ? own.AsSpan()
+        : _shared!.Count == _sharedCount ? System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_shared)
+        : throw new InvalidOperationException("A shared frame was read after its list was reused (keep Detached() instead).");
+
+    /// <summary>This frame with quads of its own (itself when it has them): what a frame kept past the next one holds.</summary>
+    public RenderFrame Detached() => _shared is null ? this
+        : new RenderFrame(ClearColor, Quads, ContentAspectRatio) { BlurredQuads = BlurredQuads, BackdropBrightness = BackdropBrightness };
 
     public double? ContentAspectRatio { get; }
 

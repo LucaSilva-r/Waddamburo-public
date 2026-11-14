@@ -6,7 +6,7 @@ namespace Waddamburo.Game.Lumen;
 /// <summary>The mode tutorials' independent movie/host protocols.</summary>
 public sealed class ModeTutorialHostBinding(bool aiBattle, int side, bool twoPlayers,
     Action<string, int>? playCue = null, Func<string, bool>? prepareMusic = null,
-    Action? playMusic = null, bool countdown = true) : ILumenHostBinding
+    Action? playMusic = null) : ILumenHostBinding
 {
     private readonly SongSelectTimer _timer = new();
     private LumenPlayer? _movie;
@@ -41,7 +41,9 @@ public sealed class ModeTutorialHostBinding(bool aiBattle, int side, bool twoPla
                 methods.RegisterMethod("Pause", static _ => LumenHostValue.FromBoolean(false));
                 methods.RegisterMethod("StartTimer", _ =>
                 {
-                    if (countdown) _timer.Start(120);
+                    // The AI tutorial calls it on every page; the counter on screen only resumes, so the time runs on.
+                    // A tutorial always runs out, timer freeze or not.
+                    if (!_timer.IsRunning) _timer.Start(120);
                     _counter?.TryInvokeCallback("Resume", []);
                     return LumenHostValue.Undefined;
                 });
@@ -68,7 +70,7 @@ public sealed class ModeTutorialHostBinding(bool aiBattle, int side, bool twoPla
     {
         _counter = counter;
         counter.TryInvokeCallback("SetMusicNum", [LumenHostValue.FromNumber(0)]);
-        counter.TryInvokeCallback("Start", [LumenHostValue.FromNumber(120), LumenHostValue.FromBoolean(countdown)]);
+        counter.TryInvokeCallback("Start", [LumenHostValue.FromNumber(120), LumenHostValue.FromBoolean(true)]);
         counter.TryInvokeCallback("Pause", []);
     }
 
@@ -86,6 +88,10 @@ public sealed class ModeTutorialHostBinding(bool aiBattle, int side, bool twoPla
         }
         else if (aiBattle) movie.TryInvokeCallback("Start", []);
         Finished |= RetryGameHostBinding.IsEnd(movie);
+        // The AI tutorial's CppConnect.AllFinish only sets _global.isAllTutorialEnd for the game to read (Waiwai's calls
+        // the host), and it never asks IsTimeup: the game closes it when the time runs out.
+        if (aiBattle)
+            Finished |= movie.ReadScriptValue("_global.isAllTutorialEnd") is true || _timer.IsTimeUp;
     }
 
     /// <summary>Observed request-to-bank mapping; unused requests remain unsupported.</summary>

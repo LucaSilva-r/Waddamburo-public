@@ -9,6 +9,23 @@ namespace Waddamburo.Architecture.Tests;
 public sealed class RenderSnapshotTests
 {
     [Fact]
+    public void SharedFrameReadsItsListUntilReusedAndDetachedKeepsACopy()
+    {
+        var quad = RenderQuad.FromRectangles(new RenderTextureId(1), new(0, 0, 1, 1), new(0, 0, 1, 1),
+            new(1, 1, 1, 1), new(0, 0, 0, 0));
+        var list = new List<RenderQuad> { quad, quad };
+        var frame = RenderFrame.Shared(new(0, 0, 0, 1), list, blurredQuads: 1);
+        Assert.Equal(2, frame.QuadSpan.Length);
+        var kept = frame.Detached(); // copies the quads (the frame keeps that copy too)
+        var unkept = RenderFrame.Shared(new(0, 0, 0, 1), list);
+        list.Add(quad); // the next frame is built into the same list
+        Assert.Throws<InvalidOperationException>(() => unkept.QuadSpan.Length);
+        Assert.Equal(2, kept.Quads.Length);
+        Assert.Equal(2, frame.QuadSpan.Length);
+        Assert.Equal(1, kept.BlurredQuads);
+    }
+
+    [Fact]
     public void AdapterPreservesMaskOrderDepthAndTextureCoordinates()
     {
         var shape = new LumenRenderQuad(3, new(0, 0, 0, 0), new(100, 0, 1, 0),

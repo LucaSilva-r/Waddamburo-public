@@ -26,7 +26,10 @@ public sealed class StockCatalogProviderTests
         data.WriteBytes("sound/bgm/nub/SONG_ALPHA.nub", [1, 2, 3]);
         data.WriteBytes("sound/bgm/nsh/SONG_ALPHA.nsh", Nsh(previewMs: 48_500));
 
-        var provider = new StockCatalogProvider(data.Path);
+        var cache = new CatalogMetadataCache(Path.Combine(data.Path, "metadata.db"));
+        var provider = new StockCatalogProvider(data.Path) { MetadataCache = cache };
+        await provider.ScanAsync(null, CancellationToken.None);
+        provider = new StockCatalogProvider(data.Path) { MetadataCache = cache };
         var contribution = await provider.ScanAsync(null, CancellationToken.None);
 
         Assert.Equal(["beta", "alpha", "gamma"], contribution.Songs.Select(static song => song.Key.StableId));
@@ -106,6 +109,31 @@ public sealed class StockCatalogProviderTests
     }
 
     [Fact]
+    public async Task ANoteOnItsMeasuresEndKeepsThatMeasuresScroll()
+    {
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "曲", "J-POP"));
+        // A quarter measure at scroll 0.5 whose don sits on its end, 4 µs past the next measure's start (きたさいたま2000's
+        // float offsets), then a measure at 0.8 with its own don at its start.
+        data.WriteBytes("fumen/song/solo/song_e.bin", Fumen(
+            new Measure(120, 0, [N(1, 500.004f)], Speed: 0.5f),
+            new Measure(120, 500, [N(1, 0)], Speed: 0.8f)));
+        var provider = new StockCatalogProvider(data.Path);
+        var chart = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs[0].Charts);
+
+        var playable = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
+
+        // The end note sorts after the next measure's don; drawing reads its speed at its own measure's start
+        // (NoteGeometry.ScrollTime).
+        var end = Assert.Single(playable.HitObjects, static note => note.ScrollFrom is not null);
+        var next = Assert.Single(playable.HitObjects, static note => note.ScrollFrom is null);
+        Assert.True(end.StartTime > next.StartTime);
+        Assert.Equal(0.5, playable.ScrollAt(end.ScrollFrom!.Value), 6);
+        Assert.Equal(0.8, playable.ScrollAt(end.StartTime), 6);
+        Assert.Equal(0.8, playable.ScrollAt(next.StartTime), 6);
+    }
+
+    [Fact]
     public async Task EarlyFirstMeasureShiftsChartTimeThroughTheAuthoredOffset()
     {
         using var data = new TemporaryData();
@@ -177,6 +205,27 @@ public sealed class StockCatalogProviderTests
             ("ex_song", [("ex_song1p_m", 10)])));
 
         Assert.Equal([3, 0, 0, 8, 10], stars["song"]);
+    }
+
+    [Fact]
+    public async Task WarmCacheRestoresTuningAndDetectsChangedAndDeletedCharts()
+    {
+        using var data = new TemporaryData();
+        data.WriteMusicInfo("musicinfo.xml", ("song", "Song", "J-POP"));
+        data.WriteBytes("fumen/song/solo/song_m.bin", Fumen(new Measure(120, 0, [N(1, 0)])));
+        data.WriteBytes("fumen/tuning.bin", Tuning(("song", [("song1p_m", 8)])));
+        var cache = new CatalogMetadataCache(Path.Combine(data.Path, "metadata.db"));
+        StockCatalogProvider provider() => new(data.Path) { MetadataCache = cache };
+        await provider().ScanAsync(null, default);
+        var warm = provider();
+        var chart = Assert.Single(Assert.Single((await warm.ScanAsync(null, default)).Songs).Charts);
+        Assert.Equal(8, chart.Level);
+        Assert.Single((await warm.LoadChartAsync(chart.Key, chart.ChartAsset)).HitObjects);
+        data.WriteBytes("fumen/tuning.bin", Tuning(("song", [("song1p_m", 9)])));
+        File.SetLastWriteTimeUtc(Path.Combine(data.Path, "fumen", "tuning.bin"), DateTime.UtcNow.AddMinutes(1));
+        Assert.Equal(9, Assert.Single(Assert.Single((await provider().ScanAsync(null, default)).Songs).Charts).Level);
+        File.Delete(Path.Combine(data.Path, "fumen", "song", "solo", "song_m.bin"));
+        Assert.Empty((await provider().ScanAsync(null, default)).Songs);
     }
 
     // tuning.bin: count, 0x90C-byte records (three string offsets, then 0x80-byte course

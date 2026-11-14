@@ -15,9 +15,11 @@ public sealed class TaikoSongInfoPresentationTests
         TaikoSongInfoPresentation.SetTitle(player, title);
         Assert.Equal(3, player.CreateRenderSnapshot().Quads.Length);
 
+        Assert.True(player.InstanceFrame("main")!.Value.Playing);
         TaikoSongInfoPresentation.UpdateVisibility(player, showStage: false, showInfo: true);
         Assert.Equal(2, player.CreateRenderSnapshot().Quads.Length);
         Assert.Contains(player.CreateRenderSnapshot().Quads, quad => quad.NativeSurface == title);
+        Assert.False(player.InstanceFrame("main")!.Value.Playing); // held still: no fade cycle without the number
         for (var frame = 0; frame < 120; frame++)
         {
             player.Advance();

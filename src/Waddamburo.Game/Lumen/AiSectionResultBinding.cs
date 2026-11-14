@@ -3,7 +3,38 @@ using Waddamburo.Lumen.Runtime;
 namespace Waddamburo.Game.Lumen;
 
 /// <summary>A side's 良, 可, 不可 and 連打 in one AI battle section.</summary>
-public readonly record struct AiSectionCounts(int Great, int Good, int Miss, int Rolls);
+public readonly record struct AiSectionCounts(int Great, int Good, int Miss, int Rolls)
+{
+    /// <summary>
+    /// Beats <paramref name="other"/> as result_section's IsHiScoreFlag ranks a section: more 良, then more 可, then fewer
+    /// 不可, then more 連打.
+    /// </summary>
+    public bool Beats(AiSectionCounts other) =>
+        Great != other.Great ? Great > other.Great
+        : Good != other.Good ? Good > other.Good
+        : Miss != other.Miss ? Miss < other.Miss
+        : Rolls > other.Rolls;
+
+    /// <summary>Sections as kept with a play: "良,可,不可,連打" per section, separated by ';'.</summary>
+    public static string Format(IEnumerable<AiSectionCounts> sections) =>
+        string.Join(';', sections.Select(static counts => $"{counts.Great},{counts.Good},{counts.Miss},{counts.Rolls}"));
+
+    /// <summary>The sections <see cref="Format"/> wrote; null if the text is not that.</summary>
+    public static AiSectionCounts[]? Parse(string text)
+    {
+        var sections = text.Split(';');
+        var counts = new AiSectionCounts[sections.Length];
+        for (var section = 0; section < sections.Length; section++)
+        {
+            var parts = sections[section].Split(',');
+            if (parts.Length != 4 || !int.TryParse(parts[0], out var great) || !int.TryParse(parts[1], out var good)
+                || !int.TryParse(parts[2], out var miss) || !int.TryParse(parts[3], out var rolls))
+                return null;
+            counts[section] = new(great, good, miss, rolls);
+        }
+        return counts;
+    }
+}
 
 /// <summary>One AI battle section: whether the player took it, and both sides' counts.</summary>
 public readonly record struct AiBattleSection(bool Won, AiSectionCounts Player, AiSectionCounts Ai);
@@ -33,11 +64,13 @@ public sealed record AiBattleOutcome(IReadOnlyList<AiBattleSection> Sections)
 
 /// <summary>
 /// AI battle's section results (ghost/result's result_section, traced session-ai-battle-3): at load the sections' win or
-/// loss, both sides' counts per section (section 1-5, player, AI-don), the rank and reward numbers; the game calls Start
+/// loss, the player's counts per section (section 1-5, the player's best there before this play, this play: all-zero
+/// bests read as a first play, and the movie itself marks 自己ベスト更新), the rank and reward numbers; the game calls Start
 /// once the normal results close (NotifyCloseNormalResult), and the movie calls the host's Start when it is done.
 /// Its sounds: PlaySound(call type, cue), see <see cref="Bank"/>.
 /// </summary>
-public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumbers numbers, Action<string, int>? playCue) : ILumenHostBinding
+public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumbers numbers, Action<string, int>? playCue,
+    IReadOnlyList<AiSectionCounts>? best = null) : ILumenHostBinding
 {
     private LumenPlayer? _movie;
     private bool _started;
@@ -124,7 +157,8 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
         void rows(string name, Func<AiSectionCounts, int> value)
         {
             for (var section = 0; section < outcome.Sections.Count; section++)
-                call(name, number(section + 1), number(value(outcome.Sections[section].Player)), number(value(outcome.Sections[section].Ai)));
+                call(name, number(section + 1), number(value(best is not null && section < best.Count ? best[section] : default)),
+                    number(value(outcome.Sections[section].Player)));
         }
         rows("SetRyoNoteNumber", static counts => counts.Great);
         rows("SetKaNoteNumber", static counts => counts.Good);

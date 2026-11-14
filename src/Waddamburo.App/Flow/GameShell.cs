@@ -56,7 +56,8 @@ internal sealed record GameOptions(
     BenchmarkMode Benchmark = BenchmarkMode.Off);
 
 /// <summary>--benchmark: off, run and quit, or run and start the game again (Settings > Run Benchmark).</summary>
-internal enum BenchmarkMode { Off, Quit, Restart }
+// Paced: the benchmark at the player's own vsync, frame cap and frame queue (it quits at the end), to count missed refreshes.
+internal enum BenchmarkMode { Off, Quit, Restart, Paced }
 
 /// <summary>
 /// The running game: builds the services, owns the window loop, the active scene and what is drawn
@@ -193,7 +194,122 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>Songs play themselves: --autoplay, or the home setting (not in an online match).</summary>
     /// <summary>Home with the arcade HUD off: no timer, song number or free-play line (they don't count there).</summary>
+    /// <summary>The active scene and its mode, for the log: "gameplay (AI battle, dev autoplay)".</summary>
+    public string DescribeScene()
+    {
+        if (Active is not { } active)
+            return "starting";
+        var gameplay = active.Id == FlowScenes.Gameplay && _scenes.TryGetValue(active.Id, out var flow) ? flow as GameplayFlow : null;
+        string[] modes =
+        [
+            Arcade.Home ? "home" : "arcade",
+            .. Hosts.AiBattle ? ["AI battle"] : Array.Empty<string>(),
+            .. Hosts.Waiwai ? ["Waiwai"] : Array.Empty<string>(),
+            .. gameplay?.Demo == true ? ["attract demo"] : Array.Empty<string>(),
+            .. gameplay is not null && Autoplay ? ["autoplay"] : Array.Empty<string>(),
+            .. gameplay is not null && DevAutoplay ? ["dev autoplay"] : Array.Empty<string>(),
+        ];
+        return $"{active.Id} ({string.Join(", ", modes)})";
+    }
+
     public bool HideArcadeHud => Arcade.Home && !Arcade.ArcadeHud;
+
+    // #35: the controllers bound to the lane's player (lane null: the one player) rumble, by the VIBRATION setting: big
+    // notes, rolls/balloons/kusudama and their pops; every note hit; or every drum hit. A don rumbles the low (heavy)
+    // motor, longer and boomy, a ka the high one, short and dry (SDL maps the two to distinct frequencies on HD-rumble and
+    // voice-coil controllers); a big note both, harder. Not in a replay or autoplay. ponytail: strengths by feel, untraced.
+    private void rumble(int? lane, TaikoInputAction hit)
+    {
+        if (Arcade.ControllerVibration == Waddamburo.Game.Flow.ControllerVibration.EveryHit)
+            rumble(lane, hit is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? DonFeel : KaFeel);
+    }
+
+    private static readonly (float, float, int) DonFeel = (0.55f, 0f, 70), KaFeel = (0f, 0.45f, 25), BigFeel = (0.9f, 0.5f, 110);
+
+    private void rumble(int? lane, GameplaySoundEvent sound)
+    {
+        var level = Arcade.ControllerVibration;
+        switch (sound)
+        {
+            case GameplaySoundEvent.BigHit:
+                rumble(lane, BigFeel);
+                break;
+            // Rolls, balloons and kusudama from Big notes up (a big roll as a big note).
+            case GameplaySoundEvent.LongDonHit or GameplaySoundEvent.LongKaHit:
+                rumble(lane, sound == GameplaySoundEvent.LongDonHit ? DonFeel : KaFeel);
+                break;
+            case GameplaySoundEvent.BigLongHit:
+                rumble(lane, BigFeel);
+                break;
+            // All notes: only presses that hit a note (Every hit feels each drum press instead).
+            case GameplaySoundEvent.DonHit or GameplaySoundEvent.KaHit when level == Waddamburo.Game.Flow.ControllerVibration.AllNotes:
+                rumble(lane, sound == GameplaySoundEvent.DonHit ? DonFeel : KaFeel);
+                break;
+            // A balloon pops: a sharp crack (light motor) over a thump (heavy one) that dies at once.
+            case GameplaySoundEvent.BalloonPopped:
+                rumbleShape(lane, 0.2, static t => (0.8f * MathF.Pow(1 - t, 3), t < 0.2f ? 1f : 0f));
+                break;
+            // A kusudama bursts: a hard hit, then a fluttering rumble that fades out (the confetti).
+            case GameplaySoundEvent.KusudamaPopped:
+                rumbleShape(lane, 0.7, static t => (1f * (1 - t) * (1 - t),
+                    t < 0.08f ? 1f : 0.6f * (1 - t) * (0.6f + 0.4f * MathF.Sin(t * 70))));
+                break;
+        }
+    }
+
+    // Per side: until when (Environment.TickCount64) the last rumble plays, and how strong. A weaker one doesn't cut a
+    // stronger one short (a big note's rumble isn't replaced by the drum press's small one right after it).
+    private readonly long[] _rumbleUntil = new long[2];
+    private readonly float[] _rumbleStrength = new float[2];
+
+    private void rumble(int? lane, (float Low, float High, int Ms) rumble)
+    {
+        var side = lane ?? Hosts.PlayerSide;
+        if (rumblePads(side) is not { Length: > 0 } pads)
+            return;
+        var strength = Math.Max(rumble.Low, rumble.High);
+        if (Environment.TickCount64 < _rumbleUntil[side] && strength < _rumbleStrength[side])
+            return;
+        (_rumbleUntil[side], _rumbleStrength[side]) = (Environment.TickCount64 + rumble.Ms, strength);
+        Application.Rumble(pads, rumble.Low, rumble.High, TimeSpan.FromMilliseconds(rumble.Ms));
+    }
+
+    // The controllers to rumble for a side's player; none when vibration is off, in a replay or in autoplay.
+    private int[]? rumblePads(int side)
+    {
+        if (Arcade.ControllerVibration == Waddamburo.Game.Flow.ControllerVibration.Off || Autoplay || _gameplay.Reviewing
+            || (uint)side > 1)
+            return null;
+        return [.. Enumerable.Range(side * 4, 4).SelectMany(pad => Home.ControlBindings.Inputs(Arcade.Controls[pad]))
+            .Select(static token => SdlInput.TryParse(token, out var input) && input.Kind is SdlInputKind.PadButton or SdlInputKind.PadTrigger ? input.Device : 0)
+            .Where(static device => device > 0).Distinct()];
+    }
+
+    // Rumbles that change over time (a pop): each tick sets the motors to the shape at that point (t 0-1 over its length).
+    private readonly List<(int Side, int[] Pads, long Start, double Seconds, Func<float, (float Low, float High)> Shape)> _rumbles = [];
+
+    private void rumbleShape(int? lane, double seconds, Func<float, (float Low, float High)> shape)
+    {
+        var side = lane ?? Hosts.PlayerSide;
+        if (rumblePads(side) is { Length: > 0 } pads)
+            _rumbles.Add((side, pads, System.Diagnostics.Stopwatch.GetTimestamp(), seconds, shape));
+    }
+
+    private void updateRumbles()
+    {
+        for (var index = _rumbles.Count - 1; index >= 0; index--)
+        {
+            var (side, pads, start, seconds, shape) = _rumbles[index];
+            var t = (float)(System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds / seconds);
+            var (low, high) = t >= 1 ? (0f, 0f) : shape(t);
+            // Held a little past the next tick, so a late tick doesn't leave a gap; as strong as it is now (hits
+            // weaker than the pop don't break it up).
+            Application.Rumble(pads, low, high, TimeSpan.FromMilliseconds(t >= 1 ? 1 : 50));
+            (_rumbleUntil[side], _rumbleStrength[side]) = (Environment.TickCount64 + (t >= 1 ? 0 : 50), Math.Max(low, high));
+            if (t >= 1)
+                _rumbles.RemoveAt(index);
+        }
+    }
 
     /// <summary>Development builds: the player's lane is drummed live by the bot (Settings > Developer).</summary>
     public bool DevAutoplay => BuildInfo.Dev && Arcade.DevAutoplay;
@@ -426,7 +542,7 @@ internal sealed class GameShell : IDisposable
                 Path.Combine(ReleaseConsole.CrashFolder, $"{(Options.Benchmark != BenchmarkMode.Off ? "benchmark" : "performance")}-{DateTime.Now:yyyyMMdd-HHmmss}.txt"),
                 Options.Benchmark != BenchmarkMode.Off ? "benchmark (attract 3 min, song select scroll, stress song)" : "session",
                 [$"version\t{version}", .. Application.DescribeRendering(),
-                    $"settings\t{(Options.Benchmark != BenchmarkMode.Off ? "uncapped (benchmark), " : "")}vsync {Arcade.Vsync}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
+                    $"settings\t{(Options.Benchmark is BenchmarkMode.Quit or BenchmarkMode.Restart ? "uncapped (benchmark), " : "")}vsync {Arcade.Vsync}, frame queue {Arcade.FrameLatency}, fps cap {Arcade.FpsCap}, fullscreen {Arcade.Fullscreen}"
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
                     + $"textures {(MovieContent.KeepCompressed ? "BC1/BC3 kept" : "decoded to RGBA")}, "
                     + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
@@ -452,10 +568,10 @@ internal sealed class GameShell : IDisposable
         var exclusive = Arcade.ExclusiveFullscreen && OperatingSystem.IsWindows();
         // A benchmark runs uncapped (no vsync, no fps cap; the settings stay as they are): frame rates then
         // compare across machines and changes instead of all reading the refresh rate.
-        var uncapped = Options.Benchmark != BenchmarkMode.Off;
+        var uncapped = Options.Benchmark is BenchmarkMode.Quit or BenchmarkMode.Restart;
         var display = new DisplaySettings(Arcade.Vsync && !uncapped, Arcade.Fullscreen, exclusive, Arcade.FullscreenWidth,
             Arcade.FullscreenHeight, Arcade.RefreshRate, Arcade.LetterboxSize / 100f, Arcade.LetterboxX / 100f, Arcade.LetterboxY / 100f,
-            exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap, Arcade.RenderHeight);
+            exclusive && Arcade.Fullscreen || uncapped ? 0 : Arcade.FpsCap, Arcade.RenderHeight, Arcade.FrameLatency);
         Application.ApplyDisplay(display);
         // The stage is 720 lines: 1080p loads textures at 1.5x, 1440p at 2x, 4K at the model's 3x.
         if (Upscale is not null)
@@ -533,6 +649,7 @@ internal sealed class GameShell : IDisposable
             highPixelDensity: !Headless,
             fullscreen: options.Fullscreen && !Headless);
         Console.WriteLine($"Renderer: {Application.GpuDriver}");
+        Console.WriteLine($"System priority: {SystemPriority.Request()}.");
         _boot = new BootChecks(Application, options.ServiceFontPath ?? options.FontPath, interactive: Interactive);
         try
         {
@@ -614,7 +731,7 @@ internal sealed class GameShell : IDisposable
                 Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
                     + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
                     + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
-            Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{Active?.Id.ToString() ?? "starting"} at tick {Tick}" };
+            Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{DescribeScene()} at tick {Tick}" };
             Previews = Audio is null
                 ? null
                 : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"),
@@ -659,8 +776,17 @@ internal sealed class GameShell : IDisposable
                     baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
             _boot.Begin("GAMEPLAY DATA");
             Gameplay = new TaikoGameplayPresentation((lane, action) =>
-                Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon),
-                Don, (lane, sound, combo) => Sounds?.Gameplay.Play(lane, sound, combo),
+            {
+                // 音なし (reported on Discord): the hits are silent in songs only, the menus keep their drum.
+                if (Arcade.DrumSoundInSongs)
+                    Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon);
+                rumble(lane, action);
+            },
+                Don, (lane, sound, combo) =>
+                {
+                    Sounds?.Gameplay.Play(lane, sound, combo);
+                    rumble(lane, sound);
+                },
                 () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
             _costumeIcons = new CostumeIconTextures(Application, _nutData, dataRoot);
             _danArt = new DanChallengeArt(_nutData);
@@ -716,7 +842,7 @@ internal sealed class GameShell : IDisposable
                 _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart);
             }
             _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
-            _search = new SongSearch(this, _libraries.Snapshot, Painter);
+            _search = new SongSearch(this, _libraries.Snapshot);
             _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
             Room = new RoomOverlay(this, Painter);
             Match = new OnlineMatch(this);
@@ -909,8 +1035,7 @@ internal sealed class GameShell : IDisposable
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
         if (Options.StartScene == StartScene.WaiwaiTutorial) Hosts.Waiwai = true;
-        if (Options.StartScene == StartScene.AiTutorial) Hosts.AiBattle = true;
-        if (Options.StartScene == StartScene.AiSongSelect)
+        if (Options.StartScene is StartScene.AiSongSelect or StartScene.AiTutorial)
             Players.ChooseMode(aiBattle: true);
         _boot?.Begin("SYSTEM SETUP");
         try
@@ -1030,6 +1155,7 @@ internal sealed class GameShell : IDisposable
             SceneTextures.Release(Application, _indicatorTextures);
             _home.Dispose();
             _service?.Dispose();
+            _search?.Dispose();
             Book.Save();
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
@@ -1078,6 +1204,8 @@ internal sealed class GameShell : IDisposable
     private void tick(SdlKeyboardSnapshot keyboard)
     {
         Tick++;
+        updateRumbles();
+        Sounds?.Bank.Pump();
         // Diagnostic: WADDAMBURO_CRASH_AT=<tick> crashes the game there, to see its error screen.
         if (_crashAt == Tick)
             throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
@@ -1316,8 +1444,7 @@ internal sealed class GameShell : IDisposable
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),
     // network/card (-3000); then Waddamburo's own overlays and the home menu over everything.
-    private readonly System.Collections.Immutable.ImmutableArray<RenderQuad>.Builder _frameQuads =
-        System.Collections.Immutable.ImmutableArray.CreateBuilder<RenderQuad>();
+    private readonly List<RenderQuad> _frameQuads = [];
 
     // The scene's Don-chans (their native surfaces) and its name board layers, on their own.
     private System.Collections.Immutable.ImmutableArray<RenderQuad> players(LumenRenderSnapshot scene, float interpolation)
@@ -1365,15 +1492,13 @@ internal sealed class GameShell : IDisposable
         var scene = flowOf(Active.Id).CreateSnapshot(interpolation);
         if (LumenPlayer.Inspect)
             _inspected = scene;
-        var frame = SceneTextures.Compose(scene, _presenter.Textures, "Scene", ResolveSurface);
+        // The scene's quads go straight into the reused frame list (no frame of their own).
+        var quads = _frameQuads;
+        quads.Clear();
+        SceneTextures.ComposeInto(scene, quads, _presenter.Textures, "Scene", ResolveSurface);
         IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
             : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", ResolveSurface).Quads);
-        // One reused builder (it keeps its capacity) and one exact copy for the frame, instead of a
-        // collection expression's growing list plus RenderFrame's copy of it, every frame.
-        var quads = _frameQuads;
-        quads.Clear();
-        quads.AddRange(frame.Quads);
         if (Active.Id == FlowScenes.Gameplay)
             quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
         if (!EffectsEditorOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
@@ -1391,17 +1516,22 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(players(scene, interpolation));
         }
         foreach (var overlay in _inputOverlays)
-            quads.AddRange(overlay.Quads());
+            if (overlay != _search)
+                quads.AddRange(overlay.Quads());
         quads.AddRange(indicatorQuads(true));
         quads.AddRange(pill());
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
             quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
-        var result = new RenderFrame(frame.ClearColor, quads.ToImmutable(), frame.ContentAspectRatio)
+        // Song search is a menu page: everything under it frosted, as the settings are.
+        if (_search.IsOpen)
         {
-            BlurredQuads = frosted,
-            BackdropBrightness = HomeControls.BackdropBrightness,
-        };
+            frosted = quads.Count;
+            quads.AddRange(_search.Quads());
+        }
+        // The frame reads the reused list without a copy: valid until the next one (the presenter detaches what it holds).
+        var result = RenderFrame.Shared(RenderColor.Black, quads, (double)scene.StageWidth / scene.StageHeight,
+            blurredQuads: frosted, backdropBrightness: HomeControls.BackdropBrightness);
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);
@@ -1458,10 +1588,14 @@ internal sealed class GameShell : IDisposable
         var song = Active.Id == FlowScenes.SongSelect
             ? Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
         var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
-        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}";
+        var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
+        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";
         // Marker checks touch the filesystem; refresh once a second and immediately when the context changes.
         if (_uploadBannerContext == context && Tick - _uploadBannerTick < 60) return _uploadBanner;
         (_uploadBannerContext, _uploadBannerTick) = (context, Tick);
+        // The attract's demo play uploads nothing and says nothing about it.
+        if (!Arcade.UploadBanner || _gameplay.Demo) return _uploadBanner = null;
+        if (auto) return _uploadBanner = "custom_upload.banner_auto";
         var source = song?.Descriptor.Key.Source ?? request?.Song.Source
             ?? (Active.Id == FlowScenes.SongSelect ? Hosts.Library : (SongSourceKind?)null);
         if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))
@@ -1538,10 +1672,10 @@ internal sealed class GameShell : IDisposable
         DonRenderer?.Dispose();
         Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();
-        CustomUploadPrompt.Dispose(); // its glyph textures belong to the window
+        CustomUploadPrompt.Dispose(); // both own an OverlayMenu, whose textures go through Application
+        Room.Dispose();
         Application.Dispose();
         _libraries.Dispose();
-        Room.Dispose();
         Sync.Dispose();
         _discord?.Dispose();
     }

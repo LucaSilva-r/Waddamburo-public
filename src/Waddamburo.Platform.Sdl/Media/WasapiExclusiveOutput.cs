@@ -20,6 +20,9 @@ public interface IAudioOutput : IDisposable
 
     /// <summary>Submitted frames not played yet.</summary>
     ulong QueuedFrames { get; }
+
+    /// <summary>Device-side numbers for the audio clock's diagnostic log line; empty when there are none.</summary>
+    string Diagnostics => "";
 }
 
 /// <summary>
@@ -41,6 +44,10 @@ public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
     private static readonly Guid IidDeviceEnumerator = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
     private static readonly Guid IidAudioClient = new("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2");
     private static readonly Guid IidRenderClient = new("F294ACFC-3146-4483-A7BF-ADDCA7C260E2");
+    private static readonly Guid IidAudioClock = new("CD63314F-3FBA-4A1B-812C-EF96358728E7");
+
+    // Diagnostics (the audio clock's log line): late device events, and the device's own play position.
+    private long _lateEvents, _worstGapTicks, _devicePlayedFrames = -1;
 
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _opened = new();
@@ -81,12 +88,27 @@ public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
     // queued; GetCurrentPadding from the game thread would be exact but crosses COM apartments.
     public ulong QueuedFrames => (ulong)HardwareBufferFrames;
 
+    // Played by the device (its IAudioClock, primed silence included) less submitted: grows when events are missed.
+    public string Diagnostics
+    {
+        get
+        {
+            var played = Interlocked.Read(ref _devicePlayedFrames);
+            var gap = Interlocked.Exchange(ref _worstGapTicks, 0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            var device = played < 0 ? "no device clock"
+                : FormattableString.Invariant($"device ahead of submitted {(played - HardwareBufferFrames - (long)SubmittedFrames) * 1000.0 / Format.SampleRate:F1} ms");
+            return FormattableString.Invariant(
+                $"exclusive period {HardwareBufferFrames * 1000.0 / Format.SampleRate:F2} ms, late events {Interlocked.Exchange(ref _lateEvents, 0)}, worst gap {gap:F1} ms, {device}");
+        }
+    }
+
     /// <summary>Starts rendering: <paramref name="render"/> fills one endpoint buffer per device period.</summary>
     public void Start(Action<Span<float>> render) => Volatile.Write(ref _render, render);
 
     private void run(int periodFrames)
     {
-        nint enumerator = 0, device = 0, renderClient = 0;
+        nint enumerator = 0, device = 0, renderClient = 0, clock = 0;
+        ulong clockFrequency = 0;
         nint task = 0;
         try
         {
@@ -124,6 +146,9 @@ public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
             check(call(_client, 13, _bufferReady.SafeWaitHandle.DangerousGetHandle()), "set the buffer event");
             var renderIid = IidRenderClient;
             check(call(_client, 14, (nint)(&renderIid), (nint)(&renderClient)), "get the render client");
+            var clockIid = IidAudioClock;
+            if (call(_client, 14, (nint)(&clockIid), (nint)(&clock)) < 0 || call(clock, 3, (nint)(&clockFrequency)) < 0)
+                clockFrequency = 0; // diagnostics only
             // Pre-fill one silent buffer so the first event has something playing behind it.
             byte* data;
             check(call(renderClient, 3, frames, (nint)(&data)), "prime the buffer");
@@ -135,6 +160,7 @@ public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
         catch (Exception exception)
         {
             _openFailure = exception;
+            release(ref clock);
             release(ref renderClient);
             release(ref _client);
             release(ref device);
@@ -146,12 +172,27 @@ public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
 
         var channels = Format.Channels;
         var samples = new float[HardwareBufferFrames * channels];
+        var periodTicks = (long)((double)HardwareBufferFrames / Format.SampleRate * System.Diagnostics.Stopwatch.Frequency);
+        long lastEvent = 0;
         try
         {
             while (!_stopping)
             {
                 if (!_bufferReady.WaitOne(200))
                     continue;
+                var now = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (lastEvent != 0)
+                {
+                    var gap = now - lastEvent;
+                    if (gap > periodTicks * 3 / 2)
+                        Interlocked.Increment(ref _lateEvents);
+                    if (gap > Interlocked.Read(ref _worstGapTicks))
+                        Interlocked.Exchange(ref _worstGapTicks, gap);
+                }
+                lastEvent = now;
+                ulong devicePosition, qpc;
+                if (clockFrequency != 0 && call(clock, 4, (nint)(&devicePosition), (nint)(&qpc)) >= 0)
+                    Interlocked.Exchange(ref _devicePlayedFrames, (long)(devicePosition * (ulong)Format.SampleRate / clockFrequency));
                 byte* data;
                 check(call(renderClient, 3, (uint)HardwareBufferFrames, (nint)(&data)), "get a buffer");
                 var render = Volatile.Read(ref _render);
@@ -184,6 +225,7 @@ public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
                 _ = AvRevertMmThreadCharacteristics(task);
             if (_client != 0)
                 call(_client, 11);
+            release(ref clock);
             release(ref renderClient);
             var client = _client;
             _client = 0;

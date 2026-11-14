@@ -30,6 +30,18 @@ internal enum GameplaySoundEvent
     RareHit,
     SynchroCutIn,
     SoloCutIn,
+    /// <summary>A big note hit (no sound: controllers rumble, #35).</summary>
+    BigHit,
+    /// <summary>A small don hit (no sound: controllers rumble).</summary>
+    DonHit,
+    /// <summary>A small ka hit (no sound: controllers rumble).</summary>
+    KaHit,
+    /// <summary>A don on a roll, balloon or kusudama (no sound: controllers rumble).</summary>
+    LongDonHit,
+    /// <summary>A ka on a roll (no sound: controllers rumble).</summary>
+    LongKaHit,
+    /// <summary>A hit on a big roll (no sound: controllers rumble).</summary>
+    BigLongHit,
 }
 
 /// <summary>
@@ -379,6 +391,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly int _side;
         private readonly int? _soundLane;
         private readonly LumenSceneLayer[] _beatLayers;
+        private readonly LumenPlayer? _dancers;
         private readonly LumenPlayer[] _noteFaces;
         private readonly Func<int> _combo;
         private readonly LumenSceneLayer[] _fixedLayers;
@@ -628,6 +641,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // rolls' characters and the lane run in real time.
             _beatLayers = [.. layers.Where(pair => pair.Key is "dance" or "fever" or "chibi"
                 || NoteMovieNames.Contains(pair.Key)).Select(pair => pair.Value)];
+            _dancers = layers.GetValueOrDefault("dance")?.Player;
             // Shared movies are advanced by the first lane only.
             _fixedLayers = [.. layers.Values.Except(_beatLayers)];
             var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg") ?? skin("donbg_w_00"),
@@ -639,6 +653,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 var previousScore = score.Value;
                 if (score.Apply(progress, counted.CurrentTime)) updateScore(score.Value - previousScore);
                 if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
+                sound(progress.Note.Kind == PlayableLongNoteKind.BigRoll ? GameplaySoundEvent.BigLongHit
+                    : progress.LastAction is TaikoInputAction.LeftKa or TaikoInputAction.RightKa ? GameplaySoundEvent.LongKaHit
+                    : GameplaySoundEvent.LongDonHit);
             };
             // Player name board (traced call sequence; the name is host text, see NameText).
             var nameBoard = layers["player_name"].Player;
@@ -761,6 +778,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (!judgement.StrongHitCompleted && judgement.Result is TaikoHitResult.Great or TaikoHitResult.Good)
                 {
                     if (judgement.HitObject.IsRare) sound(GameplaySoundEvent.RareHit);
+                    sound(judgement.HitObject.IsStrong ? GameplaySoundEvent.BigHit
+                        : judgement.HitObject.Kind == PlayableNoteKind.Ka ? GameplaySoundEvent.KaHit : GameplaySoundEvent.DonHit);
                     if (score.Combo == 50 || score.Combo % 100 == 0 && score.Combo <= 5000)
                         sound(GameplaySoundEvent.Combo, score.Combo);
                 }
@@ -924,8 +943,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             chartTime = shown(chartTime);
             var delta = _animationClock.Advance(chartTime);
             foreach (var layer in _fixedLayers) layer.Player.Advance(input);
+            // The dance movies bring their first dancer in on their first frame; the game holds them until the
+            // song starts (reported on Discord: the dancers were already in when the stage appeared).
             for (var i = 0; i < _animationClock.FramesToAdvance; i++)
-                foreach (var layer in _beatLayers) layer.Player.Advance(input);
+                foreach (var layer in _beatLayers)
+                    if (layer.Player != _dancers || chartTime >= TimeSpan.Zero)
+                        layer.Player.Advance(input);
             // Note faces by combo, at the beat's phase (TaikoNoteFaces).
             var beat = _animationClock.Position(chartTime) * 89 / 3600;
             var combo = _combo();

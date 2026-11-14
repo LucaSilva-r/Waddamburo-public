@@ -178,8 +178,7 @@ internal static class Rescore
         }
         double? value(string name) => setup.TryGetProperty(name, out var number) && number.ValueKind == JsonValueKind.Number ? number.GetDouble() : null;
         (double, double)? prior = value("hit_median_ms") is { } median && value("hit_variance") is { } variance ? (median, variance) : null;
-        var simulation = new AiBattleSimulation(TaikoPlayOptions.FromBits(play.Options).Apply(chart, play.Seed.Value), course, play.Seed.Value, prior);
-        simulation.Advance(TaikoReplay.Decode(play.Replay).Inputs, simulation.End + TimeSpan.FromTicks(1));
+        var simulation = Battle(chart, course, play.Options, play.Seed.Value, prior, play.Replay);
         var outcome = simulation.Outcome;
         writer.WriteStartObject("ai_battle");
         writer.WriteNumber("version", version);
@@ -269,6 +268,15 @@ internal static class Rescore
         var stored = Chart(charts, notes, source);
         return PlayRescore.Score(stored.Chart, stored.Course, TaikoPlayOptions.FromBits(options), seed, TaikoReplay.Decode(replay),
             TaikoGameplayPresentation.WindowsFor(stored.Chart, stored.Course));
+    }
+
+    /// <summary>A stored AI battle played through again from its replay, as the server verifies it.</summary>
+    public static AiBattleSimulation Battle(PlayableChart chart, TaikoCourse course, int options, int seed,
+        (double Median, double Variance)? prior, byte[] replay)
+    {
+        var simulation = new AiBattleSimulation(TaikoPlayOptions.FromBits(options).Apply(chart, seed), course, seed, prior);
+        simulation.Advance(TaikoReplay.Decode(replay).Inputs, simulation.End + TimeSpan.FromTicks(1));
+        return simulation;
     }
 
     /// <summary>A stored chart (gzipped canonical notes and its <see cref="SongSourceKind"/> name), read once per batch.</summary>

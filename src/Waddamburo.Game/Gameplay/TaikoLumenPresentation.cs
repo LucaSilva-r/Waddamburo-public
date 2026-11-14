@@ -281,7 +281,7 @@ public sealed class TaikoLumenPresentation
                 (noteTime, controlTime, route) => _geometry.Point(noteTime, time, controlTime, route), _geometry.Origin(time), bodies: !Doron));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
-        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => _geometry.Window(note.StartTime, note.Branch))];
+        var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => _geometry.Window(note.StartTime, note.Branch, NoteGeometry.ScrollTime(note)))];
         for (var index = _chart.NoteCount - 1; index >= 0; index--)
         {
             if (time < noteWindows[index].From || time > noteWindows[index].Until) continue;
@@ -296,11 +296,12 @@ public sealed class TaikoLumenPresentation
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
-            addAt(hitNotes, template, note.StartTime, time, note.Branch, hitNote: true);
+            var control = NoteGeometry.ScrollTime(note);
+            addAt(hitNotes, template, note.StartTime, time, note.Branch, hitNote: true, controlTime: control);
             if (hitNotes.Count != 0 && !Doron) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
-                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset, hitNote: true);
+                addAt(texts, text, note.StartTime, time, note.Branch, TaikoNoteText.Offset, hitNote: true, controlTime: control);
         }
         // Balloons and kusudamas carry their text until their overlay takes over (a balloon waiting on the
         // target keeps it there).
@@ -351,9 +352,10 @@ public sealed class TaikoLumenPresentation
             || _longNotes?.TargetOverlays.Contains(layer.Player) == true;
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
-        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool hitNote = false, bool barLine = false)
+        TimeSpan noteTime, TimeSpan time, ChartBranch? route, float yOffset = 0, bool hitNote = false, bool barLine = false,
+        TimeSpan? controlTime = null)
     {
-        if (_geometry.Place(noteTime, time, route, yOffset, hitNote, barLine) is { } placed)
+        if (_geometry.Place(noteTime, time, route, yOffset, hitNote, barLine, controlTime) is { } placed)
             layers.Add(template with { Transform = placed.Transform, Alpha = placed.Alpha });
     }
 
