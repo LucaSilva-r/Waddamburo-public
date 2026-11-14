@@ -9,6 +9,7 @@ using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Skins.Green;
+using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;

@@ -1,9 +1,9 @@
 using Waddamburo.Formats.Lmb;
-using Waddamburo.Game.Gameplay;
+using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Lumen.Rendering;
 
-namespace Waddamburo.Game.Tests;
+namespace Waddamburo.Skins.Green.Tests;
 
 public sealed class TaikoSongInfoPresentationTests
 {

@@ -15,6 +15,7 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Skins.Green.Gameplay;
 
 namespace Waddamburo.App.Flow;
 
@@ -719,8 +720,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (NoteStepTrace && !_play.Paused && revealed)
             traceNoteStep(time);
         if (songInfoPlayer() is { } info)
-            TaikoSongInfoPresentation.UpdateVisibility(info,
-                showStage: !Shell.HideArcadeHud || _course is not null || _play.SongInfoMode,
+            TaikoSongInfoPresentation.UpdateVisibility(info, showStage,
                 showInfo: _play.Battle?.ResultShownAt is null);
         return Shell.Gameplay.CreateSnapshot(time, _play.Paused ? _play.PauseInterpolation
             : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
@@ -997,16 +997,17 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Genre = Shell.Hosts.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
             Stage = _play.CourseSong + 1,
         };
-        // song_info asks LumenSongInfo only as the song starts (main.genre.gotoAndStop(genreArray[GetGenrNumber()]),
-        // main.stage.gotoAndStop(GetPlayCount())), so a course's next songs set its clips the same way here.
-        if (sceneLayer("song_info") is { } info
-            && !(info.TryGotoLabel("main/genre", GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)], play: false)
-                && info.TryGotoFrame("main/stage", Shell.SongInfo.StageFrame - 1, play: false)))
-            Console.Error.WriteLine("song_info has no main.genre / main.stage clip to set.");
+        if (sceneLayer("song_info") is { } info)
+            TaikoSongInfoPresentation.ShowNextSong(info, genreLabel(), Shell.SongInfo);
         showSongTitle(song);
     }
 
     // song_info's genreArray: TaikoSongInfo.Genre's labels.
+    // The stage number shows in arcade, in a dan course and in the song-info mode; not at home.
+    private bool showStage => !Shell.HideArcadeHud || _course is not null || _play.SongInfoMode;
+
+    private string genreLabel() => GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)];
+
     private static readonly string[] GenreLabels = ["jpop", "anime", "vocaloid", "doyo", "variety", "classic", "game", "namco"];
 
     // A movie of the active scene by name (song_info, between); null when the scene has none.
@@ -1027,10 +1028,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             ? LumenHostValue.FromString(subtitle) : LumenHostValue.Undefined);
         Shell.Gameplay.Publish("song.artist", song.Descriptor.Artist is { Length: > 0 } artist
             ? LumenHostValue.FromString(artist) : LumenHostValue.Undefined);
-        Shell.Gameplay.Publish("song.genre", LumenHostValue.FromString(GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)]));
+        Shell.Gameplay.Publish("song.genre", LumenHostValue.FromString(genreLabel()));
         var source = song.Descriptor.Key.Source.ToString();
         Shell.Gameplay.Publish("song.source", LumenHostValue.FromString(char.ToLowerInvariant(source[0]) + source[1..]));
-        Shell.Gameplay.Publish("song.stage", LumenHostValue.FromNumber(Shell.SongInfo.Stage));
+        Shell.Gameplay.Publish("song.stage", showStage ? LumenHostValue.FromNumber(Shell.SongInfo.Stage) : LumenHostValue.Undefined);
         Shell.Gameplay.Publish("song.finalStage", LumenHostValue.FromBoolean(Shell.SongInfo.Final));
         if (songInfoPlayer() is not { } info)
             return;

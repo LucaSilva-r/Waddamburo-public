@@ -68,7 +68,7 @@ public static class WdNames
         new("song.artist", WdKind.State, "text", "play", "Who made the song; no value when the library does not say.", "Kurousa-P"),
         new("song.genre", WdKind.State, "text", "play", "The song's genre: jpop, anime, vocaloid, doyo (children and folk), variety, classic, game or namco.", "vocaloid"),
         new("song.source", WdKind.State, "text", "play", "Where the song comes from: stock, nijiiro, tja, osuLazer or osuStable.", "tja"),
-        new("song.stage", WdKind.State, "number", "play", "Which song of the credit or dan course this is, from 1.", "2"),
+        new("song.stage", WdKind.State, "number", "play", "Which song of the credit or dan course this is, from 1; no value where the game shows no stage number (home).", "2"),
         new("song.finalStage", WdKind.State, "bool", "play", "This is the credit's last song.", "false"),
         new("song.subtitle", WdKind.State, "text", "play", "The song's subtitle; no value when it has none.", "Kurousa-P feat. Hatsune Miku"),
         new("player.name", WdKind.State, "text", "play", "The name of this drum's player.", "Don-chan"),
