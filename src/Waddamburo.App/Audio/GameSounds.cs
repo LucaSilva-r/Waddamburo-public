@@ -1,4 +1,6 @@
+using Waddamburo.Game.Sound;
 using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Skins.Green.Sound;
 
 namespace Waddamburo.App.Audio;
 
@@ -7,15 +9,20 @@ internal sealed class GameSounds
 {
     public GameSounds(AudioEngine audio, string soundRoot)
     {
-        Bank = new SoundBank(audio, soundRoot);
+        var green = new GreenSoundSet(soundRoot);
+        Set = green;
+        Bank = new SoundBank(audio, green);
         Attract = new AttractSounds(Bank);
         Frontend = new FrontendSounds(Bank);
-        Gameplay = new GameplaySounds(Bank);
+        Gameplay = new GameplaySounds(Bank, green);
         Results = new ResultSounds(Bank);
         WaiwaiResults = new WaiwaiResultSounds(Bank);
         Retry = new RetrySounds(Bank, StopAll);
         GameOver = new GameOverSounds(Bank);
     }
+
+    /// <summary>The skin's sounds the engine asks for by name.</summary>
+    public ISoundSet Set { get; }
 
     public SoundBank Bank { get; }
     public AttractSounds Attract { get; }

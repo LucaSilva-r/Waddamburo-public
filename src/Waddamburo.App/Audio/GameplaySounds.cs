@@ -1,15 +1,18 @@
 using Waddamburo.App.Gameplay;
-using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Game.Sound;
 
 namespace Waddamburo.App.Audio;
 
 /// <summary>
-/// A song: the drums' hit sounds and the game's event cues (combo voices, banners, balloons,
-/// kusudama, Waiwai's cut-ins and rare note, the song's end).
+/// A song's sounds, asked of the skin by name: the drums' hit sounds in each player's tone and the event sounds
+/// (combo voices, banners, balloons, kusudama, Waiwai's cut-ins and rare note, the song's end). The rules of when a
+/// sound plays (muted demo, AI-don's silent lane, roll voices off) are here; which sound it is, the skin's.
 /// </summary>
-internal sealed class GameplaySounds(SoundBank bank)
+internal sealed class GameplaySounds(SoundBank bank, ISoundSet set)
 {
-    /// <summary>Waiwai gameplay plays its own drum tone (traced SE_GAME_NEIRO_100_L/R).</summary>
+    private readonly Dictionary<SoundRequest, IReadOnlyList<SoundCue>> _described = [];
+
+    /// <summary>Waiwai gameplay plays its own drum tone.</summary>
     // ponytail: Waiwai song select's tone choice (AssignTone / RequestToneSE) is not offered yet.
     public bool Waiwai { get; set; }
 
@@ -25,104 +28,75 @@ internal sealed class GameplaySounds(SoundBank bank)
     /// <summary>False: two players' sounds are centred and shared (one of each at a time).</summary>
     public bool Panning { get; set; } = true;
 
-    /// <summary>Each lane's drum sound (音色, 0-5); one player is lane 0.</summary>
+    /// <summary>Each lane's drum sound (an index of the skin's tones); one player is lane 0.</summary>
     public int[] Tones { get; set; } = [];
 
-    // A drum's hit sounds, in its player's tone: centred for one player; in two-player play the left
-    // drum's pan left and the right drum's right (traced session9-2p).
-    private string drumBank(int? lane) => (Waiwai ? "SE_GAME_NEIRO_100"
-        : $"SE_GAME_NEIRO_{Tones.ElementAtOrDefault(lane ?? 0):000}") + (Panning ? lane : null) switch
+    /// <summary>Silent (the attract's demo play under the menu).</summary>
+    public bool Muted { get; set; }
+
+    // A lane's request: its side when two players' sounds are kept apart, its player's tone.
+    private SoundRequest request(string name, int? lane, int variant = 0) =>
+        new(name, Panning ? lane : null, Tones.ElementAtOrDefault(lane ?? 0), variant, Waiwai ? "waiwai" : null);
+
+    private IReadOnlyList<SoundCue> describe(SoundRequest request)
     {
-        0 => "_L",
-        1 => "_R",
-        _ => "_C",
-    };
+        if (!_described.TryGetValue(request, out var cues))
+            _described[request] = cues = set.Describe(request);
+        return cues;
+    }
+
+    private void play(SoundRequest request)
+    {
+        foreach (var cue in describe(request))
+            bank.Play(cue);
+    }
 
     public void PrepareDrums(bool twoPlayers = false)
     {
         // Both sets for two players: panning may be switched in the pause menu.
         foreach (var lane in twoPlayers ? new int?[] { 0, 1, null } : [null])
-            foreach (var cue in new[] { 0, 1 })
-                bank.Preload(drumBank(lane), cue);
+            foreach (var name in new[] { "drum.don", "drum.ka" })
+            {
+                var tone = Tones.ElementAtOrDefault(lane ?? 0);
+                foreach (var cue in describe(new(name, lane, tone, 0, Waiwai ? "waiwai" : null)))
+                    bank.Preload(cue.Source);
+            }
     }
-
-    /// <summary>Silent (the attract's demo play under the menu).</summary>
-    public bool Muted { get; set; }
 
     public void PlayDrum(int? lane, bool don)
     {
         if (!Muted && !(AiBattle && lane == 1))
-            bank.Play(drumBank(lane), don ? 0 : 1, AudioBus.DrumHit, trace: false);
+            play(request(don ? "drum.don" : "drum.ka", lane));
     }
 
-    /// <summary>
-    /// <paramref name="lane"/> is null for one player. Two players: 0 left, 1 right; a player's own
-    /// cues follow the one-player cue as +1 / +2 (traced session9-2p: combo voice 1/2, banners
-    /// 10/11 · 7/8 · 13/14, full-combo voice 154/155, balloon 2, roll voice 158, kusudama miss voice 160/161).
-    /// </summary>
+    /// <summary><paramref name="lane"/> is null for one player; two players: 0 left, 1 right.</summary>
     public void Play(int? lane, GameplaySoundEvent sound, int combo = 0)
     {
         // AI battle: AI-don's lane (1) is silent, drums included (PlayDrum).
         if (Muted || AiBattle && lane == 1) return;
-        int own(int cue) => lane is { } player && Panning ? cue + 1 + player : cue;
-        switch (sound)
+        var name = sound switch
         {
-            case GameplaySoundEvent.LongNoteStarted:
-                if (!RollVoicesOff.ElementAtOrDefault(lane ?? 0))
-                    bank.Play("VO_GAME", own(156));
-                break;
-            case GameplaySoundEvent.BalloonPopped:
-                bank.Play("SE_GAME", own(0));
-                break;
-            case GameplaySoundEvent.KusudamaPopped:
-                bank.Play("SE_GAME", 3);
-                break;
-            case GameplaySoundEvent.KusudamaFailed:
-                bank.Play("SE_GAME", 5);
-                bank.Play("VO_GAME", own(159));
-                break;
-            // VO_GAME triplets: 0 = 50 combo, 3k = 100k combo up to 5000 (cue 150).
-            case GameplaySoundEvent.Combo:
-                bank.Play("VO_GAME", own(combo == 50 ? 0 : combo / 100 * 3));
-                break;
-            case GameplaySoundEvent.FailBanner:
-                bank.Play("SE_GAME", own(9));
-                break;
-            case GameplaySoundEvent.ClearBanner:
-                bank.Play("SE_GAME", own(6));
-                break;
-            case GameplaySoundEvent.FullComboBanner:
-                bank.Play("SE_GAME", own(12));
-                bank.Play("VO_GAME", own(153));
-                break;
-            // Waiwai (traced session11-waiwai): SE_WAIENSO 0 as the song starts, 4 per together
-            // section, 2 per solo section.
-            // Traced SE_GAME_COLLABO_00 cue 0 / 1 with the rare note: taken as the player who hit it.
-            case GameplaySoundEvent.RareHit:
-                bank.Play("SE_GAME_COLLABO_00", lane ?? 0);
-                break;
-            case GameplaySoundEvent.WaiwaiStart:
-                bank.Play("SE_WAIENSO", 0);
-                break;
-            case GameplaySoundEvent.SynchroCutIn:
-                bank.Play("SE_WAIENSO", 4);
-                break;
-            case GameplaySoundEvent.SoloCutIn:
-                bank.Play("SE_WAIENSO", 2);
-                break;
-            case GameplaySoundEvent.SongFinished:
-                bank.Play("VO_RESULT", 0);
-                bank.Play("SE_GAME", 15);
-                break;
-            case GameplaySoundEvent.BigHit:
-            case GameplaySoundEvent.DonHit:
-            case GameplaySoundEvent.KaHit:
-            case GameplaySoundEvent.LongDonHit:
-            case GameplaySoundEvent.LongKaHit:
-            case GameplaySoundEvent.BigLongHit:
-                break; // the controllers' rumble (GameShell), not a sound
-            default:
-                throw new ArgumentOutOfRangeException(nameof(sound));
-        }
+            GameplaySoundEvent.LongNoteStarted => RollVoicesOff.ElementAtOrDefault(lane ?? 0) ? null : "roll.voice",
+            GameplaySoundEvent.BalloonPopped => "balloon.popped",
+            GameplaySoundEvent.KusudamaPopped => "kusudama.popped",
+            GameplaySoundEvent.KusudamaFailed => "kusudama.failed",
+            GameplaySoundEvent.Combo => "combo.voice",
+            GameplaySoundEvent.FailBanner => "banner.fail",
+            GameplaySoundEvent.ClearBanner => "banner.clear",
+            GameplaySoundEvent.FullComboBanner => "banner.fullCombo",
+            GameplaySoundEvent.RareHit => "waiwai.rare",
+            GameplaySoundEvent.WaiwaiStart => "waiwai.start",
+            GameplaySoundEvent.SynchroCutIn => "waiwai.synchro",
+            GameplaySoundEvent.SoloCutIn => "waiwai.solo",
+            GameplaySoundEvent.SongFinished => "song.finished",
+            // The controllers' rumble (GameShell), not a sound.
+            GameplaySoundEvent.BigHit or GameplaySoundEvent.DonHit or GameplaySoundEvent.KaHit or GameplaySoundEvent.LongDonHit
+                or GameplaySoundEvent.LongKaHit or GameplaySoundEvent.BigLongHit => null,
+            _ => throw new ArgumentOutOfRangeException(nameof(sound)),
+        };
+        if (name is null)
+            return;
+        // The rare note's sound is the player who hit it, panned or not.
+        play(sound == GameplaySoundEvent.RareHit ? new(name, null, 0, lane ?? 0) : request(name, lane, combo));
     }
 }

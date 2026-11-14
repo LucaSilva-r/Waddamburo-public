@@ -186,6 +186,49 @@ Each move is proven by recording what crosses every movie's edge (`WADDAMBURO_ED
   (lab `research/contracts/logs/`), or the user drives the window.
 - Windowed hitch check: `WADDAMBURO_HITCH_TRACE=1` with `--play`, count "Frame hitch" lines.
 
+## Sounds (user, 2026-11-14)
+
+Three layers, split by what each knows:
+
+1. **Decoding and playback: the engine, generic.** A codec is not a skin: ATRAC in NUB containers is needed by the
+   stock Green songs and by libraries from other console versions (catalog providers), as are other old formats. The
+   native decoder and vgmstream, the mixer and its buses, the voice and coin rules (`SoundBank`, App) take a
+   **`SoundSource`**: a file or one stream of a container, plus its settings. Container readers stay format readers
+   (`Waddamburo.Formats.Audio`: `NubCueDelay`, `NuSoundBankCatalog`).
+2. **Which sound, as authored: the skin's `ISoundSet`** (`Waddamburo.Game.Sound`). `Describe(SoundRequest)` answers
+   an engine name with zero or more `SoundCue`s (source + bus). A source's `SoundSettings` (gain, pan in degrees,
+   pitch in cents, leading silence) are plain numbers the engine applies; the game's are read from each NUB bank's
+   header (`GreenSoundSet`, in `Skins.Green`, read when first decoded, off the frame), a skin of ours writes them in a
+   `sounds.json` beside its files (not built):
+
+   ```json
+   "drum.don":   { "file": "don.ogg" },
+   "drum.don.2": { "file": "don.ogg", "pan": 30, "pitch": 20 }
+   ```
+
+3. **When it plays: the engine's rules, by name.** The engine asks for `drum.don`, `combo.voice`, `banner.clear`, ...
+   with a `SoundRequest`: `Side` (0 left, 1 right when two players' sounds are kept apart; null centred, also when
+   panning is off), `Tone`, `Variant` (a number the name takes: the combo), `Mode` (`waiwai` when the mode changes
+   the sound). How a side or a tone sounds is the skin's: Green has `_L` / `_R` / `_C` banks and own cues per player
+   (+1 / +2); a skin of ours may give the same file a pan or a pitch. Rules such as AI-don's silent lane, the muted
+   demo and roll voices off stay in the engine (`GameplaySounds`).
+
+**Player choices.** A player picks a drum sound in the course select: `ISoundSet.Tones` is the skin's list (names
+for a selector, Green's six 音色), a player's tone is an index into it, kept per player for the session, and every
+request for that player's drums carries it. Our movies: a list name for the tones and a select-scope request to
+choose one (with its preview sound), to add with song select's course panel; `player.tone` already says the choice
+during a song. The game's course select keeps choosing through its own calls; the adapter writes the same per-player
+setting.
+
+**Our movies** will ask for sounds with a request (`sound.play`, a name of the skin's set) once built; the game's
+movies' `RequestSE(bank, cue)` is played as `GreenSoundSet.Cue(bank, cue)`.
+
+Built (2026-11-14): the types (`SoundSource`, `SoundSettings`, `SoundCue`, `SoundRequest`, `ISoundSet`),
+`GreenSoundSet` (bank cues with header settings, music, the gameplay names; `GreenSoundSetTests`), `SoundBank`
+playing sources, gameplay's sounds asked by name. Not yet: the other screens' sound controllers (`Audio/*Sounds`,
+still bank / cue calls through `SoundBank`, to move into `Skins.Green` behind an engine player interface), menu
+music by name, the `sounds.json` reader, `sound.play` and the tone list for our movies.
+
 ## Packages
 
 ```text

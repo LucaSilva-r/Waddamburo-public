@@ -11,6 +11,22 @@ namespace Waddamburo.Formats.Audio;
 /// </summary>
 public static class NubCueDelay
 {
+    /// <summary>A bank file's header up to <paramref name="cue"/>'s stream header (the readers here read no further).</summary>
+    public static byte[] ReadBankHeader(string path, int cue)
+    {
+        using var file = File.OpenRead(path);
+        var table = new byte[0x20 + (cue + 1) * 4];
+        if (file.Read(table) < table.Length)
+            return table;
+        var header = BinaryPrimitives.ReadUInt32BigEndian(table.AsSpan(^4));
+        if (header > file.Length)
+            return table;
+        var bytes = new byte[(int)Math.Min(file.Length, header + 0x50L)];
+        file.Position = 0;
+        file.ReadExactly(bytes);
+        return bytes;
+    }
+
     private const int HeaderTable = 0x20;
     private const int DelayField = 0x4C;
     private const int GainField = 0x34;
