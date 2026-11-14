@@ -1,5 +1,6 @@
 using Waddamburo.Game.Don;
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Rendering;
 
 namespace Waddamburo.App.Presentation;
@@ -34,6 +35,7 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
 
     public void Reset(DonPresentationLayout layout)
     {
+        LumenEdgeLog.Host("don", $"Reset({layout})");
         // Entry and Song Select (Standard): the movies never turn the right-hand Don-chan, so the mirrored camera faces
         // them inward, a second player beside a first and a player alone on the right drum alike (the lone one faced
         // outward when the right drum was excepted here). Other layouts keep that exception: results stand both players
@@ -43,12 +45,17 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
             layout: cameraLayout(layout));
     }
 
-    public void SetCameraLayout(DonPresentationLayout layout) => _renderer.SetCameraLayout(cameraLayout(layout));
+    public void SetCameraLayout(DonPresentationLayout layout)
+    {
+        LumenEdgeLog.Host("don", $"SetCameraLayout({layout})");
+        _renderer.SetCameraLayout(cameraLayout(layout));
+    }
 
     // Gameplay overlays: the shared kusudama shows both Dons facing the centre, so Katsu-chan takes
     // the reflected camera; each lane's balloon shows its Don unreflected (user-confirmed).
     public void SetCameraLayout(int playerIndex, DonPresentationLayout layout)
     {
+        LumenEdgeLog.Host("don", $"SetCameraLayout({playerIndex}, {layout})");
         _renderer.MirrorPlayerTwoCamera = layout == DonPresentationLayout.Kusudama && GameplaySide != 1;
         _renderer.SetCameraLayout(slot(playerIndex), cameraLayout(layout));
     }
@@ -67,10 +74,17 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
 
     public LumenNativeSurfaceKey GetSurface(int playerIndex) => _surfaces[slot(playerIndex)];
 
-    public void SetMotion(DonMotionRequest request) =>
+    public void SetMotion(DonMotionRequest request)
+    {
+        LumenEdgeLog.Host("don", $"SetMotion({request.PlayerIndex}, {request.OneShot}, {request.Loop})");
         _renderer.SetMotion(slot(request.PlayerIndex), request.OneShot, request.Loop);
+    }
 
-    public void SetIdle(int playerIndex, string loop) => _renderer.SetIdle(slot(playerIndex), loop);
+    public void SetIdle(int playerIndex, string loop)
+    {
+        LumenEdgeLog.Host("don", $"SetIdle({playerIndex}, {loop})");
+        _renderer.SetIdle(slot(playerIndex), loop);
+    }
 
     public void SetCostume(int playerIndex, DonCostume costume)
     {

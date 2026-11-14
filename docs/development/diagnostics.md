@@ -329,6 +329,8 @@ The bot plays a TJA chart on the gameplay screen straight after start-up, with n
 (`Waddamburo.App/Flow/BenchmarkFlow`, the benchmark's song with another chart). Headless (`--screenshot`) the
 song's time follows ticks and, while it plays, each loop runs exactly one tick as fast as the CPU allows (vsync
 off): an 86 s chart takes about 12 s, and two runs give the same edge log (`WADDAMBURO_EDGE_LOG`), ticks
-included. That makes it the check for gameplay movie changes: record the log before and after and `cmp` them.
+included. That makes it the check for gameplay movie changes: record the log before and after and `cmp` them. Don-chan's motion and camera requests are in the same log (source `don`, tick -1). On a real install a
+load-time dropped tick can shift the indicator movies at start-up: compare each movie's lines without the tick column
+(`cut -f2-`, stable-sorted by movie).
 The screenshot is only taken with `--ticks`. In a window the song plays at normal speed. A data directory with
 no game files plays on the engine's own movies.
