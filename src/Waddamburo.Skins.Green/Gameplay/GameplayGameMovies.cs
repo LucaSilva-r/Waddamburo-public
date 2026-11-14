@@ -13,13 +13,13 @@ namespace Waddamburo.Skins.Green.Gameplay;
 /// <remarks>
 /// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
 /// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner, a dan course's panel, the roll counter,
-/// the balloon and the kusudama, the notes' combo faces. Not here: the label jumps that are the lane's drawing itself
-/// (hit flashes, judgement words, roll bodies).
+/// the balloon and the kusudama, the notes' combo faces, the target's hit flashes and the judgement words. Not here:
+/// the roll bodies (TaikoLongNotePresentation) and the flight pool (TaikoHitFlights).
 /// </remarks>
 public sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,
     LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner, LumenPlayer target, LumenPlayer? bubble,
-    LumenPlayer? danPanel, LumenPlayer rollCounter, LumenPlayer balloon, LumenPlayer? kusudama)
+    LumenPlayer? danPanel, LumenPlayer rollCounter, LumenPlayer balloon, LumenPlayer? kusudama, LumenPlayer? feedback = null)
 {
     private static readonly string[] Routes = ["normal", "expert", "master"];
     private int _segments = -1;
@@ -134,6 +134,44 @@ public sealed class GameplayGameMovies(
             || key.StartsWith("dan.exam.possible#", StringComparison.Ordinal);
     }
 
+    private string? _hitLight;
+
+    /// <summary>
+    /// A note the lane shows judged by a hit: the target's ring and the judgement word (hit_ryo, hit_ka, hit_huka;
+    /// big notes' own). Traced (session6/12/27): a press that judges a note turns the lane's don_s/katsu_s into the
+    /// brighter don_hit/katsu_hit in the same tick. ponytail: bads keep the plain flash (none traced); don_b/katsu_b unseen.
+    /// </summary>
+    public void Judged(TaikoHitResult result, bool big, bool ka)
+    {
+        var label = result switch
+        {
+            TaikoHitResult.Great => "ryo",
+            TaikoHitResult.Good => "ka",
+            _ => "huka",
+        };
+        if (game(target) is { } lane && !lane.TryGotoLabel("hit_effect", (big ? "hit_dai_" : "hit_") + label)
+            || game(feedback) is { } word && !word.TryGotoLabel("", "hit_" + label + (big && result != TaikoHitResult.Miss ? "_big" : "")))
+            throw new InvalidDataException("Gameplay movie is missing a judgement state.");
+        if (result is TaikoHitResult.Great or TaikoHitResult.Good)
+        {
+            _hitLight = ka ? "katsu_hit" : "don_hit";
+            game(target)?.TryGotoLabel("effect", _hitLight);
+        }
+    }
+
+    /// <summary>
+    /// A big note's other hand (absorbed, no judgement): its press flash gives way to the hit light again, so a
+    /// two-hand hit stays lit as a hit.
+    /// </summary>
+    public void KeepHitLight()
+    {
+        if (_hitLight is { } label)
+            game(target)?.TryGotoLabel("effect", label);
+    }
+
+    /// <summary>The target's hit ring (a GOOD's), alone: no judgement, combo or score (the audio calibration).</summary>
+    public void FlashTarget() => game(target)?.TryGotoLabel("hit_effect", "hit_ryo");
+
     /// <summary>The game's note movies start on their first face (ours pick their own from play.combo).</summary>
     public static void StartNotes(IEnumerable<LumenPlayer> notes)
     {
@@ -212,9 +250,13 @@ public sealed class GameplayGameMovies(
                 _comboTold = false;
                 break;
             // side: left, right; part: don, ka. The game's board names its lights left_don, right_katsu, ...
-            case "drum.hit" when game(board) is { } hitBoard:
-                call(hitBoard, "SetTaikoHit", LumenHostValue.FromString(
-                    arguments[0].AsString() + (arguments[1].AsString() == "don" ? "_don" : "_katsu")));
+            // The hit target flashes the part struck (judged or not).
+            case "drum.hit":
+                if (game(board) is { } hitBoard)
+                    call(hitBoard, "SetTaikoHit", LumenHostValue.FromString(
+                        arguments[0].AsString() + (arguments[1].AsString() == "don" ? "_don" : "_katsu")));
+                if (game(target) is { } lane && !lane.TryGotoLabel("effect", arguments[1].AsString() == "don" ? "don_s" : "katsu_s"))
+                    throw new InvalidDataException("Gameplay lane has no drum feedback state.");
                 break;
             case "score.added" when game(scoreAdd) is { } movie:
                 call(movie, "Create");

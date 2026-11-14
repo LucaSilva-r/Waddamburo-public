@@ -30,7 +30,6 @@ public sealed class TaikoLumenPresentation
     private readonly float _hitX;
     private readonly float _hitY;
     private readonly float _hitRadius;
-    private int _combo;
     private readonly TaikoGoGoPresentation _gogo;
     private readonly TaikoHitFlights? _flights;
     private readonly TaikoLongNotePresentation? _longNotes;
@@ -111,24 +110,10 @@ public sealed class TaikoLumenPresentation
         offsetTarget(0, 0);
     }
 
-    /// <summary>Shows a combo count at once (a reviewed play's restored state).</summary>
-    public void SetCombo(int combo)
-    {
-        if (_combo == combo)
-            return;
-        _combo = combo;
-    }
-
     /// <summary>The drum was struck (whether or not a note was there).</summary>
     public event Action<TaikoInputAction>? DrumHit;
 
-    public void Hit(TaikoInputAction action)
-    {
-        DrumHit?.Invoke(action);
-        var don = action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon;
-        if (!_target.Player.TryGotoLabel("effect", don ? "don_s" : "katsu_s"))
-            throw new InvalidDataException("Gameplay lane has no drum feedback state.");
-    }
+    public void Hit(TaikoInputAction action) => DrumHit?.Invoke(action);
 
     public event Action<bool>? GoGoChanged;
 
@@ -233,9 +218,6 @@ public sealed class TaikoLumenPresentation
     /// <summary>Stops drawing note <paramref name="index"/>, with no judgement shown.</summary>
     public void RemoveNote(int index) => _removed.Add(index);
 
-    /// <summary>The target's hit ring (a GOOD's), alone: no judgement, combo or score.</summary>
-    public void FlashTarget() => _target.Player.TryGotoLabel("hit_effect", "hit_ryo");
-
     // Movies the host draws over the lane that a layout still places (the resume countdown, "timer"), by target.
     private readonly Dictionary<string, LumenSceneLayer> _overlays = new(StringComparer.Ordinal);
 
@@ -246,14 +228,9 @@ public sealed class TaikoLumenPresentation
     public LumenSceneLayer PlaceOverlay(LumenSceneLayer layer, string target, TimeSpan time) =>
         _stage.IsActive ? _stage.Place(layer, target, false, time) : layer;
 
-    /// <summary>The layout editor's "Show hidden": the 100-combo announcement pops up again whenever it is gone.</summary>
-    public void ShowCombo()
-    {
-        foreach (var (player, role) in _roles ?? new Dictionary<LumenPlayer, string>())
-            if (StageEffects.TargetOf(role) == "combo"
-                && !player.CreateRenderSnapshot().Quads.Any(static quad => quad.MultiplyColor.Alpha > 0))
-                player.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(100)]);
-    }
+    /// <summary>A movie placed as the combo announcement draws nothing now (the layout editor shows it again).</summary>
+    public bool ComboHidden => (_roles ?? new Dictionary<LumenPlayer, string>()).Any(static pair => StageEffects.TargetOf(pair.Value) == "combo"
+        && !pair.Key.CreateRenderSnapshot().Quads.Any(static quad => quad.MultiplyColor.Alpha > 0));
 
     public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time,
         LumenSceneLayer? character = null, int characterSlot = 0)
@@ -366,52 +343,19 @@ public sealed class TaikoLumenPresentation
     private (ChartBarLine Bar, TimeSpan From, TimeSpan Until)[] barTimes(ImmutableArray<ChartBarLine> bars) =>
         [.. bars.Select(bar => _geometry.BarWindow(bar.Time) is var window ? (bar, window.From, window.Until) : default)];
 
-    /// <summary>The combo shown is set from outside (<see cref="SetCombo"/>), not counted from the judgements shown (an online partner's lane).</summary>
-    public bool ExternalCombo { get; set; }
+    /// <summary>
+    /// A note this lane shows judged by a hit (not one that passed unhit, nor a big note's second half): the lane's
+    /// hit flash and judgement word. From the stream the lane draws, which for an online partner's lane is their
+    /// live play (note.judged follows the lane's own count).
+    /// </summary>
+    public event Action<TaikoNoteJudgement>? Shown;
 
     private void onJudged(TaikoNoteJudgement result)
     {
         _flights?.Trigger(result);
-        if (result.StrongHitCompleted || result.Placeholder)
+        if (result.StrongHitCompleted || result.Placeholder || result.TimedOut)
             return;
-        if (!ExternalCombo)
-        {
-            _combo = result.Result == TaikoHitResult.Miss ? 0 : _combo + 1;
-        }
-        if (result.TimedOut)
-            return;
-        var label = result.Result switch
-        {
-            TaikoHitResult.Great => "ryo",
-            TaikoHitResult.Good => "ka",
-            _ => "huka",
-        };
-        if (!_target.Player.TryGotoLabel("hit_effect", (result.HitObject.IsStrong ? "hit_dai_" : "hit_") + label)
-            || !_feedback.TryGotoLabel("", "hit_" + label
-                + (result.HitObject.IsStrong && result.Result != TaikoHitResult.Miss ? "_big" : "")))
-            throw new InvalidDataException("Gameplay movie is missing a judgement state.");
-        // Traced (session6/12/27): a press that judges a note turns the lane's don_s/katsu_s into the brighter
-        // don_hit/katsu_hit in the same tick. ponytail: bads keep the plain flash (none traced); don_b/katsu_b unseen.
-        if (result.Result is TaikoHitResult.Great or TaikoHitResult.Good)
-            lightHit(result);
-    }
-
-    private string? _hitLight;
-
-    private void lightHit(TaikoNoteJudgement result)
-    {
-        _hitLight = result.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa ? "katsu_hit" : "don_hit";
-        _target.Player.TryGotoLabel("effect", _hitLight);
-    }
-
-    /// <summary>
-    /// A big note's other hand (absorbed, no judgement): its press flash gives way to the hit light again, so a
-    /// two-hand hit stays lit as a hit.
-    /// </summary>
-    public void KeepHitLight()
-    {
-        if (_hitLight is { } label)
-            _target.Player.TryGotoLabel("effect", label);
+        Shown?.Invoke(result);
     }
 
     // The chart's effects (ChartEffects): note placement, and the scene's movies under modcharts and target moves.

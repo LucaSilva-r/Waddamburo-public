@@ -55,7 +55,7 @@
         "hit_ka_big_wai": 210
       },
       "scripts": {
-        "0": "scripts/rest.as",
+        "0": "scripts/main.as",
         "hit_ryo": "scripts/word.as",
         "hit_ka": "scripts/word.as",
         "hit_huka": "scripts/word.as",

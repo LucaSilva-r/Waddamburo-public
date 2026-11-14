@@ -223,7 +223,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>The layout editor's "Show hidden": parts that only show now and then are kept on screen.</summary>
     public void ShowHiddenElements()
     {
-        foreach (var lane in _lanes) lane.Presentation.ShowCombo();
+        foreach (var lane in _lanes) lane.ShowCombo();
     }
 
     /// <summary>A dan course's requirement can no longer be met: the course ends with the song being played.</summary>
@@ -552,7 +552,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gameMovies = new GameplayGameMovies(board, gaugeMovie, () => gauge.FilledSegments, scoreAdd, comboBonus,
                 gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
                 layers.GetValueOrDefault("dani_enso")?.Player, layers["renda_num"].Player, layers["action_fusen_1p"].Player,
-                (kusudama?.Layer ?? layers.GetValueOrDefault("action_kusudama"))?.Player);
+                (kusudama?.Layer ?? layers.GetValueOrDefault("action_kusudama"))?.Player, layers["lane_hit_effect"].Player);
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
             // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
@@ -870,8 +870,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 }
                 if (_live is null)
                     _character?.OnJudged(judgement);
-                else
-                    _presentation!.SetCombo(score.Combo);
                 skinPresentation.OnJudged(judgement, gauge);
                 publishPlay();
                 if (!judgement.StrongHitCompleted && judgement.Result is { } told)
@@ -882,7 +880,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         TaikoHitResult.Good => "ok",
                         _ => "bad",
                     }), LumenHostValue.FromBoolean(judgement.HitObject.IsStrong),
-                        LumenHostValue.FromString(judgement.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa ? "ka" : "don"));
+                        LumenHostValue.FromString(judgement.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa ? "ka" : "don"),
+                        LumenHostValue.FromBoolean(!judgement.TimedOut));
                     if (score.Combo > 0 && score.Combo % 100 == 0)
                         emit("combo.milestone", LumenHostValue.FromNumber(score.Combo));
                 }
@@ -894,7 +893,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             {
                 score.Restore(state?.Score ?? new TaikoScoreState(0, 0, 0, 0, -1, 0));
                 gauge.Restore(state?.Gauge ?? 0);
-                _presentation!.SetCombo(score.Combo);
                 _character?.SetGauge(gauge.State);
                 publishPlay();
             };
@@ -968,10 +966,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // A modchart turns Don-chan's model (yaw, pitch, roll); 0 when it doesn't.
             _presentation.DonTurn = (yaw, pitch, roll) => _character?.Turn(yaw, pitch, roll);
             if (_live is not null)
-            {
-                _presentation.ExternalCombo = true;
                 _source.Judged += judgement => _character?.OnJudged(judgement);
-            }
+            _presentation.Shown += judgement => gameMovies.Judged(judgement.Result ?? TaikoHitResult.Miss, judgement.HitObject.IsStrong,
+                judgement.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa);
             _presentation.Doron = options.Doron;
             // The options' icons on the lane (traced SetSpeed(1) for none). lane_obi's setOption shows
             // speedx<n> above 1, doron and abekobe when true, random<level> above 0 (1 きまぐれ, 2 でたらめ),
@@ -1127,7 +1124,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 _relay?.Record(hit, eventTime);
                 // ponytail: live play only; a replay's second hand still shows its press flash.
                 if (_session.SubmitInput(hit, eventTime) == TaikoInputResult.SecondHand)
-                    _presentation.KeepHitLight();
+                    _gameMovies.KeepHitLight();
             }
             _session.AdvanceTo(chartTime);
             _relay?.SetClock(chartTime);
@@ -1143,7 +1140,13 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         public void RemoveNote(int index) => _presentation.RemoveNote(index);
 
-        public void FlashTarget() => _presentation.FlashTarget();
+        public void FlashTarget() => _gameMovies.FlashTarget();
+
+        /// <summary>The layout editor's "Show hidden": the 100-combo announcement again whenever it is gone.</summary>
+        public void ShowCombo()
+        {
+            if (_presentation.ComboHidden) _emit("combo.milestone", [LumenHostValue.FromNumber(100)]);
+        }
 
         public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time) =>
             _presentation.CreateLayers(shown(time), _character?.Layer, _characterSlot);

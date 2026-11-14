@@ -1,2 +1,2 @@
-// Back to rest: nothing shown until the game picks the next state.
+// Back to rest: nothing shown until the next judgement.
 gotoAndStop(1);

@@ -159,6 +159,24 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheJudgementWordFollowsTheHits()
+    {
+        static LumenHostValue text(string value) => LumenHostValue.FromString(value);
+        var word = load("enso_system/common/lane_hit_effect");
+        advance(word, 2);
+        word.Emit("note.judged", text("good"), LumenHostValue.FromBoolean(true), text("don"), LumenHostValue.FromBoolean(true));
+        Assert.Equal(word.Labels["hit_ryo_big"], word.CurrentFrame);
+        advance(word, 40); // the word ends: back at rest, the listener still there once
+        Assert.Equal(0, word.CurrentFrame);
+        word.Emit("note.judged", text("bad"), LumenHostValue.FromBoolean(false), text("ka"), LumenHostValue.FromBoolean(false));
+        Assert.Equal(0, word.CurrentFrame); // passed unhit: no word
+        word.Emit("note.judged", text("bad"), LumenHostValue.FromBoolean(true), text("ka"), LumenHostValue.FromBoolean(true));
+        Assert.Equal(word.Labels["hit_huka"], word.CurrentFrame);
+        Assert.True(word.UsesProvider);
+        Assert.Empty(word.Diagnostics);
+    }
+
+    [Fact]
     public void TheLaneAndTheBubbleFollowTheRoute()
     {
         static LumenHostValue text(string value) => LumenHostValue.FromString(value);
