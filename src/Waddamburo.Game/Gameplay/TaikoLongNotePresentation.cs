@@ -42,6 +42,25 @@ public sealed class TaikoSharedKusudama(LumenSceneLayer layer, int players)
     public void Leave() => _lanes = Math.Max(0, _lanes - 1);
 }
 
+/// <summary>
+/// What a long note's own movie is told beyond the provider: the game's are driven by callbacks and labels
+/// (Waddamburo.Skins.Green); ours read note.length and note.hit and need none of this.
+/// </summary>
+public interface ITaikoLongNoteMovies
+{
+    /// <summary>A long note's movie was made for a note coming on screen.</summary>
+    void Shown(LumenPlayer note);
+
+    /// <summary>A roll's body or text, <paramref name="length"/> pixels from head to tail this tick.</summary>
+    void Sized(LumenPlayer note, float length);
+
+    /// <summary>After each frame a long note's movie plays (and once a tick when it stands still).</summary>
+    void Stepped(LumenPlayer note);
+
+    /// <summary>A hit on the roll this movie draws.</summary>
+    void Struck(LumenPlayer note);
+}
+
 /// <summary>Owns isolated authored roll movies and the active long-note counters.</summary>
 public sealed class TaikoLongNotePresentation
 {
@@ -54,6 +73,8 @@ public sealed class TaikoLongNotePresentation
     private readonly LumenSceneLayer _counter;
     private readonly LumenSceneLayer _balloon;
     private readonly IDonPresentationController? _don;
+    private readonly ITaikoLongNoteMovies? _movies;
+
     /// <summary>A hit on a long note the lane shows (its flight, for the game's flight movies).</summary>
     public event Action<TaikoLongNoteProgress>? Struck;
     private readonly Action<PlayableLongNoteKind, bool>? _onBalloonCompleted;
@@ -112,8 +133,9 @@ public sealed class TaikoLongNotePresentation
         LumenSceneLayer balloon, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
         Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null,
-        Func<PlayableLongNoteKind, LumenSceneLayer>? createText = null)
+        Func<PlayableLongNoteKind, LumenSceneLayer>? createText = null, ITaikoLongNoteMovies? movies = null)
     {
+        _movies = movies;
         _createText = createText;
         _player = player;
         _kusu = player == 1 ? "don_kusu2P" : "don_kusu1P";
@@ -155,16 +177,14 @@ public sealed class TaikoLongNotePresentation
             refreshShownHits(rolling);
         foreach (var layer in _visible.Values)
         {
-            // Each frame played is followed by its OnUpdate, as the movie expects (it lays the tail out
-            // there); a still note still gets one a tick.
-            var update = layer.Player.CallbackNames.Contains("OnUpdate");
+            // Each frame played is followed by Stepped (the game's lay their tail out there); a still note
+            // still gets one a tick.
             var frames = steps?.Invoke(layer.Player) ?? 1;
             for (var frame = 0; frame < Math.Max(1, frames); frame++)
             {
                 if (frame < frames)
                     layer.Player.Advance();
-                if (update)
-                    invoke(layer.Player, "OnUpdate");
+                _movies?.Stepped(layer.Player);
             }
         }
         // Counter movies belong to the scene and are advanced exactly once by its player.
@@ -228,8 +248,7 @@ public sealed class TaikoLongNotePresentation
             if (!_visible.TryGetValue(index, out var layer))
             {
                 layer = _createNote(note.Kind);
-                if (!layer.Player.TryGotoLabel("", "level01"))
-                    throw new InvalidDataException("Long-note movie has no initial note state.");
+                _movies?.Shown(layer.Player);
                 _visible.Add(index, layer);
             }
             // Along the roll, head to tail: mirrored when it runs left, turned when it slants (TJA complex scroll).
@@ -238,7 +257,8 @@ public sealed class TaikoLongNotePresentation
                 : new LumenMatrix(dx / length, dy / length, -dy / length, dx / length, head.X, head.Y);
             if (!note.IsBalloon)
             {
-                invoke(layer.Player, "SetWidth", length);
+                layer.Player.Publish("note.length", LumenHostValue.FromNumber(length));
+                _movies?.Sized(layer.Player, length);
                 // Drawn as set, never blended from the last tick: the width follows the roll's place, which
                 // is exact every frame (a stale blend stretched the tail, worst when scrubbing a review back).
                 layer.Player.HoldStill();
@@ -249,7 +269,8 @@ public sealed class TaikoLongNotePresentation
             if (note.IsBalloon || _createText is null) continue;
             if (!_texts.TryGetValue(index, out var text))
                 _texts.Add(index, text = _createText(note.Kind));
-            invoke(text.Player, "SetWidth", length);
+            text.Player.Publish("note.length", LumenHostValue.FromNumber(length));
+            _movies?.Sized(text.Player, length);
             text.Player.HoldStill();
             yield return (note.StartTime, text with { Transform = transform with { Y = head.Y + TaikoNoteText.Offset } });
         }
@@ -347,7 +368,11 @@ public sealed class TaikoLongNotePresentation
             _shownHits = ShownHits?.Invoke(progress.NoteIndex) ?? progress.Hits;
             Changed?.Invoke();
             if (_visible.TryGetValue(progress.NoteIndex, out var layer))
-                invoke(layer.Player, "HitAction");
+            {
+                layer.Player.Emit("note.hit", LumenHostValue.FromString(
+                    progress.LastAction is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? "don" : "ka"));
+                _movies?.Struck(layer.Player);
+            }
         }
     }
 
@@ -405,9 +430,4 @@ public sealed class TaikoLongNotePresentation
             ? ($"{_kusu}_loop", $"{_kusu}_nobeat")
             : ("don_balloon_loop", "don_balloon_nobeat");
 
-    private static void invoke(LumenPlayer player, string name, double? argument = null)
-    {
-        if (!player.TryInvokeCallback(name, argument is { } value ? [LumenHostValue.FromNumber(value)] : []))
-            throw new InvalidDataException($"Long-note movie is missing callback '{name}'.");
-    }
 }

@@ -13,13 +13,15 @@ namespace Waddamburo.Skins.Green.Gameplay;
 /// <remarks>
 /// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
 /// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner, a dan course's panel, the roll counter,
-/// the balloon and the kusudama, the notes' combo faces, the target's hit flashes and the judgement words. Not here:
-/// the roll bodies (TaikoLongNotePresentation); the game's flight pool is TaikoHitFlights beside this.
+/// the balloon and the kusudama, the notes' combo faces, the target's hit flashes and the judgement words, the long
+/// notes' own movies (ITaikoLongNoteMovies: level01, SetWidth, OnUpdate, HitAction). The game's flight pool is
+/// TaikoHitFlights beside this.
 /// </remarks>
 public sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,
     LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner, LumenPlayer target, LumenPlayer? bubble,
     LumenPlayer? danPanel, LumenPlayer rollCounter, LumenPlayer balloon, LumenPlayer? kusudama, LumenPlayer? feedback = null)
+    : ITaikoLongNoteMovies
 {
     private static readonly string[] Routes = ["normal", "expert", "master"];
     private int _segments = -1;
@@ -167,6 +169,30 @@ public sealed class GameplayGameMovies(
     {
         if (_hitLight is { } label)
             game(target)?.TryGotoLabel("effect", label);
+    }
+
+    // The game's long notes (onp_renda, onp_fusen, onp_kusudama and the roll texts): a new one starts on level01; a
+    // roll's body and text are sized with SetWidth every tick; each frame played is followed by OnUpdate (the movie
+    // lays its tail out there); each hit on a roll is a HitAction.
+    public void Shown(LumenPlayer note)
+    {
+        if (game(note) is { } movie && !movie.TryGotoLabel("", "level01"))
+            throw new InvalidDataException("Long-note movie has no initial note state.");
+    }
+
+    public void Sized(LumenPlayer note, float length)
+    {
+        if (game(note) is { } movie) call(movie, "SetWidth", number(length));
+    }
+
+    public void Stepped(LumenPlayer note)
+    {
+        if (game(note) is { } movie && movie.CallbackNames.Contains("OnUpdate")) call(movie, "OnUpdate");
+    }
+
+    public void Struck(LumenPlayer note)
+    {
+        if (game(note) is { } movie) call(movie, "HitAction");
     }
 
     /// <summary>The target's hit ring (a GOOD's), alone: no judgement, combo or score (the audio calibration).</summary>

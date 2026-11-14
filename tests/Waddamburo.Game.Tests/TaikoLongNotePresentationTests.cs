@@ -2,6 +2,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
 
@@ -83,11 +84,12 @@ public sealed class TaikoLongNotePresentationTests
         var layer = TestMovies.RecordingMovie(calls);
         var started = new List<PlayableLongNoteKind>();
         var presentation = new TaikoLongNotePresentation(chart, session, _ => TestMovies.RecordingMovie(calls), layer, layer,
-            onNoteStarted: started.Add);
+            onNoteStarted: started.Add, movies: new Told(calls));
         var told = listen(presentation);
         var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _, _) => (400 + (float)time.TotalSeconds * 100, 250f), (400, 250))).Layer;
         Assert.NotSame(layer.Player, noteLayer.Player);
-        Assert.Contains(("SetWidth", 100d), calls);
+        Assert.Contains(("sized", 100d), calls);
+        Assert.Equal(100d, noteLayer.Player.Provided("note.length").AsNumber());
         presentation.Update(TimeSpan.FromSeconds(1));
         session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.1));
         session.SubmitInput(TaikoInputAction.RightKa, TimeSpan.FromSeconds(1.2));
@@ -95,8 +97,8 @@ public sealed class TaikoLongNotePresentationTests
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
         Assert.Equal(["count 1", "count 2", "none"], told);
-        Assert.Equal(2, calls.Count(c => c.Item1 == "HitAction"));
-        Assert.Contains(calls, c => c.Item1 == "OnUpdate");
+        Assert.Equal(2, calls.Count(c => c.Item1 == "struck"));
+        Assert.Contains(calls, c => c.Item1 == "stepped");
         Assert.Equal([PlayableLongNoteKind.Roll], started);
     }
 
@@ -123,15 +125,25 @@ public sealed class TaikoLongNotePresentationTests
         var calls = new List<(string, double)>();
         var chart = chartFor(kind);
         var layer = TestMovies.RecordingMovie(calls);
-        var presentation = new TaikoLongNotePresentation(chart, sessionFor(chart), _ => TestMovies.RecordingMovie(calls), layer, layer);
+        var presentation = new TaikoLongNotePresentation(chart, sessionFor(chart), _ => TestMovies.RecordingMovie(calls), layer, layer,
+            movies: new Told(calls));
 
         (float, float) position(TimeSpan noteTime, TimeSpan _, ChartBranch? __) => (400 + (float)(noteTime - TimeSpan.FromSeconds(6.1)).TotalSeconds * 100, 250);
         var visible = Assert.Single(presentation.NoteLayers(TimeSpan.FromSeconds(6.1), position, (400, 250)));
         Assert.Equal(-110, visible.Layer.Transform.X);
-        Assert.Equal(100, calls.Last(call => call.Item1 == "SetWidth").Item2);
+        Assert.Equal(100, calls.Last(call => call.Item1 == "sized").Item2);
 
         (float, float) offscreen(TimeSpan noteTime, TimeSpan _, ChartBranch? __) => (400 + (float)(noteTime - TimeSpan.FromSeconds(7.1)).TotalSeconds * 100, 250);
         Assert.Empty(presentation.NoteLayers(TimeSpan.FromSeconds(7.1), offscreen, (400, 250)));
+    }
+
+    /// <summary>What the long notes' movies are told beyond the provider, as (call, length).</summary>
+    private sealed class Told(List<(string, double)> calls) : ITaikoLongNoteMovies
+    {
+        public void Shown(LumenPlayer note) => calls.Add(("shown", double.NaN));
+        public void Sized(LumenPlayer note, float length) => calls.Add(("sized", length));
+        public void Stepped(LumenPlayer note) => calls.Add(("stepped", double.NaN));
+        public void Struck(LumenPlayer note) => calls.Add(("struck", double.NaN));
     }
 
     private static PlayableChart chartFor(PlayableLongNoteKind kind, int quota = 0) => new(

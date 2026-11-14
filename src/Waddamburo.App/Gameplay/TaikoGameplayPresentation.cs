@@ -648,7 +648,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 {
                     var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
                     return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-                }) { KeepCamera = donStage is not null && !layers.ContainsKey("don3d") };
+                }, movies: gameMovies) { KeepCamera = donStage is not null && !layers.ContainsKey("don3d") };
             // The roll, balloon and kusudama as they go: their counts at once (and again each tick, for the shared
             // kusudama the other drum counts down), their starts and ends as events.
             void publishLongNotes()

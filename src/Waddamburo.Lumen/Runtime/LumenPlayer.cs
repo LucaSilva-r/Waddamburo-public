@@ -108,6 +108,9 @@ public sealed partial class LumenPlayer
                 : sign * (double)Convert.ToInt64(digits, radix));
         });
         _globals["Wd"] = createProvider();
+        // A movie whose scripts name the provider is one of ours from the start, before its first frame has run (the
+        // engine may drive a fresh note movie in the same tick). None of the game's 701 movies has the string.
+        UsesProvider = movie.Strings.Any(static text => text.Value == "Wd");
         hostBinding?.Install(new LumenHostContext(_globals, _externalInterface, findNumericVariableName));
         bootstrapPackageClasses();
         enterFrame(_root, 0, queueActions: true);

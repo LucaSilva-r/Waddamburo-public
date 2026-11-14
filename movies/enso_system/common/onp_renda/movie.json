@@ -1,38 +1,93 @@
-// onp_renda: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// A drumroll as the engine draws it along the lane: head at the origin, body and tail to the right.
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "box": "textures/box.svg"
+    "head": "textures/head.svg",
+    "body": "textures/body.svg"
   },
   "shapes": {
-    "box": {
-      "texture": "box",
+    "head": {
+      "texture": "head",
       "rect": [
-        -32,
-        -32,
-        64,
-        64
+        -64,
+        -64,
+        128,
+        128
+      ]
+    },
+    "body": {
+      "texture": "body",
+      "rect": [
+        0,
+        -38,
+        100,
+        76
       ]
     }
   },
   "sprites": {
+    "cap": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "head",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
+    "bar": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "body",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    },
     "main": {
-      "frames": 50,
-      "labels": {
-        "level01": 0,
-        "level02": 10,
-        "level03": 20,
-        "level00": 30,
-        "level04": 40
-      },
-      "layers": [],
+      "frames": 1,
       "scripts": {
-        "0": "scripts/main.as",
-        "39": "scripts/stop.as",
-        "49": "scripts/stop.as"
-      }
+        "0": "scripts/main.as"
+      },
+      "layers": [
+        {
+          "character": "bar",
+          "name": "body",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "cap",
+          "name": "tail",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "cap",
+          "name": "head",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
     }
   }
 }

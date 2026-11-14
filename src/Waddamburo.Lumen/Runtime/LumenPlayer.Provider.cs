@@ -24,7 +24,7 @@ public sealed partial class LumenPlayer
     private readonly HashSet<string> _providerAsked = new(StringComparer.Ordinal);
     private bool _hasOwnDrum;
 
-    /// <summary>The movie has asked the provider for something: it is one of ours, made for it.</summary>
+    /// <summary>The movie's scripts name the provider (or it has asked it for something): it is one of ours, made for it.</summary>
     public bool UsesProvider { get; private set; }
 
     /// <summary>The provider's names this movie has read or listens to, so far.</summary>

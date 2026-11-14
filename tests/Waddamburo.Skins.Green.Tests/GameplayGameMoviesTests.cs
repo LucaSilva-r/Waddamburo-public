@@ -19,6 +19,18 @@ public sealed class GameplayGameMoviesTests
     }
 
     [Fact]
+    public void TheGameRollsAreSizedSteppedAndStruckByTheirCallbacks()
+    {
+        var calls = new List<(string, double)>();
+        var roll = TestMovies.RecordingMovie(calls).Player;
+        _movies.Shown(roll);
+        _movies.Sized(roll, 120);
+        _movies.Stepped(roll);
+        _movies.Struck(roll);
+        Assert.Equal([("SetWidth", 120d), ("OnUpdate", double.NaN), ("HitAction", double.NaN)], calls);
+    }
+
+    [Fact]
     public void RollCounterShowsEachCountAndEndsOnlyAfterAHit()
     {
         state("play.roll", LumenHostValue.Undefined); // a roll without a hit

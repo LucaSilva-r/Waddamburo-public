@@ -232,7 +232,7 @@ public sealed class ActionScriptTests
             });
             stop();
             """);
-        Assert.False(player.UsesProvider);
+        Assert.True(player.UsesProvider); // its scripts name Wd: one of ours before it has asked anything
         player.Publish("play.combo", LumenHostValue.FromNumber(7));
         Assert.True(player.TryInvokeCallback("Late", []));
         Assert.Equal(["7"], reports);

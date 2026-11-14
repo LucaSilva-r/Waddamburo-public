@@ -324,8 +324,7 @@ the gameplay adapter (`Gameplay/GameplayGameMovies`). Engine rules found in thos
 (AI battle section records, arcade credit rules, the support menu's pick). Still to move, each when its part goes
 behind provider names:
 
-1. Gameplay: the lane classes that make the game's calls and label jumps (`TaikoLongNotePresentation`,
-   `TaikoDonPresentation`), and what
+1. Gameplay: the lane classes that make the game's calls and label jumps (`TaikoDonPresentation`), and what
    `TaikoGameplayPresentation` and `GameplayFlow` still call by name (the between-songs card, the shutter, the
    rainbow). Moved: `TaikoNoteFaces` (the adapter puts the game's notes on their combo face; ours read `play.combo`
    and take their frame from `play.beat`); `TaikoGameplayHostBinding` and `TaikoSongInfoPresentation` (song_info's
@@ -335,7 +334,11 @@ behind provider names:
    for an online partner's lane are their live play; ours read `note.judged`, whose `hit` says whether a stroke judged
    it). `TaikoLumenPresentation` itself stays in the engine: it places the notes, bars and stage effects. The flight
    pool (`TaikoHitFlights`): the engine draws whatever layers it is given at the flights' depth; the App flies the
-   game's pool from the judgements and the long notes' `Struck`, ours flies itself from `note.judged` and `roll.hit`. Sounds a free movie asks for wait for `Wd.request`.
+   game's pool from the judgements and the long notes' `Struck`, ours flies itself from `note.judged` and `roll.hit`.
+   `TaikoLongNotePresentation` stays in the engine (which roll is on screen, where): each roll's own movie is told
+   `note.length` and `note.hit` (names of the `note` scope: only that movie hears them), and the game's get their
+   level01, SetWidth, OnUpdate and HitAction from the adapter through `ITaikoLongNoteMovies`. Our roll texts
+   (`onp_renda_moji`) are still skeletons. A movie whose scripts name `Wd` counts as ours from its creation. Sounds a free movie asks for wait for `Wd.request`.
 2. Menus, one per screen as it gets `Wd.request`: results, entry, dan select, song select last. The flows then
    keep only the engine side.
 3. The end check: the engine and the free movies build and run with `Skins.Green` out of the solution.

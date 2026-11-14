@@ -158,6 +158,22 @@ public sealed class FreeTimeCounterTests
         Assert.Empty(note.Diagnostics);
     }
 
+    [Theory]
+    [InlineData("onp_renda")]
+    [InlineData("onp_renda_dai")]
+    public void TheRollsStretchToTheirLengthAndSwellOnHits(string name)
+    {
+        var roll = load($"enso_system/common/{name}");
+        Assert.True(roll.UsesProvider); // known before its first frame: the engine sizes a fresh roll at once
+        roll.Publish("note.length", n(320));
+        advance(roll, 2);
+        roll.Emit("note.hit", LumenHostValue.FromString("don"));
+        advance(roll, 10);
+        Assert.True(roll.TryGetInstanceBounds("tail", out var tail));
+        Assert.InRange(tail.X + tail.Width / 2, 315, 325); // the tail at the roll's end
+        Assert.Empty(roll.Diagnostics);
+    }
+
     [Fact]
     public void TheJudgementWordFollowsTheHits()
     {
