@@ -734,6 +734,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var bannerTime = TaikoResultBanner.Time(chart);
             EndBanner = endBanner;
             var bannerShown = false;
+            ChartBranch? notesRoute = null; // the route play.notes was counted for
+            var notes = chart.NoteCount;
             var measure = int.MinValue; // the last bar told (-1 before the first); none yet: a play seen from mid-song tells no bar
             publish("play.duration", LumenHostValue.FromNumber(chart.Duration.TotalSeconds));
             _onChartTime = time =>
@@ -755,6 +757,34 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 measure = bar;
                 publish("play.measure", LumenHostValue.FromNumber(bar));
                 publish("play.rollHits", LumenHostValue.FromNumber(score.RollHits));
+                // The notes of the route being played (a section not checked yet follows it): recounted when it changes.
+                if (chart.Branching is not null && _source.Branch != notesRoute)
+                {
+                    notesRoute = _source.Branch;
+                    notes = chart.HitObjects.Count(note => PlayableChart.IsOn(note.Branch, _source.BranchAt(note.StartTime)));
+                }
+                publish("play.notes", LumenHostValue.FromNumber(notes));
+                publish("play.notesLeft", LumenHostValue.FromNumber(Math.Max(notes - great - good - miss, 0)));
+                // The next note on the route after now (rolls and balloons are not notes here).
+                var next = lastAt(chart.HitObjects, static note => note.StartTime, time) + 1;
+                while (next < chart.HitObjects.Length
+                    && !PlayableChart.IsOn(chart.HitObjects[next].Branch, _source.BranchAt(chart.HitObjects[next].StartTime)))
+                    next++;
+                if (next < chart.HitObjects.Length)
+                {
+                    var note = chart.HitObjects[next];
+                    publish("play.nextNoteSeconds", LumenHostValue.FromNumber((note.StartTime - time).TotalSeconds));
+                    publish("play.nextNoteBeats", LumenHostValue.FromNumber(
+                        (_animationClock.Position(note.StartTime) - _animationClock.Position(time)) * 89 / 3600));
+                    var kind = note.Kind.ToString();
+                    publish("play.nextNoteKind", LumenHostValue.FromString(char.ToLowerInvariant(kind[0]) + kind[1..]));
+                }
+                else
+                {
+                    publish("play.nextNoteSeconds", LumenHostValue.Undefined);
+                    publish("play.nextNoteBeats", LumenHostValue.Undefined);
+                    publish("play.nextNoteKind", LumenHostValue.Undefined);
+                }
                 publish("play.balloonHits", LumenHostValue.FromNumber(score.BalloonHits));
                 // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
                 danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,

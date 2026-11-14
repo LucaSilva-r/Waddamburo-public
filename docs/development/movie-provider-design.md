@@ -81,7 +81,7 @@ Taken from what the gameplay hosts push today, renamed for what they mean rather
 | `play.roll.count`, `play.balloon.left` | state | `SetRendaCount`, `SetGekiRendaCount`, `SetLeftNotes` |
 | `play.progress` (0..1), `play.time` | state | `SetProgress` |
 | `play.beat` (fractional, every tick), `beat.passed` (whole beat) | state, event | (nothing: the game sets the note faces' frames by hand; built 2026-11-14 so any movie can move in time with the song) |
-| `play.time`, `play.duration`, `play.bpm`, `play.meter`, `play.measure` + `measure.passed`, `play.scroll`, `play.rollHits`, `play.balloonHits`, `play.level`, `player.autoplay`, `player.replay`, `song.artist`, `song.genre`, `song.source`, `song.stage`, `song.finalStage` | state (one event) | (built 2026-11-14, user: skin makers get as much of the current state as they may need) |
+| `play.time`, `play.duration`, `play.bpm`, `play.meter`, `play.measure` + `measure.passed`, `play.scroll`, `play.rollHits`, `play.balloonHits`, `play.level`, `player.autoplay`, `player.replay`, `song.artist`, `song.genre`, `song.source`, `song.stage`, `song.finalStage`, `play.notes`, `play.notesLeft`, `play.nextNoteBeats`, `play.nextNoteSeconds`, `play.nextNoteKind` | state (one event) | (built 2026-11-14, user: skin makers get as much of the current state as they may need) |
 | `song.title`, `song.subtitle`, `song.course`, `song.stars` | state | drawn into fill slots |
 | `player.N.name`, `player.N.joined`, `player.N.options` | state | `SetPlayer`, `SetSpeed`, `SetDoron`, ... |
 | `note.judged` (kind, result, big, player) | event | `SetHit`, the hit-effect labels |
