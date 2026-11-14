@@ -175,6 +175,26 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheResultsShowEachDrumAndAskToGoOn()
+    {
+        var result = load("enso_result/result");
+        result.Publish("result.course", LumenHostValue.FromString("oni"), 2);
+        result.Publish("result.score", n(1004280), 2);
+        result.Publish("result.good", n(612), 2);
+        result.Publish("result.cleared", LumenHostValue.FromBoolean(true), 2);
+        var asked = 0;
+        result.RequestHandler = (_, _) => { asked++; return null; };
+        advance(result, 60);
+        Assert.Equal("ONI  CLEAR", result.ReadScriptValue("p2.value0.text"));
+        Assert.Equal("1004280", result.ReadScriptValue("p2.value1.text"));
+        Assert.Equal("", result.ReadScriptValue("p2.value2.text")); // a guest: no best
+        Assert.Equal(0, asked);
+        advance(result, 15 * 60); // nobody hit: the results go on by themselves, once
+        Assert.Equal(1, asked);
+        Assert.Empty(result.Diagnostics);
+    }
+
+    [Fact]
     public void TheEntryFollowsWhoIsInAndAsksToStart()
     {
         var entry = load("entry/entry");

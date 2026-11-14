@@ -568,7 +568,35 @@ internal sealed class LayerHostFactory(
             Best = Best,
             Placement = Placement,
         };
-        return new LumenLayerHost(binding, binding.Attach);
+        return new LumenLayerHost(binding, player =>
+        {
+            publishResults(player, plays);
+            binding.Attach(player);
+        });
+    }
+
+    // The provider's result.* for a results movie of ours, each play under its drum's number.
+    private void publishResults(LumenPlayer player, IReadOnlyList<TaikoPlayResult> plays)
+    {
+        if (!player.UsesProvider)
+            return;
+        for (var index = 0; index < plays.Count; index++)
+        {
+            var play = plays[index];
+            var drum = (plays.Count == 2 ? index : PlayerSide) + 1;
+            void tell(string name, LumenHostValue value) => player.Publish(name, value, drum);
+            tell("result.course", LumenHostValue.FromString(play.Course.ToString().ToLowerInvariant()));
+            tell("result.score", LumenHostValue.FromNumber(play.Score));
+            tell("result.best", Best?.Invoke(index) is { } best ? LumenHostValue.FromNumber(best) : LumenHostValue.Undefined);
+            tell("result.good", LumenHostValue.FromNumber(play.Great));
+            tell("result.ok", LumenHostValue.FromNumber(play.Good));
+            tell("result.bad", LumenHostValue.FromNumber(play.Miss));
+            tell("result.maxCombo", LumenHostValue.FromNumber(play.MaxCombo));
+            tell("result.rolls", LumenHostValue.FromNumber(play.Rolls + play.BalloonHits));
+            tell("result.gauge", LumenHostValue.FromNumber((double)play.GaugeSegments / TaikoSoulGauge.Segments));
+            tell("result.cleared", LumenHostValue.FromBoolean(play.Cleared));
+            tell("result.fullCombo", LumenHostValue.FromBoolean(play.FullCombo));
+        }
     }
 
     /// <summary>The course play the next results show; null: a song's.</summary>

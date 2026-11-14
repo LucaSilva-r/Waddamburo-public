@@ -370,6 +370,10 @@ behind provider names:
   the drum that came in from the attract, and on the first join starts the countdown (`EntrySceneHost.FirstJoin`);
   the host skips the game's calls on a movie that reads the provider. Drums still read as keys (`Key.isDown`).
   Checked by the user at home: setup, mode menu, normal, dan, Waiwai. Not yet seen: arcade (coins, rejoin).
+- Results on the provider (2026-11-14, user-checked): states `result.*` (scope result, per drum: course, score, best,
+  good, ok, bad, maxCombo, rolls, gauge, cleared, fullCombo), published by the results host to a movie of ours as it
+  loads; request `result.continue` ends them as the game's `_global.isAllEnd` does. This settles open question 0's
+  "results: own scope": its own, filled from the finished play. Not covered yet: dan, Waiwai and AI battle results.
 - First request: `session.start(mode)` on the entry (`normal`, `dan`). Our entry has a mode menu after the players
   join (rims move, DON decides); NORMAL still leaves through the game's calls (SetNextScene), DAN DOJO asks
   `session.start("dan")` and the engine opens dan select under the dan cover, as from song select's dojo.

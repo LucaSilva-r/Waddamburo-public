@@ -1,6 +1,8 @@
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
+using Waddamburo.Lumen.Provider;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
@@ -34,6 +36,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
+        _continued = false;
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.NextSong)
             Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Hosts.Waiwai, Shell.Hosts.AiBattle));
@@ -96,11 +99,26 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             keys.Timestamp);
     }
 
+    // The results' requests (WdNames scope result), for a results movie of ours; the game's ends through _global.isAllEnd.
+    private bool _continued;
+    private LumenPlayer[] _asking = [];
+
     public override void Tick(FlowInput input)
     {
         var scene = Shell.Active.Id;
         if (scene == FlowScenes.Result)
         {
+            var movies = Shell.Active.Player.Layers.Select(static layer => layer.Player).ToArray();
+            if (!movies.SequenceEqual(_asking))
+            {
+                new WdRequests("result").Handle("result.continue", _ =>
+                {
+                    if (_continued) return "the results are already ending";
+                    _continued = true;
+                    return null;
+                }).Install(movies);
+                _asking = movies;
+            }
             // The song's shutter stays over the results until their first frames are drawn.
             if (Shell.Overlay.IsShown && !Shell.Scenes.FadePending && Shell.Tick - _resultStartTick >= 2)
                 Shell.Overlay.Clear();
@@ -115,7 +133,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             // reports AllFinish).
             // AI battle's end with its section results (their movie calls Start).
             // (result_normal, the second layer, sets _global.isAllEnd once its 面でおわり exit runs.)
-            if (input.Escape || (Shell.Hosts.AiOutcome is not null
+            if (input.Escape || _continued || (Shell.Hosts.AiOutcome is not null
                     ? Shell.Hosts.AiSectionResult is { } sections && (sections.Ended
                         || sections.Played && RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player))
                     : Shell.Hosts.WaiwaiResult is { } waiwai
