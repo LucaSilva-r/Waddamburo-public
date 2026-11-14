@@ -194,9 +194,13 @@ public sealed class FreeTimeCounterTests
         static LumenHostValue text(string value) => LumenHostValue.FromString(value);
         var rainbow = load("intermission/scene_change_rainbow");
         advance(rainbow, 2);
+        rainbow.Publish("song.title", text("Senbonzakura"));
         rainbow.Publish("transition.title", LumenHostValue.FromBoolean(true));
         rainbow.Publish("transition.phase", text("cover"));
         Assert.Equal(rainbow.Labels["in_extra"], rainbow.CurrentFrame);
+        advance(rainbow, 30); // the title card crosses in
+        Assert.Equal("Senbonzakura", rainbow.ReadScriptValue("scene_change_song_name.text"));
+        Assert.True(rainbow.TryGetInstanceBounds("scene_change_song_name", out _)); // the engine stops the preview by it
         rainbow.Publish("transition.phase", text("reveal"));
         Assert.Equal(rainbow.Labels["out_extra"], rainbow.CurrentFrame);
         rainbow.Publish("transition.phase", LumenHostValue.Undefined); // shown again (a kept movie)

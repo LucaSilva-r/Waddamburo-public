@@ -3,6 +3,14 @@
 if (this.wired == undefined) {
     var self = this;
     self.wired = true;
+    // The song's title on the card that crosses the screen (in_extra / out_extra). The clip keeps the game's name:
+    // the engine stops the song's preview once it is on screen. Each crossing is a new clip: set every frame.
+    self.onEnterFrame = function() {
+        var title = Wd.get("song.title");
+        var card = self.scene_change_song_name;
+        if (card != undefined && card.text != title)
+            card.text = title == undefined ? "" : title;
+    };
     Wd.on("transition.phase", function(phase) {
         if (phase == undefined)
             return;
