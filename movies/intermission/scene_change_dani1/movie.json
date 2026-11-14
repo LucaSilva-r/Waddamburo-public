@@ -27,7 +27,7 @@
       },
       "layers": [],
       "scripts": {
-        "0": "scripts/stop.as",
+        "0": "scripts/transition.as",
         "9": "scripts/stop.as",
         "19": "scripts/stop.as",
         "29": "scripts/stop.as"

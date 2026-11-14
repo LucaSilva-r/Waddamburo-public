@@ -36,7 +36,8 @@ internal sealed class SongSelectReload(GameShell shell)
         _scene = FlowScenes.SongSelectScene(shell.Players.SongSelectSides, shell.Hosts.Waiwai, shell.Hosts.AiBattle);
         if (next is null)
             shell.Scenes.Prefetch(_scene);
-        shell.Overlay.Show(cover ?? FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
+        shell.Overlay.Show(cover ?? FlowScenes.Rainbow);
+        shell.Overlay.Cover();
         // The rainbow hurries here; another cover plays as authored.
         shell.Overlay.Speed = cover is null ? Speed : 1;
         _stage = Stage.Covering;
@@ -64,7 +65,7 @@ internal sealed class SongSelectReload(GameShell shell)
             _change?.Invoke();
             _change = null;
             shell.Scenes.Show(next);
-            shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
+            shell.Overlay.Reveal();
             _stage = Stage.Revealing;
             return true;
         }
@@ -76,7 +77,7 @@ internal sealed class SongSelectReload(GameShell shell)
             _change = null;
             shell.Catalog.Replace(_scene!);
             shell.Scenes.Show(FlowScenes.SongSelect);
-            shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
+            shell.Overlay.Reveal();
             _stage = Stage.Revealing;
             return true;
         }

@@ -5,6 +5,7 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Presentation;
 
@@ -42,7 +43,35 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
             _scene = (LumenGameSceneInstance)loader.LoadAsync(definition, CancellationToken.None).AsTask().GetAwaiter().GetResult();
             _textures = SceneTextures.Upload(application, _scene);
         }
+        // A kept movie starts each showing without a phase: a cover after its last cover is still told.
+        Player!.Publish("transition.phase", LumenHostValue.Undefined);
         return Player!;
+    }
+
+    /// <summary>
+    /// The shown movie covers the screen (transition.title, transition.side, then transition.phase "cover"); the
+    /// game's by their labels or Close. False while it cannot take it yet (the game's shutter, before its first frame).
+    /// </summary>
+    /// <param name="title">The song's title shows on it (the rainbow before a song).</param>
+    /// <param name="side">Whose colour: 0 the left drum, 1 the right, 2 both.</param>
+    public bool Cover(bool title = false, int side = 0)
+    {
+        if (Player is not { } movie)
+            return false;
+        movie.Publish("transition.title", LumenHostValue.FromBoolean(title));
+        movie.Publish("transition.side", LumenHostValue.FromNumber(side));
+        movie.Publish("transition.phase", LumenHostValue.FromString("cover"));
+        return GameIntermissions.Cover(movie, title, side);
+    }
+
+    /// <summary>The shown movie uncovers what is under it (transition.phase "reveal").</summary>
+    public void Reveal(bool title = false)
+    {
+        if (Player is not { } movie)
+            return;
+        movie.Publish("transition.title", LumenHostValue.FromBoolean(title));
+        movie.Publish("transition.phase", LumenHostValue.FromString("reveal"));
+        GameIntermissions.Reveal(movie, title);
     }
 
     public void Clear()

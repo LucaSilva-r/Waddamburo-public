@@ -175,6 +175,31 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheIntermissionsFollowTheTransitionPhase()
+    {
+        static LumenHostValue text(string value) => LumenHostValue.FromString(value);
+        var rainbow = load("intermission/scene_change_rainbow");
+        advance(rainbow, 2);
+        rainbow.Publish("transition.title", LumenHostValue.FromBoolean(true));
+        rainbow.Publish("transition.phase", text("cover"));
+        Assert.Equal(rainbow.Labels["in_extra"], rainbow.CurrentFrame);
+        rainbow.Publish("transition.phase", text("reveal"));
+        Assert.Equal(rainbow.Labels["out_extra"], rainbow.CurrentFrame);
+        rainbow.Publish("transition.phase", LumenHostValue.Undefined); // shown again (a kept movie)
+        rainbow.Publish("transition.title", LumenHostValue.FromBoolean(false));
+        rainbow.Publish("transition.phase", text("cover"));
+        Assert.Equal(rainbow.Labels["in"], rainbow.CurrentFrame);
+        Assert.Empty(rainbow.Diagnostics);
+
+        var shutter = load("intermission/shutter");
+        advance(shutter, 2);
+        shutter.Publish("transition.side", n(2));
+        shutter.Publish("transition.phase", text("cover"));
+        Assert.Equal(shutter.Labels["close"], shutter.CurrentFrame);
+        Assert.Empty(shutter.Diagnostics);
+    }
+
+    [Fact]
     public void TheJudgementWordFollowsTheHits()
     {
         static LumenHostValue text(string value) => LumenHostValue.FromString(value);

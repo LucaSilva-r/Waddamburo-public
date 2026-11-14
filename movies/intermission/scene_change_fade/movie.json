@@ -26,7 +26,7 @@
         "out": 72
       },
       "scripts": {
-        "0": "scripts/stop.as",
+        "0": "scripts/transition.as",
         "70": "scripts/stop.as",
         "81": "scripts/stop.as"
       },

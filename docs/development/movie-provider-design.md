@@ -324,8 +324,13 @@ the gameplay adapter (`Gameplay/GameplayGameMovies`). Engine rules found in thos
 (AI battle section records, arcade credit rules, the support menu's pick). Still to move, each when its part goes
 behind provider names:
 
-1. Gameplay: what `TaikoGameplayPresentation` and `GameplayFlow` still call by name (the between-songs card, the shutter, the
-   rainbow). Moved: `TaikoNoteFaces` (the adapter puts the game's notes on their combo face; ours read `play.combo`
+1. Gameplay: the dan course's between-songs card (`between`), which `GameplayFlow` still jumps by name. The
+   intermissions (rainbow, fade, dan covers, shutters) follow the transition protocol: `IntermissionOverlay.Cover(title,
+   side)` / `Reveal(title)` publish `transition.title`, `transition.side` and `transition.phase` (cover, reveal) to the
+   shown movie, and `GameIntermissions` (Skins.Green) gives the game's their in / out / in_extra / out_extra labels,
+   Close(side) and the title fill. Still read by name: whether the rainbow's title is on screen
+   (`scene_change_song_name`, to stop the preview), so under our rainbow the preview plays on. The board's setup and
+   option icons went to the adapter (`SetUpBoard`, `ShowOptions`). Moved: `TaikoNoteFaces` (the adapter puts the game's notes on their combo face; ours read `play.combo`
    and take their frame from `play.beat`); `TaikoGameplayHostBinding` and `TaikoSongInfoPresentation` (song_info's
    genre, stage, title and visibility, the AI battle and dan movies' sound calls; ours read `song.*`, and
    `song.stage` has no value where the stage number is hidden); `TaikoLumenPresentation`'s label jumps (the target's

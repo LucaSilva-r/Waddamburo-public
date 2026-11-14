@@ -9,6 +9,7 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -282,7 +283,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     // The rainbow's song title is placed and drawn on the stage (it comes in partway through the cover).
     private static bool titleShown(Waddamburo.Lumen.Runtime.LumenPlayer rainbow) =>
-        rainbow.TryGetInstanceBounds(RainbowTransitionComposition.SongTitleFill, out var title)
+        rainbow.TryGetInstanceBounds(GameIntermissions.SongTitleFill, out var title)
         && title is { Width: > 0, Height: > 0 } && title.X + title.Width > 0 && title.X < OverlayStageWidth;
 
     private const float OverlayStageWidth = 1280;
@@ -305,12 +306,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (rainbow.ShouldStartCover(Shell.Tick))
         {
             var player = Shell.Overlay.Show(FlowScenes.Rainbow);
-            player.SetNativeFill(
-                RainbowTransitionComposition.SongTitleFill,
+            var song = find(request.Song).Song.Descriptor;
+            player.Publish("song.title", LumenHostValue.FromString(song.Title.English ?? song.Title.Primary));
+            player.Publish("song.subtitle", song.Subtitle is { Length: > 0 } subtitle ? LumenHostValue.FromString(subtitle) : LumenHostValue.Undefined);
+            GameIntermissions.ShowTitle(player,
                 gameplay.RainbowTitle ?? throw new InvalidOperationException("Rainbow transition has no song title."));
             // Traced session30: a course's first song opens under the plain rainbow, no title.
-            player.GotoLabel(Shell.Gameplay.Dan is null ? RainbowTransitionComposition.CoverLabel
-                : RainbowTransitionComposition.PlainCoverLabel, play: true);
+            Shell.Overlay.Cover(title: Shell.Gameplay.Dan is null);
             rainbow.StartCover();
             // The song's preview plays on under the closing rainbow and stops as its title appears (#17); a course's
             // plain rainbow has no title: it stops now.
@@ -412,7 +414,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             _coveringForCalibration = true;
             Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
-            Shell.Overlay.Show(FlowScenes.Rainbow).GotoLabel(RainbowTransitionComposition.PlainCoverLabel, play: true);
+            Shell.Overlay.Show(FlowScenes.Rainbow);
+            Shell.Overlay.Cover();
             return true;
         }
         if (Shell.Overlay.Player is { IsPlaying: true })
@@ -420,7 +423,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         _coveringForCalibration = false;
         Shell.Catalog.Replace(calibration.Scene());
         Shell.Scenes.Show(FlowScenes.Calibration);
-        Shell.Overlay.Player?.GotoLabel(RainbowTransitionComposition.PlainRevealLabel, play: true);
+        Shell.Overlay.Reveal();
         return true;
     }
 

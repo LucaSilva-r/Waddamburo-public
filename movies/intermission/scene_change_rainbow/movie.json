@@ -49,7 +49,7 @@
         "out_intrusion2p": 190
       },
       "scripts": {
-        "0": "scripts/stop.as",
+        "0": "scripts/transition.as",
         "40": "scripts/stop.as",
         "81": "scripts/stop.as",
         "120": "scripts/stop.as",

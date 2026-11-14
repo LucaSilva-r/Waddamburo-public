@@ -79,7 +79,8 @@ internal sealed class SceneSwitcher(
             Show(scene);
             return;
         }
-        shell.Overlay.Show(FlowScenes.Fade).GotoLabel("in", play: true);
+        shell.Overlay.Show(FlowScenes.Fade);
+        shell.Overlay.Cover();
         _fadeTarget = scene;
         _fadeStartTick = shell.Tick;
     }

@@ -828,7 +828,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
         var overlay = Shell.Overlay;
         // Online: both games open the rainbow together, once both could.
-        if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick) && Shell.Match.MayReveal())
+        if (overlay.Player is not null && Rainbow.ShouldStartReveal(Shell.Tick) && Shell.Match.MayReveal())
         {
             var request = Shell.PlayRequests.Active
                 ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
@@ -842,8 +842,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 _play.Clock.Restart();
                 showCourseSong();
             }
-            rainbow.GotoLabel(_course is null ? RainbowTransitionComposition.RevealLabel
-                : RainbowTransitionComposition.PlainRevealLabel, play: true);
+            overlay.Reveal(title: _course is null);
             Rainbow.StartReveal();
             Console.WriteLine($"Rainbow reveal and gameplay started at tick {Shell.Tick}.");
             return;
@@ -935,11 +934,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _play.ShutterClosing = false;
         }
         // Close registers on the shutter's first frame; retry until it exists.
-        if (_play.ShutterStartTick >= 0 && !_play.ShutterClosing && overlay.Player is { } shutter)
-            // Close(side): the shutter takes the player's colour (traced Close(1) for the right drum's
-            // player, Close(2) for two players).
-            _play.ShutterClosing = shutter.TryInvokeCallback("Close",
-                [LumenHostValue.FromNumber(Shell.Hosts.TwoPlayers ? 2 : Shell.Hosts.PlayerSide)]);
+        if (_play.ShutterStartTick >= 0 && !_play.ShutterClosing && overlay.Player is not null)
+            // The shutter takes the player's colour (traced Close(1) for the right drum's player, Close(2) for two).
+            _play.ShutterClosing = overlay.Cover(side: Shell.Hosts.TwoPlayers ? 2 : Shell.Hosts.PlayerSide);
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
         // (AI battle: no shutter; its delay already ends at the results.)
         if (input.Escape && !Shell.Arcade.Home || _play.ShutterStartTick >= 0 && (Shell.Tick - _play.ShutterStartTick >= 70 || _play.Battle is not null))
