@@ -1,3 +1,4 @@
+using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Runtime;
@@ -34,8 +35,47 @@ public sealed class GameplayGameMovies(
     private int _roll; // the roll count told, 0: none shown
     private int _kusudamaCount; // the kusudama's count as the movie has it
 
-    /// <summary>The board when it is the game's: what the lane sets up on it by hand (side, course, option icons).</summary>
-    public LumenPlayer? Board => game(board);
+    /// <summary>
+    /// The game's board at the play's start. Traced SetEntryType 1 / SetPlaySide 0 for the left player, 2 / 1 for the
+    /// right one alone, and 3 with each lane's side for two players; SetWaiwai(true) on a shared-voltage lane (Waiwai's,
+    /// AI battle's AI-don bar only); the course's label, or dani then SetDani (the three gauge movies differ in their
+    /// authored clear line, 60/70/80%). Ours read player.side, play.course and dan.* instead.
+    /// </summary>
+    public void SetUpBoard(bool twoPlayers, int side, bool waiwai, TaikoCourse course, bool dan)
+    {
+        if (game(board) is not { } movie)
+            return;
+        movie.TryInvokeCallback("SetEntryType", [number(twoPlayers ? 3 : side + 1)]);
+        if (waiwai) movie.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
+        var label = dan ? "dani" : course switch
+        {
+            TaikoCourse.Easy => "easy",
+            TaikoCourse.Normal => "normal",
+            TaikoCourse.Hard => "hard",
+            TaikoCourse.Oni => "mania",
+            TaikoCourse.Ura => "extreme",
+            _ => throw new ArgumentOutOfRangeException(nameof(course)),
+        };
+        if (!movie.TryInvokeCallback("SetPlaySide", [number(side)]) || !movie.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(label)]))
+            throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
+        if (dan) movie.TryInvokeCallback("SetDani", []);
+    }
+
+    /// <summary>
+    /// The options' icons on the game's board (traced SetSpeed(1) for none). lane_obi's setOption shows speedx&lt;n&gt;
+    /// above 1 (Green's art by range), doron and abekobe when true, random&lt;level&gt; above 0 (1 きまぐれ, 2 でたらめ),
+    /// and option_serious "on" for SetSeriousMode(true) (真打). Ours read player.speed, player.doron, ...
+    /// </summary>
+    public void ShowOptions(TaikoPlayOptions options)
+    {
+        if (game(board) is not { } movie)
+            return;
+        movie.TryInvokeCallback("SetSpeed", [number(options.SpeedIcon)]);
+        movie.TryInvokeCallback("SetDoron", [LumenHostValue.FromBoolean(options.Doron)]);
+        movie.TryInvokeCallback("SetAbekobe", [LumenHostValue.FromBoolean(options.Abekobe)]);
+        movie.TryInvokeCallback("SetRandomLevel", [number((int)options.Random)]);
+        movie.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
+    }
 
     /// <summary>
     /// Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane. The

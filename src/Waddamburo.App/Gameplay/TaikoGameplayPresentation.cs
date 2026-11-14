@@ -506,30 +506,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 : null;
             _flights = new TaikoHitFlights(Enumerable.Range(0, 16)
                 .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }), kadonFlights, flightTemplate);
-            var courseLabel = course switch
-            {
-                TaikoCourse.Easy => "easy",
-                TaikoCourse.Normal => "normal",
-                TaikoCourse.Hard => "hard",
-                TaikoCourse.Oni => "mania",
-                TaikoCourse.Ura => "extreme",
-                _ => throw new ArgumentOutOfRangeException(nameof(course)),
-            };
-            // Traced SetEntryType 1 / SetPlaySide 0 for the left player, 2 / 1 for the right one alone,
-            // and 3 with each lane's side for two players.
-            // The game's board only: ours reads the same from the provider (player.side, play.course, ...).
-            if (!board.UsesProvider)
-            {
-                board.TryInvokeCallback("SetEntryType", [LumenHostValue.FromNumber(players == 2 ? 3 : side + 1)]);
-                // Waiwai's lanes, and AI battle's AI-don lane (traced SetWaiwai(true) on its bar only).
-                if (stage is not null || donStage is not null && lane == 1) board.TryInvokeCallback("SetWaiwai", [LumenHostValue.FromBoolean(true)]);
-                if (!board.TryInvokeCallback("SetPlaySide", [LumenHostValue.FromNumber(side)])
-                    || !board.TryInvokeCallback("SetCourse", [LumenHostValue.FromString(dan is null ? courseLabel : "dani")]))
-                    throw new InvalidDataException("Gameplay board is missing player/course initialization callbacks.");
-                // The three gauge movies differ in their authored clear line (60/70/80%).
-                if (dan is not null)
-                    board.TryInvokeCallback("SetDani", []);
-            }
             // osu! charts fill as Oni (TaikoSoulGauge), so they show Oni's clear line.
             var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course) switch
             {
@@ -553,6 +529,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
                 layers.GetValueOrDefault("dani_enso")?.Player, layers["renda_num"].Player, layers["action_fusen_1p"].Player,
                 (kusudama?.Layer ?? layers.GetValueOrDefault("action_kusudama"))?.Player, layers["lane_hit_effect"].Player);
+            // Waiwai's lanes and AI battle's AI-don lane are shared-voltage lanes on the board.
+            gameMovies.SetUpBoard(players == 2, side, stage is not null || donStage is not null && lane == 1, course, dan is not null);
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
             // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
@@ -976,17 +954,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _presentation.Shown += judgement => gameMovies.Judged(judgement.Result ?? TaikoHitResult.Miss, judgement.HitObject.IsStrong,
                 judgement.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa);
             _presentation.Doron = options.Doron;
-            // The options' icons on the lane (traced SetSpeed(1) for none). lane_obi's setOption shows
-            // speedx<n> above 1, doron and abekobe when true, random<level> above 0 (1 きまぐれ, 2 でたらめ),
-            // and option_serious "on" for SetSeriousMode(true) (真打).
-            if (gameMovies.Board is { } gameBoard)
-            {
-                gameBoard.TryInvokeCallback("SetSpeed", [LumenHostValue.FromNumber(options.SpeedIcon)]); // Green's art by range
-                gameBoard.TryInvokeCallback("SetDoron", [LumenHostValue.FromBoolean(options.Doron)]);
-                gameBoard.TryInvokeCallback("SetAbekobe", [LumenHostValue.FromBoolean(options.Abekobe)]);
-                gameBoard.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
-                gameBoard.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
-            }
+            gameMovies.ShowOptions(options);
             gameMovies.Start(chart.Branching is not null, kusudama?.Players ?? 1, waiwai: stage is not null);
             hitRadius = _presentation.HitRadius;
             counted.LongNoteHit += progress =>
@@ -1167,18 +1135,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         }
 
         public LumenRenderSnapshot Tint(LumenRenderSnapshot snapshot) => _character?.Tint(snapshot) ?? snapshot;
-
-        private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
-        {
-            if (!player.TryInvokeCallback(name, arguments))
-                throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
-        }
-
-        private static void label(LumenPlayer player, string name)
-        {
-            if (!player.TryGotoLabel("", name))
-                throw new InvalidDataException($"Gameplay movie has no '{name}' label.");
-        }
     }
 }
 
