@@ -437,6 +437,72 @@ Other movies differ only as two runs of the same build do (note faces and roll w
 headless run could not play a course before: the tick clock ran under the first song's card and went back when its
 music started (fixed in `GameplayFlow.songTime`).
 
+## Song select: one library tree (user, 2026-11-14; draft, not built)
+
+The user's aim: song select as versatile as osu!'s (any number of charts per song, a lot of data shown about the song
+and its charts), and as universal as possible. The game's spine carousel and an osu!-style list are then two skins
+over the same data. The engine owns the library and the selection; a movie shows what it asks for.
+
+### The tree
+
+Everything chosen from lives in one tree of **nodes**:
+
+- **folder**: holds nodes, folders included. Categories are folders inside folders (user): a library (ORIGINAL,
+  NIJIIRO, OSU! LAZER), a genre under it, a collection, a search's results, ...
+- **song**: holds its **charts** (any number: a stock song has its 4-5 courses, an osu! set its difficulties).
+- **course**: a dan course. The dan dojo is a folder like any other (user): series as subfolders (Green, Blue,
+  Yellow, Red, White, ...), courses inside. Waddamburo's choice of series stays, as a level of the tree.
+
+How the tree is cut (grouping, sorting, filtering, searching) is the engine's, on request; a movie never builds it.
+
+### What a movie reads
+
+The **open folder** is a list (Lists above), windowed: the engine publishes only the places the movie asks for.
+
+- `folder.path` (text, e.g. "OSU! LAZER / Vocaloid"), `folder.depth`, `folder.count` (the open folder's length).
+- Per place, lists: `node.kind` (folder, song, course), `node.title`, `node.subtitle`, `node.artist`, `node.colour`
+  (the folder's or the genre's), `node.count` (a folder's nodes), `node.source` (stock, tja, osuLazer, ...),
+  `node.stars` (a song's chart range, a course's rank), `node.best` (the player's best, where one exists).
+- `select.index` (the place under the cursor) and the selected node's details as states, for the big panel:
+  `selected.title`, `selected.artist`, `selected.bpmMin` / `bpmMax`, `selected.length`, `selected.charter`,
+  `selected.source`, `selected.tags`, ...
+- The selected song's charts as a list: `chart.name` (Oni, Ura, "Crazy Oni"), `chart.course`, `chart.stars`,
+  `chart.notes`, `chart.rolls`, `chart.balloons`, `chart.best`, `chart.rank`; `chart.index` the one picked.
+- A course's songs and requirements: the `dan.exam.*` lists, read before starting.
+- Rankings for the picked chart: `scores.*` (rank, name, score), `scores.scope` (local, online).
+
+### What a movie asks
+
+| Request | What the engine does |
+| --- | --- |
+| `folder.window(first, count)` | publishes those places of the open folder (and drops the rest it published) |
+| `select.node(index)` | moves the cursor: the preview plays, `selected.*` and the charts follow |
+| `folder.open(index)` / `folder.close()` | goes into the folder at the place / back up to its parent |
+| `select.chart(index)` | picks the selected song's chart |
+| `song.start()` / `course.start()` | the handoff, as now (rainbow, gameplay) |
+| `library.search(text)`, `library.sort(key)`, `library.group(key)`, `library.filter(...)` | recut the tree; the open folder's count and places follow |
+| `scores.scope(scope)` | which rankings |
+| `select.random()` | a random song in the open folder |
+
+Live changes (a library rescan, a song received online) are the same list events: places told again, the count told
+again.
+
+### Images
+
+osu! backgrounds and jackets need a value that is a picture. Proposed: an image name (`selected.background`,
+`node.jacket`) whose value is a key the engine can draw, and a script call that puts it into a clip,
+`Wd.fill(clip, name[, index])`. Text fields already work this way inside the engine (a text is drawn into a surface
+the renderer knows by key).
+
+### Order
+
+1. Dan select on the tree's first piece: the dojo folder (series, courses), `folder.*`, `select.node`,
+   `course.start`. Small, and it tries lists with requests.
+2. Song select: the open folder and its window, then selection and charts, then grouping/sorting/search, then
+   images, then rankings.
+
+The game's song select keeps its host and patches (the root carousel, the dojo category), frozen.
+
 ## To do: limits on what a movie may cost (2026-11-13)
 
 Not built, and not needed while every movie is the engine's own; to be done with the loading of other people's
