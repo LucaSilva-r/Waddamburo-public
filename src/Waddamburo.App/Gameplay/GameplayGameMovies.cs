@@ -1,3 +1,4 @@
+using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Runtime;
 
@@ -11,13 +12,14 @@ namespace Waddamburo.App.Gameplay;
 /// </summary>
 /// <remarks>
 /// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
-/// target's Go-Go and route, the route bubble, the Go-Go splash and the end banner. Not here: the roll counter, the
+/// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner and a dan course's panel. Not here: the roll counter, the
 /// balloon and the kusudama (TaikoLongNotePresentation calls them, and skips one of ours), and the label jumps
 /// that are the lane's drawing itself (hit flashes, judgement words, note faces).
 /// </remarks>
 internal sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,
-    LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner, LumenPlayer target, LumenPlayer? bubble)
+    LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner, LumenPlayer target, LumenPlayer? bubble,
+    LumenPlayer? danPanel)
 {
     private static readonly string[] Routes = ["normal", "expert", "master"];
     private int _segments = -1;
@@ -25,6 +27,8 @@ internal sealed class GameplayGameMovies(
     private int _combo;
     private bool _comboTold; // since the last judged note
     private int _route = -1;
+    private readonly Dictionary<string, LumenHostValue> _dan = []; // dan.* states, list places as "name#index"
+    private bool _danReady, _danTypes, _danValues;
 
     /// <summary>The board when it is the game's: what the lane sets up on it by hand (side, course, option icons).</summary>
     public LumenPlayer? Board => game(board);
@@ -41,6 +45,8 @@ internal sealed class GameplayGameMovies(
     /// <summary>A state of the lane changed (or is told for the first time).</summary>
     public void State(string name, LumenHostValue value)
     {
+        if (name.StartsWith("dan.", StringComparison.Ordinal))
+            danChanged(name, value);
         switch (name)
         {
             case "play.score" when game(board) is { } movie:
@@ -79,6 +85,63 @@ internal sealed class GameplayGameMovies(
                 break;
         }
     }
+
+    /// <summary>A place of a list changed (or is told for the first time).</summary>
+    public void Item(string name, int index, LumenHostValue value)
+    {
+        if (name.StartsWith("dan.", StringComparison.Ordinal))
+            danChanged($"{name}#{index}", value);
+    }
+
+    private void danChanged(string key, LumenHostValue value)
+    {
+        _dan[key] = value;
+        _danTypes |= key is "dan.song" || key.StartsWith("dan.exam.type#", StringComparison.Ordinal)
+            || key.StartsWith("dan.exam.target#", StringComparison.Ordinal);
+        _danValues |= key is "dan.notesLeft" || key.StartsWith("dan.exam.value#", StringComparison.Ordinal)
+            || key.StartsWith("dan.exam.possible#", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The dan panel (traced session30): SetChallengeLevel(rank, 101 for a challenge), SetConditionNum(n),
+    /// SetConditionType(i, type, red) at each song, then as the play goes SetLeftNotes(n), SetConditionValue(i, value)
+    /// and SetConditionValid(i, 0|1), the whole panel at each change. Its callbacks register on its first frame, so
+    /// nothing is told until they are there. Called once a tick, after the lane has published.
+    /// </summary>
+    public void DanTick()
+    {
+        if (game(danPanel) is not { } movie || !_dan.TryGetValue("dan.rank", out var rank))
+            return;
+        if (!_danReady)
+        {
+            if (!movie.TryInvokeCallback("SetChallengeLevel",
+                    [number(rank.AsNumber() == DanRanks.Challenge ? LevelChallenge : rank.AsNumber())]))
+                return;
+            _danReady = _danTypes = _danValues = true;
+            call(movie, "SetConditionNum", _dan["dan.exam.count"]);
+        }
+        var count = (int)_dan["dan.exam.count"].AsNumber();
+        if (_danTypes)
+            for (var index = 0; index < count; index++)
+                call(movie, "SetConditionType", number(index),
+                    number(DanExams.TypeOf(_dan[$"dan.exam.type#{index}"].AsString())), _dan[$"dan.exam.target#{index}"]);
+        if (_danValues && _dan.TryGetValue("dan.notesLeft", out var left))
+        {
+            call(movie, "SetLeftNotes", left);
+            for (var index = 0; index < count; index++)
+            {
+                call(movie, "SetConditionValue", number(index), _dan[$"dan.exam.value#{index}"]);
+                call(movie, "SetConditionValid", number(index), number(_dan[$"dan.exam.possible#{index}"].AsBoolean() ? 1 : 0));
+            }
+        }
+        _danTypes = _danValues = false;
+    }
+
+    // dani_enso shows its challenge plate (challenge_lv_mini) for LEVEL_CHALLENGE (101) and up; the ranks index its
+    // label table (0 初級 ... 24 達人).
+    private const int LevelChallenge = 101;
+
+    private static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
 
     /// <summary>Something happened on the lane.</summary>
     public void Event(string name, ReadOnlySpan<LumenHostValue> arguments)

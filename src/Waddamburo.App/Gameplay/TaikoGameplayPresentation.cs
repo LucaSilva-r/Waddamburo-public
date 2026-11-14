@@ -534,7 +534,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var banner = skin("action_result"); // none in Waiwai
             // The game's movies are driven from what is published, by their adapter (ours read it themselves).
             var gameMovies = new GameplayGameMovies(board, gaugeMovie, () => gauge.FilledSegments, scoreAdd, comboBonus,
-                gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player);
+                gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
+                layers.GetValueOrDefault("dani_enso")?.Player);
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
             // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
@@ -561,6 +562,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 published[key] = value;
                 foreach (var movie in mine) movie.PublishItem(name, index, value);
                 foreach (var movie in Everyone) movie.PublishItem(name, index, value, Drum);
+                gameMovies.Item(name, index, value);
             }
             void emit(string name, params ReadOnlySpan<LumenHostValue> arguments)
             {
@@ -674,7 +676,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
-            var danPanel = dan is null ? null : new DanExamPanel(layers["dani_enso"].Player, dan, publish, publishItem);
+            var danPanel = dan is null ? null : new DanExamPanel(dan, publish, publishItem);
             void publishPlay()
             {
                 publish("play.score", LumenHostValue.FromNumber(score.Value));
@@ -717,6 +719,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 var danSong = Math.Min(danSongEnds.Count, Math.Max(chart.Segments.Length - 1, 0));
                 var danStart = danSong == 0 ? default : danSongEnds[danSong - 1];
                 danPanel?.Update(danProgress, danSong, danStart);
+                gameMovies.DanTick();
                 if (danPanel is not null && !chart.Segments.IsEmpty
                     && time >= chart.Segments[danSong].Start + TaikoResultBanner.Time(chart.Segments[danSong].Source))
                     danPanel.EndSong(danProgress, danSong, danStart);

@@ -342,14 +342,19 @@ Wd.get("dan.exam.value", 2, 1)         // the player comes after the index
 
 **Dan course, built**: `dan.rank`, `dan.song`, `dan.notesLeft`, `dan.exam.count`, and the lists `dan.exam.type`,
 `dan.exam.target`, `dan.exam.value`, `dan.exam.possible`, published by `DanExamPanel`. Our panel (`dani_enso`) reads
-them (also `dan.name`, and the list `dan.exam.gold`); the game's is still called from `DanExamPanel`. Our panel has
+them (also `dan.name`, and the list `dan.exam.gold`); the game's is driven by the adapter (below). Our panel has
 the game's arrangement: the course's plate and the notes left on the left, a row per requirement with its bar (what
 is left, for the two that must stay under their target). The dan gauge is the song gauge's script over the lane, at
 the lane's length. Both seen in a course (六段), beside the game's at the same tick: the numbers agree.
 
-A recorded dan session now exists (the user's, on the game's movies, with its edge log), so the game's panel can be
-moved to the adapter with proof. Headless runs could not play a course before: the tick clock ran under the first
-song's card and went back when its music started (fixed in `GameplayFlow.songTime`).
+**Dan panel moved to the adapter (2026-11-14).** `DanExamPanel` only publishes; `GameplayGameMovies.DanTick` (once a
+tick, after the lane) tells the game's `dani_enso` the same calls from the published names, once its callbacks exist.
+Proof on the user's recorded dojo session (六段, song 1), before and after: the panel's calls are the same in the same
+order once a call repeating its own last value is dropped (1,416 lines). The old code told the whole panel at every
+change of the play, a roll hit included, so it repeated itself; the adapter tells it when something on it changed.
+Other movies differ only as two runs of the same build do (note faces and roll widths step in real time). The
+headless run could not play a course before: the tick clock ran under the first song's card and went back when its
+music started (fixed in `GameplayFlow.songTime`).
 
 ## To do: limits on what a movie may cost (2026-11-13)
 
