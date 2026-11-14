@@ -305,6 +305,26 @@ have no package of their own; the first drum's is loaded in their place, since a
 the provider. The benchmark's two-drum song runs on an empty data directory. Their art is still laid out for the
 upper lane only (the lower drum's gauge sits over the upper lane).
 
+## Where the game's side lives: Waddamburo.Skins.Green (2026-11-14)
+
+Everything that exists to drive the game's own movies goes in `src/Waddamburo.Skins.Green`, as the stock songs live
+in `Waddamburo.Providers.Stock`: only the App (the composition root) references it, and the dependency test pins
+that. The engine assemblies never name a game movie, a callback of one, or a label. New code that drives a game
+movie goes there from the start; engine code publishes names.
+
+Moved (user's go, 2026-11-14): the screen bindings (`Screens/`, was `Game/Lumen`), the movie patches (`Patching/`),
+the gameplay adapter (`Gameplay/GameplayGameMovies`). Engine rules found in those files went to the engine
+(AI battle section records, arcade credit rules, the support menu's pick). Still to move, each when its part goes
+behind provider names:
+
+1. Gameplay: the lane classes that make the game's calls and label jumps (`TaikoLumenPresentation`,
+   `TaikoLongNotePresentation`, `TaikoDonPresentation`, `TaikoNoteFaces`, `TaikoGameplayHostBinding`, the flight
+   pool in `TaikoHitFlights`), and what `TaikoGameplayPresentation` and `GameplayFlow` still call by name
+   (song_info, the between-songs card, the shutter, the rainbow).
+2. Menus, one per screen as it gets `Wd.request`: results, entry, dan select, song select last. The flows then
+   keep only the engine side.
+3. The end check: the engine and the free movies build and run with `Skins.Green` out of the solution.
+
 ## Open questions
 
 0. **The scope list itself.** Whether `session` is right as a level, where player setup at home belongs, and
