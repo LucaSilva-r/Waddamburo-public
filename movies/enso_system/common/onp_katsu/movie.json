@@ -27,11 +27,7 @@
         "level04": 70
       },
       "scripts": {
-        "0": "scripts/main.as",
-        "9": "scripts/loop_level01.as",
-        "49": "scripts/loop_level02.as",
-        "69": "scripts/loop_level03.as",
-        "89": "scripts/loop_level04.as"
+        "0": "scripts/main.as"
       },
       "layers": [
         {

@@ -139,16 +139,19 @@ public sealed class FreeTimeCounterTests
     [Theory]
     [InlineData("onp_don")]
     [InlineData("onp_katsu_dai")]
-    public void TheNotesPickTheirFaceFromTheCombo(string name)
+    public void TheNotesPickTheirFaceFromTheComboAndTheBeat(string name)
     {
         var note = load($"enso_system/common/{name}");
-        advance(note, 12); // level01 loops round: frame 1 runs again
+        advance(note, 2);
+        note.Publish("play.beat", n(2.5));
+        Assert.Equal(note.Labels["level01"], note.CurrentFrame); // level01 holds still
         note.Publish("play.combo", n(51));
-        Assert.Equal("level02", note.ReadScriptValue("tier"));
-        Assert.Equal(note.Labels["level02"], note.CurrentFrame);
-        note.Publish("play.combo", n(52)); // same tier: the face plays on
+        Assert.Equal(note.Labels["level02"] + 20, note.CurrentFrame); // half a beat into its one-beat loop
         advance(note, 3);
-        Assert.Equal(note.Labels["level02"] + 3, note.CurrentFrame);
+        Assert.Equal(note.Labels["level02"] + 20, note.CurrentFrame); // stopped: only the beat moves it
+        note.Publish("play.combo", n(151));
+        note.Publish("play.beat", n(-0.25)); // before the first timing point
+        Assert.Equal(note.Labels["level03"] + 10, note.CurrentFrame); // two loops a beat
         note.Publish("play.combo", n(0));
         Assert.Equal(note.Labels["level01"], note.CurrentFrame);
         Assert.True(note.UsesProvider);

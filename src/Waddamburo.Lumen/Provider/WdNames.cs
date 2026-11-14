@@ -38,6 +38,7 @@ public static class WdNames
         new("play.roll", WdKind.State, "number", "play", "Hits on the drumroll under way; no value when there is none.", "24"),
         new("play.balloon", WdKind.State, "number", "play", "Hits the balloon under way still needs; no value when there is none (a kusudama is play.kusudama).", "5"),
         new("play.kusudama", WdKind.State, "number", "play", "Hits the kusudama under way still needs; no value when there is none.", "120"),
+        new("play.beat", WdKind.State, "number", "play", "Beats since the chart's first timing point, following its tempo changes (fractional, told every tick; negative before it, still while the song stands still). A movie's frame from it, say start + Math.floor(beat * 40) % 40, plays one loop a beat in time with the song.", "17.25"),
         new("play.progress", WdKind.State, "number", "play", "How far through the song, 0 to 1, in hundredths.", "0.4"),
         new("dan.rank", WdKind.State, "number", "play", "The dan course's rank, 0 for the lowest; no value outside a course.", "9"),
         new("dan.name", WdKind.State, "text", "play", "The dan course's name, as its series writes it.", "六段"),
@@ -69,6 +70,7 @@ public static class WdNames
         new("balloon.ended", WdKind.Event, "popped: bool", "play", "This drum's balloon is over: burst, or its time ran out.", "true"),
         new("kusudama.started", WdKind.Event, "hits: number, goGo: bool", "play", "A kusudama came under way on this drum, needing that many of its hits (with two drums, each adds its own to the one ball); goGo: it starts in Go-Go time.", "40, false"),
         new("kusudama.ended", WdKind.Event, "popped: bool", "play", "This drum's kusudama is over: burst, or its time ran out.", "false"),
+        new("beat.passed", WdKind.Event, "beat: number", "play", "The song reached a whole beat (play.beat's whole part), once each going forward.", "18"),
         new("drum.hit", WdKind.Event, "side: text (left, right), part: text (don, ka)", "play", "This drum was struck, note or not.", "left, don"),
         new("song.ended", WdKind.Event, "cleared: bool, fullCombo: bool", "play", "The song is over and its result is known.", "true, false"),
     ];

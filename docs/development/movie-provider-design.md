@@ -80,6 +80,7 @@ Taken from what the gameplay hosts push today, renamed for what they mean rather
 | `play.goGo` | state | `SetGogo`, `SetGogoTime`, `SetFever` |
 | `play.roll.count`, `play.balloon.left` | state | `SetRendaCount`, `SetGekiRendaCount`, `SetLeftNotes` |
 | `play.progress` (0..1), `play.time` | state | `SetProgress` |
+| `play.beat` (fractional, every tick), `beat.passed` (whole beat) | state, event | (nothing: the game sets the note faces' frames by hand; built 2026-11-14 so any movie can move in time with the song) |
 | `song.title`, `song.subtitle`, `song.course`, `song.stars` | state | drawn into fill slots |
 | `player.N.name`, `player.N.joined`, `player.N.options` | state | `SetPlayer`, `SetSpeed`, `SetDoron`, ... |
 | `note.judged` (kind, result, big, player) | event | `SetHit`, the hit-effect labels |
@@ -325,7 +326,7 @@ behind provider names:
 1. Gameplay: the lane classes that make the game's calls and label jumps (`TaikoLumenPresentation`,
    `TaikoLongNotePresentation`, `TaikoDonPresentation`, `TaikoGameplayHostBinding`, the flight pool in
    `TaikoHitFlights`; `TaikoNoteFaces` moved: the adapter puts the game's notes on their combo face, ours read
-   `play.combo` and loop each face themselves), and what `TaikoGameplayPresentation` and `GameplayFlow` still call by name
+   `play.combo` and take their frame from `play.beat`), and what `TaikoGameplayPresentation` and `GameplayFlow` still call by name
    (song_info, the between-songs card, the shutter, the rainbow).
 2. Menus, one per screen as it gets `Wd.request`: results, entry, dan select, song select last. The flows then
    keep only the engine side.

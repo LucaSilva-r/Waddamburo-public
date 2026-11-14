@@ -366,6 +366,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly TaikoHitFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
         private readonly Action<string, LumenHostValue> _publish;
+        private readonly Action<string, LumenHostValue[]> _emit;
+        private long _wholeBeat = long.MinValue; // the last beat.passed told
 
         /// <summary>This drum's player number for the provider: 1 the left drum, 2 the right.</summary>
         public int Drum { get; }
@@ -572,6 +574,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 foreach (var movie in Everyone) movie.EmitFor(Drum, name, arguments);
                 gameMovies.Event(name, arguments);
             }
+            _emit = (name, arguments) => emit(name, arguments);
             publish("play.score", LumenHostValue.FromNumber(0));
             publish("play.gauge", LumenHostValue.FromNumber(0));
             void updateScore(long award, bool popup = true)
@@ -965,6 +968,14 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         layer.Player.Advance(input);
             // Note faces by combo, at the beat's phase: the game's by their adapter, ours by themselves.
             var beat = _animationClock.Position(chartTime) * 89 / 3600;
+            _publish("play.beat", LumenHostValue.FromNumber(beat));
+            // Each whole beat once, going forward; a review played back counts again from where it lands.
+            var whole = (long)Math.Floor(beat);
+            if (whole != _wholeBeat)
+            {
+                if (whole > _wholeBeat && _wholeBeat != long.MinValue) _emit("beat.passed", [LumenHostValue.FromNumber(whole)]);
+                _wholeBeat = whole;
+            }
             _gameMovies.NoteFaces(_noteFaces, beat);
             _longNotes.ShowFaces(_gameMovies.LongNoteFace);
             _flights.Advance();
