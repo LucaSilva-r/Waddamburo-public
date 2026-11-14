@@ -129,6 +129,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
         new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v })),
         new(Setting: toggle("settings.upload_custom_songs", static s => s.UploadCustomSongs, static (s, v) => s with { UploadCustomSongs = v })),
+        new(Setting: toggle("settings.upload_banner", static s => s.UploadBanner, static (s, v) => s with { UploadBanner = v })),
         new(Setting: new(T("settings.gameplay_skin"), skinIndex,
             static (s, v) => s with { GameplaySkin = (v = Math.Min(v, Skins.Count + 1)) switch { 0 => "auto", 1 => "original", _ => Skins[v - 2] } },
             static (value, step) => Math.Min(value + Math.Sign(step), Skins.Count + 1), 0,

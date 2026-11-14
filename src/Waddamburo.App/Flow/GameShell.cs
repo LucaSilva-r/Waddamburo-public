@@ -1579,10 +1579,14 @@ internal sealed class GameShell : IDisposable
         var song = Active.Id == FlowScenes.SongSelect
             ? Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
         var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
-        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}";
+        var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
+        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";
         // Marker checks touch the filesystem; refresh once a second and immediately when the context changes.
         if (_uploadBannerContext == context && Tick - _uploadBannerTick < 60) return _uploadBanner;
         (_uploadBannerContext, _uploadBannerTick) = (context, Tick);
+        // The attract's demo play uploads nothing and says nothing about it.
+        if (!Arcade.UploadBanner || _gameplay.Demo) return _uploadBanner = null;
+        if (auto) return _uploadBanner = "custom_upload.banner_auto";
         var source = song?.Descriptor.Key.Source ?? request?.Song.Source
             ?? (Active.Id == FlowScenes.SongSelect ? Hosts.Library : (SongSourceKind?)null);
         if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))

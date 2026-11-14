@@ -346,6 +346,8 @@ public sealed record ArcadeSettings
         # false = plays made while off stay on this PC permanently. Turning it on applies to new plays.
         # Local replays remain available either way; official songs are unaffected.
         upload_custom_songs = true
+        # upload_banner (also in Settings): the "Score upload disabled" line at the top (custom songs, Auto Play).
+        upload_banner = true
         # The first custom-library upload question was answered; false = ask on the next entry.
         custom_upload_notice_seen = false
 
@@ -448,6 +450,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Upload new custom (TJA and osu!) plays; plays made while disabled stay local permanently.</summary>
     public bool UploadCustomSongs { get; init; } = true;
+
+    /// <summary>Show the "Score upload disabled" banner (custom songs, Auto Play).</summary>
+    public bool UploadBanner { get; init; } = true;
 
     /// <summary>The custom-library upload question has been answered on this installation.</summary>
     public bool CustomUploadNoticeSeen { get; init; }
@@ -891,6 +896,7 @@ public sealed record ArcadeSettings
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
                 "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
                 "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
+                "upload_banner" => settings with { UploadBanner = boolean(value, index) },
                 "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
                 "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
                 "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
@@ -1009,6 +1015,7 @@ public sealed record ArcadeSettings
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
             ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
             ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
+            ["upload_banner"] = settings.UploadBanner ? "true" : "false",
             ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
             ["gameplay_skin"] = settings.GameplaySkin,
             ["timing_indicator"] = settings.TimingIndicator switch
