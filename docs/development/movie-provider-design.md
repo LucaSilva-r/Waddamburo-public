@@ -457,32 +457,34 @@ How the tree is cut (grouping, sorting, filtering, searching) is the engine's, o
 
 ### What a movie reads
 
-The **open folder** is a list (Lists above), windowed: the engine publishes only the places the movie asks for.
+One flat list of **visible rows**, as osu! shows it (user's screenshot): a folder opens in place, its nodes under it
+one level deeper (the "A" header with its 346 songs below), and so does a song, its charts under it. There is no
+"inside a folder" screen; a skin that wants one (the game's spines) shows only the rows under the open folder.
 
-- `folder.path` (text, e.g. "OSU! LAZER / Vocaloid"), `folder.depth`, `folder.count` (the open folder's length).
-- Per place, lists: `node.kind` (folder, song, course), `node.title`, `node.subtitle`, `node.artist`, `node.colour`
-  (the folder's or the genre's), `node.count` (a folder's nodes), `node.source` (stock, tja, osuLazer, ...),
-  `node.stars` (a song's chart range, a course's rank), `node.best` (the player's best, where one exists).
-- `select.index` (the place under the cursor) and the selected node's details as states, for the big panel:
+- `rows.count`, and per row, lists (windowed): `row.kind` (folder, song, chart, course), `row.depth`, `row.open`
+  (a folder or song shown open), `row.title`, `row.subtitle`, `row.artist`, `row.colour` (the folder's or the genre's),
+  `row.count` (a folder's nodes), `row.source` (stock, tja, osuLazer, ...), `row.stars` (a chart's; a song's range),
+  `row.course` (a chart's: oni, ura, or none for an osu! difficulty), `row.best` (the player's best, where one exists).
+- `select.row` (the row under the cursor) and the selected node's details as states, for the big panel:
   `selected.title`, `selected.artist`, `selected.bpmMin` / `bpmMax`, `selected.length`, `selected.charter`,
-  `selected.source`, `selected.tags`, ...
-- The selected song's charts as a list: `chart.name` (Oni, Ura, "Crazy Oni"), `chart.course`, `chart.stars`,
-  `chart.notes`, `chart.rolls`, `chart.balloons`, `chart.best`, `chart.rank`; `chart.index` the one picked.
-- A course's songs and requirements: the `dan.exam.*` lists, read before starting.
+  `selected.source`, `selected.tags`, the picked chart's `selected.notes`, `selected.rolls`, `selected.balloons`,
+  `selected.stars`, `selected.best`, `selected.rank`, ...
+- A **dan course** is a special song (user): its charts are the course's songs, each with the stars of the
+  difficulty it is played on; the panel shows the course's rules (the `dan.exam.*` lists, before starting). The dojo
+  folder holds the series as folders (Green, Blue, ...), the courses in them.
 - Rankings for the picked chart: `scores.*` (rank, name, score), `scores.scope` (local, online).
 
 ### What a movie asks
 
 | Request | What the engine does |
 | --- | --- |
-| `folder.window(first, count)` | publishes those places of the open folder (and drops the rest it published) |
-| `select.node(index)` | moves the cursor: the preview plays, `selected.*` and the charts follow |
-| `folder.open(index)` / `folder.close()` | goes into the folder at the place / back up to its parent |
-| `select.chart(index)` | picks the selected song's chart |
-| `song.start()` / `course.start()` | the handoff, as now (rainbow, gameplay) |
-| `tree.search(text)`, `tree.sort(key)`, `tree.group(key)`, `tree.filter(...)` (not `library.`: a translation-key prefix) | recut the tree; the open folder's count and places follow |
+| `rows.window(first, count)` | publishes those rows (and drops the rest it published) |
+| `select.row(index)` | moves the cursor: the preview plays, `selected.*` follows; on a chart, that chart is picked |
+| `row.open(index)` / `row.close(index)` | opens a folder or song in place (its rows come in under it) / closes it |
+| `song.start()` / `course.start()` | the handoff, as now (rainbow, gameplay), with the picked chart |
+| `tree.search(text)`, `tree.sort(key)`, `tree.group(key)`, `tree.filter(...)` (not `library.`: a translation-key prefix) | recut the tree; rows and count follow |
 | `scores.scope(scope)` | which rankings |
-| `select.random()` | a random song in the open folder |
+| `select.random()` | a random song among the rows |
 
 Live changes (a library rescan, a song received online) are the same list events: places told again, the count told
 again.
@@ -496,10 +498,10 @@ the renderer knows by key).
 
 ### Order
 
-1. Dan select on the tree's first piece: the dojo folder (series, courses), `folder.*`, `select.node`,
-   `course.start`. Small, and it tries lists with requests.
-2. Song select: the open folder and its window, then selection and charts, then grouping/sorting/search, then
-   images, then rankings.
+1. The rows and their window, opening in place, the cursor and `course.start`, on the dojo folder alone (series,
+   courses, a course's songs as its charts, its rules): the dan select. Small, and it tries the whole shape.
+2. Song select: the same rows over the whole library, then charts and `song.start`, then grouping/sorting/search,
+   then images, then rankings.
 
 The game's song select keeps its host and patches (the root carousel, the dojo category), frozen.
 
