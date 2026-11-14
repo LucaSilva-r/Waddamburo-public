@@ -62,7 +62,8 @@ public sealed class TaikoLongNotePresentation
     /// <summary>The roll or balloon under way: a roll's hits so far, or the hits a balloon still needs.</summary>
     public (bool Balloon, bool Kusudama, int Count)? Active => _active is not { } index ? null
         : _chart.LongNotes[index].IsBalloon
-            ? (true, _chart.LongNotes[index].Kind == PlayableLongNoteKind.Kusudama, Math.Max(_chart.LongNotes[index].RequiredHits - _session.GetLongNoteProgress(index).Hits, 0))
+            ? (true, _chart.LongNotes[index].Kind == PlayableLongNoteKind.Kusudama, shared(index) ? _sharedKusudama!.Remaining
+                : Math.Max(_chart.LongNotes[index].RequiredHits - _session.GetLongNoteProgress(index).Hits, 0))
             : (false, false, _shownHits);
     private readonly HashSet<int> _finished = []; // a shared ball can end before the lane's own quota
     private bool _balloonVisible;
@@ -71,6 +72,19 @@ public sealed class TaikoLongNotePresentation
     private LumenSceneLayer _overlay; // the balloon or kusudama overlay in use
     private readonly int _player; // Don slot; the second player's kusudama motions are don_kusu2P_*
     private readonly string _kusu;
+
+    /// <summary>
+    /// A balloon or kusudama came under way, with the hits it needs and whether it is in Go-Go time (by the chart, at
+    /// its start): the kind is the overlay shown (a kusudama without a kusudama movie is shown as a balloon). Rolls
+    /// start with their first hit, told by <see cref="Changed"/>.
+    /// </summary>
+    public event Action<PlayableLongNoteKind, int, bool>? Started;
+
+    /// <summary>A balloon or kusudama ended (the kind as <see cref="Started"/>): burst, or not.</summary>
+    public event Action<PlayableLongNoteKind, bool>? Ended;
+
+    /// <summary><see cref="Active"/> may have changed: a hit, a start or an end.</summary>
+    public event Action? Changed;
 
     /// <summary>AI battle: the Dons stay in their face-off view through balloons and kusudama (no close-up).</summary>
     public bool KeepCamera { get; init; }
@@ -81,14 +95,14 @@ public sealed class TaikoLongNotePresentation
 
     private int _shownHits;
 
-    // A roll's count as shown; with ShownHits, sent whenever it changes (not only on this lane's own hits: AI-don's
+    // A roll's count as shown; with ShownHits, told whenever it changes (not only on this lane's own hits: AI-don's
     // last copy of a hit can come after the roll ended). Returns the count.
     private int refreshShownHits(int index)
     {
         var hits = ShownHits?.Invoke(index) ?? _session.GetLongNoteProgress(index).Hits;
-        if (ShownHits is not null && hits > 0 && hits != _shownHits)
-            tell(_counter.Player, "SetRendaCount", hits);
+        var changed = ShownHits is not null && hits > 0 && hits != _shownHits;
         _shownHits = hits;
+        if (changed) Changed?.Invoke();
         return hits;
     }
 
@@ -97,7 +111,7 @@ public sealed class TaikoLongNotePresentation
         LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
         Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null,
-        bool waiwai = false, Func<PlayableLongNoteKind, LumenSceneLayer>? createText = null)
+        Func<PlayableLongNoteKind, LumenSceneLayer>? createText = null)
     {
         _createText = createText;
         _player = player;
@@ -118,13 +132,8 @@ public sealed class TaikoLongNotePresentation
         // The Dons are already playing (another lane may have started first): bind without a reset.
         if (don is not null)
             DonLumenBinding.Attach(balloon.Player, don, reset: false);
-        if (kusudama is not null)
-        {
-            if (don is not null) DonLumenBinding.Attach(kusudama.Player, don, reset: false);
-            // Traced once per player, with the player count.
-            tell(kusudama.Player, "SetPlayerNum", LumenHostValue.FromNumber(sharedKusudama?.Players ?? 1));
-            tell(kusudama.Player, "SetWaiWai", LumenHostValue.FromBoolean(waiwai));
-        }
+        if (kusudama is not null && don is not null)
+            DonLumenBinding.Attach(kusudama.Player, don, reset: false);
         session.LongNoteHit += hit;
     }
 
@@ -275,15 +284,15 @@ public sealed class TaikoLongNotePresentation
     private void begin(int index)
     {
         _active = index;
+        _shownHits = 0;
         var note = _chart.LongNotes[index];
         if (note.Kind == PlayableLongNoteKind.Kusudama && _kusudama is not null)
         {
             if (!KeepCamera) _don?.SetCameraLayout(_player, DonPresentationLayout.Kusudama);
             _overlay = _kusudama;
-            // Kusudama overlay (reference trace): the quota, then whether Go-Go is on.
             _sharedKusudama?.Enter(note.RequiredHits);
-            tell(_kusudama.Player, "AddNorma", LumenHostValue.FromNumber(note.RequiredHits));
-            tell(_kusudama.Player, "SetGogoTime", LumenHostValue.FromBoolean(_chart.IsGoGoAt(note.StartTime, note.Branch)));
+            Started?.Invoke(PlayableLongNoteKind.Kusudama, note.RequiredHits, _chart.IsGoGoAt(note.StartTime, note.Branch));
+            Changed?.Invoke();
             _balloonVisible = true;
             _don?.SetMotion(new DonMotionRequest(_player, $"{_kusu}_in", $"{_kusu}_nobeat"));
         }
@@ -293,17 +302,12 @@ public sealed class TaikoLongNotePresentation
             // turned AI-don's balloon motion the wrong way (user-reported).
             _don?.SetCameraLayout(_player, KeepCamera ? DonPresentationLayout.Standard : DonPresentationLayout.Balloon);
             _overlay = _balloon;
-            tell(_balloon.Player, "Reset");
-            // The opening timeline creates the balloon child two ticks after 'start'.
-            // Prepare it before sending a nonzero quota, which also updates that child.
-            tell(_balloon.Player, "SetGekiRendaCount", 0);
-            _balloon.Player.Advance();
-            _balloon.Player.Advance();
-            tell(_balloon.Player, "SetGekiRendaCount", note.RequiredHits - _session.GetLongNoteProgress(index).Hits);
+            Started?.Invoke(PlayableLongNoteKind.Balloon, note.RequiredHits, _chart.IsGoGoAt(note.StartTime, note.Branch));
+            Changed?.Invoke();
             _balloonVisible = true;
             _don?.SetMotion(new DonMotionRequest(_player, null, "don_balloon_nobeat"));
         }
-        // Rolls: the game sends nothing at the start; the counter appears with SetRendaCount(1) on the first hit.
+        // Rolls: nothing at the start; the count appears with the first hit.
         _onNoteStarted?.Invoke(note.Kind);
     }
 
@@ -324,8 +328,7 @@ public sealed class TaikoLongNotePresentation
             {
                 // Both players' hits count down one ball; it breaks for both at zero (Update finishes it).
                 var left = _sharedKusudama!.Hit();
-                if (left != 0)
-                    tell(_kusudama!.Player, "SetCount", LumenHostValue.FromNumber(left));
+                Changed?.Invoke();
                 var (pump, rest) = motions(progress.Note);
                 if (left != 0) _don?.SetMotion(new DonMotionRequest(_player, pump, rest));
             }
@@ -333,11 +336,7 @@ public sealed class TaikoLongNotePresentation
                 finish(progress.NoteIndex);
             else if (!opened || progress.Note.Kind != PlayableLongNoteKind.Balloon) // begin showed the opening hit
             {
-                var remaining = progress.Note.RequiredHits - progress.Hits;
-                if (_overlay == _kusudama)
-                    tell(_overlay.Player, "SetCount", LumenHostValue.FromNumber(remaining));
-                else
-                    tell(_balloon.Player, "SetGekiRendaCount", remaining);
+                Changed?.Invoke();
                 // Every hit restarts the pumping motion, which settles back to the no-beat idle.
                 var (pump, rest) = motions(progress.Note);
                 _don?.SetMotion(new DonMotionRequest(_player, pump, rest));
@@ -345,7 +344,8 @@ public sealed class TaikoLongNotePresentation
         }
         else
         {
-            tell(_counter.Player, "SetRendaCount", _shownHits = ShownHits?.Invoke(progress.NoteIndex) ?? progress.Hits);
+            _shownHits = ShownHits?.Invoke(progress.NoteIndex) ?? progress.Hits;
+            Changed?.Invoke();
             if (_visible.TryGetValue(progress.NoteIndex, out var layer))
                 invoke(layer.Player, "HitAction");
         }
@@ -360,18 +360,11 @@ public sealed class TaikoLongNotePresentation
     {
         if (_active is not { } index)
             return;
-        var note = _chart.LongNotes[index];
-        if (note.IsBalloon)
-        {
-            if (_overlay == _kusudama)
-                tell(_overlay.Player, "EndResult", LumenHostValue.FromNumber(2));
-            else
-                tell(_balloon.Player, "GekiRendaEnd", 1);
-        }
-        else if (_session.GetLongNoteProgress(index).Hits > 0) // no hit: the counter never appeared
-            tell(_counter.Player, "RendaEnd");
+        if (_chart.LongNotes[index].IsBalloon)
+            Ended?.Invoke(overlayKind, false);
         _finished.Add(index);
         _active = null;
+        Changed?.Invoke();
     }
 
     private void finish(int index)
@@ -382,10 +375,7 @@ public sealed class TaikoLongNotePresentation
             // A shared ball succeeds for both players or neither.
             var popped = shared(index) ? _sharedKusudama!.Popped : progress.IsPopped;
             if (shared(index)) _sharedKusudama!.Leave();
-            if (_overlay == _kusudama)
-                tell(_overlay.Player, "EndResult", LumenHostValue.FromNumber(popped ? 0 : 2)); // high / miss
-            else
-                tell(_balloon.Player, "GekiRendaEnd", progress.IsPopped ? 0 : 1);
+            Ended?.Invoke(overlayKind, _overlay == _kusudama ? popped : progress.IsPopped);
             var kusudama = progress.Note.Kind == PlayableLongNoteKind.Kusudama;
             _don?.SetMotion(new DonMotionRequest(_player, (kusudama, popped) switch
             {
@@ -396,11 +386,15 @@ public sealed class TaikoLongNotePresentation
             }, null));
             _onBalloonCompleted?.Invoke(progress.Note.Kind, popped);
         }
-        else if (refreshShownHits(index) > 0) // no hit: the counter never appeared, RendaEnd would show 0
-            tell(_counter.Player, "RendaEnd");
+        else
+            refreshShownHits(index);
         _finished.Add(index);
         _active = null;
+        Changed?.Invoke();
     }
+
+    private PlayableLongNoteKind overlayKind =>
+        _overlay == _kusudama ? PlayableLongNoteKind.Kusudama : PlayableLongNoteKind.Balloon;
 
     // A kusudama both players share (two-player gameplay).
     private bool shared(int index) =>
@@ -410,26 +404,6 @@ public sealed class TaikoLongNotePresentation
         note.Kind == PlayableLongNoteKind.Kusudama
             ? ($"{_kusu}_loop", $"{_kusu}_nobeat")
             : ("don_balloon_loop", "don_balloon_nobeat");
-
-    // The roll counter, the balloon and the kusudama: one that reads the provider is ours and takes no callbacks.
-    // ponytail: skipped here rather than moved to the gameplay adapter (GameplayGameMovies): the game's balloon and
-    // kusudama want more than the provider says yet (how one ended), so their calls stay beside the logic.
-    private static void tell(LumenPlayer player, string name, LumenHostValue argument)
-    {
-        if (!player.UsesProvider) call(player, name, argument);
-    }
-
-    private static void tell(LumenPlayer player, string name, double? argument = null)
-    {
-        if (!player.UsesProvider) invoke(player, name, argument);
-    }
-
-    private static void call(LumenPlayer player, string name, LumenHostValue argument)
-    {
-        if (!player.TryInvokeCallback(name, [argument]))
-            throw new InvalidDataException(
-                $"Kusudama movie is missing callback '{name}' (has: {string.Join(", ", player.CallbackNames)}).");
-    }
 
     private static void invoke(LumenPlayer player, string name, double? argument = null)
     {

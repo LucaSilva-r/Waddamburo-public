@@ -12,14 +12,14 @@ namespace Waddamburo.Skins.Green.Gameplay;
 /// </summary>
 /// <remarks>
 /// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
-/// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner and a dan course's panel. Not here: the roll counter, the
-/// balloon and the kusudama (TaikoLongNotePresentation calls them, and skips one of ours), and the label jumps
-/// that are the lane's drawing itself (hit flashes, judgement words, note faces).
+/// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner, a dan course's panel, the roll counter,
+/// the balloon and the kusudama. Not here: the label jumps that are the lane's drawing itself (hit flashes, judgement
+/// words, note faces, roll bodies).
 /// </remarks>
 public sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,
     LumenPlayer? gaugeFire, LumenPlayer? goGoSplash, LumenPlayer? banner, LumenPlayer target, LumenPlayer? bubble,
-    LumenPlayer? danPanel)
+    LumenPlayer? danPanel, LumenPlayer rollCounter, LumenPlayer balloon, LumenPlayer? kusudama)
 {
     private static readonly string[] Routes = ["normal", "expert", "master"];
     private int _segments = -1;
@@ -29,13 +29,23 @@ public sealed class GameplayGameMovies(
     private int _route = -1;
     private readonly Dictionary<string, LumenHostValue> _dan = []; // dan.* states, list places as "name#index"
     private bool _danReady, _danTypes, _danValues;
+    private int _roll; // the roll count told, 0: none shown
+    private int _kusudamaCount; // the kusudama's count as the movie has it
 
     /// <summary>The board when it is the game's: what the lane sets up on it by hand (side, course, option icons).</summary>
     public LumenPlayer? Board => game(board);
 
-    /// <summary>Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.</summary>
-    public void Start(bool routes)
+    /// <summary>
+    /// Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane. The
+    /// kusudama is told the players on it (once per player: two drums share one) and whether it is Waiwai's.
+    /// </summary>
+    public void Start(bool routes, int kusudamaPlayers, bool waiwai)
     {
+        if (game(kusudama) is { } ball)
+        {
+            call(ball, "SetPlayerNum", number(kusudamaPlayers));
+            call(ball, "SetWaiWai", LumenHostValue.FromBoolean(waiwai));
+        }
         if (game(target) is { } movie) call(movie, "SetBranchAvailable", LumenHostValue.FromBoolean(routes));
     }
 
@@ -77,6 +87,28 @@ public sealed class GameplayGameMovies(
                 _segments = segments;
                 if (game(gauge) is { } gaugeMovie)
                     call(gaugeMovie, "SetCurrentGauge", LumenHostValue.FromNumber(segments));
+                break;
+            // The counter appears with the first hit (SetRendaCount(1)) and goes with RendaEnd; a roll without a hit
+            // never showed it, so it is not ended either.
+            case "play.roll" when game(rollCounter) is { } counter:
+                if (value.Kind == LumenHostValueKind.Undefined)
+                {
+                    if (_roll > 0) call(counter, "RendaEnd");
+                    _roll = 0;
+                }
+                else if ((int)value.AsNumber() is var hits and > 0 && hits != _roll)
+                    call(counter, "SetRendaCount", number(_roll = hits));
+                break;
+            // Hits left; the burst itself is told by balloon.ended, never as 0.
+            case "play.balloon" when value.Kind == LumenHostValueKind.Number && value.AsNumber() > 0 && game(balloon) is { } fusen:
+                call(fusen, "SetGekiRendaCount", value);
+                break;
+            // Hits left (with two drums, the one ball's). AddNorma told the movie its count: only a change is sent.
+            case "play.kusudama" when game(kusudama) is { } ball:
+                if (value.Kind == LumenHostValueKind.Undefined)
+                    _kusudamaCount = 0;
+                else if ((int)value.AsNumber() is var left and > 0 && left != _kusudamaCount)
+                    call(ball, "SetCount", number(_kusudamaCount = left));
                 break;
             // Traced label jumps: the fire on a full gauge, and out when it drops.
             case "play.gaugeFull" when value.AsBoolean() != _full:
@@ -166,6 +198,26 @@ public sealed class GameplayGameMovies(
             // The movie picks its label from the count; one without the callback shows nothing.
             case "combo.milestone" when game(comboBonus) is { } movie:
                 movie.TryInvokeCallback("SetComboBonus", [arguments[0]]);
+                break;
+            // The opening timeline makes the balloon's child two frames after 'start': it is played on before the
+            // count is set (play.balloon, right after), which also updates that child.
+            case "balloon.started" when game(balloon) is { } fusen:
+                call(fusen, "Reset");
+                call(fusen, "SetGekiRendaCount", number(0));
+                fusen.Advance();
+                fusen.Advance();
+                break;
+            case "balloon.ended" when game(balloon) is { } fusen:
+                call(fusen, "GekiRendaEnd", number(arguments[0].AsBoolean() ? 0 : 1));
+                break;
+            // Reference trace: the quota (added to the one ball by each drum), then whether it is a Go-Go one.
+            case "kusudama.started" when game(kusudama) is { } ball:
+                call(ball, "AddNorma", arguments[0]);
+                call(ball, "SetGogoTime", arguments[1]);
+                _kusudamaCount = (int)arguments[0].AsNumber();
+                break;
+            case "kusudama.ended" when game(kusudama) is { } ball:
+                call(ball, "EndResult", number(arguments[0].AsBoolean() ? 0 : 2)); // high / miss
                 break;
             case "song.ended" when game(banner) is { } movie:
                 label(movie, TaikoResultBanner.Label(arguments[0].AsBoolean(), arguments[1].AsBoolean()));

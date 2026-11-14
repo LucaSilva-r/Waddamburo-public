@@ -292,9 +292,14 @@ until the lane's first update (it was published false at build before: the game'
 
 Same proof, wider: every gameplay movie's calls and jumps, 33,293 lines, identical per movie.
 
-**Skipped, not moved**: the roll counter, the balloon and the kusudama. `TaikoLongNotePresentation` still makes their
-calls and leaves alone a movie that reads the provider. The game's balloon and kusudama are told how one ended
-(burst high or low, missed), which the provider does not say yet; moving them needs those events first.
+**Long notes, moved (2026-11-14)**: the roll counter, the balloon and the kusudama. `TaikoLongNotePresentation`
+makes no movie calls for them now: it tells `Started`, `Ended` and `Changed`, and the lane publishes `play.roll`,
+`play.balloon` and `play.kusudama` at once (and each tick, for the kusudama two drums share) and emits
+`balloon.started` / `kusudama.started` (hits needed, and whether it starts in Go-Go time by the chart: `play.goGo`
+can still be on at a kusudama right at the Go-Go's end) and `balloon.ended` / `kusudama.ended` (burst or not). The
+adapter makes the game's calls from them: the balloon's Reset, opening frames and count, its GekiRendaEnd; the
+kusudama's SetPlayerNum and SetWaiWai at the start, AddNorma and SetGogoTime, changed counts,
+EndResult. With two drums each drum's adapter tells the one kusudama, as each lane did.
 **Staying where they are**: label jumps that are the lane's own drawing (hit flashes, judgement words, note faces,
 the game's flight pool): our movies answer the same labels with their own animation.
 

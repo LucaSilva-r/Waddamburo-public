@@ -65,6 +65,10 @@ public static class WdNames
         new("combo.milestone", WdKind.Event, "combo: number", "play", "The combo reached a hundred.", "100"),
         new("roll.hit", WdKind.Event, "part: text (don, ka), big: bool", "play", "A hit landed on this drum's drumroll.", "don, false"),
         new("balloon.popped", WdKind.Event, "", "play", "This drum's balloon burst.", ""),
+        new("balloon.started", WdKind.Event, "hits: number, goGo: bool", "play", "A balloon came under way on this drum, needing that many hits; goGo: it starts in Go-Go time.", "20, false"),
+        new("balloon.ended", WdKind.Event, "popped: bool", "play", "This drum's balloon is over: burst, or its time ran out.", "true"),
+        new("kusudama.started", WdKind.Event, "hits: number, goGo: bool", "play", "A kusudama came under way on this drum, needing that many of its hits (with two drums, each adds its own to the one ball); goGo: it starts in Go-Go time.", "40, false"),
+        new("kusudama.ended", WdKind.Event, "popped: bool", "play", "This drum's kusudama is over: burst, or its time ran out.", "false"),
         new("drum.hit", WdKind.Event, "side: text (left, right), part: text (don, ka)", "play", "This drum was struck, note or not.", "left, don"),
         new("song.ended", WdKind.Event, "cleared: bool, fullCombo: bool", "play", "The song is over and its result is known.", "true, false"),
     ];

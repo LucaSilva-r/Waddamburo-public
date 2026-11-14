@@ -17,13 +17,14 @@ public sealed class TaikoLongNotePresentationTests
         var calls = new List<(string, double)>();
         var chart = chartFor(PlayableLongNoteKind.Balloon, 2);
         var session = sessionFor(chart);
-        var layer = movie(calls);
+        var layer = TestMovies.RecordingMovie(calls);
         var don = new DonController();
         var completed = new List<(PlayableLongNoteKind Kind, bool Succeeded)>();
         var started = new List<PlayableLongNoteKind>();
         var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer,
             don: don, onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
             onNoteStarted: started.Add);
+        var told = listen(presentation);
         Assert.False(presentation.BalloonVisible);
         // The balloon waits on the target until the first don opens it, already counting that hit.
         presentation.Update(TimeSpan.FromSeconds(1));
@@ -38,8 +39,8 @@ public sealed class TaikoLongNotePresentationTests
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(4));
-        Assert.Equal(new (string, double)[] { ("Reset", double.NaN), ("SetGekiRendaCount", 0),
-            ("SetGekiRendaCount", 1), ("GekiRendaEnd", pop ? 0 : 1) }, calls);
+        Assert.Equal(["start Balloon 2", "count 1", $"end Balloon {pop}", "none"], told);
+        Assert.Empty(calls); // the overlay's calls are the gameplay adapter's
         Assert.Empty(layer.Player.Diagnostics);
         Assert.True(presentation.BalloonVisible);
         Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
@@ -60,30 +61,32 @@ public sealed class TaikoLongNotePresentationTests
         var calls = new List<(string, double)>();
         var chart = chartFor(PlayableLongNoteKind.Kusudama, 1);
         var session = sessionFor(chart);
-        var layer = movie(calls);
+        var layer = TestMovies.RecordingMovie(calls);
         var completed = new List<(PlayableLongNoteKind Kind, bool Succeeded)>();
         var started = new List<PlayableLongNoteKind>();
         var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer,
             kusudama: layer, onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
             onNoteStarted: started.Add);
+        var told = listen(presentation);
         presentation.Update(TimeSpan.FromSeconds(1));
         session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.1));
         presentation.Update(TimeSpan.FromSeconds(3));
         Assert.Equal([(PlayableLongNoteKind.Kusudama, true)], completed);
-        Assert.Contains(("EndResult", 0d), calls);
+        Assert.Contains("end Kusudama True", told);
         Assert.Equal([PlayableLongNoteKind.Kusudama], started);
     }
 
     [Fact]
-    public void RollsHaveIndependentWidthsAndCountersReceiveEachHitOnce()
+    public void RollsHaveIndependentWidthsAndTellEachHitOnce()
     {
         var calls = new List<(string, double)>();
         var chart = chartFor(PlayableLongNoteKind.Roll);
         var session = sessionFor(chart);
-        var layer = movie(calls);
+        var layer = TestMovies.RecordingMovie(calls);
         var started = new List<PlayableLongNoteKind>();
-        var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer,
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => TestMovies.RecordingMovie(calls), layer, layer,
             onNoteStarted: started.Add);
+        var told = listen(presentation);
         var noteLayer = Assert.Single(presentation.NoteLayers(TimeSpan.Zero, (time, _, _) => (400 + (float)time.TotalSeconds * 100, 250f), (400, 250))).Layer;
         Assert.NotSame(layer.Player, noteLayer.Player);
         Assert.Contains(("SetWidth", 100d), calls);
@@ -93,25 +96,25 @@ public sealed class TaikoLongNotePresentationTests
         presentation.AdvanceAnimations();
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
-        Assert.Equal([1d, 2d], calls.Where(c => c.Item1 == "SetRendaCount").Select(c => c.Item2));
+        Assert.Equal(["count 1", "count 2", "none"], told);
         Assert.Equal(2, calls.Count(c => c.Item1 == "HitAction"));
-        Assert.Single(calls, c => c.Item1 == "RendaEnd");
         Assert.Contains(calls, c => c.Item1 == "OnUpdate");
         Assert.Equal([PlayableLongNoteKind.Roll], started);
     }
 
     [Fact]
-    public void UnhitRollNeverShowsItsCounter()
+    public void UnhitRollNeverCountsAHit()
     {
         var calls = new List<(string, double)>();
         var chart = chartFor(PlayableLongNoteKind.Roll);
         var session = sessionFor(chart);
-        var layer = movie(calls);
-        var presentation = new TaikoLongNotePresentation(chart, session, _ => movie(calls), layer, layer);
+        var layer = TestMovies.RecordingMovie(calls);
+        var presentation = new TaikoLongNotePresentation(chart, session, _ => TestMovies.RecordingMovie(calls), layer, layer);
+        var told = listen(presentation);
         presentation.Update(TimeSpan.FromSeconds(1));
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
-        Assert.DoesNotContain(calls, c => c.Item1 is "SetRendaCount" or "RendaEnd");
+        Assert.DoesNotContain(told, line => line.StartsWith("count", StringComparison.Ordinal) && line != "count 0");
     }
 
     [Theory]
@@ -121,8 +124,8 @@ public sealed class TaikoLongNotePresentationTests
     {
         var calls = new List<(string, double)>();
         var chart = chartFor(kind);
-        var layer = movie(calls);
-        var presentation = new TaikoLongNotePresentation(chart, sessionFor(chart), _ => movie(calls), layer, layer);
+        var layer = TestMovies.RecordingMovie(calls);
+        var presentation = new TaikoLongNotePresentation(chart, sessionFor(chart), _ => TestMovies.RecordingMovie(calls), layer, layer);
 
         (float, float) position(TimeSpan noteTime, TimeSpan _, ChartBranch? __) => (400 + (float)(noteTime - TimeSpan.FromSeconds(6.1)).TotalSeconds * 100, 250);
         var visible = Assert.Single(presentation.NoteLayers(TimeSpan.FromSeconds(6.1), position, (400, 250)));
@@ -138,40 +141,18 @@ public sealed class TaikoLongNotePresentationTests
         [new(TimeSpan.Zero, 120, 4, 4)], [new(TimeSpan.Zero, 1)], [new(TimeSpan.Zero, false)], [],
         [new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), kind, quota)]);
 
+    // What the presentation tells: starts and ends of balloons and kusudama, and the count under way at each change.
+    private static List<string> listen(TaikoLongNotePresentation presentation)
+    {
+        var told = new List<string>();
+        presentation.Started += (kind, hits, _) => told.Add($"start {kind} {hits}");
+        presentation.Ended += (kind, popped) => told.Add($"end {kind} {popped}");
+        presentation.Changed += () => told.Add(presentation.Active is { } active ? $"count {active.Count}" : "none");
+        return told;
+    }
+
     private static TaikoJudgementSession sessionFor(PlayableChart chart) => new(chart,
         new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)));
-
-    // Original synthetic callback movie: each exported callback forwards its name/argument to a recording host.
-    private static LumenSceneLayer movie(List<(string, double)> calls)
-    {
-        var names = new[] { "level01", "n", "Record", "flash", "external", "ExternalInterface", "addCallback",
-            "Reset", "SetGekiRendaCount", "GekiRendaEnd", "SetRendaCount", "RendaEnd", "SetWidth", "HitAction", "OnUpdate",
-            "AddNorma", "SetGogoTime", "SetCount", "EndResult", "SetPlayerNum", "SetWaiWai" };
-        var code = new List<Avm1Instruction>();
-        var offset = 0;
-        Avm1Instruction op(byte opcode, Avm1Operand? operand = null, Avm1CodeBlock? body = null) =>
-            new(opcode, offset++, 1, [], operand, null, body);
-        Avm1Instruction push(params Avm1PushValue[] values) => op(0x96, new Avm1PushOperand([.. values]));
-        Avm1PushStringValue str(int index) => new(8, (ushort)index);
-        for (var index = 7; index < names.Length; index++)
-        {
-            var body = new Avm1CodeBlock(0, 6, [push(str(1)), op(0x1C),
-                push(str(index), new Avm1PushIntegerValue(2), str(2)), op(0x3D), op(0x17), op(0)]);
-            body = body with { Instructions = [.. body.Instructions.Select((instruction, i) => instruction with { Offset = i })] };
-            code.Add(op(0x9B, new Avm1FunctionOperand((ushort)index, 0, 0, [new(null, 1)], 6), body));
-            code.Add(push(str(index))); code.Add(op(0x1C));
-            code.Add(push(new Avm1PushNullValue(), str(index), new Avm1PushIntegerValue(3), str(3)));
-            code.Add(op(0x1C)); code.Add(push(str(4))); code.Add(op(0x4E));
-            code.Add(push(str(5))); code.Add(op(0x4E)); code.Add(push(str(6))); code.Add(op(0x52)); code.Add(op(0x17));
-        }
-        code.Add(op(0x07)); code.Add(op(0));
-        var action = new LmbAction(0, [], 0) { Code = new(0, code.Count, [.. code.Select((instruction, i) => instruction with { Offset = i })]) };
-        var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [], [new LmbFrameLabelCommand(0, 0, 0, [], null!),
-            new LmbShowFrameCommand(0, 1, [], null!), new LmbDoActionCommand(0, 0, [], null!)], null!);
-        var movie = new LmbMovieDefinition(null!, null, [.. names.Select((name, index) => new LmbString(index, name, 0))],
-            [], [], [], [], [], [action], [], [sprite], []);
-        return new(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1, hostBinding: new Recorder(calls)), LumenMatrix.Identity, 0, 0);
-    }
 
     private sealed class DonController : IDonPresentationController
     {
@@ -179,15 +160,5 @@ public sealed class TaikoLongNotePresentationTests
         public void Reset(DonPresentationLayout layout) { }
         public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"synthetic:{playerIndex}");
         public void SetMotion(DonMotionRequest request) => Motions.Add(request);
-    }
-
-    private sealed class Recorder(List<(string, double)> calls) : ILumenHostBinding
-    {
-        public void Install(LumenHostContext context) => context.RegisterFunction("Record", call =>
-        {
-            calls.Add((call.Arguments[0].AsString(), call.Arguments[1].Kind == LumenHostValueKind.Number
-                ? call.Arguments[1].AsNumber() : double.NaN));
-            return LumenHostValue.Undefined;
-        });
     }
 }

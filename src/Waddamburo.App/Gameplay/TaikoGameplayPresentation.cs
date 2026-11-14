@@ -536,7 +536,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // The game's movies are driven from what is published, by their adapter (ours read it themselves).
             var gameMovies = new GameplayGameMovies(board, gaugeMovie, () => gauge.FilledSegments, scoreAdd, comboBonus,
                 gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
-                layers.GetValueOrDefault("dani_enso")?.Player);
+                layers.GetValueOrDefault("dani_enso")?.Player, layers["renda_num"].Player, layers["action_fusen_1p"].Player,
+                (kusudama?.Layer ?? layers.GetValueOrDefault("action_kusudama"))?.Player);
             // The provider (movie-provider-design.md): this drum's numbers under their names, for any movie of the lane
             // that asks (Wd.get, Wd.on). The game's movies never ask and are driven by their callbacks as before.
             // This drum's movies get them as their own. The movies both drums share (song_info) belong to neither; they,
@@ -628,12 +629,26 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         _ => (GameplaySoundEvent?)null,
                     };
                     if (cue is { } value) sound(value);
-                }, _ => sound(GameplaySoundEvent.LongNoteStarted), lane, kusudama, waiwai: stage is not null,
+                }, _ => sound(GameplaySoundEvent.LongNoteStarted), lane, kusudama,
                 createText: kind =>
                 {
                     var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
                     return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
                 }) { KeepCamera = donStage is not null && !layers.ContainsKey("don3d") };
+            // The roll, balloon and kusudama as they go: their counts at once (and again each tick, for the shared
+            // kusudama the other drum counts down), their starts and ends as events.
+            void publishLongNotes()
+            {
+                var under = _longNotes.Active;
+                publish("play.roll", under is { Balloon: false } roll ? LumenHostValue.FromNumber(roll.Count) : LumenHostValue.Undefined);
+                publish("play.kusudama", under is { Kusudama: true } ball ? LumenHostValue.FromNumber(ball.Count) : LumenHostValue.Undefined);
+                publish("play.balloon", under is { Balloon: true, Kusudama: false } balloon ? LumenHostValue.FromNumber(balloon.Count) : LumenHostValue.Undefined);
+            }
+            _longNotes.Changed += publishLongNotes;
+            _longNotes.Started += (kind, hits, goGo) => emit(kind == PlayableLongNoteKind.Kusudama ? "kusudama.started" : "balloon.started",
+                LumenHostValue.FromNumber(hits), LumenHostValue.FromBoolean(goGo));
+            _longNotes.Ended += (kind, popped) => emit(kind == PlayableLongNoteKind.Kusudama ? "kusudama.ended" : "balloon.ended",
+                LumenHostValue.FromBoolean(popped));
             // AI battle: both Dons stand in its hit-effect movie (no don3d of their own).
             _character = don is null ? null : donStage is not null && !layers.ContainsKey("don3d")
                 ? new(don, donStage, lane, stage: true) : new(don, layers["don3d"], lane);
@@ -707,10 +722,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var bannerShown = false;
             _onChartTime = time =>
             {
-                var under = _longNotes.Active;
-                publish("play.roll", under is { Balloon: false } roll ? LumenHostValue.FromNumber(roll.Count) : LumenHostValue.Undefined);
-                publish("play.kusudama", under is { Kusudama: true } ball ? LumenHostValue.FromNumber(ball.Count) : LumenHostValue.Undefined);
-                publish("play.balloon", under is { Balloon: true, Kusudama: false } balloon ? LumenHostValue.FromNumber(balloon.Count) : LumenHostValue.Undefined);
+                publishLongNotes();
                 // In hundredths: a bar does not need more, and a movie is not told sixty times a second.
                 publish("play.progress", LumenHostValue.FromNumber(
                     Math.Round(Math.Clamp(time / TaikoResultBanner.Time(chart), 0, 1), 2)));
@@ -912,7 +924,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 gameBoard.TryInvokeCallback("SetRandomLevel", [LumenHostValue.FromNumber((int)options.Random)]);
                 gameBoard.TryInvokeCallback("SetSeriousMode", [LumenHostValue.FromBoolean(options.Shinuchi)]);
             }
-            gameMovies.Start(chart.Branching is not null);
+            gameMovies.Start(chart.Branching is not null, kusudama?.Players ?? 1, waiwai: stage is not null);
             hitRadius = _presentation.HitRadius;
             counted.LongNoteHit += progress =>
             {
