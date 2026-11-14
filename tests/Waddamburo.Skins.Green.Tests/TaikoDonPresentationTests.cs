@@ -3,9 +3,11 @@ using Waddamburo.Game.Don;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Tests;
+using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Lumen.Rendering;
 
-namespace Waddamburo.Game.Tests;
+namespace Waddamburo.Skins.Green.Tests;
 
 public sealed class TaikoDonPresentationTests
 {
@@ -34,6 +36,27 @@ public sealed class TaikoDonPresentationTests
         presentation.SetGoGo(false);
         Assert.Equal("don_normal", controller.Idles[^1]);
         Assert.Same(layer.Player, presentation.Layer?.Player);
+    }
+
+    [Fact]
+    public void BalloonAndKusudamaTakeTheirPoses()
+    {
+        var controller = new Controller();
+        var presentation = new TaikoDonPresentation(controller, marker());
+        var balloon = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Balloon, 5);
+        var kusudama = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Kusudama, 5);
+        presentation.Opened(PlayableLongNoteKind.Balloon);
+        Assert.Equal(DonPresentationLayout.Balloon, controller.Layouts[^1]);
+        Assert.Equal((null, "don_balloon_nobeat"), (controller.Motions[^1].OneShot, controller.Motions[^1].Loop));
+        presentation.Pumped(balloon);
+        Assert.Equal("don_balloon_loop", controller.Motions[^1].OneShot);
+        presentation.Closed(balloon, popped: true);
+        Assert.Equal("don_balloon_success", controller.Motions[^1].OneShot);
+        presentation.Opened(PlayableLongNoteKind.Kusudama);
+        Assert.Equal(DonPresentationLayout.Kusudama, controller.Layouts[^1]);
+        Assert.Equal("don_kusu1P_in", controller.Motions[^1].OneShot);
+        presentation.Closed(kusudama, popped: false);
+        Assert.Equal("don_kusu1P_failure", controller.Motions[^1].OneShot);
     }
 
     [Fact]

@@ -1,23 +1,17 @@
+using Waddamburo.Catalog;
 using Waddamburo.Game.Don;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.Game.Gameplay;
-
-/// <summary>Soul-gauge band that selects Don's calm or cleared idle.</summary>
-public enum TaikoGaugeState
-{
-    BelowClear,
-    Cleared,
-    Full,
-}
+namespace Waddamburo.Skins.Green.Gameplay;
 
 /// <summary>
 /// Owns gameplay motions and the authored native-model marker. The idle loop follows the play
 /// state (Go-Go, then a running miss streak, then the gauge band); one-shot reactions play over
 /// it and return to whatever idle is current when they end.
 /// </summary>
-public sealed class TaikoDonPresentation
+public sealed class TaikoDonPresentation : ITaikoLongNoteCharacter
 {
     private const int ComboReactionInterval = 10;
     private const int LongMissStreak = 6;
@@ -37,6 +31,8 @@ public sealed class TaikoDonPresentation
     // AI battle: the Don's fill in the battle movie, taken off while a balloon shows it (Green: the stage's Dons vanish
     // during balloons, user-confirmed).
     private readonly (LumenSceneLayer Layer, string State, LumenNativeSurfacePlacement Placement)? _stageFill;
+    private readonly string _kusu; // the kusudama motions: don_kusu1P_* for the top lane, don_kusu2P_* for the second
+    private readonly bool _keepCamera; // AI battle's stage: its own view through balloons and kusudama
     private bool _goGo;
     private bool _balloonVisible;
     private TaikoGaugeState _gauge;
@@ -48,8 +44,18 @@ public sealed class TaikoDonPresentation
     /// <param name="player">The lane: 0 top (don3d's don1p state), 1 the second player's lower lane (don2p).</param>
     /// <param name="stage">The Don stands in a movie the scene draws itself (AI battle's ai_hit_effect, its don1p / don2p
     /// fills by the territory needle): no state to pick, nothing for the lane to draw.</param>
-    public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer, int player = 0, bool stage = false)
+    /// <param name="overlays">The lane's balloon and kusudama movies: the Don shows in their don1pM / don2pM fills.</param>
+    public TaikoDonPresentation(IDonPresentationController controller, LumenSceneLayer layer, int player = 0, bool stage = false,
+        (LumenPlayer Balloon, LumenPlayer? Kusudama)? overlays = null)
     {
+        // The Dons are already playing (another lane may have started first): bind without a reset.
+        if (overlays is var (balloon, kusudama))
+        {
+            DonLumenBinding.Attach(balloon, controller, reset: false);
+            if (kusudama is not null) DonLumenBinding.Attach(kusudama, controller, reset: false);
+        }
+        _kusu = player == 1 ? "don_kusu2P" : "don_kusu1P";
+        _keepCamera = stage;
         _controller = controller;
         _player = player;
         _layer = stage ? null : layer;
@@ -146,6 +152,35 @@ public sealed class TaikoDonPresentation
         if (_combo % ComboReactionInterval == 0 && !_goGo)
             react(_gauge == TaikoGaugeState.Full ? "don_full_combo" : "don_combo");
     }
+
+    // A balloon or kusudama (TaikoLongNotePresentation): the overlay shows the Don while it is up.
+    public void Opened(PlayableLongNoteKind overlay)
+    {
+        if (overlay == PlayableLongNoteKind.Kusudama)
+        {
+            if (!_keepCamera) _controller.SetCameraLayout(_player, DonPresentationLayout.Kusudama);
+            _controller.SetMotion(new(_player, $"{_kusu}_in", $"{_kusu}_nobeat"));
+            return;
+        }
+        // AI battle keeps its battle view but, as every lane's balloon, unmirrored: the mirrored view turned AI-don's
+        // balloon motion the wrong way (user-reported).
+        _controller.SetCameraLayout(_player, _keepCamera ? DonPresentationLayout.Standard : DonPresentationLayout.Balloon);
+        _controller.SetMotion(new(_player, null, "don_balloon_nobeat"));
+    }
+
+    // Every hit restarts the pumping motion, which settles back to the no-beat idle.
+    public void Pumped(PlayableLongNote note) => _controller.SetMotion(note.Kind == PlayableLongNoteKind.Kusudama
+        ? new(_player, $"{_kusu}_loop", $"{_kusu}_nobeat")
+        : new(_player, "don_balloon_loop", "don_balloon_nobeat"));
+
+    public void Closed(PlayableLongNote note, bool popped) => _controller.SetMotion(new(_player,
+        (note.Kind == PlayableLongNoteKind.Kusudama, popped) switch
+        {
+            (true, true) => $"{_kusu}_success02",
+            (true, false) => $"{_kusu}_failure",
+            (false, true) => "don_balloon_success",
+            _ => "don_balloon_failure",
+        }, null));
 
     /// <summary>A one-shot motion that returns to the current idle (e.g. the end-of-song full combo).</summary>
     public void React(string motion) => react(motion);

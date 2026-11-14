@@ -631,7 +631,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     _ => "onp_fusen",
                 };
                 return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-            }, layers["renda_num"], layers["action_fusen_1p"], don,
+            }, layers["renda_num"], layers["action_fusen_1p"],
                 kusudama is null ? layers["action_kusudama"] : null,
                 (kind, succeeded) =>
                 {
@@ -643,12 +643,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         _ => (GameplaySoundEvent?)null,
                     };
                     if (cue is { } value) sound(value);
-                }, _ => sound(GameplaySoundEvent.LongNoteStarted), lane, kusudama,
+                }, _ => sound(GameplaySoundEvent.LongNoteStarted), kusudama,
                 createText: kind =>
                 {
                     var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
                     return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-                }, movies: gameMovies) { KeepCamera = donStage is not null && !layers.ContainsKey("don3d") };
+                }, movies: gameMovies);
             // The roll, balloon and kusudama as they go: their counts at once (and again each tick, for the shared
             // kusudama the other drum counts down), their starts and ends as events.
             void publishLongNotes()
@@ -665,7 +665,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 LumenHostValue.FromBoolean(popped));
             // AI battle: both Dons stand in its hit-effect movie (no don3d of their own).
             _character = don is null ? null : donStage is not null && !layers.ContainsKey("don3d")
-                ? new(don, donStage, lane, stage: true) : new(don, layers["don3d"], lane);
+                ? new(don, donStage, lane, stage: true, overlays: _longNotes.Overlays)
+                : new(don, layers["don3d"], lane, overlays: _longNotes.Overlays);
+            _longNotes.Character = _character;
             if (stage is not null) stage.StateChanged += state => _character?.SetGauge(state);
             _animationClock = new(chart.TimingPoints);
             // Traced (session21): the game steps the dancers, the chibi runners, the fever crowd and

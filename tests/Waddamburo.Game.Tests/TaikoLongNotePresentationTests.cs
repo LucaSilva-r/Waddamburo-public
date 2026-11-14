@@ -1,5 +1,4 @@
 using Waddamburo.Catalog;
-using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -17,12 +16,13 @@ public sealed class TaikoLongNotePresentationTests
         var chart = chartFor(PlayableLongNoteKind.Balloon, 2);
         var session = sessionFor(chart);
         var layer = TestMovies.RecordingMovie(calls);
-        var don = new DonController();
+        var don = new Character();
         var completed = new List<(PlayableLongNoteKind Kind, bool Succeeded)>();
         var started = new List<PlayableLongNoteKind>();
         var presentation = new TaikoLongNotePresentation(chart, session, _ => layer, layer, layer,
-            don: don, onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
+            onBalloonCompleted: (kind, succeeded) => completed.Add((kind, succeeded)),
             onNoteStarted: started.Add);
+        presentation.Character = don;
         var told = listen(presentation);
         Assert.False(presentation.BalloonVisible);
         // The balloon waits on the target until the first don opens it, already counting that hit.
@@ -33,7 +33,7 @@ public sealed class TaikoLongNotePresentationTests
         session.SubmitInput(TaikoInputAction.LeftDon, TimeSpan.FromSeconds(1.2));
         Assert.True(presentation.BalloonVisible);
         Assert.False(presentation.IsHeld(0, TimeSpan.FromSeconds(1.2)));
-        Assert.Equal("don_balloon_nobeat", don.Motions[^1].Loop);
+        Assert.Equal("opened Balloon", don.Told[^1]);
         if (pop) session.SubmitInput(TaikoInputAction.RightDon, TimeSpan.FromSeconds(1.3));
         session.AdvanceTo(TimeSpan.FromSeconds(3));
         presentation.Update(TimeSpan.FromSeconds(3));
@@ -42,14 +42,14 @@ public sealed class TaikoLongNotePresentationTests
         Assert.Empty(calls); // the overlay's calls are the gameplay adapter's
         Assert.Empty(layer.Player.Diagnostics);
         Assert.True(presentation.BalloonVisible);
-        Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
+        Assert.Equal($"closed Balloon {pop}", don.Told[^1]);
         Assert.Equal([(PlayableLongNoteKind.Balloon, pop)], completed);
         presentation.AdvanceAnimations();
         Assert.False(presentation.BalloonVisible);
-        Assert.Equal(pop ? "don_balloon_success" : "don_balloon_failure", don.Motions[^1].OneShot);
-        var motionCount = don.Motions.Count;
+        Assert.Equal($"closed Balloon {pop}", don.Told[^1]);
+        var motionCount = don.Told.Count;
         presentation.AdvanceAnimations();
-        Assert.Equal(motionCount, don.Motions.Count);
+        Assert.Equal(motionCount, don.Told.Count);
         Assert.Single(completed);
         Assert.Equal([PlayableLongNoteKind.Balloon], started);
     }
@@ -164,11 +164,11 @@ public sealed class TaikoLongNotePresentationTests
     private static TaikoJudgementSession sessionFor(PlayableChart chart) => new(chart,
         new(TimeSpan.FromMilliseconds(35), TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(95)));
 
-    private sealed class DonController : IDonPresentationController
+    private sealed class Character : ITaikoLongNoteCharacter
     {
-        public List<DonMotionRequest> Motions { get; } = [];
-        public void Reset(DonPresentationLayout layout) { }
-        public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"synthetic:{playerIndex}");
-        public void SetMotion(DonMotionRequest request) => Motions.Add(request);
+        public List<string> Told { get; } = [];
+        public void Opened(PlayableLongNoteKind overlay) => Told.Add($"opened {overlay}");
+        public void Pumped(PlayableLongNote note) => Told.Add("pumped");
+        public void Closed(PlayableLongNote note, bool popped) => Told.Add($"closed {note.Kind} {popped}");
     }
 }
