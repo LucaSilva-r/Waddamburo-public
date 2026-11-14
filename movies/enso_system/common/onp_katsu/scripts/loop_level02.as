@@ -1,2 +1,2 @@
-// The face state loops until the game picks another.
+// The face state loops until the combo picks another.
 gotoAndPlay("level02");

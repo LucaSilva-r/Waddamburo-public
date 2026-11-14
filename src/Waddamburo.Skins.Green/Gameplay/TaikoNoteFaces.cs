@@ -1,6 +1,6 @@
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.Game.Gameplay;
+namespace Waddamburo.Skins.Green.Gameplay;
 
 /// <summary>
 /// The notes' faces follow the combo. Traced (session1, 18, 20, 26): the game sends every note on

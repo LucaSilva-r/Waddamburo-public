@@ -136,6 +136,25 @@ public sealed class FreeTimeCounterTests
         Assert.Equal("", added.ReadScriptValue("word.text"));
     }
 
+    [Theory]
+    [InlineData("onp_don")]
+    [InlineData("onp_katsu_dai")]
+    public void TheNotesPickTheirFaceFromTheCombo(string name)
+    {
+        var note = load($"enso_system/common/{name}");
+        advance(note, 12); // level01 loops round: frame 1 runs again
+        note.Publish("play.combo", n(51));
+        Assert.Equal("level02", note.ReadScriptValue("tier"));
+        Assert.Equal(note.Labels["level02"], note.CurrentFrame);
+        note.Publish("play.combo", n(52)); // same tier: the face plays on
+        advance(note, 3);
+        Assert.Equal(note.Labels["level02"] + 3, note.CurrentFrame);
+        note.Publish("play.combo", n(0));
+        Assert.Equal(note.Labels["level01"], note.CurrentFrame);
+        Assert.True(note.UsesProvider);
+        Assert.Empty(note.Diagnostics);
+    }
+
     [Fact]
     public void TheLaneAndTheBubbleFollowTheRoute()
     {

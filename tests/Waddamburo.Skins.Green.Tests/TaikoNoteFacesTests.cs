@@ -1,6 +1,6 @@
-using Waddamburo.Game.Gameplay;
+using Waddamburo.Skins.Green.Gameplay;
 
-namespace Waddamburo.Game.Tests;
+namespace Waddamburo.Skins.Green.Tests;
 
 public sealed class TaikoNoteFacesTests
 {

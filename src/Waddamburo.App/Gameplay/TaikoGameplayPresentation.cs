@@ -394,7 +394,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly LumenSceneLayer[] _beatLayers;
         private readonly LumenPlayer? _dancers;
         private readonly LumenPlayer[] _noteFaces;
-        private readonly Func<int> _combo;
+        private readonly GameplayGameMovies _gameMovies;
         private readonly LumenSceneLayer[] _fixedLayers;
         private readonly Action<TimeSpan> _onChartTime; // end-of-song banner check
         private readonly Action<bool> _setMissed = static _ => { }; // a reviewed play's full combo, from its bake
@@ -579,11 +579,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 publish("play.score", LumenHostValue.FromNumber(score.Value));
                 if (popup) emit("score.added", LumenHostValue.FromNumber(award));
             }
-            foreach (var name in NoteMovieNames.Where(layers.ContainsKey))
-                if (!layers[name].Player.TryGotoLabel("", "level01"))
-                    throw new InvalidDataException("Gameplay note movie is missing its initial state.");
             _noteFaces = [.. NoteMovieNames.Where(layers.ContainsKey).Select(name => layers[name].Player)];
-            _combo = () => score.Combo;
+            GameplayGameMovies.StartNotes(_noteFaces);
+            _gameMovies = gameMovies;
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
             // Online lanes play alone, as each player's own game plays them.
             _session = new TaikoJudgementSession(chart, WindowsFor(chart, course),
@@ -965,13 +963,12 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 foreach (var layer in _beatLayers)
                     if (layer.Player != _dancers || chartTime >= TimeSpan.Zero)
                         layer.Player.Advance(input);
-            // Note faces by combo, at the beat's phase (TaikoNoteFaces).
+            // Note faces by combo, at the beat's phase: the game's by their adapter, ours by themselves.
             var beat = _animationClock.Position(chartTime) * 89 / 3600;
-            var combo = _combo();
-            foreach (var note in _noteFaces) TaikoNoteFaces.Show(note, combo, beat);
-            _longNotes.ShowFaces(note => TaikoNoteFaces.ShowTier(note, combo));
+            _gameMovies.NoteFaces(_noteFaces, beat);
+            _longNotes.ShowFaces(_gameMovies.LongNoteFace);
             _flights.Advance();
-            _longNotes.AdvanceAnimations(note => TaikoNoteFaces.LongNoteSteps(note, combo, beat));
+            _longNotes.AdvanceAnimations(note => _gameMovies.LongNoteSteps(note, beat));
             _character?.SetBalloonVisible(_longNotes.BalloonVisible);
             // Balloon one-shots follow their authored real-time overlay. Otherwise Don plays BPM / 120 frames a tick
             // (traced: don_combo's 45 frames take 29 ticks at 185 BPM), not the Lumen movies' BPM / 89: he ran

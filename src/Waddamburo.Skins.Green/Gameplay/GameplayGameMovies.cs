@@ -13,8 +13,8 @@ namespace Waddamburo.Skins.Green.Gameplay;
 /// <remarks>
 /// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
 /// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner, a dan course's panel, the roll counter,
-/// the balloon and the kusudama. Not here: the label jumps that are the lane's drawing itself (hit flashes, judgement
-/// words, note faces, roll bodies).
+/// the balloon and the kusudama, the notes' combo faces. Not here: the label jumps that are the lane's drawing itself
+/// (hit flashes, judgement words, roll bodies).
 /// </remarks>
 public sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,
@@ -133,6 +133,31 @@ public sealed class GameplayGameMovies(
         _danValues |= key is "dan.notesLeft" || key.StartsWith("dan.exam.value#", StringComparison.Ordinal)
             || key.StartsWith("dan.exam.possible#", StringComparison.Ordinal);
     }
+
+    /// <summary>The game's note movies start on their first face (ours pick their own from play.combo).</summary>
+    public static void StartNotes(IEnumerable<LumenPlayer> notes)
+    {
+        foreach (var note in notes)
+            if (game(note) is { } movie && !movie.TryGotoLabel("", "level01"))
+                throw new InvalidDataException("Gameplay note movie is missing its initial state.");
+    }
+
+    /// <summary>The game's note movies on their combo face at <paramref name="beat"/>'s phase, once a tick (TaikoNoteFaces).</summary>
+    public void NoteFaces(IEnumerable<LumenPlayer> notes, double beat)
+    {
+        foreach (var note in notes)
+            if (game(note) is { } movie) TaikoNoteFaces.Show(movie, _combo, beat);
+    }
+
+    /// <summary>A long note of the game's on its combo face.</summary>
+    public void LongNoteFace(LumenPlayer note)
+    {
+        if (game(note) is { } movie) TaikoNoteFaces.ShowTier(movie, _combo);
+    }
+
+    /// <summary>Frames a long note plays this tick: the game's keep their face at the beat's phase, ours play one.</summary>
+    public int LongNoteSteps(LumenPlayer note, double beat) =>
+        game(note) is { } movie ? TaikoNoteFaces.LongNoteSteps(movie, _combo, beat) : 1;
 
     /// <summary>
     /// The dan panel (traced session30): SetChallengeLevel(rank, 101 for a challenge), SetConditionNum(n),

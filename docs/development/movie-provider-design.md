@@ -323,8 +323,9 @@ the gameplay adapter (`Gameplay/GameplayGameMovies`). Engine rules found in thos
 behind provider names:
 
 1. Gameplay: the lane classes that make the game's calls and label jumps (`TaikoLumenPresentation`,
-   `TaikoLongNotePresentation`, `TaikoDonPresentation`, `TaikoNoteFaces`, `TaikoGameplayHostBinding`, the flight
-   pool in `TaikoHitFlights`), and what `TaikoGameplayPresentation` and `GameplayFlow` still call by name
+   `TaikoLongNotePresentation`, `TaikoDonPresentation`, `TaikoGameplayHostBinding`, the flight pool in
+   `TaikoHitFlights`; `TaikoNoteFaces` moved: the adapter puts the game's notes on their combo face, ours read
+   `play.combo` and loop each face themselves), and what `TaikoGameplayPresentation` and `GameplayFlow` still call by name
    (song_info, the between-songs card, the shutter, the rainbow).
 2. Menus, one per screen as it gets `Wd.request`: results, entry, dan select, song select last. The flows then
    keep only the engine side.
