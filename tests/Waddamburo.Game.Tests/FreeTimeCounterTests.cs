@@ -165,6 +165,40 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheSongSelectListsTheRowsAndPicksForThePlayerWhenTimeRunsOut()
+    {
+        var select = load("song_select/song_select");
+        var asked = new List<string>();
+        select.RequestHandler = (name, _) => { asked.Add(name); return null; };
+        static LumenHostValue text(string value) => LumenHostValue.FromString(value);
+        select.Publish("rows.count", n(3));
+        select.Publish("selected.row", n(2));
+        select.Publish("selected.kind", text("chart"));
+        select.Publish("selected.title", text("Oni"));
+        select.PublishItem("row.kind", 0, text("folder"));
+        select.PublishItem("row.depth", 0, n(0));
+        select.PublishItem("row.opened", 0, LumenHostValue.FromBoolean(true));
+        select.PublishItem("row.title", 0, text("Vocaloid"));
+        select.PublishItem("row.count", 0, n(1));
+        select.PublishItem("row.kind", 1, text("song"));
+        select.PublishItem("row.depth", 1, n(1));
+        select.PublishItem("row.opened", 1, LumenHostValue.FromBoolean(true));
+        select.PublishItem("row.title", 1, text("Senbonzakura"));
+        select.PublishItem("row.kind", 2, text("chart"));
+        select.PublishItem("row.depth", 2, n(2));
+        select.PublishItem("row.title", 2, text("Oni"));
+        select.PublishItem("row.stars", 2, n(7));
+        advance(select, 2);
+        Assert.Equal("  - Vocaloid   (1)", select.ReadScriptValue("row0.text"));
+        Assert.Equal(">           Oni   Lv 7", select.ReadScriptValue("row2.text"));
+        Assert.Empty(asked);
+        select.Publish("select.timeLeft", n(0)); // out of time on a chart: it is played, once
+        advance(select, 3);
+        Assert.Equal(["song.start"], asked);
+        Assert.Empty(select.Diagnostics);
+    }
+
+    [Fact]
     public void TheDanSelectListsTheRowsAndPlaysAnOpenCourse()
     {
         var select = load("dani_select/dani_select");

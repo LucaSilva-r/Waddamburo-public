@@ -139,6 +139,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 coverForGameplay(course);
             return;
         }
+        if (Shell.Active.Id == FlowScenes.SongSelect && Shell.Hosts.SongSelect is { } host
+            && Shell.Active.Player.Layers.Select(static layer => layer.Player).FirstOrDefault(static movie => movie.UsesProvider) is { } own)
+            tellSongSelect(own, host);
         // A second player joins from Song Select (arcade; one player in, the other drum's join paid for or
         // free play): back to the entry, which joins them (traced session28: SE_SELECT 0 as Song Select
         // stops, then the entry with the first player in, SetPrevious(SCENE_SONGSELECT, that drum)), under
@@ -440,6 +443,141 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     }
 
     private DanCourseStatus? _course;
+
+    // Our song select (it reads the provider): the catalog as library rows (its folders, their songs, a chart per
+    // course), each request doing what the game's call for that step does (SongSelectHostBinding.Own…).
+    private sealed record FolderTag(int Folder, bool Choice);
+    private sealed record SongTag(int Folder, int Song);
+    private sealed record ChartTag(int Folder, int Song, int Course);
+    private LumenPlayer? _songMovie;
+    private LibraryRows? _songRows;
+    private const int SongSelectSeconds = 100; // the game's song select asks StartTimer(100)
+
+    private void tellSongSelect(LumenPlayer movie, SongSelectHostBinding host)
+    {
+        if (movie != _songMovie)
+        {
+            (_songMovie, _songRows) = (movie, null);
+            string? rows(Func<LibraryRows, string?> act) => _songRows is { } loaded ? act(loaded) : "the list is not set up yet";
+            static int? at(LumenHostValue[] arguments, int index) =>
+                arguments.Length > index && arguments[index].Kind == LumenHostValueKind.Number ? (int)arguments[index].AsNumber() : null;
+            new WdRequests("select")
+                .Handle("rows.window", arguments => at(arguments, 0) is { } first && at(arguments, 1) is { } count
+                    ? rows(loaded => loaded.Window(first, count)) : "rows.window takes the first row and how many")
+                .Handle("select.row", arguments => at(arguments, 0) is { } row ? rows(loaded => selectSongRow(loaded, host, row)) : "select.row takes a row")
+                .Handle("row.open", arguments => at(arguments, 0) is { } row ? rows(loaded => openSongRow(loaded, host, row)) : "row.open takes a row")
+                .Handle("row.close", arguments => at(arguments, 0) is { } row ? rows(loaded => closeSongRow(loaded, host, row)) : "row.close takes a row")
+                .Handle("song.start", _ => rows(loaded => startSong(loaded, host)))
+                .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
+        }
+        if (_songRows is null)
+        {
+            if (!host.OwnReady())
+                return;
+            var loaded = _songRows = new LibraryRows(songTree(host.Catalog));
+            host.OwnStartTimer(SongSelectSeconds);
+            // Where the cursor starts: a folder, or a song inside it (back from a song).
+            var folder = Math.Clamp(host.StartCategory, 0, Math.Max(0, loaded.Rows.Count - 1));
+            if (host.StartSong >= 0 && openSongRow(loaded, host, folder) is null)
+                selectSongRow(loaded, host, folder + 1 + host.StartSong);
+            else
+                selectSongRow(loaded, host, folder);
+        }
+        _songRows.Publish(movie);
+        movie.Publish("select.timeLeft", host.OwnTimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
+    }
+
+    private static IReadOnlyList<LibraryNode> songTree(SongSelectCatalogView catalog)
+    {
+        var folders = new List<LibraryNode>();
+        for (var index = 0; index < catalog.Categories.Length; index++)
+        {
+            var category = catalog.Categories[index];
+            var choice = (category.Presentation & SongCategoryPresentation.FolderEnd) != 0;
+            var folder = new LibraryNode(LibraryNodeKind.Folder, category.Name) { Tag = new FolderTag(index, choice) };
+            if (!choice)
+                for (var position = 0; position < category.Songs.Length; position++)
+                {
+                    var entry = category.Songs[position];
+                    var title = entry.Descriptor.Title;
+                    var song = new LibraryNode(LibraryNodeKind.Song, title.English ?? title.Primary)
+                    {
+                        Subtitle = entry.Descriptor.Subtitle,
+                        Artist = entry.Descriptor.Artist,
+                        Tag = new SongTag(index, position),
+                    };
+                    foreach (var course in Enum.GetValues<TaikoCourse>().Where(entry.HasCourse))
+                        song.Children.Add(new LibraryNode(LibraryNodeKind.Chart, course.ToString())
+                        {
+                            Stars = entry.Level(course) ?? 1,
+                            Course = course.ToString().ToLowerInvariant(),
+                            Tag = new ChartTag(index, position, course == TaikoCourse.Ura ? 7 : (int)course),
+                        });
+                    folder.Children.Add(song);
+                }
+            folders.Add(folder);
+        }
+        return folders;
+    }
+
+    private static string? selectSongRow(LibraryRows rows, SongSelectHostBinding host, int row)
+    {
+        var before = rows.Selected;
+        if (rows.Select(row) is { } refused)
+            return refused;
+        if (rows.Selected == before)
+            return null;
+        switch (rows.Selected?.Tag)
+        {
+            case FolderTag folder:
+                host.OwnFolderCursor(folder.Folder); // the folder's voice
+                break;
+            case SongTag song:
+                host.OwnPreview(song.Folder, song.Song);
+                break;
+        }
+        return null;
+    }
+
+    private static string? openSongRow(LibraryRows rows, SongSelectHostBinding host, int row)
+    {
+        if ((uint)row >= (uint)rows.Rows.Count)
+            return $"there is no row {row} ({rows.Rows.Count} rows)";
+        switch (rows.Rows[row].Node.Tag)
+        {
+            // A library, the dojo, the tutorial: the flow takes over (a reload, another screen).
+            case FolderTag { Choice: true } choice:
+                host.OwnChoose(choice.Folder);
+                return null;
+            case FolderTag folder when rows.Open(row) is null:
+                host.OwnOpenFolder(folder.Folder);
+                return null;
+            case SongTag song when rows.Open(row) is null:
+                host.OwnBeginCourses(song.Folder, song.Song);
+                return null;
+        }
+        return rows.Open(row);
+    }
+
+    private static string? closeSongRow(LibraryRows rows, SongSelectHostBinding host, int row)
+    {
+        var node = (uint)row < (uint)rows.Rows.Count ? rows.Rows[row].Node : null;
+        if (rows.Close(row) is { } refused)
+            return refused;
+        if (node?.Tag is FolderTag) host.OwnCloseFolder();
+        if (node?.Tag is SongTag) host.OwnLeaveCourses();
+        return null;
+    }
+
+    private string? startSong(LibraryRows rows, SongSelectHostBinding host)
+    {
+        if (rows.Selected?.Tag is not ChartTag chart)
+            return "the cursor is not on a chart";
+        if (Shell.PlayRequests.Pending is not null)
+            return "a song is already starting";
+        host.OwnStart(chart.Folder, chart.Song, chart.Course);
+        return null;
+    }
 
     // Our dan select (it reads the provider): the dojo as library rows (series, courses, their songs), the select
     // scope's requests, the selected course's requirements as the dan.exam lists.

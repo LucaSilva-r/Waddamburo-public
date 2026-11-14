@@ -7,7 +7,7 @@ public enum WdKind { State, Event, List, Request }
 
 /// <summary>One name of the provider: what a movie may read with <c>Wd.get</c>, listen to with <c>Wd.on</c>, or ask for with <c>Wd.request</c>.</summary>
 /// <param name="Type">number, bool, text; an event's arguments in order.</param>
-/// <param name="Scope">When it has a value (movie-provider-design.md, Scopes): app, session, or a screen. A request: the screen that takes it.</param>
+/// <param name="Scope">When it has a value (free-movies.md, Scopes): app, session, or a screen. A request: the screen that takes it.</param>
 /// <param name="Sample">A plausible value (an event: its arguments, comma separated), for previews and documentation.</param>
 public sealed record WdName(string Name, WdKind Kind, string Type, string Scope, string Description, string Sample = "");
 
@@ -99,6 +99,8 @@ public static class WdNames
         new("select.row", WdKind.Request, "row: number", "select", "Moves the cursor to the row.", "3"),
         new("row.open", WdKind.Request, "row: number", "select", "Opens the row in place (a folder, a song, a course): its nodes come in under it.", "3"),
         new("row.close", WdKind.Request, "row: number", "select", "Closes the open row.", "3"),
+        new("song.start", WdKind.Request, "", "select", "Plays the chart under the cursor, for every joined drum (the rainbow, then the song).", ""),
+        new("select.timeLeft", WdKind.State, "number", "select", "Seconds left to choose; no value while no countdown runs (at home). At 0 a movie picks what it can.", "37"),
         new("course.start", WdKind.Request, "", "select", "Plays the dan course under the cursor (refused when one of its songs is not in the library).", ""),
         new("result.course", WdKind.State, "text", "result", "The course this drum's player played: easy, normal, hard, oni or ura. Each result.* is read with the drum's number (Wd.get(\"result.score\", 2)); a drum that did not play has none.", "oni"),
         new("result.score", WdKind.State, "number", "result", "This drum's final score.", "1004280"),
