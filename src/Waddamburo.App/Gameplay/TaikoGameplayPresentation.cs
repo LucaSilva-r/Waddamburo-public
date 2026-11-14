@@ -631,7 +631,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     _ => "onp_fusen",
                 };
                 return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
-            }, layers["renda_num"], layers["action_fusen_1p"], _flights, don,
+            }, layers["renda_num"], layers["action_fusen_1p"], don,
                 kusudama is null ? layers["action_kusudama"] : null,
                 (kind, succeeded) =>
                 {
@@ -923,7 +923,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     [PlayableNoteKind.BigDon] = layers["onp_don_dai"],
                     [PlayableNoteKind.BigKa] = layers["onp_katsu_dai"],
                 }, layers["lane_syousetsu"], layers["lane_hit"], layers["lane_hit_effect"].Player, layers["lane_obi"].Player,
-                _flights, _longNotes, flightsAt < 0 ? null : flightsAt,
+                () => _flights.ActiveLayers, _longNotes, flightsAt < 0 ? null : flightsAt,
                 layers.TryGetValue("onp_tetunagidon_1p", out var handDonLayer)
                     ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
                     {
@@ -954,7 +954,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 chart.Branching is null ? null : layers["lane_syousetsu"] with { Player = branchBar() },
                 layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
                 // Each scene movie's role, the modcharts' universal markers (dancers, gauge, …).
-                roles: layers.GroupBy(static pair => pair.Value.Player).ToDictionary(static group => group.Key, static group => group.First().Key));
+                roles: layers.GroupBy(static pair => pair.Value.Player).ToDictionary(static group => group.Key, static group => group.First().Key),
+                flies: _flights.Owns);
+            // The game's flight movies are flown from here (ours hear note.judged and roll.hit and fly themselves).
+            _source.Judged += _flights.Trigger;
+            _longNotes.Struck += _flights.Trigger;
             LumenPlayer branchBar()
             {
                 var player = content("lane_syousetsu").CreatePlayer();

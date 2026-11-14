@@ -1,7 +1,9 @@
 using Waddamburo.Catalog;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Gameplay;
+
+namespace Waddamburo.Skins.Green.Gameplay;
 
 /// <summary>Bounded independent authored animations sharing immutable scene textures.</summary>
 public sealed class TaikoHitFlights

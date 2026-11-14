@@ -14,7 +14,7 @@ namespace Waddamburo.Skins.Green.Gameplay;
 /// Here: the board's score, combo and drum lights, the gauge and its fire, the points popup, the combo sign, the hit
 /// target's Go-Go and route, the route bubble, the Go-Go splash, the end banner, a dan course's panel, the roll counter,
 /// the balloon and the kusudama, the notes' combo faces, the target's hit flashes and the judgement words. Not here:
-/// the roll bodies (TaikoLongNotePresentation) and the flight pool (TaikoHitFlights).
+/// the roll bodies (TaikoLongNotePresentation); the game's flight pool is TaikoHitFlights beside this.
 /// </remarks>
 public sealed class GameplayGameMovies(
     LumenPlayer board, LumenPlayer? gauge, Func<int> gaugeSegments, LumenPlayer? scoreAdd, LumenPlayer comboBonus,

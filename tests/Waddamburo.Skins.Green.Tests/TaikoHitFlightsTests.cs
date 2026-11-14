@@ -1,9 +1,10 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.Game.Tests;
+namespace Waddamburo.Skins.Green.Tests;
 
 public sealed class TaikoHitFlightsTests
 {

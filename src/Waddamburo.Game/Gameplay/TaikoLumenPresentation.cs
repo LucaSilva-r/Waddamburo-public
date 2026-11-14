@@ -31,14 +31,15 @@ public sealed class TaikoLumenPresentation
     private readonly float _hitY;
     private readonly float _hitRadius;
     private readonly TaikoGoGoPresentation _gogo;
-    private readonly TaikoHitFlights? _flights;
+    private readonly Func<IEnumerable<LumenSceneLayer>>? _flights; // the hit flights drawn now
+    private readonly Func<LumenPlayer, bool> _flies; // a flight movie: placed with the target
     private readonly TaikoLongNotePresentation? _longNotes;
 
     public TaikoLumenPresentation(PlayableChart chart, ITaikoJudgementSource judgement,
         IEnumerable<LumenSceneLayer> background, IEnumerable<LumenSceneLayer> foreground,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> notes,
         LumenSceneLayer bar, LumenSceneLayer target, LumenPlayer feedback, LumenPlayer board,
-        TaikoHitFlights? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
+        Func<IEnumerable<LumenSceneLayer>>? flights = null, TaikoLongNotePresentation? longNotes = null, int? flightsAt = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
         LumenSceneLayer? rareNote = null,
@@ -46,8 +47,10 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null,
         LumenSceneLayer? branchBar = null,
         LumenPlayer? branchBubble = null,
-        IReadOnlyDictionary<LumenPlayer, string>? roles = null)
+        IReadOnlyDictionary<LumenPlayer, string>? roles = null,
+        Func<LumenPlayer, bool>? flies = null)
     {
+        _flies = flies ?? (static _ => false);
         _branchBar = branchBar;
         _ = branchBubble; // the game's bubble is jumped by its adapter (BranchChanged)
         _checkBars = [.. chart.Branching?.Checks.Select(static check => check.Start) ?? []];
@@ -297,7 +300,7 @@ public sealed class TaikoLumenPresentation
         // flights sit at their template's depth.
         var front = new List<LumenSceneLayer>(_foreground.Take(_flightsAt));
         if (_flights is not null)
-            front.AddRange(_flights.ActiveLayers);
+            front.AddRange(_flights());
         front.AddRange(_foreground.Skip(_flightsAt));
         if (!_stage.IsActive)
             return (layers, front);
@@ -325,7 +328,7 @@ public sealed class TaikoLumenPresentation
             : _scenePlayers.Contains(layer.Player) ? StageEffects.TargetOf(_roles?.GetValueOrDefault(layer.Player))
             : "playfield";
 
-    private bool followsTarget(LumenSceneLayer layer) => layer.Player == _feedback || _flights?.Owns(layer.Player) == true
+    private bool followsTarget(LumenSceneLayer layer) => layer.Player == _feedback || _flies(layer.Player)
             || _longNotes?.TargetOverlays.Contains(layer.Player) == true;
 
     private void addAt(List<LumenSceneLayer> layers, LumenSceneLayer template,
@@ -352,7 +355,6 @@ public sealed class TaikoLumenPresentation
 
     private void onJudged(TaikoNoteJudgement result)
     {
-        _flights?.Trigger(result);
         if (result.StrongHitCompleted || result.Placeholder || result.TimedOut)
             return;
         Shown?.Invoke(result);

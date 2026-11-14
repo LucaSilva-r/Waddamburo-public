@@ -54,7 +54,8 @@ public sealed class TaikoLongNotePresentation
     private readonly LumenSceneLayer _counter;
     private readonly LumenSceneLayer _balloon;
     private readonly IDonPresentationController? _don;
-    private readonly TaikoHitFlights? _flights;
+    /// <summary>A hit on a long note the lane shows (its flight, for the game's flight movies).</summary>
+    public event Action<TaikoLongNoteProgress>? Struck;
     private readonly Action<PlayableLongNoteKind, bool>? _onBalloonCompleted;
     private readonly Action<PlayableLongNoteKind>? _onNoteStarted;
     private int? _active;
@@ -108,7 +109,7 @@ public sealed class TaikoLongNotePresentation
 
     public TaikoLongNotePresentation(PlayableChart chart, ITaikoJudgementSource session,
         Func<PlayableLongNoteKind, LumenSceneLayer> createNote, LumenSceneLayer counter,
-        LumenSceneLayer balloon, TaikoHitFlights? flights = null, IDonPresentationController? don = null,
+        LumenSceneLayer balloon, IDonPresentationController? don = null,
         LumenSceneLayer? kusudama = null, Action<PlayableLongNoteKind, bool>? onBalloonCompleted = null,
         Action<PlayableLongNoteKind>? onNoteStarted = null, int player = 0, TaikoSharedKusudama? sharedKusudama = null,
         Func<PlayableLongNoteKind, LumenSceneLayer>? createText = null)
@@ -125,7 +126,6 @@ public sealed class TaikoLongNotePresentation
         _balloon = balloon;
         _overlay = balloon;
         _kusudama = kusudama;
-        _flights = flights;
         _onBalloonCompleted = onBalloonCompleted;
         _onNoteStarted = onNoteStarted;
         _don = don;
@@ -321,7 +321,7 @@ public sealed class TaikoLongNotePresentation
             if (_active is { } previous) finish(previous);
             begin(progress.NoteIndex);
         }
-        _flights?.Trigger(progress);
+        Struck?.Invoke(progress);
         if (progress.Note.IsBalloon)
         {
             if (shared(progress.NoteIndex))
