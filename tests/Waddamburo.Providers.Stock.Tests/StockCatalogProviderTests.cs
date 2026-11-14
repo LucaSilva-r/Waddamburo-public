@@ -113,20 +113,24 @@ public sealed class StockCatalogProviderTests
     {
         using var data = new TemporaryData();
         data.WriteMusicInfo("musicinfo.xml", ("song", "曲", "J-POP"));
-        // A quarter measure at scroll 0.5 whose don sits on its end, then a measure at 0.8 with its own don at its start.
+        // A quarter measure at scroll 0.5 whose don sits on its end, 4 µs past the next measure's start (きたさいたま2000's
+        // float offsets), then a measure at 0.8 with its own don at its start.
         data.WriteBytes("fumen/song/solo/song_e.bin", Fumen(
-            new Measure(120, 0, [N(1, 500)], Speed: 0.5f),
+            new Measure(120, 0, [N(1, 500.004f)], Speed: 0.5f),
             new Measure(120, 500, [N(1, 0)], Speed: 0.8f)));
         var provider = new StockCatalogProvider(data.Path);
         var chart = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs[0].Charts);
 
         var playable = await provider.LoadChartAsync(chart.Key, chart.ChartAsset);
 
-        Assert.Equal([true, false], playable.HitObjects.Select(static note => note.EndsMeasure));
-        // Both share one time; drawing reads the marked one's speed just before it (NoteGeometry.ScrollTime).
-        Assert.Equal(playable.HitObjects[0].StartTime, playable.HitObjects[1].StartTime);
-        Assert.Equal(0.5, playable.ScrollAt(playable.HitObjects[0].StartTime - TimeSpan.FromTicks(1)));
-        Assert.Equal(0.8, playable.ScrollAt(playable.HitObjects[1].StartTime), 6);
+        // The end note sorts after the next measure's don; drawing reads its speed at its own measure's start
+        // (NoteGeometry.ScrollTime).
+        var end = Assert.Single(playable.HitObjects, static note => note.ScrollFrom is not null);
+        var next = Assert.Single(playable.HitObjects, static note => note.ScrollFrom is null);
+        Assert.True(end.StartTime > next.StartTime);
+        Assert.Equal(0.5, playable.ScrollAt(end.ScrollFrom!.Value), 6);
+        Assert.Equal(0.8, playable.ScrollAt(end.StartTime), 6);
+        Assert.Equal(0.8, playable.ScrollAt(next.StartTime), 6);
     }
 
     [Fact]

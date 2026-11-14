@@ -32,7 +32,7 @@ public readonly record struct PlayableHitObject
         IsKo = IsKo,
         IsRare = IsRare,
         Branch = Branch,
-        EndsMeasure = EndsMeasure,
+        ScrollFrom = ScrollFrom + (startTime - StartTime),
     };
 
     public TimeSpan StartTime { get; }
@@ -72,10 +72,10 @@ public readonly record struct PlayableHitObject
     public ChartBranch? Branch { get; init; }
 
     /// <summary>
-    /// A fumen note at its measure's very end, where the next measure (and its scroll) starts: it scrolls at its own
-    /// measure's speed. Presentation only: not part of the chart hash.
+    /// Where a fumen note at its measure's very end reads its speed: its own measure's start. The next measure (and its
+    /// scroll) starts at the same time, or a few µs before it (float offsets). Presentation only: not part of the chart hash.
     /// </summary>
-    public bool EndsMeasure { get; init; }
+    public TimeSpan? ScrollFrom { get; init; }
 
     public bool IsStrong => Kind is PlayableNoteKind.BigDon or PlayableNoteKind.BigKa;
 }

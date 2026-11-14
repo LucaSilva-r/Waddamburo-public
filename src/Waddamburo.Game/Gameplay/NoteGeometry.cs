@@ -130,10 +130,10 @@ public sealed class NoteGeometry
     }
 
     /// <summary>
-    /// Where a note's speed is read: at the note, or just before it for a note that ends its measure (fumen), which
-    /// shares its time with the next measure's speed change but keeps its own measure's.
+    /// Where a note's speed is read: at the note, or at its measure's start for a fumen note that ends its measure
+    /// (<see cref="PlayableHitObject.ScrollFrom"/>).
     /// </summary>
-    public static TimeSpan ScrollTime(PlayableHitObject note) => note.EndsMeasure ? note.StartTime - TimeSpan.FromTicks(1) : note.StartTime;
+    public static TimeSpan ScrollTime(PlayableHitObject note) => note.ScrollFrom ?? note.StartTime;
 
     /// <summary>A bar line follows whichever route is playing, so it stays listed for as long as the slowest would show it.</summary>
     public (TimeSpan From, TimeSpan Until) BarWindow(TimeSpan time) => _chart.ScrollPointAt(time).ByBeat || WideView

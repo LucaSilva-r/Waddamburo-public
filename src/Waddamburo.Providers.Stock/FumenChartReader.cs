@@ -148,8 +148,10 @@ internal static class FumenChartReader
             notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind, note.Hand)
                 {
                     InRun = note.InRun, IsKo = note.Ko, Branch = note.Branch,
-                    // きたさいたま2000's slow don sits on its measure's end (reported on Discord: it took the next speed).
-                    EndsMeasure = note.Measure + 1 < measures.Count && note.Time >= measures[note.Measure + 1].Time,
+                    // きたさいたま2000's slow don (combo 547, oni) sits on its measure's end, 4 µs past the next
+                    // measure's start (reported on Discord: it took the next speed).
+                    ScrollFrom = note.Measure + 1 < measures.Count && note.Time >= measures[note.Measure + 1].Time
+                        ? chartTime(measures[note.Measure].Time) : null,
                 }),
             timing.ToImmutable(),
             scrolls[0].ToImmutable(),
