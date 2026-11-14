@@ -3,7 +3,6 @@ using Waddamburo.Game.Don;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Tests;
 using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Lumen.Rendering;
 

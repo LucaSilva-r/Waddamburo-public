@@ -4,6 +4,7 @@ using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
+using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
@@ -15,9 +16,6 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string[] movies, string? opening = null) : FlowScene(shell), IDisposable
 {
-    // movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.
-    private const string MovieFill = "movie1280x720";
-
     // Shuffled like the cabinet's rotation; refilled when every CM has played once.
     private readonly Queue<string> _queue = new();
     private string? _last;
@@ -278,7 +276,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         try
         {
             Movie = new AttractMovie(Shell.Application, Shell.Audio, opening.GetAwaiter().GetResult());
-            Shell.Active.Player.Layers.Single().Player.SetNativeFill(MovieFill, AttractMovie.Surface);
+            AttractHostBinding.ShowVideo(Shell.Active.Player.Layers.Single().Player, AttractMovie.Surface);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or NotSupportedException or DllNotFoundException or EntryPointNotFoundException)

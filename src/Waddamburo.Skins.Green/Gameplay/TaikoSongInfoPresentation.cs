@@ -8,6 +8,17 @@ namespace Waddamburo.Skins.Green.Gameplay;
 public static class TaikoSongInfoPresentation
 {
     /// <summary>
+    /// Gameplay's mode (a replay, practice) in song_info's top-right corner, in place of the song number it
+    /// alternates with the title, drawn as the title is (the same 720x64 text): over the number's <c>stage</c>
+    /// clip (120x48 around its origin), ending at the number's right edge.
+    /// </summary>
+    public static readonly LumenNativeSurfacePlacement ModeBox = new(60 - 720, -32, 720, 64);
+
+    /// <summary>Shows <paramref name="text"/> (a gameplay text surface) in place of the song number (null: the number again).</summary>
+    public static void ShowMode(LumenPlayer songInfo, LumenNativeSurfaceKey? text) =>
+        songInfo.SetInstanceOverlay("main/stage", text, ModeBox, replace: true);
+
+    /// <summary>
     /// song_info asks LumenSongInfo only as the song starts (main.genre.gotoAndStop(genreArray[GetGenrNumber()]),
     /// main.stage.gotoAndStop(GetPlayCount())), so a course's next songs set its clips the same way.
     /// </summary>

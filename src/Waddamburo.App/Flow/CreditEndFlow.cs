@@ -3,6 +3,7 @@ using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
@@ -40,23 +41,17 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.NextSong)
             Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Hosts.Waiwai, Shell.Hosts.AiBattle));
-        // dani_result's song boards: fills song_name1 to 3, and a challenge's name art.
-        if (Shell.Hosts.DanResult is not null && Shell.Active.Player.Layers[0].Player is { } dani)
+        // The game's results show the song titles in slots.
+        if (Shell.Hosts.DanResult is not null)
         {
-            if (Shell.Hosts.DanChallenge > 0)
-                dani.SetNativeFill("challenge_short", DanChallengeArt.Key(Shell.Hosts.DanSeries, Shell.Hosts.DanChallenge, "short"));
-            for (var index = 0; index < gameplay.CourseSongs.Count; index++)
-            {
-                var title = Shell.Titles.GetGameplayTitle(gameplay.CourseSongs[index]);
+            var titles = gameplay.CourseSongs.Select(Shell.Titles.GetGameplayTitle).ToArray();
+            foreach (var title in titles)
                 _ = Shell.Titles.Resolve(title);
-                dani.SetNativeFill($"song_name{index + 1}", title);
-            }
+            DaniResultHostBinding.FillBoards(Shell.Active.Player.Layers[0].Player, titles, Shell.Hosts.DanChallenge > 0
+                ? DanChallengeArt.Key(Shell.Hosts.DanSeries, Shell.Hosts.DanChallenge, "short") : null);
         }
-        // result.lm's song_name slot is the same as gameplay song_info's: reuse its title texture.
-        var resultIndex = Shell.Active.Layers.ToList().FindIndex(layer =>
-            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");
-        if (resultIndex >= 0 && gameplay.Song is { } song)
-            Shell.Active.Player.Layers[resultIndex].Player.SetNativeFill("song_name", Shell.Titles.GetGameplayTitle(song));
+        if (gameplay.Song is { } song)
+            ResultHostBinding.FillTitle(Shell.Active, Shell.Titles.GetGameplayTitle(song));
     }
 
     // Don-chan's 成績発表 (VO_RESULT 0, played as the song ends) is heard in silence; the music follows.

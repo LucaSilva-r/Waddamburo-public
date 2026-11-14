@@ -54,7 +54,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     Action<int?, GameplaySoundEvent, int>? playEventSound = null, Func<TimeSpan>? drumDebounce = null)
 {
     private Lane[] _lanes = [];
-    private WaiwaiStage? _stage;
+    private WaiwaiVoltage? _stage;
     private LumenSceneLayer[] _shared = []; // two players: drawn once, over both lanes
     // What the flow knows and the lanes do not (the song's title, the players' names): kept, and given to the lanes
     // each time they are built.
@@ -163,10 +163,19 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         _shared = [.. layers.Where(entry => GameplaySceneComposition.SharedRoles.Contains(role(entry.Definition)))
             .Select(entry => entry.Layer)];
         // Waiwai: one voltage stage for both players (its movies are the first lane's).
-        var stage = waiwai is null ? null : new WaiwaiStage(
-            layers.Where(entry => entry.Definition.HostId == GameplaySceneComposition.StaticHostId)
-                .ToDictionary(entry => role(entry.Definition), entry => entry.Layer.Player),
-            waiwai.Timeline(charts[0]), cue => playEventSound?.Invoke(null, cue, 0));
+        var stage = waiwai is null ? null : new WaiwaiVoltage(waiwai.Timeline(charts[0]));
+        if (stage is not null)
+        {
+            _ = new GameWaiwaiMovies(stage, layers.Where(entry => entry.Definition.HostId == GameplaySceneComposition.StaticHostId)
+                .ToDictionary(entry => role(entry.Definition), entry => entry.Layer.Player));
+            playEventSound?.Invoke(null, GameplaySoundEvent.WaiwaiStart, 0);
+            // After the game's cut-in calls (the adapter hears the section first), as traced.
+            stage.SectionChanged += (_, section) =>
+            {
+                if (section >= 0)
+                    playEventSound?.Invoke(null, stage.Sections[section].Soloist is null ? GameplaySoundEvent.SynchroCutIn : GameplaySoundEvent.SoloCutIn, 0);
+            };
+        }
         _stage = stage;
         var aiStage = layers.FirstOrDefault(entry => role(entry.Definition) == "ai_hit_effect").Layer;
         _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
@@ -463,7 +472,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             IReadOnlyList<(SceneLayerDefinition Definition, LumenSceneLayer Layer, LumenMovieContent Content)> sceneLayers,
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
-            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiStage? stage = null, ReviewTimeline? review = null,
+            Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiVoltage? stage = null, ReviewTimeline? review = null,
             TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null,
             RemoteLaneFeed? remote = null, HitRelay? relay = null, LumenSceneLayer? donStage = null)
         {
@@ -682,7 +691,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options, BalloonHits = score.BalloonHits };
             if (dan is not null && danArt is { } challengeArt)
-                layers["dani_enso"].Player.SetNativeFill("challenge_lv_mini", challengeArt);
+                GameplayGameMovies.ShowDanChallenge(layers["dani_enso"].Player, challengeArt);
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;

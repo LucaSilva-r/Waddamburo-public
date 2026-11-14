@@ -3,14 +3,14 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.App.Scenes;
+namespace Waddamburo.Skins.Green.Screens;
 
 /// <summary>
 /// Home: Resume in the pause menu counts down on the game's own timer movie (time_counter, as the
 /// entry shows it) before the song goes on, so the player is ready (as osu! does). It ticks as the
 /// game's menu timers do (<see cref="CountdownCues"/>).
 /// </summary>
-internal sealed class ResumeCountdown
+public sealed class ResumeCountdown
 {
     public const int Seconds = 3;
     private int _ticksLeft;

@@ -288,12 +288,6 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(20));
     }
 
-    // The rainbow's song title is placed and drawn on the stage (it comes in partway through the cover).
-    private static bool titleShown(Waddamburo.Lumen.Runtime.LumenPlayer rainbow) =>
-        rainbow.TryGetInstanceBounds(GameIntermissions.SongTitleFill, out var title)
-        && title is { Width: > 0, Height: > 0 } && title.X + title.Width > 0 && title.X < OverlayStageWidth;
-
-    private const float OverlayStageWidth = 1280;
 
     // The pending play's rainbow, and gameplay under it once it covers the screen.
     private void coverForGameplay(PlayRequest request)
@@ -328,7 +322,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 stopMusic();
             Console.WriteLine($"Rainbow cover started at tick {Shell.Tick}.");
         }
-        if (_cover.MusicUnderCover && (Shell.Overlay.Player is not { } closing || titleShown(closing) || _cover.CoveredAt is not null
+        if (_cover.MusicUnderCover && (Shell.Overlay.Player is not { } closing || GameIntermissions.TitleShown(closing) || _cover.CoveredAt is not null
             || rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete))
         {
             _cover.MusicUnderCover = false;

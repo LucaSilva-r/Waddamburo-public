@@ -1,6 +1,5 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;
@@ -144,6 +143,7 @@ public sealed class TaikoLongNotePresentationTests
         public void Sized(LumenPlayer note, float length) => calls.Add(("sized", length));
         public void Stepped(LumenPlayer note) => calls.Add(("stepped", double.NaN));
         public void Struck(LumenPlayer note) => calls.Add(("struck", double.NaN));
+        public bool Breaking(LumenPlayer kusudama) => false;
     }
 
     private static PlayableChart chartFor(PlayableLongNoteKind kind, int quota = 0) => new(

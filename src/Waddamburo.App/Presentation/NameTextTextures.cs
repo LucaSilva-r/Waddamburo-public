@@ -49,17 +49,3 @@ internal sealed class NameTextTextures(SdlApplication application, string fontPa
         _uploaded.Clear();
     }
 }
-
-/// <summary>
-/// Gameplay's mode (a replay, practice) in song_info's top-right corner, in place of the song number it
-/// alternates with the title, drawn as the title is (the same 720x64 text): over the number's <c>stage</c>
-/// clip (120x48 around its origin), ending at the number's right edge.
-/// </summary>
-internal static class ModeLabel
-{
-    public static readonly LumenNativeSurfacePlacement Box = new(60 - 720, -32, 720, 64);
-
-    /// <summary>Shows <paramref name="text"/> (a <see cref="SongTitleTextureCache.GetGameplayText"/> surface) in place of the song number (null: the number again).</summary>
-    public static void Show(Waddamburo.Lumen.Runtime.LumenPlayer songInfo, LumenNativeSurfaceKey? text) =>
-        songInfo.SetInstanceOverlay("main/stage", text, Box, replace: true);
-}

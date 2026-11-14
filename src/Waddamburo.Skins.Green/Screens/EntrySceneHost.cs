@@ -3,6 +3,7 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scores;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.Skins.Green;
 
@@ -396,6 +397,30 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         // ponytail: only the unaffordable prompt was seen repeating; the affordable one plays once.
         else if (_ticks > PromptDelayTicks && !affordable && (_ticks - PromptDelayTicks) % PromptRepeatTicks == 0)
             PlayVoice?.Invoke(1);
+    }
+
+    /// <summary>
+    /// The game's entry as it loads: Don-chan in its slots, and where it came from. SetPrevious(scene, trigger): entry
+    /// starts from the attract loop (scene 0) after a P1 drum hit (SCENE_TRIGGER_DON_1P = 0) or a coin
+    /// (SCENE_TRIGGER_COIN = 3); the movie then joins P1 via EntryCoin. Ours asks the engine (EntryFlow tells it who
+    /// came in and who is in): no game calls.
+    /// </summary>
+    public static void Prepare(LumenPlayer player, IDonPresentationController? don, int previous, int trigger)
+    {
+        if (don is not null)
+        {
+            // The entry's movie doesn't turn the second player's Don-chan: the mirrored camera faces them inward
+            // (user-confirmed with an asymmetric costume; Katsu-chan looks alike either way).
+            DonLumenBinding.Attach(player, don);
+            player.SetNativeFill("donExM", don.GetSurface(2), DonLumenBinding.Placement);
+        }
+        if (player.UsesProvider)
+            return;
+        if (!player.TryInvokeCallback("SetPrevious", [LumenHostValue.FromNumber(previous), LumenHostValue.FromNumber(trigger)]))
+            throw new InvalidOperationException("Entry did not export SetPrevious.");
+        if (!player.TryInvokeCallback("SetPlayer", [
+                LumenHostValue.FromNumber(0), LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(false), LumenHostValue.FromBoolean(false)]))
+            throw new InvalidOperationException("Entry did not export SetPlayer.");
     }
 
     public void AttachEntry(LumenPlayer entry)

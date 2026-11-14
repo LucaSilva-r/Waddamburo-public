@@ -1,5 +1,7 @@
 using Waddamburo.Game.Don;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.Skins.Green;
 
@@ -62,6 +64,16 @@ public sealed class WaiwaiResultHostBinding(
             lumen.RegisterMethod("Apply", static _ => LumenHostValue.Undefined);
             lumen.RegisterMethod("SelectCommonSound", static _ => LumenHostValue.Undefined);
         });
+    }
+
+    /// <summary>The results' art slots: the backdrop, the comment's sentence and the rare notes.</summary>
+    public void ShowArt(LumenPlayer player, LumenNativeSurfaceKey background, LumenNativeSurfaceKey sentence, LumenNativeSurfaceKey rareNote)
+    {
+        player.SetNativeFill("dummy_bg", background);
+        player.SetNativeFill("dummy_sentence", sentence);
+        // ponytail: 00_taiko has one rare note kind; every slot shows it.
+        for (var slot = 1; slot <= 5; slot++)
+            player.SetNativeFill($"dummy_rare_onp_0{slot}", rareNote);
     }
 
     public void Attach(LumenPlayer player)

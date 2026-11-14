@@ -3,10 +3,10 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.App.Scenes;
+namespace Waddamburo.Skins.Green.Screens;
 
 /// <summary>Which state the always-on indicator overlays show (traced per game scene).</summary>
-internal enum IndicatorScene
+public enum IndicatorScene
 {
     Boot, // kidou: the card prompt stays off (traced SetOnline(0) until the attract loop)
     Attract,
@@ -28,7 +28,7 @@ internal enum IndicatorScene
 /// hides them per scene (traced, research/traces/session1.md). Depths -3000 / -950: msg_coins sits
 /// under the intermission (-2000), the other two above everything.
 /// </summary>
-internal sealed class SystemIndicators
+public sealed class SystemIndicators
 {
     public const string HostId = "system-indicators";
     private static readonly string[] IndicatorMovies = ["network_icon", "msg_banapass", "msg_coins"];

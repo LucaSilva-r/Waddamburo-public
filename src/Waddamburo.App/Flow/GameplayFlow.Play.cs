@@ -33,7 +33,7 @@ internal sealed partial class GameplayFlow
         // The battle as the server replays it: AI-don's starting timing, and whether the play uploads (a signed-in player).
         public (double Median, double Variance)? AiPrior;
         public bool AiUploads;
-        public AiBattlePresentation? Battle;
+        public AiBattleProgress? Battle;
         // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
         public ReviewSession? Review;
         // Home, training: attempts on the review (Review is its playback).

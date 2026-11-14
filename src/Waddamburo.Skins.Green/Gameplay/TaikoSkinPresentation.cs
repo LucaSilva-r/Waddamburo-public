@@ -1,6 +1,7 @@
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.Game.Gameplay;
+namespace Waddamburo.Skins.Green.Gameplay;
 
 /// <summary>Authored gameplay-skin movies, any of which a skin may omit.</summary>
 public sealed record TaikoSkinMovies(

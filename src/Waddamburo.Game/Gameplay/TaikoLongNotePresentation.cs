@@ -58,6 +58,9 @@ public interface ITaikoLongNoteMovies
 
     /// <summary>A hit on the roll this movie draws.</summary>
     void Struck(LumenPlayer note);
+
+    /// <summary>Whether the kusudama's movie still plays its break after its root stopped.</summary>
+    bool Breaking(LumenPlayer kusudama);
 }
 
 /// <summary>
@@ -195,10 +198,8 @@ public sealed class TaikoLongNotePresentation
         // Counter movies belong to the scene and are advanced exactly once by its player.
         if (_active is null)
         {
-            // The kusudama root stops right after EndResult; its 'kusudama' clip then plays the break
-            // (ResultHigh/Low/Miss) and stops once the ball has faded out.
             if (_balloonVisible && !_overlay.Player.IsPlaying
-                && !(_overlay == _kusudama && _overlay.Player.IsInstancePlaying("kusudama")))
+                && !(_overlay == _kusudama && _movies?.Breaking(_overlay.Player) == true))
             {
                 _balloonVisible = false;
             }

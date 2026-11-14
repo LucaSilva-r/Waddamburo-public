@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
@@ -132,17 +131,6 @@ public sealed class GameFlowSessionTests
             [LumenHostValue.FromString("1"), LumenHostValue.FromNumber(0), LumenHostValue.FromNumber(0)])));
         Assert.Throws<ArgumentOutOfRangeException>(() => LumenSceneRequest.FromHostCall(call(1.5, 0, 0)));
         Assert.Throws<ArgumentOutOfRangeException>(() => LumenSceneRequest.FromHostCall(call(double.NaN, 0, 0)));
-    }
-
-    [Fact]
-    public void AttachingDonToANewMovieResetsPreviousSceneState()
-    {
-        var don = new SyntheticDonPresentation();
-        var player = new LumenPlayer(TestMovies.TransitionMovie(), 1280, 720);
-
-        DonLumenBinding.Attach(player, don);
-
-        Assert.Equal(DonPresentationLayout.Standard, Assert.Single(don.ResetLayouts));
     }
 
     [Fact]

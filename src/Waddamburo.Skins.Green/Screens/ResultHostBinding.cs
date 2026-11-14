@@ -1,7 +1,10 @@
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.Skins.Green;
 
@@ -37,6 +40,14 @@ public sealed class ResultHostBinding(
     IResultSoundController? sounds = null,
     int side = 0) : ILumenHostBinding
 {
+    /// <summary>result.lm's song_name slot (the same as gameplay song_info's: its title texture).</summary>
+    public static void FillTitle(LumenGameSceneInstance scene, LumenNativeSurfaceKey title)
+    {
+        var index = scene.Layers.ToList().FindIndex(layer => Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");
+        if (index >= 0 && scene.Player.Layers[index].Player is { UsesProvider: false } result)
+            result.SetNativeFill("song_name", title);
+    }
+
     /// <summary>
     /// The player's best on the chart before this play, by play index; a first play sends its own
     /// score (traced). null: a guest, nothing saved. result.lm shows its "自己ベスト" puff (the old

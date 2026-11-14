@@ -370,10 +370,4 @@ public sealed class TaikoLumenPresentation
 
     /// <summary>Called each <see cref="Update"/> with Don-chan's model turn (yaw, pitch, roll in degrees).</summary>
     public Action<double, double, double>? DonTurn { get; set; }
-
-    private static void callback(LumenPlayer player, string name, LumenHostValue value)
-    {
-        if (!player.TryInvokeCallback(name, [value]))
-            throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
-    }
 }

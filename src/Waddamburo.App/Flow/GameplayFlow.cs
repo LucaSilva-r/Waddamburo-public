@@ -1,6 +1,5 @@
 using Waddamburo.App.Audio;
 using Waddamburo.App.Gameplay;
-using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Editor;
@@ -16,6 +15,7 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Skins.Green.Gameplay;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -306,7 +306,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is not null)
                     hitOffsets.Add(offset.TotalMilliseconds);
             });
-        _play.Battle = aiBattle ? new AiBattlePresentation(active, _play.Charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
+        _play.Battle = aiBattle ? new AiBattleProgress(_play.Charts[0], players[0].Course) : null;
+        if (_play.Battle is { } shown)
+            _ = new GameAiBattleMovies(shown, active, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null);
         if (_play.Battle is { } battle && _play.Review is null)
         {
             // A signed-in player's battle uploads, with or without a server setup (offline): the server replays it, so
@@ -344,7 +346,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         _play.SongInfoMode = text is not null;
         if (songInfoPlayer() is { } info)
-            ModeLabel.Show(info, modeLabel(text));
+            TaikoSongInfoPresentation.ShowMode(info, modeLabel(text));
     }
 
     /// <summary>A replay (one player's, not Waiwai) can turn into practice: P in it.</summary>
@@ -913,7 +915,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
         // AI battle: by its battle result, which comes after the last section (traced, no end banner nor shutter).
         var chartFinished = _play.Battle is { } battle
-            ? battle.ResultShownAt is { } shown && elapsed - _play.InputOffset >= shown + AiBattlePresentation.ResultsDelay
+            ? battle.ResultShownAt is { } shown && elapsed - _play.InputOffset >= shown + AiBattleProgress.ResultsDelay
             : _play.Charts.Length != 0 && elapsed >= (_play.CourseEndsAt ?? _play.Charts.Max(TaikoResultBanner.Time)) + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _play.ShutterStartTick < 0
             && (_play.SkipToShutter || chartFinished && !Shell.Gameplay.OverlayActive))

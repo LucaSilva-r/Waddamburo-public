@@ -1,7 +1,9 @@
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.Skins.Green;
 
@@ -115,6 +117,17 @@ public sealed class DaniResultHostBinding(DanCourseResult result, IDonPresentati
     }
 
     /// <summary>The sound a request plays, where a trace showed it.</summary>
+    /// <summary>dani_result's song boards (song_name1 to 3), and a challenge's name art.</summary>
+    public static void FillBoards(LumenPlayer dani, IReadOnlyList<LumenNativeSurfaceKey> titles, LumenNativeSurfaceKey? challenge)
+    {
+        if (dani.UsesProvider)
+            return;
+        if (challenge is { } art)
+            dani.SetNativeFill("challenge_short", art);
+        for (var index = 0; index < titles.Count; index++)
+            dani.SetNativeFill($"song_name{index + 1}", titles[index]);
+    }
+
     public static (string Bank, int Index)? Cue(bool effect, int id) => (effect, id) switch
     {
         (true, 0) => ("SE_TOTAL", 36),

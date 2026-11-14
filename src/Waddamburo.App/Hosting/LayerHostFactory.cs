@@ -1,5 +1,4 @@
 using Waddamburo.App.Audio;
-using Waddamburo.App.Gameplay;
 using Waddamburo.App.Online;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
@@ -8,6 +7,7 @@ using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green;
 using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Game.Scenes;
@@ -380,14 +380,8 @@ internal sealed class LayerHostFactory(
         };
     }
 
-    // kidou shows a music credit page per _global.copyright_num, each a native fill named after its label.
-    private void bootCredits(LumenPlayer player)
-    {
-        if (CopyrightPages == 0 || !player.TryWriteScriptValue("_global.copyright_num", (double)CopyrightPages))
-            return;
-        for (var page = 1; page <= CopyrightPages; page++)
-            player.SetNativeFill($"copyright{page}", Presentation.CopyrightArt.Key(page));
-    }
+    private void bootCredits(LumenPlayer player) =>
+        AttractHostBinding.ShowCredits(player, CopyrightPages, Presentation.CopyrightArt.Key);
 
     private LumenLayerHost entryHost(EntrySceneHost entry) => new(
         new LumenFrontendHostBinding(frontend, flow, don, entry),
@@ -397,36 +391,7 @@ internal sealed class LayerHostFactory(
             entry.AttachEntry(player);
         });
 
-    private void initializeEntry(LumenPlayer player)
-    {
-        if (don is not null)
-        {
-            // The entry's movie doesn't turn the second player's Don-chan: the mirrored camera faces them inward
-            // (user-confirmed with an asymmetric costume; Katsu-chan looks alike either way).
-            DonLumenBinding.Attach(player, don);
-            player.SetNativeFill("donExM", don.GetSurface(2), DonLumenBinding.Placement);
-        }
-        // Ours asks the engine (EntryFlow tells it who came in and who is in): no game calls.
-        if (player.UsesProvider)
-            return;
-        // SetPrevious(scene, trigger): entry starts from the attract loop (scene 0) after a P1 drum
-        // hit (SCENE_TRIGGER_DON_1P = 0) or a coin (SCENE_TRIGGER_COIN = 3); the movie then joins
-        // P1 via EntryCoin.
-        if (!player.TryInvokeCallback("SetPrevious", [
-                LumenHostValue.FromNumber(_entryPrevious),
-                LumenHostValue.FromNumber(EntryTrigger)]))
-        {
-            throw new InvalidOperationException("Entry did not export SetPrevious.");
-        }
-        if (!player.TryInvokeCallback("SetPlayer", [
-                LumenHostValue.FromNumber(0),
-                LumenHostValue.FromBoolean(false),
-                LumenHostValue.FromBoolean(false),
-                LumenHostValue.FromBoolean(false)]))
-        {
-            throw new InvalidOperationException("Entry did not export SetPlayer.");
-        }
-    }
+    private void initializeEntry(LumenPlayer player) => EntrySceneHost.Prepare(player, don, _entryPrevious, EntryTrigger);
 
     private static LumenLayerHost partHost(IndicatorParts parts, string movie) =>
         new(null, player => parts.Attach(movie, player));
@@ -620,11 +585,7 @@ internal sealed class LayerHostFactory(
         return new LumenLayerHost(binding, player =>
         {
             binding.Attach(player);
-            player.SetNativeFill("dummy_bg", WaiwaiResultTextures.Background);
-            player.SetNativeFill("dummy_sentence", WaiwaiResultTextures.Sentence(binding.Sentence));
-            // ponytail: 00_taiko has one rare note kind; every slot shows it.
-            for (var slot = 1; slot <= 5; slot++)
-                player.SetNativeFill($"dummy_rare_onp_0{slot}", WaiwaiResultTextures.RareNote);
+            binding.ShowArt(player, WaiwaiResultTextures.Background, WaiwaiResultTextures.Sentence(binding.Sentence), WaiwaiResultTextures.RareNote);
         });
     }
 

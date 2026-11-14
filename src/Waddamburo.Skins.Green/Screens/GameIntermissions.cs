@@ -13,6 +13,12 @@ public static class GameIntermissions
     /// <summary>The game's rainbow draws the song's title into this clip.</summary>
     public const string SongTitleFill = "scene_change_song_name";
 
+    // The rainbow's song title is placed and drawn on the stage (it comes in partway through the cover). Ours keeps
+    // the clip's name for this.
+    public static bool TitleShown(LumenPlayer rainbow) =>
+        rainbow.TryGetInstanceBounds(SongTitleFill, out var title)
+        && title is { Width: > 0, Height: > 0 } && title.X + title.Width > 0 && title.X < 1280;
+
     /// <summary>The game's rainbow: the song's title, drawn by the host (ours read song.title).</summary>
     public static void ShowTitle(LumenPlayer movie, Waddamburo.Lumen.Rendering.LumenNativeSurfaceKey title)
     {

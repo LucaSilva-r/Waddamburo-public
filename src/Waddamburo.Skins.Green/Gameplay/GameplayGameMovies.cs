@@ -1,6 +1,7 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Skins.Green.Gameplay;
@@ -92,6 +93,10 @@ public sealed class GameplayGameMovies(
     }
 
     /// <summary>The movie when it is the game's (it does not read the provider); none, or one of ours: null.</summary>
+    /// <summary>The game's dan panel: a challenge course's level art in its corner.</summary>
+    public static void ShowDanChallenge(LumenPlayer panel, LumenNativeSurfaceKey art) =>
+        game(panel)?.SetNativeFill("challenge_lv_mini", art);
+
     private static LumenPlayer? game(LumenPlayer? movie) => movie is { UsesProvider: false } ? movie : null;
 
     /// <summary>A state of the lane changed (or is told for the first time).</summary>
@@ -234,6 +239,10 @@ public sealed class GameplayGameMovies(
     {
         if (game(note) is { } movie) call(movie, "HitAction");
     }
+
+    // The game's kusudama root stops right after EndResult; its 'kusudama' clip then plays the break
+    // (ResultHigh/Low/Miss) and stops once the ball has faded out.
+    public bool Breaking(LumenPlayer kusudama) => game(kusudama)?.IsInstancePlaying("kusudama") == true;
 
     /// <summary>The target's hit ring (a GOOD's), alone: no judgement, combo or score (the audio calibration).</summary>
     public void FlashTarget() => game(target)?.TryGotoLabel("hit_effect", "hit_ryo");

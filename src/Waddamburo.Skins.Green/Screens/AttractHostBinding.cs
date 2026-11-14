@@ -1,3 +1,4 @@
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Skins.Green;
@@ -22,6 +23,22 @@ public interface IAttractSoundController
 /// </summary>
 public sealed class AttractHostBinding(IAttractSoundController? sounds = null) : ILumenHostBinding
 {
+    /// <summary>kidou shows a music credit page per _global.copyright_num, each a native fill named after its label.</summary>
+    public static void ShowCredits(LumenPlayer kidou, int pages, Func<int, LumenNativeSurfaceKey> page)
+    {
+        if (pages == 0 || !kidou.TryWriteScriptValue("_global.copyright_num", (double)pages))
+            return;
+        for (var index = 1; index <= pages; index++)
+            kidou.SetNativeFill($"copyright{index}", page(index));
+    }
+
+    /// <summary>movie.lm's full-screen video slot; every shipped CM is 1280x720, so its other sizes stay empty.</summary>
+    public static void ShowVideo(LumenPlayer movie, LumenNativeSurfaceKey video)
+    {
+        if (!movie.UsesProvider)
+            movie.SetNativeFill("movie1280x720", video);
+    }
+
     private string? _stream;
     private bool _streamStarted;
 

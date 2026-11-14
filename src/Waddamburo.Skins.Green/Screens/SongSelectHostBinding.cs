@@ -7,6 +7,7 @@ using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.Skins.Green;
 

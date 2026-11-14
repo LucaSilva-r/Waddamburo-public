@@ -2,6 +2,7 @@ using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Tests;
 using Waddamburo.Lumen.Runtime;
+using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.Skins.Green.Tests;
 
@@ -113,5 +114,16 @@ public sealed class FrontendBindingTests
         }
 
         public LumenHostValue CallExternalInterface(LumenHostCall hostCall) => LumenHostValue.Undefined;
+    }
+
+    [Fact]
+    public void AttachingDonToANewMovieResetsPreviousSceneState()
+    {
+        var don = new SyntheticDonPresentation();
+        var player = new LumenPlayer(TestMovies.TransitionMovie(), 1280, 720);
+
+        DonLumenBinding.Attach(player, don);
+
+        Assert.Equal(DonPresentationLayout.Standard, Assert.Single(don.ResetLayouts));
     }
 }
