@@ -1,4 +1,4 @@
-// scene_change_dani1: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// scene_change_dani1: the dan transition, on the provider (transition.phase); placeholder box art, still to be drawn.
 {
   "format": 2,
   "frameRate": 60,
