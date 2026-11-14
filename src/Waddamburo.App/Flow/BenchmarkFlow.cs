@@ -37,6 +37,11 @@ internal sealed class BenchmarkFlow(GameShell shell) : FlowScene(shell)
     /// <summary>Both lanes play it (two Don-chans, two lanes' movies): set before <see cref="Scene"/>.</summary>
     public bool TwoPlayers { get; set; }
 
+    /// <summary>--play: this chart and course instead of the stress chart.</summary>
+    public DirectPlay? Play { get; set; }
+
+    private long _startTick;
+
     /// <summary>Chart time it stops at, when shorter than the chart.</summary>
     public TimeSpan Limit { get; set; } = TimeSpan.MaxValue;
 
@@ -62,13 +67,20 @@ internal sealed class BenchmarkFlow(GameShell shell) : FlowScene(shell)
         Done = false;
         // One player and two report apart (the shell named the scene just before).
         PerformanceRecorder.Scene = TwoPlayers ? "benchmark-2p" : "benchmark-1p";
-        _chart = Chart();
+        // ponytail: TJA only, which is what the test charts are; a fumen would need the stock reader.
+        _chart = Play is { } play ? TjaCatalogProvider.ReadChart(File.ReadAllBytes(play.Chart),
+            new ChartKey(new SongKey(SongSourceKind.Tja, play.Chart), play.Course.ToString().ToLowerInvariant()), play.Course) : Chart();
         _timeline = new GameplayTimeline(_chart.AuthoredOffset, Beat * 8);
         PlayableChart[] charts = TwoPlayers ? [_chart, _chart] : [_chart];
-        Shell.Gameplay.Start(charts, Shell.Active, [.. charts.Select(static _ => TaikoCourse.Oni)]);
+        var course = Play?.Course ?? TaikoCourse.Oni;
+        Shell.Gameplay.Start(charts, Shell.Active, [.. charts.Select(_ => course)]);
+        _startTick = Shell.Tick;
+        // Only the song runs flat out: boot and loading wait on real time, and ticks raced through them would differ.
+        Shell.Application.OneTickPerFrame = Play is not null && Shell.Headless;
         _bot = new GameplayAutoplay(charts, 0);
         _clock.Restart();
-        if (Shell.Audio is { } audio)
+        // --play headless keeps time by ticks: no click to follow.
+        if (Shell.Audio is { } audio && !(Play is not null && Shell.Headless))
         {
             var clicks = new ClickTrack(audio.Mixer.Format, Beat, ClickTrack.Tone(audio.Mixer.Format, 2000), ClickTrack.Tone(audio.Mixer.Format, 1000));
             _transport = audio.PlayTransport(new ScheduledAudioSource(clicks, TimeSpan.Zero, TimeSpan.Zero), AudioBus.Metronome);
@@ -82,10 +94,12 @@ internal sealed class BenchmarkFlow(GameShell shell) : FlowScene(shell)
             Shell.Audio?.Mixer.Stop(transport.Handle);
         _transport = null;
         Shell.Gameplay.Stop();
+        Shell.Application.OneTickPerFrame = false;
     }
 
+    // Headless: by ticks, so a run repeats exactly.
     private TimeSpan chartTime() => _timeline!.ChartTime(_transport is { } transport && Shell.Audio is { } audio
-        ? audio.GetPosition(transport) : _clock.Elapsed);
+        ? audio.GetPosition(transport) : Shell.Headless ? TimeSpan.FromSeconds((Shell.Tick - _startTick) / 60d) : _clock.Elapsed);
 
     public override void Advance(LumenInputSnapshot input)
     {

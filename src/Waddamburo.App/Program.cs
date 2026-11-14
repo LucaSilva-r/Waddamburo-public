@@ -30,8 +30,12 @@ try
     var inputTimeline = InputPulseParser.Parse(args);
     if (screenshotPath is not null)
     {
+        // --play runs until its chart has ended (the screenshot is taken only at a limit given).
         if (frameLimit is null && tickLimit is null)
-            frameLimit = 1;
+        {
+            if (parseOption(args, "--play=") is null) frameLimit = 1;
+            else tickLimit = int.MaxValue;
+        }
         if (frameLimit == 0)
             throw new ArgumentException("--screenshot requires at least one rendered frame.");
     }
@@ -56,6 +60,11 @@ try
         : args.Contains("--benchmark=restart", StringComparer.Ordinal) ? BenchmarkMode.Restart
         : args.Contains("--benchmark=paced", StringComparer.Ordinal) ? BenchmarkMode.Paced : BenchmarkMode.Off;
     var startScene = StartSceneParser.Parse(startSceneOption);
+    var play = parseOption(args, "--play=") is { } playChart
+        ? new DirectPlay(Path.GetFullPath(playChart),
+            Enum.Parse<Waddamburo.Catalog.TaikoCourse>(parseOption(args, "--play-course=") ?? "oni", ignoreCase: true),
+            parseOption(args, "--play-players=") == "2" ? 2 : 1)
+        : null;
     var donRoot = parseOption(args, "--don-root=");
     var previewPath = parseOption(args, "--preview=");
     var soundBankProbe = parseOption(args, "--probe-sound-bank=");
@@ -215,7 +224,8 @@ try
             arcade.Fullscreen,
             layout.ServiceFontPath,
             recordPerformance,
-            benchmark));
+            benchmark,
+            play));
         // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
         if (GameShell.RestartRequested)
             SelfUpdate.Relaunch([.. args.Where(static argument => !argument.StartsWith("--benchmark", StringComparison.Ordinal)), .. GameShell.RestartArguments]);

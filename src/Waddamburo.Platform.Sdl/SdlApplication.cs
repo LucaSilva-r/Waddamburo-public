@@ -792,6 +792,20 @@ public sealed unsafe partial class SdlApplication : IDisposable
         return open;
     }
 
+    /// <summary>
+    /// Each loop runs exactly one tick, however long it took, with vsync off: headless runs as fast as they can, and
+    /// the same every time.
+    /// </summary>
+    public bool OneTickPerFrame
+    {
+        get;
+        set
+        {
+            field = value;
+            if (value) BgfxSupport.SetVsync(false); // ponytail: stays off after; only headless runs use it
+        }
+    }
+
     public int Run(
         RenderFrame frame,
         int? frameLimit = null,
@@ -1086,7 +1100,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
 
             var profileEligibleAtStart = frameProfile is not null && windowFocused && (profileFrame?.Invoke() ?? true);
             var timestamp = Stopwatch.GetTimestamp();
-            var elapsed = Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
+            var elapsed = OneTickPerFrame ? TimeSpan.FromSeconds(1 / clock.TicksPerSecond)
+                : Stopwatch.GetElapsedTime(previousTimestamp, timestamp);
             // Event pumping, frame pacing and the hitch log itself: what no other part of the frame line covers.
             var betweenFrames = previousFrameEnd == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(previousFrameEnd, timestamp);
             previousTimestamp = timestamp;

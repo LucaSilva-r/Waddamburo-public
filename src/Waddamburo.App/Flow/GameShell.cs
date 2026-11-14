@@ -53,7 +53,14 @@ internal sealed record GameOptions(
     bool Fullscreen = false,
     string? ServiceFontPath = null,
     bool RecordPerformance = false,
-    BenchmarkMode Benchmark = BenchmarkMode.Off);
+    BenchmarkMode Benchmark = BenchmarkMode.Off,
+    DirectPlay? Play = null);
+
+/// <summary>
+/// --play: a chart (TJA) played by the bot straight away, no menus, then the game quits. Headless (--screenshot), song
+/// time follows ticks and ticks run as fast as they can, so a run is quick and the same every time.
+/// </summary>
+internal sealed record DirectPlay(string Chart, TaikoCourse Course, int Players);
 
 /// <summary>--benchmark: off, run and quit, or run and start the game again (Settings > Run Benchmark).</summary>
 // Paced: the benchmark at the player's own vsync, frame cap and frame queue (it quits at the end), to count missed refreshes.
@@ -835,11 +842,12 @@ internal sealed class GameShell : IDisposable
                 AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
             var calibration = new CalibrationFlow(this);
             var benchmarkSong = new BenchmarkFlow(this);
-            if (options.Benchmark != BenchmarkMode.Off)
+            if (options.Benchmark != BenchmarkMode.Off || options.Play is not null)
             {
                 // The same demo songs and scene parts every run.
                 Random = new Random(20261105);
-                _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart);
+                benchmarkSong.Play = options.Play;
+                _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart, options.Play);
             }
             _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
             _search = new SongSearch(this, _libraries.Snapshot);

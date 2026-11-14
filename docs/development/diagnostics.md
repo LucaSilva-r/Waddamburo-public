@@ -316,3 +316,19 @@ The SDL window and bgfx rendering lifecycle is documented in
 [docs/development/rendering.md](rendering.md).
 For memory, frame time and audio-buffer measurements, see
 [docs/development/profiling.md](profiling.md).
+
+## Playing one chart directly (`--play`)
+
+```sh
+dotnet run --project src/Waddamburo.App -- /path/to/USRDIR --no-crash-screen \
+  --play="/path/to/Note Kind Check.tja" [--play-course=oni] [--play-players=2] \
+  --screenshot=/tmp/play.bmp
+```
+
+The bot plays a TJA chart on the gameplay screen straight after start-up, with no menus, then the game quits
+(`Waddamburo.App/Flow/BenchmarkFlow`, the benchmark's song with another chart). Headless (`--screenshot`) the
+song's time follows ticks and, while it plays, each loop runs exactly one tick as fast as the CPU allows (vsync
+off): an 86 s chart takes about 12 s, and two runs give the same edge log (`WADDAMBURO_EDGE_LOG`), ticks
+included. That makes it the check for gameplay movie changes: record the log before and after and `cmp` them.
+The screenshot is only taken with `--ticks`. In a window the song plays at normal speed. A data directory with
+no game files plays on the engine's own movies.
