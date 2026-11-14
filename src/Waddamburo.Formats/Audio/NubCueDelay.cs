@@ -14,6 +14,34 @@ public static class NubCueDelay
     private const int HeaderTable = 0x20;
     private const int DelayField = 0x4C;
     private const int GainField = 0x34;
+    private const int PitchField = 0x3C;
+    private const int PanField = 0x40;
+
+    /// <summary>
+    /// The cue's pan in degrees, -90 (left) to 90 (right): a big-endian float at 0x40. The two-player drum banks
+    /// SE_GAME_NEIRO_*_L/_R hold the _C bank's audio unchanged, panned -90 / 90 here; other cues use ±30 to ±75.
+    /// 0 for other stream kinds, a missing cue or an implausible value.
+    /// </summary>
+    public static float ReadPan(ReadOnlySpan<byte> bank, int cue)
+    {
+        if (vagHeader(bank, cue) is not { } header)
+            return 0;
+        var degrees = BinaryPrimitives.ReadSingleBigEndian(bank[(header + PanField)..]);
+        return float.IsFinite(degrees) && degrees is >= -90 and <= 90 ? degrees : 0;
+    }
+
+    /// <summary>
+    /// The cue's pitch in cents: a big-endian int at 0x3C. The right drum bank (SE_GAME_NEIRO_*_R) holds -100, a
+    /// semitone below the left one, so two players' drums sound apart. 0 for other stream kinds, a missing cue or an
+    /// implausible value.
+    /// </summary>
+    public static int ReadPitch(ReadOnlySpan<byte> bank, int cue)
+    {
+        if (vagHeader(bank, cue) is not { } header)
+            return 0;
+        var cents = BinaryPrimitives.ReadInt32BigEndian(bank[(header + PitchField)..]);
+        return cents is >= -2400 and <= 2400 ? cents : 0;
+    }
 
     /// <summary>The cue's delay; zero for other stream kinds or a cue the bank lacks.</summary>
     public static TimeSpan Read(ReadOnlySpan<byte> bank, int cue)

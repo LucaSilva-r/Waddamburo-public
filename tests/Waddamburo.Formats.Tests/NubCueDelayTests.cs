@@ -45,4 +45,21 @@ public sealed class NubCueDelayTests
         Assert.Equal(0.794f, NubCueDelay.ReadGain(bank, 0), 0.001f);
         Assert.Equal(TimeSpan.Zero, NubCueDelay.Read(bank, 0));
     }
+
+    [Fact]
+    public void ReadsTheVagStreamPanAndPitch()
+    {
+        // As SE_GAME_NEIRO_000_R: panned 90 degrees, a semitone down.
+        var bank = new byte[0x200];
+        BinaryPrimitives.WriteUInt32BigEndian(bank.AsSpan(0x0C), 1);
+        BinaryPrimitives.WriteUInt32BigEndian(bank.AsSpan(0x20), 0x40);
+        "vag\0"u8.CopyTo(bank.AsSpan(0x40));
+        BinaryPrimitives.WriteSingleBigEndian(bank.AsSpan(0x40 + 0x40), 90f);
+        BinaryPrimitives.WriteInt32BigEndian(bank.AsSpan(0x40 + 0x3C), -100);
+        Assert.Equal(90f, NubCueDelay.ReadPan(bank, 0));
+        Assert.Equal(-100, NubCueDelay.ReadPitch(bank, 0));
+        Assert.Equal(0f, NubCueDelay.ReadPan(bank, 1));
+        BinaryPrimitives.WriteSingleBigEndian(bank.AsSpan(0x40 + 0x40), float.NaN);
+        Assert.Equal(0f, NubCueDelay.ReadPan(bank, 0));
+    }
 }

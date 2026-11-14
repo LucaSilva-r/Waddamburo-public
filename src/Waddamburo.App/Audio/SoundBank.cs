@@ -24,7 +24,9 @@ internal sealed class SoundBank
     private readonly Dictionary<(string Bank, int Cue), AudioPlaybackHandle> _lastPlayed = [];
     private AudioClip? _latestVoice;
     private int _latestVoiceCue = -1;
-    private AudioPlaybackHandle? _oneShotVoice;
+    // Per side (-1 left, 0 centre, 1 right; the cue's authored pan): two players' voices (full combo 154/155,
+    // combo 1/2) play together, each cutting only its own side's; a centred voice cuts them all.
+    private readonly Dictionary<int, AudioPlaybackHandle> _oneShotVoices = [];
     private AudioPlaybackHandle? _loopVoice;
     private AudioPlaybackHandle? _coin;
     // When the coin channel takes the next queued sound: a coin sound's length after the last one started.
@@ -63,7 +65,10 @@ internal sealed class SoundBank
             var bus = busOverride ?? (bank.StartsWith("VO_", StringComparison.Ordinal) ? AudioBus.Voice : AudioBus.MenuSound);
             if (bus == AudioBus.Voice)
             {
-                stopVoicePlaying(); // not the voices still decoding: they were asked for after this one
+                if (clip.Pan == 0)
+                    stopVoicePlaying(); // not the voices still decoding: they were asked for after this one
+                else
+                    stopVoiceSide(Math.Sign(clip.Pan));
                 _latestVoice = clip;
                 _latestVoiceCue = cue;
             }
@@ -79,7 +84,7 @@ internal sealed class SoundBank
                 if (loop)
                     _loopVoice = handle;
                 else
-                    _oneShotVoice = handle;
+                    _oneShotVoices[Math.Sign(clip.Pan)] = handle;
             }
             if (trace)
                 Console.WriteLine($"Authored sound {bank}#{cue} -> {bus} ({clip.Duration.TotalSeconds:0.00} s).");
@@ -214,13 +219,13 @@ internal sealed class SoundBank
         foreach (var bus in Enum.GetValues<AudioBus>().Where(static bus => bus != AudioBus.Coin))
             _audio.Mixer.StopBus(bus);
         _deferred.Clear();
-        _oneShotVoice = null;
+        _oneShotVoices.Clear();
         _loopVoice = null;
         _latestVoice = null;
     }
 
     // A voice still decoding counts: whoever waits for the voice to end must not go on before it starts.
-    public bool IsVoicePlaying => IsPlaying(_oneShotVoice) || IsPlaying(_loopVoice)
+    public bool IsVoicePlaying => _oneShotVoices.Values.Any(handle => IsPlaying(handle)) || IsPlaying(_loopVoice)
         || _deferred.Exists(static entry => entry.Key.Bank.StartsWith("VO_", StringComparison.Ordinal));
 
     /// <summary>Stops the current voice only when it is the given cue.</summary>
@@ -238,11 +243,23 @@ internal sealed class SoundBank
 
     private void stopVoicePlaying()
     {
-        if (_oneShotVoice is { } oneShot)
+        foreach (var oneShot in _oneShotVoices.Values)
             _audio.Mixer.Stop(oneShot);
         if (_loopVoice is { } looped)
             _audio.Mixer.Stop(looped);
-        _oneShotVoice = null;
+        _oneShotVoices.Clear();
+        _loopVoice = null;
+        _latestVoice = null;
+    }
+
+    // A side's voice replaces that side's and the centred one (and the loop), not the other player's.
+    private void stopVoiceSide(int side)
+    {
+        foreach (var key in new[] { side, 0 })
+            if (_oneShotVoices.Remove(key, out var handle))
+                _audio.Mixer.Stop(handle);
+        if (_loopVoice is { } looped)
+            _audio.Mixer.Stop(looped);
         _loopVoice = null;
         _latestVoice = null;
     }
@@ -301,6 +318,8 @@ internal sealed class SoundBank
         var header = bankHeader(path, cue);
         // vgmstream leaves the header's authored gain to the player.
         return AudioClip.Load(path, format, sourceStreamIndex: checked((uint)cue + 1U))
+            .WithPitch(NubCueDelay.ReadPitch(header, cue))
+            .WithPan(NubCueDelay.ReadPan(header, cue))
             .WithLeadingSilence(NubCueDelay.Read(header, cue))
             .WithGain(NubCueDelay.ReadGain(header, cue));
     }

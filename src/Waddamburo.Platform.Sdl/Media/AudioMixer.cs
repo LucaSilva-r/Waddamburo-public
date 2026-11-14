@@ -137,7 +137,7 @@ public sealed class AudioClip
         var samples = new float[_samples.Length + frames * Format.Channels];
         _samples.CopyTo(samples, frames * Format.Channels);
         return new AudioClip(Format, samples, LoopRegion is { } loop
-            ? new AudioLoopRegion(loop.StartFrame + frames, loop.EndFrame + frames) : null);
+            ? new AudioLoopRegion(loop.StartFrame + frames, loop.EndFrame + frames) : null) { Pan = Pan };
     }
 
     /// <summary>The clip scaled by an amplitude factor (the mixer clamps the sum).</summary>
@@ -148,7 +148,55 @@ public sealed class AudioClip
         var samples = new float[_samples.Length];
         for (var index = 0; index < samples.Length; index++)
             samples[index] = _samples[index] * gain;
-        return new AudioClip(Format, samples, LoopRegion);
+        return new AudioClip(Format, samples, LoopRegion) { Pan = Pan };
+    }
+
+    /// <summary>
+    /// The clip panned to <paramref name="degrees"/> (-90 left, 0 centre, 90 right), constant power with the centre
+    /// unchanged: the channels fold to mono, hard left plays it +3 dB on the left only. Stereo output only.
+    /// </summary>
+    public AudioClip WithPan(float degrees)
+    {
+        if (degrees == 0 || Format.Channels != 2 || !float.IsFinite(degrees))
+            return this;
+        var angle = (Math.Clamp(degrees, -90, 90) + 90) / 180 * MathF.PI / 2;
+        float left = MathF.Cos(angle) * MathF.Sqrt(2), right = MathF.Sin(angle) * MathF.Sqrt(2);
+        var samples = new float[_samples.Length];
+        for (var index = 0; index < samples.Length; index += 2)
+        {
+            var mono = (_samples[index] + _samples[index + 1]) / 2;
+            (samples[index], samples[index + 1]) = (mono * left, mono * right);
+        }
+        return new AudioClip(Format, samples, LoopRegion) { Pan = degrees };
+    }
+
+    /// <summary>The pan <see cref="WithPan"/> applied, in degrees (0: centred or never panned).</summary>
+    public float Pan { get; private init; }
+
+    /// <summary>
+    /// The clip played <paramref name="cents"/> higher (lower when negative), as a sampler does: resampled, so it
+    /// gets shorter or longer with it (linear interpolation; a loop region scales along).
+    /// </summary>
+    public AudioClip WithPitch(int cents)
+    {
+        if (cents == 0)
+            return this;
+        var ratio = Math.Pow(2, cents / 1200.0);
+        var channels = Format.Channels;
+        var frames = Math.Max(1, (int)(FrameCount / ratio));
+        var samples = new float[frames * channels];
+        for (var frame = 0; frame < frames; frame++)
+        {
+            var at = frame * ratio;
+            var from = Math.Min((int)at, FrameCount - 1);
+            var to = Math.Min(from + 1, FrameCount - 1);
+            var weight = (float)(at - from);
+            for (var channel = 0; channel < channels; channel++)
+                samples[frame * channels + channel] = _samples[from * channels + channel] * (1 - weight)
+                    + _samples[to * channels + channel] * weight;
+        }
+        return new AudioClip(Format, samples, LoopRegion is { } loop && (int)(loop.EndFrame / ratio) > (int)(loop.StartFrame / ratio)
+            ? new AudioLoopRegion((int)(loop.StartFrame / ratio), Math.Min(frames, (int)(loop.EndFrame / ratio))) : null);
     }
 }
 
