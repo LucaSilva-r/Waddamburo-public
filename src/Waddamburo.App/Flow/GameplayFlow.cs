@@ -1,5 +1,4 @@
 using Waddamburo.App.Audio;
-using System.Diagnostics;
 using Waddamburo.App.Gameplay;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;

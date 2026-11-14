@@ -1,5 +1,3 @@
-using Waddamburo.Catalog;
-
 namespace Waddamburo.Catalog.Tests;
 
 public sealed class SongTempoTests
