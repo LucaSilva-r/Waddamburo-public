@@ -185,6 +185,14 @@ public sealed class FreeTimeCounterTests
         lane.Publish("play.goGo", LumenHostValue.FromBoolean(true));
         lane.Publish("play.branch", text("master"));
         Assert.Empty(lane.Diagnostics); // what the tints show is checked on screen: a clip's _visible is not readable here
+        lane.Emit("drum.hit", text("left"), text("ka"));
+        Assert.Equal((30, true), lane.InstanceFrame("effect")); // katsu_s
+        lane.Emit("note.judged", text("good"), LumenHostValue.FromBoolean(true), text("don"), LumenHostValue.FromBoolean(true));
+        Assert.Equal((110, true), lane.InstanceFrame("hit_effect")); // hit_dai_ryo
+        Assert.Equal((50, true), lane.InstanceFrame("effect")); // don_hit
+        lane.Emit("note.judged", text("bad"), LumenHostValue.FromBoolean(false), text("don"), LumenHostValue.FromBoolean(false));
+        Assert.Equal((110, true), lane.InstanceFrame("hit_effect")); // passed unhit: no ring
+        Assert.Empty(lane.Diagnostics);
 
         var bubble = load("enso_system/base1p/fukidashi_level_1p");
         advance(bubble, 2);
