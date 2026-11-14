@@ -175,6 +175,9 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             stars[id] = levels;
             var title = titles.GetValueOrDefault("song_" + id);
             var subtitle = titles.GetValueOrDefault("song_sub_" + id);
+            var tempoPath = chartPath(id, Courses[(int)charts[^1].Course!.Value], "");
+            var tempo = cached is null ? readTempo(tempoPath, charts[^1].Key)
+                : cached.Read(tempoPath, "tempo", () => readTempo(tempoPath, charts[^1].Key), NijiiroCacheJsonContext.Default.SongTempo);
             songs.Add(new SongDescriptor(
                 key,
                 new SongTitle(title.Japanese ?? id, title.Japanese, title.English),
@@ -186,6 +189,8 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             {
                 EnglishSubtitle = subtitle.English,
                 ScenePresets = themes.GetValueOrDefault(id, []),
+                Bpm = tempo?.Bpm,
+                Length = tempo?.Length,
             });
             var genre = entry.TryGetProperty("genreNo", out var number) && number.TryGetInt32(out var genreNo)
                 && genreNo >= 0 && genreNo < Genres.Length ? genreNo : Genres.Length;
@@ -237,6 +242,21 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
         {
             Level = _stars.TryGetValue(id, out var levels) && levels[course] > 0 ? levels[course] : null,
         };
+    }
+
+    // The hardest chart's tempo and length, for the bpm/length search and BPM grouping.
+    private SongTempo? readTempo(string path, ChartKey key)
+    {
+        try
+        {
+            return new FileInfo(path).Length > MaximumFileBytes ? null
+                : SongTempo.Of(FumenChartReader.Read(unpack(File.ReadAllBytes(path), table: false), key, MaximumMeasures, MaximumNotes));
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException or OverflowException
+            or System.Security.Cryptography.CryptographicException)
+        {
+            return null;
+        }
     }
 
     private string chartPath(string id, char course, string player) =>
@@ -390,6 +410,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
     private static partial Regex SongId();
     [JsonSerializable(typeof(TimeSpan?))]
+    [JsonSerializable(typeof(SongTempo))]
     private sealed partial class NijiiroCacheJsonContext : JsonSerializerContext;
 }
 

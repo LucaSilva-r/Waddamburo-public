@@ -159,6 +159,7 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
             var japaneseSubtitle = firstMetadata(files, "SUBTITLEJA");
             var primaryTitle = japaneseTitle ?? baseTitle ?? englishTitle
                 ?? Path.GetFileNameWithoutExtension(representative.RelativePath);
+            var tempo = this.tempo(charts.Where(static chart => chart.Course is not null).MaxBy(static chart => chart.Course), cached);
             var song = new SongDescriptor(
                 songKey,
                 new SongTitle(primaryTitle, japaneseTitle, englishTitle),
@@ -171,6 +172,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
                 EnglishSubtitle = japaneseSubtitle is null ? null : normalizeSubtitle(firstMetadata(files, "SUBTITLE")),
                 ScenePresets = [.. (firstMetadata(files, "SCENEPRESET") ?? "")
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+                Bpm = tempo?.Bpm,
+                Length = tempo?.Length,
             };
             songs.Add(song);
 
@@ -421,6 +424,29 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
         return null;
     }
 
+    // The hardest chart's tempo and length, for the bpm/length search and BPM grouping.
+    private SongTempo? tempo(SongChartDescriptor? chart, CatalogMetadataScope? cached)
+    {
+        if (chart is null)
+            return null;
+        var locator = TjaChartAssetKeyCodec.Decode(chart.ChartAsset);
+        var path = resolveContainedPath(locator.RelativePath);
+        SongTempo? read()
+        {
+            try
+            {
+                return SongTempo.Of(TjaPlayableChartReader.Read(File.ReadAllBytes(path), chart.Key, locator,
+                    _options.MaximumMeasures, _options.MaximumNotes));
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException
+                or OverflowException or FormatException or NotSupportedException or DecoderFallbackException)
+            {
+                return null;
+            }
+        }
+        return cached is null ? read() : cached.Read(path, "tempo", read, CacheJsonContext.Default.SongTempo);
+    }
+
     private string resolveContainedPath(string relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
@@ -561,5 +587,6 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
     private sealed record ResolvedTjaAudio(string GroupKey, CatalogAssetKey? Asset);
     [JsonSerializable(typeof(CachedTja))]
     [JsonSerializable(typeof(string))]
+    [JsonSerializable(typeof(SongTempo))]
     private sealed partial class CacheJsonContext : JsonSerializerContext;
 }

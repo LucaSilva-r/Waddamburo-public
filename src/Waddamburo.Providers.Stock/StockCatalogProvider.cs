@@ -132,6 +132,7 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                 if (!hasAudio)
                     diagnostics.Add(warning("STOCK_AUDIO_MISSING", $"Music id '{entry.Id}' has no installed music."));
                 var extra = StockMetadata.Value.GetValueOrDefault(entry.Id);
+                var tempo = cachedTempo(entry.Id, charts[^1]);
                 songs.Add(new SongDescriptor(
                     key,
                     new SongTitle(entry.Title ?? entry.Id, entry.Title, extra.EnglishTitle),
@@ -143,6 +144,8 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                 {
                     EnglishSubtitle = extra.EnglishSubtitle,
                     DemoPlay = demo.Contains(entry.Id),
+                    Bpm = tempo?.Bpm,
+                    Length = tempo?.Length,
                     // Waiwai songs are the ones with a section layout (all of Green's 182 match the traced list).
                     WaiwaiComposition = exists(compositionPath(entry.Id))
                         ? new CatalogAssetKey(Id, $"composition:{entry.Id}") : null,
@@ -330,6 +333,25 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
     private TimeSpan? cachedPreview(string path) => _scan is { } cache
         ? cache.Read(path, "preview", () => previewStart(path), CacheJsonContext.Default.NullableTimeSpan) : previewStart(path);
 
+    // The hardest chart's tempo and length, for the bpm/length search and BPM grouping.
+    private SongTempo? cachedTempo(string id, SongChartDescriptor chart)
+    {
+        var path = chartPath(id, Courses[(int)chart.Course!.Value]);
+        SongTempo? read()
+        {
+            try
+            {
+                return new FileInfo(path).Length > MaximumChartBytes ? null
+                    : SongTempo.Of(FumenChartReader.Read(File.ReadAllBytes(path), chart.Key, MaximumMeasures, MaximumNotes));
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException or OverflowException)
+            {
+                return null;
+            }
+        }
+        return _scan is { } cache ? cache.Read(path, "tempo", read, CacheJsonContext.Default.SongTempo) : read();
+    }
+
     private static TimeSpan? previewStart(string path)
     {
         try
@@ -444,5 +466,6 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
     [JsonSerializable(typeof(Dictionary<string, int[]>))]
     [JsonSerializable(typeof(bool))]
     [JsonSerializable(typeof(TimeSpan?))]
+    [JsonSerializable(typeof(SongTempo))]
     private sealed partial class CacheJsonContext : JsonSerializerContext;
 }
