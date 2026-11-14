@@ -169,7 +169,7 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
                 parsePreview(firstMetadata(files, "DEMOSTART"), representative.RelativePath, diagnostics),
                 normalizeSubtitle(japaneseSubtitle ?? firstMetadata(files, "SUBTITLE")))
             {
-                EnglishSubtitle = japaneseSubtitle is null ? null : normalizeSubtitle(firstMetadata(files, "SUBTITLE")),
+                EnglishSubtitle = normalizeSubtitle(firstMetadata(files, "SUBTITLEEN") ?? (japaneseSubtitle is null ? null : firstMetadata(files, "SUBTITLE"))),
                 ScenePresets = [.. (firstMetadata(files, "SCENEPRESET") ?? "")
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
                 Bpm = tempo?.Bpm,
