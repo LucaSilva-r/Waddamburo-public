@@ -369,6 +369,19 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly Action<string, LumenHostValue[]> _emit;
         private long _wholeBeat = long.MinValue; // the last beat.passed told
 
+        /// <summary>The index of the last of <paramref name="points"/> (in time order) at or before <paramref name="time"/>; -1 when none.</summary>
+        private static int lastAt<T>(System.Collections.Immutable.ImmutableArray<T> points, Func<T, TimeSpan> timeOf, TimeSpan time)
+        {
+            int low = 0, high = points.Length; // the first after time
+            while (low < high)
+            {
+                var middle = (low + high) / 2;
+                if (timeOf(points[middle]) <= time) low = middle + 1;
+                else high = middle;
+            }
+            return low - 1;
+        }
+
         /// <summary>This drum's player number for the provider: 1 the left drum, 2 the right.</summary>
         public int Drum { get; }
 
@@ -721,12 +734,28 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var bannerTime = TaikoResultBanner.Time(chart);
             EndBanner = endBanner;
             var bannerShown = false;
+            var measure = int.MinValue; // the last bar told (-1 before the first); none yet: a play seen from mid-song tells no bar
+            publish("play.duration", LumenHostValue.FromNumber(chart.Duration.TotalSeconds));
             _onChartTime = time =>
             {
                 publishLongNotes();
                 // In hundredths: a bar does not need more, and a movie is not told sixty times a second.
                 publish("play.progress", LumenHostValue.FromNumber(
                     Math.Round(Math.Clamp(time / TaikoResultBanner.Time(chart), 0, 1), 2)));
+                // Where the song is, for movies that move with it (each told only when it changes).
+                // ponytail: the chart's main tempo, scroll and bars; a TJA route with its own (ChartRouteControls) is not followed.
+                publish("play.time", LumenHostValue.FromNumber(time.TotalSeconds));
+                var tempo = chart.TimingPoints[Math.Max(0, lastAt(chart.TimingPoints, static point => point.Time, time))];
+                publish("play.bpm", LumenHostValue.FromNumber(tempo.BeatsPerMinute));
+                publish("play.meter", LumenHostValue.FromNumber(tempo.BeatsPerMeasure));
+                var scroll = lastAt(chart.ScrollPoints, static point => point.Time, time);
+                publish("play.scroll", LumenHostValue.FromNumber(scroll < 0 ? 1 : chart.ScrollPoints[scroll].Multiplier));
+                var bar = lastAt(chart.BarLines, static line => line.Time, time);
+                if (bar > measure && measure != int.MinValue) emit("measure.passed", LumenHostValue.FromNumber(bar));
+                measure = bar;
+                publish("play.measure", LumenHostValue.FromNumber(bar));
+                publish("play.rollHits", LumenHostValue.FromNumber(score.RollHits));
+                publish("play.balloonHits", LumenHostValue.FromNumber(score.BalloonHits));
                 // Balloons and kusudama count as rolls here (user-confirmed on the game; the traced totals fit).
                 danProgress = new Waddamburo.Game.Dan.DanProgress(gauge.Value * 100 / TaikoSoulGauge.Max,
                     great, good, miss, maxCombo, score.RollHits + score.BalloonHits, score.Value);

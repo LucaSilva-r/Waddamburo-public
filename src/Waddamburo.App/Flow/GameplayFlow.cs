@@ -289,6 +289,11 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Gameplay.Publish("player.tone", LumenHostValue.FromNumber(Shell.Sounds?.Gameplay.Tones.ElementAtOrDefault(lane) ?? 0), lane);
             // ponytail: the パパママ support option is not in the engine; the name is there for a skin to read already.
             Shell.Gameplay.Publish("player.support", LumenHostValue.FromBoolean(false), lane);
+            Shell.Gameplay.Publish("player.autoplay", LumenHostValue.FromBoolean(
+                request.Review is null && (Shell.Autoplay || _demo || Shell.DevAutoplay || aiBattle && lane == 1)), lane);
+            Shell.Gameplay.Publish("player.replay", LumenHostValue.FromBoolean(request.Review is not null), lane);
+            Shell.Gameplay.Publish("play.level", lane < players.Length && _song?.Level(players[lane].Course) is { } stars
+                ? LumenHostValue.FromNumber(stars) : LumenHostValue.Undefined, lane);
         }
         for (var lane = 0; lane < _play.Charts.Length; lane++)
             Shell.Gameplay.Publish("player.name", LumenHostValue.FromString(
@@ -1020,6 +1025,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Publish("song.title", LumenHostValue.FromString(song.Descriptor.Title.English ?? song.Descriptor.Title.Primary));
         Shell.Gameplay.Publish("song.subtitle", song.Descriptor.Subtitle is { Length: > 0 } subtitle
             ? LumenHostValue.FromString(subtitle) : LumenHostValue.Undefined);
+        Shell.Gameplay.Publish("song.artist", song.Descriptor.Artist is { Length: > 0 } artist
+            ? LumenHostValue.FromString(artist) : LumenHostValue.Undefined);
+        Shell.Gameplay.Publish("song.genre", LumenHostValue.FromString(GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)]));
+        var source = song.Descriptor.Key.Source.ToString();
+        Shell.Gameplay.Publish("song.source", LumenHostValue.FromString(char.ToLowerInvariant(source[0]) + source[1..]));
+        Shell.Gameplay.Publish("song.stage", LumenHostValue.FromNumber(Shell.SongInfo.Stage));
+        Shell.Gameplay.Publish("song.finalStage", LumenHostValue.FromBoolean(Shell.SongInfo.Final));
         if (songInfoPlayer() is not { } info)
             return;
         var title = Shell.Titles.GetGameplayTitle(song);
