@@ -175,6 +175,20 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheDanCardShowsEachSong()
+    {
+        var card = load("enso_dojo/between");
+        advance(card, 2);
+        card.Publish("dan.song", n(2));
+        Assert.Equal("Song 2", card.ReadScriptValue("card.text"));
+        card.Publish("song.title", LumenHostValue.FromString("Senbonzakura")); // the title comes after the number
+        Assert.Equal("Song 2:  Senbonzakura", card.ReadScriptValue("card.text"));
+        advance(card, 180);
+        Assert.Equal("", card.ReadScriptValue("card.text"));
+        Assert.Empty(card.Diagnostics);
+    }
+
+    [Fact]
     public void TheIntermissionsFollowTheTransitionPhase()
     {
         static LumenHostValue text(string value) => LumenHostValue.FromString(value);

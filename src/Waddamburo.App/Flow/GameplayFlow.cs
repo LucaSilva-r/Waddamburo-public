@@ -972,8 +972,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         showCourseSong();
     }
 
-    // Traced session30, at each song's start: between's clip nextsong goes to "start" (its sounds are its own),
-    // with the song's title, and song_info shows the song's title, genre and number.
+    // At each song's start: the between-songs card (GameDanCard), and song_info's title, genre and number.
     private void showCourseSong()
     {
         if (_course is null)
@@ -982,11 +981,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         var card = Shell.Titles.GetTransitionTitle(song);
         _ = Shell.Titles.Resolve(card);
         if (sceneLayer("between") is { } between)
-        {
-            between.SetNativeFill("next_song_name", card);
-            if (!between.TryGotoLabel("nextsong", "start"))
-                Console.Error.WriteLine("between has no nextsong clip to start.");
-        }
+            GameDanCard.Show(between, card);
         // Each song's own genre, as the select screen shows it (the genre Song Select had set stayed for the whole
         // course; reported on Discord).
         Shell.SongInfo = Shell.SongInfo with

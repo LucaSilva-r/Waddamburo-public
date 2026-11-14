@@ -324,7 +324,8 @@ the gameplay adapter (`Gameplay/GameplayGameMovies`). Engine rules found in thos
 (AI battle section records, arcade credit rules, the support menu's pick). Still to move, each when its part goes
 behind provider names:
 
-1. Gameplay: the dan course's between-songs card (`between`), which `GameplayFlow` still jumps by name. The
+1. Gameplay: done (2026-11-14). The dan course's between-songs card is `GameDanCard` (ours reads `dan.song` and
+   `song.title`). The
    intermissions (rainbow, fade, dan covers, shutters) follow the transition protocol: `IntermissionOverlay.Cover(title,
    side)` / `Reveal(title)` publish `transition.title`, `transition.side` and `transition.phase` (cover, reveal) to the
    shown movie, and `GameIntermissions` (Skins.Green) gives the game's their in / out / in_extra / out_extra labels,

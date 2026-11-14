@@ -1,61 +1,40 @@
-// between: a skeleton (callbacks and the clips the game addresses); to be drawn and written.
+// A dan course's card between songs: which song comes, and its title.
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
-  "textures": {
-    "box": "textures/box.svg"
-  },
-  "shapes": {
-    "box": {
-      "texture": "box",
+  "texts": {
+    "card": {
       "rect": [
-        -32,
-        -32,
-        64,
-        64
-      ]
+        -450,
+        -26,
+        900,
+        52
+      ],
+      "size": 40,
+      "align": "center",
+      "color": "#ffffff"
     }
   },
   "sprites": {
-    "nextsong": {
-      "frames": 50,
-      "labels": {
-        "start": 0,
-        "wait": 10,
-        "stay": 20,
-        "open": 30,
-        "end": 40
+    "main": {
+      "frames": 1,
+      "scripts": {
+        "0": "scripts/main.as"
       },
       "layers": [
         {
-          "character": "box",
+          "character": "card",
+          "name": "card",
           "keys": [
             {
-              "frame": 0
+              "frame": 0,
+              "x": 640,
+              "y": 230
             }
           ]
         }
       ]
-    },
-    "main": {
-      "frames": 1,
-      "layers": [
-        {
-          "character": "nextsong",
-          "name": "nextsong",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 100,
-              "y": 100
-            }
-          ]
-        }
-      ],
-      "scripts": {
-        "0": "scripts/stop.as"
-      }
     }
   }
 }
