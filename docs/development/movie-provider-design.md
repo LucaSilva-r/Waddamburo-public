@@ -365,6 +365,11 @@ behind provider names:
 - Nesting (agreed): the scope belongs to the movie the scene places. Everything that runs inside it asks the same:
   child clips, sprites attached at run time, movies loaded into its clips. A widget placed as a layer of its own gets
   what its role in the scene grants.
+- Our entry is on the provider alone (2026-11-14): requests `player.join(drum)` and `session.start(mode)`, states
+  `player.joined` (per drum), `entry.timeLeft`, `entry.setup`. `EntryFlow` sets it up when the screen is ready, joins
+  the drum that came in from the attract, and on the first join starts the countdown (`EntrySceneHost.FirstJoin`);
+  the host skips the game's calls on a movie that reads the provider. Drums still read as keys (`Key.isDown`).
+  Checked by the user at home: setup, mode menu, normal, dan, Waiwai. Not yet seen: arcade (coins, rejoin).
 - First request: `session.start(mode)` on the entry (`normal`, `dan`). Our entry has a mode menu after the players
   join (rims move, DON decides); NORMAL still leaves through the game's calls (SetNextScene), DAN DOJO asks
   `session.start("dan")` and the engine opens dan select under the dan cover, as from song select's dojo.

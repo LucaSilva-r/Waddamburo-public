@@ -406,6 +406,9 @@ internal sealed class LayerHostFactory(
             DonLumenBinding.Attach(player, don);
             player.SetNativeFill("donExM", don.GetSurface(2), DonLumenBinding.Placement);
         }
+        // Ours asks the engine (EntryFlow tells it who came in and who is in): no game calls.
+        if (player.UsesProvider)
+            return;
         // SetPrevious(scene, trigger): entry starts from the attract loop (scene 0) after a P1 drum
         // hit (SCENE_TRIGGER_DON_1P = 0) or a coin (SCENE_TRIGGER_COIN = 3); the movie then joins
         // P1 via EntryCoin.

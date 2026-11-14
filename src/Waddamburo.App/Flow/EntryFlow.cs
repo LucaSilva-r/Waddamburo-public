@@ -47,17 +47,67 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
         }
         : "session.start takes the mode's name";
 
+    // Our entry movie (it reads the provider): set up once the screen is ready, as the game's asks with InitInfo.
+    private LumenPlayer? _ours;
+    private bool _ready;
+    private const int EntrySeconds = 50; // the game's entry asks StartTimer(50)
+
+    // player.join(drum): what the game's entry does inside EntryCoin, and on its first join.
+    private string? join(LumenHostValue[] arguments)
+    {
+        if (arguments is not [{ Kind: LumenHostValueKind.Number } drum] || drum.AsNumber() is not (1 or 2))
+            return "player.join takes the drum's number, 1 or 2";
+        if (Shell.Hosts.Entry is not { } host || !_ready)
+            return "the entry is not ready yet";
+        return join(host, (int)drum.AsNumber() - 1);
+    }
+
+    private static string? join(Waddamburo.Skins.Green.EntrySceneHost host, int side)
+    {
+        if (host.IsJoined(side))
+            return "that drum is already in";
+        var first = !host.IsJoined(0) && !host.IsJoined(1);
+        if (!host.TryJoin(side))
+            return "that drum cannot join now (credits, or the setup has the drums)";
+        if (first) host.FirstJoin(side, EntrySeconds);
+        else host.Indicate(side);
+        return null;
+    }
+
     public override void Advance(LumenInputSnapshot input)
     {
         // Each showing of the entry has its own movies: they ask this screen.
         var movies = Shell.Active.Player.Layers.Select(static layer => layer.Player).ToArray();
         if (!movies.SequenceEqual(_asking))
         {
-            new WdRequests("entry").Handle("session.start", startMode).Install(movies);
+            new WdRequests("entry").Handle("session.start", startMode).Handle("player.join", join).Install(movies);
             _asking = movies;
         }
+        tellOurs();
         Shell.Active.Player.Advance(input);
         Shell.Hosts.AdvanceEntry();
         Shell.DonRenderer?.Advance();
+    }
+
+    private void tellOurs()
+    {
+        if (Shell.Hosts.Entry is not { Movie: { UsesProvider: true } movie } host)
+            return;
+        if (movie != _ours)
+            (_ours, _ready) = (movie, false);
+        if (!_ready && host.PollReady())
+        {
+            _ready = true;
+            host.InitInfo();
+            // The drum that brought the players here joins at once (the attract's trigger: 0 the left drum, 1 the
+            // right, 2 both; 3 a coin and 4 none join nobody).
+            var trigger = Shell.Hosts.EntryTrigger;
+            if (trigger is 0 or 2) join(host, 0);
+            if (trigger is 1 or 2) join(host, 1);
+        }
+        for (var side = 0; side < 2; side++)
+            movie.Publish("player.joined", LumenHostValue.FromBoolean(host.IsJoined(side)), side + 1);
+        movie.Publish("entry.timeLeft", host.TimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
+        movie.Publish("entry.setup", LumenHostValue.FromBoolean(host.SetupOpen));
     }
 }

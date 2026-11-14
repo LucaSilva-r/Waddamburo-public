@@ -38,6 +38,47 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Whether a player may join, on either drum (the right one is P2); both may.</summary>
     public Func<int, bool> CanJoin { get; init; } = static _ => true;
 
+    /// <summary>The entry movie on stage (null before it is attached).</summary>
+    public LumenPlayer? Movie => _entry;
+
+    /// <summary>Whether the drum (0 left, 1 right) has joined.</summary>
+    public bool IsJoined(int side) => _joined.Contains(side);
+
+    /// <summary>The entry countdown's seconds left; null while none runs.</summary>
+    public int? TimeLeft => _timerStarted ? RemainingSeconds : null;
+
+    /// <summary>The home player setup is open over the entry (it has the drums).</summary>
+    public bool SetupOpen => SetupMode;
+
+    /// <summary>
+    /// What the game's entry does on its first join, for one of ours (which asks the engine instead): the countdown
+    /// starts and runs, the card choice closes. The indicator shows the drum as joined (state 2).
+    /// </summary>
+    public void FirstJoin(int side, int seconds)
+    {
+        _timerLimit = TimeSpan.FromSeconds(seconds);
+        _timerStarted = true;
+        _timerCues.Reset();
+        _timer.Restart();
+        Parts.StartCountdown(seconds);
+        Parts.ResumeCountdown();
+        // NotifyDataSelect(false), as the game's entry sends it here.
+        if (_dialogAt >= 0 || Card is null)
+        {
+            if (Card is not null)
+                closeCardDialog();
+            Card = null;
+            Parts.HideNameBoards();
+        }
+        Indicate(side);
+    }
+
+    /// <summary>The indicator's "joined" for a drum that is in (a later join, for one of ours).</summary>
+    public void Indicate(int side)
+    {
+        if (_joined.Contains(side)) Parts.SetIndicator(side, 2);
+    }
+
     /// <summary>The first joined player's drum (0 left, 1 right); null before a join.</summary>
     public int? JoinedPlayer => _joined.Count == 0 ? null : _joined.First();
 
@@ -205,8 +246,8 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _boardShown[side] = board;
     }
 
-    // The movie has the home player setup of its own (an engine movie: it registered WdSetupOpen), so nothing
-    // below reaches into it; the game's entry is driven through its script objects instead.
+    // The movie is one of ours: the home player setup is told to it as entry.setup, so nothing below reaches into it;
+    // the game's entry is driven through its script objects instead.
     private bool _ownSetup;
 
     private const int ModeSelectFadeTicks = 15;
@@ -237,7 +278,6 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 PlayerJoined?.Invoke(side);
             }
             CoinsChanged();
-            call(entry, "WdSetupDone", LumenHostValue.FromBoolean(playing[0]), LumenHostValue.FromBoolean(playing[1]));
             return;
         }
         _modeSelectFade = 0;
@@ -438,7 +478,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         foreach (var side in new[] { 0, 1 })
             call(entry, "SetPlayer", number(side), side == PreJoined ? yes : no, side == PreJoined ? yes : no, side == PreJoined ? yes : no);
         call(entry, "BnCoinInit", number(0), no, no, no);
-        _ownSetup = SetupMode && entry.TryInvokeCallback("WdSetupOpen", []);
+        _ownSetup = SetupMode && entry.UsesProvider; // ours reads entry.setup and player.joined
     }
 
     /// <summary>The entry's IsReady poll; the game answers 0 until its parts are set up.</summary>
@@ -708,6 +748,8 @@ internal static class LumenPlayerCalls
 {
     public static void Call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
+        if (player.UsesProvider)
+            return; // one of ours: it reads the provider, the game's calls are not for it
         if (!player.TryInvokeCallback(name, arguments))
             throw new InvalidDataException($"Entry movie is missing callback '{name}'.");
     }

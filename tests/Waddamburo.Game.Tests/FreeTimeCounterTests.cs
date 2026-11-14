@@ -175,6 +175,28 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheEntryFollowsWhoIsInAndAsksToStart()
+    {
+        var entry = load("entry/entry");
+        var asked = new List<string>();
+        entry.RequestHandler = (name, arguments) =>
+        {
+            asked.Add($"{name} {string.Join(" ", arguments.Select(static value => value.Kind == LumenHostValueKind.Text ? value.AsString() : value.AsNumber().ToString(System.Globalization.CultureInfo.InvariantCulture)))}");
+            return null;
+        };
+        advance(entry, 2);
+        Assert.Equal("PLAYER ENTRY", entry.ReadScriptValue("heading.text"));
+        entry.Publish("entry.setup", LumenHostValue.FromBoolean(true));
+        entry.Publish("player.joined", LumenHostValue.FromBoolean(true), 1);
+        entry.Publish("entry.setup", LumenHostValue.FromBoolean(false)); // the home setup closes: the mode menu
+        Assert.Equal("MODE", entry.ReadScriptValue("heading.text"));
+        Assert.Equal("<  NORMAL  >", entry.ReadScriptValue("hint.text"));
+        entry.Publish("entry.timeLeft", n(0)); // the countdown ran out: the mode shown starts
+        Assert.Equal(["session.start normal"], asked);
+        Assert.Empty(entry.Diagnostics);
+    }
+
+    [Fact]
     public void TheDanCardShowsEachSong()
     {
         var card = load("enso_dojo/between");

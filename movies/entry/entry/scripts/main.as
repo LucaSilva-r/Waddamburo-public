@@ -1,27 +1,21 @@
-// The entry's behaviour, bare minimum: a drum joins with its DON, a joined drum's DON opens the mode menu (rims move,
-// DON decides; the timer starts a normal game). Normal play leaves through the game's calls; the dan dojo is asked for
-// with Wd.request("session.start", "dan").
-// The calls to the game and their order are the ones the game's own entry makes on that path.
-import flash.external.ExternalInterface;
+// The entry, bare minimum. A drum joins with its DON (player.join); a joined drum's DON opens the mode menu (rims move,
+// DON decides: session.start). The engine says who is in (player.joined), the countdown (entry.timeLeft: at 0 the
+// session starts as it is) and when the home player setup has the drums (entry.setup).
+// ponytail: the drums are read as the game's keys (Key.isDown); a provider input event can replace that.
 
-var SECONDS = 50;
-var DON = [90, 67];       // Key codes the game presses for each drum's DON (Z, C)
-var KA = [[65, 83], [68, 70]]; // and each drum's rims (A S, D F)
+var DON = [90, 67];            // each drum's DON as the engine presses it (Z, C)
+var KA = [[65, 83], [68, 70]]; // and its rims (A S, D F)
 var MODES = ["NORMAL", "DAN DOJO"];
 var MODE_NAMES = ["normal", "dan"]; // as session.start takes them
-var TRIGGER_NONE = 3;     // SetPrevious's trigger: 0 the left drum joins at once, 1 the right, 2 both
 
 var self = this;
 var joined = [false, false];
-var held = [true, true];  // a DON still down from the screen before does not count
-var trigger = TRIGGER_NONE;
-var setup = false;        // the home player setup is open over the entry: it has the drums
-var started = false;      // InitInfo sent
-var triggered = false;
-var done = false;
-var choosing = false;     // the mode menu is up: the rims move, DON decides
-var mode = 0;
+var held = [true, true];       // a DON still down from the screen before does not count
 var rimHeld = [[true, true], [true, true]];
+var setup = false;
+var choosing = false;          // the mode menu is up
+var mode = 0;
+var done = false;
 
 function refresh() {
     self.heading.text = choosing ? "MODE" : "PLAYER ENTRY";
@@ -33,20 +27,6 @@ function refresh() {
     self.hint.text = choosing ? "<  " + MODES[mode] + "  >" : setup ? "" : joined[0] || joined[1] ? "HIT DON TO START" : "";
 }
 
-function join(p) {
-    if (joined[p] || !Lumen.EntryCoin(p, p)) {
-        return;
-    }
-    var first = !joined[0] && !joined[1];
-    joined[p] = true;
-    if (first) {
-        Lumen.StartTimer(SECONDS);
-        Lumen.NotifyDataSelect(false);
-    }
-    Lumen.SetIndicator(p, 2);
-    refresh();
-}
-
 // The players are in: the mode menu (the DON or rim that got here must be let go first).
 function chooseMode() {
     choosing = true;
@@ -55,200 +35,71 @@ function chooseMode() {
     refresh();
 }
 
-function decideMode() {
-    if (MODE_NAMES[mode] == "normal") {
-        decide();
-    } else if (Wd.request("session.start", MODE_NAMES[mode])) {
-        done = true;      // the engine leaves the entry; a refusal (printed for whoever debugs) keeps the menu
+function start(name) {
+    // A refusal (printed for whoever debugs) keeps the screen as it is.
+    if (!done && Wd.request("session.start", name)) {
+        done = true;
     }
 }
 
-function decide() {
-    done = true;
-    Lumen.NotifyDecide(0, 0);
-    Lumen.NotifyModeSelectEnd();
-    Lumen.SetNextScene(1, 0, 0);
-    Lumen.Terminate();
-}
-
-ExternalInterface.addCallback("SetPrevious", this, function(scene_, trigger_) {
-    trigger = trigger_;
-});
-
-// A drum that is already in (back from Song Select to let the other one join).
-ExternalInterface.addCallback("SetPlayer", this, function(playerID, isCoin_, isData_, isFix_) {
-    if (isCoin_ && (playerID == 0 || playerID == 1)) {
-        joined[playerID] = true;
-        refresh();
-    }
-});
-
-// Our own (not in the game's entry; the host looks for them): the home player setup opens over the entry and
-// takes the drums, both sides shown as joined; when it closes, the drums that play are told and the entry starts.
-ExternalInterface.addCallback("WdSetupOpen", this, function() {
-    setup = true;
+Wd.on("player.joined", function(isIn) {
+    joined[0] = isIn == true;
     refresh();
-});
-ExternalInterface.addCallback("WdSetupDone", this, function(playing1p, playing2p) {
-    setup = false;
-    joined = [playing1p, playing2p];
+}, 1);
+Wd.on("player.joined", function(isIn) {
+    joined[1] = isIn == true;
     refresh();
-    if (!done && (playing1p || playing2p)) {
+}, 2);
+// The home setup closes on who plays: straight to the mode menu.
+Wd.on("entry.setup", function(open) {
+    var closed = setup && open != true;
+    setup = open == true;
+    if (closed && (joined[0] || joined[1])) {
         chooseMode();
+    }
+    refresh();
+});
+Wd.on("entry.timeLeft", function(left) {
+    if (left == 0 && (joined[0] || joined[1])) {
+        start(choosing ? MODE_NAMES[mode] : "normal");
     }
 });
 
 this.onEnterFrame = function() {
-    if (done || Lumen == undefined) {   // no game behind it (the editor, a test): only the picture
+    if (done || setup) {
         return;
     }
-    if (!started) {
-        started = true;
-        Lumen.InitInfo();
-        refresh();
-    }
-    if (!Lumen.IsStartLumen() || !Lumen.IsReady()) {
-        return;
-    }
-    if (!triggered) {
-        triggered = true;
-        if (trigger == 0 || trigger == 2) {
-            join(0);
-        }
-        if (trigger == 1 || trigger == 2) {
-            join(1);
-        }
-    }
-    if (setup) {
-        return;
-    }
-    if (choosing) {
-        for (var d = 0; d < 2; d++) {
-            if (!joined[d]) {
-                continue;
-            }
-            for (var r = 0; r < 2; r++) {
-                var rim = Key.isDown(KA[d][r]);
-                if (rim && !rimHeld[d][r]) {
-                    mode = (mode + (r == 0 ? MODES.length - 1 : 1)) % MODES.length;
-                    refresh();
-                }
-                rimHeld[d][r] = rim;
-            }
-            var don = Key.isDown(DON[d]);
-            if (don && !held[d]) {
-                decideMode();
+    for (var d = 0; d < 2; d++) {
+        var don = Key.isDown(DON[d]);
+        var pressed = don && !held[d];
+        held[d] = don;
+        if (!choosing) {
+            if (pressed && joined[d]) {
+                chooseMode();
                 return;
             }
-            held[d] = don;
-        }
-        if (Lumen.IsTimeStarted() && Lumen.IsTimeup()) {
-            decide();
-        }
-        return;
-    }
-    var start = false;
-    for (var p = 0; p < 2; p++) {
-        var down = Key.isDown(DON[p]);
-        if (down && !held[p]) {
-            if (joined[p]) {
-                start = true;
-            } else {
-                join(p);
+            if (pressed) {
+                Wd.request("player.join", d + 1);
             }
+            continue;
         }
-        held[p] = down;
-    }
-    if ((joined[0] || joined[1]) && start) {
-        chooseMode();
-    } else if ((joined[0] || joined[1]) && Lumen.IsTimeStarted() && Lumen.IsTimeup()) {
-        decide();
+        if (!joined[d]) {
+            continue;
+        }
+        for (var r = 0; r < 2; r++) {
+            var rim = Key.isDown(KA[d][r]);
+            if (rim && !rimHeld[d][r]) {
+                mode = (mode + (r == 0 ? MODES.length - 1 : 1)) % MODES.length;
+                refresh();
+            }
+            rimHeld[d][r] = rim;
+        }
+        if (pressed) {
+            start(MODE_NAMES[mode]);
+            return;
+        }
     }
 };
 
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("AddCampaign", this, function(id) {
-});
-
-// Called as: (number, number) -> undefined
-ExternalInterface.addCallback("AssignCosBody", this, function(playerID, bodyID_) {
-});
-
-// Called as: (number, number) -> undefined
-ExternalInterface.addCallback("AssignCosHead", this, function(playerID, headID_) {
-});
-
-// Called as: (number, number) -> undefined
-ExternalInterface.addCallback("AssignCostume", this, function(playerID, cosID_) {
-});
-
-// Called as: (number, number) -> undefined
-ExternalInterface.addCallback("AssignRandomCostume", this, function(playerID, cosID) {
-});
-
-// Called as: (number, number, number) -> undefined
-ExternalInterface.addCallback("AssignRandomHeadBody", this, function(playerID, headID, bodyID) {
-});
-
-// Called as: (number, number, number) -> undefined
-ExternalInterface.addCallback("AssignRandomPaintAcce", this, function(playerID, paintID, acceID) {
-});
-
-// Called as: (number, number, number) -> undefined
-ExternalInterface.addCallback("AssignSlotCostume", this, function(playerID, slotID, cosID) {
-});
-
-// Called as: (number, number, number, number) -> undefined
-ExternalInterface.addCallback("AssignSlotHeadBody", this, function(playerID, slotID, headID, bodyID) {
-});
-
-// Called as: (number, number, number, number) -> undefined
-ExternalInterface.addCallback("AssignSlotPaintAcce", this, function(playerID, slotID, paintID, acceID) {
-});
-
-// Called as: (number, bool, bool, bool) -> undefined
-ExternalInterface.addCallback("BnCoinInit", this, function(cost, isopen, isenable, isplay) {
-});
-
-// Called as: (bool) -> undefined
-ExternalInterface.addCallback("BnCoinSetFree", this, function(isfree) {
-});
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("BnCoinSetRemain", this, function(remain, is_connect) {
-});
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("FinishCostumeLoad", this, function(playerID) {
-});
-
-// Called as: (number) -> undefined
-ExternalInterface.addCallback("InitCostumeList", this, function(playerID) {
-});
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("InputCardReader", this, function() {
-});
-
-// Called as: (number) -> undefined
-ExternalInterface.addCallback("ReleaseCostume", this, function(playerID) {
-});
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("ReplyServer", this, function(isSuccess_) {
-});
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("SetCardInfo", this, function(playerID, mediaType_, isNewEntry_, isNewCard_) {
-});
-
-// Called as: not called in the recorded sessions
-ExternalInterface.addCallback("TweenCostumeLoad", this, function(playerID) {
-});
-
-// Called as: (number, number) -> undefined
-ExternalInterface.addCallback("UpdateCoins", this, function(requireCoins0, requireCoins1) {
-});
 refresh();
 stop();
