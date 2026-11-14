@@ -489,7 +489,12 @@ public sealed partial class LumenPlayer
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         var timeline = _sprites[_root.CharacterId];
         if (!timeline.Labels.TryGetValue(label, out var frame))
+        {
+            // A stand-in (a movie with no free version yet) has no labels: the engine's seeks are no-ops on it.
+            if (StandIn)
+                return;
             throw new KeyNotFoundException($"Label '{label}' is not defined on root character {_root.CharacterId}.");
+        }
         GotoFrame(frame, play);
     }
 
@@ -502,6 +507,9 @@ public sealed partial class LumenPlayer
     {
         ArgumentNullException.ThrowIfNull(instancePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        // A stand-in takes every seek, like every call (see TryInvokeCallback).
+        if (StandIn)
+            return true;
         var instance = findInstance(instancePath);
         if (instance is null || !_sprites.TryGetValue(instance.CharacterId, out var timeline)
             || !timeline.Labels.TryGetValue(label, out var frame))
