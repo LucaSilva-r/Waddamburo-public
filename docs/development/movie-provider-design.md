@@ -335,6 +335,14 @@ behind provider names:
    keep only the engine side.
 3. The end check: the engine and the free movies build and run with `Skins.Green` out of the solution.
 
+### First menu that needs Wd.request: the dan dojo (user, 2026-11-14)
+
+With our song select the dojo cannot be reached. The game's song select reaches it through a host hack (the dojo
+became a category that, decided, opens the dan select screen); our song select has no such category and our entry
+has no mode select (it always decides normal play). This is the first `Wd.request` to design: a menu movie asking
+the engine to go to a mode (dan dojo, AI battle) rather than the engine filtering the game's calls. Until then a
+dojo check needs the game's entry and song select.
+
 ## Open questions
 
 0. **The scope list itself.** Whether `session` is right as a level, where player setup at home belongs, and
