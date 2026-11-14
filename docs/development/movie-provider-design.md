@@ -480,7 +480,7 @@ The **open folder** is a list (Lists above), windowed: the engine publishes only
 | `folder.open(index)` / `folder.close()` | goes into the folder at the place / back up to its parent |
 | `select.chart(index)` | picks the selected song's chart |
 | `song.start()` / `course.start()` | the handoff, as now (rainbow, gameplay) |
-| `library.search(text)`, `library.sort(key)`, `library.group(key)`, `library.filter(...)` | recut the tree; the open folder's count and places follow |
+| `tree.search(text)`, `tree.sort(key)`, `tree.group(key)`, `tree.filter(...)` (not `library.`: a translation-key prefix) | recut the tree; the open folder's count and places follow |
 | `scores.scope(scope)` | which rankings |
 | `select.random()` | a random song in the open folder |
 
