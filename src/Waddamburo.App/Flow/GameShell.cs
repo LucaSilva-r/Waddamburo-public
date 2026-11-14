@@ -1659,10 +1659,10 @@ internal sealed class GameShell : IDisposable
         DonRenderer?.Dispose();
         Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();
+        CustomUploadPrompt.Dispose(); // both own an OverlayMenu, whose textures go through Application
+        Room.Dispose();
         Application.Dispose();
         _libraries.Dispose();
-        CustomUploadPrompt.Dispose();
-        Room.Dispose();
         Sync.Dispose();
         _discord?.Dispose();
     }
