@@ -132,9 +132,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         decide();
     }
 
-    private void decide() => shell.Sounds?.Bank.Play("SE_COM", 0, Waddamburo.Platform.Sdl.Media.AudioBus.DrumHit, trace: false);
+    private void decide() => shell.Sounds?.Menu(don: true);
 
-    private void step() => shell.Sounds?.Bank.Play("SE_COM", 3, Waddamburo.Platform.Sdl.Media.AudioBus.DrumHit, trace: false);
+    private void step() => shell.Sounds?.Menu(don: false);
 
     private static bool decidePressed(SdlKeyboardSnapshot keys)
     {

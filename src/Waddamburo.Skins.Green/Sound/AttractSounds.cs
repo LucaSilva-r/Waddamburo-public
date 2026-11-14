@@ -1,17 +1,16 @@
-using Waddamburo.Skins.Green;
-using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Game.Sound;
 
-namespace Waddamburo.App.Audio;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>The boot screens and attract loop: their music streams and VO_/SE_ATTRACT cues.</summary>
-internal sealed class AttractSounds(SoundBank bank) : IAttractSoundController
+public sealed class AttractSounds(GreenSounds bank) : IAttractSoundController
 {
-    private AudioPlaybackHandle? _stream;
+    private SoundHandle? _stream;
 
     public void PlayAttractStream(string name)
     {
         StopAttractStream();
-        _stream = bank.PlayMusic("Attract", name, loop: false);
+        _stream = bank.PlayMusic(name, loop: false);
     }
 
     public bool IsAttractStreamPlaying => bank.IsPlaying(_stream);
@@ -44,5 +43,5 @@ internal sealed class AttractSounds(SoundBank bank) : IAttractSoundController
     }
 
     /// <summary>A drum hit leaving the attract loop (traced SE_COM cue 1 at the title).</summary>
-    public void PlayExit() => bank.Play("SE_COM", 1, AudioBus.MenuSound);
+    public void PlayExit() => bank.Play("SE_COM", 1, SoundBus.Menu);
 }

@@ -59,3 +59,47 @@ public interface ISoundSet
     /// <summary>What plays for <paramref name="request"/>: none (silence), one or several sounds at once.</summary>
     IReadOnlyList<SoundCue> Describe(SoundRequest request);
 }
+
+/// <summary>A sound or track the player started, to ask about or stop.</summary>
+public readonly record struct SoundHandle(long Value);
+
+/// <summary>
+/// The engine's sound player, for the skin's adapter: it decodes and mixes, keeps one voice at a time per side
+/// (a centred voice replaces them all), and a sound cuts off its own previous play.
+/// </summary>
+public interface ISoundPlayer
+{
+    /// <summary>Plays <paramref name="cue"/>; <paramref name="trace"/> logs it (default: all but drum sounds).</summary>
+    void Play(SoundCue cue, bool loop = false, bool? trace = null);
+
+    /// <summary>Decodes a sound ahead of time (drum hits must not stall on first use).</summary>
+    void Preload(SoundSource source);
+
+    /// <summary>Streams a track on the music bus; null when it is unavailable.</summary>
+    SoundHandle? PlayMusic(SoundSource music, bool loop);
+
+    /// <summary>Decodes a track now and returns what starts it (replacing the last one started so); null when unavailable.</summary>
+    Action? PrepareMusic(SoundSource music, bool loop);
+
+    bool IsPlaying(SoundHandle? handle);
+
+    /// <summary>Fades a sound or track out.</summary>
+    void Stop(SoundHandle? handle);
+
+    /// <summary>Every sound of <paramref name="path"/> still sounding stops (all the cues of one bank).</summary>
+    void StopFile(string path);
+
+    /// <summary>A voice is sounding, or waits to be decoded.</summary>
+    bool IsVoicePlaying { get; }
+
+    void StopVoice();
+
+    /// <summary>Stops the voices when the latest one is the sound <paramref name="latest"/> picks.</summary>
+    void StopVoiceIf(Func<SoundSource, bool> latest);
+
+    /// <summary>The latest voice once more, unless a voice is sounding.</summary>
+    void ReplayLatestVoice();
+
+    /// <summary>Everything but the coin channel stops.</summary>
+    void StopAll();
+}

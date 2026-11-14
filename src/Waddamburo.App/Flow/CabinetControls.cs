@@ -1,9 +1,7 @@
-using Waddamburo.App.Audio;
 using Waddamburo.App.Home;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
-using Waddamburo.Platform.Sdl.Media;
 
 namespace Waddamburo.App.Flow;
 
@@ -18,8 +16,8 @@ namespace Waddamburo.App.Flow;
 /// <param name="applyHome">Applies settings to the menus' own state (the home controls) as the menu closes.</param>
 internal sealed class CabinetControls(GameShell shell, InputLatches input, Action resetGame, Action<ArcadeSettings> applyHome)
 {
-    // Coin and service credit sounds still to play, in order (SoundBank.CoinCue / ServiceCue).
-    private readonly Queue<int> _queuedCoinSounds = new();
+    // Coin and service credit sounds still to play, in order (true: a service credit's).
+    private readonly Queue<bool> _queuedCoinSounds = new();
     private bool _escapeHeld;
 
     /// <summary>The service menu (set once the shell has made it; null without one).</summary>
@@ -44,7 +42,7 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
             service.Health = shell.Sync.Health;
             shell.Book.Save();
             service.Open(shell.Arcade, credits,
-                don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
+                don => shell.Sounds?.Menu(don),
                 leave,
                 settings =>
                 {
@@ -126,7 +124,7 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
             for (var press = 0; press < switches.Services; press++)
             {
                 coins.ServiceCredit();
-                _queuedCoinSounds.Enqueue(SoundBank.ServiceCue);
+                _queuedCoinSounds.Enqueue(true);
             }
             Console.WriteLine($"Service credit at tick {shell.Tick}: {coins.Credits} credit(s).");
             creditsChanged();
@@ -136,13 +134,13 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
             for (var coin = 0; coin < switches.Coins; coin++)
                 coins.InsertCoin();
             for (var coin = 0; coin < switches.Coins; coin++)
-                _queuedCoinSounds.Enqueue(SoundBank.CoinCue);
+                _queuedCoinSounds.Enqueue(false);
             shell.Book.CoinCount += switches.Coins;
             Console.WriteLine($"Coin credited at tick {shell.Tick}: {coins.Credits} credit(s).");
             creditsChanged();
         }
-        if (_queuedCoinSounds.Count > 0 && shell.Sounds?.Bank.IsCoinPlaying != true)
-            shell.Sounds?.Bank.PlayCoin(_queuedCoinSounds.Dequeue());
+        if (_queuedCoinSounds.Count > 0 && shell.Sounds?.IsCoinPlaying != true)
+            shell.Sounds?.PlayCoin(service: _queuedCoinSounds.Dequeue());
     }
 
     private void creditsChanged()

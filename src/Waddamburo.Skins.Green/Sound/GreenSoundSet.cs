@@ -83,6 +83,27 @@ public sealed class GreenSoundSet : ISoundSet
             "waiwai.synchro" => [cue("SE_WAIENSO", 4)],
             "waiwai.solo" => [cue("SE_WAIENSO", 2)],
             "song.finished" => [cue("VO_RESULT", 0), cue("SE_GAME", 15)],
+            // A dan course's last song ends (traced sessions 30 and 31, as the course's shutter closes).
+            "dan.finished" => [cue("VO_RESULT", 19), cue("SE_GAME", 15)],
+            // The home player setup refused a player (SE_COM_COM_CARD_ERROR).
+            "player.refused" => [cue("SE_COM", 12)],
+            // The engine's own menus (settings, search, overlays): the drum feedback of the game's menus.
+            "ui.don" => [new(Cue("SE_COM", 0), SoundBus.Drum)],
+            "ui.ka" => [new(Cue("SE_COM", 3), SoundBus.Drum)],
+            // SE_COM's coin cue (traced per credited coin) and its service credit cue (traced session-service-coin).
+            "coin.insert" => [new(Cue("SE_COM", 9), SoundBus.Coin)],
+            "coin.service" => [new(Cue("SE_COM", 10), SoundBus.Coin)],
+            // A player joining from song select (as on the cabinet); song select ending into the dan dojo (traced session30).
+            "select.join" => [cue("SE_SELECT", 0)],
+            "select.dan" => [cue("SE_SELECT", 7)],
+            // Screens' music (traced: each bgm/nub track opened as its screen loads).
+            "music.dan" => [new(Music("JINGLE_DANI"), SoundBus.Music)],
+            "music.tutorial" => [new(Music("JINGLE_DOJO"), SoundBus.Music)],
+            "music.tutorial.waiwai" => [new(Music("JINGLE_WAITUTOR"), SoundBus.Music)],
+            "music.tutorial.ai" => [new(Music("JINGLE_AIBTL_TUTOR"), SoundBus.Music)],
+            // The audio calibration's clicks: a drum tone's cues (BIP bap bap bap).
+            "click.accent" => [new(Cue("SE_GAME_NEIRO_018_C", 0), SoundBus.Drum)],
+            "click.beat" => [new(Cue("SE_GAME_NEIRO_018_C", 1), SoundBus.Drum)],
             _ => [],
         };
     }

@@ -1,18 +1,17 @@
-using Waddamburo.Skins.Green;
-using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Game.Sound;
 
-namespace Waddamburo.App.Audio;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>The results screen: its music and result.lm's voice/effect requests.</summary>
-internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
+public sealed class ResultSounds(GreenSounds bank) : IResultSoundController
 {
-    private AudioPlaybackHandle? _music;
+    private SoundHandle? _music;
 
     /// <summary>The results music: JINGLE_SEISEKI, or JINGLE_WAIRSLT after a Waiwai song.</summary>
     public void StartMusic(bool waiwai = false, bool aiBattle = false)
     {
         if (!bank.IsPlaying(_music))
-            _music = bank.PlayMusic("Result", aiBattle ? "JINGLE_AIBTL_RSLT" : waiwai ? "JINGLE_WAIRSLT" : "JINGLE_SEISEKI", loop: true);
+            _music = bank.PlayMusic(aiBattle ? "JINGLE_AIBTL_RSLT" : waiwai ? "JINGLE_WAIRSLT" : "JINGLE_SEISEKI", loop: true);
     }
 
     /// <summary>
@@ -22,7 +21,7 @@ internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
     public void StartRemindMusic()
     {
         StopMusic();
-        _music = bank.PlayMusic("AI farewell", "JINGLE_AIBTL_REMIND", loop: true);
+        _music = bank.PlayMusic("JINGLE_AIBTL_REMIND", loop: true);
     }
 
     public void StopMusic()
@@ -77,7 +76,7 @@ internal sealed class ResultSounds(SoundBank bank) : IResultSoundController
         // cue (traced (1|2, 0/1/2) -> SE_RESULT 1/2, 4/5, 7/8; ponytail: cue 5 follows untraced).
         else if (request.TwoPlayers && request.Kind == ResultSoundRequestKind.Effect && request.Group is 1 or 2)
             sound.Cue += request.Group;
-        bank.Play(sound.Bank, sound.Cue, request.Kind == ResultSoundRequestKind.Voice ? AudioBus.Voice : null,
+        bank.Play(sound.Bank, sound.Cue, request.Kind == ResultSoundRequestKind.Voice ? SoundBus.Voice : null,
             trace: request.Cue != 1 || request.Kind != ResultSoundRequestKind.Effect);
     }
 }

@@ -1,4 +1,4 @@
-namespace Waddamburo.Game.Flow;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>
 /// The game's countdown sounds, the same for every menu timer (entry, Song Select, the entry's card

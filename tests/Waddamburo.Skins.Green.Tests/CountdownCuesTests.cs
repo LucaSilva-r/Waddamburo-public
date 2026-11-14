@@ -1,6 +1,6 @@
-using Waddamburo.Game.Flow;
+using Waddamburo.Skins.Green.Sound;
 
-namespace Waddamburo.Game.Tests;
+namespace Waddamburo.Skins.Green.Tests;
 
 public sealed class CountdownCuesTests
 {

@@ -26,8 +26,6 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         (scene == FlowScenes.Tutorial || scene == FlowScenes.WaiwaiTutorial || scene == FlowScenes.AiTutorial) ? IndicatorScene.Tutorial
             : scene == FlowScenes.DaniSelect ? IndicatorScene.DaniSelect : IndicatorScene.SongSelect;
 
-    private const string DanMusicCue = "JINGLE_DANI";
-
     public override void Enter(SceneId scene)
     {
         Shell.Players.StopWatching();
@@ -39,13 +37,13 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 Shell.CustomUploadPrompt.Open(static () => { });
         }
         else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
-            Shell.Sounds?.Bank.PlayMusic(DanMusicCue, DanMusicCue, loop: true);
+            Shell.Sounds?.PlayMusic("music.dan", loop: true);
         else if (scene == FlowScenes.WaiwaiTutorial)
-            Shell.Sounds?.Bank.PrepareTutorialMusic("JINGLE_WAITUTOR")?.Invoke();
+            Shell.Sounds?.PrepareMusic("music.tutorial.waiwai", loop: true)?.Invoke();
         else if (scene == FlowScenes.AiTutorial)
-            Shell.Sounds?.Bank.PrepareTutorialMusic("JINGLE_AIBTL_TUTOR")?.Invoke();
+            Shell.Sounds?.PrepareMusic("music.tutorial.ai", loop: true)?.Invoke();
         else // the tutorial's music (traced: bgm/nub/JINGLE_DOJO opened as it loads)
-            Shell.Sounds?.Bank.PlayMusic("Tutorial", "JINGLE_DOJO", loop: true);
+            Shell.Sounds?.PlayMusic("music.tutorial", loop: true);
     }
 
     public override void Exit(SceneId scene)
@@ -153,7 +151,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             // As on the cabinet, also from the difficulty selector; Song Select comes back on that song.
             Shell.Hosts.SongSelect?.RememberCurrentSong();
             Shell.Sounds?.StopAll();
-            Shell.Sounds?.Bank.Play("SE_SELECT", 0);
+            Shell.Sounds?.Play("select.join");
             var first = Shell.Players.JoinedSides.Min;
             Shell.Reload.Start(() =>
             {
@@ -187,7 +185,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (Shell.Hosts.SongSelect?.DanRequested == true)
         {
-            Shell.Sounds?.Bank.Play("SE_SELECT", 7); // traced session30, as Song Select ends
+            Shell.Sounds?.Play("select.dan");
             // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
             Shell.Hosts.DanSeries = Shell.Hosts.SongSelect.DanSeriesPicked ?? Shell.Arcade.DanSeries;
             Shell.Catalog.Replace(FlowScenes.DaniSelectScene(Shell.Hosts.PlayerSide));

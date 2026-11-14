@@ -1,9 +1,5 @@
-using System.Collections.Immutable;
-using Waddamburo.App.Hosting;
 using Waddamburo.Game.Sound;
-using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Skins.Green.Sound;
 
 namespace Waddamburo.App.Audio;
 
@@ -11,18 +7,16 @@ namespace Waddamburo.App.Audio;
 /// The engine's sound player: decodes a skin's <see cref="SoundSource"/>s (any format the decoders read) and plays
 /// them on their buses, keeps the latest voice (one voice at a time per side), the coin channel, and reports each
 /// missing sound once. A sound cuts off its own previous play (as the cabinet does: Don stops Don, not Ka); two
-/// players stay apart because each plays its own panned sound. The bank / cue calls are the game's sounds
-/// (<see cref="GreenSoundSet"/>), for the screens whose sounds are not asked by name yet.
+/// players stay apart because each plays its own panned sound.
 /// </summary>
-internal sealed class SoundBank
+internal sealed class SoundBank : ISoundPlayer
 {
     private readonly AudioEngine _audio;
-    private readonly GreenSoundSet _green;
     private readonly Dictionary<(string Path, int Stream), AudioClip> _clips = [];
     private readonly HashSet<(string Path, int Stream)> _reportedFailures = [];
     private readonly Dictionary<(string Path, int Stream), AudioPlaybackHandle> _lastPlayed = [];
     private AudioClip? _latestVoice;
-    private int _latestVoiceCue = -1;
+    private SoundSource? _latestVoiceSource;
     // Per side (-1 left, 0 centre, 1 right; the sound's authored pan): two players' voices (full combo 154/155,
     // combo 1/2) play together, each cutting only its own side's; a centred voice cuts them all.
     private readonly Dictionary<int, AudioPlaybackHandle> _oneShotVoices = [];
@@ -31,13 +25,10 @@ internal sealed class SoundBank
     // When the coin channel takes the next queued sound: a coin sound's length after the last one started.
     private long _coinSlotEnds;
 
-    public SoundBank(AudioEngine audio, GreenSoundSet green)
+    public SoundBank(AudioEngine audio)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
-        _green = green ?? throw new ArgumentNullException(nameof(green));
     }
-
-    public bool TryGetBankName(int bankId, out string name) => _green.TryGetBankName(bankId, out name);
 
     public static AudioBus BusOf(SoundBus bus) => bus switch
     {
@@ -48,12 +39,13 @@ internal sealed class SoundBank
         _ => AudioBus.MenuSound,
     };
 
-    /// <summary>Plays a skin's sound on its bus (drum hits are not logged: too many).</summary>
-    public void Play(SoundCue cue, bool loop = false) => play(cue.Source, BusOf(cue.Bus), loop, trace: cue.Bus != SoundBus.Drum);
+    /// <summary>Plays a skin's sound on its bus (drum hits are not logged unless asked: too many).</summary>
+    public void Play(SoundCue cue, bool loop = false, bool? trace = null) =>
+        play(cue.Source, BusOf(cue.Bus), loop, trace ?? cue.Bus != SoundBus.Drum);
 
-    /// <summary>Plays a game bank cue: VO_ banks on the voice bus (replacing the current voice), others as menu sounds.</summary>
-    public void Play(string bank, int cue, AudioBus? busOverride = null, bool loop = false, bool trace = true) =>
-        play(_green.Cue(bank, cue), busOverride ?? BusOf(GreenSoundSet.BusOf(bank)), loop, trace);
+    private static SoundHandle handle(AudioPlaybackHandle value) => new(value.Value);
+
+    private static AudioPlaybackHandle? handle(SoundHandle? value) => value is { } some ? new AudioPlaybackHandle(some.Value) : null;
 
     private void play(SoundSource source, AudioBus bus, bool loop, bool trace)
     {
@@ -79,8 +71,7 @@ internal sealed class SoundBank
                 else
                     stopVoiceSide(Math.Sign(clip.Pan));
                 _latestVoice = clip;
-                // ponytail: StopVoice(cue) compares a bank cue's number only (the movies' call has no bank).
-                _latestVoiceCue = source.Stream - 1;
+                _latestVoiceSource = source;
             }
             // A fade, as a hard cut clicks. Drum hits release over 20 ms: fitted to a Green roll recorded
             // on rpcs3 (60 hits/s), where 3 ms sounded thin; other cues keep a few milliseconds.
@@ -118,8 +109,6 @@ internal sealed class SoundBank
         }
     }
 
-    public void Preload(string bank, int cue) => Preload(_green.Cue(bank, cue));
-
     private readonly Dictionary<(string Path, int Stream), Task<AudioClip>> _decoding = [];
     private readonly List<((string Path, int Stream) Key, AudioBus Bus, Action Play)> _deferred = [];
 
@@ -154,10 +143,9 @@ internal sealed class SoundBank
         }
     }
 
-    /// <summary>A cue's decoded sound (for mixing it into a stream); null when it is unavailable.</summary>
-    public AudioClip? Clip(string bank, int cue)
+    /// <summary>A sound decoded (for mixing it into a stream); null when it is unavailable.</summary>
+    public AudioClip? Clip(SoundSource source)
     {
-        var source = _green.Cue(bank, cue);
         try
         {
             return load(source);
@@ -169,57 +157,57 @@ internal sealed class SoundBank
         }
     }
 
-    /// <summary>Starts a bgm/nub track on the music bus; null when the file is unavailable.</summary>
-    public AudioPlaybackHandle? PlayMusic(string label, string name, bool loop)
+    /// <summary>Streams a track on the music bus; null when the file is unavailable.</summary>
+    public SoundHandle? PlayMusic(SoundSource music, bool loop)
     {
-        var path = _green.Music(name).Path;
         try
         {
-            var handle = loop ? _audio.PlayLoop(path, AudioBus.Bgm) : _audio.PlayOneShot(path, AudioBus.Bgm);
-            Console.WriteLine($"{label} music {name} -> Bgm.");
-            return handle;
+            var started = loop ? _audio.PlayLoop(music.Path, AudioBus.Bgm) : _audio.PlayOneShot(music.Path, AudioBus.Bgm);
+            Console.WriteLine($"Music {music.Label} -> Bgm.");
+            return handle(started);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
-            if (_reportedFailures.Add((path, -1)))
-                Console.Error.WriteLine($"{label} music {name} is unavailable: {exception.Message}");
+            if (_reportedFailures.Add((music.Path, -1)))
+                Console.Error.WriteLine($"Music {music.Label} is unavailable: {exception.Message}");
             return null;
         }
     }
 
-    private AudioPlaybackHandle? _tutorialMusic;
+    private AudioPlaybackHandle? _preparedMusic;
 
-    public Action? PrepareTutorialMusic(string name)
+    public Action? PrepareMusic(SoundSource music, bool loop)
     {
-        if (Path.GetFileName(name) != name) return null;
         try
         {
-            var clip = AudioClip.Load(_green.Music(name).Path, _audio.Mixer.Format, TimeSpan.FromMinutes(2));
+            var clip = AudioClip.Load(music.Path, _audio.Mixer.Format, TimeSpan.FromMinutes(2));
             return () =>
             {
-                if (_tutorialMusic is { } previous) _audio.Mixer.Stop(previous);
-                _tutorialMusic = _audio.Mixer.Play(clip, AudioBus.Bgm, loop: name != "JINGLE_SILENCE");
+                if (_preparedMusic is { } previous) _audio.Mixer.Stop(previous);
+                _preparedMusic = _audio.Mixer.Play(clip, AudioBus.Bgm, loop: loop);
             };
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
-            Console.Error.WriteLine($"Tutorial music {name} unavailable: {exception.Message}");
+            Console.Error.WriteLine($"Music {music.Label} unavailable: {exception.Message}");
             return null;
         }
     }
 
-    public bool IsPlaying(AudioPlaybackHandle? handle) => handle is { } value && _audio.Mixer.IsPlaying(value);
+    public bool IsPlaying(SoundHandle? handle) => SoundBank.handle(handle) is { } value && _audio.Mixer.IsPlaying(value);
 
-    /// <summary>Every one-shot cue of <paramref name="bank"/> still sounding stops.</summary>
-    public void StopBank(string bank)
+    private bool isPlaying(AudioPlaybackHandle? handle) => handle is { } value && _audio.Mixer.IsPlaying(value);
+
+    public void StopFile(string path)
     {
-        var path = _green.Cue(bank, 0).Path;
-        foreach (var (key, handle) in _lastPlayed)
+        foreach (var (key, playing) in _lastPlayed)
             if (key.Path == path)
-                _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
+                _audio.Mixer.Stop(playing, TimeSpan.FromMilliseconds(20));
     }
 
-    public void Stop(AudioPlaybackHandle? handle)
+    public void Stop(SoundHandle? handle) => stop(SoundBank.handle(handle));
+
+    private void stop(AudioPlaybackHandle? handle)
     {
         if (handle is { } value)
             _audio.Mixer.Stop(value, TimeSpan.FromMilliseconds(20));
@@ -237,13 +225,12 @@ internal sealed class SoundBank
     }
 
     // A voice still decoding counts: whoever waits for the voice to end must not go on before it starts.
-    public bool IsVoicePlaying => _oneShotVoices.Values.Any(handle => IsPlaying(handle)) || IsPlaying(_loopVoice)
+    public bool IsVoicePlaying => _oneShotVoices.Values.Any(handle => isPlaying(handle)) || isPlaying(_loopVoice)
         || _deferred.Exists(static entry => entry.Bus == AudioBus.Voice);
 
-    /// <summary>Stops the current voice only when it is the given cue.</summary>
-    public void StopVoice(int cue)
+    public void StopVoiceIf(Func<SoundSource, bool> latest)
     {
-        if (_latestVoice is not null && _latestVoiceCue == cue)
+        if (_latestVoice is not null && _latestVoiceSource is { } source && latest(source))
             StopVoice();
     }
 
@@ -285,24 +272,20 @@ internal sealed class SoundBank
         Console.WriteLine("Authored voice replay -> Voice.");
     }
 
-    /// <summary>SE_COM's coin cue (traced per credited coin) and its service credit cue (traced session-service-coin).</summary>
-    public const int CoinCue = 9, ServiceCue = 10;
-
     /// <summary>
-    /// One queued coin's (or service credit's, <paramref name="cue"/>) sound, on its own bus. Each takes a coin
-    /// sound's length (<see cref="IsCoinPlaying"/>); the next one cuts what is left of it, as the cabinet cuts its
-    /// 3 s service sound when credits are spammed. The last one plays in full.
+    /// One queued coin's (or service credit's) sound, on its own bus. Each takes a coin sound's length
+    /// (<paramref name="slot"/>'s: <see cref="IsCoinPlaying"/>); the next one cuts what is left of it, as the cabinet
+    /// cuts its 3 s service sound when credits are spammed. The last one plays in full.
     /// </summary>
-    public void PlayCoin(int cue = CoinCue)
+    public void PlayCoin(SoundSource source, SoundSource slot)
     {
-        var source = _green.Cue("SE_COM", cue);
         try
         {
             var clip = load(source);
-            var slot = cue == CoinCue ? clip.Duration : load(_green.Cue("SE_COM", CoinCue)).Duration;
-            Stop(_coin);
+            var length = load(slot).Duration;
+            stop(_coin);
             _coin = _audio.Mixer.Play(clip, AudioBus.Coin);
-            _coinSlotEnds = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(slot.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+            _coinSlotEnds = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(length.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
             Console.WriteLine($"Authored sound {source.Label} -> Coin ({clip.Duration.TotalSeconds:0.00} s).");
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
@@ -312,7 +295,7 @@ internal sealed class SoundBank
     }
 
     /// <summary>The coin channel's slot is still taken (a coin sound's length after the last one started).</summary>
-    public bool IsCoinPlaying => IsPlaying(_coin) && System.Diagnostics.Stopwatch.GetTimestamp() < _coinSlotEnds;
+    public bool IsCoinPlaying => isPlaying(_coin) && System.Diagnostics.Stopwatch.GetTimestamp() < _coinSlotEnds;
 
     private AudioClip load(SoundSource source)
     {
@@ -340,20 +323,4 @@ internal sealed class SoundBank
         if (_reportedFailures.Add(key))
             Console.Error.WriteLine($"Authored sound {label} is unavailable: {exception.Message}");
     }
-
-    /// <summary>A whole-number argument of a movie's sound call.</summary>
-    public static bool TryInteger(ImmutableArray<LumenHostValue> arguments, int index, out int result)
-    {
-        result = 0;
-        if ((uint)index >= (uint)arguments.Length || arguments[index].Kind != LumenHostValueKind.Number)
-            return false;
-        var value = arguments[index].AsNumber();
-        if (!double.IsFinite(value) || value != Math.Truncate(value) || value < int.MinValue || value > int.MaxValue)
-            return false;
-        result = (int)value;
-        return true;
-    }
-
-    public static void TraceUnmapped(string kind, ImmutableArray<LumenHostValue> arguments) =>
-        Console.WriteLine($"Lumen.{kind}({string.Join(", ", arguments.Select(HostValueText.Format))}) [unmapped]");
 }

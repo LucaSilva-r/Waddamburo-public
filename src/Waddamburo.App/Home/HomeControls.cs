@@ -1,4 +1,3 @@
-using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
@@ -52,7 +51,7 @@ internal sealed class HomeControls : IDisposable
             shell.ApplyDisplay();
             shell.ApplyControls();
             shell.ApplyRecording();
-        }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
+        }, save, don => shell.Sounds?.Menu(don));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.LayoutFolder);
         HomeMenu.ActiveLayout = () => gameplay.ActiveLayout;
@@ -103,7 +102,7 @@ internal sealed class HomeControls : IDisposable
     {
         _pause ??= new OverlayMenu(_shell.Application, _shell.Options.ServiceFontPath ?? _shell.Options.FontPath)
         {
-            Sound = don => _shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
+            Sound = don => _shell.Sounds?.Menu(don),
         };
         _pausePage ??= new OverlayPage(() => _menu.Title,
             () => [.. _menu.Rows.Select((label, index) => new OverlayRow(label, Enter: () => _picked = _menu.Pick(index)))],
@@ -151,7 +150,7 @@ internal sealed class HomeControls : IDisposable
             return;
         _settingsOverlay = true;
         settings.Health = _shell.Sync.Health;
-        settings.Open(_shell.Arcade, 0, don => _shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
+        settings.Open(_shell.Arcade, 0, don => _shell.Sounds?.Menu(don),
             _ => { }, applySettings, _shell.RehashLibrary, _shell.Options.TjaRoot, command, canCalibrate: _menu.CalibrationOffered);
 
         void command(HomeMenuAction action)
@@ -383,7 +382,7 @@ internal sealed class HomeControls : IDisposable
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
                 inRoom: _shell.Match.InSong, layout: _gameplay.CanEditLayout);
         }
-        else if (countdown.Advance((bank, cue) => _shell.Sounds?.Bank.Play(bank, cue, trace: false)))
+        else if (countdown.Advance((bank, cue) => _shell.Sounds?.Green.Play(bank, cue, trace: false)))
             resumeSong();
         return true;
     }

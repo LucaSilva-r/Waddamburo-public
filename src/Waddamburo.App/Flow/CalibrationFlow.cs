@@ -21,8 +21,6 @@ namespace Waddamburo.App.Flow;
 internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
 {
     // Drum tone 018's don (the high BIP, each bar's first beat) and ka (the bap, the other beats).
-    private const string ClickBank = "SE_GAME_NEIRO_018_C";
-    private const int AccentCue = 0, BeatCue = 1;
     // A big don (both centres this close) confirms: drumming along cannot.
     private static readonly TimeSpan BigHitWindow = TimeSpan.FromMilliseconds(60);
 
@@ -59,10 +57,10 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
         {
             // BIP bap bap bap, from a drum tone's cues; plain tones without the sound banks. Only the master
             // volume applies.
-            var bank = Shell.Sounds?.Bank;
+            var sounds = Shell.Sounds;
             var clicks = new ClickTrack(audio.Mixer.Format, LatencyCalibration.Beat,
-                bank?.Clip(ClickBank, AccentCue) ?? ClickTrack.Tone(audio.Mixer.Format, 2000),
-                bank?.Clip(ClickBank, BeatCue) ?? ClickTrack.Tone(audio.Mixer.Format, 1000));
+                sounds?.Clip("click.accent") ?? ClickTrack.Tone(audio.Mixer.Format, 2000),
+                sounds?.Clip("click.beat") ?? ClickTrack.Tone(audio.Mixer.Format, 1000));
             clicks.SetAudibleFrom(Calibration.FirstClick + _timeline.LeadIn);
             _transport = audio.PlayTransport(new ScheduledAudioSource(clicks, TimeSpan.Zero, TimeSpan.Zero), AudioBus.Metronome);
         }

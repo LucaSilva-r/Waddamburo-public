@@ -4,6 +4,7 @@ using Waddamburo.Game.Scores;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Skins.Green.Screens;
+using Waddamburo.Skins.Green.Sound;
 
 namespace Waddamburo.Skins.Green;
 

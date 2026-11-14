@@ -1,12 +1,11 @@
-using Waddamburo.Skins.Green;
-using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Game.Sound;
 
-namespace Waddamburo.App.Audio;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>Game over: the card-recommendation loop, the game-over outro, and its two cues.</summary>
-internal sealed class GameOverSounds(SoundBank bank) : IGameOverSoundController
+public sealed class GameOverSounds(GreenSounds bank) : IGameOverSoundController
 {
-    private AudioPlaybackHandle? _music;
+    private SoundHandle? _music;
     private string? _musicName;
 
     public void StartGameOverMusic() => start("JINGLE_CARDRECOM", loop: true);
@@ -41,7 +40,7 @@ internal sealed class GameOverSounds(SoundBank bank) : IGameOverSoundController
         if (_musicName == name && bank.IsPlaying(_music))
             return;
         StopGameOverMusic();
-        _music = bank.PlayMusic("Game Over", name, loop);
+        _music = bank.PlayMusic(name, loop);
         if (_music is not null)
             _musicName = name;
     }

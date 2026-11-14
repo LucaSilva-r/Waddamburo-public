@@ -14,8 +14,7 @@ internal sealed class CustomUploadPrompt(GameShell shell, string fontPath) : IIn
 
     public void Open(Action enterLibrary)
     {
-        _menu.Sound = don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3,
-            Waddamburo.Platform.Sdl.Media.AudioBus.DrumHit, trace: false);
+        _menu.Sound = don => shell.Sounds?.Menu(don);
         _menu.Open(new OverlayPage(() => Strings.T("custom_upload.title"), () =>
             [new(Strings.T("menu.yes"), Enter: () => answer(true)), new(Strings.T("menu.no"), Enter: () => answer(false))],
             Centred: true, Modal: true, Back: static () => { }, Body: () =>

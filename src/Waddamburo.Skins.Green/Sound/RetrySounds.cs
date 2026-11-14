@@ -1,17 +1,16 @@
-using Waddamburo.Skins.Green;
-using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Game.Sound;
 
-namespace Waddamburo.App.Audio;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>The revival drum roll: JINGLE_RENDA and retry_game.lm's VO_/SE_REVIVAL requests.</summary>
-internal sealed class RetrySounds(SoundBank bank, Action stopAll) : IRetrySoundController
+public sealed class RetrySounds(GreenSounds bank, Action stopAll) : IRetrySoundController
 {
-    private AudioPlaybackHandle? _music;
+    private SoundHandle? _music;
 
     public void StartMusic()
     {
         if (!bank.IsPlaying(_music))
-            _music = bank.PlayMusic("Revival", "JINGLE_RENDA", loop: true);
+            _music = bank.PlayMusic("JINGLE_RENDA", loop: true);
     }
 
     public void StopAll() => stopAll();
@@ -27,10 +26,10 @@ internal sealed class RetrySounds(SoundBank bank, Action stopAll) : IRetrySoundC
                 bank.Play("SE_REVIVAL", request.Cue);
                 break;
             case (RetrySoundRequestKind.Effect, 1, 100):
-                bank.Play("SE_COM", 0, AudioBus.DrumHit);
+                bank.Play("SE_COM", 0, SoundBus.Drum);
                 break;
             case (RetrySoundRequestKind.Effect, 0, 101):
-                bank.Play("SE_COM", 13, AudioBus.MenuSound);
+                bank.Play("SE_COM", 13, SoundBus.Menu);
                 break;
             default:
                 Console.WriteLine($"Retry.{request.Kind}({request.Group}, {request.Cue}) [unmapped]");

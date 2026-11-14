@@ -1,4 +1,4 @@
-using Waddamburo.App.Audio;
+using Waddamburo.Skins.Green.Sound;
 using Waddamburo.Skins.Green;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
@@ -81,17 +81,4 @@ internal sealed class TracePreviewController : ISongPreviewController
     public void Silence() { }
 
     public void Hold() { }
-}
-
-internal static class HostValueText
-{
-    public static string Format(LumenHostValue value) => value.Kind switch
-    {
-        LumenHostValueKind.Undefined => "undefined",
-        LumenHostValueKind.Null => "null",
-        LumenHostValueKind.Boolean => value.AsBoolean() ? "true" : "false",
-        LumenHostValueKind.Number => value.AsNumber().ToString("G15", System.Globalization.CultureInfo.InvariantCulture),
-        LumenHostValueKind.Text => $"\"{value.AsString()}\"",
-        _ => "undefined",
-    };
 }

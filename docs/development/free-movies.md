@@ -225,9 +225,14 @@ movies' `RequestSE(bank, cue)` is played as `GreenSoundSet.Cue(bank, cue)`.
 
 Built (2026-11-14): the types (`SoundSource`, `SoundSettings`, `SoundCue`, `SoundRequest`, `ISoundSet`),
 `GreenSoundSet` (bank cues with header settings, music, the gameplay names; `GreenSoundSetTests`), `SoundBank`
-playing sources, gameplay's sounds asked by name. Not yet: the other screens' sound controllers (`Audio/*Sounds`,
-still bank / cue calls through `SoundBank`, to move into `Skins.Green` behind an engine player interface), menu
-music by name, the `sounds.json` reader, `sound.play` and the tone list for our movies.
+playing sources, gameplay's sounds asked by name. Then: `ISoundPlayer` (Game; `SoundBank` implements it), the game's
+screens' sounds in `Skins.Green/Sound` (`GreenSounds`: bank cues and tracks as its movies ask for them; the attract,
+entry and song select, results, retry, game over and Waiwai results controllers; `CountdownCues`), and every sound
+the App plays by engine name (`GameSounds.Play`, `PlayMusic`, `PrepareMusic`, `Clip`, `PlayCoin`): `ui.don` /
+`ui.ka`, `coin.insert` / `coin.service`, `select.join`, `select.dan`, `dan.finished`, `player.refused`,
+`music.dan`, `music.tutorial(.waiwai/.ai)`, `click.accent` / `click.beat`. Sound names avoid the translation-key
+prefixes (`menu.`, `setup.`, `calibration.`, ...: `LanguageFileTests`). No game bank or track name is left in the
+App or the engine. Not yet: the `sounds.json` reader, `sound.play` and the tone list for our movies.
 
 ## Packages
 

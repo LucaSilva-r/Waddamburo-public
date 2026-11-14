@@ -5,7 +5,6 @@ using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl;
-using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 
 namespace Waddamburo.App.Flow;
@@ -198,7 +197,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         }
     }
 
-    private void sound(bool don) => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false);
+    private void sound(bool don) => shell.Sounds?.Menu(don);
 
     private sealed record SearchResult(string Query, SongKey[] Songs);
 

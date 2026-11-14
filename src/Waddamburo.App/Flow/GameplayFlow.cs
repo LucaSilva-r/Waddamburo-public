@@ -927,11 +927,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             if (Shell.Gameplay.WaiwaiOutcome is null && _play.Battle is null)
                 overlay.Show(_course is null ? FlowScenes.Shutter : FlowScenes.DanShutter);
             // Traced sessions 30 and 31, as the course's shutter closes.
-            if (_course is not null && Shell.Sounds is { } sounds)
-            {
-                sounds.Frontend.PlayCue("VO_RESULT", 19);
-                sounds.Frontend.PlayCue("SE_GAME", 15);
-            }
+            if (_course is not null)
+                Shell.Sounds?.Play("dan.finished");
             _play.ShutterStartTick = Shell.Tick;
             _play.ShutterClosing = false;
         }

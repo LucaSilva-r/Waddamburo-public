@@ -28,7 +28,7 @@ internal sealed class PlayerSetupController : IDisposable
         _flow = new PlayerSetupFlow(accounts, shell.Arcade.Server, shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
             Path.Combine(Path.GetDirectoryName(scoresPath) ?? ".", "avatars"));
         _flow.Confirmed += joinSetupPlayers;
-        _flow.Refused += () => shell.Sounds?.Frontend.PlayCue("SE_COM", 12); // SE_COM_COM_CARD_ERROR
+        _flow.Refused += () => shell.Sounds?.Play("player.refused");
         _flow.Cancelled += () =>
         {
             shell.Hosts.EntrySetup = false;

@@ -1,13 +1,12 @@
-using Waddamburo.Skins.Green;
-using Waddamburo.Platform.Sdl.Media;
+using Waddamburo.Game.Sound;
 
-namespace Waddamburo.App.Audio;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>
 /// Waiwai's results (traced session9/11/13): PlaySE(id) -> SE_WAIRSLT_COLLABO_00, PlayVO(id) ->
 /// VO_WAIRSLT_COLLABO_00; the comment voice (PlayVO 9) is 14 + its text.nut sentence.
 /// </summary>
-internal sealed class WaiwaiResultSounds(SoundBank bank) : IWaiwaiResultSoundController
+public sealed class WaiwaiResultSounds(GreenSounds bank) : IWaiwaiResultSoundController
 {
     private static readonly Dictionary<int, int> Effects = new()
     {
@@ -25,7 +24,7 @@ internal sealed class WaiwaiResultSounds(SoundBank bank) : IWaiwaiResultSoundCon
             Console.WriteLine($"WaiwaiResult.{request.Kind}({request.Id}) [unmapped]");
             return;
         }
-        bank.Play(effect ? "SE_WAIRSLT_COLLABO_00" : "VO_WAIRSLT_COLLABO_00", found, effect ? null : AudioBus.Voice,
+        bank.Play(effect ? "SE_WAIRSLT_COLLABO_00" : "VO_WAIRSLT_COLLABO_00", found, effect ? null : SoundBus.Voice,
             trace: request.Id != 2);
     }
 }

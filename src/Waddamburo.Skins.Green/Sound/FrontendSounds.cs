@@ -1,15 +1,14 @@
 using System.Collections.Immutable;
-using Waddamburo.Skins.Green;
+using Waddamburo.Game.Sound;
 using Waddamburo.Lumen.Runtime;
-using Waddamburo.Platform.Sdl.Media;
 
-namespace Waddamburo.App.Audio;
+namespace Waddamburo.Skins.Green.Sound;
 
 /// <summary>
 /// Entry and Song Select: the movies name bank cues by id (RequestSE(bank, cue)); drum feedback,
 /// genre voices and the voice replay are the game's.
 /// </summary>
-internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundController
+public sealed class FrontendSounds(GreenSounds bank) : ISongSelectSoundController
 {
     /// <summary>Entry's sound calls.</summary>
     public void RequestSound(LumenFrontendSoundRequest request)
@@ -41,7 +40,7 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
                 bank.ReplayLatestVoice();
                 break;
             case SongSelectSoundRequestKind.SystemEffect:
-                SoundBank.TraceUnmapped(request.Kind.ToString(), request.Arguments);
+                GreenSounds.TraceUnmapped(request.Kind.ToString(), request.Arguments);
                 break;
             case SongSelectSoundRequestKind.PlayerEffect:
                 playPlayerEffect(request.Arguments);
@@ -60,13 +59,13 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
 
     private void playTonePreview(ImmutableArray<LumenHostValue> arguments)
     {
-        if (!SoundBank.TryInteger(arguments, 0, out var bankId) || !SoundBank.TryInteger(arguments, 1, out var tone)
+        if (!GreenSounds.TryInteger(arguments, 0, out var bankId) || !GreenSounds.TryInteger(arguments, 1, out var tone)
             || bankId is < 7 or > 9 || tone < 0)
             return;
         foreach (var name in TonePreviewBanks)
             bank.StopBank(name);
         // A drum sound: on the drum hit bus, as in play (its volume setting), not the menu bus.
-        bank.Play(TonePreviewBanks[bankId - 7], tone, AudioBus.DrumHit);
+        bank.Play(TonePreviewBanks[bankId - 7], tone, SoundBus.Drum);
     }
 
     public void PlayEntryVoice(int cue) => bank.Play("VO_ENTRY", cue);
@@ -106,7 +105,7 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             StopVoice();
             return;
         }
-        bank.Play("VO_SELECT", cue, AudioBus.Voice);
+        bank.Play("VO_SELECT", cue, SoundBus.Voice);
     }
 
     public void StopVoice() => bank.StopVoice();
@@ -115,10 +114,10 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
 
     private void playBankCue(ImmutableArray<LumenHostValue> arguments)
     {
-        if (!SoundBank.TryInteger(arguments, 0, out var bankId) || !SoundBank.TryInteger(arguments, 1, out var cueId)
+        if (!GreenSounds.TryInteger(arguments, 0, out var bankId) || !GreenSounds.TryInteger(arguments, 1, out var cueId)
             || cueId < 0 || !bank.TryGetBankName(bankId, out var bankName))
         {
-            SoundBank.TraceUnmapped("Effect", arguments);
+            GreenSounds.TraceUnmapped("Effect", arguments);
             return;
         }
         bank.Play(bankName, cueId);
@@ -126,9 +125,9 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
 
     private void playPlayerEffect(ImmutableArray<LumenHostValue> arguments)
     {
-        if (!SoundBank.TryInteger(arguments, 0, out _) || !SoundBank.TryInteger(arguments, 1, out var hitKind))
+        if (!GreenSounds.TryInteger(arguments, 0, out _) || !GreenSounds.TryInteger(arguments, 1, out var hitKind))
         {
-            SoundBank.TraceUnmapped("PlayerEffect", arguments);
+            GreenSounds.TraceUnmapped("PlayerEffect", arguments);
             return;
         }
         int? cue = hitKind switch
@@ -140,17 +139,17 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             _ => null,
         };
         if (cue is { } value)
-            bank.Play("SE_COM", value, AudioBus.DrumHit);
+            bank.Play("SE_COM", value, SoundBus.Drum);
         else
-            SoundBank.TraceUnmapped("PlayerEffect", arguments);
+            GreenSounds.TraceUnmapped("PlayerEffect", arguments);
     }
 
     private void playEntrySystemEffect(ImmutableArray<LumenHostValue> arguments)
     {
-        if (!SoundBank.TryInteger(arguments, 0, out var group) || !SoundBank.TryInteger(arguments, 1, out var hitKind)
+        if (!GreenSounds.TryInteger(arguments, 0, out var group) || !GreenSounds.TryInteger(arguments, 1, out var hitKind)
             || group is not (0 or 1))
         {
-            SoundBank.TraceUnmapped("SystemEffect", arguments);
+            GreenSounds.TraceUnmapped("SystemEffect", arguments);
             return;
         }
         // Group = the drum: the right one's Don played SE_COM cue 2 (traced session8-p2-solo); its Ka
@@ -162,8 +161,8 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             _ => null,
         };
         if (cue is { } value)
-            bank.Play("SE_COM", value, AudioBus.DrumHit);
+            bank.Play("SE_COM", value, SoundBus.Drum);
         else
-            SoundBank.TraceUnmapped("SystemEffect", arguments);
+            GreenSounds.TraceUnmapped("SystemEffect", arguments);
     }
 }
