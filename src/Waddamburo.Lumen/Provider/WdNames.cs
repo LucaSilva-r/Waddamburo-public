@@ -3,11 +3,11 @@ using System.Collections.Immutable;
 namespace Waddamburo.Lumen.Provider;
 
 /// <summary>List: a state with a value per place in a list (Wd.get(name, index)); the list's length is a state of its own, named in the description.</summary>
-public enum WdKind { State, Event, List }
+public enum WdKind { State, Event, List, Request }
 
-/// <summary>One name of the provider: what a movie may read with <c>Wd.get</c> or listen to with <c>Wd.on</c>.</summary>
+/// <summary>One name of the provider: what a movie may read with <c>Wd.get</c>, listen to with <c>Wd.on</c>, or ask for with <c>Wd.request</c>.</summary>
 /// <param name="Type">number, bool, text; an event's arguments in order.</param>
-/// <param name="Scope">When it has a value (movie-provider-design.md, Scopes): app, session, or a screen.</param>
+/// <param name="Scope">When it has a value (movie-provider-design.md, Scopes): app, session, or a screen. A request: the screen that takes it.</param>
 /// <param name="Sample">A plausible value (an event: its arguments, comma separated), for previews and documentation.</param>
 public sealed record WdName(string Name, WdKind Kind, string Type, string Scope, string Description, string Sample = "");
 
@@ -82,6 +82,7 @@ public static class WdNames
         new("player.shinuchi", WdKind.State, "bool", "play", "The true-score option is on.", "false"),
         new("player.tone", WdKind.State, "number", "play", "This drum's sound, 0 to 5: taiko, festival, dogs and cats, deluxe taiko, drum kit, tambourine.", "0"),
         new("player.support", WdKind.State, "bool", "play", "The helping-hand option (papa-mama support) is on. Always false for now: the engine does not have it yet.", "false"),
+        new("session.start", WdKind.Request, "mode: text (normal, dan)", "entry", "The players have joined: start the game in this mode. normal goes to song select, dan to the dan dojo's course select.", "dan"),
         new("transition.phase", WdKind.State, "text", "app", "Only on the intermission movie drawn over the screen (the rainbow, the fade, the shutters): cover, then reveal when the engine uncovers the next screen under it (a shutter is replaced by the next screen instead). No value as it is shown. The engine waits for the movie to stop playing after each.", "cover"),
         new("transition.title", WdKind.State, "bool", "app", "Only on the intermission movie: it shows the song's title (the rainbow before a song); song.title and song.subtitle are told to it first.", "true"),
         new("transition.side", WdKind.State, "number", "app", "Only on the intermission movie: whose colour it takes, 0 the left drum, 1 the right, 2 both.", "0"),

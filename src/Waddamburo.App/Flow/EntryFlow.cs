@@ -1,5 +1,6 @@
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
+using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
 
@@ -34,8 +35,27 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
         _bgm = null;
     }
 
+    private LumenPlayer[] _asking = [];
+
+    // The entry's requests (WdNames scope entry), for our entry movie; the game's decides through SetNextScene.
+    private string? startMode(LumenHostValue[] arguments) => arguments is [{ Kind: LumenHostValueKind.Text } mode]
+        ? mode.AsString() switch
+        {
+            "dan" => Shell.StartDanDojo(),
+            "normal" => Shell.Coordinator.Flow.TryRequestTransition(new LumenSceneRequest(1, 0, 0)) ? null : "the entry is not the active screen",
+            var other => $"there is no mode '{other}' (normal, dan)",
+        }
+        : "session.start takes the mode's name";
+
     public override void Advance(LumenInputSnapshot input)
     {
+        // Each showing of the entry has its own movies: they ask this screen.
+        var movies = Shell.Active.Player.Layers.Select(static layer => layer.Player).ToArray();
+        if (!movies.SequenceEqual(_asking))
+        {
+            new WdRequests("entry").Handle("session.start", startMode).Install(movies);
+            _asking = movies;
+        }
         Shell.Active.Player.Advance(input);
         Shell.Hosts.AdvanceEntry();
         Shell.DonRenderer?.Advance();

@@ -1,9 +1,14 @@
-// The entry's behaviour, bare minimum: a drum joins with its DON, a joined drum's DON (or the timer) starts.
+// The entry's behaviour, bare minimum: a drum joins with its DON, a joined drum's DON opens the mode menu (rims move,
+// DON decides; the timer starts a normal game). Normal play leaves through the game's calls; the dan dojo is asked for
+// with Wd.request("session.start", "dan").
 // The calls to the game and their order are the ones the game's own entry makes on that path.
 import flash.external.ExternalInterface;
 
 var SECONDS = 50;
 var DON = [90, 67];       // Key codes the game presses for each drum's DON (Z, C)
+var KA = [[65, 83], [68, 70]]; // and each drum's rims (A S, D F)
+var MODES = ["NORMAL", "DAN DOJO"];
+var MODE_NAMES = ["normal", "dan"]; // as session.start takes them
 var TRIGGER_NONE = 3;     // SetPrevious's trigger: 0 the left drum joins at once, 1 the right, 2 both
 
 var self = this;
@@ -14,15 +19,18 @@ var setup = false;        // the home player setup is open over the entry: it ha
 var started = false;      // InitInfo sent
 var triggered = false;
 var done = false;
+var choosing = false;     // the mode menu is up: the rims move, DON decides
+var mode = 0;
+var rimHeld = [[true, true], [true, true]];
 
 function refresh() {
-    self.heading.text = "PLAYER ENTRY";
+    self.heading.text = choosing ? "MODE" : "PLAYER ENTRY";
     for (var p = 0; p < 2; p++) {
         var panel = p == 0 ? self.p1 : self.p2;
         panel.side.text = (p + 1) + "P";
         panel.state.text = joined[p] ? "READY" : setup ? "" : "DON TO JOIN";
     }
-    self.hint.text = setup ? "" : joined[0] || joined[1] ? "HIT DON TO START" : "";
+    self.hint.text = choosing ? "<  " + MODES[mode] + "  >" : setup ? "" : joined[0] || joined[1] ? "HIT DON TO START" : "";
 }
 
 function join(p) {
@@ -37,6 +45,22 @@ function join(p) {
     }
     Lumen.SetIndicator(p, 2);
     refresh();
+}
+
+// The players are in: the mode menu (the DON or rim that got here must be let go first).
+function chooseMode() {
+    choosing = true;
+    held = [true, true];
+    rimHeld = [[true, true], [true, true]];
+    refresh();
+}
+
+function decideMode() {
+    if (MODE_NAMES[mode] == "normal") {
+        decide();
+    } else if (Wd.request("session.start", MODE_NAMES[mode])) {
+        done = true;      // the engine leaves the entry; a refusal (printed for whoever debugs) keeps the menu
+    }
 }
 
 function decide() {
@@ -70,7 +94,7 @@ ExternalInterface.addCallback("WdSetupDone", this, function(playing1p, playing2p
     joined = [playing1p, playing2p];
     refresh();
     if (!done && (playing1p || playing2p)) {
-        decide();
+        chooseMode();
     }
 });
 
@@ -98,6 +122,31 @@ this.onEnterFrame = function() {
     if (setup) {
         return;
     }
+    if (choosing) {
+        for (var d = 0; d < 2; d++) {
+            if (!joined[d]) {
+                continue;
+            }
+            for (var r = 0; r < 2; r++) {
+                var rim = Key.isDown(KA[d][r]);
+                if (rim && !rimHeld[d][r]) {
+                    mode = (mode + (r == 0 ? MODES.length - 1 : 1)) % MODES.length;
+                    refresh();
+                }
+                rimHeld[d][r] = rim;
+            }
+            var don = Key.isDown(DON[d]);
+            if (don && !held[d]) {
+                decideMode();
+                return;
+            }
+            held[d] = don;
+        }
+        if (Lumen.IsTimeStarted() && Lumen.IsTimeup()) {
+            decide();
+        }
+        return;
+    }
     var start = false;
     for (var p = 0; p < 2; p++) {
         var down = Key.isDown(DON[p]);
@@ -110,7 +159,9 @@ this.onEnterFrame = function() {
         }
         held[p] = down;
     }
-    if ((joined[0] || joined[1]) && (start || (Lumen.IsTimeStarted() && Lumen.IsTimeup()))) {
+    if ((joined[0] || joined[1]) && start) {
+        chooseMode();
+    } else if ((joined[0] || joined[1]) && Lumen.IsTimeStarted() && Lumen.IsTimeup()) {
         decide();
     }
 };

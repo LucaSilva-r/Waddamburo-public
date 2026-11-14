@@ -223,6 +223,36 @@ public sealed class ActionScriptTests
     }
 
     [Fact]
+    public void ARequestIsTakenOrRefusedWithAReason()
+    {
+        var (player, reports) = run("""
+            import flash.external.ExternalInterface;
+            ExternalInterface.addCallback("Ask", this, function(mode) {
+                report(Wd.request("session.start", mode));
+            });
+            ExternalInterface.addCallback("AskWrong", this, function() {
+                report(Wd.request("play.combo"));
+            });
+            stop();
+            """);
+        Assert.True(player.TryInvokeCallback("Ask", [LumenHostValue.FromString("dan")])); // no screen takes it here
+        var asked = new List<string>();
+        new Waddamburo.Lumen.Provider.WdRequests("entry").Handle("session.start", arguments =>
+        {
+            asked.Add(arguments[0].AsString());
+            return arguments[0].AsString() == "dan" ? null : "not that one";
+        }).Install([player]);
+        Assert.True(player.TryInvokeCallback("Ask", [LumenHostValue.FromString("dan")]));
+        Assert.True(player.TryInvokeCallback("Ask", [LumenHostValue.FromString("nope")]));
+        Assert.True(player.TryInvokeCallback("AskWrong", [])); // a state, not a request
+        Assert.Equal(["false", "true", "false", "false"], reports);
+        Assert.Equal(["dan", "nope"], asked);
+        // A screen takes only its own requests.
+        Assert.Throws<ArgumentException>(() => new Waddamburo.Lumen.Provider.WdRequests("song_select").Handle("session.start", static _ => null));
+        Assert.Contains("request of entry", new Waddamburo.Lumen.Provider.WdRequests("song_select").Take("session.start", []));
+    }
+
+    [Fact]
     public void AListenerHearsAValueAlreadyThere()
     {
         var (player, reports) = run("""

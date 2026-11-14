@@ -352,6 +352,23 @@ behind provider names:
    keep only the engine side.
 3. The end check: the engine and the free movies build and run with `Skins.Green` out of the solution.
 
+### Requests, built (user's go, 2026-11-14)
+
+- Script: `Wd.request(name, ...)` with positional arguments, as events have. It returns true when the engine took the
+  request, false otherwise; a refusal is no error in the movie, and why is printed (and written to the edge log as an
+  `out` line): an unknown name, a state asked for as a request, no screen taking requests from this movie, a request
+  of another screen, or the screen's own reason.
+- Names: `WdKind.Request` in `WdNames`, scoped to the screen that takes them. The game has well defined screens, each
+  with its own requests (user).
+- Engine: `WdRequests(screen)` (Waddamburo.Lumen.Provider) is one screen's table: its flow says what each request
+  does (`Handle`) and installs it on the screen's movies; anything else is refused with the reason.
+- Nesting (agreed): the scope belongs to the movie the scene places. Everything that runs inside it asks the same:
+  child clips, sprites attached at run time, movies loaded into its clips. A widget placed as a layer of its own gets
+  what its role in the scene grants.
+- First request: `session.start(mode)` on the entry (`normal`, `dan`). Our entry has a mode menu after the players
+  join (rims move, DON decides); NORMAL still leaves through the game's calls (SetNextScene), DAN DOJO asks
+  `session.start("dan")` and the engine opens dan select under the dan cover, as from song select's dojo.
+
 ### First menu that needs Wd.request: the dan dojo (user, 2026-11-14)
 
 With our song select the dojo cannot be reached. The game's song select reaches it through a host hack (the dojo

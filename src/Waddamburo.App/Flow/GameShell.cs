@@ -1346,7 +1346,8 @@ internal sealed class GameShell : IDisposable
         if (_indicatorScene != Active.Id)
         {
             _indicatorScene = Active.Id;
-            _indicators.SetScene(scene.IndicatorsFor(Active.Id));
+            // The new screen's own flow: a switch made inside another flow's tick (the entry's dan dojo) is not its.
+            _indicators.SetScene(_scenes.GetValueOrDefault(Active.Id, scene).IndicatorsFor(Active.Id));
         }
         _indicators.Advance();
     }
@@ -1405,6 +1406,21 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>Back to the attract loop now (false when a song or boot is on: nothing happens).</summary>
     public bool GoToAttract() => backToAttract(true);
+
+    /// <summary>
+    /// The dan dojo straight from the entry (its session.start "dan"): the course select opens under the dan cover, as
+    /// from song select's dojo. Null when it starts, else why not.
+    /// </summary>
+    public string? StartDanDojo()
+    {
+        if (Reload.Busy || Coordinator.Flow.State != GameFlowState.Active)
+            return "the screen is already changing";
+        Players.ChooseMode(aiBattle: false);
+        Hosts.DanSeries = Arcade.DanSeries;
+        Catalog.Replace(FlowScenes.DaniSelectScene(Hosts.PlayerSide));
+        Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
+        return null;
+    }
 
     /// <summary>Back to the title from the menu: an open player setup closes.</summary>
     public void ClosePlayerSetup() => _playerSetup?.Close();

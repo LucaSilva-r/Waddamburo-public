@@ -24,6 +24,12 @@ public sealed partial class LumenPlayer
     private readonly HashSet<string> _providerAsked = new(StringComparer.Ordinal);
     private bool _hasOwnDrum;
 
+    /// <summary>
+    /// Takes the movie's <c>Wd.request(name, ...)</c>: null when the engine took it, else why not (the screen that set it
+    /// decides; WdRequests). None set: no screen takes requests from this movie.
+    /// </summary>
+    public Func<string, LumenHostValue[], string?>? RequestHandler { get; set; }
+
     /// <summary>The movie's scripts name the provider (or it has asked it for something): it is one of ours, made for it.</summary>
     public bool UsesProvider { get; private set; }
 
@@ -164,6 +170,22 @@ public sealed partial class LumenPlayer
                 }
             }
             return new Avm1Lookup(true, Avm1Undefined.Instance);
+        });
+        // Wd.request(name, ...): true when the engine took it. A refusal is no error in the movie; why is printed.
+        wd.Properties["request"] = new Avm1MethodWrapper((_, arguments) =>
+        {
+            if (known(arguments, "request") is not { } name)
+                return new Avm1Lookup(true, false);
+            var values = arguments.Skip(1).Select(toHostValue).ToArray();
+            var refused = WdNames.Find(name)!.Kind != WdKind.Request ? $"{name} is not a request (Wd.get or Wd.on reads it)"
+                : RequestHandler is null ? "no screen takes requests from this movie"
+                : RequestHandler(name, values);
+            var call = $"Wd.request(\"{name}\"{string.Concat(values.Select(static value => ", " + describe(value)))})";
+            if (LumenEdgeLog.Enabled)
+                edge("out", $"{call} -> {refused ?? "taken"}");
+            if (refused is not null)
+                Console.Error.WriteLine($"{Name ?? "A movie"}: {call} refused: {refused}.");
+            return new Avm1Lookup(true, refused is null);
         });
         return wd;
     }
