@@ -200,8 +200,18 @@ public sealed class MovieDocumentAssetsTests : IDisposable
         Assert.Equal(MovieTodoState.Done, shutter.First(static item => item.Name == "close").State);
         Assert.All(shutter.Where(static item => item.Kind == "call"), static item => Assert.Equal(MovieTodoState.Done, item.State));
         // A skeleton: every call still empty, its states placeholders or empty.
-        var board = new MovieDocument(Path.Combine(directory, "movies", "indicator", "msg_coins")).Todo();
-        Assert.Equal(7, board.Count(static item => item.Kind == "call" && item.State == MovieTodoState.Missing));
+        Directory.CreateDirectory(Path.Combine(_directory, "scripts"));
+        File.WriteAllText(Path.Combine(_directory, "scripts", "main.as"), """
+            ExternalInterface.addCallback("Open", this, function() {
+            });
+            ExternalInterface.addCallback("Close", this, function(side) {
+            });
+            """);
+        File.WriteAllText(Path.Combine(_directory, "movie.json"), """
+            { "format": 2, "root": "main", "sprites": { "main": { "frames": 1, "scripts": { "0": "scripts/main.as" } } } }
+            """);
+        var board = new MovieDocument(_directory).Todo();
+        Assert.Equal(2, board.Count(static item => item.Kind == "call" && item.State == MovieTodoState.Missing));
         Assert.DoesNotContain(board, static item => item.Kind == "state" && item.State == MovieTodoState.Done);
     }
 
