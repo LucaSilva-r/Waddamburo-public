@@ -1,5 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
+using Waddamburo.Game.Library;
 using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scores;
 
@@ -65,6 +66,39 @@ internal sealed class DanCourses
             courses.Add(status);
         }
         return (boards, courses);
+    }
+
+    /// <summary>
+    /// The dojo as the library tree shows it (movie-provider-design.md, Song select): a folder per series, its courses
+    /// in it, each course's songs as its charts with the stars of the course they are played on. A course's Tag is its
+    /// status, a series folder's its id.
+    /// </summary>
+    public IReadOnlyList<LibraryNode> Tree()
+    {
+        var folders = new List<LibraryNode>();
+        foreach (var (id, name) in Series)
+        {
+            var folder = new LibraryNode(LibraryNodeKind.Folder, name) { Tag = id };
+            foreach (var course in _catalogue?.Series.Find(candidate => candidate.Id == id)?.Courses ?? [])
+            {
+                var status = DanCourseStatus.Of(course, _library);
+                var node = new LibraryNode(LibraryNodeKind.Course, course.Name) { Playable = status.Playable, Tag = status };
+                foreach (var song in status.Songs)
+                {
+                    var descriptor = _snapshot.Songs.Values.FirstOrDefault(candidate => candidate.Key.StableId == song.Song.SongKey);
+                    var level = descriptor?.Charts.FirstOrDefault(candidate => (int?)candidate.Course == song.Song.Course)?.Level;
+                    node.Children.Add(new LibraryNode(LibraryNodeKind.Chart, descriptor?.Title.English ?? descriptor?.Title.Primary ?? song.Song.Title ?? song.Song.SongKey)
+                    {
+                        Stars = level,
+                        Course = ((TaikoCourse)song.Song.Course).ToString().ToLowerInvariant(),
+                        Playable = song.State == DanSongState.Playable,
+                    });
+                }
+                folder.Children.Add(node);
+            }
+            folders.Add(folder);
+        }
+        return folders;
     }
 
     /// <summary>A challenge course's number in its series, for its art; 0: a rank.</summary>

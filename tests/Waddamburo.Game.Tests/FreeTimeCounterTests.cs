@@ -8,17 +8,7 @@ namespace Waddamburo.Game.Tests;
 /// </summary>
 public sealed class FreeTimeCounterTests
 {
-    private static LumenPlayer load(string movie = "indicator/time_counter")
-    {
-        var directory = AppContext.BaseDirectory;
-        while (!Directory.Exists(Path.Combine(directory, "movies", "indicator", "time_counter")))
-            directory = Path.GetDirectoryName(directory) ?? throw new DirectoryNotFoundException("movies/indicator/time_counter");
-        // The textures only need a size here.
-        var content = LumenMovieContent.LoadPackage(Path.Combine(directory, "movies", movie),
-            static _ => (1, 1, new byte[4]));
-        Assert.Empty(content.Diagnostics);
-        return content.CreatePlayer();
-    }
+    private static LumenPlayer load(string movie = "indicator/time_counter") => FreeMovies.Load(movie);
 
     private static LumenHostValue call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
@@ -172,6 +162,45 @@ public sealed class FreeTimeCounterTests
         Assert.True(roll.TryGetInstanceBounds("tail", out var tail));
         Assert.InRange(tail.X + tail.Width / 2, 315, 325); // the tail at the roll's end
         Assert.Empty(roll.Diagnostics);
+    }
+
+    [Fact]
+    public void TheDanSelectListsTheRowsAndPlaysAnOpenCourse()
+    {
+        var select = load("dani_select/dani_select");
+        var asked = new List<string>();
+        select.RequestHandler = (name, arguments) =>
+        {
+            asked.Add(name + (arguments.Length > 0 ? " " + arguments[0].AsNumber().ToString(System.Globalization.CultureInfo.InvariantCulture) : ""));
+            return null;
+        };
+        static LumenHostValue text(string value) => LumenHostValue.FromString(value);
+        select.Publish("rows.count", n(3));
+        select.Publish("selected.row", n(1));
+        select.Publish("selected.kind", text("course"));
+        select.Publish("selected.title", text("六段"));
+        select.PublishItem("row.kind", 0, text("folder"));
+        select.PublishItem("row.depth", 0, n(0));
+        select.PublishItem("row.opened", 0, LumenHostValue.FromBoolean(true));
+        select.PublishItem("row.title", 0, text("Green"));
+        select.PublishItem("row.kind", 1, text("course"));
+        select.PublishItem("row.depth", 1, n(1));
+        select.PublishItem("row.opened", 1, LumenHostValue.FromBoolean(true));
+        select.PublishItem("row.title", 1, text("六段"));
+        select.PublishItem("row.kind", 2, text("chart"));
+        select.PublishItem("row.depth", 2, n(2));
+        select.PublishItem("row.title", 2, text("Senbonzakura"));
+        select.PublishItem("row.stars", 2, n(9));
+        select.Publish("dan.exam.count", n(1));
+        select.PublishItem("dan.exam.type", 0, text("bads"));
+        select.PublishItem("dan.exam.target", 0, n(10));
+        advance(select, 2);
+        Assert.Equal("  - Green", select.ReadScriptValue("row0.text"));
+        Assert.Equal(">     - 六段", select.ReadScriptValue("row1.text"));
+        Assert.Equal("            Senbonzakura   Lv 9", select.ReadScriptValue("row2.text"));
+        Assert.Equal("BADs under 10", select.ReadScriptValue("rule0.text"));
+        Assert.Equal("六段", select.ReadScriptValue("course.text"));
+        Assert.Empty(select.Diagnostics);
     }
 
     [Fact]

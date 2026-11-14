@@ -461,7 +461,7 @@ One flat list of **visible rows**, as osu! shows it (user's screenshot): a folde
 one level deeper (the "A" header with its 346 songs below), and so does a song, its charts under it. There is no
 "inside a folder" screen; a skin that wants one (the game's spines) shows only the rows under the open folder.
 
-- `rows.count`, and per row, lists (windowed): `row.kind` (folder, song, chart, course), `row.depth`, `row.open`
+- `rows.count`, and per row, lists (windowed): `row.kind` (folder, song, chart, course), `row.depth`, `row.opened`
   (a folder or song shown open), `row.title`, `row.subtitle`, `row.artist`, `row.colour` (the folder's or the genre's),
   `row.count` (a folder's nodes), `row.source` (stock, tja, osuLazer, ...), `row.stars` (a chart's; a song's range),
   `row.course` (a chart's: oni, ura, or none for an osu! difficulty), `row.best` (the player's best, where one exists).
@@ -504,6 +504,13 @@ the renderer knows by key).
    then images, then rankings.
 
 The game's song select keeps its host and patches (the root carousel, the dojo category), frozen.
+
+**Step 1 built (2026-11-14, user-checked):** `LibraryRows` (Waddamburo.Game.Library) keeps the tree's visible rows,
+open rows and cursor, and publishes the asked window (`rows.count`, `row.*` lists, `selected.row` / `kind` /
+`title`); `row.opened` is the list (`row.open` is the request). The dojo comes from `DanCourses.Tree()`; requests of
+scope `select` are installed by `SongSelectFlow` on our dan select (`rows.window`, `select.row`, `row.open`,
+`row.close`, `course.start`); the selected course's rules go out as `dan.exam.count` / `type` / `target` / `gold`.
+Our dan select is text rows for now. Back is still the engine's Escape.
 
 ## To do: limits on what a movie may cost (2026-11-13)
 

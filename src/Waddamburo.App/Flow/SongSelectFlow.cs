@@ -4,6 +4,8 @@ using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Library;
+using Waddamburo.Lumen.Provider;
 using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
@@ -124,6 +126,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (Shell.Active.Id == FlowScenes.DaniSelect)
         {
+            if (Shell.Active.Player.Layers.Select(static layer => layer.Player).FirstOrDefault(static movie => movie.UsesProvider) is { } ours)
+                tellDanSelect(ours);
             if (input.Escape || Shell.Hosts.DaniSelect is { Terminated: true, Back: true })
             {
                 Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanExitCover); // traced session31
@@ -436,6 +440,71 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     }
 
     private DanCourseStatus? _course;
+
+    // Our dan select (it reads the provider): the dojo as library rows (series, courses, their songs), the select
+    // scope's requests, the selected course's requirements as the dan.exam lists.
+    private LumenPlayer? _danMovie;
+    private LibraryRows? _danRows;
+    private IReadOnlyList<LibraryNode> _danTree = [];
+    private int _danExams;
+
+    private void tellDanSelect(LumenPlayer movie)
+    {
+        if (movie != _danMovie)
+        {
+            (_danMovie, _danRows, _danExams) = (movie, null, 0);
+            string? rows(Func<LibraryRows, string?> act) => _danRows is { } loaded ? act(loaded) : "the courses are not loaded yet";
+            static int? at(LumenHostValue[] arguments, int index) =>
+                arguments.Length > index && arguments[index].Kind == LumenHostValueKind.Number ? (int)arguments[index].AsNumber() : null;
+            new WdRequests("select")
+                .Handle("rows.window", arguments => at(arguments, 0) is { } first && at(arguments, 1) is { } count
+                    ? rows(loaded => loaded.Window(first, count)) : "rows.window takes the first row and how many")
+                .Handle("select.row", arguments => at(arguments, 0) is { } row ? rows(loaded => loaded.Select(row)) : "select.row takes a row")
+                .Handle("row.open", arguments => at(arguments, 0) is { } row ? rows(loaded => loaded.Open(row)) : "row.open takes a row")
+                .Handle("row.close", arguments => at(arguments, 0) is { } row ? rows(loaded => loaded.Close(row)) : "row.close takes a row")
+                .Handle("course.start", _ => rows(startCourse))
+                .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
+        }
+        if (_danRows is null && Shell.Hosts.Dan is { Ready: true } dan)
+        {
+            _danTree = dan.Tree();
+            _danRows = new LibraryRows(_danTree);
+        }
+        if (_danRows is not { } loaded)
+            return;
+        if (loaded.SelectionChanged)
+            tellRequirements(movie, loaded.Selected?.Tag as DanCourseStatus);
+        loaded.Publish(movie);
+    }
+
+    private string? startCourse(LibraryRows rows)
+    {
+        if (rows.Selected is not { Kind: LibraryNodeKind.Course, Tag: DanCourseStatus status } course)
+            return "the cursor is not on a course";
+        if (!status.Playable)
+            return $"{course.Title} has songs that are not in the library";
+        if (Shell.PlayRequests.Pending is not null)
+            return "a course is already starting";
+        Shell.Hosts.DanSeries = _danTree.First(folder => folder.Children.Contains(course)).Tag as string ?? Shell.Hosts.DanSeries;
+        playCourse(status);
+        return null;
+    }
+
+    // The course's requirements, as the dan panel's lists (each song's target, where songs have their own: the first).
+    private void tellRequirements(LumenPlayer movie, DanCourseStatus? status)
+    {
+        var requirements = status?.Course.Requirements ?? [];
+        movie.Publish("dan.exam.count", status is null ? LumenHostValue.Undefined : LumenHostValue.FromNumber(requirements.Count));
+        for (var index = 0; index < Math.Max(requirements.Count, _danExams); index++)
+        {
+            var requirement = index < requirements.Count ? requirements[index] : null;
+            movie.PublishItem("dan.exam.type", index, requirement is null ? LumenHostValue.Undefined : LumenHostValue.FromString(requirement.Type));
+            movie.PublishItem("dan.exam.target", index, requirement is { Red.Length: > 0 } ? LumenHostValue.FromNumber(requirement.Red[0]) : LumenHostValue.Undefined);
+            movie.PublishItem("dan.exam.gold", index, requirement is null ? LumenHostValue.Undefined
+                : LumenHostValue.FromNumber(requirement.Gold.Length > 0 ? requirement.Gold[0] : 0));
+        }
+        _danExams = requirements.Count;
+    }
 
     private void playCourse(DanCourseStatus course)
     {
