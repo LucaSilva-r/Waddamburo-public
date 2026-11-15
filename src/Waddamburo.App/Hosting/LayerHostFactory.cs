@@ -518,7 +518,20 @@ internal sealed class LayerHostFactory(
         {
             Backdrop = () => AiResultBackground,
         };
-        return new LumenLayerHost(binding, binding.Attach);
+        return new LumenLayerHost(binding, player =>
+        {
+            binding.Attach(player);
+            // Ours reads the battle's results from the provider.
+            if (!player.UsesProvider)
+                return;
+            var numbers = AiNumbers ?? AiResultNumbers.NewPlayer;
+            player.Publish("result.aiWon", LumenHostValue.FromBoolean(outcome.Won));
+            for (var section = 0; section < outcome.Sections.Count; section++)
+                player.PublishItem("result.aiSectionWon", section, LumenHostValue.FromBoolean(outcome.Sections[section].Won));
+            player.Publish("result.aiRank", LumenHostValue.FromNumber(numbers.RankBefore));
+            player.Publish("result.aiRankAfter", LumenHostValue.FromNumber(numbers.RankAfter));
+            player.Publish("result.aiWins", LumenHostValue.FromNumber(numbers.WinsBefore));
+        });
     }
 
     private LumenLayerHost resultHost()
@@ -586,6 +599,13 @@ internal sealed class LayerHostFactory(
         {
             binding.Attach(player);
             binding.ShowArt(player, WaiwaiResultTextures.Background, WaiwaiResultTextures.Sentence(binding.Sentence), WaiwaiResultTextures.RareNote);
+            // Ours reads Waiwai's results from the provider.
+            if (!player.UsesProvider)
+                return;
+            player.Publish("result.waiwaiGauge", LumenHostValue.FromNumber(outcome.GaugeSegments));
+            player.Publish("result.duet", LumenHostValue.FromNumber(outcome.DuetPercent));
+            for (var note = 0; note < outcome.RareNotesHit.Count; note++)
+                player.PublishItem("result.rareHit", note, LumenHostValue.FromBoolean(outcome.RareNotesHit[note]));
         });
     }
 

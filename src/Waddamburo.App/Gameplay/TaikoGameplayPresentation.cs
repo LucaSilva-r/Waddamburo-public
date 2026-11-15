@@ -189,6 +189,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             Options.ElementAtOrDefault(lane), EndBanner, remote: lane == RemoteLaneIndex ? RemoteLane : null,
             relay: lane != RemoteLaneIndex ? Relay : null,
             donStage: aiStage))];
+        if (stage is not null)
+            publishWaiwai(stage);
         // AI battle: AI-don's roll counter shows the player's count (its rolls copy theirs, user-asked).
         if (aiStage is not null)
             _lanes[1].LongNotes.ShownHits = index => _lanes[0].Session.GetLongNoteProgress(index).Hits;
@@ -198,6 +200,38 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         var handNotes = new TaikoHandNoteLink();
         for (var lane = 0; lane < 2; lane++)
             handNotes.Add(_lanes[lane].Session, charts[lane].HitObjects);
+    }
+
+    // Waiwai's shared state for every movie of both lanes (the game's movies are told by GameWaiwaiMovies).
+    private void publishWaiwai(WaiwaiVoltage stage)
+    {
+        Publish("play.voltage", LumenHostValue.FromNumber(0));
+        Publish("play.voltageNorma", LumenHostValue.FromNumber(WaiwaiVoltage.ClearNorma));
+        stage.VoltageChanged += () => Publish("play.voltage", LumenHostValue.FromNumber(stage.Voltage));
+        stage.NormaReached += () => Emit("waiwai.normaReached");
+        stage.SectionChanged += (_, section) =>
+        {
+            int? soloist = section >= 0 ? stage.Sections[section].Soloist : null;
+            Publish("waiwai.section", section < 0 ? LumenHostValue.Undefined : LumenHostValue.FromString(soloist is null ? "together" : "solo"));
+            Publish("waiwai.soloist", soloist is { } drum ? LumenHostValue.FromNumber(drum + 1) : LumenHostValue.Undefined);
+        };
+    }
+
+    /// <summary>Publishes one place of a provider list (WdNames) to the movies of every lane.</summary>
+    public void PublishItem(string name, int index, LumenHostValue value)
+    {
+        foreach (var lane in _lanes)
+            lane.PublishItem(name, index, value);
+    }
+
+    /// <summary>Tells a provider event (WdNames) to the movies of one lane, or of every lane.</summary>
+    public void Emit(string name, params LumenHostValue[] arguments) => Emit(name, null, arguments);
+
+    public void Emit(string name, int? lane, params LumenHostValue[] arguments)
+    {
+        for (var index = 0; index < _lanes.Length; index++)
+            if (lane is null || lane == index)
+                _lanes[index].Emit(name, arguments);
     }
 
     private static string role(SceneLayerDefinition definition) =>
@@ -375,6 +409,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly TaikoHitFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
         private readonly Action<string, LumenHostValue> _publish;
+        private readonly Action<string, int, LumenHostValue> _publishItem;
         private readonly Action<string, LumenHostValue[]> _emit;
         private long _wholeBeat = long.MinValue; // the last beat.passed told
 
@@ -401,6 +436,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public LumenPlayer[] Everyone { get; set; } = [];
 
         public void Publish(string name, LumenHostValue value) => _publish(name, value);
+
+        public void Emit(string name, LumenHostValue[] arguments) => _emit(name, arguments);
+
+        public void PublishItem(string name, int index, LumenHostValue value) => _publishItem(name, index, value);
 
         public TaikoLongNotePresentation LongNotes => _longNotes;
         private readonly TaikoDonPresentation? _character;
@@ -575,6 +614,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 gameMovies.Event(name, arguments);
             }
             _emit = (name, arguments) => emit(name, arguments);
+            _publishItem = publishItem;
             publish("play.score", LumenHostValue.FromNumber(0));
             publish("play.gauge", LumenHostValue.FromNumber(0));
             void updateScore(long award, bool popup = true)

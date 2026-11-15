@@ -308,7 +308,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             });
         _play.Battle = aiBattle ? new AiBattleProgress(_play.Charts[0], players[0].Course) : null;
         if (_play.Battle is { } shown)
+        {
             _ = new GameAiBattleMovies(shown, active, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null);
+            publishBattle(shown);
+        }
         if (_play.Battle is { } battle && _play.Review is null)
         {
             // A signed-in player's battle uploads, with or without a server setup (offline): the server replays it, so
@@ -334,6 +337,36 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Console.WriteLine(
             $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
             + $"{_play.Charts.Sum(static chart => chart.NoteCount)} notes at tick {Shell.Tick}.");
+    }
+
+    // AI battle's state for every movie of ours on the lanes (the game's movies are told by GameAiBattleMovies).
+    private void publishBattle(AiBattleProgress battle)
+    {
+        static LumenHostValue n(double value) => LumenHostValue.FromNumber(value);
+        var gameplay = Shell.Gameplay;
+        gameplay.Publish("ai.sections", n(battle.Sections));
+        gameplay.Publish("ai.section", n(1));
+        gameplay.Publish("ai.needle", n(0));
+        gameplay.Publish("ai.emotion", n(battle.Emotion));
+        battle.ProgressChanged += percent => gameplay.Publish("ai.progress", n(percent));
+        battle.SectionCue += middle => gameplay.Emit("ai.sectionCue", LumenHostValue.FromBoolean(middle));
+        battle.CountsChanged += (side, counts) =>
+        {
+            gameplay.Publish("ai.good", n(counts.Great), side);
+            gameplay.Publish("ai.ok", n(counts.Good), side);
+            gameplay.Publish("ai.bad", n(counts.Miss), side);
+            gameplay.Publish("ai.rolls", n(counts.Rolls), side);
+            gameplay.Publish("ai.needle", n(battle.Needle));
+        };
+        battle.SectionEnded += (won, last) =>
+        {
+            var ended = battle.SectionsWon.Count - 1;
+            gameplay.PublishItem("ai.won", ended, LumenHostValue.FromBoolean(won));
+            gameplay.Publish("ai.section", last ? LumenHostValue.Undefined : n(ended + 2));
+            gameplay.Emit("ai.sectionEnded", LumenHostValue.FromBoolean(won), LumenHostValue.FromBoolean(last));
+        };
+        battle.EmotionChanged += emotion => gameplay.Publish("ai.emotion", n(emotion));
+        battle.ResultShown += won => gameplay.Emit("ai.result", LumenHostValue.FromBoolean(won));
     }
 
     /// <summary>What a replay or practice says in place of the song's subtitle and number (null: a play).</summary>

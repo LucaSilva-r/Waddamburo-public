@@ -139,6 +139,18 @@ requirements' final values on the `dan.exam.*` lists and per-song lists (`dan.so
 `Bad`), and end with `result.continue`. `screen.name` says `retry` and `gameover`. Ours: `enso_result/retry_game`,
 `reward_shop/shop_gameover`, `dani_result/dani_result`, `dani_result/dani_gameover`. User-checked in arcade (2026-11-15): revival both ways, a real course's results.
 
+**Waiwai and AI battle** (2026-11-15): their rules raise events (`WaiwaiVoltage`, `AiBattleProgress`), the game's
+movies are told by `GameWaiwaiMovies` / `GameAiBattleMovies`, and every movie of ours on the lanes gets names:
+Waiwai's `play.voltage`, `play.voltageNorma`, `waiwai.section` (together, solo), `waiwai.soloist`, event
+`waiwai.normaReached`; AI battle's `ai.sections`, `ai.section`, `ai.progress`, `ai.needle`, `ai.emotion`, per side
+(drum 1 the player, drum 2 AI-don) `ai.good` / `ok` / `bad` / `rolls`, the list `ai.won`, events `ai.sectionCue`,
+`ai.sectionEnded`, `ai.result`. Their results: `result.waiwaiGauge`, `result.duet`, list `result.rareHit`;
+`result.aiWon`, list `result.aiSectionWon`, `result.aiRank`, `result.aiRankAfter`, `result.aiWins`. No movie of ours
+for these modes yet. With this the game's side is behind the adapter for every mode. Proof: the user's recorded
+session (lab `captures/waiwai-ai/`) replays through both modes; its game-movie lines vary run to run with the play
+itself (live autoplay and AI-don's bot are not frame-exact under replay), so the guarantee is the adapter ignoring
+names it does not handle.
+
 ### Scopes
 
 **A check, not a wall** (user, 2026-11-12). One API, every name always callable; a scope only says when a name has a
