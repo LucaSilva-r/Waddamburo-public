@@ -560,7 +560,7 @@ internal sealed class GameShell : IDisposable
             movie.Publish("card.accepting", card is { } pairing ? LumenHostValue.FromBoolean(pairing.Accepting) : LumenHostValue.Undefined);
             movie.Publish("card.code", text(card?.Code));
             movie.Publish("card.codeSeconds", card?.Code is null ? LumenHostValue.Undefined : number(card.Value.Seconds));
-            movie.Publish("card.player", text(card?.Player));
+            movie.Publish("card.player", text(card?.Player ?? (Active.Id == FlowScenes.Entry ? Hosts.Entry?.Card?.DisplayName : null)));
             for (var side = 0; side < 2; side++)
             {
                 movie.Publish("player.joined", LumenHostValue.FromBoolean(joined.Contains(side)), side + 1);
@@ -588,8 +588,10 @@ internal sealed class GameShell : IDisposable
             {
                 var side = FlowScenes.BoardSide(definition);
                 var cardBoard = side is null && Active.Id == FlowScenes.Entry && definition.Transform.Y == 185;
-                movie.Publish("player.joined", LumenHostValue.FromBoolean(side is { } drum ? joined.Contains(drum) : cardBoard && card?.Player is not null));
-                movie.Publish("player.name", side is { } own ? names[own] : cardBoard ? text(card?.Player) : LumenHostValue.Undefined);
+                movie.Publish("player.joined", LumenHostValue.FromBoolean(side is { } drum ? joined.Contains(drum)
+                    : cardBoard && (card?.Player ?? Hosts.Entry?.Card?.DisplayName) is not null));
+                var waiting = card?.Player ?? Hosts.Entry?.Card?.DisplayName;
+                movie.Publish("player.name", side is { } own ? names[own] : cardBoard ? text(waiting) : LumenHostValue.Undefined);
             }
         }
     }

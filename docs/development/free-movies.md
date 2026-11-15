@@ -125,6 +125,11 @@ entry's centre board shows a paired card's player); in a song the lane does. The
 (`GuestNameBoard`, `ResumeCountdown`). Fix on the way: an app-scope name no longer makes a movie a drum's own, and
 reads of app names never redirect to player 1.
 
+Cards on our entry (user-checked 2026-11-15): our entry has no card dialog, so the drum that joins takes the card
+waiting (`EntrySceneHost.ClaimCard`, the game's `EntryData`), and the waiting card's player shows on the centre board
+and the card prompt. To adjust later (user): how a card's player chooses their side; a card arriving after every drum
+joined as a guest is not given to anyone.
+
 ### Scopes
 
 **A check, not a wall** (user, 2026-11-12). One API, every name always callable; a scope only says when a name has a

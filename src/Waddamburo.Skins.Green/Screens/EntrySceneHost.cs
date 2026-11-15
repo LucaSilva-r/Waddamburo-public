@@ -75,6 +75,19 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         Indicate(side);
     }
 
+    /// <summary>
+    /// For one of ours (no card dialog of its own): the drum that just joined takes the card waiting, as the game's
+    /// EntryData(side) gives it to the drum that chose it.
+    /// </summary>
+    public void ClaimCard(int side)
+    {
+        if (Card is not { } card)
+            return;
+        Card = null;
+        CardClaimed?.Invoke(side, card);
+        Don?.SetLook(side, card.Look);
+    }
+
     /// <summary>The indicator's "joined" for a drum that is in (a later join, for one of ours).</summary>
     public void Indicate(int side)
     {

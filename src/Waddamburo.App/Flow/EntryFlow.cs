@@ -70,6 +70,8 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
         var first = !host.IsJoined(0) && !host.IsJoined(1);
         if (!host.TryJoin(side))
             return "that drum cannot join now (credits, or the setup has the drums)";
+        // A card paired from the website waits for a drum: the one that joins takes it.
+        host.ClaimCard(side);
         if (first) host.FirstJoin(side, EntrySeconds);
         else host.Indicate(side);
         return null;
