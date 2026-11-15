@@ -55,7 +55,7 @@ public sealed class FrontendBindingTests
         // The game's entry wiring: Don calls (ChangeAccessory...) and the entry host's own must not collide.
         var player = new LumenPlayer(TestMovies.DonMotionMovie(), 1280, 720,
             hostBinding: new LumenFrontendHostBinding(new SyntheticFrontendServices(), new GameFlowSession(),
-                new SyntheticDonPresentation(), new EntrySceneHost(new IndicatorParts(IndicatorPartsScene.Entry, countdown: false))));
+                new SyntheticDonPresentation(), new EntrySceneHost(new IndicatorParts(IndicatorPartsScene.Entry, countdown: false), new Waddamburo.Game.Flow.EntrySession())));
 
         player.Advance();
     }

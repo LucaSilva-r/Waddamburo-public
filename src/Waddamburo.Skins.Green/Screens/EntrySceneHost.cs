@@ -13,15 +13,11 @@ namespace Waddamburo.Skins.Green;
 /// movie's host methods, its countdown (shown by the indicator parts), and what the game does when
 /// a player joins. One instance per loaded entry scene.
 /// </summary>
-public sealed class EntrySceneHost(IndicatorParts parts)
+public sealed class EntrySceneHost
 {
     private const int EntrySeconds = 50;
 
-    private readonly System.Diagnostics.Stopwatch _timer = new();
-    private TimeSpan _timerLimit;
-    private bool _timerStarted;
     private LumenPlayer? _entry;
-    private readonly HashSet<int> _joined = [];
     // The movie does not send an effect notification for every picker preview. Defer the fallback
     // one tick so its own notification and RequestSE can take precedence when it does send them.
     private readonly HashSet<int> _costumeEffectPending = [];
@@ -29,76 +25,32 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     private readonly HashSet<int> _costumeCueSeen = [];
     private readonly int[] _costumeEffectUntil = [-1, -1];
 
-    public IndicatorParts Parts { get; } = parts ?? throw new ArgumentNullException(nameof(parts));
+    public EntrySceneHost(IndicatorParts parts, EntrySession session)
+    {
+        Parts = parts ?? throw new ArgumentNullException(nameof(parts));
+        Session = session;
+        session.Joined += joined;
+        session.CardClaimed += (side, card) => Don?.SetLook(side, card.Look);
+        session.CountdownStarted += seconds =>
+        {
+            _timerCues.Reset();
+            Parts.StartCountdown(seconds);
+        };
+        session.CountdownResumed += Parts.ResumeCountdown;
+    }
 
-    /// <summary>A player joined (the game switches the coin panel to its split state here).</summary>
-    public event Action<int>? PlayerJoined;
+    public IndicatorParts Parts { get; }
+
+    /// <summary>The engine's entry this movie shows.</summary>
+    public EntrySession Session { get; }
 
     /// <summary>Costume picker icon (name: false) or name plate (true) for (ICONTYPE 0 costume / 1 head / 2 body, id).</summary>
     public Func<int, int, bool, LumenNativeSurfaceKey?>? CostumeIcon { get; init; }
 
-    /// <summary>Whether a player may join, on either drum (the right one is P2); both may.</summary>
-    public Func<int, bool> CanJoin { get; init; } = static _ => true;
-
     /// <summary>The entry movie on stage (null before it is attached).</summary>
     public LumenPlayer? Movie => _entry;
 
-    /// <summary>Whether the drum (0 left, 1 right) has joined.</summary>
-    public bool IsJoined(int side) => _joined.Contains(side);
-
-    /// <summary>The entry countdown's seconds left; null while none runs.</summary>
-    public int? TimeLeft => _timerStarted ? RemainingSeconds : null;
-
-    /// <summary>The home player setup is open over the entry (it has the drums).</summary>
-    public bool SetupOpen => SetupMode;
-
-    /// <summary>
-    /// What the game's entry does on its first join, for one of ours (which asks the engine instead): the countdown
-    /// starts and runs, the card choice closes. The indicator shows the drum as joined (state 2).
-    /// </summary>
-    public void FirstJoin(int side, int seconds)
-    {
-        _timerLimit = TimeSpan.FromSeconds(seconds);
-        _timerStarted = true;
-        _timerCues.Reset();
-        _timer.Restart();
-        Parts.StartCountdown(seconds);
-        Parts.ResumeCountdown();
-        // NotifyDataSelect(false), as the game's entry sends it here.
-        if (_dialogAt >= 0 || Card is null)
-        {
-            if (Card is not null)
-                closeCardDialog();
-            Card = null;
-            Parts.HideNameBoards();
-        }
-        Indicate(side);
-    }
-
-    /// <summary>
-    /// For one of ours (no card dialog of its own): the drum that just joined takes the card waiting, as the game's
-    /// EntryData(side) gives it to the drum that chose it.
-    /// </summary>
-    public void ClaimCard(int side)
-    {
-        if (Card is not { } card)
-            return;
-        Card = null;
-        CardClaimed?.Invoke(side, card);
-        Don?.SetLook(side, card.Look);
-    }
-
-    /// <summary>The indicator's "joined" for a drum that is in (a later join, for one of ours).</summary>
-    public void Indicate(int side)
-    {
-        if (_joined.Contains(side)) Parts.SetIndicator(side, 2);
-    }
-
-    /// <summary>The first joined player's drum (0 left, 1 right); null before a join.</summary>
-    public int? JoinedPlayer => _joined.Count == 0 ? null : _joined.First();
-
-    /// <summary>The cabinet's credits in coin mode; null in free play.</summary>
-    public CoinBank? Coins { get; init; }
+    private CoinBank? Coins => Session.Coins;
 
     /// <summary>Plays a VO_ENTRY cue the game itself requests (join and coin-mode prompts).</summary>
     public Action<int>? PlayVoice { get; init; }
@@ -165,7 +117,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     public bool CardBusy => Card is not null || _refuseAt >= 0;
 
     /// <summary>A card being read or waiting for a drum (from the attract loop or read during entry).</summary>
-    public ScoreProfile? Card { get; set; }
+    public ScoreProfile? Card { get => Session.Card; set => Session.Card = value; }
 
     /// <summary>
     /// A card read while the entry runs (traced session14-card-entry): InputCardReader at once, then the
@@ -179,9 +131,6 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         call(entry, "InputCardReader");
         return true;
     }
-
-    /// <summary>EntryData(side): the drum that took the card.</summary>
-    public Action<int, ScoreProfile>? CardClaimed { get; init; }
 
     /// <summary>A card is being read (true) until a drum takes it or the dialog closes (false).</summary>
     public Action<bool>? CardDialog { get; init; }
@@ -213,10 +162,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// </summary>
     /// <summary>
     /// Home player setup: the entry is the setup screen. Both stands show (DON_BOTH), but nobody really
-    /// joins (no voice, coins or PlayerJoined), the mode panels are hidden, and the host decides per
+    /// joins (no voice, coins or Entered), the mode panels are hidden, and the host decides per
     /// side whether its Don and name board show.
     /// </summary>
-    public bool SetupMode { get; set; }
+    public bool SetupMode { get => Session.SetupMode; set => Session.SetupMode = value; }
 
     /// <summary>
     /// Back from Song Select to join the other drum: this drum's player is already in (traced session28:
@@ -245,7 +194,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// </summary>
     public void SetSetupSide(int side, bool don, bool board)
     {
-        if (_entry is not { } entry || side is not (0 or 1) || !_joined.Contains(side))
+        if (_entry is not { } entry || side is not (0 or 1) || !Session.IsJoined(side))
             return;
         // The Don clip's alpha is only forced while hidden; showing it again hands it back to the movie.
         if (_donHidden[side] && don)
@@ -286,11 +235,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             {
                 if (!playing[side])
                 {
-                    _joined.Remove(side);
+                    Session.Leave(side);
                     Parts.SetIndicator(side, 0);
                     continue;
                 }
-                PlayerJoined?.Invoke(side);
+                Session.Enter(side);
             }
             CoinsChanged();
             return;
@@ -306,11 +255,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 // Main's constructor: this.resource = new Resource(); _global.res = this.resource.
                 if (!entry.TryWriteScriptValue($"_global.res.playerInfo.{side}.isCoin", false))
                     Console.Error.WriteLine($"Entry: no _global.res.playerInfo[{side}] to release.");
-                _joined.Remove(side);
+                Session.Leave(side);
                 Parts.SetIndicator(side, 0);
                 continue;
             }
-            PlayerJoined?.Invoke(side);
+            Session.Enter(side);
             assignCostumes(entry, side, PlayerLook?.Invoke(side));
             // An account plays as a card would: ModeSelect offers AI battle only with CardInfo.isCard and a player
             // whose IsCoin and IsData are set (entry script); accounts never take the card path.
@@ -369,11 +318,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         if (_ticks == _rejectUntil)
         {
             Parts.HideCardBand();
-            if (_joined.Count == 0 && Card is null && !canPay())
+            if (Session.JoinedCount == 0 && Card is null && !canPay())
                 ReturnToAttract?.Invoke();
         }
-        if (_timerStarted && Parts.Countdown)
-            play(_timerCues.Advance(RemainingSeconds));
+        if (Session.CountdownSet && Parts.Countdown)
+            play(_timerCues.Advance(Session.RemainingSeconds));
         if (_dialogAt >= 0)
             play(_dialogCues.Advance((int)Math.Ceiling(Math.Max(0, CardDialogSeconds - (_ticks - _dialogAt) / 60d))));
         if (_refuseAt >= 0 && _ticks - _refuseAt == RefuseReplyTicks)
@@ -403,7 +352,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
                 call(_entry, "ReplyServer", LumenHostValue.FromBoolean(true));
             }
         }
-        if (Coins is null || _joined.Count != 0)
+        if (Coins is null || Session.JoinedCount != 0)
             return;
         var affordable = Coins.Missing(0) == 0;
         if (_ticks == PromptDelayTicks)
@@ -442,8 +391,6 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         _entry = entry;
         // Back from Song Select: the first player is in before the coin state goes out (traced
         // UpdateCoins(-1, -1): nothing to pay).
-        if (PreJoined is { } joined)
-            _joined.Add(joined);
         CoinsChanged();
     }
 
@@ -499,8 +446,8 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     public void CoinsChanged()
     {
         // Both drums joined: nothing left to pay for; the game sends no more (traced session9, session13).
-        if (_entry is not { } entry || _joined.Count >= 2) return;
-        var flag = number(Coins is null || Coins.Missing(_joined.Count) == 0 ? -1 : 1);
+        if (_entry is not { } entry || Session.JoinedCount >= 2) return;
+        var flag = number(Coins is null || Coins.Missing(Session.JoinedCount) == 0 ? -1 : 1);
         call(entry, "UpdateCoins", flag, flag);
     }
 
@@ -512,8 +459,6 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         if (Card is not null)
             call(entry, "InputCardReader");
         var yes = LumenHostValue.FromBoolean(true);
-        if (PreJoined is { } joined)
-            _joined.Add(joined);
         foreach (var side in new[] { 0, 1 })
             call(entry, "SetPlayer", number(side), side == PreJoined ? yes : no, side == PreJoined ? yes : no, side == PreJoined ? yes : no);
         call(entry, "BnCoinInit", number(0), no, no, no);
@@ -523,38 +468,31 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>The entry's IsReady poll; the game answers 0 until its parts are set up.</summary>
     public bool PollReady() => Parts.PollReady();
 
-    /// <summary>Remaining countdown seconds (whole, rounded up); the full time while not running out.</summary>
-    public int RemainingSeconds => (int)Math.Ceiling(Math.Max(0, (_timerLimit - _timer.Elapsed).TotalSeconds));
-
     /// <summary>The entry movie's Lumen methods beyond the common front-end ones.</summary>
     public void Register(LumenHostObject lumen)
     {
         ArgumentNullException.ThrowIfNull(lumen);
-        lumen.RegisterMethod("IsTimeStarted", _ => LumenHostValue.FromBoolean(_timerStarted));
+        lumen.RegisterMethod("IsTimeStarted", _ => LumenHostValue.FromBoolean(Session.CountdownSet));
         lumen.RegisterMethod("StartTimer", call =>
         {
-            var seconds = call.Arguments.Length > 0 ? call.Arguments[0].AsNumber() : EntrySeconds;
-            _timerLimit = TimeSpan.FromSeconds(seconds);
-            _timerStarted = true;
-            _timerCues.Reset();
-            _timer.Reset(); // runs from ResumeTimer, as the counter does
-            Parts.StartCountdown(seconds);
+            // Runs from ResumeTimer, as the counter does.
+            Session.StartCountdown(call.Arguments.Length > 0 ? call.Arguments[0].AsNumber() : EntrySeconds);
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("ResumeTimer", _ =>
         {
-            if (Parts.Countdown) _timer.Start();
-            Parts.ResumeCountdown();
+            if (Parts.Countdown) Session.ResumeCountdown();
+            else Parts.ResumeCountdown();
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("PauseTimer", _ =>
         {
-            _timer.Stop();
+            Session.PauseCountdown();
             Parts.PauseCountdown();
             return LumenHostValue.Undefined;
         });
-        lumen.RegisterMethod("GetTimeSec", _ => number(RemainingSeconds));
-        lumen.RegisterMethod("IsTimeup", _ => LumenHostValue.FromBoolean(_timerStarted && RemainingSeconds == 0));
+        lumen.RegisterMethod("GetTimeSec", _ => number(Session.RemainingSeconds));
+        lumen.RegisterMethod("IsTimeup", _ => LumenHostValue.FromBoolean(Session.TimeUp));
         lumen.RegisterMethod("SetIndicator", call =>
         {
             // The entry also asks for "wait" on a player who has not joined (e.g. while P1 dresses up);
@@ -562,7 +500,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             if (call.Arguments.Length >= 2)
             {
                 var player = (int)call.Arguments[0].AsNumber();
-                Parts.SetIndicator(player, _joined.Contains(player) ? (int)call.Arguments[1].AsNumber() : 0);
+                Parts.SetIndicator(player, Session.IsJoined(player) ? (int)call.Arguments[1].AsNumber() : 0);
             }
             return LumenHostValue.Undefined;
         });
@@ -630,13 +568,11 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         {
             if (Card is { } card && request.Arguments.Length > 0 && (int)request.Arguments[0].AsNumber() is var side and (0 or 1))
             {
-                Card = null;
-                CardClaimed?.Invoke(side, card);
-                Parts.ShowEntryName(side, TaikoPlayerName(card), _joined.Contains(side));
+                Session.ClaimCard(side); // the drum's Don takes the card player's look (constructor)
+                Parts.ShowEntryName(side, TaikoPlayerName(card), Session.IsJoined(side));
                 _cardNames[side] = TaikoPlayerName(card);
                 closeCardDialog();
-                // The drum's Don takes the card player's look: costume slots, then FinishCostumeLoad (traced).
-                Don?.SetLook(side, card.Look);
+                // Costume slots, then FinishCostumeLoad (traced).
                 if (_entry is { } entry)
                 {
                     assignCostumes(entry, side, card.Look);
@@ -690,13 +626,22 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// (coin mode), coin state, then the player's costume lists (traced guest defaults). The other
     /// drum may join later (traced session9-2p: EntryCoin(1, 1) answers 0 until paid, then 1).
     /// </summary>
-    public bool TryJoin(int player)
+    public bool TryJoin(int player) => _entry is not null && Session.TryJoin(player);
+
+    // A drum joined the session: what the game does inside EntryCoin before answering 1.
+    private void joined(int player)
     {
-        if (player is not (0 or 1) || _joined.Contains(player) || !CanJoin(player) || _entry is not { } entry
-            || Coins?.TryJoin(_joined.Count) == false)
-            return false;
-        var p = number(player);
-        _joined.Add(player);
+        if (_entry is not { } entry)
+            return;
+        // One of ours (it asks the engine): the indicator shows the drum as joined, the card choice closes on the first
+        // join (NotifyDataSelect(false), as the game's entry sends it).
+        if (entry.UsesProvider)
+        {
+            if (Session.JoinedCount == 1)
+                Parts.HideNameBoards(); // the flow gives the waiting card to the joining drum: none is left
+
+            Parts.SetIndicator(player, 2);
+        }
         if (_standHidden[player])
         {
             _standHidden[player] = false;
@@ -714,15 +659,13 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             entry.TrySetInstanceAlpha($"name_bg/touch_msg_{player + 1}p", 0); // ponytail: alpha, not isData
         }
         if (SetupMode)
-            return true; // both stands up for the setup screen; the real join comes after it
+            return; // both stands up for the setup screen; the real join comes after it
         // The game's own join voice inside EntryCoin: cue 2 for the left drum, 3 for the right (traced;
         // in free play the movie also requests cue 2).
         PlayVoice?.Invoke(player == 1 ? 3 : 2);
         call(entry, "BnCoinSetFree", LumenHostValue.FromBoolean(false));
         CoinsChanged();
-        PlayerJoined?.Invoke(player);
         assignCostumes(entry, player, PlayerLook?.Invoke(player));
-        return true;
     }
 
     private void closeCardDialog()
@@ -734,7 +677,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
 
     private readonly Dictionary<int, string> _cardNames = []; // drums holding a card, until they join
 
-    private bool canPay() => Coins is null || Coins.Missing(_joined.Count) == 0;
+    private bool canPay() => Session.CanPay;
 
     // The account name: Don-chan names are not used by Waddamburo (DisplayName falls back to the card's).
     private static string TaikoPlayerName(ScoreProfile card) => card.DisplayName.Length > 0 ? card.DisplayName : $"#{card.Baid}";

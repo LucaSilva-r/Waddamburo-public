@@ -57,22 +57,25 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
     {
         if (arguments is not [{ Kind: LumenHostValueKind.Number } drum] || drum.AsNumber() is not (1 or 2))
             return "player.join takes the drum's number, 1 or 2";
-        if (Shell.Hosts.Entry is not { } host || !_ready)
+        if (Shell.Hosts.EntrySession is not { } session || !_ready)
             return "the entry is not ready yet";
-        return join(host, (int)drum.AsNumber() - 1);
+        return join(session, (int)drum.AsNumber() - 1);
     }
 
-    private static string? join(Waddamburo.Skins.Green.EntrySceneHost host, int side)
+    private static string? join(EntrySession session, int side)
     {
-        if (host.IsJoined(side))
+        if (session.IsJoined(side))
             return "that drum is already in";
-        var first = !host.IsJoined(0) && !host.IsJoined(1);
-        if (!host.TryJoin(side))
+        var first = session.JoinedCount == 0;
+        if (!session.TryJoin(side))
             return "that drum cannot join now (credits, or the setup has the drums)";
         // A card paired from the website waits for a drum: the one that joins takes it.
-        host.ClaimCard(side);
-        if (first) host.FirstJoin(side, EntrySeconds);
-        else host.Indicate(side);
+        session.ClaimCard(side);
+        if (first)
+        {
+            session.StartCountdown(EntrySeconds);
+            session.ResumeCountdown();
+        }
         return null;
     }
 
@@ -104,12 +107,12 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
             // The drum that brought the players here joins at once (the attract's trigger: 0 the left drum, 1 the
             // right, 2 both; 3 a coin and 4 none join nobody).
             var trigger = Shell.Hosts.EntryTrigger;
-            if (trigger is 0 or 2) join(host, 0);
-            if (trigger is 1 or 2) join(host, 1);
+            if (trigger is 0 or 2) join(host.Session, 0);
+            if (trigger is 1 or 2) join(host.Session, 1);
         }
         for (var side = 0; side < 2; side++)
-            movie.Publish("player.joined", LumenHostValue.FromBoolean(host.IsJoined(side)), side + 1);
-        movie.Publish("entry.timeLeft", host.TimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
-        movie.Publish("entry.setup", LumenHostValue.FromBoolean(host.SetupOpen));
+            movie.Publish("player.joined", LumenHostValue.FromBoolean(host.Session.IsJoined(side)), side + 1);
+        movie.Publish("entry.timeLeft", host.Session.TimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
+        movie.Publish("entry.setup", LumenHostValue.FromBoolean(host.Session.SetupMode));
     }
 }

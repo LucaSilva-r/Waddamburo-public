@@ -81,6 +81,9 @@ internal sealed class LayerHostFactory(
     /// <summary>The loaded entry's host (null outside the entry).</summary>
     public EntrySceneHost? Entry => _entry;
 
+    /// <summary>The loaded entry's engine state (null outside the entry).</summary>
+    public EntrySession? EntrySession => _entry?.Session;
+
     /// <summary>A card read in the attract loop, for the entry about to load.</summary>
     public ScoreProfile? EntryCard { get; set; }
 
@@ -305,21 +308,22 @@ internal sealed class LayerHostFactory(
         if (layer.HostId == "player-entry")
         {
             _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = HideArcadeHud?.Invoke() != true };
-            _entry = new EntrySceneHost(_parts)
+            var session = new EntrySession { Coins = Coins, Card = EntryCard, SetupMode = EntrySetup };
+            if (EntryRejoined is { } rejoined)
+                session.PreJoin(rejoined);
+            session.Entered += player => EntryJoined?.Invoke(player);
+            session.CardClaimed += (side, card) => CardClaimed?.Invoke(side, card);
+            _entry = new EntrySceneHost(_parts, session)
             {
-                Coins = Coins,
                 PlayVoice = sounds is null ? null : sounds.Frontend.PlayEntryVoice,
                 PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
-                Card = EntryCard,
                 Don = don,
                 ReturnToAttract = () => ReturnToAttract?.Invoke(),
                 PlayerLook = side => PlayerLook?.Invoke(side),
                 PlayerName = side => PlayerName?.Invoke(side),
                 CardDialog = open => CardDialog?.Invoke(open),
-                CardClaimed = (side, card) => CardClaimed?.Invoke(side, card),
-                SetupMode = EntrySetup,
                 PreJoined = EntryRejoined,
             };
             _entryPrevious = EntryRejoined is null ? 0 : 1; // SCENE_ATTRACT / SCENE_SONGSELECT
@@ -328,7 +332,6 @@ internal sealed class LayerHostFactory(
             if (EntryCardRejected)
                 _entry.RejectCard();
             EntryCardRejected = false;
-            _entry.PlayerJoined += player => EntryJoined?.Invoke(player);
         }
         else if (layer.HostId == "song-select")
         {
