@@ -20,6 +20,7 @@ placeholder (SVG boxes, text fields). User-checked at home; arcade (coins, rejoi
 | Intermissions | rainbow, fade, shutter, dan covers on the transition protocol |
 | Boot, logo, title, notice, tutorial | small callback-era packages (`_global.is_end`, `Command("End")`, `isAllEnd`) |
 | `indicator/time_counter` | callback-era (the first proof, 2026-11-11), still the game's contract |
+| `indicator/msg_coins`, `network_icon` | on the provider (credits, network, names) |
 | Everything else | an empty **stand-in** (below) |
 
 Next, in order: song select step 2 (big panel `selected.*`), `tree.search/sort/group/filter`, images (`Wd.fill`),
@@ -108,6 +109,14 @@ plays their feedback itself (`ui.don`, `ui.ka`; the game's menus play their own)
 another movie hears player 1's with `Wd.on("drum.hit", fn)`, or each drum with `Wd.on("drum.hit", fn, 1)` and
 `fn, 2`: a cursor per player (the course select). Our entry, song select, dan select and results read the drums
 this way; none reads keys any more.
+
+**App and session state** (2026-11-15): every tick the shell tells each movie of ours on stage (the screen, the
+indicators, the intermission) `screen.name`, `credits.freePlay` / `count` / `service` / `toJoin` / `shown`,
+`network.state`, and per drum `player.joined` and `player.name` (`GameShell.publishAppState`; a movie hears only
+changes). Our `indicator/msg_coins` (the credit line, each drum's name or join prompt) and `indicator/network_icon`
+read them; the game's indicator code (`SystemIndicators`, `IndicatorParts`) leaves a movie of ours alone and counts
+it as ready, and the home setup's name tags are not drawn over our entry. Still the game's way: `time_counter`, the
+card prompt (`msg_banapass`), the name boards (`player_name`: a board does not know its drum yet).
 
 ### Scopes
 

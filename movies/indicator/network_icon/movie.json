@@ -1,0 +1,31 @@
+// network_icon: the link to the score server, a coloured dot and a word, top right. Placeholder look.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "ok": "textures/ok.svg",
+    "warn": "textures/warn.svg",
+    "off": "textures/off.svg"
+  },
+  "shapes": {
+    "ok": { "texture": "ok", "rect": [-8, -8, 16, 16] },
+    "warn": { "texture": "warn", "rect": [-8, -8, 16, 16] },
+    "off": { "texture": "off", "rect": [-8, -8, 16, 16] }
+  },
+  "texts": {
+    "label": { "rect": [-220, -12, 200, 24], "size": 18, "align": "right", "color": "#ffffff" }
+  },
+  "sprites": {
+    "main": {
+      "frames": 1,
+      "layers": [
+        { "character": "ok", "name": "ok", "keys": [{ "frame": 0, "x": 1256, "y": 20 }] },
+        { "character": "warn", "name": "warn", "keys": [{ "frame": 0, "x": 1256, "y": 20 }] },
+        { "character": "off", "name": "off", "keys": [{ "frame": 0, "x": 1256, "y": 20 }] },
+        { "character": "label", "name": "label", "keys": [{ "frame": 0, "x": 1256, "y": 20 }] }
+      ],
+      "scripts": { "0": "scripts/main.as" }
+    }
+  }
+}

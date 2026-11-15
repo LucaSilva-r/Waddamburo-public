@@ -1,0 +1,30 @@
+// msg_coins: the credit line (free play, credits, service) and, per drum, its player's name or a prompt to join.
+// Placeholder look: text over a dark band. Reads the provider only (credits.*, screen.name, player.*).
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "band": "textures/band.svg"
+  },
+  "shapes": {
+    "band": { "texture": "band", "rect": [0, 0, 1280, 44] }
+  },
+  "texts": {
+    "credits": { "rect": [-300, -18, 600, 36], "size": 26, "align": "center", "color": "#ffffff" },
+    "left": { "rect": [0, -18, 400, 36], "size": 26, "align": "left", "color": "#ffd23c" },
+    "right": { "rect": [-400, -18, 400, 36], "size": 26, "align": "right", "color": "#ffd23c" }
+  },
+  "sprites": {
+    "main": {
+      "frames": 1,
+      "layers": [
+        { "character": "band", "name": "band", "keys": [{ "frame": 0, "y": 676, "alpha": 0.6 }] },
+        { "character": "credits", "name": "credits", "keys": [{ "frame": 0, "x": 640, "y": 698 }] },
+        { "character": "left", "name": "left", "keys": [{ "frame": 0, "x": 24, "y": 698 }] },
+        { "character": "right", "name": "right", "keys": [{ "frame": 0, "x": 1256, "y": 698 }] }
+      ],
+      "scripts": { "0": "scripts/main.as" }
+    }
+  }
+}

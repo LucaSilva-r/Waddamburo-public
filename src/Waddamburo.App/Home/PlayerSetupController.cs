@@ -203,6 +203,9 @@ internal sealed class PlayerSetupController : IDisposable
         // The tag follows the live choice; the stand shows what is on it now (it swaps mid-smoke), and its
         // text only once the smoke has burst.
         var live = _flow is { IsOpen: true } setup && shell.Hosts.Entry is { SetupMode: true } ? setup.Columns() : null;
+        // Our entry shows the names itself (player.name); the tags over the boards are for the game's.
+        if (live is null && shell.Active.Player.Layers.Any(static layer => layer.Player.UsesProvider))
+            return [];
         var columns = live?.Select((column, side) => column with { Choice = _shownChoice[side] ?? column.Choice }).ToArray();
         bool[] standVisible = [shell.Tick >= _revealAt[0], shell.Tick >= _revealAt[1]];
         string?[] tags = live is not null

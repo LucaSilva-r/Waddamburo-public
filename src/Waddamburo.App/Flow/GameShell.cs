@@ -507,6 +507,53 @@ internal sealed class GameShell : IDisposable
 
     // In the menus the arrows and Enter also work the drum: Left/Up and Right/Down are its rims, Enter its
     // centre (player 1's, or player 2's when they play alone; the revival is always driven as player 1's).
+    // The app's and the session's state, told every tick to each movie of ours on stage (free-movies.md, Scopes): the
+    // screen, the credits, the network, who plays and their names. Publish tells a movie only what changed.
+    // ponytail: rebuilt every tick (a few small values); events from the coin bank and the link if it ever shows.
+    private void publishAppState(FlowScene scene)
+    {
+        var movies = Active.Player.Layers.Select(static layer => layer.Player)
+            .Concat(_indicators?.Scene.Player.Layers.Select(static layer => layer.Player) ?? [])
+            .Concat(Overlay.Player is { } shown ? [shown] : [])
+            .Where(static player => player.UsesProvider).ToArray();
+        if (movies.Length == 0)
+            return;
+        var screen = LumenHostValue.FromString(scene.IndicatorsFor(Active.Id) switch
+        {
+            IndicatorScene.Boot => "boot",
+            IndicatorScene.Attract => "attract",
+            IndicatorScene.AttractPrompt => "title",
+            IndicatorScene.Demo => "demo",
+            IndicatorScene.Entry => "entry",
+            IndicatorScene.SongSelect => "select",
+            IndicatorScene.Tutorial => "tutorial",
+            IndicatorScene.DaniSelect => "danSelect",
+            IndicatorScene.Gameplay => "play",
+            _ => "result",
+        });
+        var network = LumenHostValue.FromString(Sync.Health is { } health
+            ? char.ToLowerInvariant(health.State.ToString()[0]) + health.State.ToString()[1..] : "none");
+        LumenHostValue number(int? value) => value is { } some ? LumenHostValue.FromNumber(some) : LumenHostValue.Undefined;
+        var joined = Players.JoinedSides;
+        foreach (var movie in movies)
+        {
+            movie.Publish("screen.name", screen);
+            movie.Publish("credits.freePlay", LumenHostValue.FromBoolean(Coins is null));
+            movie.Publish("credits.count", number(Coins?.Credits));
+            movie.Publish("credits.service", Coins is { } bank ? LumenHostValue.FromBoolean(bank.Service) : LumenHostValue.Undefined);
+            movie.Publish("credits.toJoin", number(Coins?.Missing(joined.Count)));
+            movie.Publish("credits.shown", LumenHostValue.FromBoolean(!HideArcadeHud));
+            movie.Publish("network.state", network);
+            for (var side = 0; side < 2; side++)
+            {
+                var playing = joined.Contains(side);
+                movie.Publish("player.joined", LumenHostValue.FromBoolean(playing), side + 1);
+                movie.Publish("player.name", playing ? LumenHostValue.FromString(TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest"))
+                    : LumenHostValue.Undefined, side + 1);
+            }
+        }
+    }
+
     // A menu screen of ours hears every drum's hits (drum.hit, per drum: a cursor per player), and the engine plays
     // their feedback (ui.don, ui.ka), as it plays the drums in a song. The game's menus play their own.
     private void menuDrumHits(SdlKeyboardSnapshot keys)
@@ -1322,6 +1369,7 @@ internal sealed class GameShell : IDisposable
             return;
         if (!Scenes.OnLane)
             menuDrumHits(keys);
+        publishAppState(scene);
         advance(scene, keys);
         var switching = Coordinator.Flow.State == GameFlowState.TransitionPending;
         if (_home.HoldsResults(held, switching))

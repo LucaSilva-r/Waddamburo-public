@@ -342,6 +342,7 @@ public sealed class SystemIndicators
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
+        if (player.UsesProvider) return; // ours reads the provider (app scope: credits, network, screen)
         if (!player.TryInvokeCallback(name, arguments))
             throw new InvalidDataException($"Indicator movie is missing callback '{name}'.");
     }

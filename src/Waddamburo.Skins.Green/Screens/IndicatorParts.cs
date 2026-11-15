@@ -48,7 +48,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         _pending.RemoveAll(part =>
         {
             // A stand-in (no such movie) never registers any and takes every call.
-            if (part.Player.CallbackNames.Length == 0 && !part.Player.StandIn) return false;
+            // One of ours reads the provider: nothing to set up.
+            if (part.Player.CallbackNames.Length == 0 && !part.Player.StandIn && !part.Player.UsesProvider) return false;
             part.Setup();
             return true;
         });
@@ -260,6 +261,7 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
 
     private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
     {
+        if (player.UsesProvider) return; // ours reads the provider
         if (!player.TryInvokeCallback(name, arguments))
             throw new InvalidDataException($"Indicator movie is missing callback '{name}'.");
     }
