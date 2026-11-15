@@ -165,7 +165,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         Console.WriteLine($"Search '{results.Query}': {results.Songs.Count} songs.");
         remember(results.Query);
         Close();
-        shell.Reload.Start(() => shell.Hosts.Search = results);
+        shell.Reload.Start(() => shell.Select.Search = results);
     }
 
     // The search goes first in the history, once (a search picked again moves up); the last five are kept.

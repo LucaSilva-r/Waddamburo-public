@@ -172,7 +172,7 @@ internal sealed class OnlineMatch(GameShell shell)
             shell.Reload.Start(() =>
             {
                 if (_theirs is { } host)
-                    shell.Hosts.ShowOnlineSong(host.Song);
+                    shell.Select.ShowOnlineSong(host.Song);
             });
             return false;
         }
@@ -303,7 +303,7 @@ internal sealed class OnlineMatch(GameShell shell)
         (_mine, _theirs, _theirReady, _go, InSong, _partnerMissing, _readySince, _goAt) = (null, null, false, false, false, false, 0, 0);
         (_chooserSong, _awaiting, _packing, _unpacking, _sending) = (null, null, null, null, false);
         shell.Room.Session?.Transfer.Cancel();
-        shell.Hosts.ShowOnlineSong(null);
+        shell.Select.ShowOnlineSong(null);
     }
 
     private bool readyTimedOut() => _readySince != 0 && System.Diagnostics.Stopwatch.GetElapsedTime(_readySince) > ReadyTimeout;
@@ -350,7 +350,7 @@ internal sealed class OnlineMatch(GameShell shell)
                 if (_mine is not null)
                     shell.SongSelectFlow.CancelCover();
                 reset();
-                shell.Reload.Start(() => shell.Hosts.ShowOnlineSong(null));
+                shell.Reload.Start(() => shell.Select.ShowOnlineSong(null));
                 break;
             case "ready":
                 _theirReady = true;
@@ -436,7 +436,7 @@ internal sealed class OnlineMatch(GameShell shell)
     {
         // Song Select shows only that song, to pick a course on; the lobby makes way.
         shell.Room.ClosePanel();
-        shell.Reload.Start(() => shell.Hosts.ShowOnlineSong(song));
+        shell.Reload.Start(() => shell.Select.ShowOnlineSong(song));
     }
 
     // The chosen song for both: the lanes in drum order, this player's on their own drum's side.

@@ -119,7 +119,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         open();
         _relayout = true;
-        shell.Hosts.ReturnToOnline();
+        shell.Select.ReturnToOnline();
     }
 
     private void open()

@@ -90,6 +90,15 @@ public sealed class SongSelectSession
 
     // --- The screen's state, whatever movie shows it ---
 
+    /// <summary>The folder the cursor starts on.</summary>
+    public int StartCategory { get; init; }
+
+    /// <summary>The song the cursor starts on inside <see cref="StartCategory"/> (-1: on the folder).</summary>
+    public int StartSong { get; init; } = -1;
+
+    /// <summary>Song Select picks the song for the player, as when the time runs out (the online guest, on the host's song).</summary>
+    public bool ForcePick { get; init; }
+
     /// <summary>The countdown (the movie starts it; home or the countdown off: it holds its full time).</summary>
     public SongSelectTimer Timer { get; } = new();
 

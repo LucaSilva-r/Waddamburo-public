@@ -52,7 +52,7 @@ internal sealed class PlayerSession(GameShell shell)
         shell.Room?.Leave();
         // A credit starts with guests (default Dons), with the website's current looks once they attach.
         if (!shell.Arcade.Home)
-            shell.Hosts.ForgetLastSong();
+            shell.Select.ForgetLastSong();
         Array.Clear(TaikoGuest.Profiles);
         Array.Clear(TaikoGuest.Options);
         Array.Clear(TaikoGuest.Tones);

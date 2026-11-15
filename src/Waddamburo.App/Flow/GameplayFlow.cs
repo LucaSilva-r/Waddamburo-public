@@ -1017,7 +1017,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // course; reported on Discord).
         Shell.SongInfo = Shell.SongInfo with
         {
-            Genre = Shell.Hosts.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
+            Genre = Shell.Select.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
             Stage = _play.CourseSong + 1,
         };
         if (sceneLayer("song_info") is { } info)
@@ -1132,7 +1132,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         var counts = Shell.Gameplay.DanSongs(course.Songs.Count);
         var plan = Shell.Gameplay.Dan!;
         return new DanCourseResult(plan, [.. course.Songs.Select((song, index) => new DanSongResult(
-                Shell.Hosts.Dan?.Genre(_courseSongs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
+                Shell.Select.Dan?.Genre(_courseSongs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
             _play.CourseSong + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total, Shell.Gameplay.DanSongEnds))
             { SongEnds = [.. Shell.Gameplay.DanSongEnds] };
     }

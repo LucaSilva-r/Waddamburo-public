@@ -34,7 +34,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             Shell.Previews?.StartBackground(Shell.Credit.Waiwai, Shell.Credit.AiBattle);
             if (Shell.Arcade.Home && !Shell.Arcade.CustomUploadNoticeSeen
-                && Shell.Hosts.Library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
+                && Shell.Select.Library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
                 Shell.CustomUploadPrompt.Open(static () => { });
         }
         else if (scene == FlowScenes.DaniSelect) // traced session30: bgm/nub/JINGLE_DANI opened as it loads
@@ -222,7 +222,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             Shell.Reload.Start(() =>
             {
-                var browse = Shell.Hosts.CycleBrowse(control);
+                var browse = Shell.Select.CycleBrowse(control);
                 Shell.Arcade = Shell.Arcade with { OsuBrowse = browse };
                 if (Shell.Options.ArcadePath is { } path)
                 {
@@ -395,9 +395,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (Shell.Hosts.SelectSession?.LibraryRequested is not { } library)
             return false;
         if (!Shell.Arcade.CustomUploadNoticeSeen && library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
-            Shell.CustomUploadPrompt.Open(() => Shell.Reload.Start(() => Shell.Hosts.Library = library));
+            Shell.CustomUploadPrompt.Open(() => Shell.Reload.Start(() => Shell.Select.Library = library));
         else
-            Shell.Reload.Start(() => Shell.Hosts.Library = library);
+            Shell.Reload.Start(() => Shell.Select.Library = library);
         return true;
     }
 
@@ -490,9 +490,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             var loaded = _songRows = new LibraryRows(songTree(host.Catalog));
             host.Session.StartCountdown(SongSelectSeconds);
             // Where the cursor starts: a folder, or a song inside it (back from a song).
-            var folder = Math.Clamp(host.StartCategory, 0, Math.Max(0, loaded.Rows.Count - 1));
-            if (host.StartSong >= 0 && openSongRow(loaded, host.Session, folder) is null)
-                selectSongRow(loaded, host.Session, folder + 1 + host.StartSong);
+            var folder = Math.Clamp(host.Session.StartCategory, 0, Math.Max(0, loaded.Rows.Count - 1));
+            if (host.Session.StartSong >= 0 && openSongRow(loaded, host.Session, folder) is null)
+                selectSongRow(loaded, host.Session, folder + 1 + host.Session.StartSong);
             else
                 selectSongRow(loaded, host.Session, folder);
         }
@@ -628,7 +628,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 .Handle("course.start", _ => rows(startCourse))
                 .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
         }
-        if (_danRows is null && Shell.Hosts.Dan is { Ready: true } dan)
+        if (_danRows is null && Shell.Select.Dan is { Ready: true } dan)
         {
             _danTree = dan.Tree();
             _danRows = new LibraryRows(_danTree);
@@ -677,7 +677,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var song = find(key.Song).Song.Descriptor;
         var chart = song.Charts.First(candidate => candidate.Key == key);
         Shell.Gameplay.Dan = course.Course;
-        var challenge = Shell.Credit.DanChallenge = Shell.Hosts.Dan!.ChallengeNumber(Shell.Credit.DanSeries, course.Course);
+        var challenge = Shell.Credit.DanChallenge = Shell.Select.Dan!.ChallengeNumber(Shell.Credit.DanSeries, course.Course);
         Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Credit.DanSeries, challenge, "mini");
         var side = Shell.Credit.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,

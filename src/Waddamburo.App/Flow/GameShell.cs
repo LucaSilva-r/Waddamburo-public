@@ -386,6 +386,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>The credit's state (who plays where, the mode, the results to show).</summary>
     public CreditState Credit { get; } = new();
 
+    /// <summary>What the next Song Select lists and where it starts.</summary>
+    public SongSelectSetup Select { get; private set; } = null!;
+
     /// <summary>Whether the active screen's movies are done with it (the skin answers).</summary>
     public bool ScreenEnded => ((IScreenEnds)Hosts).Ended(Active.Id, [.. Active.Player.Layers.Select(static layer => layer.Player)]);
     public GameFlowCoordinator Coordinator { get; }
@@ -1027,18 +1030,35 @@ internal sealed class GameShell : IDisposable
             ]);
 
     // The movies' hosts (the game side of every Lumen movie): what they ask the game and what it answers.
+    private SongSelectSetup createSelect(SongCatalogSnapshot snapshot) =>
+        new(Credit, snapshot, Titles, Previews is null ? TracePreviewController.Instance : Previews, PlayRequests, () => Arcade)
+        {
+            // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
+            // the machine's, not a player's, so a cabinet's guests and card players get no folder (#6).
+            Favourites = !Arcade.Home ? null : new SongFavourites(Options.ArcadePath is { } arcade
+                ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),
+            RecentCharts = side => Sync.Scores is not { } scores ? null
+                : TaikoGuest.Profiles[side] is { } profile ? scores.RecentCharts(profile.Baid)
+                : Arcade.Home ? scores.RecentCharts(ScoreProfile.LocalGuestBaid) : null,
+            Dan = _danCourses,
+            OnlineAvailable = () => Room.Available,
+            InOnlineRoom = () => Room.Session is not null,
+            Received = ReceivedSongs.Find,
+            RandomSongFolder = () => Arcade.RandomSongFolder,
+            HomeTutorialSeen = () => Arcade.Home && Arcade.TutorialSeen,
+        };
+
     private LayerHostFactory createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult) =>
         new(
             Credit,
+            Select = createSelect(snapshot),
             flow,
             snapshot,
             Titles,
-            Previews is null ? TracePreviewController.Instance : Previews,
             Sounds is null ? TraceSoundController.Instance : Sounds.Frontend,
             Sounds,
             new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
             Don,
-            PlayRequests,
             () => SongInfo,
             Options.Countdown,
             () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
@@ -1054,34 +1074,21 @@ internal sealed class GameShell : IDisposable
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Skins.Green.AiBattlePanels.NewPlayer.Tension)
                 : Waddamburo.Skins.Green.AiBattlePanels.NewPlayer,
             ShowOni = () => Arcade.ShowOni,
-            RandomSongFolder = () => Arcade.RandomSongFolder,
             HideArcadeHud = () => HideArcadeHud,
             TimerFreeze = () => Arcade.TimerFreeze,
-            HomeTutorialSeen = () => Arcade.Home && Arcade.TutorialSeen,
             CopyrightPages = _copyright.Pages,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
-            // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
-            // the machine's, not a player's, so a cabinet's guests and card players get no folder (#6).
-            Favourites = !Arcade.Home ? null : new SongFavourites(Options.ArcadePath is { } arcade
-                ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcade))!, "favourites.txt") : null),
             Crowns = side => Sync.Scores is not { } scores ? null
                 : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
                 : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
-            RecentCharts = side => Sync.Scores is not { } scores ? null
-                : TaikoGuest.Profiles[side] is { } profile ? scores.RecentCharts(profile.Baid)
-                : Arcade.Home ? scores.RecentCharts(ScoreProfile.LocalGuestBaid) : null,
             CardClaimed = (side, card) =>
             {
                 TaikoGuest.Profiles[side] = card;
                 Sync.RefreshBests(card);
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
-            Dan = _danCourses,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
-            OnlineAvailable = () => Room.Available,
-            InOnlineRoom = () => Room.Session is not null,
-            Received = ReceivedSongs.Find,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.DisplayName,
         };
@@ -1766,7 +1773,7 @@ internal sealed class GameShell : IDisposable
         if (!Arcade.UploadBanner || _gameplay.Demo) return _uploadBanner = null;
         if (auto) return _uploadBanner = "custom_upload.banner_auto";
         var source = song?.Descriptor.Key.Source ?? request?.Song.Source
-            ?? (Active.Id == FlowScenes.SongSelect ? Hosts.Library : (SongSourceKind?)null);
+            ?? (Active.Id == FlowScenes.SongSelect ? Select.Library : (SongSourceKind?)null);
         if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))
             return _uploadBanner = null;
         if (!Arcade.UploadCustomSongs) return _uploadBanner = "custom_upload.banner_all";
@@ -1804,7 +1811,7 @@ internal sealed class GameShell : IDisposable
     {
         var card = _cardReplay is not null ? replayCard(failure: false) : Sync.Pairing?.TakeCard();
         if (card is not null && _traceInput)
-            Console.WriteLine($"[card] {Tick} {System.Text.Json.JsonSerializer.Serialize(card)}");
+            Console.WriteLine($"[card] {Tick} {System.Text.Json.JsonSerializer.Serialize(card, CardReplayJson.Default.ScoreProfile)}");
         return card;
     }
 
@@ -1817,7 +1824,7 @@ internal sealed class GameShell : IDisposable
             ? new(File.ReadLines(path).Where(static line => line.StartsWith("[card] ", StringComparison.Ordinal))
                 .Select(static line => line[7..].Split(' ', 2))
                 .Select(static parts => (long.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture),
-                    parts[1] == "reject" ? null : System.Text.Json.JsonSerializer.Deserialize<ScoreProfile>(parts[1]))))
+                    parts[1] == "reject" ? null : System.Text.Json.JsonSerializer.Deserialize(parts[1], CardReplayJson.Default.ScoreProfile))))
             : null;
 
     private ScoreProfile? replayCard(bool failure)
@@ -1887,3 +1894,7 @@ internal sealed class GameShell : IDisposable
         _discord?.Dispose();
     }
 }
+
+// The input trace's card lines (GameShell.TakeCard, WADDAMBURO_CARD_REPLAY).
+[System.Text.Json.Serialization.JsonSerializable(typeof(ScoreProfile))]
+internal sealed partial class CardReplayJson : System.Text.Json.Serialization.JsonSerializerContext;

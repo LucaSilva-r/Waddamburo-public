@@ -265,12 +265,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>Song Select reloads for the host (library, grouping, order, search): its music plays on.</summary>
     public bool Reloading { get; set; }
 
-    /// <summary>The folder the cursor starts on.</summary>
-    public int StartCategory { get; init; }
-
-    /// <summary>The song the cursor starts on inside <see cref="StartCategory"/> (-1: on the folder).</summary>
-    public int StartSong { get; init; } = -1;
-
     /// <summary>
     /// Remembers the song the player is on (its difficulties' song, else the list's centre) as picked, so
     /// Song Select comes back to it: a play started from Waddamburo's own UI (a replay), not the movie.
@@ -305,7 +299,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("StartTimer", startTimer);
             lumen.RegisterMethod("StopTimer", stopTimer);
             // An online guest: little time left, as on a cabinet whose timer is nearly out, so the courses can't be left.
-            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(ForcePick ? ForcedSeconds : Math.Ceiling(_session.Timer.Remaining.TotalSeconds)));
+            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(_session.ForcePick ? ForcedSeconds : Math.Ceiling(_session.Timer.Remaining.TotalSeconds)));
             // With the cabinet countdown off the timer never runs out (the counter still shows).
             lumen.RegisterMethod("IsTimeup", isTimeUp);
             lumen.RegisterMethod("IsInitWait", _ =>
@@ -458,7 +452,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         {
             Scroll = null; // the page jump drives the game's movie through its script objects
             _parts?.ShowGuestNames(_shown);
-            _sounds?.SelectCategoryVoice(_session.Catalog.Categories[StartCategory].Name);
+            _sounds?.SelectCategoryVoice(_session.Catalog.Categories[_session.StartCategory].Name);
             return true;
         }
         installFavouriteIcon();
@@ -494,7 +488,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 LumenHostValue.FromNumber((int)category.Presentation),
                 LumenHostValue.FromNumber(featureSlot));
         }
-        nameFeatureFolders(StartCategory);
+        nameFeatureFolders(_session.StartCategory);
         // The by-difficulty panel's counts per course (0 easy..3 oni) and ★ 1-10 (traced 40 calls after AssignMusic).
         if (_session.Catalog.CourseStarCategory >= 0)
             publishCourseStars();
@@ -526,7 +520,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 (_, original) => _boardLabel is { } label ? LumenHostValue.FromString(label) : original()))
             Console.Error.WriteLine("Song Select has no MusicBoard.ResetMusicInfo; search results keep the folder's colour.");
         // Callback_SetSelectedMusic(genre, music) resets the movie's selection onto that song's board.
-        invoke("SetSelectedMusic", LumenHostValue.FromNumber(StartCategory), LumenHostValue.FromNumber(StartSong));
+        invoke("SetSelectedMusic", LumenHostValue.FromNumber(_session.StartCategory), LumenHostValue.FromNumber(_session.StartSong));
         // SetPlayer(player, joined, hasData, ...): traced (1, true, false, ...) for a guest on the right
         // drum alone, both joined for two players. hasData (a profile) lets the boards show crowns.
         foreach (var player in new[] { 0, 1 })
@@ -898,7 +892,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         advanceCountdownCues(); // polled every frame
         // An online guest: time is up at once, so the movie rolls onto the one song listed (the host's) and opens
         // its courses, as a cabinet's timer running out does; then the player picks.
-        if (ForcePick && _session.CourseSelectSong is null)
+        if (_session.ForcePick && _session.CourseSelectSong is null)
             return LumenHostValue.FromBoolean(true);
         return LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _session.Timer.IsTimeUp);
 
@@ -1118,9 +1112,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             _sounds?.SelectCategoryVoice(_session.Catalog.Categories[category].Name);
         return LumenHostValue.Undefined;
     }
-
-    /// <summary>Song Select picks the song for the player, as when the time runs out (the online guest, on the host's song).</summary>
-    public bool ForcePick { get; init; }
 
     // Under the time a cabinet stops letting players back out of the courses (15 or 30 s), never out.
     private const int ForcedSeconds = 10;
