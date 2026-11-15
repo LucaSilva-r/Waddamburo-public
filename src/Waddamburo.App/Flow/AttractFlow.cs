@@ -1,7 +1,6 @@
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.App.Presentation;
-using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Skins.Green;
@@ -76,7 +75,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             // function keys (coins, back to the attract, ...) do not. Not cabinet behaviour: a cabinet waits for them.
             if (Shell.Arcade.Home && (input.Skip || input.DrumSide is not null
                 || input.Keys.Presses.Any(static press => press.Key is < SdlKeyboardKey.F1 or > SdlKeyboardKey.F8))
-                || AttractHostBinding.IsBootEnd(Shell.Active.Player.Layers.Single().Player))
+                || Shell.ScreenEnded)
                 Shell.Scenes.Show(FlowScenes.Logo);
             return;
         }
@@ -92,7 +91,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
                 Shell.Scenes.Show(next);
             }
         }
-        else if (Shell.Hosts.Attract?.Finished == true)
+        else if (Shell.ScreenEnded)
         {
             var current = Shell.Active.Id;
             // Releases with an opening movie play it as the title (their exe's attract table).

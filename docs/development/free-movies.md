@@ -433,11 +433,15 @@ renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposi
   battle results to show), owned by the shell. 5c-2: `App/Hosting/SongSelectSetup` (library, osu! browse, search,
   online song, folders offered, start cursor) builds the `SongSelectSession`, which carries the start and forced pick.
 
-Next (5c-3 on): 18 App files still name Green types. `LayerHostFactory` now holds only the game movies' hosts (the
-`Create` switch, the bindings, `IScreenEnds`) plus their inputs (sounds, rankings, crowns, bests, AI panels): move it
-into Green behind `ISkin`, and give the flows engine-side views of what they read from the loaded bindings
-(`SongSelect` 18 uses, `Entry`, `DaniSelect`, `Retry`, `ModeTutorial`, `AiRemind`, `DaniResult`, `WaiwaiResult`,
-`AiSectionResult`, `Attract`, `GameOver`).
+- 5c-3: the scene lists (`FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposition`) moved to
+  `Game.Scenes`; `LayerHostFactory` became `Skins.Green.GreenScreenHosts` behind `Game.Flow.IScreenHosts` (the
+  layer factory, `IScreenEnds`, `Poll(screen)` / `TimeOut(screen)`, the dan list's choice, the revival's outcome,
+  entry cards and coins) with views `IEntryScreen`, `ISongSelectScreen`, `ISongSelectScroll`. Its App inputs became
+  delegates (session factory, dan boards, rankings); the attract and boot ends go through `Ended`; the screens' sound
+  controllers are grouped in `GreenScreenSounds`. The App constructs it in `GameShell.createHosts` only (step 6
+  replaces that with the skin).
+
+Next: 16 App files still name Green types.
 Then `GameSounds`/`ConsoleServices` (sound controllers), the gameplay adapters (`GameplayFlow`,
 `TaikoGameplayPresentation`), the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
 `IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,

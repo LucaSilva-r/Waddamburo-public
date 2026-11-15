@@ -1,45 +1,40 @@
 using Waddamburo.Skins.Green.Art;
-using Waddamburo.App.Audio;
-using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Skins.Green;
 using Waddamburo.Skins.Green.Gameplay;
+using Waddamburo.Skins.Green.Sound;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.App.Hosting;
+namespace Waddamburo.Skins.Green;
 
 /// <summary>
-/// Creates each scene layer's game-side host by its host id. The flow sets the credit's state here
-/// before a scene loads, and polls the loaded hosts it needs (mode switch, results end, revival).
+/// Creates each scene layer's host by its host id: the game's bindings, which also serve our movies on the provider.
+/// The flow sets the credit's state before a scene loads and asks the loaded screens through <see cref="IScreenHosts"/>.
 /// </summary>
-internal sealed class LayerHostFactory(
+public sealed class GreenScreenHosts(
     CreditState credit,
-    SongSelectSetup select,
+    Func<bool, SongSelectSession> createSelectSession,
     GameFlowSession flow,
     SongCatalogSnapshot catalog,
     ISongBoardTextureService textures,
     ISongSelectSoundController songSelectSounds,
-    GameSounds? sounds,
+    GreenScreenSounds? sounds,
     ILumenFrontendServices frontend,
     IDonPresentationController? don,
     Func<TaikoSongInfo> songInfo,
     bool countdown,
     Func<IReadOnlyList<TaikoPlayResult>> playResults,
     Func<ArcadeSettings> arcadeSettings,
-    CoinBank? coins) : ILumenLayerHostFactory, IScreenEnds
+    CoinBank? coins) : IScreenHosts
 {
     /// <summary>The credit's state the flow sets before a screen loads.</summary>
     public CreditState Credit { get; } = credit;
-
-    /// <summary>What the next Song Select lists and where it starts.</summary>
-    public SongSelectSetup Select { get; } = select;
 
     // The game's movies end a screen with _global.isAllEnd (RetryGameHostBinding.IsEnd) or a call their host keeps.
     public bool Ended(SceneId screen, IReadOnlyList<LumenPlayer> movies)
@@ -58,8 +53,45 @@ internal sealed class LayerHostFactory(
             return RetryGameHostBinding.IsEnd(movies[0]);
         if (screen == FlowScenes.WaiwaiTutorial || screen == FlowScenes.AiTutorial)
             return ModeTutorial?.Finished == true;
+        if (screen == FlowScenes.Boot)
+            return AttractHostBinding.IsBootEnd(movies.Single());
+        if (screen == FlowScenes.Logo || screen == FlowScenes.Title || screen == FlowScenes.Caution || screen == FlowScenes.Movie)
+            return Attract?.Finished == true;
         return GameOver?.Ended == true; // the credit's last screens
     }
+
+    public void Poll(SceneId screen)
+    {
+        if (screen == FlowScenes.Entry)
+            _entry?.Advance();
+        else if (screen == FlowScenes.Result)
+        {
+            if (Credit.DanResult is not null)
+                DaniResult?.Poll();
+            AiSectionResult?.Poll();
+        }
+        else if (screen == FlowScenes.AiRemind)
+            AiRemind?.Poll();
+        else
+        {
+            // Song Select's flow: its tutorials and the course list too.
+            if (screen == FlowScenes.WaiwaiTutorial || screen == FlowScenes.AiTutorial)
+                ModeTutorial?.Poll();
+            SongSelect?.Poll();
+            if (screen == FlowScenes.DaniSelect)
+                DaniSelect?.Poll();
+        }
+    }
+
+    public void TimeOut(SceneId screen)
+    {
+        if (screen == FlowScenes.AiRemind)
+            AiRemind?.Exit();
+    }
+
+    public DanSelectChoice? DanSelectChoice => DaniSelect is { Terminated: true } list ? new(list.Back, list.Selected) : null;
+
+    public bool RevivalSucceeded => Retry?.Succeeded == true;
 
     // Live: the service menu changes settings (e.g. songs per session) while the game runs.
     private ArcadeSettings arcade => arcadeSettings();
@@ -70,13 +102,15 @@ internal sealed class LayerHostFactory(
     /// <summary>The cabinet's coins (null on free play); replaced when the service menu changes the coin settings.</summary>
     public CoinBank? Coins { get; set; } = coins;
 
+    public void EntryCoinsChanged() => _entry?.CoinsChanged();
+
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
     /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
     public Func<int, long?>? Best { get; init; }
 
-    public Func<int, Waddamburo.Game.Scores.RankingPlacement?>? Placement { get; init; }
+    public Func<int, RankingPlacement?>? Placement { get; init; }
 
     /// <summary>Songs started this credit (song select shows the next one's number).</summary>
     public Func<int>? SongsStarted { get; init; }
@@ -84,25 +118,32 @@ internal sealed class LayerHostFactory(
     /// <summary>AI battle's song select panels: the player's rank, points to the next, wins, wins to the next reward.</summary>
     public Func<AiBattlePanels>? AiPanels { get; init; }
 
-    /// <summary>Song select's score windows from the server (null offline).</summary>
-    public Online.SongRankings? Rankings { get; init; }
+    /// <summary>Song select's score windows from the server (null offline): fetch a song's, and those fetched.</summary>
+    public Action<SongSelectSong>? RankingWanted { get; init; }
+
+    public Func<SongSelectSong, IReadOnlyList<RankingEntry>?[]?>? Rankings { get; init; }
+
+    /// <summary>Song Select's favourite songs.</summary>
+    public SongFavourites? Favourites { get; init; }
+
+    /// <summary>The dan dojo's boards for a series and the player's bests (null until the courses are ready).</summary>
+    public Func<string, IReadOnlyDictionary<string, int>?, (IReadOnlyList<DaniSelectBoard> Boards, IReadOnlyList<DanCourseStatus?> Courses)?>? DanCourseBoards { get; init; }
+
+    /// <summary>The song behind a dan board's song uid.</summary>
+    public Func<int, SongDescriptor?>? DanSong { get; init; }
 
     /// <summary>The loaded entry's host (null outside the entry).</summary>
     public EntrySceneHost? Entry => _entry;
 
-    /// <summary>The loaded entry's engine state (null outside the entry).</summary>
-    public EntrySession? EntrySession => _entry?.Session;
+    IEntryScreen? IScreenHosts.Entry => _entry;
 
-    /// <summary>A card read during entry; false when no entry runs or one is already pending.</summary>
     public bool InsertEntryCard(ScoreProfile card) => _entry?.InsertCard(card) == true;
 
     /// <summary>The entry gives up (see EntrySceneHost.ReturnToAttract).</summary>
-    public Action? ReturnToAttract { get; set; }
+    public Action? ReturnToAttract { get; init; }
 
-    /// <summary>A card rejected during entry: the red band.</summary>
     public void RejectEntryCard() => _entry?.RejectCard();
 
-    /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
     public bool EntryCardPending => _entry?.CardBusy == true;
 
     public bool RefuseEntryCard() => _entry?.RefuseCardInUse() == true;
@@ -114,7 +155,7 @@ internal sealed class LayerHostFactory(
     public Func<int, DonLook?>? PlayerLook { get; init; }
 
     /// <summary>A card is being read at entry (the coin message hides meanwhile).</summary>
-    public Action<bool>? CardDialog { get; set; }
+    public Action<bool>? CardDialog { get; init; }
 
     /// <summary>The entry gave the card to a drum (EntryData).</summary>
     public Action<int, ScoreProfile>? CardClaimed { get; init; }
@@ -125,7 +166,7 @@ internal sealed class LayerHostFactory(
     public ModeTutorialHostBinding? ModeTutorial { get; private set; }
 
     /// <summary>The player's best result per course hash, for the course list's stamps.</summary>
-    public Func<IReadOnlyDictionary<string, int>>? DanBests { get; set; }
+    public Func<IReadOnlyDictionary<string, int>>? DanBests { get; init; }
 
     /// <summary>The course list on screen.</summary>
     public DaniSelectHostBinding? DaniSelect { get; private set; }
@@ -147,20 +188,18 @@ internal sealed class LayerHostFactory(
     /// <summary>The boot's music credit pages there are (the copyright NUT's).</summary>
     public int CopyrightPages { get; init; }
 
-
     /// <summary>Called when a player joins at entry (coin mode updates the indicator panel).</summary>
-    public Action<int>? EntryJoined { get; set; }
+    public Action<int>? EntryJoined { get; init; }
 
     /// <summary>Called with each layer's host id as a scene loads (the flow scopes per-scene state).</summary>
-    public Action<string>? LayerLoading { get; set; }
+    public Action<string>? LayerLoading { get; init; }
 
     // --- The loaded hosts the flow polls ---
 
     /// <summary>The loaded song select's host (its mode switch).</summary>
     public SongSelectHostBinding? SongSelect { get; private set; }
 
-    /// <summary>The loaded song select's engine state (null outside it).</summary>
-    public SongSelectSession? SelectSession => SongSelect?.Session;
+    ISongSelectScreen? IScreenHosts.SongSelect => SongSelect;
 
     /// <summary>The loaded Waiwai results' host (null for normal results).</summary>
     public WaiwaiResultHostBinding? WaiwaiResult { get; private set; }
@@ -181,10 +220,6 @@ internal sealed class LayerHostFactory(
 
     private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(songInfo().Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
-
-    public void EntryCoinsChanged() => _entry?.CoinsChanged();
-
-    public void AdvanceEntry() => _entry?.Advance();
 
     // --- Host construction ---
 
@@ -271,7 +306,7 @@ internal sealed class LayerHostFactory(
     }
 
     private void bootCredits(LumenPlayer player) =>
-        AttractHostBinding.ShowCredits(player, CopyrightPages, Waddamburo.Skins.Green.Art.CopyrightArt.Key);
+        AttractHostBinding.ShowCredits(player, CopyrightPages, CopyrightArt.Key);
 
     private LumenLayerHost entryHost(EntrySceneHost entry) => new(
         new LumenFrontendHostBinding(frontend, flow, don, entry),
@@ -287,12 +322,12 @@ internal sealed class LayerHostFactory(
         new(null, player => parts.Attach(movie, player));
 
     // The song select movie of the mode (FlowScenes.SongSelectScene), whose patched genres the host fills.
-    private string songSelectMovie => Waddamburo.Skins.Green.Patching.SongSelectGenrePatch.MovieNames[Credit.AiBattle ? 2 : Credit.Waiwai ? 1 : 0];
+    private string songSelectMovie => Patching.SongSelectGenrePatch.MovieNames[Credit.AiBattle ? 2 : Credit.Waiwai ? 1 : 0];
 
     private LumenLayerHost songSelectHost()
     {
         var binding = SongSelect = new SongSelectHostBinding(
-            Select.CreateSession(_parts?.Countdown ?? true),
+            createSelectSession(_parts?.Countdown ?? true),
             songSelectSounds,
             don,
             parts: _parts,
@@ -301,13 +336,13 @@ internal sealed class LayerHostFactory(
             crowns: [Crowns?.Invoke(0), Crowns?.Invoke(1)],
             partner: Credit.PartnerSide)
         {
-            Favourites = Select.Favourites,
+            Favourites = Favourites,
             ShowOni = ShowOni?.Invoke() == true,
-            PatchedGenres = Waddamburo.Skins.Green.Patching.SongSelectGenrePatch.Applied(songSelectMovie),
-            GenreColours = Waddamburo.Skins.Green.Patching.SongSelectGenrePatch.Colours(songSelectMovie),
+            PatchedGenres = Patching.SongSelectGenrePatch.Applied(songSelectMovie),
+            GenreColours = Patching.SongSelectGenrePatch.Colours(songSelectMovie),
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
-            RankingWanted = Rankings is null ? null : Rankings.Want,
-            Rankings = Rankings is null ? null : Rankings.For,
+            RankingWanted = RankingWanted,
+            Rankings = Rankings,
             AiBattle = Credit.AiBattle,
             SupportCounts = SupportCounts,
         };
@@ -315,7 +350,7 @@ internal sealed class LayerHostFactory(
     }
 
     /// <summary>AI battle's intermediate levels per song (below かんたん, ふつう, むずかしい, おに).</summary>
-    public Func<SongDescriptor, int[]>? SupportCounts { get; set; }
+    public Func<SongDescriptor, int[]>? SupportCounts { get; init; }
 
     /// <summary>AI battle's section results, while they are on stage.</summary>
     public AiSectionResultBinding? AiSectionResult { get; private set; }
@@ -478,13 +513,12 @@ internal sealed class LayerHostFactory(
             .GroupBy(static entry => entry.Song.Descriptor.Key).ToDictionary(static group => group.Key, static group => group.First());
         var binding = DaniSelect = new DaniSelectHostBinding(() =>
         {
-            if (!Select.Dan!.Ready)
+            if (DanCourseBoards?.Invoke(Credit.DanSeries, DanBests?.Invoke()) is not var (boards, courses))
                 return null;
-            var (boards, courses) = Select.Dan.Boards(Credit.DanSeries, DanBests?.Invoke());
             DanBoards = courses;
             return boards;
         }, Credit.PlayerSide, uid =>
-            Select.Dan!.Song(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
+            DanSong?.Invoke(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
                 ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Expanded) : null,
             (challenge, kind) => DanChallengeArt.Key(Credit.DanSeries, challenge, kind),
             songSelectSounds, don, sounds is null ? null : sounds.Frontend.PlayCue);

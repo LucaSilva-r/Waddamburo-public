@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Waddamburo.App.Presentation;
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Online;
 using Waddamburo.Game.Scores;

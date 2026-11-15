@@ -1,11 +1,10 @@
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.App.Scenes;
+namespace Waddamburo.Game.Scenes;
 
 /// <summary>The front end's scene ids and their traced compositions.</summary>
-internal static class FlowScenes
+public static class FlowScenes
 {
     public static readonly SceneId Boot = new("boot");
     public static readonly SceneId Logo = new("attract-logo");

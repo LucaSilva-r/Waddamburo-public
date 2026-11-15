@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;

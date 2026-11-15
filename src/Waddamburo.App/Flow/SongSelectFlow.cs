@@ -1,5 +1,4 @@
 using Waddamburo.Skins.Green.Art;
-using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
@@ -7,7 +6,6 @@ using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Library;
 using Waddamburo.Game.Sound;
 using Waddamburo.Lumen.Provider;
-using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
@@ -96,14 +94,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     public override void Advance(LumenInputSnapshot input)
     {
         var scroll = Shell.Arcade.FastSongScroll && Shell.Active.Id == FlowScenes.SongSelect ? Shell.Hosts.SongSelect?.Scroll : null;
-        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SelectSession?.CourseSelectSong is null,
-            keepWheel: Shell.Hosts.SelectSession?.LeavingCourseSelect == true) ?? input);
+        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.Session.CourseSelectSong is null,
+            keepWheel: Shell.Hosts.SongSelect?.Session.LeavingCourseSelect == true) ?? input);
         scroll?.After();
-        if (Shell.Active.Id == FlowScenes.WaiwaiTutorial || Shell.Active.Id == FlowScenes.AiTutorial)
-            Shell.Hosts.ModeTutorial?.Poll();
-        Shell.Hosts.SongSelect?.Poll();
-        if (Shell.Active.Id == FlowScenes.DaniSelect)
-            Shell.Hosts.DaniSelect?.Poll();
+        Shell.Hosts.Poll(Shell.Active.Id);
     }
 
     private SongKey? _titled;
@@ -127,12 +121,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             if (Shell.Active.Player.Layers.Select(static layer => layer.Player).FirstOrDefault(static movie => movie.UsesProvider) is { } ours)
                 tellDanSelect(ours);
-            if (input.Escape || Shell.Hosts.DaniSelect is { Terminated: true, Back: true })
+            if (input.Escape || Shell.Hosts.DanSelectChoice is { Back: true })
             {
                 Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanExitCover); // traced session31
                 return;
             }
-            if (Shell.Hosts.DaniSelect is { Terminated: true, Selected: { } board } && Shell.PlayRequests.Pending is null)
+            if (Shell.Hosts.DanSelectChoice is { Board: { } board } && Shell.PlayRequests.Pending is null)
                 playCourse(Shell.Hosts.DanBoards[board]!);
             if (Shell.PlayRequests.Pending is { } course)
                 coverForGameplay(course);
@@ -163,7 +157,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             }, FlowScenes.Entry);
             return;
         }
-        if (Shell.Hosts.SelectSession?.TutorialRequested == true)
+        if (Shell.Hosts.SongSelect?.Session.TutorialRequested == true)
         {
             if (Shell.Credit.Waiwai)
             {
@@ -184,25 +178,25 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.Scenes.Show(FlowScenes.Tutorial);
             return;
         }
-        if (Shell.Hosts.SelectSession?.DanRequested == true)
+        if (Shell.Hosts.SongSelect?.Session.DanRequested == true)
         {
             Shell.Sounds?.Play("select.dan");
             // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
-            Shell.Credit.DanSeries = Shell.Hosts.SelectSession.DanSeriesPicked ?? Shell.Arcade.DanSeries;
+            Shell.Credit.DanSeries = Shell.Hosts.SongSelect!.Session.DanSeriesPicked ?? Shell.Arcade.DanSeries;
             Shell.Catalog.Replace(FlowScenes.DaniSelectScene(Shell.Credit.PlayerSide));
             Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
             return;
         }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the
         // difficulty selector opens, so it is there when the rainbow closes.
-        if (Shell.Hosts.SelectSession?.CourseSelectSong is { } picked && _titled != picked.Descriptor.Key)
+        if (Shell.Hosts.SongSelect?.Session.CourseSelectSong is { } picked && _titled != picked.Descriptor.Key)
         {
             _titled = picked.Descriptor.Key;
             _ = Shell.Titles.Resolve(Shell.Titles.GetTransitionTitle(picked));
         }
         finishComposing();
         // The mode-switch folder: reload as the other song select (normal <-> Waiwai).
-        if (Shell.Hosts.SelectSession?.ModeSwitchRequested == true)
+        if (Shell.Hosts.SongSelect?.Session.ModeSwitchRequested == true)
         {
             Shell.Credit.Waiwai = !Shell.Credit.Waiwai;
             showSongSelect();
@@ -213,12 +207,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, Song Select
         // reloading on that spine.
         // The Online spine: the lobby opens over Song Select.
-        if (Shell.Hosts.SelectSession?.BrowseRequested == SongBrowseControl.Online)
+        if (Shell.Hosts.SongSelect?.Session.BrowseRequested == SongBrowseControl.Online)
         {
             Shell.Room.OpenLobby();
             return;
         }
-        if (Shell.Hosts.SelectSession?.BrowseRequested is { } control)
+        if (Shell.Hosts.SongSelect?.Session.BrowseRequested is { } control)
         {
             Shell.Reload.Start(() =>
             {
@@ -392,7 +386,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     // A library folder (home mode): Song Select reloads listing that library.
     private bool switchLibrary()
     {
-        if (Shell.Hosts.SelectSession?.LibraryRequested is not { } library)
+        if (Shell.Hosts.SongSelect?.Session.LibraryRequested is not { } library)
             return false;
         if (!Shell.Arcade.CustomUploadNoticeSeen && library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
             Shell.CustomUploadPrompt.Open(() => Shell.Reload.Start(() => Shell.Select.Library = library));
@@ -457,7 +451,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         return null;
     }
 
-    private void tellSongSelect(LumenPlayer movie, SongSelectHostBinding host)
+    private void tellSongSelect(LumenPlayer movie, ISongSelectScreen host)
     {
         if (movie != _songMovie)
         {
@@ -548,7 +542,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             case SongTag song:
                 // The song's score windows are fetched now, its preview starts.
                 if (session.Catalog.TryGetSong(song.Folder, song.Song, out var selected))
-                    Shell.Hosts.Rankings?.Want(selected);
+                    Shell.Rankings?.Want(selected);
                 session.Preview(song.Folder, song.Song);
                 break;
         }

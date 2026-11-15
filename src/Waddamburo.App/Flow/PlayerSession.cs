@@ -1,4 +1,4 @@
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scores;
 

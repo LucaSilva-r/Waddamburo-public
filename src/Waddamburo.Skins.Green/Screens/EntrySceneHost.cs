@@ -13,7 +13,7 @@ namespace Waddamburo.Skins.Green;
 /// movie's host methods, its countdown (shown by the indicator parts), and what the game does when
 /// a player joins. One instance per loaded entry scene.
 /// </summary>
-public sealed class EntrySceneHost
+public sealed class EntrySceneHost : IEntryScreen
 {
     private const int EntrySeconds = 50;
 

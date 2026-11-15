@@ -16,28 +16,24 @@ internal sealed class GameSounds
     {
         Set = set;
         Bank = new SoundBank(audio);
-        Green = new GreenSounds(green, Bank);
-        Attract = new AttractSounds(Green);
-        Frontend = new FrontendSounds(Green);
+        Screens = new GreenScreenSounds(new GreenSounds(green, Bank), StopAll);
         Gameplay = new GameplaySounds(Bank, set);
-        Results = new ResultSounds(Green);
-        WaiwaiResults = new WaiwaiResultSounds(Green);
-        Retry = new RetrySounds(Green, StopAll);
-        GameOver = new GameOverSounds(Green);
     }
 
     /// <summary>The skin's sounds the engine asks for by name.</summary>
     public ISoundSet Set { get; }
 
     public SoundBank Bank { get; }
-    public GreenSounds Green { get; }
-    public AttractSounds Attract { get; }
-    public FrontendSounds Frontend { get; }
+    /// <summary>The game's screens' controllers (their movies ask for bank cues).</summary>
+    public GreenScreenSounds Screens { get; }
+    public GreenSounds Green => Screens.Green;
+    public AttractSounds Attract => Screens.Attract;
+    public FrontendSounds Frontend => Screens.Frontend;
     public GameplaySounds Gameplay { get; }
-    public ResultSounds Results { get; }
-    public WaiwaiResultSounds WaiwaiResults { get; }
-    public RetrySounds Retry { get; }
-    public GameOverSounds GameOver { get; }
+    public ResultSounds Results => Screens.Results;
+    public WaiwaiResultSounds WaiwaiResults => Screens.WaiwaiResults;
+    public RetrySounds Retry => Screens.Retry;
+    public GameOverSounds GameOver => Screens.GameOver;
 
     /// <summary>Plays the skin's sound for an engine name (nothing when the skin has none).</summary>
     public void Play(string name, bool trace = true) => Play(new SoundRequest(name), trace);

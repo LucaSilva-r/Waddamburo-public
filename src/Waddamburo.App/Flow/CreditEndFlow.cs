@@ -1,5 +1,5 @@
 using Waddamburo.Skins.Green.Art;
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
@@ -192,12 +192,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             // The song's shutter stays over the results until their first frames are drawn.
             if (Shell.Overlay.IsShown && !Shell.Scenes.FadePending && Shell.Tick - _resultStartTick >= 2)
                 Shell.Overlay.Clear();
-            if (Shell.Credit.DanResult is not null)
-                Shell.Hosts.DaniResult?.Poll();
-            Shell.Hosts.AiSectionResult?.Poll();
+            Shell.Hosts.Poll(scene);
             // ponytail: a course's results take a song's delay until a trace times theirs.
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
-                Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null, aiBattle: Shell.Credit.AiOutcome is not null);
+                Shell.Sounds?.Results.StartMusic(waiwai: Shell.Active.Layers is [{ Definition.HostId: "waiwai-result" }, ..], aiBattle: Shell.Credit.AiOutcome is not null);
             if (Shell.Scenes.FinishFade()) return;
             // The movie ends itself (15-21 s traced by closing message), or ours asks.
             if (input.Escape || _continued || Shell.ScreenEnded)
@@ -222,10 +220,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         else if (scene == FlowScenes.AiRemind)
         {
             if (Shell.Scenes.FinishFade()) return;
-            Shell.Hosts.AiRemind?.Poll();
+            Shell.Hosts.Poll(scene);
             // The movie waits for a don; the cabinet doesn't wait forever.
             if (Shell.Tick - _remindStartTick == RemindTimeoutTicks)
-                Shell.Hosts.AiRemind?.Exit();
+                Shell.Hosts.TimeOut(scene);
             if (input.Escape || Shell.ScreenEnded)
                 Shell.Scenes.FadeTo(FlowScenes.GameOver);
         }
@@ -238,7 +236,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 return;
             }
             if (Shell.ScreenEnded)
-                Shell.Scenes.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
+                Shell.Scenes.FadeTo(Shell.Hosts.RevivalSucceeded ? FlowScenes.SongSelect : FlowScenes.GameOver);
         }
         else if (_ending || Shell.ScreenEnded)
         {

@@ -7,7 +7,6 @@ using Waddamburo.App.Cli;
 using Waddamburo.App.Gameplay;
 using Waddamburo.App.Hosting;
 using Waddamburo.App.Presentation;
-using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Editor;
@@ -381,7 +380,15 @@ internal sealed class GameShell : IDisposable
     public EnsoLayout EnsoLayout { get; }
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
-    public LayerHostFactory Hosts { get; }
+    public IScreenHosts Hosts { get; }
+
+    /// <summary>Song Select's score windows from the server (null offline).</summary>
+    public SongRankings? Rankings { get; private set; }
+
+    /// <summary>A drum's player's crowns by chart key (null: a guest, or no scores).</summary>
+    public IReadOnlyDictionary<string, TaikoCrown>? Crowns(int side) => Sync.Scores is not { } scores ? null
+        : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
+        : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null;
 
     /// <summary>The credit's state (who plays where, the mode, the results to show).</summary>
     public CreditState Credit { get; } = new();
@@ -390,7 +397,7 @@ internal sealed class GameShell : IDisposable
     public SongSelectSetup Select { get; private set; } = null!;
 
     /// <summary>Whether the active screen's movies are done with it (the skin answers).</summary>
-    public bool ScreenEnded => ((IScreenEnds)Hosts).Ended(Active.Id, [.. Active.Player.Layers.Select(static layer => layer.Player)]);
+    public bool ScreenEnded => Hosts.Ended(Active.Id, [.. Active.Player.Layers.Select(static layer => layer.Player)]);
     public GameFlowCoordinator Coordinator { get; }
     public IntermissionOverlay Overlay { get; }
 
@@ -542,8 +549,8 @@ internal sealed class GameShell : IDisposable
         LumenHostValue text(string? value) => value is { } some ? LumenHostValue.FromString(some) : LumenHostValue.Undefined;
         var joined = Players.JoinedSides;
         // The screen's countdown, as its host runs it (the game's screens and ours alike).
-        var timer = number(Active.Id == FlowScenes.Entry ? Hosts.EntrySession?.TimeLeft
-            : Active.Id == FlowScenes.SongSelect ? Hosts.SelectSession?.TimeLeft : null);
+        var timer = number(Active.Id == FlowScenes.Entry ? Hosts.Entry?.Session?.TimeLeft
+            : Active.Id == FlowScenes.SongSelect ? Hosts.SongSelect?.Session.TimeLeft : null);
         // Song select's tab: which song of the credit comes next (the game has art for 1 to 4; home shows none).
         var stage = Active.Id == FlowScenes.SongSelect && !Arcade.Home ? Players.SongsPlayed + 1 : (int?)null;
         var card = Sync.Pairing?.Shown();
@@ -565,7 +572,7 @@ internal sealed class GameShell : IDisposable
             movie.Publish("card.accepting", card is { } pairing ? LumenHostValue.FromBoolean(pairing.Accepting) : LumenHostValue.Undefined);
             movie.Publish("card.code", text(card?.Code));
             movie.Publish("card.codeSeconds", card?.Code is null ? LumenHostValue.Undefined : number(card.Value.Seconds));
-            movie.Publish("card.player", text(card?.Player ?? (Active.Id == FlowScenes.Entry ? Hosts.EntrySession?.Card?.DisplayName : null)));
+            movie.Publish("card.player", text(card?.Player ?? (Active.Id == FlowScenes.Entry ? Hosts.Entry?.Session?.Card?.DisplayName : null)));
             for (var side = 0; side < 2; side++)
             {
                 movie.Publish("player.joined", LumenHostValue.FromBoolean(joined.Contains(side)), side + 1);
@@ -594,8 +601,8 @@ internal sealed class GameShell : IDisposable
                 var side = FlowScenes.BoardSide(definition);
                 var cardBoard = side is null && Active.Id == FlowScenes.Entry && definition.Transform.Y == 185;
                 movie.Publish("player.joined", LumenHostValue.FromBoolean(side is { } drum ? joined.Contains(drum)
-                    : cardBoard && (card?.Player ?? Hosts.EntrySession?.Card?.DisplayName) is not null));
-                var waiting = card?.Player ?? Hosts.EntrySession?.Card?.DisplayName;
+                    : cardBoard && (card?.Player ?? Hosts.Entry?.Session?.Card?.DisplayName) is not null));
+                var waiting = card?.Player ?? Hosts.Entry?.Session?.Card?.DisplayName;
                 movie.Publish("player.name", side is { } own ? names[own] : cardBoard ? text(waiting) : LumenHostValue.Undefined);
             }
         }
@@ -931,12 +938,11 @@ internal sealed class GameShell : IDisposable
             Credit.WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai;
             Credit.DanResult = Options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
                 ? diagnosticDan(Options.StartScene == StartScene.DaniResultClear) : null;
-            Hosts = createHosts(flow, snapshot, diagnosticResult);
             // Stock songs as supportinfo.xml lists them; any other song three steps below each course it has.
             // ponytail: three everywhere for custom songs, whether or not simplifying changes their charts.
-            Hosts.SupportCounts = song => song.Key.Source == SongSourceKind.Stock
+            Hosts = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
                 ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
-                : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)];
+                : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)]);
             if (Arcade.Home && Options.Accounts is { } setupBook)
                 _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
@@ -1048,15 +1054,19 @@ internal sealed class GameShell : IDisposable
             HomeTutorialSeen = () => Arcade.Home && Arcade.TutorialSeen,
         };
 
-    private LayerHostFactory createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult) =>
-        new(
+    private Waddamburo.Skins.Green.GreenScreenHosts createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult,
+        Func<SongDescriptor, int[]> supportCounts)
+    {
+        var select = Select = createSelect(snapshot);
+        var rankings = Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null;
+        return new(
             Credit,
-            Select = createSelect(snapshot),
+            select.CreateSession,
             flow,
             snapshot,
             Titles,
             Sounds is null ? TraceSoundController.Instance : Sounds.Frontend,
-            Sounds,
+            Sounds?.Screens,
             new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
             Don,
             () => SongInfo,
@@ -1066,9 +1076,14 @@ internal sealed class GameShell : IDisposable
             () => Arcade,
             Coins)
         {
+            Favourites = select.Favourites,
+            DanCourseBoards = (series, bests) => select.Dan is { Ready: true } dan ? dan.Boards(series, bests) : null,
+            DanSong = uid => select.Dan?.Song(uid),
+            RankingWanted = rankings is null ? null : rankings.Want,
+            Rankings = rankings is null ? null : rankings.For,
+            SupportCounts = supportCounts,
             DanBests = () => TaikoGuest.Profiles[Credit.PlayerSide] is { } player && Sync.Scores is { } scores
                 ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
-            Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
             SongsStarted = () => Players.SongsPlayed,
             AiPanels = () => AiStanding() is var (points, wins, _)
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Skins.Green.AiBattlePanels.NewPlayer.Tension)
@@ -1079,9 +1094,7 @@ internal sealed class GameShell : IDisposable
             CopyrightPages = _copyright.Pages,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
-            Crowns = side => Sync.Scores is not { } scores ? null
-                : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
-                : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null,
+            Crowns = Crowns,
             CardClaimed = (side, card) =>
             {
                 TaikoGuest.Profiles[side] = card;
@@ -1091,7 +1104,28 @@ internal sealed class GameShell : IDisposable
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.DisplayName,
+            LayerLoading = host =>
+            {
+                if (Don is null) return;
+                // Song Select is back after an online song: one player again.
+                if (host is "song-select" && Players.OnlineTwoPlayers)
+                    Players.PlayOnlineAsTwoPlayers(false);
+                if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
+                    Don.MapPlayerZero = Credit.PlayerSide == 1 && !Credit.TwoPlayers;
+                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial" or "dani-select")
+                    Don.MapPlayerZero = false;
+            },
+            CardDialog = open => _indicators?.CardDialog(open),
+            ReturnToAttract = () => _returnToAttract = true,
+            EntryJoined = side =>
+            {
+                Players.Join(side);
+                // Home: the player setup drives the panels itself (SetupPanels).
+                if (Coins is not null || _indicators?.Rejoin == true || !Arcade.Home)
+                    _indicators?.EntryJoined();
+            },
         };
+    }
 
     // Which flow runs each scene.
     private static Dictionary<SceneId, FlowScene> flowTable(AttractFlow attract, EntryFlow entry, SongSelectFlow songSelect,
@@ -1211,27 +1245,7 @@ internal sealed class GameShell : IDisposable
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
                 .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Credit.AiBattle };
             _home.LoadResume(_loader);
-            Hosts.LayerLoading = host =>
-            {
-                if (Don is null) return;
-                // Song Select is back after an online song: one player again.
-                if (host is "song-select" && Players.OnlineTwoPlayers)
-                    Players.PlayOnlineAsTwoPlayers(false);
-                if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
-                    Don.MapPlayerZero = Credit.PlayerSide == 1 && !Credit.TwoPlayers;
-                else if (host is "player-entry" or "song-select" or "gameover" or "tutorial" or "dani-select")
-                    Don.MapPlayerZero = false;
-            };
-            Hosts.CardDialog = open => _indicators.CardDialog(open);
-            Hosts.ReturnToAttract = () => _returnToAttract = true;
             _indicators.NetworkIcon = Sync.Health is { } health ? () => health.IconType : null;
-            Hosts.EntryJoined = side =>
-            {
-                Players.Join(side);
-                // Home: the player setup drives the panels itself (SetupPanels).
-                if (Coins is not null || _indicators.Rejoin || !Arcade.Home)
-                    _indicators.EntryJoined();
-            };
             _indicatorTextures = SceneTextures.Upload(Application, _indicators.Scene);
             // Everything is up: the check screen goes, the first scene takes the window.
             _boot?.Done();
@@ -1762,7 +1776,7 @@ internal sealed class GameShell : IDisposable
     private string? uploadBanner()
     {
         var song = Active.Id == FlowScenes.SongSelect
-            ? Hosts.SelectSession?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
+            ? Hosts.SongSelect?.Session.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
         var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
         var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
         var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";
@@ -1874,7 +1888,7 @@ internal sealed class GameShell : IDisposable
         _textFields.Dispose();
         _nameTexts.Dispose();
         Painter.Dispose();
-        Hosts?.Rankings?.Dispose();
+        Rankings?.Dispose();
         _pill.Dispose();
         _performance.Dispose();
         _notices?.Dispose();

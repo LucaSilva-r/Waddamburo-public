@@ -1,7 +1,7 @@
 using System.Globalization;
 using Waddamburo.App.Home;
 using Waddamburo.App.Presentation;
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl;
@@ -95,7 +95,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         IsOpen = true;
         (_query, _caret, _tick, _openWhenDone) = ("", 0, 0, false);
         _result = new("", []);
-        _crowns = shell.Hosts.Crowns?.Invoke(shell.Credit.PlayerSide);
+        _crowns = shell.Crowns(shell.Credit.PlayerSide);
         _history = loadHistory();
         _page ??= new(static () => Strings.T("search.title"), rows, Footer: legend);
         _menu.Open(_page, home: true);

@@ -1,7 +1,5 @@
 using Waddamburo.App.Presentation;
-using Waddamburo.App.Scenes;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
@@ -128,7 +126,7 @@ internal sealed class PlayerSetupController : IDisposable
 
     // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
     // the entry's own costume flash and cue when it changes.
-    private void applySetup(EntrySceneHost entry, SetupColumn[] columns)
+    private void applySetup(Waddamburo.Game.Flow.IEntryScreen entry, SetupColumn[] columns)
     {
         for (var side = 0; side < 2; side++)
         {

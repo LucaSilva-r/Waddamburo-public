@@ -21,7 +21,7 @@ namespace Waddamburo.Skins.Green;
 /// <param name="movie">The song select movie.</param>
 /// <param name="openFolder">The open folder's genre index, or -1 when none is open.</param>
 /// <param name="jumped">A skip was taken (by this player, 0 or 1): its sound is due.</param>
-public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Action<int> jumped)
+public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Action<int> jumped) : Waddamburo.Game.Flow.ISongSelectScroll
 {
     // The list clip and its move tweens' labels.
     private const string List = "main/genreSelect_";

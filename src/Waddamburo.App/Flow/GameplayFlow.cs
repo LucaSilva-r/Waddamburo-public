@@ -1,6 +1,5 @@
 using Waddamburo.App.Audio;
 using Waddamburo.App.Gameplay;
-using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Editor;
 using Waddamburo.Game.Dan;
@@ -1223,13 +1222,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 // Online players only (the guest's baid is never uploaded), from the board song select fetched.
                 // ponytail: 真打 plays get no rank-in on the results (song select fetched the normal board only).
                 if (cleared && lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi
-                    && Shell.Hosts.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
+                    && Shell.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
                 {
                     var top = boards[(int)player.Course] ?? []; // fetched, nobody on it yet
                     var placement = Shell.Placements[lane] = RankingBoard.Place(top, profile.Baid, profile.DisplayName,
                         (int)Shell.Gameplay.Results[lane].Score);
                     if (placement.RankIn >= 0)
-                        Shell.Hosts.Rankings.Record(_song, (int)player.Course, placement.Top);
+                        Shell.Rankings.Record(_song, (int)player.Course, placement.Top);
                 }
                 // AI battle (the player's lane): its battle, and the rank points it earned on the standing before it.
                 AiBattlePlay? battle = null;

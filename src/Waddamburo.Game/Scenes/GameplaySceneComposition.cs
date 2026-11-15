@@ -1,15 +1,14 @@
 using Waddamburo.Formats.Layout;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
-namespace Waddamburo.App.Scenes;
+namespace Waddamburo.Game.Scenes;
 
 /// <summary>
 /// Product-owned composition for the initial one-player gameplay presentation.
 /// Asset choices and layout are composition data; gameplay uses semantic movie roles.
 /// </summary>
-internal static class GameplaySceneComposition
+public static class GameplaySceneComposition
 {
     public const string StaticHostId = "gameplay-static";
 

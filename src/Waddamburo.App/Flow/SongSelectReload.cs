@@ -1,4 +1,4 @@
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 
 namespace Waddamburo.App.Flow;
 

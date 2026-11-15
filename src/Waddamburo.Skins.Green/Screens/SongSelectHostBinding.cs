@@ -172,7 +172,7 @@ public interface ISongSelectSoundController
 }
 
 /// <summary>Translates the authored Song Select protocol into one catalog-pinned session.</summary>
-public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
+public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Waddamburo.Game.Flow.ISongSelectScreen
 {
     private readonly SongSelectSession _session;
     private readonly ISongSelectSoundController? _sounds;
@@ -181,6 +181,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     /// <summary>The list's fast scrolling (see <see cref="SongSelectScroll"/>), once the movie is attached.</summary>
     public SongSelectScroll? Scroll { get; private set; }
+
+    Waddamburo.Game.Flow.ISongSelectScroll? Waddamburo.Game.Flow.ISongSelectScreen.Scroll => Scroll;
     private bool _assigned;
     // The movie is one of ours (it reads the provider): SongSelectFlow drives the engine's session (this follows its events) and nothing
     // here reaches into it. The game's movie is fed and patched as before.

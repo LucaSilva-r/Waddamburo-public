@@ -1,4 +1,4 @@
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
@@ -57,7 +57,7 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
     {
         if (arguments is not [{ Kind: LumenHostValueKind.Number } drum] || drum.AsNumber() is not (1 or 2))
             return "player.join takes the drum's number, 1 or 2";
-        if (Shell.Hosts.EntrySession is not { } session || !_ready)
+        if (Shell.Hosts.Entry?.Session is not { } session || !_ready)
             return "the entry is not ready yet";
         return join(session, (int)drum.AsNumber() - 1);
     }
@@ -90,7 +90,7 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
         }
         tellOurs();
         Shell.Active.Player.Advance(input);
-        Shell.Hosts.AdvanceEntry();
+        Shell.Hosts.Poll(FlowScenes.Entry);
         Shell.DonRenderer?.Advance();
     }
 

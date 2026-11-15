@@ -1,5 +1,5 @@
 using Waddamburo.App.Home;
-using Waddamburo.App.Scenes;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
 
