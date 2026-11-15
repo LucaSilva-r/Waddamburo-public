@@ -447,8 +447,12 @@ renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposi
   the attract's mute under the menu through `MuteAttract`. The composition root builds `GreenScreenSounds`; the trace
   fallbacks (`ViewerFrontendServices`, `TraceSoundController`) moved into Green and `GreenScreenHosts` makes them.
 
-Next: 14 App files still name Green types.
-Then the gameplay adapters (`GameplayFlow`,
+- 5c-5: `GameplayFlow` talks to `IGameplayScreen` (`IScreenHosts.Gameplay(scene)`: the panel's mode text, title,
+  next song, visibility, a course's card, AI battle's start); Green's `GreenGameplayScreen` drives song_info, between
+  and the battle movies.
+
+Next: 13 App files still name Green types.
+Then the lanes' adapters (`GameplayFlow`,
 `TaikoGameplayPresentation`), the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
 `IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,
 `PlayerSetupController`, `DanCourses` (dan select records), `ViewerHostBinding`, `GameShell`. Proof per move: the

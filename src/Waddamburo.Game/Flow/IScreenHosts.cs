@@ -2,6 +2,7 @@ using Waddamburo.Game.Dan;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Flow;
@@ -29,6 +30,9 @@ public interface IScreenHosts : ILumenLayerHostFactory, IScreenEnds
 
     /// <summary>The loaded screen's hosts do their per-tick work (the flow calls it where the screen needs it).</summary>
     void Poll(SceneId screen);
+
+    /// <summary>The gameplay screen's movies outside the lanes, for the scene on stage.</summary>
+    IGameplayScreen Gameplay(LumenGameSceneInstance scene);
 
     /// <summary>The screen leaves the stage: what its movies started (their music) stops.</summary>
     void Left(SceneId screen);
@@ -147,4 +151,26 @@ public interface ISongSelectScroll
     LumenInputSnapshot Before(LumenInputSnapshot input, bool listActive, bool keepWheel = false);
 
     void After();
+}
+
+/// <summary>The gameplay screen's movies outside the lanes: the song's panel, a course's card, AI battle's.</summary>
+public interface IGameplayScreen
+{
+    /// <summary>The panel's corner text in place of the song's number (a replay; null: none).</summary>
+    void ShowMode(LumenNativeSurfaceKey? text);
+
+    /// <summary>The song's title art on the panel (drawn only when the skin has a panel for it).</summary>
+    void ShowTitle(Func<LumenNativeSurfaceKey> title);
+
+    /// <summary>A course's next song begins: its genre (song_info's genre labels) and number.</summary>
+    void ShowNextSong(string genre, Gameplay.TaikoSongInfo info);
+
+    /// <summary>The card between a course's songs, with the next song's title.</summary>
+    void ShowCourseCard(LumenNativeSurfaceKey title);
+
+    /// <summary>Each frame: whether the stage number and the panel show.</summary>
+    void UpdateVisibility(bool showStage, bool showInfo);
+
+    /// <summary>An AI battle starts: its movies follow the battle.</summary>
+    void StartAiBattle(Gameplay.AiBattleProgress battle);
 }

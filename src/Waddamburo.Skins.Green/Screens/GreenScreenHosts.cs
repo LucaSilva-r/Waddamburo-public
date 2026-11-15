@@ -90,6 +90,12 @@ public sealed class GreenScreenHosts(
             sounds?.GameOver.StopGameOverMusic();
     }
 
+    private Gameplay.GreenGameplayScreen? _gameplay;
+
+    public IGameplayScreen Gameplay(LumenGameSceneInstance scene) =>
+        _gameplay is { } shown && shown.Scene == scene ? shown
+            : _gameplay = new(scene, sounds is null ? null : sounds.Frontend.PlayCue);
+
     public void MuteAttract(bool muted)
     {
         if (sounds is not null)

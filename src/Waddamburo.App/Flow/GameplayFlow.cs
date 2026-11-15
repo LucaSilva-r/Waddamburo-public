@@ -13,7 +13,6 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Skins.Green.Gameplay;
 
 namespace Waddamburo.App.Flow;
 
@@ -307,7 +306,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _play.Battle = aiBattle ? new AiBattleProgress(_play.Charts[0], players[0].Course) : null;
         if (_play.Battle is { } shown)
         {
-            _ = new GameAiBattleMovies(shown, active, Shell.GreenSounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null);
+            Shell.Hosts.Gameplay(active).StartAiBattle(shown);
             publishBattle(shown);
         }
         if (_play.Battle is { } battle && _play.Review is null)
@@ -376,8 +375,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     private void showMode(string? text)
     {
         _play.SongInfoMode = text is not null;
-        if (songInfoPlayer() is { } info)
-            TaikoSongInfoPresentation.ShowMode(info, modeLabel(text));
+        screen.ShowMode(modeLabel(text));
     }
 
     /// <summary>A replay (one player's, not Waiwai) can turn into practice: P in it.</summary>
@@ -752,9 +750,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _frameTime = null; // one frame's: a frame without UpdateFrame reads the clock itself
         if (NoteStepTrace && !_play.Paused && revealed)
             traceNoteStep(time);
-        if (songInfoPlayer() is { } info)
-            TaikoSongInfoPresentation.UpdateVisibility(info, showStage,
-                showInfo: _play.Battle?.ResultShownAt is null);
+        screen.UpdateVisibility(showStage, showInfo: _play.Battle?.ResultShownAt is null);
         return Shell.Gameplay.CreateSnapshot(time, _play.Paused ? _play.PauseInterpolation
             : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
     }
@@ -1010,8 +1006,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         var song = _courseSongs[_play.CourseSong];
         var card = Shell.Titles.GetTransitionTitle(song);
         _ = Shell.Titles.Resolve(card);
-        if (sceneLayer("between") is { } between)
-            GameDanCard.Show(between, card);
+        screen.ShowCourseCard(card);
         // Each song's own genre, as the select screen shows it (the genre Song Select had set stayed for the whole
         // course; reported on Discord).
         Shell.SongInfo = Shell.SongInfo with
@@ -1019,8 +1014,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Genre = Shell.Select.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
             Stage = _play.CourseSong + 1,
         };
-        if (sceneLayer("song_info") is { } info)
-            TaikoSongInfoPresentation.ShowNextSong(info, genreLabel(), Shell.SongInfo);
+        screen.ShowNextSong(genreLabel(), Shell.SongInfo);
         showSongTitle(song);
     }
 
@@ -1032,15 +1026,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     private static readonly string[] GenreLabels = ["jpop", "anime", "vocaloid", "doyo", "variety", "classic", "game", "namco"];
 
-    // A movie of the active scene by name (song_info, between); null when the scene has none.
-    private LumenPlayer? sceneLayer(string movie)
-    {
-        var index = Shell.Active.Layers.ToList().FindIndex(entry => Path.GetFileNameWithoutExtension(entry.Definition.MovieId) == movie);
-        return index < 0 ? null : Shell.Active.Player.Layers[index].Player;
-    }
-
-    // Both movies share the song_name, main/genre and main/stage slots.
-    private LumenPlayer? songInfoPlayer() => sceneLayer("song_info") ?? sceneLayer("ai_song_info");
+    // The gameplay screen's movies outside the lanes (the skin's).
+    private IGameplayScreen screen => Shell.Hosts.Gameplay(Shell.Active);
 
     // song_info's 720x64 title slot: fixed height, right-aligned, squeezed to fit.
     private void showSongTitle(SongSelectSong song)
@@ -1055,11 +1042,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.Gameplay.Publish("song.source", LumenHostValue.FromString(char.ToLowerInvariant(source[0]) + source[1..]));
         Shell.Gameplay.Publish("song.stage", showStage ? LumenHostValue.FromNumber(Shell.SongInfo.Stage) : LumenHostValue.Undefined);
         Shell.Gameplay.Publish("song.finalStage", LumenHostValue.FromBoolean(Shell.SongInfo.Final));
-        if (songInfoPlayer() is not { } info)
-            return;
-        var title = Shell.Titles.GetGameplayTitle(song);
-        _ = Shell.Titles.Resolve(title);
-        TaikoSongInfoPresentation.SetTitle(info, title);
+        screen.ShowTitle(() =>
+        {
+            var title = Shell.Titles.GetGameplayTitle(song);
+            _ = Shell.Titles.Resolve(title);
+            return title;
+        });
     }
 
     // A finished song shows its results (the shutter stays over them until their first frames are
