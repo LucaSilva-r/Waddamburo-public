@@ -206,6 +206,11 @@ internal static class FlowScenes
     private static SceneLayerDefinition aiPanel(string archive, string movie) =>
         new($"ghost/{archive}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, IndicatorParts.HostId);
 
+    /// <summary>The drum a front-end name board is for, by where these scenes put it (0 left, 1 right); null for the
+    /// entry's centre board (a read card's player) and a board waiting hidden.</summary>
+    public static int? BoardSide(SceneLayerDefinition board) => board.Transform.Y == 638
+        ? board.Transform.X < 640 ? 0 : 1 : null;
+
     private static SceneLayerDefinition indicatorPart(string movie, float x = 0, float y = 0) => new(
         "indicator/packeddata.ddp",
         $"{movie}/{movie}.lm",

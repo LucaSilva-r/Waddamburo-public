@@ -42,8 +42,9 @@ public sealed partial class LumenPlayer
     /// <summary>A state's value as this movie would read it; undefined while it has none.</summary>
     public LumenHostValue Provided(string name, int drum = 0) => _provided.GetValueOrDefault(own(name, drum));
 
-    // A movie of no drum reads player 1's where it asks for "its own".
-    private (string, int) own(string name, int drum) => (name, drum == 0 && !_hasOwnDrum ? 1 : drum);
+    // A movie of no drum reads player 1's where it asks for "its own"; a name of the whole app has no drum.
+    private (string, int) own(string name, int drum) =>
+        (name, drum == 0 && !_hasOwnDrum && WdNames.Find(name)?.Scope != "app" ? 1 : drum);
 
     /// <summary>
     /// Sets a state's value for this movie; its listeners hear of a change. Undefined withdraws it.
@@ -53,7 +54,8 @@ public sealed partial class LumenPlayer
     {
         if (WdNames.Find(name) is not { Kind: WdKind.State })
             throw new ArgumentException($"'{name}' is not a state of the provider (WdNames).", nameof(name));
-        if (drum == 0) _hasOwnDrum = true;
+        // A name of the whole app (credits, the screen) says nothing about which drum the movie belongs to.
+        if (drum == 0 && WdNames.Find(name)!.Scope != "app") _hasOwnDrum = true;
         if (_provided.TryGetValue((name, drum), out var before) ? before == value : value.Kind == LumenHostValueKind.Undefined)
             return;
         if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove((name, drum));
@@ -67,7 +69,8 @@ public sealed partial class LumenPlayer
         if (WdNames.Find(name) is not { Kind: WdKind.List })
             throw new ArgumentException($"'{name}' is not a list of the provider (WdNames).", nameof(name));
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        if (drum == 0) _hasOwnDrum = true;
+        // A name of the whole app (credits, the screen) says nothing about which drum the movie belongs to.
+        if (drum == 0 && WdNames.Find(name)!.Scope != "app") _hasOwnDrum = true;
         var key = (item(name, index), drum);
         if (_provided.TryGetValue(key, out var before) ? before == value : value.Kind == LumenHostValueKind.Undefined)
             return;

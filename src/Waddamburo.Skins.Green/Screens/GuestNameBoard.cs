@@ -17,6 +17,7 @@ public static class GuestNameBoard
         ScoreProfile? profile = null)
     {
         ArgumentNullException.ThrowIfNull(board);
+        if (board.UsesProvider) return; // ours reads player.name
         name ??= TaikoGuest.Name(side);
         call(board, "SetPlayer", number(side));
         call(board, "SetKinotake", number(-1));

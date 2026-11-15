@@ -20,8 +20,10 @@ public sealed class ResumeCountdown
     public ResumeCountdown(LumenGameSceneInstance scene)
     {
         Scene = scene;
-        // Its callbacks register on its first frame.
+        // Its callbacks register on its first frame. A timer of ours reads timer.left instead.
         counter.Advance();
+        if (counter.UsesProvider)
+            return;
         counter.TryInvokeCallback("SetMusicNum", [LumenHostValue.FromNumber(0)]);
         counter.TryInvokeCallback("SetShadow", [LumenHostValue.FromBoolean(true)]);
     }
@@ -42,6 +44,11 @@ public sealed class ResumeCountdown
         _ticksLeft = Seconds * 60;
         _cues.Reset();
         _cues.Advance(Seconds);
+        if (counter.UsesProvider)
+        {
+            counter.Publish("timer.left", LumenHostValue.FromNumber(Seconds));
+            return;
+        }
         counter.TryInvokeCallback("SetVisible", [LumenHostValue.FromBoolean(true)]);
         counter.TryInvokeCallback("Start", [LumenHostValue.FromNumber(Seconds), LumenHostValue.FromBoolean(true)]);
     }
@@ -54,6 +61,8 @@ public sealed class ResumeCountdown
         if (_ticksLeft == 0) return false;
         counter.Advance();
         _ticksLeft--;
+        if (counter.UsesProvider)
+            counter.Publish("timer.left", _ticksLeft == 0 ? LumenHostValue.Undefined : LumenHostValue.FromNumber((_ticksLeft + 59) / 60));
         foreach (var (bank, cue) in _cues.Advance((_ticksLeft + 59) / 60))
             play(bank, cue);
         return _ticksLeft == 0;

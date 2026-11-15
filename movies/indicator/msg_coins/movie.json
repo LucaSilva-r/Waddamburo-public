@@ -1,5 +1,5 @@
-// msg_coins: the credit line (free play, credits, service) and, per drum, its player's name or a prompt to join.
-// Placeholder look: text over a dark band. Reads the provider only (credits.*, screen.name, player.*).
+// msg_coins: the credit line (free play, credits, service) and, per drum without a player, a prompt to join.
+// Placeholder look: text over a dark band. Reads the provider only (credits.*, screen.name, player.joined).
 {
   "format": 2,
   "frameRate": 60,

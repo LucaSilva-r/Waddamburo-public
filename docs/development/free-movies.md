@@ -19,8 +19,7 @@ placeholder (SVG boxes, text fields). User-checked at home; arcade (coins, rejoi
 | Song select | on library rows, awaiting the user's check (uncommitted at time of writing) |
 | Intermissions | rainbow, fade, shutter, dan covers on the transition protocol |
 | Boot, logo, title, notice, tutorial | small callback-era packages (`_global.is_end`, `Command("End")`, `isAllEnd`) |
-| `indicator/time_counter` | callback-era (the first proof, 2026-11-11), still the game's contract |
-| `indicator/msg_coins`, `network_icon` | on the provider (credits, network, names) |
+| `indicator/*`: `msg_coins`, `network_icon`, `time_counter`, `msg_banapass`, `player_name` | on the provider (credits, network, timer, card pairing, names) |
 | Everything else | an empty **stand-in** (below) |
 
 Next, in order: song select step 2 (big panel `selected.*`), `tree.search/sort/group/filter`, images (`Wd.fill`),
@@ -115,8 +114,16 @@ indicators, the intermission) `screen.name`, `credits.freePlay` / `count` / `ser
 `network.state`, and per drum `player.joined` and `player.name` (`GameShell.publishAppState`; a movie hears only
 changes). Our `indicator/msg_coins` (the credit line, each drum's name or join prompt) and `indicator/network_icon`
 read them; the game's indicator code (`SystemIndicators`, `IndicatorParts`) leaves a movie of ours alone and counts
-it as ready, and the home setup's name tags are not drawn over our entry. Still the game's way: `time_counter`, the
-card prompt (`msg_banapass`), the name boards (`player_name`: a board does not know its drum yet).
+it as ready, and the home setup's name tags are not drawn over our entry.
+
+Then: `timer.left` / `timer.shown` (the entry's and song select's countdown as their hosts run it; the pause menu's
+resume count), `song.stage` / `song.finalStage` (session scope) for song select's tab, `card.accepting` / `code` /
+`codeSeconds` / `player` (a cabinet's website pairing). Our `time_counter` (rewritten on these), `msg_banapass` (the
+pairing code or the paired player; the engine's own pill steps aside for it) and `player_name`: the engine tells each
+front-end board its own drum's `player.name` / `player.joined` (it laid the boards out: `FlowScenes.BoardSide`; the
+entry's centre board shows a paired card's player); in a song the lane does. The game's code leaves all three alone
+(`GuestNameBoard`, `ResumeCountdown`). Fix on the way: an app-scope name no longer makes a movie a drum's own, and
+reads of app names never redirect to player 1.
 
 ### Scopes
 

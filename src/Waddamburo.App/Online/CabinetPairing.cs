@@ -66,19 +66,29 @@ internal sealed class CabinetPairing : IDisposable
         }
     }
 
-    public void UpdatePill(PairingPill pill)
+    /// <summary>What a cabinet shows now: the paired player waiting for the credit, else the code to pair with and its seconds left.</summary>
+    public (bool Accepting, string? Player, string? Code, int Seconds) Shown()
     {
         lock (_sync)
         {
             var now = DateTime.UtcNow;
             if (_card is { } card && now < _cardDeadline)
-                pill.Show(card.DisplayName.Length > 0 ? card.DisplayName : $"#{card.Baid}", null);
-            else if (_accepting && _code is { } code && now < _codeDeadline)
-                pill.Show($"{code[..3]}-{code[3..]}", ((int)Math.Ceiling((_codeDeadline - now).TotalSeconds)).ToString(
-                    System.Globalization.CultureInfo.InvariantCulture));
-            else
-                pill.Hide();
+                return (_accepting, card.DisplayName.Length > 0 ? card.DisplayName : $"#{card.Baid}", null, 0);
+            if (_accepting && _code is { } code && now < _codeDeadline)
+                return (true, null, $"{code[..3]}-{code[3..]}", (int)Math.Ceiling((_codeDeadline - now).TotalSeconds));
+            return (_accepting, null, null, 0);
         }
+    }
+
+    public void UpdatePill(PairingPill pill)
+    {
+        var (_, player, code, seconds) = Shown();
+        if (player is not null)
+            pill.Show(player, null);
+        else if (code is not null)
+            pill.Show(code, seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        else
+            pill.Hide();
     }
 
     public void Dispose() => _stop.Cancel();

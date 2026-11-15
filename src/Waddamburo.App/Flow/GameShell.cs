@@ -534,7 +534,18 @@ internal sealed class GameShell : IDisposable
         var network = LumenHostValue.FromString(Sync.Health is { } health
             ? char.ToLowerInvariant(health.State.ToString()[0]) + health.State.ToString()[1..] : "none");
         LumenHostValue number(int? value) => value is { } some ? LumenHostValue.FromNumber(some) : LumenHostValue.Undefined;
+        LumenHostValue text(string? value) => value is { } some ? LumenHostValue.FromString(some) : LumenHostValue.Undefined;
         var joined = Players.JoinedSides;
+        // The screen's countdown, as its host runs it (the game's screens and ours alike).
+        var timer = number(Active.Id == FlowScenes.Entry ? Hosts.Entry?.TimeLeft
+            : Active.Id == FlowScenes.SongSelect ? Hosts.SongSelect?.OwnTimeLeft : null);
+        // Song select's tab: which song of the credit comes next (the game has art for 1 to 4; home shows none).
+        var stage = Active.Id == FlowScenes.SongSelect && !Arcade.Home ? Players.SongsPlayed + 1 : (int?)null;
+        var card = Sync.Pairing?.Shown();
+        var names = new LumenHostValue[2];
+        for (var side = 0; side < 2; side++)
+            names[side] = joined.Contains(side) ? LumenHostValue.FromString(TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest"))
+                : LumenHostValue.Undefined;
         foreach (var movie in movies)
         {
             movie.Publish("screen.name", screen);
@@ -544,12 +555,41 @@ internal sealed class GameShell : IDisposable
             movie.Publish("credits.toJoin", number(Coins?.Missing(joined.Count)));
             movie.Publish("credits.shown", LumenHostValue.FromBoolean(!HideArcadeHud));
             movie.Publish("network.state", network);
+            movie.Publish("timer.left", timer);
+            movie.Publish("timer.shown", LumenHostValue.FromBoolean(!HideArcadeHud));
+            movie.Publish("card.accepting", card is { } pairing ? LumenHostValue.FromBoolean(pairing.Accepting) : LumenHostValue.Undefined);
+            movie.Publish("card.code", text(card?.Code));
+            movie.Publish("card.codeSeconds", card?.Code is null ? LumenHostValue.Undefined : number(card.Value.Seconds));
+            movie.Publish("card.player", text(card?.Player));
             for (var side = 0; side < 2; side++)
             {
-                var playing = joined.Contains(side);
-                movie.Publish("player.joined", LumenHostValue.FromBoolean(playing), side + 1);
-                movie.Publish("player.name", playing ? LumenHostValue.FromString(TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest"))
-                    : LumenHostValue.Undefined, side + 1);
+                movie.Publish("player.joined", LumenHostValue.FromBoolean(joined.Contains(side)), side + 1);
+                movie.Publish("player.name", names[side], side + 1);
+            }
+        }
+        if (Active.Id != FlowScenes.Entry && Active.Id != FlowScenes.SongSelect)
+            return;
+        // The front-end screens' parts: the timer's song tab, and each name board told its own drum's player (the
+        // engine laid the boards out; the entry's centre board shows a paired card's player).
+        var layers = Active.Layers.ToList();
+        for (var index = 0; index < layers.Count; index++)
+        {
+            var movie = Active.Player.Layers[index].Player;
+            if (!movie.UsesProvider)
+                continue;
+            var definition = layers[index].Definition;
+            var name = Path.GetFileNameWithoutExtension(definition.MovieId);
+            if (name == "time_counter")
+            {
+                movie.Publish("song.stage", number(stage is > 4 ? 4 : stage));
+                movie.Publish("song.finalStage", LumenHostValue.FromBoolean(stage >= Arcade.SongsPerSession));
+            }
+            else if (name == "player_name")
+            {
+                var side = FlowScenes.BoardSide(definition);
+                var cardBoard = side is null && Active.Id == FlowScenes.Entry && definition.Transform.Y == 185;
+                movie.Publish("player.joined", LumenHostValue.FromBoolean(side is { } drum ? joined.Contains(drum) : cardBoard && card?.Player is not null));
+                movie.Publish("player.name", side is { } own ? names[own] : cardBoard ? text(card?.Player) : LumenHostValue.Undefined);
             }
         }
     }
@@ -1773,6 +1813,9 @@ internal sealed class GameShell : IDisposable
             else if (!Hosts.InsertEntryCard(card))
                 Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
         }
+        // A card prompt of ours shows the code and the paired player itself.
+        if (_indicators?.Scene.Player.Layers[1].Player.UsesProvider == true)
+            return [];
         pairing.UpdatePill(_pill);
         return _pill.Quads();
     }
