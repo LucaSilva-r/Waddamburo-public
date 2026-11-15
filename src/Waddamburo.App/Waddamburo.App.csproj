@@ -32,6 +32,8 @@
   <!-- Waddamburo's own movies (movies/<archive>/<movie>: docs/development/free-movies.md), beside the executable. -->
   <ItemGroup>
     <Content Include="../../movies/**/*" LinkBase="movies" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Waddamburo's own sounds (sounds.json and its files: docs/development/free-movies.md, Sounds), beside the executable. -->
+    <Content Include="../../sounds/**/*" LinkBase="sounds" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Bundled fonts (SIL OFL 1.1; BundledFonts.cs, THIRD_PARTY_NOTICES.md), gzipped. -->

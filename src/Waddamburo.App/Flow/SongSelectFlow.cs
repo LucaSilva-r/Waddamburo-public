@@ -5,6 +5,7 @@ using Waddamburo.Game.Dan;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Library;
+using Waddamburo.Game.Sound;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
@@ -445,6 +446,17 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     private LibraryRows? _songRows;
     private const int SongSelectSeconds = 100; // the game's song select asks StartTimer(100)
 
+    // A drum's player takes a drum sound for the session and hears it once.
+    private string? chooseTone(int side, int tone)
+    {
+        if (tone < 0 || tone >= (Shell.Sounds?.Set.Tones.Count ?? 0))
+            return $"there is no drum sound {tone}";
+        TaikoGuest.Tones[side] = tone;
+        _songMovie?.Publish("player.tone", LumenHostValue.FromNumber(tone), side + 1);
+        Shell.Sounds?.Play(new SoundRequest("drum.don", side, tone));
+        return null;
+    }
+
     private void tellSongSelect(LumenPlayer movie, SongSelectHostBinding host)
     {
         if (movie != _songMovie)
@@ -460,7 +472,16 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 .Handle("row.open", arguments => at(arguments, 0) is { } row ? rows(loaded => openSongRow(loaded, host, row)) : "row.open takes a row")
                 .Handle("row.close", arguments => at(arguments, 0) is { } row ? rows(loaded => closeSongRow(loaded, host, row)) : "row.close takes a row")
                 .Handle("song.start", _ => rows(loaded => startSong(loaded, host)))
+                .Handle("tone.choose", arguments => at(arguments, 0) is { } tone && at(arguments, 1) is { } drum and (1 or 2)
+                    ? chooseTone(drum - 1, tone) : "tone.choose takes a tone and a drum (1 or 2)")
                 .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
+            // The drum sounds a player can choose, and each drum's choice.
+            var tones = Shell.Sounds?.Set.Tones ?? [];
+            movie.Publish("tone.count", LumenHostValue.FromNumber(tones.Count));
+            for (var index = 0; index < tones.Count; index++)
+                movie.PublishItem("tone.name", index, LumenHostValue.FromString(tones[index]));
+            for (var side = 0; side < 2; side++)
+                movie.Publish("player.tone", LumenHostValue.FromNumber(TaikoGuest.Tones[side]), side + 1);
         }
         if (_songRows is null)
         {

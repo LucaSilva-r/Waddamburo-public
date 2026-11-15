@@ -11,6 +11,9 @@ namespace Waddamburo.Lumen.Provider;
 /// <param name="screen">The screen, as WdNames scopes requests (entry, song_select, ...).</param>
 public sealed class WdRequests(string screen)
 {
+    /// <summary>The requests every movie may make, whatever its screen (scope app): set once by the engine.</summary>
+    public static WdRequests? App { get; set; }
+
     private readonly Dictionary<string, Func<LumenHostValue[], string?>> _handlers = new(StringComparer.Ordinal);
 
     /// <summary>

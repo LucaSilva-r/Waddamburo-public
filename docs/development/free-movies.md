@@ -232,7 +232,23 @@ the App plays by engine name (`GameSounds.Play`, `PlayMusic`, `PrepareMusic`, `C
 `ui.ka`, `coin.insert` / `coin.service`, `select.join`, `select.dan`, `dan.finished`, `player.refused`,
 `music.dan`, `music.tutorial(.waiwai/.ai)`, `click.accent` / `click.beat`. Sound names avoid the translation-key
 prefixes (`menu.`, `setup.`, `calibration.`, ...: `LanguageFileTests`). No game bank or track name is left in the
-App or the engine. Not yet: the `sounds.json` reader, `sound.play` and the tone list for our movies.
+App or the engine.
+
+Then (2026-11-15):
+- **Packs** (`SoundPack`, Game): a folder with `sounds.json` and its files. Lookup per request: `name@mode`,
+  `name@tone{t}@side{s}`, `name@tone{t}`, `name@side{s}`, `name@{variant}`, `name`; an entry is one sound or a list
+  played at once, with `file` (must stay inside the folder: skins are downloaded), `bus`, `gain`, `pan`, `pitch`,
+  `delay`; `tones` lists the drum sounds. A name a pack lacks is asked of the next set down. The chain
+  (`GameShell.createSounds`): the user's pack in `USRDIR/waddamburo/sounds`, ours (`sounds/` in the repository,
+  copied beside the executable) when `free_movies` is on or there is no game sound data, then the game's
+  (`GreenSoundSet`), or silence. A source's cache key has a `Variant`, so one file with two settings decodes twice.
+- **Our placeholder sounds**: `sounds/*.wav`, synthesised by `tools/sounds/placeholder_sounds.py` (drum don and ka,
+  a second tone pitched up, menu ticks, coin, calibration clicks). Everything else is silent on our skin for now.
+- **`sound.play(name[, drum])`**: the first request of scope `app` (`WdRequests.App`, asked by every movie whatever
+  its screen): the skin's sound of that name, for that drum's side and tone, else centred.
+- **Tones on our song select**: `tone.count`, the list `tone.name`, `player.tone` per drum (scope now `session`),
+  and the request `tone.choose(tone, drum)` (sets the player's tone for the session and plays its `drum.don`). Our
+  song select movie does not offer it yet: it comes with the course panel.
 
 ## Packages
 

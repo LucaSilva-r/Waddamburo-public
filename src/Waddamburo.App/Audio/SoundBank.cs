@@ -12,9 +12,9 @@ namespace Waddamburo.App.Audio;
 internal sealed class SoundBank : ISoundPlayer
 {
     private readonly AudioEngine _audio;
-    private readonly Dictionary<(string Path, int Stream), AudioClip> _clips = [];
-    private readonly HashSet<(string Path, int Stream)> _reportedFailures = [];
-    private readonly Dictionary<(string Path, int Stream), AudioPlaybackHandle> _lastPlayed = [];
+    private readonly Dictionary<(string Path, int Stream, string Variant), AudioClip> _clips = [];
+    private readonly HashSet<(string Path, int Stream, string Variant)> _reportedFailures = [];
+    private readonly Dictionary<(string Path, int Stream, string Variant), AudioPlaybackHandle> _lastPlayed = [];
     private AudioClip? _latestVoice;
     private SoundSource? _latestVoiceSource;
     // Per side (-1 left, 0 centre, 1 right; the sound's authored pan): two players' voices (full combo 154/155,
@@ -109,8 +109,8 @@ internal sealed class SoundBank : ISoundPlayer
         }
     }
 
-    private readonly Dictionary<(string Path, int Stream), Task<AudioClip>> _decoding = [];
-    private readonly List<((string Path, int Stream) Key, AudioBus Bus, Action Play)> _deferred = [];
+    private readonly Dictionary<(string Path, int Stream, string Variant), Task<AudioClip>> _decoding = [];
+    private readonly List<((string Path, int Stream, string Variant) Key, AudioBus Bus, Action Play)> _deferred = [];
 
     private void decodeAhead(SoundSource source)
     {
@@ -168,7 +168,7 @@ internal sealed class SoundBank : ISoundPlayer
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException)
         {
-            if (_reportedFailures.Add((music.Path, -1)))
+            if (_reportedFailures.Add((music.Path, -1, "")))
                 Console.Error.WriteLine($"Music {music.Label} is unavailable: {exception.Message}");
             return null;
         }
@@ -318,7 +318,7 @@ internal sealed class SoundBank : ISoundPlayer
 
     private void reportUnavailable(SoundSource source, Exception exception) => reportUnavailable(source.Key, source.Label, exception);
 
-    private void reportUnavailable((string Path, int Stream) key, string label, Exception exception)
+    private void reportUnavailable((string Path, int Stream, string Variant) key, string label, Exception exception)
     {
         if (_reportedFailures.Add(key))
             Console.Error.WriteLine($"Authored sound {label} is unavailable: {exception.Message}");

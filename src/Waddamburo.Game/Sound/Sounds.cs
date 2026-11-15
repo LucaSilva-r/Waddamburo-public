@@ -18,7 +18,7 @@ public readonly record struct SoundSettings(float Gain = 1, float PanDegrees = 0
 /// <summary>
 /// One sound file, or one stream of a container, that the engine decodes (any format its decoders read: ATRAC in NUB
 /// banks, ADPCM, Ogg, WAV, ...). <paramref name="Stream"/> is 1-based within a container, 0 for a file's only stream.
-/// The engine caches a sound by <see cref="Path"/> and <see cref="Stream"/>; <see cref="Settings"/> is asked once, when
+/// The engine caches a sound by <see cref="Key"/>; <see cref="Settings"/> is asked once, when
 /// the sound is first decoded (off the frame, so it may read the file).
 /// </summary>
 public sealed class SoundSource(string path, int stream = 0, string? label = null)
@@ -32,7 +32,10 @@ public sealed class SoundSource(string path, int stream = 0, string? label = nul
 
     public Func<SoundSettings>? Settings { get; init; }
 
-    public (string Path, int Stream) Key => (Path, Stream);
+    /// <summary>Tells apart sources of one file decoded with different settings (a pack's pitched copy of a sound).</summary>
+    public string Variant { get; init; } = "";
+
+    public (string Path, int Stream, string Variant) Key => (Path, Stream, Variant);
 }
 
 /// <summary>A sound to play and the bus it plays on.</summary>
@@ -102,4 +105,12 @@ public interface ISoundPlayer
 
     /// <summary>Everything but the coin channel stops.</summary>
     void StopAll();
+}
+
+/// <summary>No sounds at all (no game sound data and no pack).</summary>
+public sealed class SilentSoundSet : ISoundSet
+{
+    public IReadOnlyList<string> Tones { get; } = [];
+
+    public IReadOnlyList<SoundCue> Describe(SoundRequest request) => [];
 }

@@ -178,6 +178,7 @@ public sealed partial class LumenPlayer
                 return new Avm1Lookup(true, false);
             var values = arguments.Skip(1).Select(toHostValue).ToArray();
             var refused = WdNames.Find(name)!.Kind != WdKind.Request ? $"{name} is not a request (Wd.get or Wd.on reads it)"
+                : WdNames.Find(name)!.Scope == "app" ? WdRequests.App?.Take(name, values) ?? "the engine takes no app requests here"
                 : RequestHandler is null ? "no screen takes requests from this movie"
                 : RequestHandler(name, values);
             var call = $"Wd.request(\"{name}\"{string.Concat(values.Select(static value => ", " + describe(value)))})";

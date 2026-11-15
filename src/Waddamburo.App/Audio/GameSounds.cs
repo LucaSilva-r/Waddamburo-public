@@ -10,12 +10,13 @@ namespace Waddamburo.App.Audio;
 /// </summary>
 internal sealed class GameSounds
 {
-    public GameSounds(AudioEngine audio, string soundRoot)
+    /// <param name="green">The game's sound tree (its screens' movies ask for its cues).</param>
+    /// <param name="set">What the engine's names play: a pack of ours or the user's over the game's (SoundPack).</param>
+    public GameSounds(AudioEngine audio, GreenSoundSet green, ISoundSet set)
     {
-        var set = new GreenSoundSet(soundRoot);
         Set = set;
         Bank = new SoundBank(audio);
-        Green = new GreenSounds(set, Bank);
+        Green = new GreenSounds(green, Bank);
         Attract = new AttractSounds(Green);
         Frontend = new FrontendSounds(Green);
         Gameplay = new GameplaySounds(Bank, set);
@@ -39,9 +40,11 @@ internal sealed class GameSounds
     public GameOverSounds GameOver { get; }
 
     /// <summary>Plays the skin's sound for an engine name (nothing when the skin has none).</summary>
-    public void Play(string name, bool trace = true)
+    public void Play(string name, bool trace = true) => Play(new SoundRequest(name), trace);
+
+    public void Play(SoundRequest request, bool trace = true)
     {
-        foreach (var cue in Set.Describe(new(name)))
+        foreach (var cue in Set.Describe(request))
             Bank.Play(cue, trace: trace);
     }
 

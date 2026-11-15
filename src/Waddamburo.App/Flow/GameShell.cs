@@ -19,6 +19,8 @@ using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Game.Sound;
+using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
@@ -27,6 +29,7 @@ using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
 using Waddamburo.App.Online;
 using Waddamburo.Skins.Green.Screens;
+using Waddamburo.Skins.Green.Sound;
 
 namespace Waddamburo.App.Flow;
 
@@ -745,7 +748,7 @@ internal sealed class GameShell : IDisposable
                 : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"),
                     FindJingle("JINGLE_AIBTL_GENRE.nub"));
             _boot.Begin("SOUND DATA");
-            Sounds = options.SoundRoot is null ? null : new GameSounds(Audio!, options.SoundRoot);
+            Sounds = Audio is null ? null : createSounds(Audio, options.SoundRoot, options.ArcadePath);
             _boot.Begin("GRAPHICS");
             Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
                 squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
@@ -993,6 +996,31 @@ internal sealed class GameShell : IDisposable
         [FlowScenes.GameOver] = ending,
         [FlowScenes.AiRemind] = ending,
     };
+
+    // The sounds the engine's names play, the first that has one: the user's pack (USRDIR/waddamburo/sounds), ours
+    // (sounds/ beside the executable) when free_movies is on or there is no game sound data, then the game's.
+    // ponytail: free_movies is read once, at start.
+    private GameSounds createSounds(AudioEngine audio, string? soundRoot, string? arcadePath)
+    {
+        var green = new GreenSoundSet(soundRoot ?? Path.Combine(AppContext.BaseDirectory, "sounds"));
+        ISoundSet set = soundRoot is null ? new SilentSoundSet() : green;
+        if ((soundRoot is null || Arcade.FreeMovies) && SoundPack.Load(Path.Combine(AppContext.BaseDirectory, "sounds"), set) is { } ours)
+            set = ours;
+        if (arcadePath is not null && SoundPack.Load(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcadePath))!, "sounds"), set) is { } own)
+            set = own;
+        var sounds = new GameSounds(audio, green, set);
+        // Any movie of ours may ask for a sound by name, for a drum's side and tone or centred.
+        WdRequests.App = new WdRequests("app").Handle("sound.play", arguments =>
+        {
+            if (arguments is not [{ Kind: LumenHostValueKind.Text } name, ..])
+                return "sound.play takes a sound's name";
+            int? drum = arguments.Length > 1 && arguments[1].Kind == LumenHostValueKind.Number && arguments[1].AsNumber() is 1 or 2
+                ? (int)arguments[1].AsNumber() - 1 : null;
+            sounds.Play(new SoundRequest(name.AsString(), drum, drum is { } side ? TaikoGuest.Tones[side] : 0));
+            return null;
+        });
+        return sounds;
+    }
 
     public string? FindJingle(string fileName)
     {

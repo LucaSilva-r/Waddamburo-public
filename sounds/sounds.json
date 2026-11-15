@@ -1,0 +1,17 @@
+// The engine's own sounds (free-movies.md, Sounds): placeholders made by tools/sounds/placeholder_sounds.py.
+// A name missing here plays the game's sound when there is game sound data, else nothing.
+{
+  "tones": ["Taiko", "High taiko"],
+  "sounds": {
+    "drum.don": { "file": "don.wav" },
+    "drum.ka": { "file": "ka.wav" },
+    "drum.don@tone1": { "file": "don.wav", "pitch": 500 },
+    "drum.ka@tone1": { "file": "ka.wav", "pitch": 500 },
+    "ui.don": { "file": "tick.wav", "bus": "drum" },
+    "ui.ka": { "file": "tick.wav", "bus": "drum", "pitch": -500 },
+    "coin.insert": { "file": "coin.wav" },
+    "coin.service": { "file": "coin.wav" },
+    "click.accent": { "file": "tick.wav", "pitch": 1200 },
+    "click.beat": { "file": "tick.wav" }
+  }
+}
