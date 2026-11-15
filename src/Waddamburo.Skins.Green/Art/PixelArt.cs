@@ -19,6 +19,20 @@ public static class PixelArt
     public static bool IsArchive(string archiveId) =>
         Archives.Any(name => archiveId.Replace('\\', '/').Split('/')[0].Equals(name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Every texture of a movie enlarged by whole pixels; <paramref name="made"/> hears each new one.</summary>
+    public static void Enlarge(Waddamburo.Game.LumenMovieContent content, Action<byte[]> made)
+    {
+        content.DecodeAll();
+        content.ReplaceTextures((texture, _) =>
+        {
+            if (System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsArray(texture.Rgba8) is not { Length: > 0 } pixels)
+                return texture;
+            var (width, height, enlarged) = Enlarge(texture.Width, texture.Height, pixels);
+            made(enlarged);
+            return texture with { Width = width, Height = height, Rgba8 = System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(enlarged) };
+        });
+    }
+
     /// <summary>The pixels enlarged by a whole factor (nearest neighbour); the same array when no factor above 1 fits.</summary>
     public static (int Width, int Height, byte[] Rgba) Enlarge(int width, int height, byte[] rgba)
     {

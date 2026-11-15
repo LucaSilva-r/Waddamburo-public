@@ -1,4 +1,3 @@
-using Waddamburo.Skins.Green.Art;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -6,7 +5,6 @@ using Waddamburo.Formats.Ddp;
 using Waddamburo.Game;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Presentation;
 
@@ -67,24 +65,24 @@ internal sealed class TextureBake
     public bool Running => Phase is BakePhase.Scanning or BakePhase.Upscaling;
 
     /// <summary>Starts a bake on <paramref name="threads"/> threads (all cores but two by default).</summary>
-    public static TextureBake Start(UpscaleTool tool, string lumenRoot, int? threads = null)
+    public static TextureBake Start(ISkin skin, UpscaleTool tool, string lumenRoot, int? threads = null)
     {
         var bake = new TextureBake(threads ?? Math.Max(1, Environment.ProcessorCount - 2));
-        _ = Task.Run(() => bake.run(tool, lumenRoot));
+        _ = Task.Run(() => bake.run(skin, tool, lumenRoot));
         return bake;
     }
 
     /// <summary>Stops after the textures being upscaled (they are kept).</summary>
     public void Stop() => _stopRequested = true;
 
-    private void run(UpscaleTool tool, string lumenRoot)
+    private void run(ISkin skin, UpscaleTool tool, string lumenRoot)
     {
         _clock.Start();
         try
         {
-            var archives = usedMovies(tool).Concat(knownMovies(lumenRoot))
+            var archives = usedMovies(tool).Concat(knownMovies(skin, lumenRoot))
                 .Distinct()
-                .Where(movie => File.Exists(Path.Combine(lumenRoot, movie.Archive)) && !PixelArt.IsArchive(movie.Archive))
+                .Where(movie => File.Exists(Path.Combine(lumenRoot, movie.Archive)) && !skin.IsPixelArt(movie.Archive))
                 .GroupBy(static movie => movie.Archive)
                 .ToArray();
             ArchivesTotal = archives.Length;
@@ -188,7 +186,7 @@ internal sealed class TextureBake
                 .Where(static parts => parts.Length == 2).Select(static parts => (parts[0], parts[1]))
             : [];
 
-    private static IEnumerable<(string Archive, string Movie)> knownMovies(string lumenRoot)
+    private static IEnumerable<(string Archive, string Movie)> knownMovies(ISkin skin, string lumenRoot)
     {
         var layout = GameplaySceneComposition.LoadLayout(lumenRoot);
         var gameplay = new SceneId("gameplay");
@@ -199,8 +197,7 @@ internal sealed class TextureBake
             FlowScenes.SongSelectScene([0, 1], waiwai: true),
             FlowScenes.SongSelectScene([0], aiBattle: true),
             FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade,
-            SystemIndicators.Definition(new SceneId("system-indicators")),
-            ResumeCountdown.Definition(new SceneId("resume-countdown")),
+            .. skin.OwnScenes,
             GameplaySceneComposition.CreateWaiwai(gameplay, layout),
             .. from side in Sides
                from twoPlayers in PlayerCounts

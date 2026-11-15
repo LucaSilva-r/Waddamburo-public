@@ -183,6 +183,9 @@ internal sealed class GameShell : IDisposable
     public AudioEngine? Audio { get; }
     public GameSounds? Sounds { get; }
 
+    /// <summary>The skin the game shows (Green's, from the user's install).</summary>
+    public Waddamburo.Game.ISkin Skin { get; } = new Waddamburo.Skins.Green.GreenSkin();
+
     /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
     public Waddamburo.Skins.Green.Sound.GreenScreenSounds? GreenSounds { get; private set; }
     public SongPreviewController? Previews { get; }
@@ -911,7 +914,7 @@ internal sealed class GameShell : IDisposable
                 _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,
                     baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
             _boot.Begin("GAMEPLAY DATA");
-            Gameplay = new TaikoGameplayPresentation(new Waddamburo.Skins.Green.Gameplay.GreenGameplaySkin(), (lane, action) =>
+            Gameplay = new TaikoGameplayPresentation(Skin.Gameplay, (lane, action) =>
             {
                 // 音なし (reported on Discord): the hits are silent in songs only, the menus keep their drum.
                 if (Arcade.DrumSoundInSongs)
@@ -951,7 +954,7 @@ internal sealed class GameShell : IDisposable
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
             var cacheRoot = options.ArcadePath is { } settings
                 ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
-            (MovieContent, Upscale) = GameMovieContent.Create(Application, Path.GetFullPath(assetRoot), cacheRoot, () => Arcade);
+            (MovieContent, Upscale) = GameMovieContent.Create(Application, Skin, Path.GetFullPath(assetRoot), cacheRoot, () => Arcade);
             // Movie packages (USRDIR/waddamburo/movies/<archive>/<movie>) replace the game's movies one by one.
             MovieContent.PackageRoot = options.ArcadePath is { } home ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(home))!, "movies") : null;
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;

@@ -13,7 +13,7 @@ internal static class TextureCacheBuilder
             Console.Error.WriteLine("Texture upscaling is unavailable (the waddamburo_texture library is missing).");
             return 1;
         }
-        var bake = TextureBake.Start(tool, lumenRoot, threads);
+        var bake = TextureBake.Start(new Waddamburo.Skins.Green.GreenSkin(), tool, lumenRoot, threads);
         Console.WriteLine($"Upscaling textures into {tool.Cache} on {bake.Threads} thread(s).");
         while (bake.Running)
         {

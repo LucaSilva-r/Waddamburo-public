@@ -171,7 +171,7 @@ internal sealed class HomeControls : IDisposable
                     break;
                 case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                     _menu.ShowBake(_shell.Bake is { Running: true } running ? running
-                        : _shell.Bake = TextureBake.Start(upscale, _assetRoot));
+                        : _shell.Bake = TextureBake.Start(_shell.Skin, upscale, _assetRoot));
                     break;
                 default:
                     _menu.SettingsOverlayClosed();
@@ -536,7 +536,7 @@ internal sealed class HomeControls : IDisposable
             // A bake already running is shown again rather than started twice.
             case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                 _menu.Bake = _shell.Bake is { Running: true } running ? running
-                    : _shell.Bake = TextureBake.Start(upscale, _assetRoot);
+                    : _shell.Bake = TextureBake.Start(_shell.Skin, upscale, _assetRoot);
                 break;
         }
         return true;
