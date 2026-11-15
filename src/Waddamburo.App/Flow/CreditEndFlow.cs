@@ -169,7 +169,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             keys.Timestamp);
     }
 
-    // The results' requests (WdNames scope result), for a results movie of ours; the game's ends through _global.isAllEnd.
+    // The results' requests (WdNames scope result), for a results movie of ours; the game's ends itself (IScreenEnds).
     private bool _continued;
     private LumenPlayer[] _asking = [];
 
@@ -199,16 +199,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
                 Shell.Sounds?.Results.StartMusic(waiwai: Shell.Hosts.WaiwaiResult is not null, aiBattle: Shell.Hosts.AiOutcome is not null);
             if (Shell.Scenes.FinishFade()) return;
-            // The movie ends itself (_global.isAllEnd; 15-21 s traced by closing message; Waiwai's
-            // reports AllFinish).
-            // AI battle's end with its section results (their movie calls Start).
-            // (result_normal, the second layer, sets _global.isAllEnd once its 面でおわり exit runs.)
-            if (input.Escape || _continued || (Shell.Hosts.AiOutcome is not null
-                    ? Shell.Hosts.AiSectionResult is { } sections && (sections.Ended
-                        || sections.Played && RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player))
-                    : Shell.Hosts.WaiwaiResult is { } waiwai
-                    ? waiwai.Ended
-                    : RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player)))
+            // The movie ends itself (15-21 s traced by closing message), or ours asks.
+            if (input.Escape || _continued || Shell.ScreenEnded)
                 // A course ends the credit however many songs it had left (the coins inserted stay); at home,
                 // the course list again.
                 if (Shell.Hosts.DanResult is not null)
@@ -234,7 +226,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             // The movie waits for a don; the cabinet doesn't wait forever.
             if (Shell.Tick - _remindStartTick == RemindTimeoutTicks)
                 Shell.Hosts.AiRemind?.Exit();
-            if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player)) // remind, over its backdrop
+            if (input.Escape || Shell.ScreenEnded)
                 Shell.Scenes.FadeTo(FlowScenes.GameOver);
         }
         else if (scene == FlowScenes.Retry)
@@ -245,10 +237,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 tickRevival(revival, input);
                 return;
             }
-            if (RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers.Single().Player))
+            if (Shell.ScreenEnded)
                 Shell.Scenes.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
         }
-        else if (Shell.Hosts.GameOver?.Ended == true || _ending)
+        else if (_ending || Shell.ScreenEnded)
         {
             if (_gameOverEndTick < 0)
                 _gameOverEndTick = Shell.Tick;

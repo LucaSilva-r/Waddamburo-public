@@ -35,8 +35,28 @@ internal sealed class LayerHostFactory(
     bool countdown,
     Func<IReadOnlyList<TaikoPlayResult>> playResults,
     Func<ArcadeSettings> arcadeSettings,
-    CoinBank? coins) : ILumenLayerHostFactory
+    CoinBank? coins) : ILumenLayerHostFactory, IScreenEnds
 {
+    // The game's movies end a screen with _global.isAllEnd (RetryGameHostBinding.IsEnd) or a call their host keeps.
+    public bool Ended(SceneId screen, IReadOnlyList<LumenPlayer> movies)
+    {
+        if (screen == FlowScenes.Result)
+            // AI battle's end with its section results (their movie calls Start); result_normal, the second layer,
+            // sets _global.isAllEnd once its 面でおわり exit runs. Waiwai's reports AllFinish.
+            return AiOutcome is not null
+                ? AiSectionResult is { } sections && (sections.Ended || sections.Played && RetryGameHostBinding.IsEnd(movies[1]))
+                : WaiwaiResult is { } waiwai ? waiwai.Ended : RetryGameHostBinding.IsEnd(movies[0]);
+        if (screen == FlowScenes.AiRemind)
+            return RetryGameHostBinding.IsEnd(movies[1]); // remind, over its backdrop
+        if (screen == FlowScenes.Retry)
+            return RetryGameHostBinding.IsEnd(movies.Single());
+        if (screen == FlowScenes.Tutorial)
+            return RetryGameHostBinding.IsEnd(movies[0]);
+        if (screen == FlowScenes.WaiwaiTutorial || screen == FlowScenes.AiTutorial)
+            return ModeTutorial?.Finished == true;
+        return GameOver?.Ended == true; // the credit's last screens
+    }
+
     // Live: the service menu changes settings (e.g. songs per session) while the game runs.
     private ArcadeSettings arcade => arcadeSettings();
 

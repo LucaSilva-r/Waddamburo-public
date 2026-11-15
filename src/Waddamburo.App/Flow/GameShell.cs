@@ -381,6 +381,9 @@ internal sealed class GameShell : IDisposable
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
     public LayerHostFactory Hosts { get; }
+
+    /// <summary>Whether the active screen's movies are done with it (the skin answers).</summary>
+    public bool ScreenEnded => ((IScreenEnds)Hosts).Ended(Active.Id, [.. Active.Player.Layers.Select(static layer => layer.Player)]);
     public GameFlowCoordinator Coordinator { get; }
     public IntermissionOverlay Overlay { get; }
 

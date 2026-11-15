@@ -114,12 +114,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // without the folder, the cursor on the first genre.
         if (Shell.Active.Id == FlowScenes.WaiwaiTutorial || Shell.Active.Id == FlowScenes.AiTutorial)
         {
-            if (input.Escape || Shell.Hosts.ModeTutorial?.Finished == true) showSongSelect();
+            if (input.Escape || Shell.ScreenEnded) showSongSelect();
             return;
         }
         if (Shell.Active.Id == FlowScenes.Tutorial)
         {
-            if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[0].Player))
+            if (input.Escape || Shell.ScreenEnded)
                 showSongSelect();
             return;
         }
