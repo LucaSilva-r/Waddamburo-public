@@ -518,7 +518,8 @@ internal sealed class GameShell : IDisposable
             .Where(static player => player.UsesProvider).ToArray();
         if (movies.Length == 0)
             return;
-        var screen = LumenHostValue.FromString(scene.IndicatorsFor(Active.Id) switch
+        var screen = LumenHostValue.FromString(Active.Id == FlowScenes.Retry ? "retry" : Active.Id == FlowScenes.GameOver ? "gameover"
+            : scene.IndicatorsFor(Active.Id) switch
         {
             IndicatorScene.Boot => "boot",
             IndicatorScene.Attract => "attract",

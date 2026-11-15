@@ -45,6 +45,40 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
+    public void TheRevivalAndTheDanResultsShowWhatTheEngineCounted()
+    {
+        var revival = load("enso_result/retry_game");
+        revival.Advance();
+        revival.Publish("revival.norma", n(40));
+        revival.Publish("revival.hits", n(12));
+        revival.Publish("revival.timeLeft", n(6.2));
+        Assert.Equal("12 / 40", revival.ReadScriptValue("count.text"));
+        Assert.Equal("7", revival.ReadScriptValue("time.text"));
+        revival.Publish("revival.result", LumenHostValue.FromString("success"));
+        Assert.Equal("REVIVED!", revival.ReadScriptValue("heading.text"));
+
+        var dan = load("dani_result/dani_result");
+        dan.Publish("dan.name", LumenHostValue.FromString("六段"));
+        dan.Publish("dan.passed", LumenHostValue.FromString("red"));
+        dan.Publish("result.score", n(812340), 1);
+        dan.Publish("dan.exam.count", n(1));
+        dan.PublishItem("dan.exam.type", 0, LumenHostValue.FromString("bads"));
+        dan.PublishItem("dan.exam.target", 0, n(25));
+        dan.PublishItem("dan.exam.value", 0, n(9));
+        dan.PublishItem("dan.songTitle", 0, LumenHostValue.FromString("Senbonzakura"));
+        dan.PublishItem("dan.songGood", 0, n(300));
+        dan.PublishItem("dan.songOk", 0, n(20));
+        dan.PublishItem("dan.songBad", 0, n(3));
+        dan.Advance();
+        Assert.Equal("六段", dan.ReadScriptValue("heading.text"));
+        Assert.Equal("PASS", dan.ReadScriptValue("outcome.text"));
+        Assert.Equal("812340", dan.ReadScriptValue("tvalue0.text"));
+        Assert.Equal("BADs   9 / 25", dan.ReadScriptValue("exam0.text"));
+        Assert.Equal("1.  Senbonzakura   GOOD 300  OK 20  BAD 3", dan.ReadScriptValue("song0.text"));
+        Assert.Equal("", dan.ReadScriptValue("song1.text"));
+    }
+
+    [Fact]
     public void ANameBoardShowsItsDrumsPlayerAndTheCardPromptItsCode()
     {
         var board = load("indicator/player_name");

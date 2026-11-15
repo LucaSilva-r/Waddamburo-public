@@ -1,0 +1,525 @@
+// dani_result: a dan course's results. Placeholder look; reads result.* (the player's drum), dan.*, asks result.continue.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg"
+  },
+  "shapes": {
+    "bg": {
+      "texture": "bg",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    }
+  },
+  "texts": {
+    "heading": {
+      "rect": [
+        -550,
+        -36,
+        1100,
+        72
+      ],
+      "size": 52,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "outcome": {
+      "rect": [
+        -450,
+        -30,
+        900,
+        61
+      ],
+      "size": 44,
+      "align": "center",
+      "color": "#ffd23c"
+    },
+    "tname0": {
+      "rect": [
+        0,
+        -21,
+        300,
+        42
+      ],
+      "size": 30,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "tvalue0": {
+      "rect": [
+        -260,
+        -22,
+        260,
+        44
+      ],
+      "size": 32,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "tname1": {
+      "rect": [
+        0,
+        -21,
+        300,
+        42
+      ],
+      "size": 30,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "tvalue1": {
+      "rect": [
+        -260,
+        -22,
+        260,
+        44
+      ],
+      "size": 32,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "tname2": {
+      "rect": [
+        0,
+        -21,
+        300,
+        42
+      ],
+      "size": 30,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "tvalue2": {
+      "rect": [
+        -260,
+        -22,
+        260,
+        44
+      ],
+      "size": 32,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "tname3": {
+      "rect": [
+        0,
+        -21,
+        300,
+        42
+      ],
+      "size": 30,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "tvalue3": {
+      "rect": [
+        -260,
+        -22,
+        260,
+        44
+      ],
+      "size": 32,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "tname4": {
+      "rect": [
+        0,
+        -21,
+        300,
+        42
+      ],
+      "size": 30,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "tvalue4": {
+      "rect": [
+        -260,
+        -22,
+        260,
+        44
+      ],
+      "size": 32,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "tname5": {
+      "rect": [
+        0,
+        -21,
+        300,
+        42
+      ],
+      "size": 30,
+      "align": "left",
+      "color": "#ffd23c"
+    },
+    "tvalue5": {
+      "rect": [
+        -260,
+        -22,
+        260,
+        44
+      ],
+      "size": 32,
+      "align": "right",
+      "color": "#ffffff"
+    },
+    "exam0": {
+      "rect": [
+        0,
+        -19,
+        560,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "exam1": {
+      "rect": [
+        0,
+        -19,
+        560,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "exam2": {
+      "rect": [
+        0,
+        -19,
+        560,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "exam3": {
+      "rect": [
+        0,
+        -19,
+        560,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "song0": {
+      "rect": [
+        0,
+        -19,
+        1120,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "song1": {
+      "rect": [
+        0,
+        -19,
+        1120,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "song2": {
+      "rect": [
+        0,
+        -19,
+        1120,
+        39
+      ],
+      "size": 28,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "hint": {
+      "rect": [
+        -500,
+        -21,
+        1000,
+        42
+      ],
+      "size": 30,
+      "align": "center",
+      "color": "#ffd23c"
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "bg",
+          "name": "bg",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "heading",
+          "name": "heading",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 70
+            }
+          ]
+        },
+        {
+          "character": "outcome",
+          "name": "outcome",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 140
+            }
+          ]
+        },
+        {
+          "character": "tname0",
+          "name": "tname0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 220
+            }
+          ]
+        },
+        {
+          "character": "tvalue0",
+          "name": "tvalue0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 560,
+              "y": 220
+            }
+          ]
+        },
+        {
+          "character": "tname1",
+          "name": "tname1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 266
+            }
+          ]
+        },
+        {
+          "character": "tvalue1",
+          "name": "tvalue1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 560,
+              "y": 266
+            }
+          ]
+        },
+        {
+          "character": "tname2",
+          "name": "tname2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 312
+            }
+          ]
+        },
+        {
+          "character": "tvalue2",
+          "name": "tvalue2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 560,
+              "y": 312
+            }
+          ]
+        },
+        {
+          "character": "tname3",
+          "name": "tname3",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 358
+            }
+          ]
+        },
+        {
+          "character": "tvalue3",
+          "name": "tvalue3",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 560,
+              "y": 358
+            }
+          ]
+        },
+        {
+          "character": "tname4",
+          "name": "tname4",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 404
+            }
+          ]
+        },
+        {
+          "character": "tvalue4",
+          "name": "tvalue4",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 560,
+              "y": 404
+            }
+          ]
+        },
+        {
+          "character": "tname5",
+          "name": "tname5",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 450
+            }
+          ]
+        },
+        {
+          "character": "tvalue5",
+          "name": "tvalue5",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 560,
+              "y": 450
+            }
+          ]
+        },
+        {
+          "character": "exam0",
+          "name": "exam0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 680,
+              "y": 220
+            }
+          ]
+        },
+        {
+          "character": "exam1",
+          "name": "exam1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 680,
+              "y": 266
+            }
+          ]
+        },
+        {
+          "character": "exam2",
+          "name": "exam2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 680,
+              "y": 312
+            }
+          ]
+        },
+        {
+          "character": "exam3",
+          "name": "exam3",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 680,
+              "y": 358
+            }
+          ]
+        },
+        {
+          "character": "song0",
+          "name": "song0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 520
+            }
+          ]
+        },
+        {
+          "character": "song1",
+          "name": "song1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 564
+            }
+          ]
+        },
+        {
+          "character": "song2",
+          "name": "song2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 80,
+              "y": 608
+            }
+          ]
+        },
+        {
+          "character": "hint",
+          "name": "hint",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 640
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}

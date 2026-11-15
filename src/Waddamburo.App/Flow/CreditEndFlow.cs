@@ -34,6 +34,17 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _remindStartTick = Shell.Tick;
         if (scene == FlowScenes.AiRemind)
             Shell.Sounds?.Results.StartRemindMusic();
+        // Screens of ours ask the engine (WdNames scopes retry and gameover); the game's end themselves.
+        _revival = null;
+        _ending = false;
+        _revivalEndedAt = -1;
+        if (scene == FlowScenes.Retry && ours() is { } retry)
+        {
+            _revival = new RevivalChallenge();
+            new WdRequests("retry").Handle("revival.done", _ => _revival?.Succeeded is null ? "the drum roll is still on" : end()).Install(retry);
+        }
+        else if (scene == FlowScenes.GameOver && ours() is { } over)
+            new WdRequests("gameover").Handle("gameover.done", _ => end()).Install(over);
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
@@ -52,6 +63,70 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         }
         if (gameplay.Song is { } song)
             ResultHostBinding.FillTitle(Shell.Active, Shell.Titles.GetGameplayTitle(song));
+        if (Shell.Hosts.DanResult is { } dan && ours() is { } movies)
+            publishDanResult(dan, movies);
+    }
+
+    private RevivalChallenge? _revival;
+    private long _revivalEndedAt = -1;
+    private bool _ending;
+    // ponytail: a screen of ours that never asks revival.done still moves on this long after the outcome.
+    private const int RevivalOutcomeTicks = 5 * 60;
+
+    // The scene's movies when they are ours (they read the provider), else null.
+    private LumenPlayer[]? ours()
+    {
+        var movies = Shell.Active.Player.Layers.Select(static layer => layer.Player).ToArray();
+        return movies.Any(static movie => movie.UsesProvider) ? movies : null;
+    }
+
+    private string? end()
+    {
+        if (_ending) return "the screen is already ending";
+        _ending = true;
+        return null;
+    }
+
+    // A course's results for a results movie of ours: the course's totals under the player's drum, its outcome, the
+    // requirements where the course ended, and each song's row.
+    private void publishDanResult(Waddamburo.Game.Dan.DanCourseResult dan, IEnumerable<LumenPlayer> movies)
+    {
+        var drum = Shell.Hosts.PlayerSide + 1;
+        var total = dan.Total;
+        static LumenHostValue n(double value) => LumenHostValue.FromNumber(value);
+        foreach (var movie in movies.Where(static movie => movie.UsesProvider))
+        {
+            movie.Publish("dan.name", LumenHostValue.FromString(dan.Course.Name));
+            movie.Publish("dan.passed", LumenHostValue.FromString(dan.Level switch { 2 => "gold", 1 => "red", _ => "failed" }));
+            movie.Publish("dan.songsPlayed", n(dan.SongsPlayed));
+            movie.Publish("result.score", n(total.Score), drum);
+            movie.Publish("result.good", n(total.Goods), drum);
+            movie.Publish("result.ok", n(total.Oks), drum);
+            movie.Publish("result.bad", n(total.Bads), drum);
+            movie.Publish("result.maxCombo", n(total.MaxCombo), drum);
+            movie.Publish("result.rolls", n(total.Rolls), drum);
+            movie.Publish("result.gauge", n(total.GaugePercent), drum);
+            movie.Publish("result.cleared", LumenHostValue.FromBoolean(dan.Level > 0), drum);
+            var requirements = dan.Course.Requirements;
+            movie.Publish("dan.exam.count", n(requirements.Count));
+            for (var index = 0; index < requirements.Count; index++)
+            {
+                var requirement = requirements[index];
+                movie.PublishItem("dan.exam.type", index, LumenHostValue.FromString(requirement.Type));
+                movie.PublishItem("dan.exam.target", index, requirement.Red is [var red, ..] ? n(red) : LumenHostValue.Undefined);
+                movie.PublishItem("dan.exam.gold", index, n(requirement.Gold is [var gold, ..] ? gold : 0));
+                movie.PublishItem("dan.exam.value", index, n(Waddamburo.Game.Dan.DanExams.ValueOf(requirement.Type, total)));
+            }
+            for (var index = 0; index < dan.Songs.Count; index++)
+            {
+                var counts = dan.Songs[index].Counts;
+                var title = index < gameplay.CourseSongs.Count ? gameplay.CourseSongs[index].Descriptor.Title : null;
+                movie.PublishItem("dan.songTitle", index, title is null ? LumenHostValue.Undefined : LumenHostValue.FromString(title.English ?? title.Primary));
+                movie.PublishItem("dan.songGood", index, index < dan.SongsPlayed ? n(counts.Goods) : LumenHostValue.Undefined);
+                movie.PublishItem("dan.songOk", index, index < dan.SongsPlayed ? n(counts.Oks) : LumenHostValue.Undefined);
+                movie.PublishItem("dan.songBad", index, index < dan.SongsPlayed ? n(counts.Bads) : LumenHostValue.Undefined);
+            }
+        }
     }
 
     // Don-chan's 成績発表 (VO_RESULT 0, played as the song ends) is heard in silence; the music follows.
@@ -165,18 +240,49 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         else if (scene == FlowScenes.Retry)
         {
             if (Shell.Scenes.FinishFade()) return;
+            if (_revival is { } revival)
+            {
+                tickRevival(revival, input);
+                return;
+            }
             if (RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers.Single().Player))
                 Shell.Scenes.FadeTo(Shell.Hosts.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
         }
-        else if (Shell.Hosts.GameOver?.Ended == true)
+        else if (Shell.Hosts.GameOver?.Ended == true || _ending)
         {
             if (_gameOverEndTick < 0)
                 _gameOverEndTick = Shell.Tick;
-            if (Shell.Tick - _gameOverEndTick < GameOverHoldTicks)
+            // Ours says when it is over itself: no last frame held.
+            if (!_ending && Shell.Tick - _gameOverEndTick < GameOverHoldTicks)
                 return;
             // Traced: the credit's end returns to the attract loop at logo_namco.
             Shell.Players.SongsPlayed = 0;
             Shell.Scenes.Show(FlowScenes.Logo);
         }
+    }
+
+    // The revival drum roll on a screen of ours: the engine counts the player's drum (the keys are the left drum's
+    // here: MapKeys), tells the screen, and moves on once the screen has shown the outcome.
+    private void tickRevival(RevivalChallenge revival, FlowInput input)
+    {
+        var hits = 0;
+        for (var pad = 0; pad < 4; pad++)
+            if (input.Keys.IsDown(SdlInputBindings.Pads[pad]))
+                hits++;
+        revival.Tick(hits);
+        static LumenHostValue n(double? value) => value is { } some ? LumenHostValue.FromNumber(some) : LumenHostValue.Undefined;
+        foreach (var movie in Shell.Active.Player.Layers.Select(static layer => layer.Player).Where(static movie => movie.UsesProvider))
+        {
+            movie.Publish("revival.norma", n(revival.Norma));
+            movie.Publish("revival.hits", n(revival.Hits));
+            movie.Publish("revival.timeLeft", n(revival.TimeLeft));
+            movie.Publish("revival.result", revival.Succeeded is { } won ? LumenHostValue.FromString(won ? "success" : "fail") : LumenHostValue.Undefined);
+        }
+        if (revival.Succeeded is not { } succeeded)
+            return;
+        if (_revivalEndedAt < 0)
+            _revivalEndedAt = Shell.Tick;
+        if (_ending || Shell.Tick - _revivalEndedAt >= RevivalOutcomeTicks)
+            Shell.Scenes.FadeTo(succeeded ? FlowScenes.SongSelect : FlowScenes.GameOver);
     }
 }

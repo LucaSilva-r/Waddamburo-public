@@ -130,6 +130,15 @@ waiting (`EntrySceneHost.ClaimCard`, the game's `EntryData`), and the waiting ca
 and the card prompt. To adjust later (user): how a card's player chooses their side; a card arriving after every drum
 joined as a guest is not given to anyone.
 
+**The end of a credit** (2026-11-15): the revival drum roll is the engine's rule now (`RevivalChallenge`, Game:
+the player's hits against the norma in a time limit; ponytail: norma 40 and 10 s are guesses, the game's movie
+timed it itself), told as `revival.norma` / `hits` / `timeLeft` / `result` (scope retry); a screen of ours asks
+`revival.done` after showing the outcome. The end-of-credit screens (normal and dan) ask `gameover.done`. A dan
+course's results get its totals as `result.*` under the player's drum, `dan.passed`, `dan.songsPlayed`, the
+requirements' final values on the `dan.exam.*` lists and per-song lists (`dan.songTitle`, `dan.songGood` / `Ok` /
+`Bad`), and end with `result.continue`. `screen.name` says `retry` and `gameover`. Ours: `enso_result/retry_game`,
+`reward_shop/shop_gameover`, `dani_result/dani_result`, `dani_result/dani_gameover`.
+
 ### Scopes
 
 **A check, not a wall** (user, 2026-11-12). One API, every name always callable; a scope only says when a name has a

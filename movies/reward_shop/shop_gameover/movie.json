@@ -1,0 +1,85 @@
+// shop_gameover: the end of a credit. Placeholder look; reads player.name, asks gameover.done.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "main",
+  "textures": {
+    "bg": "textures/bg.svg"
+  },
+  "shapes": {
+    "bg": {
+      "texture": "bg",
+      "rect": [
+        0,
+        0,
+        1280,
+        720
+      ]
+    }
+  },
+  "texts": {
+    "heading": {
+      "rect": [
+        -550,
+        -44,
+        1100,
+        89
+      ],
+      "size": 64,
+      "align": "center",
+      "color": "#ffd23c"
+    },
+    "names": {
+      "rect": [
+        -550,
+        -28,
+        1100,
+        56
+      ],
+      "size": 40,
+      "align": "center",
+      "color": "#ffffff"
+    }
+  },
+  "sprites": {
+    "main": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "bg",
+          "name": "bg",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        },
+        {
+          "character": "heading",
+          "name": "heading",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 300
+            }
+          ]
+        },
+        {
+          "character": "names",
+          "name": "names",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 640,
+              "y": 420
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "0": "scripts/main.as"
+      }
+    }
+  }
+}
