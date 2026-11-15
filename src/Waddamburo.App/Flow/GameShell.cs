@@ -1787,23 +1787,56 @@ internal sealed class GameShell : IDisposable
     }
 
     /// <summary>A paired card was rejected by the server (shown once).</summary>
-    public bool TakeCardFailure() => Sync.Pairing?.TakeCardFailure() == true;
+    public bool TakeCardFailure()
+    {
+        var failed = _cardReplay is not null ? replayCard(failure: true) is not null : Sync.Pairing?.TakeCardFailure() == true;
+        if (failed && _traceInput)
+            Console.WriteLine($"[card] {Tick} reject");
+        return failed;
+    }
 
     /// <summary>A card was paired during the attract loop: it starts the credit (SCENE_TRIGGER_CARD).</summary>
-    public ScoreProfile? TakeCard() => Sync.Pairing?.TakeCard();
+    public ScoreProfile? TakeCard()
+    {
+        var card = _cardReplay is not null ? replayCard(failure: false) : Sync.Pairing?.TakeCard();
+        if (card is not null && _traceInput)
+            Console.WriteLine($"[card] {Tick} {System.Text.Json.JsonSerializer.Serialize(card)}");
+        return card;
+    }
+
+    // Recorded pairings stand in for the server (a replay of a session recorded with WADDAMBURO_INPUT_TRACE=1):
+    // WADDAMBURO_CARD_REPLAY=<file> holds its "[card] <tick> <profile json | reject>" lines. Each is taken at the
+    // first ask on or after its tick.
+    // ponytail: test tool; a failure is returned as a placeholder profile, null means none due.
+    private readonly Queue<(long Tick, ScoreProfile? Card)>? _cardReplay =
+        Environment.GetEnvironmentVariable("WADDAMBURO_CARD_REPLAY") is { Length: > 0 } path
+            ? new(File.ReadLines(path).Where(static line => line.StartsWith("[card] ", StringComparison.Ordinal))
+                .Select(static line => line[7..].Split(' ', 2))
+                .Select(static parts => (long.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture),
+                    parts[1] == "reject" ? null : System.Text.Json.JsonSerializer.Deserialize<ScoreProfile>(parts[1]))))
+            : null;
+
+    private ScoreProfile? replayCard(bool failure)
+    {
+        if (_cardReplay is not { Count: > 0 } replay || replay.Peek().Tick > Tick || (replay.Peek().Card is null) != failure)
+            return null;
+        return replay.Dequeue().Card ?? ScoreProfile.LocalGuest;
+    }
 
     private IEnumerable<RenderQuad> pill()
     {
-        if (Sync.Pairing is not { } pairing)
+        var pairing = Sync.Pairing;
+        if (pairing is null && _cardReplay is null)
             return _pill.Quads(); // home: the account picker shows and hides it
         // The game takes cards in the attract loop (its demo play too) and in entry (not from song select on), one at
         // a time.
         var entry = flowOf(Active.Id) is EntryFlow;
-        pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow or GameplayFlow { Demo: true }
-            || entry && !Hosts.EntryCardPending;
-        if (entry && pairing.TakeCardFailure())
+        if (pairing is not null)
+            pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow or GameplayFlow { Demo: true }
+                || entry && !Hosts.EntryCardPending;
+        if (entry && TakeCardFailure())
             Hosts.RejectEntryCard();
-        if (entry && pairing.TakeCard() is { } card)
+        if (entry && TakeCard() is { } card)
         {
             // A card already on a drum: the game reads it and refuses it (このデータはすでに読みこんでいます).
             if (TaikoGuest.Profiles.Any(profile => profile?.Baid == card.Baid))
@@ -1814,6 +1847,8 @@ internal sealed class GameShell : IDisposable
             else if (!Hosts.InsertEntryCard(card))
                 Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
         }
+        if (pairing is null)
+            return _pill.Quads();
         // A card prompt of ours shows the code and the paired player itself.
         if (_indicators?.Scene.Player.Layers[1].Player.UsesProvider == true)
             return [];
