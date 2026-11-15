@@ -429,15 +429,24 @@ Decisions (user, 2026-11-15): the game flow stays Taiko Green's for every skin (
 skin); the scene lists keep the game's archive/movie paths as **slot names** shared by all skins (no package
 renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposition` stay engine code.
 
-Next (5c on): 18 App files still name Green types. The knot is `LayerHostFactory`: split it into the credit's state
-(`AiBattle`, `Waiwai`, `PlayerSide`, `TwoPlayers`, `EntryTrigger`, `DanSeries`, tutorials seen, `CreditNext`, ...:
-engine, App or Game) and the game movies' hosts (the `Create` switch and the bindings: into Green behind `ISkin`).
+- 5c-1: `Game.Flow.CreditState` (who plays where, mode, tutorials seen, entry trigger and card, the dan / Waiwai / AI
+  battle results to show), owned by the shell. 5c-2: `App/Hosting/SongSelectSetup` (library, osu! browse, search,
+  online song, folders offered, start cursor) builds the `SongSelectSession`, which carries the start and forced pick.
+
+Next (5c-3 on): 18 App files still name Green types. `LayerHostFactory` now holds only the game movies' hosts (the
+`Create` switch, the bindings, `IScreenEnds`) plus their inputs (sounds, rankings, crowns, bests, AI panels): move it
+into Green behind `ISkin`, and give the flows engine-side views of what they read from the loaded bindings
+(`SongSelect` 18 uses, `Entry`, `DaniSelect`, `Retry`, `ModeTutorial`, `AiRemind`, `DaniResult`, `WaiwaiResult`,
+`AiSectionResult`, `Attract`, `GameOver`).
 Then `GameSounds`/`ConsoleServices` (sound controllers), the gameplay adapters (`GameplayFlow`,
 `TaikoGameplayPresentation`), the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
 `IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,
 `PlayerSetupController`, `DanCourses` (dan select records), `ViewerHostBinding`, `GameShell`. Proof per move: the
 empty-directory and real-data benchmarks and scripted entry runs against a baseline worktree (edge logs per movie;
-autoplay hit order, roll lengths and note-pool frame counts jitter run to run).
+autoplay hit order, roll lengths and note-pool frame counts jitter run to run). User-recorded replays (lab `captures/`):
+`entry-coin-card/replay.sh` (arcade coins and cards) and `waiwai-ai2/replay.sh` (home Waiwai song to results; record
+with `dev_autoplay` and `dev_no_focus_pause` on). Their noise: attract demo backgrounds, the account profile's
+arrival, live autoplay's rare notes, Waiwai's random results sentence.
 
 
 Each step: move, prove (the game's movies unchanged, ours working), commit. Proof tools: `--play` (gameplay),
