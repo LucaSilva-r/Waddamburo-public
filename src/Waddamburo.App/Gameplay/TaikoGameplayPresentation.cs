@@ -1,12 +1,9 @@
-using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Catalog;
 using Waddamburo.Game;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Online;
-using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
-using Waddamburo.Skins.Green.Patching;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
@@ -48,7 +45,7 @@ internal enum GameplaySoundEvent
 /// One or two players' gameplay lanes. Sound callbacks get the lane in two-player play (the game
 /// pans each player's drum and picks per-player cues), null when one player plays alone.
 /// </summary>
-internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? playHitSound = null,
+internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Action<int?, TaikoInputAction>? playHitSound = null,
     IDonPresentationController? don = null,
     Action<int?, GameplaySoundEvent, int>? playEventSound = null, Func<TimeSpan>? drumDebounce = null)
 {
@@ -151,7 +148,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         if (charts.Count == 1)
         {
             _shared = [];
-            _lanes = [new Lane(charts[0], layers, courses[0], side, lane: 0, players: 1, null,
+            _lanes = [new Lane(gameplaySkin, charts[0], layers, courses[0], side, lane: 0, players: 1, null,
                 playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), relay: Relay, dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
             return;
         }
@@ -165,7 +162,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         var stage = waiwai is null ? null : new WaiwaiVoltage(waiwai.Timeline(charts[0]));
         if (stage is not null)
         {
-            _ = new GameWaiwaiMovies(stage, layers.Where(entry => entry.Definition.HostId == GameplaySceneComposition.StaticHostId)
+            gameplaySkin.Waiwai(stage, layers.Where(entry => entry.Definition.HostId == GameplaySceneComposition.StaticHostId)
                 .ToDictionary(entry => role(entry.Definition), entry => entry.Layer.Player));
             playEventSound?.Invoke(null, GameplaySoundEvent.WaiwaiStart, 0);
             // After the game's cut-in calls (the adapter hears the section first), as traced.
@@ -177,7 +174,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         }
         _stage = stage;
         var aiStage = layers.FirstOrDefault(entry => role(entry.Definition) == "ai_hit_effect").Layer;
-        _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(charts[lane],
+        _lanes = [.. Enumerable.Range(0, 2).Select(lane => new Lane(gameplaySkin, charts[lane],
             layers.Where(entry => entry.Definition.HostId == (lane == 1
                 ? GameplaySceneComposition.PlayerTwoHostId : GameplaySceneComposition.StaticHostId)).ToArray(),
             courses[lane], lane, lane, players: 2, kusudama,
@@ -405,7 +402,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly TaikoLumenPresentation _presentation;
         public TaikoLumenPresentation Presentation => _presentation;
         public TaikoJudgementSession Session => _session;
-        private readonly TaikoHitFlights _flights;
+        private readonly INoteFlights _flights;
         private readonly TaikoLongNotePresentation _longNotes;
         private readonly Action<string, LumenHostValue> _publish;
         private readonly Action<string, int, LumenHostValue> _publishItem;
@@ -441,7 +438,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         public void PublishItem(string name, int index, LumenHostValue value) => _publishItem(name, index, value);
 
         public TaikoLongNotePresentation LongNotes => _longNotes;
-        private readonly TaikoDonPresentation? _character;
+        private readonly ILaneCharacter? _character;
         private readonly TaikoAnimationClock _animationClock;
         private readonly LiveLaneSource? _live; // an online partner's lane
         private readonly HitRelay? _relay;
@@ -456,7 +453,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         private readonly LumenSceneLayer[] _beatLayers;
         private readonly LumenPlayer? _dancers;
         private readonly LumenPlayer[] _noteFaces;
-        private readonly GameplayGameMovies _gameMovies;
+        private readonly ILaneMovies _gameMovies;
         private readonly LumenSceneLayer[] _fixedLayers;
         private readonly Action<TimeSpan> _onChartTime; // end-of-song banner check
         private readonly Action<bool> _setMissed = static _ => { }; // a reviewed play's full combo, from its bake
@@ -506,7 +503,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         /// <paramref name="lane"/> 0 = the top lane, 1 = the second player's lower lane;
         /// <paramref name="side"/> = the player's drum (keys, name, lane_obi side).
         /// </summary>
-        public Lane(PlayableChart chart,
+        public Lane(IGameplaySkin gameplaySkin, PlayableChart chart,
             IReadOnlyList<(SceneLayerDefinition Definition, LumenSceneLayer Layer, LumenMovieContent Content)> sceneLayers,
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
             Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
@@ -522,36 +519,22 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Skin parts are addressed by role ("bg_nomal"), whatever variant the composition picked.
             var layers = sceneLayers.ToDictionary(entry => role(entry.Definition), entry => entry.Layer);
             LumenMovieContent content(string name) => sceneLayers.Single(entry => role(entry.Definition) == name).Content;
-            // OpenTaiko's Kadon (TJA G) has no art in the game's files: the big ka drawn from its purple copies
-            // (KadonNotePatch), a player of its own so its faces and bounce follow the notes'.
-            if (chart.HitObjects.Any(static note => note.IsKadon) && content("onp_katsu_dai") is { } katsu
-                && KadonNotePatch.AppliesTo(katsu) && KadonNotePatch.CopiesAt(katsu) is var copies and > 0)
-            {
-                var big = layers["onp_katsu_dai"];
-                layers["onp_kadon"] = big with
-                {
-                    Player = katsu.CreatePlayer(),
-                    TextureOffset = big.TextureOffset + (uint)copies,
-                    TextureCount = (uint)copies,
-                };
-            }
+            // OpenTaiko's Kadon (TJA G): the big ka's purple copy when the skin has one, a player of its own so its faces
+            // and bounce follow the notes'.
+            if (chart.HitObjects.Any(static note => note.IsKadon)
+                && gameplaySkin.KadonCopy(layers["onp_katsu_dai"], content("onp_katsu_dai")) is { } kadon)
+                layers["onp_kadon"] = kadon;
             LumenPlayer? skin(string role) => layers.TryGetValue(role, out var layer) ? layer.Player : null;
-            var board = layers["lane_obi"].Player;
             // Waiwai has its own flights, combo bonus, roll art and backdrop in place of the normal ones.
             var flightKey = layers.ContainsKey("onp_kiseki_don_1p") ? "onp_kiseki_don_1p" : "onp_kiseki_w_00_1p";
             var flightTemplate = layers[flightKey];
             var flightContent = content(flightKey);
-            // Kadon flights: the flight movie on its purple copies (KadonNotePatch), when the chart has Kadons.
-            var kadonFlights = chart.HitObjects.Any(static note => note.IsKadon) && KadonNotePatch.AppliesTo(flightContent)
-                && KadonNotePatch.CopiesAt(flightContent) is var flightCopies and > 0
-                ? Enumerable.Range(0, 4).Select(_ => flightTemplate with
-                {
-                    Player = flightContent.CreatePlayer(),
-                    TextureOffset = flightTemplate.TextureOffset + (uint)flightCopies,
-                    TextureCount = (uint)flightCopies,
-                })
-                : null;
-            _flights = new TaikoHitFlights(Enumerable.Range(0, 16)
+            // Kadon flights: the flight movie on its purple copies, when the chart has Kadons and the skin has them.
+            var kadonFlights = chart.HitObjects.Any(static note => note.IsKadon)
+                && gameplaySkin.KadonCopy(flightTemplate, flightContent) is { } firstKadon
+                ? [firstKadon, .. Enumerable.Range(1, 3).Select(_ => gameplaySkin.KadonCopy(flightTemplate, flightContent)!)]
+                : (LumenSceneLayer[]?)null;
+            _flights = gameplaySkin.Flights(Enumerable.Range(0, 16)
                 .Select(_ => flightTemplate with { Player = flightContent.CreatePlayer() }), kadonFlights, flightTemplate);
             // osu! charts fill as Oni (TaikoSoulGauge), so they show Oni's clear line.
             var gaugeName = dan is not null ? "gage_don_1p_dani" : (chart.Key.Song.Source.IsOsu() ? TaikoCourse.Oni : course) switch
@@ -564,18 +547,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             var gaugeMovie = layers.GetValueOrDefault(gaugeName)?.Player;
             var gauge = !chart.Segments.IsEmpty ? new TaikoSoulGauge(chart.Segments, dan?.ExactGauge == true) : new TaikoSoulGauge(course, chart);
             var score = new TaikoScore(chart, WindowsFor(chart, course).Good);
-            var scoreAdd = layers.GetValueOrDefault("score_add_don_1p")?.Player; // none in Waiwai
-            var comboBonus = (layers.GetValueOrDefault("combo_bonus_don_1p") ?? layers["sinuchi_combo_bonus_don_1p"]).Player;
-            // Host label jumps traced in the game: gauge fire on full gauge, splash at Go-Go start
-            // (one player only; two-player gameplay loads no splash), and the end-of-song banner.
-            var gaugeFire = skin("gage_fire_1p"); // none in Waiwai
-            var goGoSplash = skin("action_gogotime");
-            var banner = skin("action_result"); // none in Waiwai
-            // The game's movies are driven from what is published, by their adapter (ours read it themselves).
-            var gameMovies = new GameplayGameMovies(board, gaugeMovie, () => gauge.FilledSegments, scoreAdd, comboBonus,
-                gaugeFire, goGoSplash, banner, layers["lane_hit"].Player, layers.GetValueOrDefault("fukidashi_level_1p")?.Player,
-                layers.GetValueOrDefault("dani_enso")?.Player, layers["renda_num"].Player, layers["action_fusen_1p"].Player,
-                (kusudama?.Layer ?? layers.GetValueOrDefault("action_kusudama"))?.Player, layers["lane_hit_effect"].Player);
+            var banner = skin("action_result"); // the end-of-song banner; none in Waiwai
+            // The skin's movies are driven from what is published (the game's by their adapter; ours read it themselves).
+            var gameMovies = gameplaySkin.LaneMovies(layers, gaugeName, () => gauge.FilledSegments, kusudama?.Layer);
             // Waiwai's lanes and AI battle's AI-don lane are shared-voltage lanes on the board.
             gameMovies.SetUpBoard(players == 2, side, stage is not null || donStage is not null && lane == 1, course, dan is not null);
             // The provider (free-movies.md): this drum's numbers under their names, for any movie of the lane
@@ -622,7 +596,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (popup) emit("score.added", LumenHostValue.FromNumber(award));
             }
             _noteFaces = [.. NoteMovieNames.Where(layers.ContainsKey).Select(name => layers[name].Player)];
-            GameplayGameMovies.StartNotes(_noteFaces);
+            gameMovies.StartNotes(_noteFaces);
             _gameMovies = gameMovies;
             // osu! charts sit in course slots by star order only: all play with Oni's windows.
             // Online lanes play alone, as each player's own game plays them.
@@ -656,7 +630,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                     PlayableLongNoteKind.Kusudama => "onp_kusudama",
                     _ => "onp_fusen",
                 };
-                return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
+                return layers[name] with { Player = content(name).CreatePlayer(hostBinding: gameplaySkin.LongNoteHost()) };
             }, layers["renda_num"], layers["action_fusen_1p"],
                 kusudama is null ? layers["action_kusudama"] : null,
                 (kind, succeeded) =>
@@ -673,7 +647,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 createText: kind =>
                 {
                     var name = kind == PlayableLongNoteKind.BigRoll ? "onp_renda_dai_moji" : "onp_renda_moji";
-                    return layers[name] with { Player = content(name).CreatePlayer(hostBinding: new TaikoGameplayHostBinding()) };
+                    return layers[name] with { Player = content(name).CreatePlayer(hostBinding: gameplaySkin.LongNoteHost()) };
                 }, movies: gameMovies);
             // The roll, balloon and kusudama as they go: their counts at once (and again each tick, for the shared
             // kusudama the other drum counts down), their starts and ends as events.
@@ -691,8 +665,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 LumenHostValue.FromBoolean(popped));
             // AI battle: both Dons stand in its hit-effect movie (no don3d of their own).
             _character = don is null ? null : donStage is not null && !layers.ContainsKey("don3d")
-                ? new(don, donStage, lane, stage: true, overlays: _longNotes.Overlays)
-                : new(don, layers["don3d"], lane, overlays: _longNotes.Overlays);
+                ? gameplaySkin.Character(don, donStage, lane, stage: true, _longNotes.Overlays)
+                : gameplaySkin.Character(don, layers["don3d"], lane, stage: false, _longNotes.Overlays);
             _longNotes.Character = _character;
             if (stage is not null) stage.StateChanged += state => _character?.SetGauge(state);
             _animationClock = new(chart.TimingPoints);
@@ -704,22 +678,18 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _dancers = layers.GetValueOrDefault("dance")?.Player;
             // Shared movies are advanced by the first lane only.
             _fixedLayers = [.. layers.Values.Except(_beatLayers)];
-            var skinPresentation = new TaikoSkinPresentation(new(skin("chibi"), skin("donbg") ?? skin("donbg_w_00"),
-                skin("dance"), skin("bg_fever"), skin("fever"), skin("renda") ?? skin("renda_w_00")));
             // What the score, combo, gauge and results count: the play itself (an online partner's shadow), not what's shown.
             ITaikoJudgementSource counted = _live is null ? _source : _session;
             counted.LongNoteHit += progress =>
             {
                 var previousScore = score.Value;
                 if (score.Apply(progress, counted.CurrentTime)) updateScore(score.Value - previousScore);
-                if (!progress.Note.IsBalloon) skinPresentation.OnRollHit();
+                if (!progress.Note.IsBalloon) gameMovies.RollHit();
                 sound(progress.Note.Kind == PlayableLongNoteKind.BigRoll ? GameplaySoundEvent.BigLongHit
                     : progress.LastAction is TaikoInputAction.LeftKa or TaikoInputAction.RightKa ? GameplaySoundEvent.LongKaHit
                     : GameplaySoundEvent.LongDonHit);
             };
-            // Player name board (traced call sequence; the name is host text, see NameText).
-            var nameBoard = layers["player_name"].Player;
-            GuestNameBoard.Show(nameBoard, side, visible: false);
+            gameMovies.HideNameBoard(side);
             // Lanes built again (a seek back in a review or the editors): a banner already shown goes away.
             banner?.GotoFrame(0, play: false);
             var missed = false;
@@ -730,7 +700,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 score.RollHits, stage?.Segments ?? gauge.FilledSegments,
                 (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear) { Options = options, BalloonHits = score.BalloonHits };
             if (dan is not null && danArt is { } challengeArt)
-                GameplayGameMovies.ShowDanChallenge(layers["dani_enso"].Player, challengeArt);
+                gameMovies.ShowDanChallenge(challengeArt);
             var danProgress = default(Waddamburo.Game.Dan.DanProgress);
             var danSongEnds = new List<Waddamburo.Game.Dan.DanProgress>();
             _danSongEnds = danSongEnds;
@@ -841,7 +811,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (stage is null)
                     sound(!cleared ? GameplaySoundEvent.FailBanner
                         : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
-                if (cleared && !missed) _character?.React("don_full_combo");
+                if (cleared && !missed) _character?.React(CharacterMoment.FullCombo);
             };
             var partnerHands = players == 2 && remote is null && relay is null; // as the session below
             (int Note, long Award)? heldAward = null; // a big hit's first half, shown with its completion
@@ -901,7 +871,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 }
                 if (_live is null)
                     _character?.OnJudged(judgement);
-                skinPresentation.OnJudged(judgement, gauge);
+                gameMovies.Counted(judgement, gauge);
                 publishPlay();
                 if (!judgement.StrongHitCompleted && judgement.Result is { } told)
                 {
@@ -1002,7 +972,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             _presentation.DonTurn = (yaw, pitch, roll) => _character?.Turn(yaw, pitch, roll);
             if (_live is not null)
                 _source.Judged += judgement => _character?.OnJudged(judgement);
-            _presentation.Shown += judgement => gameMovies.Judged(judgement.Result ?? TaikoHitResult.Miss, judgement.HitObject.IsStrong,
+            _presentation.Shown += judgement => gameMovies.Shown(judgement.Result ?? TaikoHitResult.Miss, judgement.HitObject.IsStrong,
                 judgement.HitObject.Kind is PlayableNoteKind.Ka or PlayableNoteKind.BigKa);
             _presentation.Doron = options.Doron;
             gameMovies.ShowOptions(options);

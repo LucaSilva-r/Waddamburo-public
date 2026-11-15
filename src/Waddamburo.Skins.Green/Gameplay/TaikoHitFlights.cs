@@ -6,7 +6,7 @@ using Waddamburo.Game.Gameplay;
 namespace Waddamburo.Skins.Green.Gameplay;
 
 /// <summary>Bounded independent authored animations sharing immutable scene textures.</summary>
-public sealed class TaikoHitFlights
+public sealed class TaikoHitFlights : INoteFlights
 {
     private readonly LumenSceneLayer[] _layers;
     private readonly bool[] _active;

@@ -911,7 +911,7 @@ internal sealed class GameShell : IDisposable
                 _notices = new NoticeOverlay(Painter, Sync.Notices, Sync.Jobs,
                     baid => Accounts?.Accounts.FirstOrDefault(account => account.Baid == baid)?.Name, Sync.MarkShown);
             _boot.Begin("GAMEPLAY DATA");
-            Gameplay = new TaikoGameplayPresentation((lane, action) =>
+            Gameplay = new TaikoGameplayPresentation(new Waddamburo.Skins.Green.Gameplay.GreenGameplaySkin(), (lane, action) =>
             {
                 // 音なし (reported on Discord): the hits are silent in songs only, the menus keep their drum.
                 if (Arcade.DrumSoundInSongs)

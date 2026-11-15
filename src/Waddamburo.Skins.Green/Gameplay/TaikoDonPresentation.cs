@@ -12,7 +12,7 @@ namespace Waddamburo.Skins.Green.Gameplay;
 /// state (Go-Go, then a running miss streak, then the gauge band); one-shot reactions play over
 /// it and return to whatever idle is current when they end.
 /// </summary>
-public sealed class TaikoDonPresentation : ITaikoLongNoteCharacter
+public sealed class TaikoDonPresentation : ILaneCharacter
 {
     private const int ComboReactionInterval = 10;
     private const int LongMissStreak = 6;
@@ -185,6 +185,12 @@ public sealed class TaikoDonPresentation : ITaikoLongNoteCharacter
 
     /// <summary>A one-shot motion that returns to the current idle (e.g. the end-of-song full combo).</summary>
     public void React(string motion) => react(motion);
+
+    public void React(CharacterMoment moment) => react(moment switch
+    {
+        CharacterMoment.FullCombo => "don_full_combo",
+        _ => throw new ArgumentOutOfRangeException(nameof(moment)),
+    });
 
     /// <summary>Turns the model in the gameplay view (a modchart's yaw, pitch and roll, degrees).</summary>
     public void Turn(double yaw, double pitch, double roll) => _controller.SetModelRotation(_player, (float)yaw, (float)pitch, (float)roll);

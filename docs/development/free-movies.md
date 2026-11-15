@@ -302,6 +302,35 @@ Then (2026-11-15):
   and the request `tone.choose(tone, drum)` (sets the player's tone for the session and plays its `drum.don`). Our
   song select movie does not offer it yet: it comes with the course panel.
 
+## Characters (proposal, 2026-11-15)
+
+Goal (user, 2026-11-15): Waddamburo gets characters of its own; every skin draws characters through one engine API,
+and every costume Don-chan has in Green stays available, so profiles carry over and skins have a stable interface.
+Split as for sounds: the engine says **who** a player is and **what** their character does; the skin **draws** it.
+
+1. **The look is engine data.** `CharacterLook`: a character id (`don` now; `katsu` and ours later), the costume
+   slots Green has (whole costume / kigurumi, head, body, face paint, puchi), face/body/limb colours, the dan rank (the
+   dan costume). Costume ids keep Green's numbering: profiles (and TaikOnline) already store them, so they are the
+   stable catalogue. An engine `costumes.json` (id → slot, name) lets menus list costumes without any skin. Today's
+   `DonLook` / `DonCostume` become this, renamed.
+2. **What the character does is an engine vocabulary**, never a skin's motion name:
+   - states (looped): normal, cleared (gauge past the clear line), soul (gauge full), Go-Go, holding a balloon or
+     kusudama; on menus: waiting, chosen, results cleared / failed / full combo, revival, game over;
+   - moments (one-shots): hit, combo milestone, balloon pumped / popped / failed, kusudama, full combo, cleared,
+     failed; on menus: joined, decided, cancelled, costume changed.
+   The engine publishes them per drum on the provider (`character.look.*`, `character.state`, the `character.moment`
+   event), so a character movie of ours needs nothing else.
+3. **The skin draws**: an `ICharacterSet` (like `ISoundSet`) says which characters and costumes it has and makes a
+   view per player and screen (a layer to compose, tint, a modchart's turn). Green's: the don3d model (today's
+   `DonPresentationController`, `TaikoDonPresentation`, `DonLumenBinding`), mapping the vocabulary to its motions
+   (`don_full_combo`, ...). Ours: a character package (a movie per character, costume parts as variants keyed by
+   costume id). A costume a skin lacks draws its default part, so any profile renders on any skin; packs chain as
+   sounds do (the user's, ours, Green's).
+
+Steps: (a) the gameplay lane talks to an engine `ILaneCharacter` with the vocabulary (with the lane move, 5c-6);
+(b) the menus' Don calls (the bindings' `DonMot`) become moments; (c) the provider names; (d) the costume catalogue
+and our first 2D Don. Open: our characters 2D (movies) or 3D; who draws the costume art and under what licence.
+
 ## Packages
 
 ```text
@@ -451,9 +480,13 @@ renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposi
   next song, visibility, a course's card, AI battle's start); Green's `GreenGameplayScreen` drives song_info, between
   and the battle movies.
 
-Next: 13 App files still name Green types.
-Then the lanes' adapters (`GameplayFlow`,
-`TaikoGameplayPresentation`), the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
+- 5c-6: the lanes talk to `Game.Gameplay.IGameplaySkin` (Kadon copies, note flights, `ILaneMovies`, the lane's
+  `ILaneCharacter` with `CharacterMoment`, Waiwai's stage, the long notes' host); they keep the slots by role. Green's
+  `GreenGameplaySkin` / `GreenLaneMovies` wrap the existing adapters; `TaikoDonPresentation` is Green's
+  `ILaneCharacter` (Characters step a). The composition root passes `GreenGameplaySkin`.
+
+Next: 12 App files still name Green types.
+Then the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
 `IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,
 `PlayerSetupController`, `DanCourses` (dan select records), `ViewerHostBinding`, `GameShell`. Proof per move: the
 empty-directory and real-data benchmarks and scripted entry runs against a baseline worktree (edge logs per movie;
