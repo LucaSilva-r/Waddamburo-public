@@ -182,10 +182,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The list's fast scrolling (see <see cref="SongSelectScroll"/>), once the movie is attached.</summary>
     public SongSelectScroll? Scroll { get; private set; }
     private bool _assigned;
-    // The movie is one of ours (it reads the provider): SongSelectFlow drives it through the Own… methods and nothing
+    // The movie is one of ours (it reads the provider): SongSelectFlow drives the engine's session (this follows its events) and nothing
     // here reaches into it. The game's movie is fed and patched as before.
     private bool _own;
-    private readonly SongSelectTimer _timer;
     private readonly IndicatorParts? _parts;
     private readonly int[] _sides; // the joined players' drums: 0 left, 1 right
     // Those, and an online partner's side: their name board shows, though only this game's players choose.
@@ -214,17 +213,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>Both players' course select shows Oni at once (the movie's isMania; the original needs right-rim hits).</summary>
     public bool ShowOni { get; init; }
 
-    /// <summary>
-    /// The song whose difficulty selector is open (traced NotifyBeginCourseSelect(genre, song)); null again
-    /// once the list asks for a ranking (backing out).
-    /// </summary>
-    public SongSelectSong? CourseSelectSong { get; private set; }
-
-    /// <summary>Backing out of the difficulty boards: they are closing, the list does not take steps yet.</summary>
-    public bool LeavingCourseSelect { get; private set; }
-
     /// <summary>The song the player is on: the one whose difficulties are open, else the list's centre (null: a folder or nothing).</summary>
-    public SongSelectSong? SongUnderCursor => CourseSelectSong
+    public SongSelectSong? SongUnderCursor => _session.CourseSelectSong
         ?? (_centre is { } centre && _session.Catalog.TryGetSong(centre.Category, centre.Song, out var song) ? song : null);
 
     /// <summary>The catalog revision play requests are pinned to.</summary>
@@ -249,7 +239,6 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         SongSelectSession session,
         ISongSelectSoundController? sounds = null,
         IDonPresentationController? don = null,
-        TimeProvider? timeProvider = null,
         IndicatorParts? parts = null,
         int side = 0,
         bool twoPlayers = false,
@@ -263,24 +252,15 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _sounds = sounds;
         _don = don;
-        _timer = new SongSelectTimer(timeProvider);
+        session.CountdownStarted += seconds =>
+        {
+            _countdownCues.Reset();
+            _parts?.StartCountdown(seconds);
+        };
+        session.CountdownStopped += () => _parts?.StopCountdown();
+        // Ours moves the cursor through the engine: the folder's voice, as the game's NotifyGenreFolder plays it.
+        session.FolderCursorMoved += folder => notifyGenreFolder(new([LumenHostValue.FromNumber(folder), LumenHostValue.FromNumber(-1), LumenHostValue.FromBoolean(false)]));
     }
-
-    /// <summary>The players decided the mode-switch folder (to the other song select).</summary>
-    public bool ModeSwitchRequested { get; private set; }
-
-    /// <summary>The players decided the how-to-play folder (the tutorial movie).</summary>
-    public bool TutorialRequested { get; private set; }
-    public bool DanRequested { get; private set; }
-
-    /// <summary>The series spine decided in the dan dojo folder; null: the folder itself (a cabinet's).</summary>
-    public string? DanSeriesPicked { get; private set; }
-
-    /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
-    public SongSourceKind? LibraryRequested { get; private set; }
-
-    /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
-    public SongBrowseControl? BrowseRequested { get; private set; }
 
     /// <summary>Song Select reloads for the host (library, grouping, order, search): its music plays on.</summary>
     public bool Reloading { get; set; }
@@ -291,30 +271,21 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The song the cursor starts on inside <see cref="StartCategory"/> (-1: on the folder).</summary>
     public int StartSong { get; init; } = -1;
 
-    /// <summary>The folder and song of the last course decided (to come back to it).</summary>
-    public (CategoryKey Category, SongKey Song)? Picked { get; private set; }
-
-    /// <summary>Forgets the last course decided (a new credit starts on the default song).</summary>
-    public void ForgetPicked() => Picked = null;
-
-    private (int Category, int Song)? _courseSelect;
-
     /// <summary>
     /// Remembers the song the player is on (its difficulties' song, else the list's centre) as picked, so
     /// Song Select comes back to it: a play started from Waddamburo's own UI (a replay), not the movie.
     /// </summary>
     public void RememberCurrentSong()
     {
-        if ((CourseSelectSong is not null ? _courseSelect : _centre) is { } at
-            && _session.Catalog.TryGetSong(at.Category, at.Song, out var song))
-            Picked = (_session.Catalog.HomeOf(at.Category, song.Descriptor.Key), song.Descriptor.Key);
+        if ((_session.CourseSelectSong is not null ? _session.CourseSelect : _centre) is { } at)
+            _session.Remember(at.Category, at.Song);
     }
 
     public void Attach(LumenPlayer player)
     {
         _player = player ?? throw new ArgumentNullException(nameof(player));
         // A page jump sounds like a costume change (as the later games do), not like its ten rim hits.
-        Scroll = new SongSelectScroll(player, () => _openFolder, side => PlayCue?.Invoke("SE_COM", side == 0 ? 19 : 20));
+        Scroll = new SongSelectScroll(player, () => _session.OpenFolder, side => PlayCue?.Invoke("SE_COM", side == 0 ? 19 : 20));
         if (_don is null)
             return;
         // As in entry, the movie doesn't turn the second player's Don-chan: the mirrored camera faces them inward, joined
@@ -334,7 +305,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("StartTimer", startTimer);
             lumen.RegisterMethod("StopTimer", stopTimer);
             // An online guest: little time left, as on a cabinet whose timer is nearly out, so the courses can't be left.
-            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(ForcePick ? ForcedSeconds : Math.Ceiling(_timer.Remaining.TotalSeconds)));
+            lumen.RegisterMethod("GetTimeSec", _ => LumenHostValue.FromNumber(ForcePick ? ForcedSeconds : Math.Ceiling(_session.Timer.Remaining.TotalSeconds)));
             // With the cabinet countdown off the timer never runs out (the counter still shows).
             lumen.RegisterMethod("IsTimeup", isTimeUp);
             lumen.RegisterMethod("IsInitWait", _ =>
@@ -434,9 +405,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 // list is still closing them until the ranking request about half a second later, which ends
                 // CourseSelectSong; meanwhile the scroll keeps the wheel's steps for then.
                 // ponytail: if another cancel on the boards (an option panel) turns out to play it, track that.
-                if (CourseSelectSong is not null && integer(call, 0) == 5 && integer(call, 1) == 32)
+                if (_session.CourseSelectSong is not null && integer(call, 0) == 5 && integer(call, 1) == 32)
                 {
-                    LeavingCourseSelect = true;
+                    _session.LeavingCourseSelect = true;
                     // It is VO_SELECT's SELECT_SONG voice, which the game plays on backing out (traced
                     // session-courseback2); played directly, past the filter that drops the movie's init request.
                     PlayCue?.Invoke("VO_SELECT", 32);
@@ -469,7 +440,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     public void Dispose()
     {
-        _timer.Stop();
+        _session.Timer.Stop();
         // A host reload (library, grouping, order, search) keeps the music playing.
         if (!Reloading)
             _session.StopMusic();
@@ -878,8 +849,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     {
         // The movie reports no cancel of course select: backing out plays SE 5/32 and asks for the centre
         // song's ranking again, which it never does while a difficulty board is open (traced).
-        CourseSelectSong = null;
-        LeavingCourseSelect = false;
+        _session.LeaveCourses();
         // Answered even for a series spine: on false the movie stops there, and never asks for the title.
         var rankings = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song)
             && SongSelectCatalogView.DanSeriesOf(song.Descriptor.Key) is null ? Rankings?.Invoke(song) : null;
@@ -900,79 +870,50 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The catalog the rows are built from.</summary>
     public SongSelectCatalogView Catalog => _session.Catalog;
 
+    /// <summary>The engine's song select this movie shows.</summary>
+    public SongSelectSession Session => _session;
+
     /// <summary>The list is set up (the game's IsInitWait): true once, then always.</summary>
     public bool OwnReady() => (_parts?.PollReady() ?? true) && assignInitialData();
-
-    public void OwnStartTimer(double seconds) => startTimer(numbers(seconds));
-
-    /// <summary>Seconds left on the countdown; null while none runs (home, or the countdown off).</summary>
-    public int? OwnTimeLeft
-    {
-        get
-        {
-            isTimeUp(default); // plays the countdown's cues as it runs
-            return (_parts?.Countdown ?? true) && _timer.IsRunning ? (int)Math.Ceiling(_timer.Remaining.TotalSeconds) : null;
-        }
-    }
-
-    public void OwnFolderCursor(int folder) => notifyGenreFolder(new([LumenHostValue.FromNumber(folder), LumenHostValue.FromNumber(-1), LumenHostValue.FromBoolean(false)]));
-    public void OwnOpenFolder(int folder) => openFolder(numbers(folder, -1));
-    public void OwnCloseFolder() => closeFolder(default);
-    public void OwnPreview(int folder, int song) => notifyPreview(numbers(folder, song));
-    public void OwnBeginCourses(int folder, int song) => beginCourseSelect(numbers(folder, song));
-    public void OwnLeaveCourses() => CourseSelectSong = null;
-
-    /// <summary>A folder that is a choice by itself (a library, the dojo, the tutorial): the flow takes over.</summary>
-    public void OwnChoose(int folder) => selectMusic(numbers(folder, -1));
-
-    /// <summary>Plays the song on <paramref name="course"/> for every joined drum.</summary>
-    public void OwnStart(int folder, int song, int course)
-    {
-        notifySelection(numbers(folder, song, _sides.Contains(0) ? course : double.NaN, _sides.Contains(1) ? course : double.NaN));
-        stopTimer(default);
-        selectMusic(numbers(folder, song));
-    }
 
     private LumenHostValue startTimer(LumenHostCall call)
     {
         if (call.Arguments.Length != 1 || call.Arguments[0].Kind != LumenHostValueKind.Number)
             throw new ArgumentException("StartTimer requires a duration in seconds.", nameof(call));
-        _timer.Start(call.Arguments[0].AsNumber());
         // Countdown off: the timer holds its full time (the movie reads GetTimeSec, e.g. ExtendTimer).
-        if (!(_parts?.Countdown ?? true))
-            _timer.Stop();
-        _countdownCues.Reset();
-        _parts?.StartCountdown(call.Arguments[0].AsNumber());
+        _session.StartCountdown(call.Arguments[0].AsNumber());
         return LumenHostValue.Undefined;
 
     }
 
     private LumenHostValue stopTimer(LumenHostCall _)
     {
-        _timer.Stop();
-        _parts?.StopCountdown();
+        _session.StopCountdown();
         return LumenHostValue.Undefined;
 
     }
 
     private LumenHostValue isTimeUp(LumenHostCall _)
     {
-        // Polled every frame: the countdown's cues follow the seconds left.
-        if ((_parts?.Countdown ?? true) && _timer.IsRunning)
-            foreach (var (bank, cue) in _countdownCues.Advance((int)Math.Ceiling(_timer.Remaining.TotalSeconds)))
-                PlayCue?.Invoke(bank, cue);
+        advanceCountdownCues(); // polled every frame
         // An online guest: time is up at once, so the movie rolls onto the one song listed (the host's) and opens
         // its courses, as a cabinet's timer running out does; then the player picks.
-        if (ForcePick && CourseSelectSong is null)
+        if (ForcePick && _session.CourseSelectSong is null)
             return LumenHostValue.FromBoolean(true);
-        return LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _timer.IsTimeUp);
+        return LumenHostValue.FromBoolean((_parts?.Countdown ?? true) && _session.Timer.IsTimeUp);
 
+    }
+
+    private void advanceCountdownCues()
+    {
+        if ((_parts?.Countdown ?? true) && _session.Timer.IsRunning)
+            foreach (var (bank, cue) in _countdownCues.Advance((int)Math.Ceiling(_session.Timer.Remaining.TotalSeconds)))
+                PlayCue?.Invoke(bank, cue);
     }
 
     private LumenHostValue closeFolder(LumenHostCall _)
     {
-        var closed = _openFolder;
-        _openFolder = -1;
+        var closed = _session.Close();
         if (_favouritesChanged)
             relistFavourites();
         return clearFolderSurfaces(closed);
@@ -981,16 +922,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue beginCourseSelect(LumenHostCall call)
     {
-        _courseSelect = (integer(call, 0), integer(call, 1));
-        if (_session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var picked)
-            && picked is not null && SongSelectCatalogView.DanSeriesOf(picked.Descriptor.Key) is { } series)
-        {
-            DanSeriesPicked = series;
-            DanRequested = true;
-            Picked = (_session.Catalog.Categories[integer(call, 0)].Key, picked.Descriptor.Key); // back comes here
-        }
-        CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
-        LeavingCourseSelect = false;
+        _session.BeginCourses(integer(call, 0), integer(call, 1));
         // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.
         foreach (var player in _sides)
             if (!_own && _speedRow[player] is null)
@@ -1001,25 +933,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     private LumenHostValue selectMusic(LumenHostCall call)
     {
+        // Traced SetSelectedMusic(0, -1), Terminate, then the tutorial scene; SetSelectedMusic(10, -1) the dan dojo.
         if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Number)
-        {
-            var genre = (int)call.Arguments[0].AsNumber();
-            if (genre == _session.Catalog.ModeSwitchCategory)
-                ModeSwitchRequested = true;
-            // Traced SetSelectedMusic(0, -1), Terminate, then the tutorial scene.
-            else if (genre == _session.Catalog.TutorialCategory)
-                TutorialRequested = true;
-            // Traced SetSelectedMusic(10, -1), Terminate, then dani_select.
-            else if (genre == _session.Catalog.DanCategory)
-                DanRequested = true;
-            else if ((uint)genre < (uint)_session.Catalog.Categories.Length)
-            {
-                LibraryRequested = _session.Catalog.Categories[genre].Link;
-                BrowseRequested = _session.Catalog.Categories[genre].Control;
-            }
-        }
+            _session.Choose((int)call.Arguments[0].AsNumber());
         return LumenHostValue.FromBoolean(true);
-
     }
 
     private LumenHostValue notifyPreview(LumenHostCall call)
@@ -1037,7 +954,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     {
         // A closing course board requests the by-difficulty input prompt through RequestSE_Save,
         // twice for a solo player. It must not replace the SELECT_SONG voice already played on backout.
-        if (LeavingCourseSelect && kind == SongSelectSoundRequestKind.Effect
+        if (_session.LeavingCourseSelect && kind == SongSelectSoundRequestKind.Effect
             && call.Arguments.Length >= 2 && call.Arguments[0].Kind == LumenHostValueKind.Number
             && call.Arguments[0].AsNumber() == 5 && call.Arguments[1].Kind == LumenHostValueKind.Number
             && call.Arguments[1].AsNumber() == 61)
@@ -1147,7 +1064,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     public void Poll()
     {
         if (_own)
+        {
+            advanceCountdownCues(); // the countdown's cues follow the seconds left
             return;
+        }
         restoreOptions();
         showPartnerDon();
         hideSongPartsOnSeries();
@@ -1216,12 +1136,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private int[] shownWith(int? partner) => partner is { } other && !_sides.Contains(other) ? [.. _sides, other] : _sides;
 
     /// <summary>The list's cursor is on the Online spine (so a hit there opens the lobby before the movie decides it).</summary>
-    public bool OnlineSpineUnderCursor => _player is { } player && CourseSelectSong is null
+    public bool OnlineSpineUnderCursor => _player is { } player && _session.CourseSelectSong is null
         && _session.Catalog.Categories.ToList().FindIndex(static category => category.Control == SongBrowseControl.Online) is var online and >= 0
         && player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") is { } cursor && (int)cursor == online;
 
     private (int Category, int Song)? _centre; // the song the centre board's titles show
-    private int _openFolder = -1;
     private bool _favouritesChanged;
 
     // GenreResource.FAVORITE: the folder's id in the movie's genre list.
@@ -1253,7 +1172,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         Console.WriteLine($"Favourite {(Favourites.Toggle(key) ? "added" : "removed")}: {key}.");
         // Inside the favourites folder its list stays until the folder closes (the boards index it).
         _favouritesChanged = true;
-        if (_openFolder != _session.Catalog.FavouritesCategory)
+        if (_session.OpenFolder != _session.Catalog.FavouritesCategory)
             relistFavourites();
         // The boards keep the info they asked for: invalidate the ones showing this song (the same song
         // may also sit in the favourites folder) and let them ask again (UpdateMusicBoard -> GetInfo).
@@ -1283,7 +1202,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     // moves, so that song's preview starts here.
     private LumenHostValue openFolder(LumenHostCall call)
     {
-        _openFolder = integer(call, 0);
+        _session.Open(integer(call, 0));
         if (_centre != (integer(call, 0), integer(call, 1)))
             clearSelectionSurfaces();
         return integer(call, 1) >= 0 ? notifyPreview(call) : LumenHostValue.Undefined;
@@ -1332,18 +1251,11 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.selected.{player}") is IConvertible index
                 && requirePlayer().ReadScriptValue($"_global.CppConnection.resource.tone.list.{player}.{(int)index.ToDouble(System.Globalization.CultureInfo.InvariantCulture)}") is IConvertible tone)
                 TaikoGuest.Tones[player] = Math.Clamp((int)tone.ToDouble(System.Globalization.CultureInfo.InvariantCulture), 0, TaikoGuest.ToneCount - 1);
-        var selection = _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
+        _session.Select(request.Category, request.Song, course(request.PlayerOneCourse), course(request.PlayerTwoCourse),
             TaikoGuest.Options);
-        Picked = (_session.Catalog.HomeOf(request.Category, selection.Song), selection.Song);
         // The by-difficulty panel's 前回 board: each drum's course and ★ (Ura is not on the panel).
-        foreach (var player in _sides)
-            if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } picked and >= 0)
-                TaikoGuest.LastCourse[player] = picked % 4;
-        if (_session.Catalog.TryGetSong(request.Category, request.Song, out var played))
-            foreach (var player in _sides)
-                if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } authored and >= 0 and < 4
-                    && SongSelectCatalogView.CourseStar(played, authored) is { } stars)
-                    TaikoGuest.LastCourseStar[player] = (authored, stars);
+        _session.RecordLastCourses(request.Category, request.Song,
+            _sides.Contains(0) ? course(request.PlayerOneCourse) : -1, _sides.Contains(1) ? course(request.PlayerTwoCourse) : -1);
         return LumenHostValue.Undefined;
     }
 

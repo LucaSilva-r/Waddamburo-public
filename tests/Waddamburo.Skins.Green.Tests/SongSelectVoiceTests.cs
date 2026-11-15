@@ -36,7 +36,7 @@ public sealed class SongSelectVoiceTests
         var player = new LumenPlayer(definition, 1280, 720, rootCharacterId: 1, hostBinding: host);
         host.Attach(player);
         for (var frame = 0; frame < 7; frame++) player.Advance();
-        Assert.True(host.LeavingCourseSelect);
+        Assert.True(host.Session.LeavingCourseSelect);
         Assert.Equal([("VO_SELECT", 32)], direct);
         Assert.Equal(2, sounds.Requests.Count);
         Assert.Equal(33, sounds.Requests[0].Arguments[1].AsNumber());
@@ -44,7 +44,7 @@ public sealed class SongSelectVoiceTests
         Assert.Equal([7d, 2d], sounds.Requests[1].Arguments.Select(static value => value.AsNumber()));
 
         for (var frame = 0; frame < 3; frame++) player.Advance();
-        Assert.False(host.LeavingCourseSelect);
+        Assert.False(host.Session.LeavingCourseSelect);
         Assert.Equal([33d, 61d], sounds.Requests.Skip(2).Select(static request => request.Arguments[1].AsNumber()));
     }
 

@@ -88,6 +88,148 @@ public sealed class SongSelectSession
 
     public SongSelectCatalogView Catalog { get; }
 
+    // --- The screen's state, whatever movie shows it ---
+
+    /// <summary>The countdown (the movie starts it; home or the countdown off: it holds its full time).</summary>
+    public SongSelectTimer Timer { get; } = new();
+
+    /// <summary>False: the countdown is off (home, the cabinet setting): it holds its full time.</summary>
+    public bool Counting { get; init; } = true;
+
+    /// <summary>The countdown was started (seconds).</summary>
+    public event Action<double>? CountdownStarted;
+
+    public event Action? CountdownStopped;
+
+    public void StartCountdown(double seconds)
+    {
+        Timer.Start(seconds);
+        if (!Counting)
+            Timer.Stop();
+        CountdownStarted?.Invoke(seconds);
+    }
+
+    public void StopCountdown()
+    {
+        Timer.Stop();
+        CountdownStopped?.Invoke();
+    }
+
+    /// <summary>Seconds left on the countdown; null while none runs (home, or the countdown off).</summary>
+    public int? TimeLeft => Counting && Timer.IsRunning ? (int)Math.Ceiling(Timer.Remaining.TotalSeconds) : null;
+
+    /// <summary>The list's cursor settled on a folder (its voice plays).</summary>
+    public event Action<int>? FolderCursorMoved;
+
+    public void MoveFolderCursor(int category) => FolderCursorMoved?.Invoke(category);
+
+    /// <summary>
+    /// The by-difficulty panel's 前回 board: each playing drum's course (Ura counts as Oni) and its ★. Courses are
+    /// catalog courses (<see cref="TaikoCourse"/>), -1 for a drum that does not play.
+    /// </summary>
+    public void RecordLastCourses(int category, int song, int playerOneCourse, int playerTwoCourse)
+    {
+        Catalog.TryGetSong(category, song, out var played);
+        for (var side = 0; side < 2; side++)
+        {
+            var course = side == 0 ? playerOneCourse : playerTwoCourse;
+            if (course < 0)
+                continue;
+            TaikoGuest.LastCourse[side] = Math.Min(course, (int)TaikoCourse.Oni);
+            if (played is not null && course <= (int)TaikoCourse.Oni && SongSelectCatalogView.CourseStar(played, course) is { } stars)
+                TaikoGuest.LastCourseStar[side] = (course, stars);
+        }
+    }
+
+    /// <summary>The folder open in the list (-1: none).</summary>
+    public int OpenFolder { get; private set; } = -1;
+
+    /// <summary>The song whose courses are being chosen (folder and song index); null in the list.</summary>
+    public (int Category, int Song)? CourseSelect { get; private set; }
+
+    /// <summary>The song whose courses are being chosen; null in the list.</summary>
+    public SongSelectSong? CourseSelectSong { get; private set; }
+
+    /// <summary>Backing out of the courses: they are closing, the list does not take steps yet.</summary>
+    public bool LeavingCourseSelect { get; set; }
+
+    /// <summary>The players decided the mode-switch folder (to the other song select).</summary>
+    public bool ModeSwitchRequested { get; private set; }
+
+    /// <summary>The players decided the how-to-play folder (the tutorial).</summary>
+    public bool TutorialRequested { get; private set; }
+
+    /// <summary>The players decided the dan dojo (its folder, or a series in it).</summary>
+    public bool DanRequested { get; private set; }
+
+    /// <summary>The series decided in the dan dojo folder; null: the folder itself (a cabinet's).</summary>
+    public string? DanSeriesPicked { get; private set; }
+
+    /// <summary>The players decided a library folder: Song Select reloads with that library.</summary>
+    public SongSourceKind? LibraryRequested { get; private set; }
+
+    /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
+    public SongBrowseControl? BrowseRequested { get; private set; }
+
+    /// <summary>The folder and song of the last course decided (to come back to it).</summary>
+    public (CategoryKey Category, SongKey Song)? Picked { get; private set; }
+
+    /// <summary>Forgets the last course decided (a new credit starts on the default song).</summary>
+    public void ForgetPicked() => Picked = null;
+
+    /// <summary>Remembers a song as picked, so Song Select comes back to it.</summary>
+    public void Remember(int category, int song)
+    {
+        if (Catalog.TryGetSong(category, song, out var picked))
+            Picked = (Catalog.HomeOf(category, picked.Descriptor.Key), picked.Descriptor.Key);
+    }
+
+    public void Open(int folder) => OpenFolder = folder;
+
+    /// <summary>Closes the open folder; the folder that was open.</summary>
+    public int Close()
+    {
+        var closed = OpenFolder;
+        OpenFolder = -1;
+        return closed;
+    }
+
+    /// <summary>The courses of a song open (a dan series spine: the dojo is requested, back comes here).</summary>
+    public void BeginCourses(int category, int song)
+    {
+        CourseSelect = (category, song);
+        if (Catalog.TryGetSong(category, song, out var picked) && SongSelectCatalogView.DanSeriesOf(picked.Descriptor.Key) is { } series)
+        {
+            DanSeriesPicked = series;
+            DanRequested = true;
+            Picked = (Catalog.Categories[category].Key, picked.Descriptor.Key);
+        }
+        CourseSelectSong = Catalog.TryGetSong(category, song, out var open) ? open : null;
+        LeavingCourseSelect = false;
+    }
+
+    public void LeaveCourses()
+    {
+        CourseSelectSong = null;
+        LeavingCourseSelect = false;
+    }
+
+    /// <summary>A folder that is a choice by itself was decided: the mode switch, the tutorial, the dojo, a library, a browse spine.</summary>
+    public void Choose(int category)
+    {
+        if (category == Catalog.ModeSwitchCategory)
+            ModeSwitchRequested = true;
+        else if (category == Catalog.TutorialCategory)
+            TutorialRequested = true;
+        else if (category == Catalog.DanCategory)
+            DanRequested = true;
+        else if ((uint)category < (uint)Catalog.Categories.Length)
+        {
+            LibraryRequested = Catalog.Categories[category].Link;
+            BrowseRequested = Catalog.Categories[category].Control;
+        }
+    }
+
     public SongSelection? Selection { get; private set; }
 
     public SongPreviewRequest? Preview(int category, int song)
@@ -163,6 +305,7 @@ public sealed class SongSelectSession
 
         // The preview plays on, unchanged, under the rainbow; the host silences it as the song's title appears (#17).
         _previews.Hold();
+        Picked = (Catalog.HomeOf(category, selection.Song), selection.Song);
         return Selection = selection;
     }
 

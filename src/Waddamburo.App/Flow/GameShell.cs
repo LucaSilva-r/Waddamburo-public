@@ -533,7 +533,7 @@ internal sealed class GameShell : IDisposable
         var joined = Players.JoinedSides;
         // The screen's countdown, as its host runs it (the game's screens and ours alike).
         var timer = number(Active.Id == FlowScenes.Entry ? Hosts.EntrySession?.TimeLeft
-            : Active.Id == FlowScenes.SongSelect ? Hosts.SongSelect?.OwnTimeLeft : null);
+            : Active.Id == FlowScenes.SongSelect ? Hosts.SelectSession?.TimeLeft : null);
         // Song select's tab: which song of the credit comes next (the game has art for 1 to 4; home shows none).
         var stage = Active.Id == FlowScenes.SongSelect && !Arcade.Home ? Players.SongsPlayed + 1 : (int?)null;
         var card = Sync.Pairing?.Shown();
@@ -1747,7 +1747,7 @@ internal sealed class GameShell : IDisposable
     private string? uploadBanner()
     {
         var song = Active.Id == FlowScenes.SongSelect
-            ? Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
+            ? Hosts.SelectSession?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
         var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
         var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
         var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";

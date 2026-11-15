@@ -96,8 +96,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     public override void Advance(LumenInputSnapshot input)
     {
         var scroll = Shell.Arcade.FastSongScroll && Shell.Active.Id == FlowScenes.SongSelect ? Shell.Hosts.SongSelect?.Scroll : null;
-        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SongSelect?.CourseSelectSong is null,
-            keepWheel: Shell.Hosts.SongSelect?.LeavingCourseSelect == true) ?? input);
+        base.Advance(scroll?.Before(input, listActive: Shell.Hosts.SelectSession?.CourseSelectSong is null,
+            keepWheel: Shell.Hosts.SelectSession?.LeavingCourseSelect == true) ?? input);
         scroll?.After();
         if (Shell.Active.Id == FlowScenes.WaiwaiTutorial || Shell.Active.Id == FlowScenes.AiTutorial)
             Shell.Hosts.ModeTutorial?.Poll();
@@ -163,7 +163,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             }, FlowScenes.Entry);
             return;
         }
-        if (Shell.Hosts.SongSelect?.TutorialRequested == true)
+        if (Shell.Hosts.SelectSession?.TutorialRequested == true)
         {
             if (Shell.Hosts.Waiwai)
             {
@@ -184,25 +184,25 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.Scenes.Show(FlowScenes.Tutorial);
             return;
         }
-        if (Shell.Hosts.SongSelect?.DanRequested == true)
+        if (Shell.Hosts.SelectSession?.DanRequested == true)
         {
             Shell.Sounds?.Play("select.dan");
             // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
-            Shell.Hosts.DanSeries = Shell.Hosts.SongSelect.DanSeriesPicked ?? Shell.Arcade.DanSeries;
+            Shell.Hosts.DanSeries = Shell.Hosts.SelectSession.DanSeriesPicked ?? Shell.Arcade.DanSeries;
             Shell.Catalog.Replace(FlowScenes.DaniSelectScene(Shell.Hosts.PlayerSide));
             Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
             return;
         }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the
         // difficulty selector opens, so it is there when the rainbow closes.
-        if (Shell.Hosts.SongSelect?.CourseSelectSong is { } picked && _titled != picked.Descriptor.Key)
+        if (Shell.Hosts.SelectSession?.CourseSelectSong is { } picked && _titled != picked.Descriptor.Key)
         {
             _titled = picked.Descriptor.Key;
             _ = Shell.Titles.Resolve(Shell.Titles.GetTransitionTitle(picked));
         }
         finishComposing();
         // The mode-switch folder: reload as the other song select (normal <-> Waiwai).
-        if (Shell.Hosts.SongSelect?.ModeSwitchRequested == true)
+        if (Shell.Hosts.SelectSession?.ModeSwitchRequested == true)
         {
             Shell.Hosts.Waiwai = !Shell.Hosts.Waiwai;
             showSongSelect();
@@ -213,12 +213,12 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, Song Select
         // reloading on that spine.
         // The Online spine: the lobby opens over Song Select.
-        if (Shell.Hosts.SongSelect?.BrowseRequested == SongBrowseControl.Online)
+        if (Shell.Hosts.SelectSession?.BrowseRequested == SongBrowseControl.Online)
         {
             Shell.Room.OpenLobby();
             return;
         }
-        if (Shell.Hosts.SongSelect?.BrowseRequested is { } control)
+        if (Shell.Hosts.SelectSession?.BrowseRequested is { } control)
         {
             Shell.Reload.Start(() =>
             {
@@ -392,7 +392,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     // A library folder (home mode): Song Select reloads listing that library.
     private bool switchLibrary()
     {
-        if (Shell.Hosts.SongSelect?.LibraryRequested is not { } library)
+        if (Shell.Hosts.SelectSession?.LibraryRequested is not { } library)
             return false;
         if (!Shell.Arcade.CustomUploadNoticeSeen && library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
             Shell.CustomUploadPrompt.Open(() => Shell.Reload.Start(() => Shell.Hosts.Library = library));
@@ -468,10 +468,10 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             new WdRequests("select")
                 .Handle("rows.window", arguments => at(arguments, 0) is { } first && at(arguments, 1) is { } count
                     ? rows(loaded => loaded.Window(first, count)) : "rows.window takes the first row and how many")
-                .Handle("select.row", arguments => at(arguments, 0) is { } row ? rows(loaded => selectSongRow(loaded, host, row)) : "select.row takes a row")
-                .Handle("row.open", arguments => at(arguments, 0) is { } row ? rows(loaded => openSongRow(loaded, host, row)) : "row.open takes a row")
-                .Handle("row.close", arguments => at(arguments, 0) is { } row ? rows(loaded => closeSongRow(loaded, host, row)) : "row.close takes a row")
-                .Handle("song.start", _ => rows(loaded => startSong(loaded, host)))
+                .Handle("select.row", arguments => at(arguments, 0) is { } row ? rows(loaded => selectSongRow(loaded, host.Session, row)) : "select.row takes a row")
+                .Handle("row.open", arguments => at(arguments, 0) is { } row ? rows(loaded => openSongRow(loaded, host.Session, row)) : "row.open takes a row")
+                .Handle("row.close", arguments => at(arguments, 0) is { } row ? rows(loaded => closeSongRow(loaded, host.Session, row)) : "row.close takes a row")
+                .Handle("song.start", _ => rows(loaded => startSong(loaded, host.Session)))
                 .Handle("tone.choose", arguments => at(arguments, 0) is { } tone && at(arguments, 1) is { } drum and (1 or 2)
                     ? chooseTone(drum - 1, tone) : "tone.choose takes a tone and a drum (1 or 2)")
                 .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
@@ -488,16 +488,16 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             if (!host.OwnReady())
                 return;
             var loaded = _songRows = new LibraryRows(songTree(host.Catalog));
-            host.OwnStartTimer(SongSelectSeconds);
+            host.Session.StartCountdown(SongSelectSeconds);
             // Where the cursor starts: a folder, or a song inside it (back from a song).
             var folder = Math.Clamp(host.StartCategory, 0, Math.Max(0, loaded.Rows.Count - 1));
-            if (host.StartSong >= 0 && openSongRow(loaded, host, folder) is null)
-                selectSongRow(loaded, host, folder + 1 + host.StartSong);
+            if (host.StartSong >= 0 && openSongRow(loaded, host.Session, folder) is null)
+                selectSongRow(loaded, host.Session, folder + 1 + host.StartSong);
             else
-                selectSongRow(loaded, host, folder);
+                selectSongRow(loaded, host.Session, folder);
         }
         _songRows.Publish(movie);
-        movie.Publish("select.timeLeft", host.OwnTimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
+        movie.Publish("select.timeLeft", host.Session.TimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
     }
 
     private static IReadOnlyList<LibraryNode> songTree(SongSelectCatalogView catalog)
@@ -524,7 +524,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                         {
                             Stars = entry.Level(course) ?? 1,
                             Course = course.ToString().ToLowerInvariant(),
-                            Tag = new ChartTag(index, position, course == TaikoCourse.Ura ? 7 : (int)course),
+                            Tag = new ChartTag(index, position, (int)course),
                         });
                     folder.Children.Add(song);
                 }
@@ -533,7 +533,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         return folders;
     }
 
-    private static string? selectSongRow(LibraryRows rows, SongSelectHostBinding host, int row)
+    private string? selectSongRow(LibraryRows rows, SongSelectSession session, int row)
     {
         var before = rows.Selected;
         if (rows.Select(row) is { } refused)
@@ -543,16 +543,19 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         switch (rows.Selected?.Tag)
         {
             case FolderTag folder:
-                host.OwnFolderCursor(folder.Folder); // the folder's voice
+                session.MoveFolderCursor(folder.Folder); // the folder's voice
                 break;
             case SongTag song:
-                host.OwnPreview(song.Folder, song.Song);
+                // The song's score windows are fetched now, its preview starts.
+                if (session.Catalog.TryGetSong(song.Folder, song.Song, out var selected))
+                    Shell.Hosts.Rankings?.Want(selected);
+                session.Preview(song.Folder, song.Song);
                 break;
         }
         return null;
     }
 
-    private static string? openSongRow(LibraryRows rows, SongSelectHostBinding host, int row)
+    private static string? openSongRow(LibraryRows rows, SongSelectSession session, int row)
     {
         if ((uint)row >= (uint)rows.Rows.Count)
             return $"there is no row {row} ({rows.Rows.Count} rows)";
@@ -560,35 +563,44 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             // A library, the dojo, the tutorial: the flow takes over (a reload, another screen).
             case FolderTag { Choice: true } choice:
-                host.OwnChoose(choice.Folder);
+                session.Choose(choice.Folder);
                 return null;
             case FolderTag folder when rows.Open(row) is null:
-                host.OwnOpenFolder(folder.Folder);
+                session.Open(folder.Folder);
                 return null;
             case SongTag song when rows.Open(row) is null:
-                host.OwnBeginCourses(song.Folder, song.Song);
+                session.BeginCourses(song.Folder, song.Song);
                 return null;
         }
         return rows.Open(row);
     }
 
-    private static string? closeSongRow(LibraryRows rows, SongSelectHostBinding host, int row)
+    private static string? closeSongRow(LibraryRows rows, SongSelectSession session, int row)
     {
         var node = (uint)row < (uint)rows.Rows.Count ? rows.Rows[row].Node : null;
         if (rows.Close(row) is { } refused)
             return refused;
-        if (node?.Tag is FolderTag) host.OwnCloseFolder();
-        if (node?.Tag is SongTag) host.OwnLeaveCourses();
+        if (node?.Tag is FolderTag)
+        {
+            session.Close();
+            session.StopPreview();
+        }
+        if (node?.Tag is SongTag) session.LeaveCourses();
         return null;
     }
 
-    private string? startSong(LibraryRows rows, SongSelectHostBinding host)
+    // Plays the chart's course for every joined drum.
+    private string? startSong(LibraryRows rows, SongSelectSession session)
     {
         if (rows.Selected?.Tag is not ChartTag chart)
             return "the cursor is not on a chart";
         if (Shell.PlayRequests.Pending is not null)
             return "a song is already starting";
-        host.OwnStart(chart.Folder, chart.Song, chart.Course);
+        int course(int side) => Shell.Hosts.TwoPlayers || Shell.Hosts.PlayerSide == side ? chart.Course : -1;
+        session.Select(chart.Folder, chart.Song, course(0), course(1), TaikoGuest.Options);
+        session.RecordLastCourses(chart.Folder, chart.Song, course(0), course(1));
+        session.StopCountdown();
+        session.Choose(chart.Folder);
         return null;
     }
 

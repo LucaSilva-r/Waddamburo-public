@@ -250,7 +250,7 @@ internal sealed class LayerHostFactory(
     public void ForgetLastSong()
     {
         _lastPick = null;
-        SongSelect?.ForgetPicked();
+        SelectSession?.ForgetPicked();
     }
 
     // Home mode keeps each source in its own library (arcade lists the stock songs as the game does);
@@ -274,6 +274,9 @@ internal sealed class LayerHostFactory(
 
     /// <summary>The loaded song select's host (its mode switch).</summary>
     public SongSelectHostBinding? SongSelect { get; private set; }
+
+    /// <summary>The loaded song select's engine state (null outside it).</summary>
+    public SongSelectSession? SelectSession => SongSelect?.Session;
 
     /// <summary>The loaded Waiwai results' host (null for normal results).</summary>
     public WaiwaiResultHostBinding? WaiwaiResult { get; private set; }
@@ -418,7 +421,7 @@ internal sealed class LayerHostFactory(
             recentCharts: TwoPlayers || OnlineSong is not null ? null : RecentCharts?.Invoke(PlayerSide));
         // Back from a library: the cursor starts on the folder that leads to it; otherwise on the last
         // song played, when this view lists it.
-        _lastPick = SongSelect?.Picked ?? _lastPick;
+        _lastPick = SelectSession?.Picked ?? _lastPick;
         if (_focus is { } focus)
             (_lastPick, _focus) = (focus, null);
         var (start, startSong) = (0, -1);
@@ -440,7 +443,7 @@ internal sealed class LayerHostFactory(
                 view,
                 textures,
                 previews,
-                playRequests),
+                playRequests) { Counting = _parts?.Countdown ?? true },
             songSelectSounds,
             don,
             parts: _parts,
