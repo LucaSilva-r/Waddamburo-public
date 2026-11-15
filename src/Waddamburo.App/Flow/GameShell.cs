@@ -182,6 +182,9 @@ internal sealed class GameShell : IDisposable
     public DonPresentationController? Don { get; }
     public AudioEngine? Audio { get; }
     public GameSounds? Sounds { get; }
+
+    /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
+    public Waddamburo.Skins.Green.Sound.GreenScreenSounds? GreenSounds { get; private set; }
     public SongPreviewController? Previews { get; }
     public SongTitleTextureCache Titles { get; }
     public CoinBank? Coins { get; internal set; } // the cabinet controls replace it as the service menu closes
@@ -1065,9 +1068,7 @@ internal sealed class GameShell : IDisposable
             flow,
             snapshot,
             Titles,
-            Sounds is null ? TraceSoundController.Instance : Sounds.Frontend,
-            Sounds?.Screens,
-            new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
+            GreenSounds,
             Don,
             () => SongInfo,
             Options.Countdown,
@@ -1162,7 +1163,8 @@ internal sealed class GameShell : IDisposable
             set = ours;
         if (arcadePath is not null && SoundPack.Load(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcadePath))!, "sounds"), set) is { } own)
             set = own;
-        var sounds = new GameSounds(audio, green, set);
+        var sounds = new GameSounds(audio, set);
+        GreenSounds = new GreenScreenSounds(new Waddamburo.Skins.Green.Sound.GreenSounds(green, sounds.Bank), sounds.StopAll);
         // Any movie of ours may ask for a sound by name, for a drum's side and tone or centred.
         WdRequests.App = new WdRequests("app").Handle("sound.play", arguments =>
         {

@@ -23,9 +23,7 @@ public sealed class GreenScreenHosts(
     GameFlowSession flow,
     SongCatalogSnapshot catalog,
     ISongBoardTextureService textures,
-    ISongSelectSoundController songSelectSounds,
     GreenScreenSounds? sounds,
-    ILumenFrontendServices frontend,
     IDonPresentationController? don,
     Func<TaikoSongInfo> songInfo,
     bool countdown,
@@ -83,6 +81,21 @@ public sealed class GreenScreenHosts(
         }
     }
 
+    // The attract stream (the title's) and game over's music, which the game's movies start.
+    public void Left(SceneId screen)
+    {
+        if (screen == FlowScenes.Title)
+            sounds?.Attract.StopAttractStream();
+        else if (screen == FlowScenes.GameOver)
+            sounds?.GameOver.StopGameOverMusic();
+    }
+
+    public void MuteAttract(bool muted)
+    {
+        if (sounds is not null)
+            sounds.Attract.Muted = muted;
+    }
+
     public void TimeOut(SceneId screen)
     {
         if (screen == FlowScenes.AiRemind)
@@ -92,6 +105,10 @@ public sealed class GreenScreenHosts(
     public DanSelectChoice? DanSelectChoice => DaniSelect is { Terminated: true } list ? new(list.Back, list.Selected) : null;
 
     public bool RevivalSucceeded => Retry?.Succeeded == true;
+
+    // Without audio: the game's sound requests are traced.
+    private readonly ISongSelectSoundController songSelectSounds = sounds is null ? TraceSoundController.Instance : sounds.Frontend;
+    private readonly ILumenFrontendServices frontend = new ViewerFrontendServices(sounds?.Frontend, arcadeSettings().FreePlay);
 
     // Live: the service menu changes settings (e.g. songs per session) while the game runs.
     private ArcadeSettings arcade => arcadeSettings();

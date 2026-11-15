@@ -1,22 +1,17 @@
 using Waddamburo.Game.Sound;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Skins.Green.Sound;
 
 namespace Waddamburo.App.Audio;
 
-/// <summary>
-/// The sounds: the engine's player (<see cref="Bank"/>), the skin's set it asks by name, and the game's screens'
-/// sounds (<see cref="Green"/>: its movies ask for bank cues).
-/// </summary>
+/// <summary>The sounds: the engine's player (<see cref="Bank"/>) and the skin's set it asks by name.</summary>
 internal sealed class GameSounds
 {
-    /// <param name="green">The game's sound tree (its screens' movies ask for its cues).</param>
+    /// <param name="audio">The mixer the sounds play on.</param>
     /// <param name="set">What the engine's names play: a pack of ours or the user's over the game's (SoundPack).</param>
-    public GameSounds(AudioEngine audio, GreenSoundSet green, ISoundSet set)
+    public GameSounds(AudioEngine audio, ISoundSet set)
     {
         Set = set;
         Bank = new SoundBank(audio);
-        Screens = new GreenScreenSounds(new GreenSounds(green, Bank), StopAll);
         Gameplay = new GameplaySounds(Bank, set);
     }
 
@@ -24,16 +19,7 @@ internal sealed class GameSounds
     public ISoundSet Set { get; }
 
     public SoundBank Bank { get; }
-    /// <summary>The game's screens' controllers (their movies ask for bank cues).</summary>
-    public GreenScreenSounds Screens { get; }
-    public GreenSounds Green => Screens.Green;
-    public AttractSounds Attract => Screens.Attract;
-    public FrontendSounds Frontend => Screens.Frontend;
     public GameplaySounds Gameplay { get; }
-    public ResultSounds Results => Screens.Results;
-    public WaiwaiResultSounds WaiwaiResults => Screens.WaiwaiResults;
-    public RetrySounds Retry => Screens.Retry;
-    public GameOverSounds GameOver => Screens.GameOver;
 
     /// <summary>Plays the skin's sound for an engine name (nothing when the skin has none).</summary>
     public void Play(string name, bool trace = true) => Play(new SoundRequest(name), trace);
@@ -49,6 +35,24 @@ internal sealed class GameSounds
 
     /// <summary>Streams the skin's track for an engine name.</summary>
     public SoundHandle? PlayMusic(string name, bool loop) => music(name) is { } track ? Bank.PlayMusic(track, loop) : null;
+
+    private SoundHandle? _screenMusic;
+    private string? _screenMusicName;
+
+    /// <summary>The screen's music, one at a time, looped: the skin's track for a name, unless it already plays.</summary>
+    public void StartScreenMusic(string name)
+    {
+        if (_screenMusicName == name && Bank.IsPlaying(_screenMusic))
+            return;
+        StopScreenMusic();
+        (_screenMusic, _screenMusicName) = (PlayMusic(name, loop: true), name);
+    }
+
+    public void StopScreenMusic()
+    {
+        Bank.Stop(_screenMusic);
+        (_screenMusic, _screenMusicName) = (null, null);
+    }
 
     /// <summary>Decodes the skin's track for an engine name now; what starts it.</summary>
     public Action? PrepareMusic(string name, bool loop) => music(name) is { } track ? Bank.PrepareMusic(track, loop) : null;

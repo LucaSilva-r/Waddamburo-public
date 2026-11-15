@@ -2,34 +2,9 @@ using Waddamburo.Game.Sound;
 
 namespace Waddamburo.Skins.Green.Sound;
 
-/// <summary>The results screen: its music and result.lm's voice/effect requests.</summary>
+/// <summary>The results screen: result.lm's voice/effect requests (its music is the engine's music.result).</summary>
 public sealed class ResultSounds(GreenSounds bank) : IResultSoundController
 {
-    private SoundHandle? _music;
-
-    /// <summary>The results music: JINGLE_SEISEKI, or JINGLE_WAIRSLT after a Waiwai song.</summary>
-    public void StartMusic(bool waiwai = false, bool aiBattle = false)
-    {
-        if (!bank.IsPlaying(_music))
-            _music = bank.PlayMusic(aiBattle ? "JINGLE_AIBTL_RSLT" : waiwai ? "JINGLE_WAIRSLT" : "JINGLE_SEISEKI", loop: true);
-    }
-
-    /// <summary>
-    /// AI battle's farewell (remind): JINGLE_AIBTL_REMIND. Not in the trace (it logs no music); the bank's name says it.
-    /// ponytail: looped, as the screen waits for a don; play it once if the jingle turns out to end on its own.
-    /// </summary>
-    public void StartRemindMusic()
-    {
-        StopMusic();
-        _music = bank.PlayMusic("JINGLE_AIBTL_REMIND", loop: true);
-    }
-
-    public void StopMusic()
-    {
-        bank.Stop(_music);
-        _music = null;
-    }
-
     public void RequestSound(ResultSoundRequest request)
     {
         // Group 1/2 = the left/right player's request. The right player's voices are Katsu-chan's,

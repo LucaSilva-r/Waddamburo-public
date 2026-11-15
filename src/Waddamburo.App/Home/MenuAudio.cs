@@ -11,7 +11,7 @@ internal enum MenuVolumeScope { Song, Menus, Attract }
 /// The home menu's sound: the player's volume settings on the mixer, the menus' music held while the menu is open,
 /// and the attract muted under it.
 /// </summary>
-internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds)
+internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds, Action<bool> muteSkinAttract)
 {
     private bool _menuMusicHeld;
     private ArcadeSettings? _settings;
@@ -67,7 +67,8 @@ internal sealed class MenuAudio(AudioEngine? audio, GameSounds? sounds)
     public void MuteAttract(bool muted)
     {
         if (sounds is not null)
-            sounds.Gameplay.Muted = sounds.Attract.Muted = muted;
+            sounds.Gameplay.Muted = muted;
+        muteSkinAttract(muted);
         if (audio is null) return;
         foreach (var bus in (AudioBus[])[AudioBus.Bgm, AudioBus.Preview, AudioBus.Voice])
             audio.Mixer.SetBusMuted(bus, muted);

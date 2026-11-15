@@ -307,7 +307,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _play.Battle = aiBattle ? new AiBattleProgress(_play.Charts[0], players[0].Course) : null;
         if (_play.Battle is { } shown)
         {
-            _ = new GameAiBattleMovies(shown, active, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null);
+            _ = new GameAiBattleMovies(shown, active, Shell.GreenSounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null);
             publishBattle(shown);
         }
         if (_play.Battle is { } battle && _play.Review is null)

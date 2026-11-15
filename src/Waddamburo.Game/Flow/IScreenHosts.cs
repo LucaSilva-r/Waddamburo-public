@@ -30,6 +30,12 @@ public interface IScreenHosts : ILumenLayerHostFactory, IScreenEnds
     /// <summary>The loaded screen's hosts do their per-tick work (the flow calls it where the screen needs it).</summary>
     void Poll(SceneId screen);
 
+    /// <summary>The screen leaves the stage: what its movies started (their music) stops.</summary>
+    void Left(SceneId screen);
+
+    /// <summary>The attract goes silent under the menu (its movies' own sounds; the engine mutes its buses).</summary>
+    void MuteAttract(bool muted);
+
     /// <summary>The screen waited too long for the players (the AI battle farewell): its movies leave.</summary>
     void TimeOut(SceneId screen);
 

@@ -282,7 +282,7 @@ screens' sounds in `Skins.Green/Sound` (`GreenSounds`: bank cues and tracks as i
 entry and song select, results, retry, game over and Waiwai results controllers; `CountdownCues`), and every sound
 the App plays by engine name (`GameSounds.Play`, `PlayMusic`, `PrepareMusic`, `Clip`, `PlayCoin`): `ui.don` /
 `ui.ka`, `coin.insert` / `coin.service`, `select.join`, `select.dan`, `dan.finished`, `player.refused`,
-`music.dan`, `music.tutorial(.waiwai/.ai)`, `click.accent` / `click.beat`. Sound names avoid the translation-key
+`music.dan`, `music.tutorial(.waiwai/.ai)`, `music.result(.waiwai/.ai)`, `music.remind`, `attract.exit`, `click.accent` / `click.beat`. Sound names avoid the translation-key
 prefixes (`menu.`, `setup.`, `calibration.`, ...: `LanguageFileTests`). No game bank or track name is left in the
 App or the engine.
 
@@ -441,8 +441,14 @@ renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposi
   controllers are grouped in `GreenScreenSounds`. The App constructs it in `GameShell.createHosts` only (step 6
   replaces that with the skin).
 
-Next: 16 App files still name Green types.
-Then `GameSounds`/`ConsoleServices` (sound controllers), the gameplay adapters (`GameplayFlow`,
+- 5c-4: `GameSounds` is the engine's alone (player, sound set, gameplay sounds, one looped screen music slot). The
+  music and cues the flows start are engine names the skin's set maps (`music.result`, `.waiwai`, `.ai`,
+  `music.remind`, `attract.exit`); what the game's movies start themselves stops through `IScreenHosts.Left(screen)`,
+  the attract's mute under the menu through `MuteAttract`. The composition root builds `GreenScreenSounds`; the trace
+  fallbacks (`ViewerFrontendServices`, `TraceSoundController`) moved into Green and `GreenScreenHosts` makes them.
+
+Next: 14 App files still name Green types.
+Then the gameplay adapters (`GameplayFlow`,
 `TaikoGameplayPresentation`), the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
 `IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,
 `PlayerSetupController`, `DanCourses` (dan select records), `ViewerHostBinding`, `GameShell`. Proof per move: the

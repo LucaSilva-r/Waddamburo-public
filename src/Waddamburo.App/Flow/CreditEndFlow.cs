@@ -33,7 +33,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _gameOverEndTick = -1;
         _remindStartTick = Shell.Tick;
         if (scene == FlowScenes.AiRemind)
-            Shell.Sounds?.Results.StartRemindMusic();
+            Shell.Sounds?.StartScreenMusic("music.remind");
         // Screens of ours ask the engine (WdNames scopes retry and gameover); the game's end themselves.
         _revival = null;
         _ending = false;
@@ -135,16 +135,14 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
 
     public override void Exit(SceneId scene)
     {
+        Shell.Hosts.Left(scene);
         if (scene == FlowScenes.Result || scene == FlowScenes.AiRemind)
         {
-            Shell.Sounds?.Results.StopMusic();
+            Shell.Sounds?.StopScreenMusic();
             Shell.Credit.DanResult = null;
         }
         else if (scene == FlowScenes.GameOver)
-        {
-            Shell.Sounds?.GameOver.StopGameOverMusic();
             Shell.Catalog.Replace(FlowScenes.NormalGameOver);
-        }
     }
 
     // The revival keeps the left player's movie setup (see RetryGameHostBinding), so a right-drum
@@ -195,7 +193,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Hosts.Poll(scene);
             // ponytail: a course's results take a song's delay until a trace times theirs.
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
-                Shell.Sounds?.Results.StartMusic(waiwai: Shell.Active.Layers is [{ Definition.HostId: "waiwai-result" }, ..], aiBattle: Shell.Credit.AiOutcome is not null);
+                Shell.Sounds?.StartScreenMusic(Shell.Credit.AiOutcome is not null ? "music.result.ai"
+                    : Shell.Active.Layers is [{ Definition.HostId: "waiwai-result" }, ..] ? "music.result.waiwai" : "music.result");
             if (Shell.Scenes.FinishFade()) return;
             // The movie ends itself (15-21 s traced by closing message), or ours asks.
             if (input.Escape || _continued || Shell.ScreenEnded)

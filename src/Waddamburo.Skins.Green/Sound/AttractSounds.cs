@@ -41,7 +41,4 @@ public sealed class AttractSounds(GreenSounds bank) : IAttractSoundController
         if (!Muted)
             bank.Play(voice ? "VO_ATTRACT" : "SE_ATTRACT", cue);
     }
-
-    /// <summary>A drum hit leaving the attract loop (traced SE_COM cue 1 at the title).</summary>
-    public void PlayExit() => bank.Play("SE_COM", 1, SoundBus.Menu);
 }

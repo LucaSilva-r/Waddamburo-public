@@ -60,8 +60,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
 
     public override void Exit(SceneId scene)
     {
-        if (scene == FlowScenes.Title)
-            Shell.Sounds?.Attract.StopAttractStream();
+        Shell.Hosts.Left(scene);
         Movie?.Dispose();
         Movie = null;
     }
@@ -203,7 +202,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             // The attract's voices, effects and music end with it (the coin channel plays on).
             Shell.Sounds?.StopAll();
             if (!coinStart)
-                Shell.Sounds?.Attract.PlayExit();
+                Shell.Sounds?.Play("attract.exit");
             // SCENE_TRIGGER_COIN (3), or _DON_1P (0) / _DON_2P (1) for the drum hit: the entry then
             // joins that drum's player (the right one plays as P2).
             Shell.Credit.EntryTrigger = coinStart ? 3 : input.DrumSide ?? 0;

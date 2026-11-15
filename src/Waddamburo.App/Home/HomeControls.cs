@@ -41,7 +41,7 @@ internal sealed class HomeControls : IDisposable
         _calibration = calibration;
         _shell = shell;
         _gameplay = gameplay;
-        _audio = new MenuAudio(shell.Audio, shell.Sounds);
+        _audio = new MenuAudio(shell.Audio, shell.Sounds, muted => shell.Hosts.MuteAttract(muted));
         _audio.Apply(shell.Arcade);
         _menu = new HomeMenu(() => shell.Arcade, settings =>
         {
@@ -381,7 +381,7 @@ internal sealed class HomeControls : IDisposable
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
                 inRoom: _shell.Match.InSong, layout: _gameplay.CanEditLayout);
         }
-        else if (countdown.Advance((bank, cue) => _shell.Sounds?.Green.Play(bank, cue, trace: false)))
+        else if (countdown.Advance((bank, cue) => _shell.GreenSounds?.Green.Play(bank, cue, trace: false)))
             resumeSong();
         return true;
     }

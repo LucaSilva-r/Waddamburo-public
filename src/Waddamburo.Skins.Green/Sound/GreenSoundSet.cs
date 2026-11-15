@@ -102,6 +102,14 @@ public sealed class GreenSoundSet : ISoundSet
             "music.tutorial" => [new(Music("JINGLE_DOJO"), SoundBus.Music)],
             "music.tutorial.waiwai" => [new(Music("JINGLE_WAITUTOR"), SoundBus.Music)],
             "music.tutorial.ai" => [new(Music("JINGLE_AIBTL_TUTOR"), SoundBus.Music)],
+            // The results: JINGLE_SEISEKI, JINGLE_WAIRSLT after a Waiwai song, JINGLE_AIBTL_RSLT after an AI battle.
+            "music.result" => [new(Music("JINGLE_SEISEKI"), SoundBus.Music)],
+            "music.result.waiwai" => [new(Music("JINGLE_WAIRSLT"), SoundBus.Music)],
+            "music.result.ai" => [new(Music("JINGLE_AIBTL_RSLT"), SoundBus.Music)],
+            // AI battle's farewell (remind): not in the trace (it logs no music); the bank's name says it.
+            "music.remind" => [new(Music("JINGLE_AIBTL_REMIND"), SoundBus.Music)],
+            // A drum hit leaving the attract loop (traced SE_COM cue 1 at the title).
+            "attract.exit" => [new(Cue("SE_COM", 1), SoundBus.Menu)],
             // The audio calibration's clicks: a drum tone's cues (BIP bap bap bap).
             "click.accent" => [new(Cue("SE_GAME_NEIRO_018_C", 0), SoundBus.Drum)],
             "click.beat" => [new(Cue("SE_GAME_NEIRO_018_C", 1), SoundBus.Drum)],

@@ -243,7 +243,7 @@ internal sealed class PlayerSetupController : IDisposable
     // (SCENE_TRIGGER_DON_1P 0 / _DON_2P 1 / _DON_BOTH 2: the movie joins those drums itself).
     private void startWithPlayers(ScoreProfile?[] profiles, bool[] playing)
     {
-        shell.Sounds?.Attract.PlayExit();
+        shell.Sounds?.Play("attract.exit");
         shell.Credit.EntrySetup = false;
         shell.ResetIndicatorScene(); // the entry reloads under the same id: its indicators start over
         shell.Players.Reset();
