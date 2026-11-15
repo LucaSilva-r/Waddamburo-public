@@ -25,7 +25,8 @@ revival, a real course).
 | Waiwai, AI battle screens | names published, no movie of ours yet (stand-ins) |
 | Everything else (the `indicator` legend, themed backgrounds, ...) | an empty **stand-in** (below) |
 
-**Next: [Zero Bandai dependency](#zero-bandai-dependency-the-skin-interface)** (the plan below). Then song select
+**Next: [Zero Bandai dependency](#zero-bandai-dependency-the-skin-interface)** (steps 1-4 done, 5 started: see its
+Progress). Then song select
 step 2 (big panel `selected.*`, the course panel with a cursor per drum and `tone.choose`), `tree.search/sort/group/
 filter`, images (`Wd.fill`), rankings (`scores.*`); our Waiwai and AI battle movies; the boot movies on the provider.
 
@@ -407,7 +408,34 @@ Some engine state still lives inside the game's bindings, so engine code has to 
 - the results' end (`RetryGameHostBinding.IsEnd` reading the game movie's `_global.isAllEnd`);
 - which host serves which movie layer (`LayerHostFactory`, keyed by the game's host ids).
 
-### Steps
+### Progress (2026-11-15)
+
+Done: steps 1-4 and the first part of 5 (commits e69dfd6..08b03f4 on `free-movies`).
+
+- 1: `Game.Flow.ScreenKind`; `screen.name` reads it; Green's `SystemIndicators` maps retry / game over to its result state.
+- 2: `Game.Flow.EntrySession` (countdown, joins with the coin bank, the waiting card, the setup's hold);
+  `EntryFlow` uses only the session; `EntrySceneHost` follows its events.
+- 3: state added to the existing `Game.SongSelect.SongSelectSession` (no separate `SelectSession`): countdown, open
+  folder, course select, the choices that lead elsewhere, the picked song, last courses. Our song select drives it;
+  the `Own…` calls are gone but `OwnReady` (the indicator parts' readiness: goes with the skin's screen-ready in 5).
+- 4: `Game.Flow.IScreenEnds`; `GameShell.ScreenEnded`; the host factory answers for the game's movies.
+- 5a: `Skins.Green` may reference `Platform.Sdl` (user's answer to step 7's drawing question); the nutdata art moved
+  to `Skins.Green/Art`. 5b: `Game.Scenes.LayerRoles`; the scene lists name no Green type.
+
+Decisions (user, 2026-11-15): the game flow stays Taiko Green's for every skin (changing it would break the Green
+skin); the scene lists keep the game's archive/movie paths as **slot names** shared by all skins (no package
+renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposition` stay engine code.
+
+Next (5c on): 18 App files still name Green types. The knot is `LayerHostFactory`: split it into the credit's state
+(`AiBattle`, `Waiwai`, `PlayerSide`, `TwoPlayers`, `EntryTrigger`, `DanSeries`, tutorials seen, `CreditNext`, ...:
+engine, App or Game) and the game movies' hosts (the `Create` switch and the bindings: into Green behind `ISkin`).
+Then `GameSounds`/`ConsoleServices` (sound controllers), the gameplay adapters (`GameplayFlow`,
+`TaikoGameplayPresentation`), the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
+`IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,
+`PlayerSetupController`, `DanCourses` (dan select records), `ViewerHostBinding`, `GameShell`. Proof per move: the
+empty-directory and real-data benchmarks and scripted entry runs against a baseline worktree (edge logs per movie;
+autoplay hit order, roll lengths and note-pool frame counts jitter run to run).
+
 
 Each step: move, prove (the game's movies unchanged, ours working), commit. Proof tools: `--play` (gameplay),
 the empty-directory benchmark (`WADDAMBURO_BENCHMARK_ATTRACT=2 --benchmark`), the real-data benchmark compared before
