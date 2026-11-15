@@ -1,14 +1,13 @@
-using Waddamburo.Skins.Green;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// The drum sounds' (音色) names and icons for Song Select's tone board (<see cref="ToneSurfaces"/>): the
 /// game's nutdata/tone_name and tone_icon packs (tone_name_000-005, icon_neiro_001-005).
 /// </summary>
-internal sealed class ToneArt(NutData nutData)
+public sealed class ToneArt(NutData nutData)
 {
     // Icons start at tone 1 (the plain drum has none).
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key) =>

@@ -1,14 +1,14 @@
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// The boot's music credit pages (kidou's copyright1-3): nutdata/S11100-1/copyright/copyright.nut, one 1280x720
 /// texture per page (Green has two). The movie shows as many pages as _global.copyright_num says, each page a
 /// native fill named after its label.
 /// </summary>
-internal sealed class CopyrightArt(NutData nutData)
+public sealed class CopyrightArt(NutData nutData)
 {
     // ponytail: Green's cabinet folder, as the other nutdata art; other releases' folders when they're supported.
     private const string File = "S11100-1/copyright/copyright.nut";

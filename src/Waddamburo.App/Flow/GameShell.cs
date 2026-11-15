@@ -1,3 +1,4 @@
+using Waddamburo.Skins.Green.Art;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Diagnostics;
@@ -863,7 +864,7 @@ internal sealed class GameShell : IDisposable
             _pill = new PairingPill(Application, options.FontPath);
             _textFields = new TextFieldTextures(Application, options.FontPath);
             _nameTexts = new NameTextTextures(Application, options.FontPath);
-            _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
+            _toneArt = new ToneArt(_nutData = new NutData(texture => SceneTextures.UploadOne(Application, texture), dataRoot));
             GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
             AiRanks = Waddamburo.Game.Gameplay.AiBattleRanks.Load(dataRoot);
             var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);

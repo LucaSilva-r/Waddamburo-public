@@ -1,13 +1,13 @@
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// waiwai_result's native fills: dummy_bg (the collabo's bg.nut) and dummy_sentence (one of text.nut's
 /// 70 comments), dummy_rare_onp_0N (rareonp.nut, the collabo's rare note). Decoded and uploaded on first use.
 /// </summary>
-internal sealed class WaiwaiResultTextures(NutData nutData)
+public sealed class WaiwaiResultTextures(NutData nutData)
 {
     public static readonly LumenNativeSurfaceKey Background = new("waiwai-result:bg");
     public static readonly LumenNativeSurfaceKey RareNote = new("waiwai-result:rare");

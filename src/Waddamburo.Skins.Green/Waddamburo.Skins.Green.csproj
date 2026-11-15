@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
+    <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
   </ItemGroup>
 </Project>

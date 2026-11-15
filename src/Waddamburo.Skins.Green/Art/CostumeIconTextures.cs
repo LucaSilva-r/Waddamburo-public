@@ -3,14 +3,14 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// Costume picker icons (entry UpdateFillrect): Green's nutdata/S11100-1/appendable/NN/costume*_icon
 /// NUTs, concatenated in set order so the texture index is the costume / head / body id (the counts
 /// match the model files). Decoded and uploaded on first use.
 /// </summary>
-internal sealed class CostumeIconTextures(SdlApplication application, NutData nutData, string dataRoot)
+public sealed class CostumeIconTextures(SdlApplication application, NutData nutData, string dataRoot)
 {
     // Entry ICONTYPE_COSTUME / _HEAD / _BODY icons, then the matching name plates.
     private static readonly string[] SetNames =

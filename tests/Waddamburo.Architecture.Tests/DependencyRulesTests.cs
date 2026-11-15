@@ -20,7 +20,8 @@ public sealed class DependencyRulesTests
             ["Waddamburo.Providers.Stock"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Tja"] = ["Waddamburo.Catalog"],
             // The game's own movies (Bandai's): only the App, as the composition root, knows they exist.
-            ["Waddamburo.Skins.Green"] = ["Waddamburo.Game"],
+            // It draws with the engine's platform layer (user, 2026-11-15).
+            ["Waddamburo.Skins.Green"] = ["Waddamburo.Game", "Waddamburo.Platform.Sdl"],
             ["Waddamburo.Upscale"] = [],
             ["Waddamburo.Editor"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
             ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Editor", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.OsuLazer", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja", "Waddamburo.Skins.Green", "Waddamburo.Upscale"],

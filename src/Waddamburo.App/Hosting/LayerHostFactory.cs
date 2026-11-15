@@ -1,6 +1,6 @@
+using Waddamburo.Skins.Green.Art;
 using Waddamburo.App.Audio;
 using Waddamburo.App.Online;
-using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
@@ -407,7 +407,7 @@ internal sealed class LayerHostFactory(
     }
 
     private void bootCredits(LumenPlayer player) =>
-        AttractHostBinding.ShowCredits(player, CopyrightPages, Presentation.CopyrightArt.Key);
+        AttractHostBinding.ShowCredits(player, CopyrightPages, Waddamburo.Skins.Green.Art.CopyrightArt.Key);
 
     private LumenLayerHost entryHost(EntrySceneHost entry) => new(
         new LumenFrontendHostBinding(frontend, flow, don, entry),

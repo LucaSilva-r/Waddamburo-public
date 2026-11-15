@@ -1,4 +1,4 @@
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// Pixel art in the game's data, which nothing in the files marks: NTP3 headers carry no filter field and
@@ -6,7 +6,7 @@ namespace Waddamburo.App.Presentation;
 /// hand (checked in the viewer). It is never AI-upscaled; it is enlarged by whole pixels instead (nearest
 /// neighbour), and the renderer's bilinear filter only smooths what is left between pixels ("sharp bilinear").
 /// </summary>
-internal static class PixelArt
+public static class PixelArt
 {
     // The Super Mario Bros. gameplay skin: all of it.
     private static readonly string[] Archives = ["enso_mario"];

@@ -1,14 +1,14 @@
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// The name art of a series' challenge courses: nutdata/(cabinet)/appendable/NN/dojochallenge_(long|short|mini)
 /// NUTs, concatenated in the order they shipped. The counts match the courses above level 100 in the course
 /// lists (Green 28, Blue 14, Red 13), so the n-th challenge course has the n-th texture.
 /// </summary>
-internal sealed class DanChallengeArt(NutData nutData)
+public sealed class DanChallengeArt(NutData nutData)
 {
     private static readonly Dictionary<string, (string Cabinet, string[] Folders)> Series = new(StringComparer.Ordinal)
     {

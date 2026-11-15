@@ -1,17 +1,16 @@
 using System.Collections.Immutable;
 using Waddamburo.Formats.Nut;
 using Waddamburo.Game;
-using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Art;
 
 /// <summary>
 /// The game's nutdata textures the host draws itself (tone names, dan plates, credits, costume plates, Waiwai
 /// results): read once per file and uploaded like the movies' textures, through the same path (the game's own
-/// BC1/BC3 blocks, cached upscales, queued for the upscaler).
+/// BC1/BC3 blocks, cached upscales, queued for the upscaler: <c>upload</c>).
 /// </summary>
-internal sealed class NutData(SdlApplication application, string dataRoot)
+public sealed class NutData(Func<LumenTextureContent, RenderTextureId> upload, string dataRoot)
 {
     private readonly string _root = Path.Combine(dataRoot, "nutdata");
     private readonly Dictionary<string, ImmutableArray<NutTexture>> _files = new(StringComparer.Ordinal);
@@ -56,7 +55,7 @@ internal sealed class NutData(SdlApplication application, string dataRoot)
         if ((uint)index < (uint)textures.Length)
         {
             var content = LumenTextureContent.FromNut(index, textures[index], keepCompressed: true);
-            uploaded = SceneTextures.UploadOne(application, Cached?.Invoke(content) ?? content);
+            uploaded = upload(Cached?.Invoke(content) ?? content);
         }
         return _uploaded[(path, index)] = uploaded;
     }
