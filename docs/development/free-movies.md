@@ -137,7 +137,7 @@ timed it itself), told as `revival.norma` / `hits` / `timeLeft` / `result` (scop
 course's results get its totals as `result.*` under the player's drum, `dan.passed`, `dan.songsPlayed`, the
 requirements' final values on the `dan.exam.*` lists and per-song lists (`dan.songTitle`, `dan.songGood` / `Ok` /
 `Bad`), and end with `result.continue`. `screen.name` says `retry` and `gameover`. Ours: `enso_result/retry_game`,
-`reward_shop/shop_gameover`, `dani_result/dani_result`, `dani_result/dani_gameover`.
+`reward_shop/shop_gameover`, `dani_result/dani_result`, `dani_result/dani_gameover`. User-checked in arcade (2026-11-15): revival both ways, a real course's results.
 
 ### Scopes
 
