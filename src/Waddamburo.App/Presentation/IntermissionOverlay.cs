@@ -5,7 +5,6 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Presentation;
 
@@ -14,7 +13,7 @@ namespace Waddamburo.App.Presentation;
 /// the shutter after it, the fade between the credit's closing scenes. Showing one replaces the last.
 /// Preloaded ones stay loaded and are only hidden: showing them never touches the disk.
 /// </summary>
-internal sealed class IntermissionOverlay(SdlApplication application, LumenGameSceneLoader loader) : IDisposable
+internal sealed class IntermissionOverlay(SdlApplication application, LumenGameSceneLoader loader, Waddamburo.Game.ISkin skin) : IDisposable
 {
     private LumenGameSceneInstance? _scene;
     private RenderTextureId[] _textures = [];
@@ -61,7 +60,7 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
         movie.Publish("transition.title", LumenHostValue.FromBoolean(title));
         movie.Publish("transition.side", LumenHostValue.FromNumber(side));
         movie.Publish("transition.phase", LumenHostValue.FromString("cover"));
-        return GameIntermissions.Cover(movie, title, side);
+        return skin.Transitions.Cover(movie, title, side);
     }
 
     /// <summary>The shown movie uncovers what is under it (transition.phase "reveal").</summary>
@@ -71,7 +70,7 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
             return;
         movie.Publish("transition.title", LumenHostValue.FromBoolean(title));
         movie.Publish("transition.phase", LumenHostValue.FromString("reveal"));
-        GameIntermissions.Reveal(movie, title);
+        skin.Transitions.Reveal(movie, title);
     }
 
     public void Clear()

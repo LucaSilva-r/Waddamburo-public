@@ -10,7 +10,6 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -303,7 +302,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             var song = find(request.Song).Song.Descriptor;
             player.Publish("song.title", LumenHostValue.FromString(song.Title.English ?? song.Title.Primary));
             player.Publish("song.subtitle", song.Subtitle is { Length: > 0 } subtitle ? LumenHostValue.FromString(subtitle) : LumenHostValue.Undefined);
-            GameIntermissions.ShowTitle(player,
+            Shell.Skin.Transitions.ShowTitle(player,
                 gameplay.RainbowTitle ?? throw new InvalidOperationException("Rainbow transition has no song title."));
             // Traced session30: a course's first song opens under the plain rainbow, no title.
             Shell.Overlay.Cover(title: Shell.Gameplay.Dan is null);
@@ -315,7 +314,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 stopMusic();
             Console.WriteLine($"Rainbow cover started at tick {Shell.Tick}.");
         }
-        if (_cover.MusicUnderCover && (Shell.Overlay.Player is not { } closing || GameIntermissions.TitleShown(closing) || _cover.CoveredAt is not null
+        if (_cover.MusicUnderCover && (Shell.Overlay.Player is not { } closing || Shell.Skin.Transitions.TitleShown(closing) || _cover.CoveredAt is not null
             || rainbow.State is RainbowTransitionState.Idle or RainbowTransitionState.Complete))
         {
             _cover.MusicUnderCover = false;

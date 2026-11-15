@@ -485,9 +485,14 @@ renames). So `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposi
   `GreenGameplaySkin` / `GreenLaneMovies` wrap the existing adapters; `TaikoDonPresentation` is Green's
   `ILaneCharacter` (Characters step a). The composition root passes `GreenGameplaySkin`.
 
-Next: 12 App files still name Green types.
-Then the overlays drawn over the game's movies (`EntrySetupOverlay`, `NameTextTextures`,
-`IntermissionOverlay`'s Green part, `TextureBake`, `GameMovieContent`'s patches), `HomeControls`,
+- 5c-7: `Game.ISkin` exists (`GreenSkin`; the composition roots make it): the gameplay side, the transitions
+  (`ITransitionSkin`: cover, reveal, the rainbow's title), the movies' load-time patches with the upscales placed by
+  the skin (`Decoded`; Green's genre check runs before them, it matches texture sizes), pixel art, the skin's own
+  scenes for the texture bake, upscales for the art it draws.
+
+Next: 10 App files still name Green types (two of them composition roots: `GameShell`, `TextureCacheBuilder`).
+Then the art the host draws for the game's movies (`NameTextTextures`, `EntrySetupOverlay`'s name tags, the nutdata
+art `GameShell` builds: one skin-side surface source), `HomeControls`,
 `PlayerSetupController`, `DanCourses` (dan select records), `ViewerHostBinding`, `GameShell`. Proof per move: the
 empty-directory and real-data benchmarks and scripted entry runs against a baseline worktree (edge logs per movie;
 autoplay hit order, roll lengths and note-pool frame counts jitter run to run). User-recorded replays (lab `captures/`):

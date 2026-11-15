@@ -2,6 +2,7 @@ using Waddamburo.Game;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Gameplay;
@@ -13,6 +14,19 @@ namespace Waddamburo.Skins.Green;
 public sealed class GreenSkin : ISkin
 {
     public IGameplaySkin Gameplay { get; } = new GreenGameplaySkin();
+
+    public ITransitionSkin Transitions { get; } = new GreenTransitions();
+
+    private sealed class GreenTransitions : ITransitionSkin
+    {
+        public bool Cover(LumenPlayer movie, bool title, int side) => GameIntermissions.Cover(movie, title, side);
+
+        public void Reveal(LumenPlayer movie, bool title) => GameIntermissions.Reveal(movie, title);
+
+        public void ShowTitle(LumenPlayer movie, Waddamburo.Lumen.Rendering.LumenNativeSurfaceKey title) => GameIntermissions.ShowTitle(movie, title);
+
+        public bool TitleShown(LumenPlayer movie) => GameIntermissions.TitleShown(movie);
+    }
 
     public void Decoded(string archive, LumenMovieContent content, Action applyUpscales, Action<byte[]> made)
     {
@@ -30,8 +44,10 @@ public sealed class GreenSkin : ISkin
                 made(pixels);
             return;
         }
+        // The layout check comes first: upscales change the texture sizes it matches by.
+        var patching = SongSelectGenrePatch.AppliesTo(content);
         applyUpscales();
-        if (!SongSelectGenrePatch.AppliesTo(content))
+        if (!patching)
             return;
         // The genre patch decodes only the textures it recolours (song_select decoded whole was 343 MiB, 337 ms).
         var own = content.Textures.Length;

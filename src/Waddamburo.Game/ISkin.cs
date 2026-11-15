@@ -1,5 +1,7 @@
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
+using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game;
 
@@ -11,6 +13,9 @@ public interface ISkin
 {
     /// <summary>The skin's side of the gameplay lanes.</summary>
     IGameplaySkin Gameplay { get; }
+
+    /// <summary>The intermission movies (rainbow, shutter, fades) beyond what they read from the provider.</summary>
+    ITransitionSkin Transitions { get; }
 
     /// <summary>
     /// A movie of the skin decoded: the skin patches it in memory (the files stay untouched). It calls
@@ -27,4 +32,20 @@ public interface ISkin
 
     /// <summary>The upscaled version of a texture the skin draws itself, when upscales are on (null: off).</summary>
     Func<LumenTextureContent, LumenTextureContent>? Upscaled { set; }
+}
+
+/// <summary>What the skin does to an intermission movie as it covers and reveals (ours read transition.* themselves).</summary>
+public interface ITransitionSkin
+{
+    /// <summary>The movie covers the screen; false while it cannot take it yet.</summary>
+    /// <param name="side">Whose colour: 0 the left drum, 1 the right, 2 both.</param>
+    bool Cover(LumenPlayer movie, bool title, int side);
+
+    void Reveal(LumenPlayer movie, bool title);
+
+    /// <summary>The song's title art on the rainbow.</summary>
+    void ShowTitle(LumenPlayer movie, LumenNativeSurfaceKey title);
+
+    /// <summary>The rainbow's title is on screen (the song's preview stops then).</summary>
+    bool TitleShown(LumenPlayer movie);
 }
