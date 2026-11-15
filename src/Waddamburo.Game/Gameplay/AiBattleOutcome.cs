@@ -47,7 +47,7 @@ public sealed record AiResultNumbers(int RankBefore, int RankAfter, int PointsIn
 {
     public static AiResultNumbers NewPlayer { get; } = new(0, 0, 0, 0, false, false, 1, 0, 1);
 
-    /// <summary>False: an unranked battle (no server setup); it shows no win gained.</summary>
+    /// <summary>False: an unranked battle (no server setup, autoplay): no rank points shown as gained.</summary>
     public bool ShowProgress { get; init; } = true;
 }
 

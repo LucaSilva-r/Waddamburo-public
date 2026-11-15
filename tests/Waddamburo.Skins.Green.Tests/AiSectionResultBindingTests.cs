@@ -29,7 +29,8 @@ public sealed class AiSectionResultBindingTests
         Assert.Equal(2, calls.Single(call => call.Name == "SetRankNumber").Arguments[0].AsNumber());
         Assert.Equal(3, calls.Single(call => call.Name == "SetRankNumber").Arguments[1].AsNumber());
         Assert.False(calls.Single(call => call.Name == "SetRankNumber").Arguments[2].AsBoolean());
-        Assert.Equal(new[] { 13d, ranked ? 1d : 0d }, calls.Single(call => call.Name == "SetWinNumber").Arguments.Select(value => value.AsNumber()));
+        // A won battle reports its win ranked or not: the movie draws its 勝利 badge from it.
+        Assert.Equal(new[] { 13d, 1d }, calls.Single(call => call.Name == "SetWinNumber").Arguments.Select(value => value.AsNumber()));
         Assert.Equal(15, Assert.Single(calls.Single(call => call.Name == "SetNextRankNumber").Arguments).AsNumber());
         Assert.Equal(20, calls.Single(call => call.Name == "SetNextRewardNumber").Arguments[0].AsNumber());
         Assert.Equal("Start", calls[^1].Name);

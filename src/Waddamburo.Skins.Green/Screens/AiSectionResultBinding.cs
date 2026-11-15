@@ -105,8 +105,10 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
         rows("SetKaNoteNumber", static counts => counts.Good);
         rows("SetFukaNoteNumber", static counts => counts.Miss);
         rows("SetRendaNoteNumber", static counts => counts.Rolls);
-        // SetWinNumber(wins before, wins gained): any gained means the battle was won (the movie's is_win_total).
-        call("SetWinNumber", number(numbers.WinsBefore), number(numbers.ShowProgress && outcome.Won ? 1 : 0));
+        // SetWinNumber(wins before, wins gained): any gained means the battle was won (the movie's is_win_total, the
+        // 勝利 / 敗北 badge), so a won battle reports its win even unranked (no progress kept: the total shows it, nothing
+        // is saved). Reporting none there showed 敗北 after five sections won (user, 2026-11-15).
+        call("SetWinNumber", number(numbers.WinsBefore), number(outcome.Won ? 1 : 0));
         Backdrop?.Invoke()?.TryInvokeCallback("SetWinTotalFlag", [LumenHostValue.FromBoolean(outcome.Won)]);
         begin();
     }

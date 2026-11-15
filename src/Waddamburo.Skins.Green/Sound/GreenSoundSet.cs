@@ -82,7 +82,8 @@ public sealed class GreenSoundSet : ISoundSet
             "waiwai.start" => [cue("SE_WAIENSO", 0)],
             "waiwai.synchro" => [cue("SE_WAIENSO", 4)],
             "waiwai.solo" => [cue("SE_WAIENSO", 2)],
-            "song.finished" => [cue("VO_RESULT", 0), cue("SE_GAME", 15)],
+            // Waiwai's song ends on the results voice alone (traced session11-waiwai).
+            "song.finished" => request.Mode == "waiwai" ? [cue("VO_RESULT", 0)] : [cue("VO_RESULT", 0), cue("SE_GAME", 15)],
             // A dan course's last song ends (traced sessions 30 and 31, as the course's shutter closes).
             "dan.finished" => [cue("VO_RESULT", 19), cue("SE_GAME", 15)],
             // The home player setup refused a player (SE_COM_COM_CARD_ERROR).

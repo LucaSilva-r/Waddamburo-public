@@ -797,8 +797,11 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 var cleared = dan is not null ? Waddamburo.Game.Dan.DanExams.Passes(dan, danProgress, gold: false, danSongEnds)
                     : (stage?.State ?? gauge.State) != TaikoGaugeState.BelowClear;
                 emit("song.ended", LumenHostValue.FromBoolean(cleared), LumenHostValue.FromBoolean(cleared && !missed));
-                sound(!cleared ? GameplaySoundEvent.FailBanner
-                    : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
+                // Waiwai has no end banner, and none of its sounds (traced session11-waiwai: the song ends on the results
+                // voice alone).
+                if (stage is null)
+                    sound(!cleared ? GameplaySoundEvent.FailBanner
+                        : missed ? GameplaySoundEvent.ClearBanner : GameplaySoundEvent.FullComboBanner);
                 if (cleared && !missed) _character?.React("don_full_combo");
             };
             var partnerHands = players == 2 && remote is null && relay is null; // as the session below
