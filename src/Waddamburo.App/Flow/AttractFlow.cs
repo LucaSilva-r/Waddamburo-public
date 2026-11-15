@@ -4,7 +4,6 @@ using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
-using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
@@ -28,10 +27,10 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
     /// <summary>The attract CM playing in movie.lm, if any.</summary>
     public AttractMovie? Movie { get; private set; }
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) =>
-        scene == FlowScenes.Boot ? IndicatorScene.Boot
-        : scene == FlowScenes.Logo ? IndicatorScene.Attract
-        : IndicatorScene.AttractPrompt;
+    public override ScreenKind ScreenFor(SceneId scene) =>
+        scene == FlowScenes.Boot ? ScreenKind.Boot
+        : scene == FlowScenes.Logo ? ScreenKind.Attract
+        : ScreenKind.Title;
 
     public override void Enter(SceneId scene)
     {

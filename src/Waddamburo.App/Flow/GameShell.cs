@@ -518,19 +518,13 @@ internal sealed class GameShell : IDisposable
             .Where(static player => player.UsesProvider).ToArray();
         if (movies.Length == 0)
             return;
-        var screen = LumenHostValue.FromString(Active.Id == FlowScenes.Retry ? "retry" : Active.Id == FlowScenes.GameOver ? "gameover"
-            : scene.IndicatorsFor(Active.Id) switch
+        var screen = LumenHostValue.FromString(scene.ScreenFor(Active.Id) switch
         {
-            IndicatorScene.Boot => "boot",
-            IndicatorScene.Attract => "attract",
-            IndicatorScene.AttractPrompt => "title",
-            IndicatorScene.Demo => "demo",
-            IndicatorScene.Entry => "entry",
-            IndicatorScene.SongSelect => "select",
-            IndicatorScene.Tutorial => "tutorial",
-            IndicatorScene.DaniSelect => "danSelect",
-            IndicatorScene.Gameplay => "play",
-            _ => "result",
+            ScreenKind.Title => "title",
+            ScreenKind.Select => "select",
+            ScreenKind.DanSelect => "danSelect",
+            ScreenKind.GameOver => "gameover",
+            var kind => kind.ToString().ToLowerInvariant(),
         });
         var network = LumenHostValue.FromString(Sync.Health is { } health
             ? char.ToLowerInvariant(health.State.ToString()[0]) + health.State.ToString()[1..] : "none");
@@ -1490,7 +1484,7 @@ internal sealed class GameShell : IDisposable
         {
             _indicatorScene = Active.Id;
             // The new screen's own flow: a switch made inside another flow's tick (the entry's dan dojo) is not its.
-            _indicators.SetScene(_scenes.GetValueOrDefault(Active.Id, scene).IndicatorsFor(Active.Id));
+            _indicators.SetScene(_scenes.GetValueOrDefault(Active.Id, scene).ScreenFor(Active.Id));
         }
         _indicators.Advance();
     }

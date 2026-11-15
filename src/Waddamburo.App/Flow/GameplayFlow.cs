@@ -15,7 +15,6 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Skins.Green.Gameplay;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -79,7 +78,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _waiwai = waiwai;
     }
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) => _demo ? IndicatorScene.Demo : IndicatorScene.Gameplay;
+    public override ScreenKind ScreenFor(SceneId scene) => _demo ? ScreenKind.Demo : ScreenKind.Play;
 
     // The attract loop's demo play (between its CMs): a stock song on autoplay, unsaved, no banner or pause;
     // it fades back to logo_namco after DemoLength, and a drum, coin or card (takeOver) starts a credit.

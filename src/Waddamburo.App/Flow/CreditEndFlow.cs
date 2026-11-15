@@ -3,7 +3,6 @@ using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
-using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green;
 using Waddamburo.Platform.Sdl;
 
@@ -26,7 +25,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
     private const int RemindTimeoutTicks = 30 * 60;
     private long _remindStartTick;
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Result;
+    public override ScreenKind ScreenFor(SceneId scene) =>
+        scene == FlowScenes.Retry ? ScreenKind.Retry : scene == FlowScenes.GameOver ? ScreenKind.GameOver : ScreenKind.Result;
 
     public override void Enter(SceneId scene)
     {

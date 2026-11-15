@@ -3,7 +3,6 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -16,7 +15,7 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
     private readonly string? _jingle = shell.Options.JinglePath ?? shell.FindJingle("JINGLE_ENTRY.nub");
     private AudioPlaybackHandle? _bgm;
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Entry;
+    public override ScreenKind ScreenFor(SceneId scene) => ScreenKind.Entry;
 
     public override void Enter(SceneId scene)
     {

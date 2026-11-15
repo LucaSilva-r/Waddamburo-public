@@ -5,23 +5,6 @@ using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Skins.Green.Screens;
 
-/// <summary>Which state the always-on indicator overlays show (traced per game scene).</summary>
-public enum IndicatorScene
-{
-    Boot, // kidou: the card prompt stays off (traced SetOnline(0) until the attract loop)
-    Attract,
-    AttractPrompt, // caution screen / title: "hit the drum to start"
-    Demo, // the attract's demo play: the prompt without the card icon, which covers the song's title
-    Entry,
-    SongSelect,
-    // The tutorial: the coin/free-play line stays, the join messages are hidden (traced session22).
-    Tutorial,
-    // The dan dojo's course list: a scene of its own, no coin or join messages.
-    DaniSelect,
-    Gameplay,
-    Result,
-}
-
 /// <summary>
 /// The indicator overlays the game keeps over every scene: network status, the card prompt and the
 /// coin/free-play message. Loaded once; the game drives them with per-frame callbacks and shows or
@@ -40,7 +23,7 @@ public sealed class SystemIndicators
     private bool _coinsVisible;
     private bool _online;
     private bool _joined;
-    private IndicatorScene _scene;
+    private ScreenKind _scene;
     private int _messageDelay = -1;
 
     public SystemIndicators(LumenGameSceneInstance scene)
@@ -84,7 +67,7 @@ public sealed class SystemIndicators
         {
             _partner = value;
             // Song Select reloads without starting the indicators over: the message changes now.
-            if (_scene == IndicatorScene.SongSelect && !TwoPlayers && Coins is null)
+            if (_scene == ScreenKind.Select && !TwoPlayers && Coins is null)
             {
                 call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(!value && !_cardDialog));
                 setSideNumbers(-1, value ? -1 : 0);
@@ -105,36 +88,38 @@ public sealed class SystemIndicators
         IndicatorMovies.Select(name => new SceneLayerDefinition(
             "indicator/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity, HostId)));
 
-    public void SetScene(IndicatorScene scene)
+    public void SetScene(ScreenKind scene)
     {
+        if (scene is ScreenKind.Retry or ScreenKind.GameOver)
+            scene = ScreenKind.Result; // one indicator state for the end of a credit
         _setupPanels = null;
         _splitSide = null;
-        var attract = scene is IndicatorScene.Attract or IndicatorScene.AttractPrompt or IndicatorScene.Demo;
+        var attract = scene is ScreenKind.Attract or ScreenKind.Title or ScreenKind.Demo;
         _scene = scene;
-        if (scene != IndicatorScene.Entry)
+        if (scene != ScreenKind.Entry)
             _cardDialog = false; // left the entry mid-dialog (F1)
-        _online = scene != IndicatorScene.Boot;
-        _cardVisible = attract && scene != IndicatorScene.Demo || scene == IndicatorScene.Entry;
+        _online = scene != ScreenKind.Boot;
+        _cardVisible = attract && scene != ScreenKind.Demo || scene == ScreenKind.Entry;
         // The free-play/coin message first appears with the attract title (traced SetVisible* calls);
         // during the boot screens it stays off.
-        _coinsVisible = scene is not (IndicatorScene.Gameplay or IndicatorScene.Boot or IndicatorScene.DaniSelect);
-        call(_card, "SetScene", LumenHostValue.FromNumber(scene == IndicatorScene.Entry ? 1 : 0));
+        _coinsVisible = scene is not (ScreenKind.Play or ScreenKind.Boot or ScreenKind.DanSelect);
+        call(_card, "SetScene", LumenHostValue.FromNumber(scene == ScreenKind.Entry ? 1 : 0));
         // Song Select shows the unjoined player's message; the authored indicator movie
         // positions it on the available side and runs its fade animation.
-        var rejoin = scene == IndicatorScene.Entry && Rejoin;
-        var prompt = (scene is IndicatorScene.AttractPrompt or IndicatorScene.Demo or IndicatorScene.Entry
-            || scene == IndicatorScene.SongSelect && !TwoPlayers && !Partner && !AiBattle) && !rejoin;
+        var rejoin = scene == ScreenKind.Entry && Rejoin;
+        var prompt = (scene is ScreenKind.Title or ScreenKind.Demo or ScreenKind.Entry
+            || scene == ScreenKind.Select && !TwoPlayers && !Partner && !AiBattle) && !rejoin;
         call(_coins, "SetScene", LumenHostValue.FromNumber(scene switch
         {
-            IndicatorScene.Entry => 1,
-            IndicatorScene.SongSelect or IndicatorScene.Gameplay => 2,
-            IndicatorScene.Result or IndicatorScene.Tutorial => 3,
+            ScreenKind.Entry => 1,
+            ScreenKind.Select or ScreenKind.Play => 2,
+            ScreenKind.Result or ScreenKind.Tutorial => 3,
             _ => 0,
         }));
         // sic, the movie's spelling. A card read as the entry loads opens its dialog before this runs.
         call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(prompt && !_cardDialog));
         call(_coins, "SetVisibleCoinType", LumenHostValue.FromBoolean((!attract || prompt) && HideCoinType?.Invoke() != true));
-        _joined = scene is IndicatorScene.SongSelect or IndicatorScene.Tutorial or IndicatorScene.Gameplay or IndicatorScene.Result;
+        _joined = scene is ScreenKind.Select or ScreenKind.Tutorial or ScreenKind.Play or ScreenKind.Result;
         if (Coins is not null)
         {
             // Coin mode (traced session2-coins): coin type 0 (1 for service credits, CoinsChanged), the credit
@@ -144,8 +129,8 @@ public sealed class SystemIndicators
         }
         // In Song Select the joined player has no prompt (-1); the unjoined drum uses
         // message 2. The indicator movie positions and animates each side itself.
-        var joinedMessage = scene is IndicatorScene.Entry or IndicatorScene.SongSelect ? -1 : 0;
-        if (AiBattle && scene != IndicatorScene.Entry)
+        var joinedMessage = scene is ScreenKind.Entry or ScreenKind.Select ? -1 : 0;
+        if (AiBattle && scene != ScreenKind.Entry)
         {
             setSideNumbers(-1, -1);
             call(_coins, "SetCoinType", LumenHostValue.FromNumber(2));
@@ -157,7 +142,7 @@ public sealed class SystemIndicators
         setSideNumbers(joinedMessage, otherMessage);
         // A card start: nobody has joined, so no split panel until a drum takes the card (traced
         // session-freeplay-pill: SetScene 1 only, the panel with EntryCoin).
-        if (scene == IndicatorScene.Entry && !rejoin && AnyJoined)
+        if (scene == ScreenKind.Entry && !rejoin && AnyJoined)
         {
             // The entry then switches the panel to its split (per-player) scene, open on the other side.
             splitPanel();
@@ -281,7 +266,7 @@ public sealed class SystemIndicators
     /// </summary>
     private void setSideNumbers(int own, int other)
     {
-        if (Side == 1 && _scene != IndicatorScene.Entry) setMessageNumbers(other, own);
+        if (Side == 1 && _scene != ScreenKind.Entry) setMessageNumbers(other, own);
         else setMessageNumbers(own, other);
     }
 
@@ -313,7 +298,7 @@ public sealed class SystemIndicators
         }
         // The tutorial, and an entry a second player is joining from Song Select, keep the join messages
         // off (traced SetVisibieMsg(false) every frame).
-        if (_scene == IndicatorScene.Tutorial || _scene == IndicatorScene.Entry && Rejoin)
+        if (_scene == ScreenKind.Tutorial || _scene == ScreenKind.Entry && Rejoin)
             call(_coins, "SetVisibieMsg", LumenHostValue.FromBoolean(false));
         // 0 good, 1 warning, 2 disconnected (network_icon LABEL); no server configured: disconnected.
         call(_network, "SetType", LumenHostValue.FromNumber(NetworkIcon?.Invoke() ?? 2));

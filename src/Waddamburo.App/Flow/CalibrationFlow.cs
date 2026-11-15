@@ -8,7 +8,6 @@ using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -41,7 +40,7 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
     public SceneDefinition Scene() =>
         GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, Shell.EnsoLayout, null, 0, twoPlayers: false);
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Gameplay;
+    public override ScreenKind ScreenFor(SceneId scene) => ScreenKind.Play;
 
     public override void Enter(SceneId scene)
     {

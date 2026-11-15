@@ -23,9 +23,9 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration) : FlowScene(shell)
 {
-    public override IndicatorScene IndicatorsFor(SceneId scene) =>
-        (scene == FlowScenes.Tutorial || scene == FlowScenes.WaiwaiTutorial || scene == FlowScenes.AiTutorial) ? IndicatorScene.Tutorial
-            : scene == FlowScenes.DaniSelect ? IndicatorScene.DaniSelect : IndicatorScene.SongSelect;
+    public override ScreenKind ScreenFor(SceneId scene) =>
+        (scene == FlowScenes.Tutorial || scene == FlowScenes.WaiwaiTutorial || scene == FlowScenes.AiTutorial) ? ScreenKind.Tutorial
+            : scene == FlowScenes.DaniSelect ? ScreenKind.DanSelect : ScreenKind.Select;
 
     public override void Enter(SceneId scene)
     {

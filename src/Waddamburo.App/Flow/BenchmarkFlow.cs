@@ -10,7 +10,6 @@ using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Providers.Tja;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -61,7 +60,7 @@ internal sealed class BenchmarkFlow(GameShell shell) : FlowScene(shell)
             new ChartKey(new SongKey(SongSourceKind.Tja, "waddamburo-benchmark"), "oni"), TaikoCourse.Oni);
     }
 
-    public override IndicatorScene IndicatorsFor(SceneId scene) => IndicatorScene.Gameplay;
+    public override ScreenKind ScreenFor(SceneId scene) => ScreenKind.Play;
 
     public override void Enter(SceneId scene)
     {

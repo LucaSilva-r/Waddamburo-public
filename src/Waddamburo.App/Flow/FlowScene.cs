@@ -2,7 +2,6 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
-using Waddamburo.Skins.Green.Screens;
 
 namespace Waddamburo.App.Flow;
 
@@ -22,7 +21,7 @@ internal abstract class FlowScene(GameShell shell)
     protected GameShell Shell { get; } = shell;
 
     /// <summary>The system indicators' mode while <paramref name="scene"/> is shown.</summary>
-    public abstract IndicatorScene IndicatorsFor(SceneId scene);
+    public abstract ScreenKind ScreenFor(SceneId scene);
 
     /// <summary>The scene was just loaded and is now active.</summary>
     public virtual void Enter(SceneId scene)
