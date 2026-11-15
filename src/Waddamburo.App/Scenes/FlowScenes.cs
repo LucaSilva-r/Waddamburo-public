@@ -1,5 +1,4 @@
 using Waddamburo.Game.Flow;
-using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Runtime;
 
@@ -204,7 +203,7 @@ internal static class FlowScenes
 
     // An AI battle panel: set up with the indicator parts (IndicatorParts), from its ghost/ archive.
     private static SceneLayerDefinition aiPanel(string archive, string movie) =>
-        new($"ghost/{archive}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, IndicatorParts.HostId);
+        new($"ghost/{archive}/packeddata.ddp", $"{movie}/{movie}.lm", LumenMatrix.Identity, LayerRoles.IndicatorPart);
 
     /// <summary>The drum a front-end name board is for, by where these scenes put it (0 left, 1 right); null for the
     /// entry's centre board (a read card's player) and a board waiting hidden.</summary>
@@ -215,5 +214,5 @@ internal static class FlowScenes
         "indicator/packeddata.ddp",
         $"{movie}/{movie}.lm",
         LumenMatrix.Identity with { X = x, Y = y },
-        IndicatorParts.HostId);
+        LayerRoles.IndicatorPart);
 }

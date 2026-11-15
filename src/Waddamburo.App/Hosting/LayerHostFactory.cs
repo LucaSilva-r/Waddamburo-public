@@ -7,7 +7,6 @@ using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green;
 using Waddamburo.Skins.Green.Gameplay;
 using Waddamburo.Game.Scenes;
@@ -371,14 +370,14 @@ internal sealed class LayerHostFactory(
         return layer.HostId switch
         {
             "player-entry" => entryHost(_entry!),
-            IndicatorParts.HostId => partHost(_parts
+            LayerRoles.IndicatorPart => partHost(_parts
                 ?? throw new InvalidOperationException("Indicator part loaded without its scene movie."),
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => songSelectHost(),
             GameplaySceneComposition.StaticHostId or GameplaySceneComposition.PlayerTwoHostId =>
                 new LumenLayerHost(new TaikoGameplayHostBinding(songInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
-            SystemIndicators.HostId => new LumenLayerHost(null),
+            LayerRoles.SystemIndicators => new LumenLayerHost(null),
             "result" => resultHost(),
             "ai-result" => aiResultHost(),
             "ai-result-section" => aiSectionResultHost(),

@@ -17,7 +17,7 @@ public enum IndicatorPartsScene
 public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
 {
     /// <summary>Host id of indicator part layers.</summary>
-    public const string HostId = "indicator-part";
+    public const string HostId = Waddamburo.Game.Scenes.LayerRoles.IndicatorPart;
 
     private readonly List<(LumenPlayer Player, Action Setup)> _pending = [];
     private LumenPlayer? _counter;

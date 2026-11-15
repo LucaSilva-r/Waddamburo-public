@@ -13,7 +13,7 @@ namespace Waddamburo.Skins.Green.Screens;
 /// </summary>
 public sealed class SystemIndicators
 {
-    public const string HostId = "system-indicators";
+    public const string HostId = LayerRoles.SystemIndicators;
     private static readonly string[] IndicatorMovies = ["network_icon", "msg_banapass", "msg_coins"];
 
     private readonly LumenPlayer _network;
