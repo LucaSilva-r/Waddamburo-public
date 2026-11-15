@@ -106,7 +106,7 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
             host.InitInfo();
             // The drum that brought the players here joins at once (the attract's trigger: 0 the left drum, 1 the
             // right, 2 both; 3 a coin and 4 none join nobody).
-            var trigger = Shell.Hosts.EntryTrigger;
+            var trigger = Shell.Credit.EntryTrigger;
             if (trigger is 0 or 2) join(host.Session, 0);
             if (trigger is 1 or 2) join(host.Session, 1);
         }

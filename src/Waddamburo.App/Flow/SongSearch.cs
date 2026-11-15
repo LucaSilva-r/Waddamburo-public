@@ -95,7 +95,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         IsOpen = true;
         (_query, _caret, _tick, _openWhenDone) = ("", 0, 0, false);
         _result = new("", []);
-        _crowns = shell.Hosts.Crowns?.Invoke(shell.Hosts.PlayerSide);
+        _crowns = shell.Hosts.Crowns?.Invoke(shell.Credit.PlayerSide);
         _history = loadHistory();
         _page ??= new(static () => Strings.T("search.title"), rows, Footer: legend);
         _menu.Open(_page, home: true);
@@ -210,7 +210,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         bool stale() => Volatile.Read(ref _generation) != generation;
         var crowns = _crowns;
         // Waiwai's folder lists only songs it has a composition for (SongSelectCatalogView): the count says the same.
-        var waiwai = shell.Hosts.Waiwai;
+        var waiwai = shell.Credit.Waiwai;
         _ = Task.Run(() =>
         {
             try

@@ -206,7 +206,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
         // AI battle's support menu: a level below いつもの is the course's chart simplified (both lanes play it).
-        var pick = Shell.Hosts.AiBattle && _sourceCharts.Length == 2 && _play.Review is null ? Shell.Hosts.SongSelect?.SupportLevel ?? 0 : 0;
+        var pick = Shell.Credit.AiBattle && _sourceCharts.Length == 2 && _play.Review is null ? Shell.Hosts.SongSelect?.SupportLevel ?? 0 : 0;
         var offered = Shell.Hosts.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)players[0].Course) ?? 0;
         var supportLevel = SupportInfo.SupportPick(ChartSimplifier.LevelOf(players[0].Course), offered, pick);
         _play.Intermediate = pick > 0 && ChartSimplifier.SourceCourse(supportLevel) == players[0].Course;
@@ -267,13 +267,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             : null;
         AutoplayReview = _play.Review is not null && request.Review is null;
         // Reviews show it too: seeking back rebuilds the lanes, which takes a shown banner down.
-        Shell.Gameplay.EndBanner = !_demo && !(Shell.Hosts.AiBattle && _play.Charts.Length == 2);
+        Shell.Gameplay.EndBanner = !_demo && !(Shell.Credit.AiBattle && _play.Charts.Length == 2);
         // A course saves apart, whole (saveCourse).
         _play.Voided = request.Review is not null || _demo || _course is not null || Shell.DevAutoplay;
         if (_play.Review is not null && request.Review?.Player is { } watched)
             Shell.Players.WatchAs(_side, watched);
         // AI battle: the second lane is AI-don's, drummed by the bot on the second drum's keys.
-        var aiBattle = Shell.Hosts.AiBattle && _play.Charts.Length == 2 && _course is null;
+        var aiBattle = Shell.Credit.AiBattle && _play.Charts.Length == 2 && _course is null;
         _play.Autoplay = (Shell.Autoplay || _demo || Shell.DevAutoplay) && _play.Review is null ? new GameplayAutoplay(aiBattle ? [_play.Charts[0]] : _play.Charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
@@ -281,7 +281,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (Shell.Match.InSong)
             Shell.Match.Start(Shell.Gameplay, request.Players.ToList().FindIndex(player => player.Player != localSlot()));
         // A 4:3 layout (camera.aspect below 1): the stage drawn squeezed into a 4:3 picture.
-        Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Hosts.AiBattle && _play.Charts.Length > 0 && fourThree(_play.Charts[0].Effects);
+        Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Credit.AiBattle && _play.Charts.Length > 0 && fourThree(_play.Charts[0].Effects);
         Shell.Gameplay.Start(_play.Charts, active, [.. players.Select(player => player.Course)], _side, _waiwai, _play.Review?.Timelines);
         // The provider's player.name, per lane: the drum's account, or Guest.
         for (var lane = 0; lane < _play.Charts.Length; lane++)
@@ -539,7 +539,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>The active layout for this song's player count (null: the stock screen).</summary>
     /// <remarks>AI battle always plays the stock screen (its own lanes; no player layout yet).</remarks>
-    public string? ActiveLayout => Shell.Hosts.AiBattle ? null : TwoPlayerLayouts ? Shell.Arcade.Layout2P : Shell.Arcade.Layout;
+    public string? ActiveLayout => Shell.Credit.AiBattle ? null : TwoPlayerLayouts ? Shell.Arcade.Layout2P : Shell.Arcade.Layout;
 
     /// <summary><paramref name="settings"/> with <paramref name="name"/> as the active layout for this song's player count.</summary>
     public ArcadeSettings WithActiveLayout(ArcadeSettings settings, string? name) =>
@@ -564,7 +564,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             if (_play.Review is { } review) review.ReplaceEffects(lane, authored.Effects);
             else Shell.Gameplay.ReplaceEffects(lane, authored.Effects);
         }
-        Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Hosts.AiBattle && fourThree(_play.Charts[0].Effects);
+        Shell.Application.Squeeze43 = !Shell.Headless && !Shell.Credit.AiBattle && fourThree(_play.Charts[0].Effects);
     }
 
     public void ReplaceEditorEffects(ChartEffects effects)
@@ -691,7 +691,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             dropNextAudio();
             _course = again.Timeline;
             Shell.Gameplay.Dan = again.Plan;
-            Shell.Hosts.DanResult = null;
+            Shell.Credit.DanResult = null;
         }
         Shell.PlayRequests.ClearActive();
         if (!Shell.PlayRequests.TryRequestPlay(request))
@@ -967,7 +967,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // Close registers on the shutter's first frame; retry until it exists.
         if (_play.ShutterStartTick >= 0 && !_play.ShutterClosing && overlay.Player is not null)
             // The shutter takes the player's colour (traced Close(1) for the right drum's player, Close(2) for two).
-            _play.ShutterClosing = overlay.Cover(side: Shell.Hosts.TwoPlayers ? 2 : Shell.Hosts.PlayerSide);
+            _play.ShutterClosing = overlay.Cover(side: Shell.Credit.TwoPlayers ? 2 : Shell.Credit.PlayerSide);
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
         // (AI battle: no shutter; its delay already ends at the results.)
         if (input.Escape && !Shell.Arcade.Home || _play.ShutterStartTick >= 0 && (Shell.Tick - _play.ShutterStartTick >= 70 || _play.Battle is not null))
@@ -975,13 +975,13 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             // An abandoned song gives its stage back: Song Select counts it again when the next one starts (#21).
             if (input.Escape && !Shell.Arcade.Home && Shell.Players.SongsPlayed > 0)
             {
-                var tutorialSeen = Shell.Hosts.TutorialSeen; // Giving a stage back is not a new credit.
-                var waiwaiTutorialSeen = Shell.Hosts.WaiwaiTutorialSeen;
-                var aiTutorialSeen = Shell.Hosts.AiTutorialSeen;
+                var tutorialSeen = Shell.Credit.TutorialSeen; // Giving a stage back is not a new credit.
+                var waiwaiTutorialSeen = Shell.Credit.WaiwaiTutorialSeen;
+                var aiTutorialSeen = Shell.Credit.AiTutorialSeen;
                 Shell.Players.SongsPlayed--;
-                Shell.Hosts.TutorialSeen = tutorialSeen;
-                Shell.Hosts.WaiwaiTutorialSeen = waiwaiTutorialSeen;
-                Shell.Hosts.AiTutorialSeen = aiTutorialSeen;
+                Shell.Credit.TutorialSeen = tutorialSeen;
+                Shell.Credit.WaiwaiTutorialSeen = waiwaiTutorialSeen;
+                Shell.Credit.AiTutorialSeen = aiTutorialSeen;
             }
             end(finished: !input.Escape || Shell.Arcade.Home);
         }
@@ -1083,8 +1083,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
         var finishedCourse = _course;
-        Shell.Hosts.DanResult = finished && _course is { } course ? danResult(course) : null;
-        var dan = Shell.Hosts.DanResult is not null;
+        Shell.Credit.DanResult = finished && _course is { } course ? danResult(course) : null;
+        var dan = Shell.Credit.DanResult is not null;
         CourseSongs = dan ? _courseSongs : [];
         Shell.Gameplay.Stop();
         Shell.Gameplay.Dan = null;
@@ -1096,12 +1096,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // Results show the last saved play's bests and rankings otherwise.
         Array.Clear(Shell.Bests);
         Array.Clear(Shell.Placements);
-        Shell.Hosts.AiNumbers = null;
-        Shell.Hosts.AiSectionBest = null;
+        Shell.Credit.AiNumbers = null;
+        Shell.Credit.AiSectionBest = null;
         if (finished && Shell.PlayRequests.Active is { } played)
         {
             saveScore(played, remoteLane);
-            if (Shell.Hosts.DanResult is { } danPlay && finishedCourse is not null)
+            if (Shell.Credit.DanResult is { } danPlay && finishedCourse is not null)
                 saveCourse(played, danPlay, finishedCourse);
         }
         Shell.PlayRequests.ClearActive();
@@ -1113,9 +1113,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
             return;
         }
-        Shell.Hosts.AiOutcome = _play.Battle?.Outcome;
+        Shell.Credit.AiOutcome = _play.Battle?.Outcome;
         Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
-            : Shell.Hosts.AiOutcome is not null ? FlowScenes.AiResults
+            : Shell.Credit.AiOutcome is not null ? FlowScenes.AiResults
             : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _play.Charts = [];
         _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
@@ -1248,9 +1248,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                         BaseSha256 = ChartHash.Compute(_sourceCharts[lane], player.Course), Prior = _play.AiPrior,
                         SectionCounts = Waddamburo.Game.Gameplay.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)),
                     };
-                    Shell.Hosts.AiSectionBest = scores.AiSectionBest(profile.Baid, sha);
+                    Shell.Credit.AiSectionBest = scores.AiSectionBest(profile.Baid, sha);
                     var rank = ranks.RankOf(before.Points);
-                    Shell.Hosts.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
+                    Shell.Credit.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
                         award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins))
                         { ShowProgress = ranked };
                     Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");

@@ -31,7 +31,7 @@ internal sealed class PlayerSetupController : IDisposable
         _flow.Refused += () => shell.Sounds?.Play("player.refused");
         _flow.Cancelled += () =>
         {
-            shell.Hosts.EntrySetup = false;
+            shell.Credit.EntrySetup = false;
             shell.ReturnToAttract();
         };
     }
@@ -80,7 +80,7 @@ internal sealed class PlayerSetupController : IDisposable
         if (!_flow.IsOpen)
             return;
         _flow.Close();
-        shell.Hosts.EntrySetup = false;
+        shell.Credit.EntrySetup = false;
     }
 
     public void Dispose()
@@ -120,8 +120,8 @@ internal sealed class PlayerSetupController : IDisposable
         Array.Clear(_shownChoice);
         Array.Fill(_swapAt, -1);
         Array.Fill(_revealAt, -1);
-        shell.Hosts.EntrySetup = true;
-        shell.Hosts.EntryTrigger = 2;
+        shell.Credit.EntrySetup = true;
+        shell.Credit.EntryTrigger = 2;
         shell.ResetIndicatorScene();
         shell.Scenes.Show(FlowScenes.Entry);
     }
@@ -246,7 +246,7 @@ internal sealed class PlayerSetupController : IDisposable
     private void startWithPlayers(ScoreProfile?[] profiles, bool[] playing)
     {
         shell.Sounds?.Attract.PlayExit();
-        shell.Hosts.EntrySetup = false;
+        shell.Credit.EntrySetup = false;
         shell.ResetIndicatorScene(); // the entry reloads under the same id: its indicators start over
         shell.Players.Reset();
         shell.Players.SongsPlayed = 0;
@@ -260,7 +260,7 @@ internal sealed class PlayerSetupController : IDisposable
             shell.Don?.SetLook(side, profiles[side]?.Look);
             shell.Players.Join(side);
         }
-        shell.Hosts.EntryTrigger = playing[0] && playing[1] ? 2 : playing[1] ? 1 : 0;
+        shell.Credit.EntryTrigger = playing[0] && playing[1] ? 2 : playing[1] ? 1 : 0;
         Console.WriteLine($"Player setup: 1P {describe(0)}, 2P {describe(1)}.");
         string describe(int side) => !playing[side] ? "not playing" : profiles[side] is { } profile ? $"{profile.Name} (baid {profile.Baid})" : "guest";
         shell.Scenes.Show(FlowScenes.Entry);
@@ -274,7 +274,7 @@ internal sealed class PlayerSetupController : IDisposable
             startWithPlayers(profiles, playing);
             return;
         }
-        shell.Hosts.EntrySetup = false;
+        shell.Credit.EntrySetup = false;
         for (var side = 0; side < 2; side++)
         {
             if (!playing[side])
