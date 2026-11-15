@@ -414,7 +414,10 @@ Done: steps 1-4 and the first part of 5 (commits e69dfd6..08b03f4 on `free-movie
 
 - 1: `Game.Flow.ScreenKind`; `screen.name` reads it; Green's `SystemIndicators` maps retry / game over to its result state.
 - 2: `Game.Flow.EntrySession` (countdown, joins with the coin bank, the waiting card, the setup's hold);
-  `EntryFlow` uses only the session; `EntrySceneHost` follows its events.
+  `EntryFlow` uses only the session; `EntrySceneHost` follows its events. Proven on two sessions the user recorded in
+  arcade (coins, refused joins, cards paired in the attract loop and at entry, a card already playing), replayed
+  headless on the builds before and after: every entry and indicator movie gets the same calls (lab
+  `captures/entry-coin-card/replay.sh`; cards recorded by the input trace and fed back by `WADDAMBURO_CARD_REPLAY`).
 - 3: state added to the existing `Game.SongSelect.SongSelectSession` (no separate `SelectSession`): countdown, open
   folder, course select, the choices that lead elsewhere, the picked song, last courses. Our song select drives it;
   the `Own…` calls are gone but `OwnReady` (the indicator parts' readiness: goes with the skin's screen-ready in 5).
