@@ -24,7 +24,7 @@ placeholder (SVG boxes, text fields). User-checked at home; arcade (coins, rejoi
 
 Next, in order: song select step 2 (big panel `selected.*`), `tree.search/sort/group/filter`, images (`Wd.fill`),
 rankings (`scores.*`); dan / Waiwai / AI battle results on the provider; roll texts (`onp_renda_moji`) and a character
-in place of Don-chan's model; drums as a provider input event (now `Key.isDown`). Then the end check: the engine and
+in place of Don-chan's model. Then the end check: the engine and
 our movies build and run with `Skins.Green` out of the solution.
 
 ## The line
@@ -101,6 +101,13 @@ textures; no text colour yet), `attachMovie` / `removeMovieClip` / `getNextHighe
 spawn clips as needed, no fixed pools; gotcha: a `stop()` on frame 0 of an attached sprite runs after the caller's
 `gotoAndPlay` and freezes it). Missing in the runtime: `String.toUpperCase`; AVM `trace()` output is discarded (test
 scripts with `ReadScriptValue` unit tests, `FreeTimeCounterTests`).
+
+**Drums** (2026-11-15): `drum.hit(side, part, drum)` is an event of every screen. In a song the lane tells it to its
+drum's movies; on a menu screen of ours the shell tells every movie of the screen each drum's hits, per drum, and
+plays their feedback itself (`ui.don`, `ui.ka`; the game's menus play their own). A drum's own movie hears its drum;
+another movie hears player 1's with `Wd.on("drum.hit", fn)`, or each drum with `Wd.on("drum.hit", fn, 1)` and
+`fn, 2`: a cursor per player (the course select). Our entry, song select, dan select and results read the drums
+this way; none reads keys any more.
 
 ### Scopes
 

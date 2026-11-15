@@ -139,7 +139,7 @@ public static class WdNames
         new("kusudama.ended", WdKind.Event, "popped: bool", "play", "This drum's kusudama is over: burst, or its time ran out.", "false"),
         new("beat.passed", WdKind.Event, "beat: number", "play", "The song reached a whole beat (play.beat's whole part), once each going forward.", "18"),
         new("measure.passed", WdKind.Event, "measure: number", "play", "The song reached a bar line (play.measure's new value), once each going forward.", "13"),
-        new("drum.hit", WdKind.Event, "side: text (left, right), part: text (don, ka)", "play", "This drum was struck, note or not.", "left, don"),
+        new("drum.hit", WdKind.Event, "side: text (left, right), part: text (don, ka), drum: number (1 left, 2 right)", "app", "A drum was struck, note or not, on any screen. A drum's own movie hears its drum; any other hears player 1's, or listens per drum (Wd.on(\"drum.hit\", fn, 2)) for a cursor per player.", "left, don, 1"),
         new("song.ended", WdKind.Event, "cleared: bool, fullCombo: bool", "play", "The song is over and its result is known.", "true, false"),
     ];
 

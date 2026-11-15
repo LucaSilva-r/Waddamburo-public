@@ -507,6 +507,27 @@ internal sealed class GameShell : IDisposable
 
     // In the menus the arrows and Enter also work the drum: Left/Up and Right/Down are its rims, Enter its
     // centre (player 1's, or player 2's when they play alone; the revival is always driven as player 1's).
+    // A menu screen of ours hears every drum's hits (drum.hit, per drum: a cursor per player), and the engine plays
+    // their feedback (ui.don, ui.ka), as it plays the drums in a song. The game's menus play their own.
+    private void menuDrumHits(SdlKeyboardSnapshot keys)
+    {
+        var ours = Active.Player.Layers.Select(static layer => layer.Player).Where(static player => player.UsesProvider).ToArray();
+        if (ours.Length == 0)
+            return;
+        for (var pad = 0; pad < SdlInputBindings.Pads.Length; pad++)
+        {
+            if (!keys.IsDown(SdlInputBindings.Pads[pad]))
+                continue;
+            // A drum's pads: left rim, left face, right face, right rim.
+            var (drum, place) = (pad / 4 + 1, pad % 4);
+            var don = place is 1 or 2;
+            foreach (var movie in ours)
+                movie.EmitFor(drum, "drum.hit", LumenHostValue.FromString(place < 2 ? "left" : "right"),
+                    LumenHostValue.FromString(don ? "don" : "ka"), LumenHostValue.FromNumber(drum));
+            Sounds?.Play(new SoundRequest(don ? "ui.don" : "ui.ka", drum - 1), trace: false);
+        }
+    }
+
     private SdlKeyboardSnapshot menuKeys(SdlKeyboardSnapshot keys)
     {
         var drum = Hosts.PlayerSide == 1 && !Hosts.TwoPlayers && Active.Id != FlowScenes.Retry ? 4 : 0;
@@ -1299,6 +1320,8 @@ internal sealed class GameShell : IDisposable
             return;
         if (_home.QuickRestart(held))
             return;
+        if (!Scenes.OnLane)
+            menuDrumHits(keys);
         advance(scene, keys);
         var switching = Coordinator.Flow.State == GameFlowState.TransitionPending;
         if (_home.HoldsResults(held, switching))

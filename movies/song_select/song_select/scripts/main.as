@@ -1,18 +1,12 @@
 // Song select, bare minimum: the library as rows. Folders open in place to their songs, a song to its charts. The rims
-// move the cursor (held: they repeat); DON opens or closes a folder or a song, and on a chart plays it (song.start).
-// A folder that is a choice by itself (another library, the dojo, the tutorial) takes over when opened.
-// ponytail: the drums are read as the game's keys (Key.isDown); a provider input event can replace that.
+// move the cursor; DON opens or closes a folder or a song, and on a chart plays it (song.start). Either drum drives
+// the one cursor (drum.hit, heard per drum). A folder that is a choice by itself (another library, the dojo, the
+// tutorial) takes over when opened.
 
 var VISIBLE = 12;
-var DON = [90, 67];
-var KA = [65, 83, 68, 70];        // left rim, right rim of each drum: A S, D F
-var REPEAT_AFTER = 20;            // frames a rim is held before it repeats
-var REPEAT_EVERY = 4;
 
 var self = this;
 var first = 0;
-var held = [true, true];          // a DON still down from the screen before does not count
-var rimHeld = [0, 0, 0, 0];       // frames each rim has been down
 var started = false;
 
 function rowText(index) {
@@ -95,6 +89,24 @@ function pickForThePlayer() {
     }
 }
 
+function hit(side, part) {
+    if (started) {
+        return;
+    }
+    if (part == "don") {
+        decide();
+    } else {
+        show(Wd.get("selected.row") + (side == "left" ? -1 : 1));
+    }
+}
+
+Wd.on("drum.hit", function(side, part) {
+    hit(side, part);
+}, 1);
+Wd.on("drum.hit", function(side, part) {
+    hit(side, part);
+}, 2);
+
 this.onEnterFrame = function() {
     if (started) {
         return;
@@ -105,20 +117,6 @@ this.onEnterFrame = function() {
     }
     if (Wd.get("rows.count") != undefined && Wd.get("row.kind", first) == undefined) {
         Wd.request("rows.window", first, VISIBLE);
-    }
-    for (var k = 0; k < KA.length; k++) {
-        rimHeld[k] = Key.isDown(KA[k]) ? rimHeld[k] + 1 : 0;
-        var held_ = rimHeld[k];
-        if (held_ == 1 || (held_ > REPEAT_AFTER && (held_ - REPEAT_AFTER) % REPEAT_EVERY == 0)) {
-            show(Wd.get("selected.row") + (k % 2 == 0 ? -1 : 1));
-        }
-    }
-    for (var d = 0; d < 2; d++) {
-        var don = Key.isDown(DON[d]);
-        if (don && !held[d]) {
-            decide();
-        }
-        held[d] = don;
     }
     if (Wd.get("select.timeLeft") == 0) {
         pickForThePlayer();

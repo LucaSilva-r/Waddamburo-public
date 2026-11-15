@@ -1,19 +1,15 @@
 // The dan dojo as library rows: the series, their courses opened in place, each course's songs (its charts) under it.
 // The rims move the cursor; DON opens or closes a series or a course, and on an open course plays it (course.start).
-// The selected course's rules are the dan.exam lists. Back is the engine's (Escape).
-// ponytail: the drums are read as the game's keys (Key.isDown); a provider input event can replace that.
+// The selected course's rules are the dan.exam lists. Back is the engine's (Escape). Either drum drives the cursor
+// (drum.hit, heard per drum).
 
 var VISIBLE = 12;
 var RULES = 4;
-var DON = [90, 67];
-var KA = [65, 83, 68, 70];        // left rim, right rim of each drum: A S, D F
 var RULE_NAMES = { soul_gauge: "Soul gauge", goods: "GOODs", oks: "OKs", bads: "BADs", combo: "Max combo",
     hits: "Hits", score: "Score", rolls: "Drumroll" };
 
 var self = this;
 var first = 0;
-var held = [true, true];
-var rimHeld = [true, true, true, true];
 
 function rowText(index) {
     var kind = Wd.get("row.kind", index);
@@ -86,23 +82,24 @@ function decide() {
     }
 }
 
+function hit(side, part) {
+    if (part == "don") {
+        decide();
+    } else {
+        show(Wd.get("selected.row") + (side == "left" ? -1 : 1));
+    }
+}
+
+Wd.on("drum.hit", function(side, part) {
+    hit(side, part);
+}, 1);
+Wd.on("drum.hit", function(side, part) {
+    hit(side, part);
+}, 2);
+
 this.onEnterFrame = function() {
     if (Wd.get("rows.count") != undefined && Wd.get("row.kind", first) == undefined) {
         Wd.request("rows.window", first, VISIBLE);
-    }
-    for (var k = 0; k < KA.length; k++) {
-        var rim = Key.isDown(KA[k]);
-        if (rim && !rimHeld[k]) {
-            show(Wd.get("selected.row") + (k % 2 == 0 ? -1 : 1));
-        }
-        rimHeld[k] = rim;
-    }
-    for (var d = 0; d < 2; d++) {
-        var don = Key.isDown(DON[d]);
-        if (don && !held[d]) {
-            decide();
-        }
-        held[d] = don;
     }
     draw();
 };
