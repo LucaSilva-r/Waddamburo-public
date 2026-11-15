@@ -6,26 +6,28 @@ Our movies are not drop-in copies of the game's: they read the engine through a 
 movies are driven from the same data by an **adapter** in `Waddamburo.Skins.Green`. This is the final design (user,
 2026-11-12, confirmed 2026-11-14). The movie editor has its own page: [movie-editor.md](movie-editor.md).
 
-## State (2026-11-14)
+## State (2026-11-15)
 
-Runs on our movies alone, on an empty data directory: boot → entry (mode menu: normal, dan) → song select → rainbow →
-song → results → song select; the dan dojo (dan select, course, between-songs card, dan gauge and panel). Art is
-placeholder (SVG boxes, text fields). User-checked at home; arcade (coins, rejoin) not yet.
+Runs on our movies alone, on an empty data directory, and in arcade on the real data with `free_movies = true`:
+boot → attract → entry (mode menu: normal, dan) → song select → rainbow → song → results → revival / next song /
+game over → attract; the dan dojo (dan select, course, between-songs card, dan gauge and panel, dan results). Art is
+placeholder (SVG boxes, text fields, synthesised sounds). User-checked at home and in arcade (credits, card pairing,
+revival, a real course).
 
 | Part | State |
 | --- | --- |
-| Gameplay screen | on the provider; the game's movies fully behind the adapter (step 1 below done) |
-| Entry, results, dan select | on the provider with requests |
-| Song select | on library rows, awaiting the user's check (uncommitted at time of writing) |
+| Gameplay screen | on the provider; the game's movies behind the adapter, every mode (normal, dan, Waiwai, AI battle) |
+| Entry, song select (rows), dan select, results, revival, game over, dan results | ours, on the provider with requests |
 | Intermissions | rainbow, fade, shutter, dan covers on the transition protocol |
+| Indicators: `msg_coins`, `network_icon`, `time_counter`, `msg_banapass`, `player_name` | ours, on the provider |
+| Sounds | engine names → skin sets (`GreenSoundSet`, `SoundPack` / `sounds.json`), drums by the engine |
 | Boot, logo, title, notice, tutorial | small callback-era packages (`_global.is_end`, `Command("End")`, `isAllEnd`) |
-| `indicator/*`: `msg_coins`, `network_icon`, `time_counter`, `msg_banapass`, `player_name` | on the provider (credits, network, timer, card pairing, names) |
-| Everything else | an empty **stand-in** (below) |
+| Waiwai, AI battle screens | names published, no movie of ours yet (stand-ins) |
+| Everything else (the `indicator` legend, themed backgrounds, ...) | an empty **stand-in** (below) |
 
-Next, in order: song select step 2 (big panel `selected.*`), `tree.search/sort/group/filter`, images (`Wd.fill`),
-rankings (`scores.*`); dan / Waiwai / AI battle results on the provider; roll texts (`onp_renda_moji`) and a character
-in place of Don-chan's model. Then the end check: the engine and
-our movies build and run with `Skins.Green` out of the solution.
+**Next: [Zero Bandai dependency](#zero-bandai-dependency-the-skin-interface)** (the plan below). Then song select
+step 2 (big panel `selected.*`, the course panel with a cursor per drum and `tone.choose`), `tree.search/sort/group/
+filter`, images (`Wd.fill`), rankings (`scores.*`); our Waiwai and AI battle movies; the boot movies on the provider.
 
 ## The line
 
@@ -352,6 +354,105 @@ addresses, timing) is recorded per movie into contract pages in the private lab 
 say what the adapter must feed a game movie and what a screen of ours must make possible; our movie itself is written
 against provider names, not from the game's script.
 
+## Zero Bandai dependency (the skin interface)
+
+Goal (user, from the start; restated 2026-11-15): Waddamburo depends on no Bandai asset or Bandai-specific code
+outside one optional project. The game's movies, sounds, textures and Don-chan become a **skin** the user points at
+(a Green USRDIR, chosen in the settings); without it the engine runs on its own skin. The end check: the solution
+builds and runs with `Skins.Green` removed (the empty-directory benchmark plays through), and with it in, the game
+movies' edge logs are identical to before.
+
+### Where things stand (inventory, 2026-11-15)
+
+The engine libraries (`Game`, `Lumen`, `Formats`, `Catalog`, `Editor`, `Platform.Sdl`) reference no `Skins.Green`
+type (`DependencyRulesTests`). The App does, in 24 of its 122 files, because the App holds the engine's flow logic as
+well as the wiring, and that logic still talks to the game's bindings:
+
+| App file | Green types it uses | Why |
+| --- | --- | --- |
+| `Hosting/LayerHostFactory` | `EntrySceneHost`, `SongSelectHostBinding`, `IndicatorParts`, every screen's `*HostBinding`, `SongSelectGenrePatch`, `GuestNameBoard`, `AiBattlePanels`, `SystemIndicators` | picks the game's host per movie layer by host id; builds the game's bindings |
+| `Flow/GameShell` | `IndicatorScene` (9), `SystemIndicators`, `AiBattlePanels`, `GreenSoundSet` | the indicators overlay, screen kinds, the sound chain |
+| `Flow/CreditEndFlow` | `RetryGameHostBinding`, `ResultHostBinding`, `DaniResultHostBinding`, `IndicatorScene` | the game's end-of-movie flags (`_global.isAllEnd`), slot fills |
+| `Flow/GameplayFlow` | `TaikoSongInfoPresentation`, `GameDanCard`, `GameAiBattleMovies`, `IndicatorScene` | creates the game's adapters |
+| `Gameplay/TaikoGameplayPresentation` | `GameplayGameMovies`, `KadonNotePatch`, `TaikoHitFlights`, `TaikoGameplayHostBinding`, `GameWaiwaiMovies`, `TaikoSkinPresentation`, `TaikoDonPresentation`, `NameText`, `GuestNameBoard` | creates and feeds the gameplay adapters |
+| `Audio/GameSounds` | `GreenSounds`, `GreenSoundSet`, the six screen sound controllers | the sound wiring |
+| `Flow/SongSelectFlow`, `EntryFlow`, `AttractFlow` | `SongSelectHostBinding` (its `Own…` calls), `EntrySceneHost`, `AttractHostBinding`, `GameIntermissions`, `IndicatorScene` | **engine state kept in the game's hosts** (below) |
+| `Flow/FlowScene`, `BenchmarkFlow`, `CalibrationFlow`, `Scenes/FlowScenes` | `IndicatorScene`, `IndicatorParts` | the screen kind enum is Green's; scene layouts use the parts' host id |
+| `Presentation/*` (`EntrySetupOverlay`, `NameTextTextures`, `GameMovieContent`, `IntermissionOverlay`, `TextureBake`, `ToneArt`), `Home/*` (`PlayerSetupController`, `HomeControls`), `Online/DanCourses`, `Hosting/ConsoleServices`, `Tools/ViewerHostBinding` | `NameText`, `SpeedText`, `SongSelectGenrePatch`, `KadonNotePatch`, `GameIntermissions`, `ResumeCountdown`, `ToneSurfaces`, `DaniSelect*` records, the frontend sound types | drawing over the game's movies, patches at load, the dan select's board records |
+
+Bandai assets the App reads itself, beyond movies:
+
+- **Scene layouts**: `Scenes/FlowScenes` (57 Green archive / movie paths and positions), `GameplaySceneComposition`,
+  `RainbowTransitionComposition`: the game's screens as lists of its movies.
+- **Textures from `nutdata`** (`Presentation/NutData` and its users: `ToneArt`, `DanChallengeArt`, `CopyrightArt`,
+  `CostumeIconTextures`, `WaiwaiResultTextures`; also `OptionIcons`, `FolderArtPainter`, `PixelArt`): art the host
+  draws into the game's movies.
+- **Don-chan's model** (`Game/Don`, `Presentation/DonPresentationController`, `data/don3d`), the gameplay layout
+  (`ensolayout.bin` → `EnsoLayout`, already optional with `EnsoLayout.Standard`), jingles found in `bgm/nub`
+  (`GameShell.FindJingle`).
+- **Boot checks** that ask for the game's folders; `Cli/GameDataLayout` (where the game's files are).
+
+Format readers stay engine code: LMB (our packages compile to it), NUT, NUB / ATRAC (stock songs and other consoles'
+libraries need them), the don3d reader if Don-chan stays an engine feature. `Providers.Stock` stays an optional
+library provider like the osu! ones.
+
+### The root cause
+
+Some engine state still lives inside the game's bindings, so engine code has to ask them:
+
+- the entry's countdown, who joined, the pending card (`EntrySceneHost`: `TimeLeft`, `TryJoin`, `IsJoined`,
+  `FirstJoin`, `Card`, `ClaimCard`);
+- song select's countdown, folder cursor, preview, course select and choice folders (`SongSelectHostBinding.Own…`);
+- the screen kind (`IndicatorScene`, a Green enum used by every flow and by `screen.name`);
+- the results' end (`RetryGameHostBinding.IsEnd` reading the game movie's `_global.isAllEnd`);
+- which host serves which movie layer (`LayerHostFactory`, keyed by the game's host ids).
+
+### Steps
+
+Each step: move, prove (the game's movies unchanged, ours working), commit. Proof tools: `--play` (gameplay),
+the empty-directory benchmark (`WADDAMBURO_BENCHMARK_ATTRACT=2 --benchmark`), the real-data benchmark compared before
+and after (sounds and calls per movie, ticks dropped), the user's recorded sessions (`captures/` in the lab:
+`waiwai-ai/replay.sh`; the dan session in `research/contracts/logs/dan-session`). AI battle and live autoplay replays
+are not frame-exact: there, check by reading the adapter, or by hand.
+
+1. **Screen kinds into the engine.** A `ScreenKind` enum in `Game` (boot, attract, title, demo, entry, select,
+   tutorial, danSelect, play, result, retry, gameover) replaces `IndicatorScene` in the flows; `SystemIndicators`
+   maps it to the game's indicator states. `screen.name` reads it. Small; unblocks the rest.
+2. **Entry state into the engine.** An `EntrySession` (Game): the countdown, joins (with the coin bank's price), the
+   pending card and its claim, the setup's hold on the drums. `EntryFlow` drives it; `EntrySceneHost` becomes the
+   game entry's adapter reading it (its movie calls, voices, card dialog, name boards). Proof: the real-data
+   benchmark and a card/coin session by the user.
+3. **Song select state into the engine.** A `SelectSession` (Game): countdown, cursor (category / song), preview
+   requests, course select, choice folders, the library switch, the dan dojo entry; `SongSelectHostBinding` keeps
+   only the game movie's protocol and patches, reading the session. Largest step; split by feature, each proven with
+   the benchmark (it goes through song select) and the user in the window (libraries, choice folders, dan, Waiwai and
+   AI battle song selects).
+4. **Results and end-of-screen signals.** The flows ask "is the screen done" through one interface the skin answers
+   (the game's: `_global.isAllEnd`, `Ended`; ours: the requests already built), instead of reading the game's flags.
+5. **The skin interface.** `ISkin` in `Game`: the scenes (screen → layers: archive, movie, position, role), a layer
+   host per movie (`LayerHostFactory`'s switch moves into Green), the sound set and the screens' sound controllers,
+   the per-screen adapters (gameplay, Waiwai, AI battle, dan card, intermissions, indicators), art surfaces it draws
+   (the `nutdata` users), load-time patches (`SongSelectGenrePatch`, `KadonNotePatch`). `Skins.Green` implements it
+   (`GreenSkin`), moving `FlowScenes`, `GameplaySceneComposition`, `RainbowTransitionComposition`, `NutData` and its
+   users, the overlays drawn over the game's movies (`EntrySetupOverlay`'s name tags, `NameTextTextures`), there.
+   Our skin (`FreeSkin`, in the App or its own project) implements it from the packages and `sounds.json`, with
+   the same scene lists pointing at our packages.
+6. **The App picks a skin.** The flows, the gameplay presentation and `GameSounds` talk to `ISkin` and the engine
+   sessions only; the App's composition root chooses `GreenSkin` when a Green USRDIR is set (the settings' skin
+   menu, user 2026-11-11) and `FreeSkin` otherwise. `free_movies` becomes "our skin over the game's data" (mixing
+   stays: a skin may fall back to the other per movie, as packages do now).
+7. **Drawing and Don-chan.** Decide (user) how the Green skin draws (needs `Platform.Sdl`: textures, the name text,
+   Don-chan's model): let `Skins.Green` reference `Platform.Sdl`, or give `Game` small drawing interfaces the App
+   implements. Don-chan's 3D model is Green data: its renderer moves behind the skin; our skin's character is a movie
+   (`character` reading `play.*`, `balloon.*`, ...).
+8. **The end check.** Remove `Skins.Green` from the solution: it builds, the empty-directory benchmark and `--play`
+   run, the boot asks for no game folder. `DependencyRulesTests` pins: nothing but the composition root references
+   `Skins.Green`, and the composition root only constructs `GreenSkin`.
+
+Rules while doing it: a Bandai name (movie, clip, label, callback, bank, cue, texture path) appears only in
+`Skins.Green` (and `Providers.Stock` for stock songs); new code goes on the right side from the start; the user's
+real install is read-only (test in `captures/` copies).
+
 ## Open questions
 
 1. What may a user's widget request? Reading is harmless; requests from an arbitrary package are not obviously so.
@@ -389,3 +490,8 @@ free replacements. SWF import for artists only if asked for.
 - 2026-11-14: `Skins.Green` split; long notes, note faces, lane label jumps, Don-chan, transitions behind the adapter;
   `--play`; `Wd.request`; entry and results on requests; library rows, dan select, song select on rows. The callback
   skeletons removed: stand-ins take every label seek.
+- 2026-11-15: skeletons removed (stand-ins take every seek); the two docs merged here; the game's code moved into
+  `Skins.Green` (Waiwai and AI battle split into engine rules and adapters); sounds by engine name (`ISoundSet`,
+  `ISoundPlayer`, `SoundPack`, `sound.play`, drum tones); `drum.hit` on every screen; app state (credits, network,
+  timer, card pairing, names) and our indicators; the end of a credit (revival rule in the engine, game over, dan
+  results); Waiwai and AI battle names. Plan written: zero Bandai dependency.
