@@ -74,7 +74,7 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
 
     /// <summary>
     /// Whether every word of <paramref name="query"/> appears (ignoring case) in the song's titles,
-    /// subtitles, artist or mapper, as written or with their kana in romaji (<see cref="Romaji"/>), and every filter holds
+    /// subtitles, artist, mapper or (game songs) music id, as written or with their kana in romaji (<see cref="Romaji"/>), and every filter holds
     /// (<see cref="Filter"/>: <c>stars&gt;=8</c>, <c>oni&gt;=9</c>, <c>ura&gt;0</c>, <c>bpm&gt;180</c>, <c>length&lt;2:30</c>,
     /// <c>artist=</c>, <c>mapper=</c>, <c>title=</c>, and with <paramref name="crownOf"/> the player's crowns: <c>crown=fc</c>,
     /// <c>oni=notcleared</c>; <c>source=osu,tja</c>).
@@ -94,6 +94,8 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
         {
             song.Title.Primary, song.Title.English, song.Title.Japanese, song.Subtitle, song.EnglishSubtitle,
             song.Artist, song.Creator,
+            // The game's music id (e.g. "10tai"); custom songs' ids are paths or hashes, not worth matching.
+            song.Key.Source is SongSourceKind.Stock or SongSourceKind.Nijiiro ? song.Key.StableId : null,
         }.Where(static value => value is not null));
         // ponytail: romanised per query, each song every keystroke; cache it on the song if search gets slow.
         var romaji = Romaji.Fold(Romaji.FromKana(text));
