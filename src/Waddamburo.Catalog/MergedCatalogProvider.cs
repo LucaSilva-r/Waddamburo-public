@@ -63,8 +63,16 @@ public sealed class MergedCatalogProvider : ISongCatalogProvider, ICatalogAssetR
             foreach (var song in contribution.Songs)
             {
                 if (!listed.Add(song.Key))
-                    continue;
-                songs.Add(song);
+                {
+                    // A newer install without the song's music (withdrawn: placeholder or none) gives way to an
+                    // older one that has it; the folder stays the newest one's.
+                    var index = songs.FindIndex(listedSong => listedSong.Key == song.Key);
+                    if (songs[index].AudioAsset is not null || song.AudioAsset is null)
+                        continue;
+                    songs[index] = song;
+                }
+                else
+                    songs.Add(song);
                 foreach (var asset in assets(song))
                     owners[asset.StableId] = source;
             }

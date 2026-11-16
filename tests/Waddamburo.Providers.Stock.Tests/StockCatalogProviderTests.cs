@@ -23,7 +23,8 @@ public sealed class StockCatalogProviderTests
         data.WriteMusicInfo("musicinfo.xml", ("alpha", "Old", "J-POP")); // older revision: fewer installed songs
         foreach (var (id, course) in new[] { ("alpha", 'm'), ("alpha", 'x'), ("beta", 'e'), ("gamma", 'n') })
             data.WriteBytes($"fumen/{id}/solo/{id}_{course}.bin", Fumen(new Measure(120, 0, [N(1, 0)])));
-        data.WriteBytes("sound/bgm/nub/SONG_ALPHA.nub", [1, 2, 3]);
+        data.WriteBytes("sound/bgm/nub/SONG_ALPHA.nub", new byte[600_000]);
+        data.WriteBytes("sound/bgm/nub/SONG_GAMMA.nub", new byte[164_352]); // a withdrawn song's placeholder music
         data.WriteBytes("sound/bgm/nsh/SONG_ALPHA.nsh", Nsh(previewMs: 48_500));
 
         var cache = new CatalogMetadataCache(Path.Combine(data.Path, "metadata.db"));
@@ -41,8 +42,9 @@ public sealed class StockCatalogProviderTests
         Assert.Equal([TaikoCourse.Oni, TaikoCourse.Ura], alpha.Charts.Select(static chart => chart.Course!.Value));
         Assert.Equal(TimeSpan.FromMilliseconds(48_500), alpha.PreviewStart);
         await using var audio = await provider.OpenReadAsync(alpha.AudioAsset!);
-        Assert.Equal(3, audio.Length);
+        Assert.Equal(600_000, audio.Length);
         Assert.Null(contribution.Songs[0].AudioAsset);
+        Assert.Null(contribution.Songs[2].AudioAsset);
         Assert.Contains(contribution.Diagnostics, static diagnostic => diagnostic.Code == "STOCK_AUDIO_MISSING");
     }
 
