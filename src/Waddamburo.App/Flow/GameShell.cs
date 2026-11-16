@@ -1554,11 +1554,19 @@ internal sealed class GameShell : IDisposable
             top.Add(Painter.Rect(400, 0, 480, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
             top.Add(Painter.Text(Strings.T("nightly.banner"), 640, 13, 468, 22));
         }
+        var bannerY = BuildInfo.Nightly ? 28 : 0;
         if (uploadBanner() is { } uploadMessage)
         {
-            var y = BuildInfo.Nightly ? 28 : 0;
-            top.Add(Painter.Rect(380, y, 520, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
-            top.Add(Painter.Text(Strings.T(uploadMessage), 640, y + 13, 508, 22));
+            top.Add(Painter.Rect(380, bannerY, 520, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
+            top.Add(Painter.Text(Strings.T(uploadMessage), 640, bannerY + 13, 508, 22));
+            bannerY += 28;
+        }
+        // A song without its music (a withdrawn one whose newer data kept only a placeholder): no preview, a silent play.
+        if (Active.Id == FlowScenes.SongSelect
+            && (Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor) is { Descriptor.AudioAsset: null })
+        {
+            top.Add(Painter.Rect(380, bannerY, 520, 26, new RenderColor(0.45f, 0.32f, 0.05f, 0.85f)));
+            top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
         }
         top.AddRange(_performance.Quads());
         if (top.Count == 0)

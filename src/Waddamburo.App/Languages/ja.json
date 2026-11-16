@@ -81,6 +81,7 @@
   "settings.upload_custom_songs": "カスタム曲のアップロード",
   "settings.upload_custom_songs.hint": "新しくプレイするTJA・osu!曲のスコア、リプレイ、譜面を送信します。オフ中のプレイは、再びオンにしても送信されません。どちらでもローカルのリプレイを再生できます。",
   "custom_upload.banner_auto": "オート使用でスコア送信は無効です",
+  "song_select.no_music": "この曲の音源がありません（音源のある旧バージョンを追加してください）",
   "settings.upload_banner": "スコア送信無効の表示",
   "settings.upload_banner.hint": "スコアが送信されないとき画面上部に表示します（アップロードがオフのカスタム曲、送信しない譜面、オート）。",
   "settings.discord_presence": "Discordステータス",
