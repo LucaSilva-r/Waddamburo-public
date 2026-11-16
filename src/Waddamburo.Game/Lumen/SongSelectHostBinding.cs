@@ -1178,15 +1178,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     /// <summary>
     /// Marks or unmarks the song under the cursor; its boards redraw their icons at once. The favourites
-    /// folder itself changes when Song Select next loads. False when the cursor is on no song.
+    /// folder itself changes when Song Select next loads. The song under the cursor, or the one in course select;
+    /// null when there is none, else the song and whether it is now a favourite.
     /// </summary>
-    public bool ToggleFavourite()
+    public (SongSelectSong Song, bool Added)? ToggleFavourite()
     {
-        if (Favourites is null || _centre is not { } centre
-            || !_session.Catalog.TryGetSong(centre.Category, centre.Song, out var song))
-            return false;
+        if (Favourites is null || SongUnderCursor is not { } song)
+            return null;
         var key = song.Descriptor.Key;
-        Console.WriteLine($"Favourite {(Favourites.Toggle(key) ? "added" : "removed")}: {key}.");
+        var added = Favourites.Toggle(key);
+        Console.WriteLine($"Favourite {(added ? "added" : "removed")}: {key}.");
         // Inside the favourites folder its list stays until the folder closes (the boards index it).
         _favouritesChanged = true;
         if (_openFolder != _session.Catalog.FavouritesCategory)
@@ -1203,7 +1204,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 Console.Error.WriteLine($"Song Select board {slot} has no musicInfo to refresh.");
             invoke("UpdateMusicBoard", LumenHostValue.FromNumber(slot));
         }
-        return true;
+        return (song, added);
     }
 
     private LumenHostValue clearSelectionSurfaces()

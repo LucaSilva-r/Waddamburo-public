@@ -232,9 +232,16 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             });
             return;
         }
-        // P marks the song under the cursor favourite (or unmarks it); the keys are one-tick pulses.
-        if (GameActions.Down(input.Keys, GameAction.Favourite) && Shell.Hosts.SongSelect?.ToggleFavourite() == false)
-            Console.WriteLine("Favourite: the cursor is on no song.");
+        // P marks the song under the cursor (or in course select) favourite, or unmarks it, and says so in a
+        // short-lived notice; the keys are one-tick pulses.
+        if (GameActions.Down(input.Keys, GameAction.Favourite) && Shell.Hosts.SongSelect is { } select)
+        {
+            if (select.ToggleFavourite() is { } toggled)
+                Shell.Sync.Notices.AddLocal(Strings.T(toggled.Added ? "favourites.added" : "favourites.removed",
+                    toggled.Song.Descriptor.Title.Primary), lifetime: TimeSpan.FromSeconds(6));
+            else
+                Console.WriteLine("Favourite: the cursor is on no song.");
+        }
         // Online, a guest only plays the host's song.
         if (Shell.PlayRequests.Pending is { } request && Shell.Match.Accept(request))
             coverForGameplay(request);

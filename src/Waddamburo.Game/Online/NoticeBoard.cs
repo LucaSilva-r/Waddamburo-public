@@ -78,9 +78,18 @@ public sealed class NoticeBoard
         return true;
     }
 
-    /// <summary>A notice from this PC itself (a failed job, a setting that needs attention).</summary>
-    public bool AddLocal(string message, NoticeSeverity severity = NoticeSeverity.Info) =>
-        Add(new Notice($"{NoticeSource.Local}:{Guid.NewGuid():N}", NoticeSource.Local, severity, message, DateTimeOffset.UtcNow));
+    /// <summary>
+    /// A notice from this PC itself (a failed job, a setting that needs attention); with a
+    /// <paramref name="lifetime"/> it leaves the list after it (a passing confirmation).
+    /// </summary>
+    public bool AddLocal(string message, NoticeSeverity severity = NoticeSeverity.Info, TimeSpan? lifetime = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return Add(new Notice($"{NoticeSource.Local}:{Guid.NewGuid():N}", NoticeSource.Local, severity, message, now)
+        {
+            EndsAt = now + lifetime,
+        });
+    }
 
     public void Dismiss(string id)
     {
