@@ -685,6 +685,22 @@ internal sealed class GameShell : IDisposable
             if (_libraries.Problems is { Count: > 0 } problems)
                 _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out",
                     problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
+            // The installations' folders are checked in the background after the start: a notice shows how far.
+            if (_libraries.MetadataCache is { } metadataCache)
+            {
+                Waddamburo.Game.Flow.JobBoard.Job? checking = null;
+                var jobs = Sync.Jobs;
+                metadataCache.CheckProgress = (done, total) =>
+                {
+                    lock (jobs)
+                    {
+                        checking ??= jobs.Start(Strings.T("job.check_libraries"), total);
+                        checking.Report(done);
+                        if (done >= total)
+                            checking.Complete();
+                    }
+                };
+            }
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
@@ -1596,6 +1612,8 @@ internal sealed class GameShell : IDisposable
             upscaler.Paused = Scenes.OnLane || Bake?.Running == true;
             upscaler.Apply(Application);
         }
+        if (_libraries.MetadataCache is { } metadataCache)
+            metadataCache.Paused = Scenes.OnLane;
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
         var scene = flowOf(Active.Id).CreateSnapshot(interpolation);

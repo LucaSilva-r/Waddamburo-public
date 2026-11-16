@@ -79,6 +79,19 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task APausedCheckWaitsUntilResumed()
+    {
+        var cache = new CatalogMetadataCache(Database);
+        using (cache.Open(Root, "v1", sourceTree: true)) { }
+        cache.Paused = true;
+        using (cache.Open(Root, "v1", sourceTree: true)) { }
+        await Task.Delay(300);
+        Assert.False(cache.Revalidations.IsCompleted);
+        cache.Paused = false;
+        await cache.Revalidations.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void AnInstallationLeftOutForOneStartIsWalkedWhenItComesBack()
     {
         CatalogMetadataScope Install(CatalogMetadataCache cache) => cache.Open(Root, "v1", sourceTree: true);

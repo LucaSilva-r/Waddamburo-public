@@ -44,6 +44,9 @@ internal sealed class SongLibraries : IDisposable
 
     public ISongCatalogProvider[] Providers { get; }
 
+    /// <summary>The metadata cache the scan used: its background checks of the installations report through it.</summary>
+    public CatalogMetadataCache? MetadataCache { get; private set; }
+
     public SongCatalogSnapshot Snapshot { get; }
 
     /// <summary>
@@ -90,6 +93,7 @@ internal sealed class SongLibraries : IDisposable
                 ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
         ], percent);
         metadataCache.ForgetUnopenedInventories();
+        libraries.MetadataCache = metadataCache;
         libraries.Problems.AddRange(problems);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)

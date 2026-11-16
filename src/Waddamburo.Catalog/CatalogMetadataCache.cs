@@ -19,14 +19,39 @@ public sealed class CatalogMetadataCache(string databasePath)
         _ = _preloaded.Value;
         var scope = new CatalogMetadataScope(databasePath, root, parserVersion, sourceTree, within, cancellationToken, check =>
         {
-            var started = Task.Run(async () => { await RevalidateAfter.ConfigureAwait(false); await check().ConfigureAwait(false); });
+            var started = Task.Run(async () =>
+            {
+                await RevalidateAfter.ConfigureAwait(false);
+                report();
+                await check().ConfigureAwait(false);
+                Interlocked.Increment(ref _checked);
+                report();
+            });
             lock (_checks) _checks.Add(started);
-        });
+        }, () => Paused);
         lock (_opened) _opened.Add(scope.InventoryKey);
         return scope;
     }
 
     private readonly HashSet<string> _opened = new(StringComparer.Ordinal);
+    private int _checked;
+
+    /// <summary>True holds the background checks between files (gameplay: the disk and CPU belong to the song).</summary>
+    public bool Paused { get => Volatile.Read(ref _paused); set => Volatile.Write(ref _paused, value); }
+    private bool _paused;
+
+    /// <summary>
+    /// The background checks' progress as (installations checked, installations to check), from the checking threads:
+    /// for a notice while they run. The last report has both equal.
+    /// </summary>
+    public Action<int, int>? CheckProgress { get; set; }
+
+    private void report()
+    {
+        int total;
+        lock (_checks) total = _checks.Count;
+        CheckProgress?.Invoke(Volatile.Read(ref _checked), total);
+    }
 
     /// <summary>
     /// Drops the stored inventories of the installations this run did not open (a library removed, a drive unplugged):
@@ -101,13 +126,15 @@ public sealed class CatalogMetadataScope : IDisposable
     // One background walk at a time: several releases walked at once thrash a spinning disk.
     private static readonly SemaphoreSlim Walking = new(1, 1);
     private readonly Action<Func<Task>> _checking;
+    private readonly Func<bool> _held;
     public int Hits { get; private set; }
     public int Misses { get; private set; }
 
-    internal CatalogMetadataScope(string database, string root, string version, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation, Action<Func<Task>> checking)
+    internal CatalogMetadataScope(string database, string root, string version, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation, Action<Func<Task>> checking, Func<bool> held)
     {
         _cancellation = cancellation;
         _checking = checking;
+        _held = held;
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         _space = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_root + "|" + version)));
         _files = newInventory();
@@ -177,7 +204,8 @@ public sealed class CatalogMetadataScope : IDisposable
     private static Dictionary<string, Stamp> newInventory() =>
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
-    private static Dictionary<string, Stamp> walk(string root, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation)
+    private static Dictionary<string, Stamp> walk(string root, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation,
+        Func<bool>? held = null)
     {
         var found = newInventory();
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = sourceTree,
@@ -189,6 +217,8 @@ public sealed class CatalogMetadataScope : IDisposable
         foreach (var file in files)
         {
             cancellation.ThrowIfCancellationRequested();
+            while (held?.Invoke() == true)
+                Thread.Sleep(100);
             // A linked file is stamped by what it points at (its own size and time never change); a dead link is no file.
             if (target(file) is { } real)
                 found[file.FullName] = new Stamp(real.Length, real.LastWriteTimeUtc.Ticks);
@@ -222,7 +252,7 @@ public sealed class CatalogMetadataScope : IDisposable
         try
         {
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            var now = walk(_root, _sourceTree, _within, CancellationToken.None);
+            var now = walk(_root, _sourceTree, _within, CancellationToken.None, _held);
             if (now.Count == _files.Count && now.All(file => _files.GetValueOrDefault(file.Key) == file.Value)) return;
             using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {

@@ -276,6 +276,7 @@
   "notices.profile_changed": "TaikOnlineでどんちゃんや段位が変更されました。タイトル画面に戻ると反映されます。",
   "notices.source.player": "{0}さんへ",
   "job.hash_library": "オンラインスコアのために曲を準備中",
+  "job.check_libraries": "曲ライブラリの変更を確認中",
   "job.rescore_scores": "新しい採点ルールでスコアを更新中",
   "job.upload_scores": "スコアを送信中",
   "notice.ai_unranked": "このAIバトルではオンラインのランクポイントと勝利数は加算されません。",
