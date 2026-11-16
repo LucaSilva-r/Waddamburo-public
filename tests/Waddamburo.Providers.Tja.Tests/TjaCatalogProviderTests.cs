@@ -244,6 +244,7 @@ public sealed class TjaCatalogProviderTests
         library.WriteText("Good/healthy.tja", "TITLE:Healthy\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
         library.WriteText("Bad/no-chart.tja", "TITLE:No chart\nBPM:120\nWAVE:missing.ogg\n");
         library.WriteText("Bad/no-course.tja", "TITLE:No course\nBPM:120\n#START\n1000,\n#END\n");
+        library.WriteText("Bad/zero-bpm.tja", "TITLE:Zero BPM\nBPM:0\nCOURSE:Oni\n#START\n1000,\n#END\n");
         library.WriteBytes("Bad/oversized.tja", new byte[65]);
         var provider = new TjaCatalogProvider(
             library.Path,
@@ -254,6 +255,7 @@ public sealed class TjaCatalogProviderTests
         Assert.Equal("Healthy", Assert.Single(contribution.Songs).Title.Primary);
         Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_AUDIO_UNSPECIFIED");
         Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_NO_SUPPORTED_CHARTS");
+        Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_FILE_INVALID" && diagnostic.Message.Contains("zero-bpm"));
         Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_FILE_TOO_LARGE");
     }
 

@@ -120,7 +120,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
             catch (Exception exception) when (exception is IOException
                 or UnauthorizedAccessException
                 or DecoderFallbackException
-                or ArgumentException)
+                or ArgumentException
+                or InvalidDataException)
             {
                 diagnostics.Add(warning(
                     "TJA_FILE_INVALID",
@@ -479,8 +480,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
     {
         if (!double.TryParse(metadata.Get("BPM"), NumberStyles.Float, CultureInfo.InvariantCulture, out var bpm)
             || !double.IsFinite(bpm)
-            || bpm <= 0)
-            throw new InvalidDataException("TJA requires a positive BPM value.");
+            || bpm == 0)
+            throw new InvalidDataException("TJA requires a non-zero BPM value."); // negative: a reversed scroll
     }
 
     private string stableCategoryId(string category)
