@@ -217,7 +217,7 @@ public sealed record ArcadeSettings
         # timing_indicator (also in the Settings menu): a glow under the judgement circle after a hit,
         # blue when early, red when late. good_bad = after a Good or Bad only; always = after every hit
         # (Greats too); off.
-        timing_indicator = good_bad
+        timing_indicator = off
 
         """,
         """
@@ -458,7 +458,7 @@ public sealed record ArcadeSettings
     public bool CustomUploadNoticeSeen { get; init; }
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
-    public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
+    public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.Off; // new players took the glow for a bug (#43)
 
     /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>
     public sealed class EquatableList(IEnumerable<string> items) : IReadOnlyList<string>, IEquatable<EquatableList>

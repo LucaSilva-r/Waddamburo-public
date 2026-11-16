@@ -174,17 +174,17 @@ public sealed class ArcadeTests
     }
 
     [Fact]
-    public void TimingIndicatorDefaultsToGoodAndBadAndSavesBack()
+    public void TimingIndicatorDefaultsToOffAndSavesBack()
     {
-        Assert.Equal(TimingIndicator.GoodBad, ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).TimingIndicator);
+        Assert.Equal(TimingIndicator.Off, ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).TimingIndicator);
         Assert.Equal(TimingIndicator.Always, ArcadeSettings.Parse("timing_indicator = Always").TimingIndicator);
         Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("timing_indicator = sometimes"));
         var path = Path.GetTempFileName();
         try
         {
-            var settings = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText) with { TimingIndicator = TimingIndicator.Off };
+            var settings = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText) with { TimingIndicator = TimingIndicator.GoodBad };
             ArcadeSettings.SaveMenuSettings(path, settings);
-            Assert.Equal(TimingIndicator.Off, ArcadeSettings.Parse(File.ReadAllText(path)).TimingIndicator);
+            Assert.Equal(TimingIndicator.GoodBad, ArcadeSettings.Parse(File.ReadAllText(path)).TimingIndicator);
         }
         finally
         {
