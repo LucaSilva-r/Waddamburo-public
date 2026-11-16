@@ -38,6 +38,10 @@ internal sealed class GameplaySounds(SoundBank bank)
         _ => "_C",
     };
 
+    // AI battle: the player is the only one heard, so they sound as one player (centred, one-player cues),
+    // not as the left side of a two-player game.
+    private int? solo(int? lane) => AiBattle ? null : lane;
+
     public void PrepareDrums(bool twoPlayers = false)
     {
         // Both sets for two players: panning may be switched in the pause menu.
@@ -52,7 +56,7 @@ internal sealed class GameplaySounds(SoundBank bank)
     public void PlayDrum(int? lane, bool don)
     {
         if (!Muted && !(AiBattle && lane == 1))
-            bank.Play(drumBank(lane), don ? 0 : 1, AudioBus.DrumHit, trace: false);
+            bank.Play(drumBank(solo(lane)), don ? 0 : 1, AudioBus.DrumHit, trace: false);
     }
 
     /// <summary>
@@ -64,6 +68,7 @@ internal sealed class GameplaySounds(SoundBank bank)
     {
         // AI battle: AI-don's lane (1) is silent, drums included (PlayDrum).
         if (Muted || AiBattle && lane == 1) return;
+        lane = solo(lane);
         int own(int cue) => lane is { } player && Panning ? cue + 1 + player : cue;
         switch (sound)
         {
